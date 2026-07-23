@@ -49,6 +49,8 @@ Resolving an arXiv reference is thus network-required; a `Fetcher` must be suppl
 
 **The slug never determines identity.** Two papers may share a slug; they will not share an identity. One paper may change its title and therefore its slug; its identity is unchanged, and the first slug ever assigned to that identity stays canonical (see 003).
 
+**A URL that carries no identifier is resolved by proposal-then-verification, never by trust.** A DOI or an arXiv ID is read straight from the reference. A bare publisher or authors' URL is not: it goes through a `PageResolver`. The default reads the `citation_*` meta standard (`citation_doi`, `citation_arxiv_id`, `citation_title`) that academic publishers emit, so an arbitrary site is handled without scraping its freeform body. For the messy long tail that omits those tags, an `AgentPageResolver` reads the page with an LLM. But an LLM in the identity path would reintroduce exactly the drift this spec exists to kill — the same page yielding a different identifier across runs. So whatever a resolver returns is only a **candidate**: resolution honours it only if that identifier **actually occurs in the fetched page**, and an arXiv candidate re-enters the deterministic arXiv lookup. A model can therefore *upgrade* a digest-only page to a real DOI, but can never invent an identity or make one drift. A page with no verifiable identifier falls back to the content digest.
+
 ## Interface
 
 Package `internal/paper`. The scheme is a typed enum in the shape the port
