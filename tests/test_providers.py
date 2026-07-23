@@ -142,16 +142,44 @@ class TestHostedTranslation:
             assert status.verdict.grade is grade
             assert status.verdict.explanation == "because"
 
-    def test_a_finished_run_without_a_grade_is_a_failure(self):
-        """Silence from the grader must never read as success."""
+    def test_a_run_that_has_not_started_is_not_reported_as_finished(self):
+        """Regression: the backend rests in one state both before and after work.
+
+        Observed against the live backend -- a run created but not yet picked
+        up reports the resting state with no grader record. Treating that as
+        terminal aborts healthy runs whose first poll lands in the window
+        between kickoff and pickup.
+        """
         provider = self.provider()
         with mock.patch(
             "urllib.request.urlopen", return_value=_FakeResponse({"status": "idle"})
         ):
             status = provider.poll(RunHandle(id="run-1"))
 
-        assert status.state is RunState.FAILED
+        assert not status.state.terminal
+        assert status.state is RunState.PENDING
         assert not (status.verdict and status.verdict.passed)
+
+    def test_an_undecided_grade_keeps_the_run_running(self):
+        provider = self.provider()
+        payload = {
+            "status": "running",
+            "outcome_evaluations": [{"result": "pending", "explanation": ""}],
+        }
+        with mock.patch("urllib.request.urlopen", return_value=_FakeResponse(payload)):
+            status = provider.poll(RunHandle(id="run-1"))
+
+        assert status.state is RunState.RUNNING
+        assert not status.state.terminal
+
+    def test_silence_from_the_grader_never_reads_as_success(self):
+        provider = self.provider()
+        for payload in ({"status": "idle"}, {"status": "terminated"}):
+            with mock.patch(
+                "urllib.request.urlopen", return_value=_FakeResponse(payload)
+            ):
+                status = provider.poll(RunHandle(id="run-1"))
+            assert not (status.verdict and status.verdict.passed)
 
     def test_start_run_sends_the_task_and_rubric(self):
         provider = self.provider()

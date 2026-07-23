@@ -201,9 +201,18 @@ class HostedProvider(Provider):
                 grade=_GRADES.get(last.get("result", ""), Grade.PENDING),
                 explanation=last.get("explanation", "") or "",
             )
-        # A finished run whose grader never returned is a failure, not a pass.
-        if state is RunState.DONE and verdict is None:
-            state = RunState.FAILED
+
+        if verdict is None:
+            # The backend parks a run in the same resting state both before
+            # work begins and after it ends, so resting plus no grader record
+            # means "not started yet" -- not "finished". Calling it terminal
+            # here would abort a healthy run whose first poll lands in the
+            # window between kickoff and pickup.
+            state = RunState.PENDING if state is RunState.DONE else state
+        elif verdict.grade is Grade.PENDING:
+            # A recorded but undecided grade means the grader is still working.
+            state = RunState.RUNNING
+
         return RunStatus(state=state, verdict=verdict, usage=data.get("usage") or {})
 
     def list_artifacts(self, handle: RunHandle) -> list[Artifact]:
