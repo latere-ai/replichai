@@ -1,0 +1,5 @@
+https://dl.acm.org/doi/10.1145/3544548.3580778
+
+Short-Form Videos Degrade Our Capacity to Retain Intentions: Effect of Context Switching On Prospective Memory
+Francesco Chiossi, Luke Haliburton, Changkun Ou, Andreas Butz, Albrecht Schmidt
+CHI 2023 · DOI 10.1145/3544548.3580778
