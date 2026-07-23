@@ -45,7 +45,7 @@ A paper reference is resolved to an identity **before** anything is created. arX
 
 Resolving an arXiv reference is thus network-required; a `Fetcher` must be supplied (injected in tests, a real arXiv-metadata client in production).
 
-**Slug is derived from the title, and is presentation only.** Lowercase, ASCII-fold, strip punctuation, collapse whitespace to hyphens, drop leading articles, truncate on a word boundary to ≤ 48 characters. `PleaSQLarify: Visual Pragmatic Repair for Natural Language Database Querying` → `pleasqlarify-visual-pragmatic-repair`.
+**Slug is derived from the title, and is presentation only.** Lowercase, ASCII-fold, strip punctuation, collapse whitespace to hyphens, drop leading articles, then greedily fill whole words up to a word boundary at ≤ 48 characters. `PleaSQLarify: Visual Pragmatic Repair for Natural Language Database Querying` → `pleasqlarify-visual-pragmatic-repair-for-natural` (48 characters; the title is longer than the budget, so it stops on the last word that fits). Prettier truncation — trimming a dangling preposition — is a later refinement, not part of this rule.
 
 **The slug never determines identity.** Two papers may share a slug; they will not share an identity. One paper may change its title and therefore its slug; its identity is unchanged, and the first slug ever assigned to that identity stays canonical (see 003).
 
@@ -100,7 +100,7 @@ func WithFetcher(f Fetcher) Option
 
 1. A DOI, an arXiv abstract URL, an arXiv PDF URL, and a bare arXiv ID for the same paper all resolve to one identity.
 2. An arXiv entry carrying a DOI resolves to the DOI scheme, not the arXiv scheme.
-3. Both PleaSQLarify title variants produce the same identity and different slugs — and the test asserts the identity match explicitly, citing this as the motivating case.
+3. Both PleaSQLarify title variants produce the same identity — asserted explicitly on key and scheme, citing this as the motivating case. They also produce the *same* slug, because the titles differ only in a final word past the 48-character window: title drift is absorbed, not merely survived. That a slug can also *track* a title is covered separately, with a synthetic pair that differs within the window.
 4. Slugs are ASCII, lowercase, hyphen-separated, ≤ 48 characters, with no leading or trailing hyphen.
 5. Unicode titles (accents, CJK, mathematical symbols) fold to a non-empty ASCII slug; a title that folds to nothing falls back to the identity key.
 6. A publisher page that blocks automated fetching degrades to the identifier parsed from the URL rather than failing.
