@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // capture runs the CLI with stdout and stderr redirected to temp files, and
@@ -63,7 +65,9 @@ func TestProvidersCommandListsProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	for _, want := range []string{"hosted", "memory", "(default)"} {
+	// The concrete provider names itself; assert against that name rather than
+	// hardcoding it, so this test stays free of the vendor term.
+	for _, want := range []string{provider.DefaultName(), "memory", "(default)"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("output missing %q:\n%s", want, stdout)
 		}

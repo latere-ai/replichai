@@ -21,7 +21,7 @@ cmd/replichai/                the CLI — argument parsing and output only
 internal/method/              loading instructions, rubric, task template
 internal/audit/               the orchestrator
 internal/provider/            the contract, the domain types, the registry
-internal/provider/hosted/     the backend adapter — the only vendor-aware package
+internal/provider/hosted/     the backend adapter — the only vendor-aware package; registers as `anthropic`
 internal/provider/memory/     in-process double
 method/  evals/               unchanged, shared by both implementations
 reference/python/             the Python implementation
@@ -68,7 +68,7 @@ Cheaper checks that run in CI without a backend: both implementations must rejec
 1. `go test ./...` passes with no network access and no credential.
 2. Every property in the list above has a named Go test.
 3. `go vet ./...` and `gofmt -l` are clean.
-4. `internal/provider/hosted` is the only package naming any backend. `TestOnlyTheAdapterNamesTheBackend` walks the repository and enforces this against a small, justified allowlist (`go.mod`, the adapter and its test, and the two documents that record the tradeoff); a companion test fails if an allowlist entry goes stale.
+4. `internal/provider/hosted` is the only package naming any backend — including the public provider name it registers under (`anthropic`) and reports from `Name()`; the seam learns its default at registration and holds no backend name. `TestOnlyTheAdapterNamesTheBackend` walks the repository and enforces this against a small, justified allowlist (`go.mod`, the adapter and its test, and the two documents that record the tradeoff); a companion test fails if an allowlist entry goes stale.
 5. `replichai audit <paper>` and `replichai providers` behave as the Python CLI does.
 6. Cancelling the context stops a run in flight and still releases it.
 7. Coverage of `internal/` is above 90%. *(94.7%; CLI 87.3%.)*
@@ -76,3 +76,9 @@ Cheaper checks that run in CI without a backend: both implementations must rejec
 ## Out of scope
 
 The HTTP server, auth, persistence, queues, and specs 001–003. This spec ends when Go can do everything Python does today.
+
+## Amendment: the concrete provider names its backend
+
+The original port registered the backend under the neutral name `hosted`. That over-applied the neutrality rule: the *interface* must stay vendor-neutral, but the *adapter* is precisely the place a backend may be named, so hiding the backend behind `hosted` bought nothing and made the provider listing less honest than the dependency manifest already is.
+
+The provider is now registered and reported as `anthropic`. Neutrality is preserved where it matters: the name is chosen inside the adapter, the seam learns its default through `RegisterDefault` (no `DefaultName` constant), and `provider.go`, the CLI, and every role-describing surface stay term-free — `TestOnlyTheAdapterNamesTheBackend` still passes unchanged. Only the adapter, `go.mod`, and the two tradeoff documents name the backend.

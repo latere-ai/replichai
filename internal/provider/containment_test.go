@@ -9,8 +9,15 @@ import (
 
 // vendorTerms are names that must not leak outside the backend adapter.
 // Vendor-neutrality is a product requirement, not a style preference: the
-// docs, the method, the evaluation cases, and every package above the seam
-// describe roles, never a supplier.
+// method, the evaluation cases, and every package above the seam describe
+// roles, never a supplier.
+//
+// The refinement the concrete provider name introduces: the *interface* is
+// neutral, but the *adapter* names its backend — including the public provider
+// name it registers under (`anthropic`) and reports from Name(). That name is
+// chosen inside the adapter and reaches the seam only as runtime data, never as
+// a literal, so provider.go and the CLI stay term-free and this test still
+// passes. The seam learns its default through RegisterDefault, not a constant.
 var vendorTerms = []string{"anthropic", "claude", "managed agent", "managed-agent"}
 
 // allowed lists the paths permitted to name a backend, and why.
