@@ -32,3 +32,4 @@ htmlcov/
 /replichai
 *.test
 *.out
+/cmd/replichai/replichai
