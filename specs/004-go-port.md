@@ -1,6 +1,6 @@
 # 004 — Port the core to Go
 
-**Status:** draft
+**Status:** implemented (`7a5a23f`)
 **Scope:** moving the orchestrator, provider contract, and CLI from Python to Go, before specs 001–003 are built.
 
 ## Why now
@@ -69,7 +69,7 @@ Cheaper checks that run in CI without a backend: both implementations must rejec
 4. `internal/provider/hosted` is the only package naming any backend; a test asserts no other package does.
 5. `replichai audit <paper>` and `replichai providers` behave as the Python CLI does.
 6. Cancelling the context stops a run in flight and still releases it.
-7. Coverage of `internal/` is above 90%.
+7. Coverage of `internal/` is above 90%. *(94.7%; CLI 87.3%.)*
 
 ## Out of scope
 
