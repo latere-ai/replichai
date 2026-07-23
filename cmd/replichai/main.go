@@ -9,6 +9,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 
 	// Adapters register themselves.
@@ -60,6 +63,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 
 	case "audit":
 		return runAudit(ctx, args[1:], stdout, stderr)
+
+	case "resolve":
+		return runResolve(ctx, args[1:], stdout, stderr)
 
 	case "-h", "--help", "help":
 		usage(stdout)
@@ -138,11 +144,66 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	return nil
 }
 
+func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) error {
+	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	timeout := fs.Duration("timeout", 30*time.Second, "network timeout for a single fetch")
+	if err := fs.Parse(args); err != nil {
+		return errExitQuiet
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "resolve takes exactly one paper reference")
+		return errExitQuiet
+	}
+
+	id, err := paper.Resolve(ctx, fs.Arg(0), paper.WithFetcher(httpFetcher{timeout: *timeout}))
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "identity:  %s\n", id)
+	fmt.Fprintf(stdout, "scheme:    %s\n", id.Scheme)
+	fmt.Fprintf(stdout, "key:       %s\n", id.Key)
+	fmt.Fprintf(stdout, "slug:      %s\n", id.Slug)
+	if id.Title != "" {
+		fmt.Fprintf(stdout, "title:     %s\n", id.Title)
+	}
+	for _, src := range id.Sources {
+		fmt.Fprintf(stdout, "source:    %s\n", src)
+	}
+	return nil
+}
+
+// httpFetcher is the resolver's network seam at the CLI edge: an ordinary HTTP
+// GET. The internal/paper package stays network-free and testable; the real
+// transport lives here.
+type httpFetcher struct{ timeout time.Duration }
+
+func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, h.timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "replichai")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+}
+
 func usage(w *os.File) {
 	fmt.Fprint(w, `replichai - audit the reproducibility of a research paper
 
 usage:
   replichai audit <paper-url> [flags]
+  replichai resolve <paper-ref>
   replichai providers
 
 flags for audit:
@@ -152,6 +213,9 @@ flags for audit:
   -interval       gap between status checks
   -timeout        how long a run may take
   -max-revisions  revision budget
+
+flags for resolve:
+  -timeout        network timeout for a single fetch (default 30s)
 `)
 }
 

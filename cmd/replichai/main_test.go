@@ -151,6 +151,43 @@ func TestUnknownCommandAndHelp(t *testing.T) {
 	})
 }
 
+func TestResolveReportsAnIdentity(t *testing.T) {
+	// A DOI reference resolves offline — no fetch — so this exercises the
+	// command's wiring and output without touching the network.
+	stdout, _, err := capture(t, "resolve", "10.1145/3772318.3791265")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{
+		"identity:  doi:10.1145/3772318.3791265",
+		"scheme:    doi",
+		"slug:      10-1145-3772318-3791265",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("output missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestResolveRequiresExactlyOneReference(t *testing.T) {
+	for _, args := range [][]string{{"resolve"}, {"resolve", "a", "b"}} {
+		_, stderr, err := capture(t, args...)
+		if !errors.Is(err, errExitQuiet) {
+			t.Errorf("%v: want errExitQuiet, got %v", args, err)
+		}
+		if !strings.Contains(stderr, "exactly one paper reference") {
+			t.Errorf("%v: stderr should explain the problem, got %q", args, stderr)
+		}
+	}
+}
+
+func TestResolveReportsAnUnresolvableReference(t *testing.T) {
+	_, _, err := capture(t, "resolve", "not-a-paper")
+	if err == nil {
+		t.Fatal("expected an error for a reference with no identifier")
+	}
+}
+
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
 		"https://arxiv.org/abs/2603.01795": "https-arxiv-org-abs-2603-01795",
