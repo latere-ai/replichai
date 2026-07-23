@@ -40,6 +40,8 @@ The manifest is what makes 003 possible without a separate database: the registr
 
 **`method_digest`** pins which version of the method produced the reproduction. Two reproductions of one paper are only comparable if they were produced by the same method, and the digest is how you tell.
 
+**How the manifest maps onto the port.** `paper.{key, scheme, title, slug}` comes straight from the `paper.Identity` of 001. `verdict` is `provider.Grade` — it already marshals to `"passed"`, so `audit.Result.Grade()` fills it directly, with no translation. `rate` is the one field the port does not produce as a value: the reproducibility rate is prose the worker writes into `REPRODUCIBILITY.md`, and it is deliberately run-dependent (a re-decomposed inner loop scored 40% over 5 components where the reference scored 79% over 7 — [004](004-go-port.md), commit `8aedf19`). The port checks conformance on the verdict, not the rate. So `rate` in the manifest is an **open mapping**: the publisher either parses the decomposed rate out of `REPRODUCIBILITY.md` and records it, or omits the field when it cannot. It is therefore modelled as a nil-able `*Rate`, never a fabricated zero. Deciding the parse is left to implementation; the manifest schema tolerates its absence.
+
 ## The redistribution gate — mandatory, blocking
 
 Publishing artifacts can republish data the reproduction was not licensed to redistribute. This is not hypothetical. Two findings from the first two audits:
@@ -58,24 +60,67 @@ Failing open here means publishing someone else's gated data under your organisa
 
 ## Interface
 
-```python
-@dataclass(frozen=True)
-class PublishPlan:
-    repo_name: str
-    include: list[Path]
-    quarantine: list[tuple[Path, str]]   # path, reason
-    manifest: dict
+Package `internal/publish`. The manifest is a typed struct so it serialises to
+exactly the JSON above; `Rate` is a pointer because it may be absent (see the
+open mapping). `PlanPublication` is pure; `Publish` acts through the `Forge`
+seam.
 
-def plan_publication(result: AuditResult, identity: PaperIdentity) -> PublishPlan: ...
-def publish(plan: PublishPlan, *, forge: Forge, dry_run: bool = True) -> str: ...
+```go
+// Manifest is replication.json — the record every published repository carries
+// and the only thing 003's registry reads.
+type Manifest struct {
+	Schema         int            `json:"schema"`
+	Paper          ManifestPaper  `json:"paper"`
+	Reproduction   Reproduction   `json:"reproduction"`
+	Redistribution Redistribution `json:"redistribution"`
+}
+
+type Reproduction struct {
+	Repo         string         `json:"repo"`
+	Created      time.Time      `json:"created"`
+	MethodDigest string         `json:"method_digest"`
+	Verdict      provider.Grade `json:"verdict"`        // marshals to "passed"
+	Rate         *Rate          `json:"rate,omitempty"` // nil when undecomposable
+}
+
+// PublishPlan is what will be published, computed before anything is created.
+type PublishPlan struct {
+	RepoName   string
+	Include    []string          // worker-written paths cleared to publish
+	Quarantine []QuarantinedFile // path + why it was withheld
+	Manifest   Manifest
+}
+
+type QuarantinedFile struct {
+	Path   string
+	Reason string
+}
+
+// PlanPublication is pure: no network, no repository. It classifies artifacts,
+// runs the redistribution gate, and builds the manifest.
+func PlanPublication(result audit.Result, id paper.Identity) (PublishPlan, error)
+
+// Publish carries a plan out against a forge. It is a preview (creates nothing)
+// unless Live() is passed — publishing for real is the explicit act, the
+// inverse of the old dry_run=True default. It returns the repository name.
+func Publish(ctx context.Context, plan PublishPlan, forge Forge, opts ...PublishOption) (string, error)
+
+func Live() PublishOption
+
+// Forge is the seam over repository hosting, mirroring provider.Provider: one
+// adapter per host, swappable and testable without a network. 003 extends it
+// with the read side its registry needs, and adds a filesystem Forge so the
+// whole audit→publish→registry loop runs offline.
+type Forge interface {
+	Create(ctx context.Context, name string, private bool) (Repo, error)
+	Push(ctx context.Context, repo Repo, files []File) error
+}
 ```
-
-`Forge` is a narrow interface over repository hosting (create, push, set visibility), so hosting is swappable and testable without network access — the same seam pattern the provider layer uses.
 
 ## Acceptance criteria
 
-1. `plan_publication` is pure: it touches no network and creates no repository. Every test of naming, quarantine, and manifest content runs against it.
-2. `publish` defaults to `dry_run=True`; publishing for real requires an explicit opt-in.
+1. `PlanPublication` is pure: it touches no network and creates no repository. Every test of naming, quarantine, and manifest content runs against it.
+2. `Publish` previews by default and creates nothing; publishing for real requires passing `Live()`.
 3. Created repositories are private, and a test asserts visibility is never `public`.
 4. Compiled residue and secrets never appear in a plan, asserted directly.
 5. Any file not attributable to the worker lands in `quarantine`, and the resulting repository contains an `EXCLUDED.md` naming it.

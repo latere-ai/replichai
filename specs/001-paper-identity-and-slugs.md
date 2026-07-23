@@ -27,11 +27,13 @@ A title-keyed system would have created two unrelated reproductions of one paper
 
 **Identity is a resolved external identifier, in priority order:**
 
-| Priority | Identifier | Normalised form |
-|---|---|---|
-| 1 | DOI | lowercased, `doi:` and URL prefixes stripped → `10.1145/3772318.3791265` |
-| 2 | arXiv ID | versionless, lowercased → `arxiv:2603.01795` |
-| 3 | Content digest | SHA-256 of the extracted PDF text, as a last resort → `sha256:…` |
+| Priority | Scheme | Bare key | Canonical string |
+|---|---|---|---|
+| 1 | `doi` | lowercased, `doi:` and URL prefixes stripped → `10.1145/3772318.3791265` | `doi:10.1145/3772318.3791265` |
+| 2 | `arxiv` | versionless, lowercased → `2603.01795` | `arxiv:2603.01795` |
+| 3 | `sha256` | SHA-256 of the extracted PDF text, as a last resort → `1f2e…` | `sha256:1f2e…` |
+
+The **key** is the bare identifier; the **scheme** is a separate typed field. The `scheme:key` rendering is presentation only, produced by `Identity.String()`, and is what a human reads. Storing the scheme separately is what lets the manifest in 002 carry `key` and `scheme` as two fields, and what lets `sha256` sit alongside `doi` without one masquerading as the other.
 
 A paper reference is resolved to an identity **before** anything is created. arXiv entries that carry a DOI resolve to the DOI, so the preprint and the published version are one paper, not two.
 
@@ -41,19 +43,50 @@ A paper reference is resolved to an identity **before** anything is created. arX
 
 ## Interface
 
-```python
-@dataclass(frozen=True)
-class PaperIdentity:
-    key: str          # "10.1145/3772318.3791265"
-    scheme: str       # "doi" | "arxiv" | "sha256"
-    title: str
-    slug: str
-    sources: list[str]
+Package `internal/paper`. The scheme is a typed enum in the shape the port
+already uses for `provider.Grade` and `provider.RunState`: a `uint8` whose zero
+value is `SchemeUnknown`, so a struct field that was never set cannot read as a
+real scheme, and whose `MarshalJSON` emits the stable name (`"doi"`) the
+manifest stores.
 
-def resolve_paper(reference: str, *, fetch=...) -> PaperIdentity: ...
+```go
+// Scheme is the kind of external identifier an identity resolves to.
+type Scheme uint8
+
+const (
+	SchemeUnknown Scheme = iota
+	SchemeDOI
+	SchemeArXiv
+	SchemeSHA256
+)
+// String/MarshalJSON/UnmarshalJSON serialise as "doi" | "arxiv" | "sha256",
+// mirroring provider.Grade.
+
+// Identity is a paper's stable identity plus its presentation slug.
+type Identity struct {
+	Key     string   // bare: "10.1145/3772318.3791265"
+	Scheme  Scheme   // SchemeDOI
+	Title   string
+	Slug    string
+	Sources []string
+}
+
+// String renders the canonical "scheme:key" form.
+func (id Identity) String() string // "doi:10.1145/3772318.3791265"
+
+// Resolve turns a reference into an Identity. It never mutates state.
+func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, error)
+
+// Option configures resolution. WithFetcher injects the HTTP seam so a test —
+// or a run over a reference that already contains a DOI or arXiv ID — resolves
+// without a network, the same injection pattern audit.Auditor uses for its
+// clock and provider.
+type Option func(*resolver)
+
+func WithFetcher(f Fetcher) Option
 ```
 
-`resolve_paper` accepts a DOI, an arXiv URL or bare ID, a publisher URL, or a direct PDF URL.
+`Resolve` accepts a DOI, an arXiv URL or bare ID, a publisher URL, or a direct PDF URL.
 
 ## Acceptance criteria
 
@@ -67,4 +100,4 @@ def resolve_paper(reference: str, *, fetch=...) -> PaperIdentity: ...
 
 ## Out of scope
 
-Repository creation, conflict handling, and the registry. This spec ends at a `PaperIdentity` value.
+Repository creation, conflict handling, and the registry. This spec ends at an `Identity` value.

@@ -32,30 +32,66 @@ Four base-32 characters is ~1M values. With a few thousand reproductions the bir
 
 ## Interface
 
-```python
-@dataclass(frozen=True)
-class PriorReproduction:
-    repo: str
-    created: datetime
-    method_digest: str
-    verdict: str
+Package `internal/registry`. The registry reads through the same `Forge` seam
+002 defines, extended here with the read side — enumerate the organisation, read
+one repository's manifest. Because the registry is derived, `Registry` holds no
+state of its own beyond the forge and its cache; every method takes a context
+and is safe to call concurrently.
 
-@dataclass(frozen=True)
-class Registry:
-    def lookup(self, identity: PaperIdentity) -> list[PriorReproduction]: ...
-    def canonical_slug(self, identity: PaperIdentity) -> str | None: ...
-    def allocate_name(self, identity: PaperIdentity) -> str: ...
+```go
+// PriorReproduction is one existing reproduction of a paper, read from a
+// repository's manifest.
+type PriorReproduction struct {
+	Repo         string
+	Created      time.Time
+	MethodDigest string
+	Verdict      provider.Grade
+}
+
+// Registry is derived from the forge, never stored.
+type Registry struct { /* forge + disposable cache */ }
+
+func New(forge Forge) *Registry
+
+// Lookup returns every prior reproduction of an identity, matched on identity
+// key alone — never on slug or title. Empty, not an error, when none exist.
+func (r *Registry) Lookup(ctx context.Context, id paper.Identity) ([]PriorReproduction, error)
+
+// CanonicalSlug returns the slug from the earliest reproduction of an identity.
+// The bool is false when the identity has never been reproduced — absence is a
+// value, the (T, bool) shape provider.Get uses, not a nil string.
+func (r *Registry) CanonicalSlug(ctx context.Context, id paper.Identity) (string, bool, error)
+
+// AllocateName returns "<canonical-slug>-<suffix>" with a suffix checked
+// against the registry, retried on collision, widened to six characters after
+// five attempts. Never returns a name that already exists.
+func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string, error)
+```
+
+**Forge, read side.** 002's `Forge` gains the two methods the registry needs.
+The GitHub adapter enumerates the `open-hai` organisation; a **filesystem
+adapter — a directory of `replication.json` files — is the local
+implementation, so the full audit→publish→registry loop runs offline** with no
+organisation and no network. This is the same adapter that acceptance criterion
+7 already requires for testing; it is not new scope, it is the seam named.
+
+```go
+type Forge interface {
+	// ... the write side from 002 ...
+	List(ctx context.Context) ([]string, error)             // repository names
+	Manifest(ctx context.Context, repo string) (Manifest, error)
+}
 ```
 
 ## Acceptance criteria
 
-1. `lookup` matches on identity key, never on slug or title — asserted with the two-title PleaSQLarify case.
+1. `Lookup` matches on identity key, never on slug or title — asserted with the two-title PleaSQLarify case.
 2. A paper whose title changed between reproductions still resolves to its canonical slug, taken from the earliest reproduction.
-3. `allocate_name` returns `<canonical-slug>-<suffix>` and never returns a name that already exists.
+3. `AllocateName` returns `<canonical-slug>-<suffix>` and never returns a name that already exists.
 4. An injected collision is retried and resolved; exhausting the retries widens the suffix rather than failing.
 5. A repository with a missing or malformed `replication.json` is skipped with a warning, not a crash — the registry survives hand-edited repositories.
-6. `lookup` is read-only and safe to call concurrently.
-7. Registry construction is testable against a fake forge with no network access.
+6. `Lookup` is read-only and safe to call concurrently.
+7. The registry runs against the filesystem `Forge` with no network access — the same seam that makes the local loop possible.
 
 ## Operator flow
 
