@@ -1,0 +1,29 @@
+# secrets — never commit
+.env
+*.env
+!example.env
+ids.env
+IDS.env
+
+# reproduction artifacts belong in their own repos, not here
+runs/
+artifacts/
+outputs/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/
