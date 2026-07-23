@@ -1,4 +1,4 @@
-// Package hosted adapts the hosted agent backend currently in use.
+// Package anthropic adapts the managed-agents backend currently in use.
 //
 // This is the only package that knows the backend's vocabulary, endpoints, or
 // payload shapes. Everything above it speaks the neutral contract in
@@ -11,7 +11,7 @@
 //	                    own resolution applies, so an already-exported backend
 //	                    variable or a logged-in CLI profile is picked up.
 //	REPLICHAI_API_BASE  API root (optional; for tests and self-hosted routing)
-package hosted
+package anthropic
 
 import (
 	"context"
@@ -113,7 +113,7 @@ func init() {
 	provider.RegisterDefault("anthropic", func() (provider.Provider, error) { return New() })
 }
 
-// Provider talks to the hosted backend through its official SDK.
+// Provider talks to the managed-agents backend through its official SDK.
 type Provider struct {
 	client anthropic.Client
 }

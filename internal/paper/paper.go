@@ -68,18 +68,6 @@ type FetcherFunc func(ctx context.Context, url string) ([]byte, error)
 // Fetch calls f.
 func (f FetcherFunc) Fetch(ctx context.Context, url string) ([]byte, error) { return f(ctx, url) }
 
-// PageResolver proposes a paper identifier from a fetched page whose URL
-// carries none. What it returns is a *candidate*, not identity: resolveURL
-// re-extracts it and checks it actually occurs in the page, so no resolver —
-// deterministic or agent-backed — can name an identifier the document does not
-// contain. That is what lets a nondeterministic agent read arbitrary sites
-// without letting identity drift between runs.
-type PageResolver interface {
-	// Identify inspects a fetched page and returns a reference candidate — a
-	// DOI, an arXiv ID, or "" when it finds none — and a best-effort title.
-	Identify(ctx context.Context, url string, body []byte) (candidate, title string, err error)
-}
-
 // Option configures resolution.
 type Option func(*resolver)
 
@@ -87,20 +75,14 @@ type Option func(*resolver)
 // metadata and to inspect publisher pages.
 func WithFetcher(f Fetcher) Option { return func(r *resolver) { r.fetch = f } }
 
-// WithPageResolver overrides how a URL with no embedded identifier is resolved.
-// The default reads the citation_* meta standard; an AgentPageResolver reads
-// the page with an LLM. Either way the candidate is verified against the page.
-func WithPageResolver(p PageResolver) Option { return func(r *resolver) { r.page = p } }
-
 type resolver struct {
 	fetch Fetcher
-	page  PageResolver
 }
 
 // Resolve turns a reference — a DOI, an arXiv URL or bare ID, a publisher URL,
 // or a direct document URL — into an Identity. It never mutates state.
 func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, error) {
-	r := &resolver{page: metaPageResolver{}}
+	r := &resolver{}
 	for _, o := range opts {
 		o(r)
 	}
@@ -161,11 +143,13 @@ func (r *resolver) resolveArXiv(ctx context.Context, id, source string) (Identit
 	return r.finish(SchemeArXiv, id, meta.Title, source), nil
 }
 
-// resolveURL handles a URL with no identifier in the string itself: it fetches
-// the document, asks the page resolver for a candidate identifier, verifies the
-// candidate actually occurs in the page, and digests the content as a last
-// resort. It needs a fetcher; without one, or on a fetch that fails, there is
-// nothing to inspect and resolution errors.
+// resolveURL handles a URL with no identifier in the string itself. It fetches
+// the document and reads the Highwire / Google Scholar citation_* meta tags
+// academic publishers emit — a structured, per-page declaration of the paper's
+// own identity, not a scrape of the freeform body. A declared DOI wins; a
+// declared arXiv ID re-enters the deterministic arXiv lookup; a page with
+// neither falls back to a content digest. It needs a fetcher; without one, or
+// on a fetch that fails, there is nothing to inspect and resolution errors.
 func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error) {
 	if r.fetch == nil {
 		return Identity{}, fmt.Errorf("%w: %q needs a fetcher", ErrUnresolvable, ref)
@@ -174,48 +158,21 @@ func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error)
 	if err != nil {
 		return Identity{}, fmt.Errorf("%w: fetching %q: %w", ErrUnresolvable, ref, err)
 	}
-	candidate, title, err := r.page.Identify(ctx, ref, body)
-	if err != nil {
-		// A resolver that could not decide is not licence to guess: erroring
-		// keeps a transient failure from minting a digest identity for a paper
-		// that has a DOI.
-		return Identity{}, fmt.Errorf("%w: resolving %q: %w", ErrUnresolvable, ref, err)
-	}
-	title = firstNonEmpty(title, htmlTitle(body))
-	lowerBody := strings.ToLower(string(body))
+	title := firstNonEmpty(metaContent(body, citationTitleRe), htmlTitle(body))
 
-	// Verify the candidate against the page: a DOI or arXiv ID is honoured only
-	// if the document actually contains it, so a hallucinated one is rejected.
-	if doi, ok := extractDOI(candidate); ok && strings.Contains(lowerBody, doi) {
-		return r.finish(SchemeDOI, doi, title, ref), nil
+	if doi := metaContent(body, citationDOIRe); doi != "" {
+		if normalised, ok := extractDOI(doi); ok {
+			return r.finish(SchemeDOI, normalised, title, ref), nil
+		}
 	}
-	if id, ok := extractArXiv(candidate); ok && strings.Contains(lowerBody, id) {
-		return r.resolveArXiv(ctx, id, ref) // re-enters the deterministic arXiv path
+	if raw := metaContent(body, citationArxivRe); raw != "" {
+		if id, ok := extractArXiv(raw); ok {
+			return r.resolveArXiv(ctx, id, ref)
+		}
 	}
 
 	sum := sha256.Sum256(body)
 	return r.finish(SchemeSHA256, hex.EncodeToString(sum[:]), title, ref), nil
-}
-
-// metaPageResolver is the default: it reads the Highwire / Google Scholar
-// citation_* meta tags academic publishers emit. It never calls the network and
-// never guesses — a page without the tags yields no candidate, which resolves
-// to a content digest.
-type metaPageResolver struct{}
-
-// Identify returns the page's declared DOI (preferred) or arXiv ID, and title.
-func (metaPageResolver) Identify(_ context.Context, _ string, body []byte) (string, string, error) {
-	title := metaContent(body, citationTitleRe)
-	if title == "" {
-		title = htmlTitle(body)
-	}
-	if doi := metaContent(body, citationDOIRe); doi != "" {
-		return doi, title, nil
-	}
-	if id := metaContent(body, citationArxivRe); id != "" {
-		return id, title, nil
-	}
-	return "", title, nil
 }
 
 type arxivMeta struct{ Title, DOI string }
