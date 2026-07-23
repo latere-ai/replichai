@@ -37,6 +37,14 @@ The **key** is the bare identifier; the **scheme** is a separate typed field. Th
 
 A paper reference is resolved to an identity **before** anything is created. arXiv entries that carry a DOI resolve to the DOI, so the preprint and the published version are one paper, not two.
 
+**An arXiv reference is therefore upgraded, not trusted as final.** A DOI is terminal — it is the highest-priority identifier and nothing can enrich it, so a reference that already carries a DOI resolves offline with no network. An arXiv ID is *not* terminal: the same paper's published DOI is discovered by looking the preprint up, and only that lookup can tell preprint-with-a-DOI from preprint-with-none. So resolving an arXiv reference consults its metadata:
+
+- lookup completes, a DOI is present → `doi:` (preprint and published version collapse to one identity);
+- lookup completes, no DOI is present → `arxiv:` (a genuine preprint-only paper);
+- **lookup cannot complete** (metadata unreachable, no fetcher) → **error, do not guess**. Falling back to `arxiv:` here would let the same paper resolve to `arxiv:X` on a bad network and `doi:Y` on a good one — the exact identity drift this spec exists to prevent. A paper's DOI is a stable fact; failing to reach it is a transient condition, not a different identity. The short-TTL cache in [003](003-reproduction-registry.md) absorbs the repeat cost.
+
+Resolving an arXiv reference is thus network-required; a `Fetcher` must be supplied (injected in tests, a real arXiv-metadata client in production).
+
 **Slug is derived from the title, and is presentation only.** Lowercase, ASCII-fold, strip punctuation, collapse whitespace to hyphens, drop leading articles, truncate on a word boundary to ≤ 48 characters. `PleaSQLarify: Visual Pragmatic Repair for Natural Language Database Querying` → `pleasqlarify-visual-pragmatic-repair`.
 
 **The slug never determines identity.** Two papers may share a slug; they will not share an identity. One paper may change its title and therefore its slug; its identity is unchanged, and the first slug ever assigned to that identity stays canonical (see 003).
@@ -96,7 +104,7 @@ func WithFetcher(f Fetcher) Option
 4. Slugs are ASCII, lowercase, hyphen-separated, ≤ 48 characters, with no leading or trailing hyphen.
 5. Unicode titles (accents, CJK, mathematical symbols) fold to a non-empty ASCII slug; a title that folds to nothing falls back to the identity key.
 6. A publisher page that blocks automated fetching degrades to the identifier parsed from the URL rather than failing.
-7. Resolution never mutates state and never touches the network when the reference already contains a DOI or arXiv ID.
+7. Resolution never mutates state, and never touches the network when the reference already contains a **DOI** — the terminal identifier. (An arXiv reference is network-required: its DOI must be looked up. A lookup that cannot complete errors rather than falling back to `arxiv:`, so identity never drifts with connectivity.)
 
 ## Out of scope
 
