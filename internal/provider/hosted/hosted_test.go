@@ -345,8 +345,8 @@ func TestOutputDirIsBackendSpecific(t *testing.T) {
 	if p.OutputDir() == "" || !strings.HasPrefix(p.OutputDir(), "/") {
 		t.Errorf("OutputDir must be an absolute path, got %q", p.OutputDir())
 	}
-	if p.Name() != "hosted" {
-		t.Errorf("Name = %q, want hosted", p.Name())
+	if p.Name() != "anthropic" {
+		t.Errorf("Name = %q, want anthropic", p.Name())
 	}
 }
 
@@ -439,12 +439,15 @@ func TestLimitedNetworkIsRequestedWhenAsked(t *testing.T) {
 func TestRegisteredUnderItsName(t *testing.T) {
 	// The init registration must make the adapter reachable by name.
 	t.Setenv("REPLICHAI_API_KEY", "test-credential")
-	got, err := provider.Get("hosted")
+	got, err := provider.Get("anthropic")
 	if err != nil {
-		t.Fatalf("Get(hosted): %v", err)
+		t.Fatalf("Get(anthropic): %v", err)
 	}
-	if got.Name() != "hosted" {
-		t.Errorf("Name = %q, want hosted", got.Name())
+	if got.Name() != "anthropic" {
+		t.Errorf("Name = %q, want anthropic", got.Name())
+	}
+	if provider.DefaultName() != "anthropic" {
+		t.Errorf("DefaultName() = %q, want the adapter to have claimed the default", provider.DefaultName())
 	}
 }
 

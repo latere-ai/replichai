@@ -187,9 +187,12 @@ func TestRegistry(t *testing.T) {
 	})
 
 	t.Run("empty name selects the default", func(t *testing.T) {
-		Register(DefaultName, func() (Provider, error) { return nil, errSentinel })
+		RegisterDefault("registered-default", func() (Provider, error) { return nil, errSentinel })
+		if got := DefaultName(); got != "registered-default" {
+			t.Fatalf("DefaultName() = %q, want the name just registered", got)
+		}
 		if _, err := Get(""); !errors.Is(err, errSentinel) {
-			t.Errorf("empty name did not resolve to %q: %v", DefaultName, err)
+			t.Errorf("empty name did not resolve to the default: %v", err)
 		}
 	})
 }
