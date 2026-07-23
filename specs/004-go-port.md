@@ -29,7 +29,7 @@ reference/python/             the Python implementation
 
 **Service-shaped from the start, without building the service.** Every call that can block takes a `context.Context` as its first parameter and honours cancellation. The audit core returns values and errors; it never prints, never reads flags, never calls `os.Exit`. An HTTP handler must be able to wrap it with no changes to it. Auth, persistence, and multi-tenancy are explicitly not in this spec.
 
-**Standard library only.** The Python deliberately has zero runtime dependencies; the Go port keeps that. `net/http`, `encoding/json`, `log/slog`.
+**One dependency: the backend's official SDK.** The Python deliberately had zero runtime dependencies, and the port drops that rule for the adapter alone. The SDK brings typed payloads, retry on rate limits and server errors, and correct protocol headers -- all of which the hand-rolled client had to carry itself and got subtly wrong (see the union-discriminator and resting-state bugs below). The cost is that the vendor's name now appears in `go.mod`, which is more visible than a single adapter file; that is recorded in `docs/architecture.md` rather than hidden. Everything above the seam stays standard library.
 
 **The contract maps one-to-one.** Same nine operations, Go naming, `context` and `error` added:
 
@@ -66,7 +66,7 @@ Cheaper checks that run in CI without a backend: both implementations must rejec
 1. `go test ./...` passes with no network access and no credential.
 2. Every property in the list above has a named Go test.
 3. `go vet ./...` and `gofmt -l` are clean.
-4. `internal/provider/hosted` is the only package naming any backend; a test asserts no other package does.
+4. `internal/provider/hosted` is the only package naming any backend. `TestOnlyTheAdapterNamesTheBackend` walks the repository and enforces this against a small, justified allowlist (`go.mod`, the adapter and its test, and the two documents that record the tradeoff); a companion test fails if an allowlist entry goes stale.
 5. `replichai audit <paper>` and `replichai providers` behave as the Python CLI does.
 6. Cancelling the context stops a run in flight and still releases it.
 7. Coverage of `internal/` is above 90%. *(94.7%; CLI 87.3%.)*
