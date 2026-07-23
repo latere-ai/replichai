@@ -14,7 +14,7 @@ from pathlib import Path
 PAPER_PLACEHOLDER = "{{PAPER}}"
 OUTPUT_DIR_PLACEHOLDER = "{{OUTPUT_DIR}}"
 
-DEFAULT_METHOD_DIR = Path(__file__).resolve().parents[2] / "method"
+DEFAULT_METHOD_DIR = Path(__file__).resolve().parents[4] / "method"
 
 
 class MethodError(RuntimeError):
