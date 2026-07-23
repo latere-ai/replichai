@@ -59,6 +59,8 @@ reference/python/             the Python implementation
 
 `method/` and `evals/` are shared. The two implementations conform when, given the same method and the same eval case, they produce the same verdict. That is the acceptance test for the port, and it is why the Python stays.
 
+**Conform on verdict, not on rate — verified.** A live audit of case-01 through the Go path returned `passed` with the empty repository correctly uncredited, matching the Python reference's `satisfied`. The reproducibility *rate* differed (Python 40% over 5 components, Go 79% over 7): the agent re-decomposed the inner loop, because the current rubric fixes the *form* of the denominator ("a stated denominator") but not its *contents*. Both implementations send byte-identical method text, so this is a rubric property, not a port defect. The conformance check compares verdict; comparing rate would test the rubric's looseness, not the port. Fixing the denominator is tracked as rubric-v2 tightening #4 in the agent's NEXT-DIRECTIONS.
+
 Cheaper checks that run in CI without a backend: both implementations must reject the same hostile artifact paths, produce the same rendered task text for a given paper, and map the same backend states onto the same neutral states — driven by a shared table of cases in `testdata/`.
 
 ## Acceptance criteria
