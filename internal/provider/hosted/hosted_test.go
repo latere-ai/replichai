@@ -36,10 +36,33 @@ func writeJSON(t *testing.T, w http.ResponseWriter, body any) {
 	}
 }
 
-func TestNewRequiresACredential(t *testing.T) {
+func TestTheNeutralVariableSuppliesTheCredential(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("x-api-key")
+		writeJSON(t, w, map[string]any{"data": []any{}, "has_more": false})
+	}))
+	t.Cleanup(server.Close)
+
+	t.Setenv("REPLICHAI_API_KEY", "from-neutral-var")
+	p, err := New(WithAPIBase(server.URL))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, _ = p.ResolveModel(context.Background(), "best")
+	if got != "from-neutral-var" {
+		t.Errorf("credential = %q, want the value from REPLICHAI_API_KEY", got)
+	}
+}
+
+func TestAnUnsetVariableDefersToTheSDK(t *testing.T) {
+	// An operator who already has the backend's own credential exported, or a
+	// logged-in CLI profile, should not have to copy the secret under a second
+	// name. Construction therefore succeeds and a genuinely missing credential
+	// fails on the first request instead.
 	t.Setenv("REPLICHAI_API_KEY", "")
-	if _, err := New(); err != ErrNoCredential {
-		t.Fatalf("want ErrNoCredential, got %v", err)
+	if _, err := New(); err != nil {
+		t.Fatalf("an unset variable must not fail construction: %v", err)
 	}
 }
 
@@ -444,5 +467,99 @@ func TestWithRequestOptionsIsApplied(t *testing.T) {
 	_, _ = p.ResolveModel(context.Background(), "best")
 	if gotHeader != "applied" {
 		t.Errorf("request option not applied, header = %q", gotHeader)
+	}
+}
+
+func TestATerminatedRunIsTerminal(t *testing.T) {
+	// Regression: "terminated" is irreversible, so a run that reaches it
+	// without a grader record will never produce one. Reporting it as
+	// pending made the auditor poll a dead run until its deadline expired.
+	// State is lifecycle, grade is outcome. A run the grader failed still
+	// *completed*, so it is Done and not passed; only a run that died without
+	// ever being graded is Failed. Collapsing the two is the conflation this
+	// translation exists to avoid.
+	cases := []struct {
+		name      string
+		grade     string
+		wantState provider.RunState
+		wantPass  bool
+	}{
+		{"died before grading", "", provider.StateFailed, false},
+		{"graded, then released", "satisfied", provider.StateDone, true},
+		{"completed but graded as failed", "failed", provider.StateDone, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				body := map[string]any{"id": "s", "type": "session", "status": "terminated"}
+				if tc.grade != "" {
+					body["outcome_evaluations"] = []map[string]any{{"result": tc.grade}}
+				}
+				writeJSON(t, w, body)
+			})
+
+			status, err := p.Poll(context.Background(), provider.RunHandle{ID: "s"})
+			if err != nil {
+				t.Fatalf("Poll: %v", err)
+			}
+			if !status.State.Terminal() {
+				t.Errorf("state %s is not terminal; a terminated run always is", status.State)
+			}
+			if status.State != tc.wantState {
+				t.Errorf("state = %s, want %s", status.State, tc.wantState)
+			}
+			if status.Passed() != tc.wantPass {
+				t.Errorf("Passed() = %v, want %v", status.Passed(), tc.wantPass)
+			}
+		})
+	}
+}
+
+func TestTranslateStateReadsStatusAndVerdictTogether(t *testing.T) {
+	// Neither field answers alone: the backend rests in "idle" both before a
+	// run starts and after it ends, and reaches "terminated" both by
+	// finishing and by dying.
+	passed := &provider.Verdict{Grade: provider.GradePassed}
+	pending := &provider.Verdict{Grade: provider.GradePending}
+
+	cases := []struct {
+		status  string
+		verdict *provider.Verdict
+		want    provider.RunState
+	}{
+		{"idle", nil, provider.StatePending},
+		{"idle", pending, provider.StateRunning},
+		{"idle", passed, provider.StateDone},
+		{"terminated", nil, provider.StateFailed},
+		{"terminated", passed, provider.StateDone},
+		{"terminated", pending, provider.StateFailed},
+		{"running", nil, provider.StateRunning},
+		{"rescheduling", nil, provider.StateRunning},
+		{"something-new", nil, provider.StateRunning},
+	}
+	for _, tc := range cases {
+		if got := translateState(tc.status, tc.verdict); got != tc.want {
+			t.Errorf("translateState(%q, %v) = %s, want %s",
+				tc.status, tc.verdict, got, tc.want)
+		}
+	}
+}
+
+func TestTranslateGradeNeverInventsAPass(t *testing.T) {
+	if got := translateGrade("a-grade-we-do-not-know"); got == provider.GradePassed {
+		t.Error("an unrecognized grade must never read as a pass")
+	}
+	if got := translateGrade("a-grade-we-do-not-know"); got.Decided() {
+		t.Errorf("an unrecognized grade must be undecided, got %s", got)
+	}
+}
+
+func TestModelTierPassesUnknownPreferencesThrough(t *testing.T) {
+	if got := modelTier("best"); got != "opus" {
+		t.Errorf("modelTier(best) = %q, want opus", got)
+	}
+	if got := modelTier("some-family"); got != "some-family" {
+		t.Errorf("an unknown preference should pass through, got %q", got)
 	}
 }

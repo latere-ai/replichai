@@ -1,6 +1,6 @@
 // Command replichai audits the reproducibility of research papers.
 //
-// This package owns argument parsing and output. All behaviour lives in
+// This package owns argument parsing and output. All behavior lives in
 // internal/audit, so an HTTP server can drive the same code path.
 package main
 

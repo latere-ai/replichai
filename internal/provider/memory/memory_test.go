@@ -134,7 +134,7 @@ func TestIdentity(t *testing.T) {
 	}
 }
 
-func TestEveryCallHonoursCancellation(t *testing.T) {
+func TestEveryCallHonorsCancellation(t *testing.T) {
 	p := New()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

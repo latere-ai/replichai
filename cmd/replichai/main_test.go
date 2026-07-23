@@ -199,7 +199,7 @@ func TestFlagsAreAcceptedAfterThePaperReference(t *testing.T) {
 		"--interval", "0",
 	)
 	if err != nil {
-		t.Fatalf("flags after the paper should be honoured: %v", err)
+		t.Fatalf("flags after the paper should be honored: %v", err)
 	}
 	if !strings.Contains(stdout, out) {
 		t.Errorf("--out was not applied; output was:\n%s", stdout)
