@@ -68,7 +68,7 @@ Cheaper checks that run in CI without a backend: both implementations must rejec
 1. `go test ./...` passes with no network access and no credential.
 2. Every property in the list above has a named Go test.
 3. `go vet ./...` and `gofmt -l` are clean.
-4. `internal/provider/hosted` is the only package naming any backend — including the public provider name it registers under (`anthropic`) and reports from `Name()`; the seam learns its default at registration and holds no backend name. `TestOnlyTheAdapterNamesTheBackend` walks the repository and enforces this against a small, justified allowlist (`go.mod`, the adapter and its test, and the two documents that record the tradeoff); a companion test fails if an allowlist entry goes stale.
+4. `internal/provider/hosted` is the only package naming any backend — including the public provider name it registers under (`anthropic`) and reports from `Name()`; the seam learns its default at registration and holds no backend name. `TestOnlyTheAdapterNamesTheBackend` walks the repository and enforces this against a small, justified allowlist (the adapter package, `go.mod`/`go.sum`, and the two documents that record the tradeoff); a companion test fails if an allowlist entry goes stale.
 5. `replichai audit <paper>` and `replichai providers` behave as the Python CLI does.
 6. Cancelling the context stops a run in flight and still releases it.
 7. Coverage of `internal/` is above 90%. *(94.7%; CLI 87.3%.)*

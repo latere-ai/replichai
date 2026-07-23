@@ -20,15 +20,18 @@ import (
 // passes. The seam learns its default through RegisterDefault, not a constant.
 var vendorTerms = []string{"anthropic", "claude", "managed agent", "managed-agent"}
 
-// allowed lists the paths permitted to name a backend, and why.
+// adapterDir is the one vendor-aware package. Every file in it may name the
+// backend, so allowing it by directory rather than by file means splitting the
+// adapter into more files — the Prompter, say — needs no allowlist edit.
+const adapterDir = "internal/provider/hosted"
+
+// allowed lists the non-adapter paths permitted to name a backend, and why.
 var allowed = map[string]string{
-	"go.mod":                             "the dependency manifest names what it depends on",
-	"go.sum":                             "checksums mirror go.mod",
-	"internal/provider/hosted/hosted.go": "the adapter is the designated vendor-aware file",
-	"internal/provider/hosted/hosted_test.go": "its test imports the same SDK",
-	"internal/provider/containment_test.go":   "this test names the terms it looks for",
-	"docs/architecture.md":                    "documents the go.mod tradeoff explicitly",
-	"specs/004-go-port.md":                    "records the decision to adopt the SDK",
+	"go.mod":                                "the dependency manifest names what it depends on",
+	"go.sum":                                "checksums mirror go.mod",
+	"internal/provider/containment_test.go": "this test names the terms it looks for",
+	"docs/architecture.md":                  "documents the go.mod tradeoff explicitly",
+	"specs/004-go-port.md":                  "records the decision to adopt the SDK",
 }
 
 // TestOnlyTheAdapterNamesTheBackend walks the repository and fails if a
@@ -59,7 +62,11 @@ func TestOnlyTheAdapterNamesTheBackend(t *testing.T) {
 		default:
 			return nil
 		}
-		if _, ok := allowed[filepath.ToSlash(rel)]; ok {
+		slash := filepath.ToSlash(rel)
+		if slash == adapterDir || strings.HasPrefix(slash, adapterDir+"/") {
+			return nil
+		}
+		if _, ok := allowed[slash]; ok {
 			return nil
 		}
 		body, readErr := os.ReadFile(path)
@@ -92,6 +99,9 @@ func TestEveryAllowedPathStillExists(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
 			t.Errorf("allowlist names a path that no longer exists: %s", rel)
 		}
+	}
+	if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(adapterDir))); err != nil || !info.IsDir() {
+		t.Errorf("adapterDir %q is not a directory: %v", adapterDir, err)
 	}
 }
 
