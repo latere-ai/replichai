@@ -177,7 +177,7 @@ func (a *Auditor) Start(ctx context.Context, paper string) (provider.RunHandle, 
 }
 
 // Wait polls until the run reaches a terminal state, the deadline passes, or
-// the context is cancelled. It always returns the last status it observed.
+// the context is canceled. It always returns the last status it observed.
 func (a *Auditor) Wait(ctx context.Context, h provider.RunHandle) (provider.RunStatus, error) {
 	deadline := time.Now().Add(a.timeout)
 	var last provider.RunStatus
@@ -242,7 +242,7 @@ func (a *Auditor) Collect(ctx context.Context, h provider.RunHandle, dst string)
 // Run performs one audit end to end: start, wait, collect, release.
 //
 // The run is released even when the audit fails, and release uses a context
-// detached from ctx so a cancelled audit still cleans up after itself.
+// detached from ctx so a canceled audit still cleans up after itself.
 func (a *Auditor) Run(ctx context.Context, paper, dst string) (Result, error) {
 	h, err := a.Start(ctx, paper)
 	if err != nil {
@@ -279,7 +279,7 @@ func safeJoin(root, rel string) (string, error) {
 	}
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrUnsafePath, err)
+		return "", fmt.Errorf("%w: %w", ErrUnsafePath, err)
 	}
 	target := filepath.Join(absRoot, rel)
 	if target == absRoot || !strings.HasPrefix(target, absRoot+string(os.PathSeparator)) {
@@ -288,7 +288,7 @@ func safeJoin(root, rel string) (string, error) {
 	return target, nil
 }
 
-// sleepCtx waits for d, or returns early if ctx is cancelled.
+// sleepCtx waits for d, or returns early if ctx is canceled.
 func sleepCtx(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		select {

@@ -23,7 +23,8 @@ var testMethod = method.Method{
 // newTestAuditor builds an auditor that never actually waits.
 func newTestAuditor(t *testing.T, p provider.Provider, opts ...Option) *Auditor {
 	t.Helper()
-	base := []Option{withSleep(func(context.Context, time.Duration) error { return nil })}
+	base := make([]Option, 0, 1+len(opts))
+	base = append(base, withSleep(func(context.Context, time.Duration) error { return nil }))
 	return New(p, testMethod, append(base, opts...)...)
 }
 
@@ -111,7 +112,7 @@ func TestWaitTimesOut(t *testing.T) {
 	}
 }
 
-func TestWaitHonoursContextCancellation(t *testing.T) {
+func TestWaitHonorsContextCancellation(t *testing.T) {
 	p := memory.New()
 	p.PollsBeforeDone = 99
 	// Use the real sleep so cancellation, not the stub, ends the wait.
@@ -256,8 +257,8 @@ func TestRunReleasesTheRunEvenWhenItFails(t *testing.T) {
 	}
 }
 
-func TestRunReleasesTheRunEvenWhenCancelled(t *testing.T) {
-	// Release uses a context detached from the caller's, so a cancelled audit
+func TestRunReleasesTheRunEvenWhenCanceled(t *testing.T) {
+	// Release uses a context detached from the caller's, so a canceled audit
 	// still cleans up after itself.
 	p := memory.New()
 	p.PollsBeforeDone = 99
@@ -278,7 +279,7 @@ func TestRunReleasesTheRunEvenWhenCancelled(t *testing.T) {
 		t.Fatal("Run ignored cancellation")
 	}
 	if len(p.Closed()) == 0 {
-		t.Error("a cancelled run must still be released")
+		t.Error("a canceled run must still be released")
 	}
 }
 
@@ -382,7 +383,7 @@ func TestWaitSurfacesAPollFailure(t *testing.T) {
 	}
 }
 
-func TestSleepCtxHonoursBothPathsAndCancellation(t *testing.T) {
+func TestSleepCtxHonorsBothPathsAndCancellation(t *testing.T) {
 	ctx := context.Background()
 	if err := sleepCtx(ctx, 0); err != nil {
 		t.Errorf("a zero delay should return immediately: %v", err)
@@ -391,12 +392,12 @@ func TestSleepCtxHonoursBothPathsAndCancellation(t *testing.T) {
 		t.Errorf("a short delay should elapse cleanly: %v", err)
 	}
 
-	cancelled, cancel := context.WithCancel(context.Background())
+	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := sleepCtx(cancelled, 0); !errors.Is(err, context.Canceled) {
+	if err := sleepCtx(canceled, 0); !errors.Is(err, context.Canceled) {
 		t.Errorf("zero delay ignored cancellation: %v", err)
 	}
-	if err := sleepCtx(cancelled, time.Hour); !errors.Is(err, context.Canceled) {
+	if err := sleepCtx(canceled, time.Hour); !errors.Is(err, context.Canceled) {
 		t.Errorf("long delay ignored cancellation: %v", err)
 	}
 }

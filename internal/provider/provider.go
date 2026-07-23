@@ -40,8 +40,8 @@ type RunSpec struct {
 	MaxRevisions int
 }
 
-// WorkspaceRef, WorkerRef and RunHandle are opaque pointers to objects a
-// provider created. Only the adapter that produced them interprets the IDs.
+// WorkspaceRef identifies a sandbox. It, WorkerRef, and RunHandle are opaque:
+// only the adapter that produced an ID interprets it.
 type WorkspaceRef struct{ ID string }
 
 // WorkerRef identifies a worker and the revision of it that is pinned.
@@ -66,11 +66,27 @@ type Verdict struct {
 // Passed reports whether the run met the rubric.
 func (v Verdict) Passed() bool { return v.Grade == GradePassed }
 
+// Usage is what a run consumed, in tokens.
+//
+// Every backend meters tokens, so these fields are neutral rather than
+// vendor-specific. A backend that does not report one leaves it zero.
+type Usage struct {
+	InputTokens  int64
+	OutputTokens int64
+	// CachedInputTokens were served from cache rather than processed fresh.
+	CachedInputTokens int64
+}
+
+// Total is every token the run accounted for.
+func (u Usage) Total() int64 {
+	return u.InputTokens + u.OutputTokens + u.CachedInputTokens
+}
+
 // RunStatus is one observation of a run.
 type RunStatus struct {
 	State   RunState
 	Verdict *Verdict
-	Usage   map[string]any
+	Usage   Usage
 }
 
 // Passed reports whether the run finished and met the rubric. A run with no
@@ -93,7 +109,7 @@ func (a Artifact) IsCompiled() bool {
 
 // Provider is a backend capable of running graded, sandboxed, tool-using work.
 //
-// Every method that can block takes a context and must honour its
+// Every method that can block takes a context and must honor its
 // cancellation, so an audit can be stopped from outside.
 type Provider interface {
 	// Name identifies the adapter.

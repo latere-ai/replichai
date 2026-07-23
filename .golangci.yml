@@ -1,0 +1,90 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    # Correctness
+    - bodyclose        # an unclosed response body leaks a connection
+    - errorlint        # %w and errors.Is/As used correctly across wrapping
+    - copyloopvar
+    - durationcheck
+    - nilerr           # returning nil after a non-nil error
+    - rowserrcheck
+    - sqlclosecheck
+    - noctx            # HTTP requests without a context cannot be cancelled
+    - contextcheck
+    - errchkjson
+
+    # Security
+    - gosec
+
+    # Clarity
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+    - wastedassign
+    - prealloc
+    - godot            # comments end in a period; they are prose here
+    - nolintlint       # every //nolint must be specific and explained
+
+  settings:
+    errcheck:
+      # Best-effort cleanup is deliberate and documented at each call site.
+      exclude-functions:
+        - (*os.File).Close
+        - (io.Closer).Close
+        # A failed write to stdout or stderr is not actionable: there is
+        # nowhere left to report it.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    revive:
+      rules:
+        - name: exported
+          arguments: ["checkPrivateReceivers"]
+        - name: package-comments
+        - name: error-strings
+        - name: error-naming
+        - name: context-as-argument
+        - name: indent-error-flow
+        - name: var-naming
+        - name: unreachable-code
+    gosec:
+      excludes:
+        # A reproduction repository is meant to be read, committed, and
+        # browsed, so 0755 directories and 0644 files are correct here;
+        # G301/G306 assume a secrets-handling default that does not apply.
+        - G301
+        - G306
+    misspell:
+      # US spelling: "artifact" is the domain term used by the research
+      # community, the backend API, and this project's own documents.
+      locale: US
+
+  exclusions:
+    rules:
+      # Tests exercise error paths deliberately and read fixture files by
+      # constructed path; neither is a finding there.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - unparam
+          - noctx
+      # The reference implementation is Python; nothing here to lint.
+      - path: ^reference/
+        linters:
+          - staticcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/latere-ai/replichai

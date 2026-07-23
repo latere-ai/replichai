@@ -133,7 +133,7 @@ func TestNetworkZeroValueIsOpen(t *testing.T) {
 	}
 }
 
-func TestArtifactRecognisesCompiledResidue(t *testing.T) {
+func TestArtifactRecognizesCompiledResidue(t *testing.T) {
 	compiled := []string{
 		"a/__pycache__/x.cpython-311.pyc",
 		"x.pyc",
@@ -141,7 +141,7 @@ func TestArtifactRecognisesCompiledResidue(t *testing.T) {
 	}
 	for _, path := range compiled {
 		if !(Artifact{Path: path}).IsCompiled() {
-			t.Errorf("%q should be recognised as compiled residue", path)
+			t.Errorf("%q should be recognized as compiled residue", path)
 		}
 	}
 	for _, path := range []string{"x.py", "README.md", "src/core.go"} {

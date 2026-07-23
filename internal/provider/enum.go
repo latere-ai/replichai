@@ -11,6 +11,7 @@ import (
 // masquerade as a meaningful state.
 type RunState uint8
 
+// The lifecycle a run moves through.
 const (
 	StateUnknown RunState = iota
 	StatePending
@@ -33,6 +34,7 @@ func (s RunState) Terminal() bool { return s == StateDone || s == StateFailed }
 // Valid reports whether s is a state this package defines.
 func (s RunState) Valid() bool { _, ok := runStateNames[s]; return ok && s != StateUnknown }
 
+// String returns the value's stable name.
 func (s RunState) String() string {
 	if name, ok := runStateNames[s]; ok {
 		return name
@@ -40,8 +42,10 @@ func (s RunState) String() string {
 	return fmt.Sprintf("RunState(%d)", uint8(s))
 }
 
+// MarshalJSON encodes the value as its stable name.
 func (s RunState) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
+// UnmarshalJSON decodes a stable name, rejecting anything unrecognized.
 func (s *RunState) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err != nil {
@@ -62,6 +66,7 @@ func (s *RunState) UnmarshalJSON(data []byte) error {
 // records one, and an unset grade must never read as a pass.
 type Grade uint8
 
+// The grades a run can be given.
 const (
 	GradeUnknown Grade = iota
 	GradePending
@@ -86,6 +91,7 @@ func (g Grade) Decided() bool {
 		g == GradeExhausted || g == GradeFailed
 }
 
+// String returns the value's stable name.
 func (g Grade) String() string {
 	if name, ok := gradeNames[g]; ok {
 		return name
@@ -93,8 +99,10 @@ func (g Grade) String() string {
 	return fmt.Sprintf("Grade(%d)", uint8(g))
 }
 
+// MarshalJSON encodes the value as its stable name.
 func (g Grade) MarshalJSON() ([]byte, error) { return json.Marshal(g.String()) }
 
+// UnmarshalJSON decodes a stable name, rejecting anything unrecognized.
 func (g *Grade) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err != nil {
@@ -116,6 +124,7 @@ func (g *Grade) UnmarshalJSON(data []byte) error {
 // restricting is the deliberate act.
 type Network uint8
 
+// The outbound network policies a sandbox can have.
 const (
 	NetworkOpen Network = iota
 	NetworkLimited
@@ -126,6 +135,7 @@ var networkNames = map[Network]string{
 	NetworkLimited: "limited",
 }
 
+// String returns the value's stable name.
 func (n Network) String() string {
 	if name, ok := networkNames[n]; ok {
 		return name
@@ -133,8 +143,10 @@ func (n Network) String() string {
 	return fmt.Sprintf("Network(%d)", uint8(n))
 }
 
+// MarshalJSON encodes the value as its stable name.
 func (n Network) MarshalJSON() ([]byte, error) { return json.Marshal(n.String()) }
 
+// UnmarshalJSON decodes a stable name, rejecting anything unrecognized.
 func (n *Network) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err != nil {

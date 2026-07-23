@@ -65,7 +65,9 @@ func Load(dir string) (Method, error) {
 	}
 
 	read := func(name string) (string, error) {
-		raw, err := os.ReadFile(filepath.Join(dir, name))
+		// The directory is a CLI flag or the repository's own layout, not
+		// untrusted input; the file names are fixed constants.
+		raw, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // G304: fixed names under an operator-supplied directory
 		if err != nil {
 			return "", fmt.Errorf("%w: method directory is missing %s: %s", ErrInvalid, name, dir)
 		}
@@ -97,7 +99,7 @@ func Load(dir string) (Method, error) {
 func discover() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalid, err)
+		return "", fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	for {
 		candidate := filepath.Join(dir, "method")

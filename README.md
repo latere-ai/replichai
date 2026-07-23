@@ -25,6 +25,13 @@ replichai audit https://arxiv.org/abs/2603.01795 --out runs
 replichai providers
 ```
 
+`REPLICHAI_API_KEY` holds the backend's ordinary API key. The name is neutral so
+the variable does not advertise which backend is behind it, not because the
+value is different. If you already have that backend's own environment variable
+exported, or are logged in to its CLI, you can leave `REPLICHAI_API_KEY` unset
+and the existing credential is used — there is no need to copy the same secret
+under a second name.
+
 The audit writes a reproduction repository into `runs/<paper>/`:
 
 | File | Contents |

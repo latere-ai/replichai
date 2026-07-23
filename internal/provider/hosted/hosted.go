@@ -7,7 +7,9 @@
 //
 // Configuration comes from the environment:
 //
-//	REPLICHAI_API_KEY   credential (required)
+//	REPLICHAI_API_KEY   the backend's API key. Optional: when unset, the SDK's
+//	                    own resolution applies, so an already-exported backend
+//	                    variable or a logged-in CLI profile is picked up.
 //	REPLICHAI_API_BASE  API root (optional; for tests and self-hosted routing)
 package hosted
 
@@ -26,32 +28,82 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// ErrNoCredential reports that no credential was configured.
-var ErrNoCredential = errors.New("no credential: set REPLICHAI_API_KEY")
-
-// modelTiers maps neutral preferences onto substrings of backend model IDs.
-var modelTiers = map[string]string{
-	"best":     "opus",
-	"balanced": "sonnet",
-	"fast":     "haiku",
+// modelTier turns a neutral preference into a substring to look for in the
+// backend's model identifiers. An unrecognized preference is used verbatim,
+// so a caller can name a model family the backend has but this list does not.
+func modelTier(preference string) string {
+	switch preference {
+	case "best":
+		return "opus"
+	case "balanced":
+		return "sonnet"
+	case "fast":
+		return "haiku"
+	default:
+		return preference
+	}
 }
 
-// grades maps backend grade names onto neutral grades.
-var grades = map[string]provider.Grade{
-	"satisfied":              provider.GradePassed,
-	"needs_revision":         provider.GradeNeedsRevision,
-	"max_iterations_reached": provider.GradeExhausted,
-	"failed":                 provider.GradeFailed,
-	"interrupted":            provider.GradeFailed,
-	"pending":                provider.GradePending,
+// translateGrade converts a backend grade name into a neutral grade.
+// An unrecognized name is undecided rather than a pass: a grade this adapter
+// does not understand must never read as success.
+func translateGrade(name string) provider.Grade {
+	switch name {
+	case "satisfied":
+		return provider.GradePassed
+	case "needs_revision":
+		return provider.GradeNeedsRevision
+	case "max_iterations_reached":
+		return provider.GradeExhausted
+	case "failed", "interrupted":
+		return provider.GradeFailed
+	default:
+		return provider.GradePending
+	}
 }
 
-// states maps backend run states onto neutral states.
-var states = map[string]provider.RunState{
-	"idle":         provider.StateDone,
-	"running":      provider.StateRunning,
-	"rescheduling": provider.StateRunning,
-	"terminated":   provider.StateDone,
+// translateState converts one backend observation into a neutral run state.
+//
+// The backend's status and the grader's record are read together, because
+// neither answers the question alone: the backend rests in "idle" both before
+// a run is picked up and after it finishes, and it reaches "terminated" both
+// by completing and by dying. Deciding from the status alone gets one of
+// those two cases wrong every time.
+func translateState(status string, verdict *provider.Verdict) provider.RunState {
+	graded := verdict != nil && verdict.Grade.Decided()
+
+	switch status {
+	case "running", "rescheduling":
+		return provider.StateRunning
+
+	case "idle":
+		switch {
+		case verdict == nil:
+			// Resting with no grader record at all: not started yet.
+			// Reporting this as finished would abort a healthy run whose
+			// first poll lands between kickoff and pickup.
+			return provider.StatePending
+		case !graded:
+			// A recorded but undecided grade means the grader is working.
+			return provider.StateRunning
+		default:
+			return provider.StateDone
+		}
+
+	case "terminated":
+		// Terminated is irreversible. If the run was graded first it simply
+		// finished and was released; if it was not, no verdict is ever
+		// coming, and waiting for one would poll until the deadline.
+		if graded {
+			return provider.StateDone
+		}
+		return provider.StateFailed
+
+	default:
+		// An unfamiliar status is treated as still working: the run may yet
+		// reach a state this adapter recognizes, and the deadline bounds it.
+		return provider.StateRunning
+	}
 }
 
 func init() {
@@ -84,7 +136,17 @@ func WithRequestOptions(opts ...option.RequestOption) Option {
 	return func(c *config) { c.extra = append(c.extra, opts...) }
 }
 
-// New builds a Provider, failing if no credential is available.
+// New builds a Provider.
+//
+// REPLICHAI_API_KEY is the documented way to supply the credential. It holds
+// the backend's ordinary API key; the name is neutral so the variable does not
+// advertise the supplier, not because the value is different.
+//
+// When it is unset the SDK's own credential resolution is left in place, so an
+// operator who already has the backend's environment variable exported, or a
+// logged-in CLI profile, does not have to copy the same secret under a second
+// name. That path cannot be inspected from here, so a genuinely missing
+// credential surfaces on the first request rather than at construction.
 func New(opts ...Option) (*Provider, error) {
 	cfg := config{
 		apiKey:  os.Getenv("REPLICHAI_API_KEY"),
@@ -93,13 +155,13 @@ func New(opts ...Option) (*Provider, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	if cfg.apiKey == "" {
-		return nil, ErrNoCredential
-	}
 
 	// The SDK sets the managed-agents beta header on every Beta.* call and
 	// retries 429s and 5xx on its own, so neither belongs here.
-	requestOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
+	var requestOpts []option.RequestOption
+	if cfg.apiKey != "" {
+		requestOpts = append(requestOpts, option.WithAPIKey(cfg.apiKey))
+	}
 	if cfg.apiBase != "" {
 		requestOpts = append(requestOpts, option.WithBaseURL(cfg.apiBase))
 	}
@@ -120,10 +182,7 @@ func (p *Provider) ResolveModel(ctx context.Context, pref string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("list models: %w", err)
 	}
-	tier, ok := modelTiers[pref]
-	if !ok {
-		tier = pref
-	}
+	tier := modelTier(pref)
 	var first string
 	for _, entry := range page.Data {
 		if first == "" {
@@ -169,7 +228,7 @@ func (p *Provider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceS
 func (p *Provider) EnsureWorker(ctx context.Context, spec provider.WorkerSpec) (provider.WorkerRef, error) {
 	params := anthropic.BetaAgentNewParams{
 		Name:  spec.Name,
-		Model: anthropic.BetaManagedAgentsModelConfigParams{ID: anthropic.BetaManagedAgentsModel(spec.Model)},
+		Model: anthropic.BetaManagedAgentsModelConfigParams{ID: spec.Model},
 		Tools: []anthropic.BetaAgentNewParamsToolUnion{{
 			OfAgentToolset20260401: &anthropic.BetaManagedAgentsAgentToolset20260401Params{
 				Type: anthropic.BetaManagedAgentsAgentToolset20260401ParamsTypeAgentToolset20260401,
@@ -240,39 +299,25 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 		return provider.RunStatus{}, fmt.Errorf("get session %s: %w", h.ID, err)
 	}
 
-	state, ok := states[string(session.Status)]
-	if !ok {
-		state = provider.StateRunning
-	}
-
 	var verdict *provider.Verdict
 	if n := len(session.OutcomeEvaluations); n > 0 {
 		last := session.OutcomeEvaluations[n-1]
-		grade, ok := grades[string(last.Result)]
-		if !ok {
-			grade = provider.GradePending
+		verdict = &provider.Verdict{
+			Grade:       translateGrade(last.Result),
+			Explanation: last.Explanation,
 		}
-		verdict = &provider.Verdict{Grade: grade, Explanation: last.Explanation}
 	}
+	state := translateState(string(session.Status), verdict)
 
-	switch {
-	case verdict == nil && state == provider.StateDone:
-		// The backend parks a run in the same resting state both before work
-		// begins and after it ends, so resting plus no grader record means
-		// "not started yet", not "finished". Calling it terminal here would
-		// abort a healthy run whose first poll lands in the window between
-		// kickoff and pickup.
-		state = provider.StatePending
-	case verdict != nil && !verdict.Grade.Decided():
-		// A recorded but undecided grade means the grader is still working.
-		state = provider.StateRunning
-	}
-
-	usage := map[string]any{
-		"input_tokens":  session.Usage.InputTokens,
-		"output_tokens": session.Usage.OutputTokens,
-	}
-	return provider.RunStatus{State: state, Verdict: verdict, Usage: usage}, nil
+	return provider.RunStatus{
+		State:   state,
+		Verdict: verdict,
+		Usage: provider.Usage{
+			InputTokens:       session.Usage.InputTokens,
+			OutputTokens:      session.Usage.OutputTokens,
+			CachedInputTokens: session.Usage.CacheReadInputTokens,
+		},
+	}, nil
 }
 
 // ListArtifacts lists what a run produced.

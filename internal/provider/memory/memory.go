@@ -85,6 +85,7 @@ func (p *Provider) Closed() []string {
 	return append([]string(nil), p.closed...)
 }
 
+// ResolveModel returns the configured Model.
 func (p *Provider) ResolveModel(ctx context.Context, pref string) (string, error) {
 	if err := p.check(ctx); err != nil {
 		return "", err
@@ -92,6 +93,7 @@ func (p *Provider) ResolveModel(ctx context.Context, pref string) (string, error
 	return p.Model, nil
 }
 
+// EnsureWorkspace records the spec and returns a synthetic reference.
 func (p *Provider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceSpec) (provider.WorkspaceRef, error) {
 	if err := p.check(ctx); err != nil {
 		return provider.WorkspaceRef{}, err
@@ -102,6 +104,7 @@ func (p *Provider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceS
 	return provider.WorkspaceRef{ID: fmt.Sprintf("workspace-%d", len(p.workspaces))}, nil
 }
 
+// EnsureWorker records the spec and returns a synthetic reference.
 func (p *Provider) EnsureWorker(ctx context.Context, spec provider.WorkerSpec) (provider.WorkerRef, error) {
 	if err := p.check(ctx); err != nil {
 		return provider.WorkerRef{}, err
@@ -112,6 +115,7 @@ func (p *Provider) EnsureWorker(ctx context.Context, spec provider.WorkerSpec) (
 	return provider.WorkerRef{ID: fmt.Sprintf("worker-%d", len(p.workers)), Revision: 1}, nil
 }
 
+// StartRun records the spec and returns a handle with a fresh identity.
 func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws provider.WorkspaceRef, spec provider.RunSpec) (provider.RunHandle, error) {
 	if err := p.check(ctx); err != nil {
 		return provider.RunHandle{}, err
@@ -129,6 +133,8 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 	return h, nil
 }
 
+// Poll reports Running until PollsBeforeDone calls have been made, then
+// reports the configured Grade.
 func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.RunStatus, error) {
 	if err := p.check(ctx); err != nil {
 		return provider.RunStatus{}, err
@@ -147,10 +153,11 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 	return provider.RunStatus{
 		State:   state,
 		Verdict: &provider.Verdict{Grade: p.Grade, Explanation: "recorded by memory provider"},
-		Usage:   map[string]any{"polls": count},
+		Usage:   provider.Usage{InputTokens: int64(count)},
 	}, nil
 }
 
+// ListArtifacts returns Files as artifacts, ordered by path.
 func (p *Provider) ListArtifacts(ctx context.Context, h provider.RunHandle) ([]provider.Artifact, error) {
 	if err := p.check(ctx); err != nil {
 		return nil, err
@@ -169,6 +176,7 @@ func (p *Provider) ListArtifacts(ctx context.Context, h provider.RunHandle) ([]p
 	return arts, nil
 }
 
+// FetchArtifact returns the bytes recorded for the artifact's path.
 func (p *Provider) FetchArtifact(ctx context.Context, h provider.RunHandle, a provider.Artifact) ([]byte, error) {
 	if err := p.check(ctx); err != nil {
 		return nil, err
@@ -182,6 +190,7 @@ func (p *Provider) FetchArtifact(ctx context.Context, h provider.RunHandle, a pr
 	return body, nil
 }
 
+// CloseRun records the release. It never fails.
 func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -189,7 +198,7 @@ func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 	return nil
 }
 
-// check honours cancellation and the injected error.
+// check honors cancellation and the injected error.
 func (p *Provider) check(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
