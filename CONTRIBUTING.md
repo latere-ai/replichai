@@ -39,9 +39,8 @@ enforces this.
 ## Adding a backend
 
 Write a package under `internal/provider/` that satisfies `provider.Provider`
-and registers itself from `init`. That package is the only place its backend's
-vocabulary may appear — `TestOnlyTheAdapterNamesTheBackend` walks the
-repository and fails otherwise. Nothing above the seam changes.
+and registers itself from `init`. That package is the one place its backend's
+SDK and vocabulary live, so nothing above the seam changes.
 
 ## Changing the method
 

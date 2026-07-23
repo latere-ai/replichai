@@ -173,19 +173,6 @@ func TestResolveReportsAnIdentity(t *testing.T) {
 	}
 }
 
-func TestResolveAgentFlagIsAccepted(t *testing.T) {
-	// --agent wires the model-backed resolver, but a DOI is terminal and
-	// resolves offline, so the model is never consulted and no credential is
-	// needed. This proves the flag parses and the deterministic path still wins.
-	stdout, _, err := capture(t, "resolve", "--agent", "10.1145/3772318.3791265")
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	if !strings.Contains(stdout, "identity:  doi:10.1145/3772318.3791265") {
-		t.Errorf("output missing identity:\n%s", stdout)
-	}
-}
-
 func TestResolveRequiresExactlyOneReference(t *testing.T) {
 	for _, args := range [][]string{{"resolve"}, {"resolve", "a", "b"}} {
 		_, stderr, err := capture(t, args...)

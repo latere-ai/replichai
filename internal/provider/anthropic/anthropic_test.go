@@ -1,4 +1,4 @@
-package hosted
+package anthropic
 
 import (
 	"context"

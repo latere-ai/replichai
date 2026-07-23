@@ -22,9 +22,9 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
-	"github.com/latere-ai/replichai/internal/provider/hosted"
 
-	// The memory adapter registers itself for tests and the contract demo.
+	// Adapters register themselves.
+	_ "github.com/latere-ai/replichai/internal/provider/anthropic"
 	_ "github.com/latere-ai/replichai/internal/provider/memory"
 )
 
@@ -148,7 +148,6 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	timeout := fs.Duration("timeout", 30*time.Second, "network timeout for a single fetch")
-	useAgent := fs.Bool("agent", false, "read a URL that carries no identifier with a model, verified against the page")
 	if err := fs.Parse(args); err != nil {
 		return errExitQuiet
 	}
@@ -157,16 +156,7 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return errExitQuiet
 	}
 
-	opts := []paper.Option{paper.WithFetcher(httpFetcher{timeout: *timeout})}
-	if *useAgent {
-		prompter, err := hosted.NewPrompter()
-		if err != nil {
-			return err
-		}
-		opts = append(opts, paper.WithPageResolver(paper.AgentPageResolver{Prompter: prompter}))
-	}
-
-	id, err := paper.Resolve(ctx, fs.Arg(0), opts...)
+	id, err := paper.Resolve(ctx, fs.Arg(0), paper.WithFetcher(httpFetcher{timeout: *timeout}))
 	if err != nil {
 		return err
 	}
@@ -226,7 +216,6 @@ flags for audit:
 
 flags for resolve:
   -timeout        network timeout for a single fetch (default 30s)
-  -agent          resolve an identifier-less URL with a model, verified against the page
 `)
 }
 
