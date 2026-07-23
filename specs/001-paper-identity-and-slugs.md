@@ -1,6 +1,6 @@
 # 001 — Paper identity and slugs
 
-**Status:** draft
+**Status:** implemented (`8da41d8`)
 **Scope:** deriving a stable identity and a human-readable slug for one paper.
 
 ## Problem
@@ -111,3 +111,15 @@ func WithFetcher(f Fetcher) Option
 ## Out of scope
 
 Repository creation, conflict handling, and the registry. This spec ends at an `Identity` value.
+
+## Outcome
+
+Implemented in `internal/paper` (`8da41d8`), all seven acceptance criteria covered by tests that run without a real network; 92% statement coverage.
+
+Built as specified, with three decisions taken during implementation and folded back above:
+
+- **The AC1/AC2-vs-AC7 contradiction was resolved before coding** (`5f29366`). AC1 and AC2 both require looking an arXiv preprint up to discover its DOI, which AC7's original "no network for a DOI *or arXiv ID*" forbade. AC7 was narrowed to DOI-only. The fetch-failure policy the contradiction exposed — error rather than fall back to `arxiv:` — is now a stated decision, so identity cannot drift with connectivity.
+- **The AC3/AC4 slug inconsistency was resolved before coding** (`7ab3c33`). The two PleaSQLarify titles differ only in a final word past the 48-character window, so they yield the *same* slug, not different ones; AC3 was corrected, and the Decisions example fixed to the greedy-fill algorithm's real output.
+- **Generic-URL resolution became a `PageResolver` seam** with proposal-then-verification, at the user's prompting. The default reads the `citation_*` meta standard; an `AgentPageResolver` reads the page with an LLM via a `Prompter` seam. A candidate is honoured only if it occurs in the fetched page, so a nondeterministic model can upgrade a messy page but can never invent or drift identity. These are fallbacks layered under the structured DOI and arXiv paths, not a replacement for them.
+
+Deferred, as designed: real network adapters (an HTTP `Fetcher`, an SDK-backed `Prompter`) are wired at the CLI edge, not in this package; PDF text extraction for the content-digest path digests the fetched bytes for now.
