@@ -1,0 +1,5 @@
+https://arxiv.org/abs/2603.01795
+
+PleaSQLarify: Visual Pragmatic Repair for Natural Language Database Querying
+Robin Shing Moon Chan, Rita Sevastjanova, Mennatallah El-Assady
+CHI'26 · DOI 10.1145/3772318.3791265
