@@ -65,9 +65,7 @@ func TestProvidersCommandListsProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	// The concrete provider names itself; assert against that name rather than
-	// hardcoding it, so this test stays free of the vendor term.
-	for _, want := range []string{provider.DefaultName(), "memory", "(default)"} {
+	for _, want := range []string{provider.DefaultName, "memory", "(default)"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("output missing %q:\n%s", want, stdout)
 		}

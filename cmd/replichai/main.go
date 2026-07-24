@@ -54,7 +54,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	case "providers":
 		for _, name := range provider.Available() {
 			suffix := ""
-			if name == provider.DefaultName() {
+			if name == provider.DefaultName {
 				suffix = " (default)"
 			}
 			fmt.Fprintf(stdout, "%s%s\n", name, suffix)
@@ -83,7 +83,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	fs.SetOutput(stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
-		providerName = fs.String("provider", provider.DefaultName(), "provider to use")
+		providerName = fs.String("provider", provider.DefaultName, "provider to use")
 		methodDir    = fs.String("method", "", "path to a method directory")
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long a run may take")
@@ -208,7 +208,7 @@ usage:
 
 flags for audit:
   -out            directory for artifacts (default "runs")
-  -provider       provider to use (default "`+provider.DefaultName()+`")
+  -provider       provider to use (default "`+provider.DefaultName+`")
   -method         path to a method directory
   -interval       gap between status checks
   -timeout        how long a run may take
