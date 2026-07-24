@@ -146,29 +146,15 @@ type Provider interface {
 // Factory builds a provider.
 type Factory func() (Provider, error)
 
-var (
-	registry    = map[string]Factory{}
-	defaultName string
-)
+// DefaultName is the provider used when none is specified.
+const DefaultName = "anthropic"
+
+var registry = map[string]Factory{}
 
 // Register adds a provider factory under name. Adapters call this from init.
 func Register(name string, f Factory) {
 	registry[strings.ToLower(name)] = f
 }
-
-// RegisterDefault registers a factory and marks it the default — the provider
-// Get selects when no name is given. Which adapter is default is decided by the
-// adapter that claims it, so the seam never has to name a concrete backend.
-func RegisterDefault(name string, f Factory) {
-	key := strings.ToLower(name)
-	registry[key] = f
-	defaultName = key
-}
-
-// DefaultName is the provider used when none is specified. It is empty until an
-// adapter registers as the default, and is set from the name the adapter chose,
-// so the concrete backend is never named here.
-func DefaultName() string { return defaultName }
 
 // Available lists the registered provider names, sorted.
 func Available() []string {
@@ -184,7 +170,7 @@ func Available() []string {
 func Get(name string) (Provider, error) {
 	key := strings.ToLower(strings.TrimSpace(name))
 	if key == "" {
-		key = defaultName
+		key = DefaultName
 	}
 	f, ok := registry[key]
 	if !ok {

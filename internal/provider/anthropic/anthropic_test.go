@@ -446,8 +446,8 @@ func TestRegisteredUnderItsName(t *testing.T) {
 	if got.Name() != "anthropic" {
 		t.Errorf("Name = %q, want anthropic", got.Name())
 	}
-	if provider.DefaultName() != "anthropic" {
-		t.Errorf("DefaultName() = %q, want the adapter to have claimed the default", provider.DefaultName())
+	if got.Name() != provider.DefaultName {
+		t.Errorf("the adapter registers as %q but the default is %q", got.Name(), provider.DefaultName)
 	}
 }
 

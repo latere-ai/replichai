@@ -107,10 +107,7 @@ func translateState(status string, verdict *provider.Verdict) provider.RunState 
 }
 
 func init() {
-	// The adapter is the one place a backend may be named, so it also chooses
-	// the public provider name and claims the default. Everything above the
-	// seam stays neutral.
-	provider.RegisterDefault("anthropic", func() (provider.Provider, error) { return New() })
+	provider.Register("anthropic", func() (provider.Provider, error) { return New() })
 }
 
 // Provider talks to the managed-agents backend through its official SDK.

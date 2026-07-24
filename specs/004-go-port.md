@@ -68,7 +68,7 @@ Cheaper checks that run in CI without a backend: both implementations must rejec
 1. `go test ./...` passes with no network access and no credential.
 2. Every property in the list above has a named Go test.
 3. `go vet ./...` and `gofmt -l` are clean.
-4. `internal/provider/anthropic` is the one package that imports the backend SDK and owns its vocabulary; the contract in `provider.go` and everything above it depend on neither. The provider registers and reports itself as `anthropic`, and the seam learns its default at registration rather than hardcoding a name.
+4. `internal/provider/anthropic` is the one package that imports the backend SDK and owns its vocabulary; nothing above the seam does. The provider registers and reports itself as `anthropic`, which is also the registry's default.
 5. `replichai audit <paper>` and `replichai providers` behave as the Python CLI does.
 6. Cancelling the context stops a run in flight and still releases it.
 7. Coverage of `internal/` is above 90%. *(94.7%; CLI 87.3%.)*
@@ -81,4 +81,4 @@ The HTTP server, auth, persistence, queues, and specs 001–003. This spec ends 
 
 The original port registered the backend under the neutral name `hosted`. That over-applied the neutrality rule: the *interface* must stay vendor-neutral, but the *adapter* is precisely the place a backend may be named, so hiding the backend behind `hosted` bought nothing and made the provider listing less honest than the dependency manifest already is.
 
-The provider is now registered and reported as `anthropic`, and the adapter package was renamed to match (`internal/provider/anthropic`). An earlier revision policed vendor-neutrality with a repository-walking test and kept the package neutrally named `hosted`; both were dropped once naming the backend openly made them ceremony fighting the design. The adapter stays the sole owner of the SDK and the backend's vocabulary — for isolation, so a port is one package, not concealment. The seam learns its default at registration (`RegisterDefault`), so `provider.go` still names no backend.
+The provider is now registered and reported as `anthropic`, and the adapter package was renamed to match (`internal/provider/anthropic`). An earlier revision policed vendor-neutrality with a repository-walking test and kept the package neutrally named `hosted`, with the seam's default routed through a registration call so `provider.go` held no backend name; all of that was dropped once naming the backend openly made it ceremony fighting the design. The default is now a plain `const DefaultName = "anthropic"`. The adapter stays the sole owner of the SDK and the backend's vocabulary — for isolation, so a port is one package, not concealment.
