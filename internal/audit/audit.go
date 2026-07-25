@@ -49,6 +49,9 @@ type Result struct {
 	Status      provider.RunStatus
 	Artifacts   []provider.Artifact
 	ArtifactDir string
+	// MethodDigest pins which version of the method produced this run, so a
+	// published reproduction records what it is comparable against.
+	MethodDigest string
 }
 
 // Passed reports whether the run met the rubric.
@@ -248,7 +251,7 @@ func (a *Auditor) Run(ctx context.Context, paper, dst string) (Result, error) {
 	if err != nil {
 		return Result{Paper: paper}, err
 	}
-	result := Result{Paper: paper, Handle: h, ArtifactDir: dst}
+	result := Result{Paper: paper, Handle: h, ArtifactDir: dst, MethodDigest: a.method.Digest()}
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
