@@ -32,13 +32,32 @@ type WorkerSpec struct {
 	Description  string
 }
 
-// RunSpec is one unit of work: a task, the bar it is graded against, and a
-// budget for how many times the worker may revise before giving up.
+// RunSpec is one unit of work: a task, the bar it is graded against, a budget
+// for how many times the worker may revise before giving up, and optionally a
+// repository to mount so the worker commits its output directly.
 type RunSpec struct {
 	Task         string
 	Rubric       string
 	MaxRevisions int
+	Mount        RepoMount
 }
+
+// RepoMount is a version-control repository to mount into the run's sandbox so
+// the worker commits into it as it works. It is host-agnostic: the adapter maps
+// it to its backend's resource (the anthropic adapter to a github_repository
+// session resource). The zero value mounts nothing, so an audit not destined
+// for publication runs unchanged.
+//
+// Token is a write credential that lives only inside the sandbox; it must be
+// scoped to this one repository, never a broad organisation token.
+type RepoMount struct {
+	URL       string
+	Token     string
+	MountPath string
+}
+
+// Set reports whether a repository is to be mounted.
+func (m RepoMount) Set() bool { return m.URL != "" }
 
 // WorkspaceRef identifies a sandbox. It, WorkerRef, and RunHandle are opaque:
 // only the adapter that produced an ID interprets it.
