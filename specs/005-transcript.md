@@ -75,7 +75,8 @@ Implemented across three commits (`f22fd2a` the provider seam, `5723402` the ren
 
 - **`provider.Event` + `Transcript`** on the contract. The anthropic adapter reads `Sessions.Events.ListAutoPaging` and translates each event *generically* from its raw JSON — a namespaced type becomes a neutral role+kind, best-effort text is pulled from content blocks, the original is preserved in `Raw` — so the many event shapes needed no per-variant mapping and nothing is lost. The memory adapter returns a settable `Events` slice.
 - **`RenderTranscript`** produces `transcript.jsonl` (the lossless canonical stream) and `TRANSCRIPT.md` (a narrative). **`TranscriptLeaks`** flags events carrying a high-signal secret.
-- **Finalize commits both**, in the same system-authored moment as the manifest, idempotently. Both publish paths (`audit --publish` and `finish`) fetch the transcript best-effort and commit it.
+- **Finalize commits the transcript**, in the same system-authored moment as the manifest, idempotently. Both publish paths (`audit --publish` and `finish`) fetch it best-effort and commit it.
+- **Chunked and interlinked, committed atomically.** A full run's transcript is many megabytes as one file — unreadable, and past the Contents API's inline and timeout limits. So `RenderTranscriptFiles` produces a navigable set — `TRANSCRIPT.md` an index linking `transcript/NNN.md` chunks (40 events each, prev/index/next links, per-event content capped), with `transcript.jsonl` the canonical machine stream — and `github.CommitFiles` writes the whole set in one atomic Git Data API commit (blob → tree → commit → ref), with no per-file size limit and no commit spam. Each event renders as a `<details>` block so the agent's own markdown cannot collide with the transcript's structure.
 
 Two honest limitations folded back from implementation:
 
