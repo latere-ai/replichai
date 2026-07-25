@@ -259,6 +259,33 @@ func TestGetFileContentAbsent(t *testing.T) {
 	}
 }
 
+func TestFileUnchangedComparesBlobSHA(t *testing.T) {
+	content := []byte("a large transcript...\n")
+	// The git blob sha of the content, so the server can echo it.
+	sha := gitBlobSHA(content)
+
+	same := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"sha": sha, "encoding": "none"})
+	})
+	if ok, err := same.FileUnchanged(context.Background(), "open-hai", "x", "transcript.jsonl", content); err != nil || !ok {
+		t.Errorf("matching blob sha should be unchanged: ok=%v err=%v", ok, err)
+	}
+
+	diff := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"sha": "deadbeef", "encoding": "none"})
+	})
+	if ok, err := diff.FileUnchanged(context.Background(), "open-hai", "x", "transcript.jsonl", content); err != nil || ok {
+		t.Errorf("a different sha should be changed: ok=%v err=%v", ok, err)
+	}
+
+	absent := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	if ok, _ := absent.FileUnchanged(context.Background(), "open-hai", "x", "new.txt", content); ok {
+		t.Error("an absent file is not unchanged")
+	}
+}
+
 func TestErrorStatusSurfaces(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)

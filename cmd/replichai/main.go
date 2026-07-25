@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -390,12 +389,14 @@ func commitTranscript(ctx context.Context, gh *github.Client, owner, name string
 	return nil
 }
 
-// commitBytesIfChanged writes a file only when its bytes differ from what is
-// there, so re-finalizing adds no redundant commit.
+// commitBytesIfChanged writes a file only when it differs from what is there,
+// so re-finalizing adds no redundant commit. It compares by git blob sha, which
+// works for files of any size — the transcript can exceed the Contents API's
+// inline limit.
 func commitBytesIfChanged(ctx context.Context, gh *github.Client, owner, name, path string, content []byte, message string) (bool, error) {
-	if existing, ok, err := gh.GetFileContent(ctx, owner, name, path); err != nil {
+	if unchanged, err := gh.FileUnchanged(ctx, owner, name, path, content); err != nil {
 		return false, err
-	} else if ok && bytes.Equal(existing, content) {
+	} else if unchanged {
 		return false, nil
 	}
 	if err := gh.PutFile(ctx, owner, name, path, message, content); err != nil {
