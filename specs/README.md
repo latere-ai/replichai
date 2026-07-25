@@ -2,6 +2,8 @@
 
 Designs, and the record of what got built. One spec per tightly-scoped feature; each states the problem, the decisions, the acceptance criteria, and what it deliberately leaves out. This page is the map: what exists today, how it fits, what is only designed, and the order it gets built.
 
+Feasibility questions and scope extensions that are *not* on the roadmap — multi-study papers, hard-to-replicate instruments — live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced.
+
 ## What replichai is
 
 Give it a paper. It resolves the paper's identity, runs an agent that reproduces the machine-runnable inner loop, publishes the reproduction as its own GitHub repository with the agent's commit history, and returns an independent verdict — recording every decision the paper left unwritten. It never simulates the outer loop (the human study); placing and defending that boundary is the point.
