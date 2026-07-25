@@ -22,6 +22,7 @@ go build ./cmd/replichai
 ```bash
 export REPLICHAI_API_KEY=...            # never commit this
 replichai audit https://arxiv.org/abs/2603.01795 --out runs
+replichai resolve 10.1145/3654777.3676417   # what identity and slug a reference gets
 replichai providers
 ```
 
@@ -44,18 +45,51 @@ The audit writes a reproduction repository into `runs/<paper>/`:
 
 Reproduction output is never committed to this repository. See [`docs/architecture.md`](docs/architecture.md).
 
+## Publish a reproduction
+
+With `--publish`, the reproduction gets its own GitHub repository and the agent
+commits into it live, so the history is the agent's own work rather than one
+squashed drop:
+
+```bash
+export REPLICHAI_GITHUB_TOKEN=...       # server-side; never enters the sandbox unscoped
+replichai audit https://arxiv.org/abs/2603.01795 --publish --invite <github-login>
+```
+
+The repository is created private under `open-hai` (override with `--owner` or
+`REPLICHAI_GITHUB_OWNER`), named from the paper's identity so repeat
+reproductions of one paper are related rather than colliding. When the run ends,
+the system — not the agent — verifies what was committed, writes
+`replication.json`, commits `transcript.jsonl` and `TRANSCRIPT.md`, and invites
+the collaborator.
+
+Long runs need not hold the process open. `--detach` starts the run and prints
+the command that finishes it later:
+
+```bash
+replichai audit <paper> --publish --detach
+replichai finish open-hai/<repo> <paper> --session <id> --invite <github-login>
+```
+
+`replichai publish <artifact-dir> <paper>` is the offline path: it previews what
+a filesystem forge would write, and writes it only with `-live`.
+
 ## Layout
 
 ```
-cmd/replichai/       the CLI — argument parsing and output only
+cmd/replichai/       the CLI — argument parsing, output, and the composition root
 internal/audit/      the orchestrator
+internal/paper/      resolving a reference to a stable identity and a slug
 internal/method/     loading the method from disk
 internal/provider/   the backend contract, domain types, and adapters
+internal/publish/    the manifest, the redistribution gate, the transcript, the forge seam
+internal/registry/   the derived registry of published reproductions
+internal/github/     the small GitHub client publishing needs
 method/              the audit itself — instructions, rubric, task template (data, not code)
 evals/               golden set: papers with known answers, used as a regression check
 docs/                architecture and procedure
-specs/               designs for work not yet built
-reference/python/    the Python reference implementation the Go port is checked against
+specs/               designs, and the record of what got built
+reference/python/    the Python reference implementation of the core, checked against Go
 ```
 
 ## The method is data
