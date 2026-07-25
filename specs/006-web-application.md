@@ -1,7 +1,7 @@
 # 006 — The web application
 
 **Status:** draft
-**Scope:** turning the audit engine into a single-tenant web service — submit a paper, watch it run, then take the reproduction out: own it on GitHub, or, if the platform trusts you, publish it publicly. Open at first only to an invited set of seed users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
+**Scope:** turning the audit engine into a single-tenant web service — submit a paper, watch it run, then take the reproduction out: own the repository, or, if the platform trusts you, publish it publicly. Open at first only to an invited set of seed users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
 **Depends on:** 002 (publishing). Consumes 003 (registry) and 005 (transcript).
 
 ## Problem
@@ -19,7 +19,7 @@ The core was built for this turn. `internal/audit` returns values instead of pri
 | Live progress | `audit.WithObserver(func(provider.RunStatus))` |
 | Token cost | `provider.Usage` on the run |
 | Publish to a repository | 002 |
-| The finished-reproduction list | 003 (derived from GitHub) |
+| The finished-reproduction list | 003 (derived from the forge) |
 | The full session trace | 005 (transcript) |
 
 The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
@@ -32,61 +32,70 @@ The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
 
 | State | Home | Why |
 |---|---|---|
-| Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process; GitHub cannot hold it |
-| Access grants, GitHub links, and who made what public — the deployment's own authorisation and audit trail | **Postgres** | Durable state the deployment owns; neither auth nor GitHub is asked to model it |
-| The finished-reproduction registry | **Derived from GitHub** (003) | Already decided; the manifests are the source of truth, and nothing should drift from them |
+| Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process; the forge cannot hold it |
+| Access grants, linked forge accounts, and who made what public — the deployment's own authorisation and audit trail | **Postgres** | Durable state the deployment owns; neither the IDP nor the forge is asked to model it |
+| The finished-reproduction registry | **Derived from the forge** (003) | Already decided; the manifests are the source of truth, and nothing should drift from them |
 
 So the database holds *jobs in flight* and *who may start one*, never reproductions. A completed job's durable record is its published repository, read back through 003. Deleting the job row loses nothing that matters; deleting a grant row only revokes access.
 
-**One identity is required; GitHub is optional.** Signing in is latere's job. A GitHub account is not a condition of using the service — it is one of two ways to take a finished reproduction out of it:
+**The identity provider is an OIDC provider and nothing more.** latere auth is where our users already have accounts, so it is the deployment's IDP — but the coupling stops at the standard. What we consume is one ID token payload:
 
-| Fact | Established by | Required? | Used for |
-|---|---|---|---|
-| latere principal (`sub`, email) | latere auth OIDC (`latere.ai/x/pkg/oidc`) | Always | Who this person is; the access gate below |
-| GitHub login | A one-time **link** step, OAuth-verified | Only to be invited as a collaborator | The target of the repository invitation |
+| Claim | Use |
+|---|---|
+| `sub` | The stable principal. Every row we own keys on it. |
+| `email` + `email_verified` | Seeding a grant for someone who has not signed in yet, and nothing else |
+| name / picture, from `/userinfo` | Display only, never stored |
 
-A user with no GitHub account runs an audit end to end, watches it, and reads its result, verdict, and transcript in the web application. What they cannot do without linking is receive the repository as a collaborator, because that is a GitHub-side grant and GitHub needs an account to grant it to. Making the reproduction *public* needs no GitHub account at all — the organisation already owns the repository, and the flip is the organisation's to make (see the trusted tier below).
+Nothing else. No IDP-issued roles, scopes, org membership, superadmin flag, delegation, or billing claim reaches an authorisation decision here — those are auth's vocabulary, and reading them would weld this product to one IDP's authorisation model. **Authentication is portable; authorisation is ours.** Concretely: use the standard-OIDC path (`latere.ai/x/pkg/oidclogin`, or any conformant library), a public PKCE client, and treat the result as a plain verified account. Swapping the issuer for another OIDC provider should be a config change, and a test that boots the gate against a stub issuer is what keeps it one.
 
-The link is stored against the principal, not the session — one row per principal, so a claim months later still knows where to send the invitation. Whether it is a column on the grant row or its own table is 006c/006f's to settle; it is written only by the link callback, never by a request body.
+Rejected: gating on an auth-issued `replichai:operate` scope or membership of a seed org. It looks like less code, but it puts our product's access policy in another service's schema and admin UI, and makes the beta undeployable against any other issuer.
 
-The GitHub login is *proven*, never typed. An earlier sketch had `claim { github_login }` take the name as a parameter; a wrong or hostile value would hand collaborator access on a private reproduction to a stranger, so the claim carries no name — it invites the linked account or fails. The GitHub OAuth here requests identity only; `repo` scope is never requested, at any point, for any user.
+**GitHub is optional, and contained behind one seam.** The product is about reproductions. GitHub is where they happen to be hosted — a *forge*, the word 002 already chose — and it stays that way in the code and in the UI:
 
-**Access by invitation only — a closed beta, fail-closed.** Anyone with a latere account can sign in. Signing in grants *nothing*. The operator surface — submitting papers, watching jobs, claiming reproductions, reading a run — is open only to principals a platform admin has granted access to. An authenticated, ungranted user is a first-class state, not an error: the UI tells them they are not yet a seed user and to contact the latere platform owners.
+- **In the code**, the web layer reaches GitHub only through 002's `publish.Forge` interface, which grows the two verbs this spec needs — `InviteCollaborator(ctx, repo, account)` and `SetVisibility(ctx, repo, public)` — plus one account-link adapter for the OAuth handshake. Nothing else imports a GitHub client. The job model, the access gate, the registry reader, and the HTTP handlers speak `Repo`, *account*, and *visibility*; only the adapter knows those mean collaborator invitations and `PATCH /repos/{owner}/{repo}`.
+- **In the UI**, GitHub appears on exactly one screen: the finished reproduction's *take it out* panel, for a user who wants to own it. It is absent from sign-in, from submitting, from watching a run, and from reading a result. A user who never wants a repository never sees the word.
+- Consequently `/me` reports *linked accounts*, not a `github_login`, and the link routes are `/{forge}`-parameterised. GitHub is the only implementation today; it is not the only shape the surface admits.
+
+A user with no forge account runs an audit end to end, watches it, and reads its result, verdict, and transcript in the web application. What they cannot do without linking is receive the repository as a collaborator, because that is a forge-side grant and the forge needs an account to grant it to. Making the reproduction *public* needs no account at all — the organisation already owns the repository, and the flip is the organisation's to make (see the trusted tier below).
+
+The link is stored against the principal, not the session — one row per principal and forge, so a claim months later still knows where to send the invitation. It is written only by the link callback, never by a request body: the account is *proven*, never typed. An earlier sketch had `claim { github_login }` take the name as a parameter, and a wrong or hostile value would have handed collaborator access on a private reproduction to a stranger; the claim now carries no name — it invites the linked account or fails. The link's OAuth requests identity only; `repo` scope is never requested, at any point, for any user.
+
+**Access by invitation only — a closed beta, fail-closed.** Anyone the issuer authenticates can sign in. Signing in grants *nothing*. The operator surface — submitting papers, watching jobs, claiming reproductions, reading a run — is open only to principals a platform admin has granted access to. An authenticated, ungranted user is a first-class state, not an error: the UI tells them they are not yet a seed user and to contact the latere platform owners.
 
 - Grants live in an `access_grants` table: `email` (primary key, how an admin seeds someone who has never signed in), `principal` (bound on that person's first login, unique thereafter), `tier`, `granted_by`, `granted_at`.
-- Seeding by email is what makes the flow work: an admin invites a colleague who has no latere `sub` yet, and the row binds to the principal when they first arrive. Match on the *verified* email from `/userinfo`, never a self-asserted one, and only until the row is bound. **Binding is one-way**: once `principal` is set, email is not consulted again for that row, and a second principal presenting the same email is refused rather than admitted onto someone else's grant.
+- Seeding by email is what makes the flow work: an admin invites a colleague who has no account with the issuer yet, and the row binds to the principal when they first arrive. Match on an `email_verified` claim, never a self-asserted address, and only until the row is bound. **Binding is one-way**: once `principal` is set, email is not consulted again for that row, and a second principal presenting the same email is refused rather than admitted onto someone else's grant.
 - **Fail-closed structurally.** An empty table admits nobody. The gate is a single check the operator routes cannot be mounted without, not a condition sprinkled through handlers — the same shape as 002's redistribution gate.
-- `AUTH_DEV_BYPASS` must never confer a grant on a non-loopback deployment. The dev bypass is for local work, not a back door into the beta.
+- No development shortcut may confer a grant. A stub issuer for local work authenticates a synthetic principal; it never seeds a row, and a deployment reachable off loopback refuses to start with one configured.
 
-Rejected: an env-var list of emails — cheap, but every grant costs a redeploy and leaves no record of who admitted whom. Deferred: delegating the decision to auth's org RBAC (a `replichai:operate` scope, membership of a seed org). It is the better long-run home, but the browser cookie session surfaces `Sub`/`Email`, not scopes or org, so it is a cross-repo project rather than a config choice. The gate is one seam; moving it there later changes one function.
+Rejected: an env-var list of emails — cheap, but every grant costs a redeploy and leaves no record of who admitted whom.
 
-An allowlist keyed on `principal_id` is not the local user table auth's integration guide forbids. It stores no profile — no name, no avatar, no email of record beyond the seed key. Display data still comes from `/userinfo`.
+The grant table is an ACL, not a user table: it stores a principal, an email used once as a seed key, and a tier. No name, no avatar, no profile. Display data is read from `/userinfo` per request and never persisted.
 
 **Three roles, and only one of them can make something public.** The `tier` on a grant is the whole authorisation model; there is no self-serve path up it.
 
 | Role | Who sets it | May |
 |---|---|---|
-| **Platform admin** | auth's `IsSuperadmin`, plus a bootstrap list of admin emails in the deployment env | Grant, revoke, and promote — and everything below |
+| **Platform admin** | A bootstrap list of admin emails in the deployment env, seeded into the table at startup; admins may promote others | Grant, revoke, and promote — and everything below |
 | **Trusted user** | A platform admin, explicitly | Everything below, **and** publish a reproduction publicly |
-| **Seed user** | A platform admin | Submit papers, watch runs, read results and transcripts, claim ownership if they have linked GitHub |
+| **Seed user** | A platform admin | Submit papers, watch runs, read results and transcripts, claim ownership if they have linked a forge account |
 
 Everyone else — signed in, ungranted — sees the not-invited screen.
 
-**Making a reproduction public is a trusted action, and it is one-way.** 002 publishes to the organisation privately and leaves the decision to go public to a human; this is the surface for that decision, and it needs no GitHub account on the user's side. The backend flips visibility with the organisation's own token (`PATCH /repos/{owner}/{repo}`). The constraints:
+**Making a reproduction public is a trusted action, and it is one-way.** 002 publishes to the organisation privately and leaves the decision to go public to a human; this is the surface for that decision, and it needs no forge account on the user's side. The backend calls `Forge.SetVisibility` with the organisation's own credential. The constraints:
 
 - **Trusted tier only.** A seed user sees the control and is told it needs trusted access; the server refuses regardless of what the UI shows.
 - **002's gate is the reason this is safe, and it is not bypassable here.** Only worker-written files were ever pushed, so going public redistributes nothing third-party by construction. The flip therefore refuses any repository it cannot account for as its own gated publication — no `replication.json`, an unknown schema, or a manifest whose `redistribution` block is missing means no flip.
-- **Treated as irreversible.** Public content is forked, cached, and crawled within minutes; flipping back is not an undo. It requires an explicit confirmation and records `made_public_by` and `made_public_at` in Postgres alongside the grants — audit state the deployment owns, and the one fact neither the manifest nor GitHub records, since GitHub knows the repository is public but not which of our principals decided it.
+- **Treated as irreversible.** Public content is forked, cached, and crawled within minutes; flipping back is not an undo. It requires an explicit confirmation and records `made_public_by` and `made_public_at` in Postgres alongside the grants — audit state the deployment owns, and the one fact neither the manifest nor the forge records, since the forge knows a repository is public but not which of our principals decided it.
 - **Trust, not ownership, is the check.** Any trusted user may publish any reproduction in the organisation, including one they did not submit. That is deliberate for a small closed beta of colleagues who can already read every reproduction, and the recorded decider is what makes it accountable. Scoping the flip to the submitter is a change to make when the population outgrows that assumption.
-- The registry (003) still derives from GitHub, so a newly public reproduction needs no separate index entry — it is the same repository, differently visible.
+- The registry (003) still derives from the forge, so a newly public reproduction needs no separate index entry — it is the same repository, differently visible.
 
-**Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's admin token, adds the user's linked GitHub username as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation the user accepts. The consequence is the whole trust model:
+**Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's credential, calls `Forge.InviteCollaborator` with the linked account, which for a non-member creates an invitation the user accepts. The consequence is the whole trust model:
 
-- GitHub OAuth is used only to **verify identity** — which GitHub account is really this person — never to act on their behalf.
+- The link's OAuth is used only to **verify identity** — which account is really this person — never to act on their behalf.
 - The service **never holds a user's repository credentials.** Trust flows outward: the organisation invites; the user accepts.
-- This is a composable step *after* 002 publishes. 002 stays identity-agnostic (it publishes to the organisation); the web layer adds "invite the submitter" on top, using the repo handle 002 returns.
+- This is a composable step *after* 002 publishes. 002 stays identity-agnostic (it publishes to the organisation); the web layer adds "invite the submitter" on top, using the `publish.Repo` handle 002 returns.
 
-Rejected: OAuth with `repo` scope so the service creates the repo under the user's account. It would make the service hold write credentials for every user's GitHub, invert the trust, and scatter reproductions across personal accounts instead of the one organisation the registry (003) reads.
+Rejected: OAuth with write scope so the service creates the repository under the user's own account. It would make the service hold write credentials for every user's forge, invert the trust, and scatter reproductions across personal accounts instead of the one organisation the registry (003) reads.
 
 **Asynchronous jobs, streamed progress.** An audit runs up to an hour (`audit.DefaultTimeout`), so a submission cannot block a request. Submitting enqueues a job; a worker runs the audit; the observer callback and the transcript events (005) stream to the browser. For a single-tenant, low-volume service the worker is an in-process goroutine pool over a Postgres-backed job table — no external queue to operate. Rejected for now: Redis / a dedicated queue; it is infrastructure the volume does not yet justify, and the job table already gives durability and retry.
 
@@ -102,30 +111,30 @@ Each is tightly scoped and gets its own design/implementation pass:
 |---|---|---|
 | **006a — HTTP API & progress streaming** | The server: submit, status, SSE event stream, and read endpoints wrapping 003/005 | wraps `internal/audit`, adds no engine logic; exposes its route set so 006c's gate test can enumerate it |
 | **006b — Job model & persistence** | The job lifecycle state machine and its Postgres schema; the in-process worker | submitted → resolving → running → publishing → done / failed |
-| **006c — Identity, tiers & the access gate** | latere OIDC sign-in, the `access_grants` table with its tier, the fail-closed gate, and the platform-admin grant endpoints | `latere.ai/x/pkg/oidc`; seeds by email, binds on first login |
+| **006c — Identity, tiers & the access gate** | Standard-OIDC sign-in, the `access_grants` table with its tier, the fail-closed gate, and the platform-admin grant endpoints | consumes `sub` + verified email only; seeds by email, binds on first login |
 | **006d — PDF ingestion** | Drag-and-drop upload → identity | un-defers 001's PDF-extraction path (text → DOI/arXiv, else content digest) |
 | **006e — Frontend** | Submit (URL or drop), live progress, hindsight inspection of transcript and usage, the not-invited screen, and the two exits (link/claim, go public) | consumes 006a's API; all copy in en and zh |
-| **006f — Taking a reproduction out** | The optional GitHub link and collaborator invitation, and the trusted-only visibility flip | extends 002's publish; no `repo`-scope tokens; the flip re-checks 002's manifest |
+| **006f — Taking a reproduction out** | The optional account link and collaborator invitation, and the trusted-only visibility flip | extends 002's `Forge` with `InviteCollaborator` + `SetVisibility`; the only package that names GitHub; the flip re-checks 002's manifest |
 
 ## Interface (the API surface, sketched)
 
 ```
-open to any latere account
-GET    /login  ·  /callback  ·  /logout  ·  /logout/notify    -> latere OIDC session
-GET    /me                                                    -> { principal, tier, github_login? }
+open to anyone the issuer authenticates
+GET    /login  ·  /callback  ·  /logout                       -> standard OIDC session
+GET    /me                                                    -> { principal, tier, linked_accounts }
 
 behind the access gate (granted seed users only)
 POST   /papers                 { url } | multipart PDF        -> { job_id }
 GET    /jobs/{id}                                             -> job status + phase
 GET    /jobs/{id}/events        (SSE)                         -> progress + transcript events
-POST   /jobs/{id}/claim                                       -> invites the linked GitHub account (409 if unlinked)
+POST   /jobs/{id}/claim                                       -> invites the linked account (409 if unlinked)
 GET    /reproductions                                         -> registry (003), derived
 GET    /reproductions/{id}                                    -> manifest + verdict + rate
 GET    /reproductions/{id}/transcript                         -> transcript (005)
-GET    /link/github  ·  GET /link/github/callback             -> optional; prove a GitHub login, identity scope only
+GET    /links/{forge}  ·  GET /links/{forge}/callback         -> optional; prove an account, identity scope only
 
 trusted users only
-POST   /reproductions/{id}/visibility  { public: true }       -> flips the org repo public, one-way
+POST   /reproductions/{id}/visibility  { public: true }       -> flips the org repository public, one-way
 
 platform admin only
 GET    /admin/access  ·  POST /admin/access { email, tier }  ·  DELETE /admin/access/{email}
@@ -140,16 +149,17 @@ Exact shapes are 006a's to settle; this fixes the surface, not the field names.
 These are invariants the whole must hold, verified as the children land:
 
 1. `internal/audit` and `internal/provider` change only by *additive* seams (the transcript, 005). The web is new packages and a new `cmd/`, never a rewrite of the engine.
-2. Job orchestration and access grants live in Postgres; the finished-reproduction registry is still derived from GitHub — no second source of truth for completed reproductions.
-3. The service never stores a user's GitHub credentials. Repository ownership is granted only by invitation to a *linked, OAuth-verified* account — never to a client-supplied name — and a test asserts no `repo`-scope token is ever requested or held.
+2. Job orchestration and access grants live in Postgres; the finished-reproduction registry is still derived from the forge — no second source of truth for completed reproductions.
+3. The service never stores a user's repository credentials. Ownership is granted only by invitation to a *linked, OAuth-verified* account — never to a client-supplied name — and no write scope on a user's forge account is ever requested or held.
 4. A submitted audit runs asynchronously; no HTTP request blocks for the run, and progress is observable while it runs.
 5. The whole system comes up locally with `docker compose` and one backend credential — no per-user secrets.
-6. Every read surface (registry, a reproduction, its transcript) is the same data the CLI and GitHub already hold, presented — never a divergent copy.
-7. The access gate is fail-closed: with an empty `access_grants` table, a valid latere session reaches no operator route. A test enumerates the gated routes and asserts each answers `not_invited` for an authenticated, ungranted principal — enumerated from the router, so a new route added without a grant check fails the test rather than silently shipping open.
+6. Every read surface (registry, a reproduction, its transcript) is the same data the CLI and the forge already hold, presented — never a divergent copy.
+7. The access gate is fail-closed: with an empty `access_grants` table, an authenticated session reaches no operator route. A test enumerates the gated routes and asserts each answers `not_invited` for an authenticated, ungranted principal — enumerated from the router, so a new route added without a grant check fails the test rather than silently shipping open.
 8. A grant seeded by a verified email admits that person on their first sign-in and binds to their principal; a second principal presenting that email afterwards is refused. Revoking the grant locks the holder out on the next request, with no session left standing.
-9. A GitHub account is required for nothing but the collaborator invitation. A test drives an unlinked seed user from submission to a read result and transcript end to end; `claim` is the only route that answers differently (`409`).
-10. Only a trusted user can make a reproduction public — with no GitHub identity linked — and only one this service published under 002's gate. A seed user's flip is refused server-side even when the request is forged past the UI, and a repository with no accountable manifest is refused for everyone.
+9. A forge account is required for nothing but the collaborator invitation. A test drives an unlinked seed user from submission to a read result and transcript end to end; `claim` is the only route that answers differently (`409`).
+10. Only a trusted user can make a reproduction public — with no forge account linked — and only one this service published under 002's gate. A seed user's flip is refused server-side even when the request is forged past the UI, and a repository with no accountable manifest is refused for everyone.
+11. The IDP is replaceable and the forge is contained. Every gate and tier test runs against a stub issuer, with no claim beyond `sub` and verified email reaching an authorisation decision; every job, gate, and API test runs against a fake `Forge`, with GitHub named only inside its adapter and the account-link adapter.
 
 ## Out of scope
 
-Multi-tenancy, tenant isolation, per-user backend credentials, and billing — the single-tenant scoping exists precisely to defer these. Self-serve access: no signup, no waitlist queue, no automated approval — a platform admin grants access out of band, and the not-invited screen says so. Moving authorisation into auth's org RBAC (deferred behind the gate seam, above). Clearing a third-party file for redistribution — 002 defers it and going public inherits that deferral, so a public reproduction is still worker-written files only. Un-publishing: flipping a repository back to private is a manual operation on GitHub, not a product feature, because it does not undo anything. The engine's internals. The choice of frontend framework, which is 006e's to make.
+Multi-tenancy, tenant isolation, per-user backend credentials, and billing — the single-tenant scoping exists precisely to defer these. Self-serve access: no signup, no waitlist queue, no automated approval — a platform admin grants access out of band, and the not-invited screen says so. Reading anything from the IDP beyond the account payload — its roles, orgs, delegations, and billing are another product's model, not ours. A second forge implementation: the seam admits one, but GitHub is the only adapter this track builds. Clearing a third-party file for redistribution — 002 defers it and going public inherits that deferral, so a public reproduction is still worker-written files only. Un-publishing: flipping a repository back to private is a manual operation on the forge, not a product feature, because it does not undo anything. The engine's internals. The choice of frontend framework, which is 006e's to make.
