@@ -62,6 +62,22 @@ func TestManifestForReflectsCleanliness(t *testing.T) {
 	}
 }
 
+func TestSameManifestIgnoresCreated(t *testing.T) {
+	id := paper.Identity{Key: "arxiv:2302.03714", Scheme: paper.SchemeArXiv, Slug: "s"}
+	a := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed,
+		time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC), true)
+	b := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed,
+		time.Date(2026, 7, 25, 11, 30, 0, 0, time.UTC), true) // different time only
+	if !SameManifest(a, b) {
+		t.Error("manifests differing only in created should be the same")
+	}
+
+	c := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed, a.Reproduction.Created, false)
+	if SameManifest(a, c) {
+		t.Error("a different redistribution review must not be the same")
+	}
+}
+
 func TestEligibleForPublic(t *testing.T) {
 	clear := Manifest{Redistribution: Redistribution{ThirdPartyData: false, Review: ReviewClear}}
 	if ok, reason := EligibleForPublic(clear); !ok {

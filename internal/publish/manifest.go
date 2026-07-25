@@ -9,6 +9,7 @@
 package publish
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/paper"
@@ -68,3 +69,12 @@ const (
 	ReviewClear    = "clear"    // nothing was withheld
 	ReviewExcluded = "excluded" // third-party files were quarantined
 )
+
+// SameManifest reports whether two manifests are materially equal, ignoring the
+// created timestamp. Re-finalizing a reproduction whose facts have not changed
+// then rewrites nothing, so it adds no redundant commit.
+func SameManifest(a, b Manifest) bool {
+	a.Reproduction.Created = time.Time{}
+	b.Reproduction.Created = time.Time{}
+	return reflect.DeepEqual(a, b)
+}

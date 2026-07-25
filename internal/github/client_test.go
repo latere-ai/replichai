@@ -209,6 +209,34 @@ func TestPutFileNewAndUpdate(t *testing.T) {
 	}
 }
 
+func TestGetFileContentDecodesBase64(t *testing.T) {
+	want := []byte(`{"schema":1}`)
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/repos/open-hai/x/contents/replication.json" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		// GitHub wraps base64 at 60 cols; include a newline to prove we strip it.
+		enc := base64.StdEncoding.EncodeToString(want)
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": enc[:4] + "\n" + enc[4:], "encoding": "base64"})
+	})
+	got, ok, err := c.GetFileContent(context.Background(), "open-hai", "x", "replication.json")
+	if err != nil || !ok {
+		t.Fatalf("GetFileContent: ok=%v err=%v", ok, err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("content = %q, want %q", got, want)
+	}
+}
+
+func TestGetFileContentAbsent(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	if _, ok, err := c.GetFileContent(context.Background(), "open-hai", "x", "replication.json"); ok || err != nil {
+		t.Errorf("absent file should be ok=false, no error; got ok=%v err=%v", ok, err)
+	}
+}
+
 func TestErrorStatusSurfaces(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
