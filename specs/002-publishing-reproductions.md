@@ -12,7 +12,7 @@ An audit currently ends with files in a local directory. They should end up as a
 
 **One reproduction, one repository.** Named `<slug>-<suffix>`, where `slug` comes from 001 and `suffix` is four lowercase base-32 characters. Every repository carries a suffix — including the first — so no reproduction is privileged and adding a second never requires renaming the first.
 
-**Visibility: private.** All published repositories are created private. Making them public is a deliberate, separate decision per repository, taken by a human, and is gated on the licence check below.
+**Visibility: private.** All published repositories are created private. Making them public is a deliberate, separate decision per repository, taken by a human, and is gated on the licence check below. This spec never makes anything public; [006](006-web-application.md) gives that human decision a surface, restricted to trusted users and refused for any repository whose manifest does not show it was published under this gate.
 
 **Every repository carries a manifest.** `replication.json` at the root:
 
