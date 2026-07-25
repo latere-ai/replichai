@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -93,6 +95,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long a run may take")
 		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "revision budget")
+		doPublish    = fs.Bool("publish", false, "mount a GitHub repo and publish the reproduction to it")
+		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
+		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
 	)
 	// flag stops parsing at the first non-flag argument, so a plain
 	// fs.Parse would silently drop every flag in
@@ -124,15 +129,28 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		return err
 	}
 
-	auditor := audit.New(p, m,
+	opts := []audit.Option{
 		audit.WithMaxRevisions(*maxRevisions),
 		audit.WithPollInterval(*interval),
 		audit.WithTimeout(*timeout),
 		audit.WithObserver(func(s provider.RunStatus) {
 			fmt.Fprintf(stderr, "  %s\n", s.State)
 		}),
-	)
+	}
 
+	// When publishing, create the repository up front and mount it, so the
+	// worker commits its reproduction into it as it runs.
+	var pub *publisher
+	if *doPublish {
+		pub, err = newPublisher(ctx, *owner, paper, *timeout)
+		if err != nil {
+			return err
+		}
+		opts = append(opts, audit.WithMount(pub.mount))
+		fmt.Fprintf(stderr, "  publishing to %s\n", pub.repoFullName())
+	}
+
+	auditor := audit.New(p, m, opts...)
 	dst := filepath.Join(*out, slugify(paper))
 	started := time.Now()
 	result, err := auditor.Run(ctx, paper, dst)
@@ -143,10 +161,113 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	fmt.Fprintf(stdout, "verdict:   %s\n", result.Grade())
 	fmt.Fprintf(stdout, "artifacts: %d -> %s\n", len(result.Artifacts), result.ArtifactDir)
 	fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
+
+	if pub != nil {
+		if err := pub.finalize(ctx, result, *invite, stdout); err != nil {
+			return err
+		}
+	}
 	if !result.Passed() {
 		return errExitQuiet
 	}
 	return nil
+}
+
+// publisher holds the GitHub state for one --publish run: the created repo, the
+// mount handed to the sandbox, and the identity the manifest records.
+type publisher struct {
+	gh    *github.Client
+	owner string
+	name  string
+	id    paper.Identity
+	mount provider.RepoMount
+}
+
+func (p *publisher) repoFullName() string { return p.owner + "/" + p.name }
+
+// newPublisher resolves the paper, creates the private repository, and prepares
+// the mount. The GitHub token comes from REPLICHAI_GITHUB_TOKEN.
+func newPublisher(ctx context.Context, owner, paperRef string, timeout time.Duration) (*publisher, error) {
+	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("--publish needs REPLICHAI_GITHUB_TOKEN set")
+	}
+	id, err := paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: timeout}))
+	if err != nil {
+		return nil, err
+	}
+	suffix, err := publish.NewSuffix()
+	if err != nil {
+		return nil, err
+	}
+	name := id.Slug + "-" + suffix
+
+	gh := github.New(token)
+	repo, err := gh.CreateRepo(ctx, owner, name, true)
+	if errors.Is(err, github.ErrRepoExists) {
+		repo, err = gh.GetRepo(ctx, owner, name)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("prepare repository: %w", err)
+	}
+	return &publisher{
+		gh:    gh,
+		owner: owner,
+		name:  name,
+		id:    id,
+		mount: provider.RepoMount{URL: repo.HTMLURL, Token: token, MountPath: audit.DefaultMountPath},
+	}, nil
+}
+
+// finalize runs after the audit: verify what was committed, write the manifest,
+// and invite the collaborator.
+func (p *publisher) finalize(ctx context.Context, result audit.Result, invite string, stdout *os.File) error {
+	head, err := p.gh.HeadCommit(ctx, p.owner, p.name)
+	if err != nil {
+		return fmt.Errorf("read head commit: %w", err)
+	}
+	tree, err := p.gh.TreePaths(ctx, p.owner, p.name, head)
+	if err != nil {
+		return fmt.Errorf("read committed tree: %w", err)
+	}
+	leaked := publish.VerifyTree(tree)
+
+	manifest := publish.ManifestFor(p.id, p.repoFullName(), result.MethodDigest,
+		result.Grade(), time.Now(), len(leaked) == 0)
+	raw, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := p.gh.PutFile(ctx, p.owner, p.name, publish.ManifestFile,
+		"chore: reproduction manifest", append(raw, '\n')); err != nil {
+		return fmt.Errorf("commit manifest: %w", err)
+	}
+
+	fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", p.repoFullName())
+	fmt.Fprintf(stdout, "commit:    %s\n", head)
+	if len(leaked) == 0 {
+		fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
+	} else {
+		fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked — repo kept private:\n", len(leaked))
+		for _, path := range leaked {
+			fmt.Fprintf(stdout, "  - %s\n", path)
+		}
+	}
+	if invite != "" {
+		if err := p.gh.Invite(ctx, p.owner, p.name, invite); err != nil {
+			return fmt.Errorf("invite %s: %w", invite, err)
+		}
+		fmt.Fprintf(stdout, "invited:   %s\n", invite)
+	}
+	return nil
+}
+
+// envOr returns the environment value for key, or fallback when it is unset.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) error {
@@ -331,6 +452,9 @@ flags for audit:
   -interval       gap between status checks
   -timeout        how long a run may take
   -max-revisions  revision budget
+  -publish        mount a GitHub repo and publish the reproduction to it
+  -owner          GitHub owner for -publish (default "`+publish.DefaultOrg+`")
+  -invite         GitHub login to invite as a collaborator
 
 flags for resolve:
   -timeout        network timeout for a single fetch (default 30s)

@@ -230,6 +230,17 @@ func TestPublishPreviewThenLive(t *testing.T) {
 	}
 }
 
+func TestAuditPublishNeedsAToken(t *testing.T) {
+	// --publish is guarded before any run: without a GitHub token it fails
+	// early, so this exercises the wiring entirely offline.
+	t.Setenv("REPLICHAI_GITHUB_TOKEN", "")
+	_, _, err := capture(t, "audit", "10.1145/3025453.3025912",
+		"--provider", "memory", "--method", writeMethod(t), "--publish")
+	if err == nil || !strings.Contains(err.Error(), "REPLICHAI_GITHUB_TOKEN") {
+		t.Fatalf("want a missing-token error, got %v", err)
+	}
+}
+
 func TestPublishRequiresTwoPositionals(t *testing.T) {
 	for _, args := range [][]string{{"publish"}, {"publish", "only-one-arg"}} {
 		_, stderr, err := capture(t, args...)
