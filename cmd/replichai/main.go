@@ -49,6 +49,10 @@ func main() {
 // errExitQuiet signals a non-zero exit whose reason was already reported.
 var errExitQuiet = errors.New("exit")
 
+// identityFile records the resolved paper identity in a published repository, so
+// finish reads it from the repo instead of re-resolving over the paper source.
+const identityFile = ".replichai/paper.json"
+
 func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if len(args) == 0 {
 		usage(stderr)
@@ -261,6 +265,16 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 	if err != nil {
 		return nil, fmt.Errorf("prepare repository: %w", err)
 	}
+
+	// Record the resolved identity into the repository so finish reads it from
+	// here rather than re-resolving over the (slow, rate-limited) paper source.
+	if raw, mErr := json.MarshalIndent(id, "", "  "); mErr == nil {
+		if _, cErr := gh.CommitFiles(ctx, owner, name, "chore: record paper identity",
+			map[string][]byte{identityFile: append(raw, '\n')}); cErr != nil {
+			fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", cErr)
+		}
+	}
+
 	return &publisher{
 		gh:    gh,
 		owner: owner,
@@ -268,6 +282,21 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		id:    id,
 		mount: provider.RepoMount{URL: repo.HTMLURL, Token: token, MountPath: audit.DefaultMountPath},
 	}, nil
+}
+
+// readRecordedIdentity returns the identity the publisher recorded in the repo,
+// or a zero identity when none is present (an older or hand-created repository),
+// so the caller falls back to re-resolving.
+func readRecordedIdentity(ctx context.Context, gh *github.Client, owner, name string) (paper.Identity, error) {
+	raw, ok, err := gh.GetFileContent(ctx, owner, name, identityFile)
+	if err != nil || !ok {
+		return paper.Identity{}, err
+	}
+	var id paper.Identity
+	if json.Unmarshal(raw, &id) != nil {
+		return paper.Identity{}, nil // unreadable — treat as absent
+	}
+	return id, nil
 }
 
 // shortDigest abbreviates "sha256:1f2e3a…" to "sha256:1f2e" for operator output.
@@ -427,10 +456,20 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	if token == "" {
 		return fmt.Errorf("finish needs REPLICHAI_GITHUB_TOKEN set")
 	}
-	id, err := paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: 30 * time.Second}))
+	gh := github.New(token)
+
+	// Prefer the identity the publisher recorded in the repository; only fall
+	// back to re-resolving (which hits the paper source) when it is absent.
+	id, err := readRecordedIdentity(ctx, gh, owner, name)
 	if err != nil {
 		return err
 	}
+	if id.Key == "" {
+		if id, err = paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: 30 * time.Second})); err != nil {
+			return err
+		}
+	}
+
 	m, err := method.Load(*methodDir)
 	if err != nil {
 		return err
@@ -460,7 +499,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		_ = verdict.UnmarshalJSON([]byte(`"` + *verdictFlag + `"`))
 	}
 
-	return finalizePublication(ctx, github.New(token), owner, name, id, m.Digest(), verdict, events, *invite, stdout)
+	return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, events, *invite, stdout)
 }
 
 // waitForSession polls a session by id until it settles or the deadline passes.

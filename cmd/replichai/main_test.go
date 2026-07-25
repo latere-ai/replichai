@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/github"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -32,6 +36,32 @@ func TestHTTPFetcherRetriesTransientFailures(t *testing.T) {
 	}
 	if string(body) != "ok" || calls != 2 {
 		t.Errorf("expected a retry to succeed: body=%q calls=%d", body, calls)
+	}
+}
+
+func TestReadRecordedIdentity(t *testing.T) {
+	want := paper.Identity{Key: "10.1145/x", Scheme: paper.SchemeDOI, Title: "A Paper", Slug: "a-paper"}
+	raw, _ := json.Marshal(want)
+
+	present := github.New("t", github.WithBaseURL(httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"content": base64.StdEncoding.EncodeToString(raw), "encoding": "base64",
+			})
+		})).URL))
+	got, err := readRecordedIdentity(context.Background(), present, "open-hai", "x")
+	if err != nil {
+		t.Fatalf("readRecordedIdentity: %v", err)
+	}
+	if got.Key != want.Key || got.Scheme != want.Scheme || got.Slug != want.Slug {
+		t.Errorf("read identity = %+v, want %+v", got, want)
+	}
+
+	// Absent (no recorded file) → zero identity, so the caller re-resolves.
+	absent := github.New("t", github.WithBaseURL(httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })).URL))
+	if got, err := readRecordedIdentity(context.Background(), absent, "open-hai", "x"); err != nil || got.Key != "" {
+		t.Errorf("absent identity should be zero: got=%+v err=%v", got, err)
 	}
 }
 
