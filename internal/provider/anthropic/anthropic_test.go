@@ -244,6 +244,46 @@ func TestStartRunWithoutMountSendsNoResources(t *testing.T) {
 	}
 }
 
+func TestTranscriptTranslatesEvents(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/events") {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		writeJSON(t, w, map[string]any{
+			"has_more": false,
+			"data": []any{
+				map[string]any{
+					"type":         "agent.message",
+					"content":      []any{map[string]any{"type": "text", "text": "hello"}},
+					"processed_at": "2026-07-25T10:00:00Z",
+				},
+				map[string]any{"type": "agent.thinking", "processed_at": "2026-07-25T10:00:01Z"},
+				map[string]any{"type": "span.outcome_evaluation_end", "occurred_at": "2026-07-25T10:00:02Z"},
+			},
+		})
+	})
+
+	events, err := p.Transcript(context.Background(), provider.RunHandle{ID: "sesn_1"})
+	if err != nil {
+		t.Fatalf("Transcript: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("want 3 events, got %d", len(events))
+	}
+	if events[0].Role != "agent" || events[0].Kind != "message" || events[0].Content != "hello" {
+		t.Errorf("message event = %+v", events[0])
+	}
+	if events[1].Role != "agent" || events[1].Kind != "thinking" || events[1].Content != "" {
+		t.Errorf("thinking event = %+v", events[1])
+	}
+	if events[2].Role != "system" || events[2].Kind != "outcome_evaluation_end" {
+		t.Errorf("span event = %+v", events[2])
+	}
+	if len(events[0].Raw) == 0 {
+		t.Error("Raw should preserve the original event")
+	}
+}
+
 func TestPollTranslatesStatesAndGrades(t *testing.T) {
 	cases := []struct {
 		name          string
