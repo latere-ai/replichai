@@ -35,7 +35,7 @@ The mount token grants write to exactly the one repository it belongs to. A leak
 
 **The mounted repository is a bounded workspace.** Because the agent pushes live, the publisher can no longer pre-filter — so the boundary moves into the method. The worker is instructed to commit only its reproduction (the reports and `src/`) into the mounted repo, and to keep every download (paper PDF, benchmark, corpus) in a scratch directory *outside* the mount. Third-party data then physically cannot be committed, and live push is safe by construction. This is a method change, and it is the primary control.
 
-**The 002 gate becomes a post-run verifier.** `publish.Classify` no longer filters files before a push that has already happened; it *verifies* the pushed tree contains only worker-written paths. A tree that verifies clean gets `redistribution: clear` and is eligible for the visibility flip. A tree that does not is flagged, kept private, and **barred from ever being made public** — the fail-closed posture, now enforced after the fact.
+**The gate becomes a post-run verifier — and it must invert.** The publisher can no longer filter before a push that has already happened; it *verifies* the committed tree afterwards. But 002's allow-list (worker = the four report files and `src/`) is wrong here: an agent-authored repository is a real software project — `.gitignore`, `LICENSE`, `requirements.txt`, tests, configs, generated results — not a fixed set of report files, so an allow-list flags all of it. So the method is the primary control (keep downloads out of the repository), and `publish.VerifyTree` is the backstop: it flags only what is almost certainly third-party — the paper PDF, a dataset, model weights, an archive, a database, or a leaked secret. A tree that verifies clean gets `redistribution: clear` and is eligible for the visibility flip; a tree that flags anything is kept private and **barred from ever being made public** — the fail-closed posture, enforced after the fact.
 
 **Ownership by invitation.** The user is added as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation they accept. The username is the *proven* GitHub login from 006c's link step, never a typed one. No user ever grants the service `repo` scope; the organisation invites outward.
 
@@ -71,14 +71,14 @@ func (c *Client) SetPublic(ctx, owner, name string) error
 func (c *Client) MintMountToken(ctx, owner, name string) (string, error)
 ```
 
-`publish.Classify` and the manifest from 002 are reused unchanged — the gate's *logic* is the same; only its moment moves from before the push to after.
+The manifest from 002 is reused unchanged. The redistribution *check* is not: `publish.VerifyTree` flags committed third-party data (by a blocklist of paper/dataset/weights/archive/database extensions, plus secret names), where 002's `PlanPublication` allow-listed a fixed output set. Different shape of input — a full repository, not a method's fixed output — demands a different rule.
 
 ## Acceptance criteria
 
 1. The adapter mounts a repository when `RunSpec.Mount` is set and audits identically when it is not — asserted against the memory adapter (mount ignored) and by a unit test of the anthropic adapter's session params carrying the `github_repository` resource.
 2. The two tokens never cross: a test asserts the server token is never placed in a `RepoMount`, and the mount token grants only the one repository.
 3. The bounded-workspace method keeps third-party data out of the repo — verified by an evaluation case whose reproduction repository contains only worker-written paths.
-4. `Classify` verifies the pushed tree: a committed third-party file yields `redistribution.review != "clear"`, and such a repository is refused by `SetPublic`.
+4. `VerifyTree` flags committed third-party data (a paper PDF, dataset, weights, archive, database, or secret) but not a normal repository's own files (`.gitignore`, deps, tests, results); a flagged tree yields `redistribution.review != "clear"` and is refused for the public flip. A test asserts a real reproduction repo verifies clean.
 5. Inviting a user adds them as a collaborator and requests no `repo` scope from them — asserted against a fake GitHub server.
 6. `SetPublic` is trusted-only, refuses a repository whose manifest is not `clear`, and records the deciding principal — asserted directly.
 
