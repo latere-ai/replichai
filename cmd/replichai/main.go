@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -188,7 +189,12 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
 
 	if pub != nil {
-		if err := pub.finalize(ctx, result, *invite, stdout); err != nil {
+		events, terr := p.Transcript(ctx, result.Handle)
+		if terr != nil {
+			fmt.Fprintf(stderr, "  transcript unavailable: %v\n", terr)
+			events = nil
+		}
+		if err := pub.finalize(ctx, result, events, *invite, stdout); err != nil {
 			return err
 		}
 	}
@@ -275,15 +281,17 @@ func shortDigest(d string) string {
 
 // finalize runs after the audit: verify what was committed, write the manifest,
 // and invite the collaborator.
-func (p *publisher) finalize(ctx context.Context, result audit.Result, invite string, stdout *os.File) error {
+func (p *publisher) finalize(ctx context.Context, result audit.Result, events []provider.Event, invite string, stdout *os.File) error {
 	return finalizePublication(ctx, p.gh, p.owner, p.name, p.id,
-		result.MethodDigest, result.Grade(), invite, stdout)
+		result.MethodDigest, result.Grade(), events, invite, stdout)
 }
 
-// finalizePublication verifies the committed tree, writes replication.json, and
-// invites the collaborator. It reads the repository from GitHub, so it works
-// whether the run finished in-process or is picked up afterwards by finish.
-func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, invite string, stdout *os.File) error {
+// finalizePublication verifies the committed tree, writes replication.json,
+// commits the transcript, and invites the collaborator — the system-authored
+// attestation (verdict + evidence) beside the agent's work. It reads the
+// repository from GitHub, so it works whether the run finished in-process or is
+// picked up afterwards by finish.
+func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
 	repoFull := owner + "/" + name
 	head, err := gh.HeadCommit(ctx, owner, name)
 	if err != nil {
@@ -314,6 +322,14 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 			fmt.Fprintf(stdout, "  - %s\n", path)
 		}
 	}
+
+	// Commit the transcript — the evidence layer — in the same moment.
+	if len(events) > 0 {
+		if err := commitTranscript(ctx, gh, owner, name, events, stdout); err != nil {
+			return err
+		}
+	}
+
 	if invite != "" {
 		if err := gh.Invite(ctx, owner, name, invite); err != nil {
 			return fmt.Errorf("invite %s: %w", invite, err)
@@ -342,6 +358,48 @@ func commitManifestIfChanged(ctx context.Context, gh *github.Client, owner, name
 	if err := gh.PutFile(ctx, owner, name, publish.ManifestFile,
 		"chore: reproduction manifest", append(raw, '\n')); err != nil {
 		return false, fmt.Errorf("commit manifest: %w", err)
+	}
+	return true, nil
+}
+
+// commitTranscript renders the run's events and commits transcript.jsonl and
+// TRANSCRIPT.md when they change — the evidence layer, committed by the system
+// beside the manifest. A transcript carrying a secret is reported and bars the
+// public flip.
+func commitTranscript(ctx context.Context, gh *github.Client, owner, name string, events []provider.Event, stdout *os.File) error {
+	jsonl, md := publish.RenderTranscript(events)
+	changedJ, err := commitBytesIfChanged(ctx, gh, owner, name, publish.TranscriptJSONL, jsonl, "chore: reproduction transcript")
+	if err != nil {
+		return err
+	}
+	changedM, err := commitBytesIfChanged(ctx, gh, owner, name, publish.TranscriptMD, md, "chore: reproduction transcript")
+	if err != nil {
+		return err
+	}
+	if changedJ || changedM {
+		fmt.Fprintf(stdout, "transcript: %d events committed\n", len(events))
+	} else {
+		fmt.Fprintln(stdout, "transcript: already current (no new commit)")
+	}
+	if leaks := publish.TranscriptLeaks(events); len(leaks) > 0 {
+		fmt.Fprintf(stdout, "transcript: %d event(s) carry a secret — bars the public flip:\n", len(leaks))
+		for _, l := range leaks {
+			fmt.Fprintf(stdout, "  - event %d: %s\n", l.Index, l.Reason)
+		}
+	}
+	return nil
+}
+
+// commitBytesIfChanged writes a file only when its bytes differ from what is
+// there, so re-finalizing adds no redundant commit.
+func commitBytesIfChanged(ctx context.Context, gh *github.Client, owner, name, path string, content []byte, message string) (bool, error) {
+	if existing, ok, err := gh.GetFileContent(ctx, owner, name, path); err != nil {
+		return false, err
+	} else if ok && bytes.Equal(existing, content) {
+		return false, nil
+	}
+	if err := gh.PutFile(ctx, owner, name, path, message, content); err != nil {
+		return false, fmt.Errorf("commit %s: %w", path, err)
 	}
 	return true, nil
 }
@@ -398,6 +456,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	}
 
 	verdict := provider.GradeUnknown
+	var events []provider.Event
 	if *session != "" {
 		p, err := provider.Get(*providerName)
 		if err != nil {
@@ -410,11 +469,17 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		if status.Verdict != nil {
 			verdict = status.Verdict.Grade
 		}
+		// Fetch the transcript before the session is released; a failure is not
+		// fatal to the manifest and invite.
+		if events, err = p.Transcript(ctx, provider.RunHandle{ID: *session}); err != nil {
+			fmt.Fprintf(stderr, "  transcript unavailable: %v\n", err)
+			events = nil
+		}
 	} else if *verdictFlag != "" {
 		_ = verdict.UnmarshalJSON([]byte(`"` + *verdictFlag + `"`))
 	}
 
-	return finalizePublication(ctx, github.New(token), owner, name, id, m.Digest(), verdict, *invite, stdout)
+	return finalizePublication(ctx, github.New(token), owner, name, id, m.Digest(), verdict, events, *invite, stdout)
 }
 
 // waitForSession polls a session by id until it settles or the deadline passes.
