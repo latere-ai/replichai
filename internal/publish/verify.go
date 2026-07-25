@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"strings"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/paper"
@@ -13,22 +14,47 @@ import (
 // afterwards as a verifier of what was actually committed, and as the guard on
 // the one irreversible action: making a reproduction public.
 
-// VerifyTree checks that every committed path is worker-written, and returns
-// the paths that are not. An empty result means the bounded workspace held —
-// only the reproduction's own files were committed. A non-empty result means
-// third-party content leaked into the repository, which bars it from ever being
-// made public.
+// VerifyTree checks a mounted repository's committed tree for third-party
+// content that should not have been committed, and returns the offending paths.
+// An empty result means the bounded workspace held — the agent committed its
+// reproduction and kept downloads out. A non-empty result bars the repository
+// from ever being made public.
 //
-// It reuses Classify, so the rule verified here is exactly the rule 002
-// enforced: the gate's logic is one place, only its moment moves.
+// Unlike 002's PlanPublication, this cannot allow-list: an agent-authored repo
+// is a real software project — .gitignore, LICENSE, requirements.txt, tests,
+// configs, generated results — not a fixed set of report files. So the method
+// is the primary control (keep downloads out of the repo), and this is the
+// backstop: it flags only what is almost certainly third-party — the paper, a
+// dataset, model weights, an archive, or a leaked secret. Everything else is
+// presumed the reproduction's own work.
 func VerifyTree(paths []string) []string {
-	var leaked []string
+	var flagged []string
 	for _, p := range paths {
-		if include, _ := Classify(Provenance{Path: p, Origin: originOf(p)}); !include {
-			leaked = append(leaked, p)
+		if isThirdPartyData(p) || isSecretName(p) {
+			flagged = append(flagged, p)
 		}
 	}
-	return leaked
+	return flagged
+}
+
+// thirdPartyExts are file types that, committed into a reproduction repository,
+// are almost always redistributed third-party content rather than the
+// reproduction's own source or results: a paper or document, a bulk dataset,
+// model weights, or an archive.
+var thirdPartyExts = map[string]bool{
+	".pdf": true, ".ps": true, ".doc": true, ".docx": true,
+	".zip": true, ".tar": true, ".gz": true, ".tgz": true, ".bz2": true, ".xz": true, ".7z": true, ".rar": true,
+	".h5": true, ".hdf5": true, ".parquet": true, ".arrow": true, ".feather": true,
+	".pt": true, ".pth": true, ".ckpt": true, ".safetensors": true, ".onnx": true, ".pb": true, ".weights": true,
+	".sqlite": true, ".sqlite3": true, ".db": true, ".mdb": true,
+}
+
+func isThirdPartyData(p string) bool {
+	dot := strings.LastIndex(p, ".")
+	if dot < 0 {
+		return false
+	}
+	return thirdPartyExts[strings.ToLower(p[dot:])]
 }
 
 // ManifestFor builds the manifest for a reproduction the worker committed into
