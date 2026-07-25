@@ -7,6 +7,8 @@
 package method
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -29,6 +31,23 @@ type Method struct {
 	Instructions string
 	Rubric       string
 	TaskTemplate string
+}
+
+// Digest pins which version of the method produced a reproduction, as
+// "sha256:<hex>". Two reproductions are only comparable if their digests match.
+// The three documents are framed with length-prefixed labels so no edit that
+// moves a byte across the boundary between them can go unnoticed.
+func (m Method) Digest() string {
+	h := sha256.New()
+	for _, part := range []struct{ name, text string }{
+		{"instructions", m.Instructions},
+		{"rubric", m.Rubric},
+		{"task-template", m.TaskTemplate},
+	} {
+		fmt.Fprintf(h, "%s:%d:", part.name, len(part.text))
+		h.Write([]byte(part.text))
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // TaskFor renders the task for one paper reference.

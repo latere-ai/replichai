@@ -125,6 +125,30 @@ func TestDiscoverFailsCleanlyWhenNothingIsAbove(t *testing.T) {
 	}
 }
 
+func TestDigestIsStableAndDistinguishing(t *testing.T) {
+	m := Method{Instructions: "audit", Rubric: "1. verdict", TaskTemplate: "do {{PAPER}}"}
+	d := m.Digest()
+	if !strings.HasPrefix(d, "sha256:") {
+		t.Errorf("digest %q lacks the sha256: prefix", d)
+	}
+	if d != m.Digest() {
+		t.Error("digest is not stable across calls")
+	}
+	// A change to any document changes the digest.
+	changed := m
+	changed.Rubric = "2. verdict"
+	if changed.Digest() == d {
+		t.Error("changing the rubric must change the digest")
+	}
+	// The length-prefixed framing keeps a byte from crossing a boundary
+	// unnoticed: moving text from one document to the next is a different digest.
+	shifted := Method{Instructions: "auditrubric", Rubric: "", TaskTemplate: "do {{PAPER}}"}
+	joined := Method{Instructions: "audit", Rubric: "rubric", TaskTemplate: "do {{PAPER}}"}
+	if shifted.Digest() == joined.Digest() {
+		t.Error("the boundary between documents must be part of the digest")
+	}
+}
+
 func TestTheShippedMethodLoads(t *testing.T) {
 	// The repository's own method/ directory must always be valid.
 	t.Chdir("..")
