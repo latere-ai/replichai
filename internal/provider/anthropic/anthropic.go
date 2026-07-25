@@ -255,13 +255,30 @@ func (p *Provider) EnsureWorker(ctx context.Context, spec provider.WorkerSpec) (
 
 // StartRun creates a run and hands it the task, the rubric, and its budget.
 func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws provider.WorkspaceRef, spec provider.RunSpec) (provider.RunHandle, error) {
-	session, err := p.client.Beta.Sessions.New(ctx, anthropic.BetaSessionNewParams{
+	params := anthropic.BetaSessionNewParams{
 		Agent: anthropic.BetaSessionNewParamsAgentUnion{
 			OfString: param.NewOpt(worker.ID),
 		},
 		EnvironmentID: ws.ID,
 		Title:         param.NewOpt("reproducibility audit"),
-	})
+	}
+	// A neutral RepoMount becomes this backend's github_repository resource, so
+	// the worker commits its reproduction into a real repository as it works.
+	if spec.Mount.Set() {
+		repo := anthropic.BetaManagedAgentsGitHubRepositoryResourceParams{
+			Type:               anthropic.BetaManagedAgentsGitHubRepositoryResourceParamsTypeGitHubRepository,
+			URL:                spec.Mount.URL,
+			AuthorizationToken: spec.Mount.Token,
+		}
+		if spec.Mount.MountPath != "" {
+			repo.MountPath = param.NewOpt(spec.Mount.MountPath)
+		}
+		params.Resources = []anthropic.BetaSessionNewParamsResourceUnion{
+			{OfGitHubRepository: &repo},
+		}
+	}
+
+	session, err := p.client.Beta.Sessions.New(ctx, params)
 	if err != nil {
 		return provider.RunHandle{}, fmt.Errorf("create session: %w", err)
 	}

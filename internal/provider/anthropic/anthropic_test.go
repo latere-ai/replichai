@@ -173,6 +173,77 @@ func TestStartRunSendsTheTaskAndRubric(t *testing.T) {
 	}
 }
 
+func TestStartRunMountsARepository(t *testing.T) {
+	var sessionBody map[string]any
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/events") {
+			writeJSON(t, w, map[string]any{"events": []any{}})
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sessionBody)
+		writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session"})
+	})
+
+	_, err := p.StartRun(context.Background(),
+		provider.WorkerRef{ID: "agent_1"},
+		provider.WorkspaceRef{ID: "env_1"},
+		provider.RunSpec{
+			Task: "do it", Rubric: "check", MaxRevisions: 1,
+			Mount: provider.RepoMount{
+				URL:       "https://github.com/open-hai/x",
+				Token:     "mount-token",
+				MountPath: "/workspace/repo",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	resources, _ := sessionBody["resources"].([]any)
+	if len(resources) != 1 {
+		t.Fatalf("want one mounted resource, got %v", sessionBody["resources"])
+	}
+	res, _ := resources[0].(map[string]any)
+	if res["type"] != "github_repository" {
+		t.Errorf("resource type = %v, want github_repository", res["type"])
+	}
+	if res["url"] != "https://github.com/open-hai/x" {
+		t.Errorf("url = %v", res["url"])
+	}
+	if res["authorization_token"] != "mount-token" {
+		t.Errorf("the mount token was not passed through")
+	}
+	if res["mount_path"] != "/workspace/repo" {
+		t.Errorf("mount_path = %v", res["mount_path"])
+	}
+}
+
+func TestStartRunWithoutMountSendsNoResources(t *testing.T) {
+	var sessionBody map[string]any
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/events") {
+			writeJSON(t, w, map[string]any{"events": []any{}})
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sessionBody)
+		writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session"})
+	})
+
+	_, err := p.StartRun(context.Background(),
+		provider.WorkerRef{ID: "a"}, provider.WorkspaceRef{ID: "e"},
+		provider.RunSpec{Task: "t", Rubric: "r"},
+	)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+	if _, ok := sessionBody["resources"]; ok {
+		t.Errorf("an audit with no mount must send no resources, got %v", sessionBody["resources"])
+	}
+}
+
 func TestPollTranslatesStatesAndGrades(t *testing.T) {
 	cases := []struct {
 		name          string
