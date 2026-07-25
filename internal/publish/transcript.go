@@ -35,24 +35,43 @@ func RenderTranscript(events []provider.Event) (jsonl, md []byte) {
 	return j.Bytes(), m.Bytes()
 }
 
-// renderEventMD writes one event as a markdown block, shaped to its kind:
-// a tool call shows its name and input, a tool result its output, a message its
-// text, and thinking a marker (the backend exposes no thinking content).
+// renderEventMD writes one event as a collapsible <details> block. Using a
+// <summary> for the boundary rather than a markdown heading is what keeps the
+// agent's own markdown — its headings, lists, code fences — from colliding with
+// the transcript's structure: an event's content renders inside its block,
+// clearly scoped, and no agent heading can be mistaken for an event boundary.
 func renderEventMD(m *bytes.Buffer, e provider.Event) {
 	stamp := ""
 	if !e.Time.IsZero() {
 		stamp = " · " + e.Time.UTC().Format(time.RFC3339)
 	}
-	fmt.Fprintf(m, "\n### %s · %s%s\n\n", e.Role, e.Kind, stamp)
+
+	// Thinking carries no content, so it is a plain marker, not a block.
+	if e.Kind == "thinking" {
+		fmt.Fprintf(m, "\n_%s · thinking%s — reasoned here; the backend does not expose the content._\n", e.Role, stamp)
+		return
+	}
+
+	summary := e.Role + " · " + e.Kind
+	if e.Tool != "" {
+		summary += " · `" + e.Tool + "`"
+	}
+	summary += stamp
+
+	// Messages read inline; tool calls and results fold away as detail.
+	open := ""
+	if e.Kind == "message" {
+		open = " open"
+	}
+	fmt.Fprintf(m, "\n<details%s>\n<summary>%s</summary>\n\n", open, summary)
 
 	switch {
 	case e.Tool != "":
-		fmt.Fprintf(m, "call `%s`\n", e.Tool)
 		if e.Content != "" {
-			fmt.Fprintf(m, "\n```json\n%s\n```\n", e.Content)
+			fmt.Fprintf(m, "```json\n%s\n```\n", e.Content)
+		} else {
+			m.WriteString("_(no input)_\n")
 		}
-	case e.Kind == "thinking":
-		m.WriteString("_(the agent reasoned here; the backend does not expose the content)_\n")
 	case e.Kind == "tool_result":
 		if e.Content != "" {
 			fmt.Fprintf(m, "```\n%s\n```\n", e.Content)
@@ -62,7 +81,10 @@ func renderEventMD(m *bytes.Buffer, e provider.Event) {
 	case e.Content != "":
 		m.WriteString(e.Content)
 		m.WriteString("\n")
+	default:
+		m.WriteString("_(no content)_\n")
 	}
+	m.WriteString("\n</details>\n")
 }
 
 // TranscriptLeak is one event whose content carries a redistribution risk.

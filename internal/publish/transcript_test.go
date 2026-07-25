@@ -37,14 +37,20 @@ func TestRenderTranscript(t *testing.T) {
 
 	s := string(md)
 	for _, want := range []string{
-		"Reproducing the inner loop.",       // message text
-		"call `bash`", `"command":"ls -la"`, // tool call + input
-		"main.py",                 // tool result output
-		"the agent reasoned here", // thinking marker
+		"<details open>",                     // message reads inline, in a details block
+		"Reproducing the inner loop.",        // message text
+		"<summary>agent · tool_use · `bash`", // tool in the summary, not a heading
+		`"command":"ls -la"`,                 // tool input
+		"main.py",                            // tool result output
+		"reasoned here",                      // thinking marker
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("md missing %q:\n%s", want, s)
 		}
+	}
+	// No markdown heading is used for event boundaries — that is the whole point.
+	if strings.Contains(s, "\n### ") {
+		t.Errorf("event boundaries must not be markdown headings:\n%s", s)
 	}
 }
 
