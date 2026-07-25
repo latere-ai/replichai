@@ -101,7 +101,9 @@ A published reproduction is three things, and who authors each is the point: the
 | Evidence | the backend's own event log, fetched by the system | `transcript.jsonl` and `TRANSCRIPT.md` |
 | Verdict | the system, outside the sandbox | `replication.json` |
 
-The transcript is rendered twice from the same events: `transcript.jsonl` is canonical and machine-readable — one normalised event per line, typed fields up top and the backend's original event nested under `raw`, so it is both consistent to parse and lossless — and `TRANSCRIPT.md` is the narrative. Both are committed by `finalize`, alongside the manifest, and both are written only when their content actually differs from what is already there, compared by git blob sha so that re-finishing the same reproduction adds no redundant commit.
+The transcript is rendered from the same events into two forms. `transcript.jsonl` is canonical and machine-readable — one normalised event per line, typed fields up top and the backend's original event nested under `raw`, so it is both consistent to parse and lossless. The narrative is chunked: `TRANSCRIPT.md` is an index over `transcript/NNN.md` parts of forty events each, interlinked previous/index/next, with per-event content capped. A full run runs to many megabytes, and one file that size is neither readable nor commitable through an ordinary contents API.
+
+The whole set is committed in a single commit through the Git Data API — blob, tree, commit, ref — so the evidence lands atomically rather than as a spray of per-file commits, with no inline size limit. It is idempotent by blob sha: re-finishing a reproduction whose transcript has not changed commits nothing.
 
 ## Two publish paths, on purpose
 
