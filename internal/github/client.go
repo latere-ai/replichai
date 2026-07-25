@@ -11,7 +11,9 @@ package github
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -237,7 +239,10 @@ func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) (
 		return nil, false, fmt.Errorf("read %s in %s/%s: unexpected status %d", path, owner, name, status)
 	}
 	if file.Encoding != "base64" {
-		return nil, false, fmt.Errorf("%s in %s/%s has unexpected encoding %q", path, owner, name, file.Encoding)
+		// GitHub returns "none" for files it will not inline (over ~1MB). The
+		// content is not available this way; the caller should fall back to a
+		// sha comparison (FileUnchanged).
+		return nil, false, nil
 	}
 	// GitHub wraps base64 content at 60 columns; strip the newlines to decode.
 	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
@@ -245,6 +250,27 @@ func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) (
 		return nil, false, fmt.Errorf("decoding %s: %w", path, err)
 	}
 	return decoded, true, nil
+}
+
+// FileUnchanged reports whether path already holds exactly content, by comparing
+// git blob shas. This works for any size — including files too large for the
+// Contents API to inline — so it is the reliable idempotency check.
+func (c *Client) FileUnchanged(ctx context.Context, owner, name, path string, content []byte) (bool, error) {
+	sha, ok, err := c.fileSHA(ctx, owner, name, path)
+	if err != nil || !ok {
+		return false, err
+	}
+	return sha == gitBlobSHA(content), nil
+}
+
+// gitBlobSHA computes a blob's git object id — sha1("blob <len>\x00<content>") —
+// the same id GitHub reports for a file, so two can be compared without
+// downloading either.
+func gitBlobSHA(content []byte) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "blob %d\x00", len(content))
+	h.Write(content)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // fileSHA returns the blob sha of an existing file, or ok=false if it is absent.
