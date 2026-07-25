@@ -72,7 +72,7 @@ replichai finish open-hai/<repo> <paper> --session <id> --invite <github-login>
 ```
 
 `replichai publish <artifact-dir> <paper>` is the offline path: it previews what
-a filesystem forge would write, and writes it only with `-live`.
+a filesystem forge would write, and writes it only with `--live`.
 
 ## Layout
 
