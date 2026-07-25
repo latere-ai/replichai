@@ -28,6 +28,21 @@ So the outer loop is executed by a **new engine downstream of the audit artifact
 - Both golden cases keep passing byte-for-byte on their existing expectations. 007a adds an *additive* deliverable and an additive rubric criterion; it changes no existing one.
 - The word for an LLM cohort is **synthetic pilot**, never "simulating the outer loop". A pilot is by construction pre-study: it shapes what you will run, and it never establishes that you ran it. Naming matters here because the forbidden phrase is the honest description of what a careless version of this feature would be.
 
+**And the dependency is one-way, which the compiler can enforce.** "An experiment never writes the audit's fields" is the weaker half of the firewall. The stronger half is that **the audit never reads an experiment at all** — not a pilot, not a cohort, not a re-analysis. An auditor that could ingest experiment output would be able to let a synthetic cohort inform a boundary classification or a rate without ever writing `verdict` itself, which is the same violation arriving by a side door.
+
+So the package direction is the control, and it is checked rather than intended:
+
+```
+internal/instrument   the schema alone — imports neither of the below
+internal/experiment → internal/instrument, internal/provider, internal/publish
+internal/audit      → internal/method, internal/provider, internal/instrument
+                      and NEVER internal/experiment
+```
+
+`internal/audit` imports only `method` and `provider` today, and gains `instrument` for the schema validation [007a](007a-the-study-protocol-as-an-artifact.md) folds into its grade-and-revise loop — a schema package, with no executor behind it. The edge from `audit` to `experiment` does not exist and a test asserts it never appears. An import cycle is a build failure; this is the same guarantee, made explicit in the direction that matters.
+
+The consequence in product terms: LLM cohorts exist for work that happens *after* an audit is finished and graded — shaking an apparatus down, testing how an effect behaves across distributions the paper never sampled, probing the instrument's sensitivity. None of it flows back. An audit run twice on the same paper produces the same verdict whether a thousand pilots have run against its instrument or none have.
+
 ## Decisions
 
 **A reproduction yields an instrument.** Beside 002's `replication.json`, the audit writes `instrument.json` — the declared, machine-readable half of what the reports say in prose:
@@ -112,13 +127,14 @@ Invariants for the whole track, verified as the children land:
 1. Both golden cases pass on their existing expectations, unchanged. The audit's method gains deliverables and never loses a prohibition; `evals/case-01`'s "must not be simulated or estimated" stays true of every audit the platform runs.
 2. An instrument is optional and honest: a paper with no extractable protocol and no declarable analysis produces a reproduction of undiminished quality plus a stated reason, and never a fabricated protocol.
 3. `verdict` and `rate` in a 002 manifest are written only by an audit. A test drives an experiment of every data source and asserts neither field moves.
-4. A result carries its data source indelibly. No report, export, or API response derived from a `synthetic` cohort can be read as evidence about people, and a test asserts the label survives every path out of the system.
-5. Participant data never enters a repository, a mount, a manifest, or the registry, and reaches a sandbox only as a de-identified dataset placed outside the mount. Asserted structurally — by where the writes go and by the collection schema admitting no identifier field — and again by `Classify`'s allowlist withholding any such path presented to it. Conversely, `instrument.json` and `study/` are added to that allowlist and a test asserts each survives a publish, since a worker-written file the allowlist does not know is withheld silently.
-6. The participant page is served from an origin that holds no session cookie, and the platform's own pages embed it only sandboxed. Asserted against the served headers, not by convention.
-7. Project membership admits nobody to the platform. A test adds an ungranted email to a project and asserts that principal still reaches no operator route on first sign-in.
-8. An experiment executes only in the provider sandbox. No path in the server runs instrument code in-process or in a container it manages.
-9. A human cohort cannot open without a recorded ethics attestation and a servable protocol, and both refusals are server-side.
-10. Every new surface is tested without network or credential, on the project's existing terms: fake forge, stub issuer, in-process provider.
+4. The audit never reads an experiment. `internal/audit` does not import `internal/experiment`, directly or transitively, and a test walks the import graph and fails if that edge appears. An audit re-run on a paper produces the same verdict whether or not pilots have run against its instrument — asserted end to end, not only on the import graph.
+5. A result carries its data source indelibly. No report, export, or API response derived from a `synthetic` cohort can be read as evidence about people, and a test asserts the label survives every path out of the system.
+6. Participant data never enters a repository, a mount, a manifest, or the registry, and reaches a sandbox only as a de-identified dataset placed outside the mount. Asserted structurally — by where the writes go and by the collection schema admitting no identifier field — and again by `Classify`'s allowlist withholding any such path presented to it. Conversely, `instrument.json` and `study/` are added to that allowlist and a test asserts each survives a publish, since a worker-written file the allowlist does not know is withheld silently.
+7. The participant page is served from an origin that holds no session cookie, and the platform's own pages embed it only sandboxed. Asserted against the served headers, not by convention.
+8. Project membership admits nobody to the platform. A test adds an ungranted email to a project and asserts that principal still reaches no operator route on first sign-in.
+9. An experiment executes only in the provider sandbox. No path in the server runs instrument code in-process or in a container it manages.
+10. A human cohort cannot open without a recorded ethics attestation and a servable protocol, and both refusals are server-side.
+11. Every new surface is tested without network or credential, on the project's existing terms: fake forge, stub issuer, in-process provider.
 
 ## Out of scope
 

@@ -14,7 +14,7 @@ It also inverts the application's security posture. Every route [006](006-web-ap
 
 **The page comes from the instrument; the platform is a generic runner.** The `study/` bundle is a static, self-contained web application the agent writes from `protocol`. The platform serves it and accepts responses against `protocol.measures`, so it holds no per-paper code and stays paper-agnostic — the same posture that keeps `method/` as data rather than logic.
 
-**The bundle is agent-written code served to the public, so it never shares an origin with a session.** It is served from a distinct origin that sets no session cookie and is never sent one, under a strict CSP with no external fetch. The platform's own authenticated pages embed it only in a sandboxed frame. An agent-authored script and a signed-in researcher's session must not be reachable from each other, and this is asserted against the served headers rather than left to convention ([007](007-from-reproduction-to-replication.md), criterion 6).
+**The bundle is agent-written code served to the public, so it never shares an origin with a session.** It is served from a distinct origin that sets no session cookie and is never sent one, under a strict CSP with no external fetch. The platform's own authenticated pages embed it only in a sandboxed frame. An agent-authored script and a signed-in researcher's session must not be reachable from each other, and this is asserted against the served headers rather than left to convention ([007](007-from-reproduction-to-replication.md), criterion 7).
 
 **The anonymous write path is bounded on every axis.** A public `POST` into Postgres gets no benefit of the doubt:
 
@@ -101,7 +101,7 @@ func (h HumanCohort) Kind() string { return "human" }
 10. Platform chrome exists in en and zh; protocol-derived instruction and stimulus text is rendered as the paper wrote it and passes through no translation path — asserted by driving a protocol whose text is not English and finding it unchanged.
 11. A `human`-source experiment runs through 007b's existing runner with no analysis path of its own, and collected data reaches the sandbox only outside the mount.
 12. Collected data never appears in a repository, a manifest, or the registry — asserted structurally, and again by `Classify`'s allowlist withholding a response path presented to it.
-13. Only project members reach the operator routes for a run, and project membership admits nobody to the platform ([007](007-from-reproduction-to-replication.md), criterion 7).
+13. Only project members reach the operator routes for a run, and project membership admits nobody to the platform ([007](007-from-reproduction-to-replication.md), criterion 8).
 14. The reported outcome sits beside `protocol.reported` and emits no pass/fail judgement about the paper.
 15. No network and no credential: the public path is tested against the server directly, the analysis against the in-process provider, identity against 006c's stub issuer.
 
