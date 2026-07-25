@@ -1,6 +1,6 @@
 # 003 — The reproduction registry
 
-**Status:** draft
+**Status:** implemented (`413a635`)
 **Scope:** detecting that a paper has been reproduced before, and relating the reproductions.
 **Depends on:** 001, 002
 
@@ -115,3 +115,11 @@ A repeat under an *unchanged* method digest is the suspicious case — it means 
 ## Out of scope
 
 Comparing two reproductions of one paper (diffing rates, verdicts, hidden-decision lists). That is worth building and is a later spec.
+
+## Outcome
+
+Implemented in `internal/registry` across five commits (`064a24b` the Source reconciliation, `a0b0038` `github.ListRepos`, `3deab5f` the registry core, `ef56dc5` the GitHub source, `413a635` the `audit --publish` wiring). All seven acceptance criteria covered by tests that run offline against a fake source and the filesystem source; 87% coverage, race-clean.
+
+Built as specified, with one reconciliation folded back into the Interface: the registry reads through its own narrow `Source` (list + read a manifest, returning `publish.Manifest`), **not** 002's write-side `Forge`. 006f's real GitHub access went through `internal/github`, so the registry wraps that (`GitHubSource`) rather than a `GitHubForge` that never existed; a `FSSource` reads FSForge's directory layout for the offline loop.
+
+The operator flow landed in `audit --publish`: before a sibling is created, it warns about every prior reproduction (date, method digest, verdict, flagging a same-method re-run) and allocates the name through `AllocateName` — the canonical slug from the earliest reproduction plus a collision-checked suffix that widens 4→6 characters — so repeats of one paper share a slug and never collide. The non-interactive `--detach` flow prints the warning rather than prompting; a blocking `[y/N]` prompt would not fit the async model.
