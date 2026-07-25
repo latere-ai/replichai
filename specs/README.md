@@ -58,7 +58,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 ## Load-bearing decisions (audit these)
 
-- **Single-tenant, one backend credential** — one deployment, one `open-hai` org, one key runs every audit. Defers multi-tenancy, per-user credentials, billing. (006)
+- **The project is the tenant** — no org in the product; each user owns private projects (owner + invited contributors), private by default, made public by the owner. One backend credential pays for every run. The app owns the ownership model; artifacts live in a `Store` (the GitHub forge for the MVP, [drive](https://drive.latere.ai) later, behind one seam — 008). (006)
 - **The registry is derived, not stored** — read the org's manifests; no second source of truth. Job-lifecycle state (a later web concern) is the only thing that gets a database. (003, 006b)
 - **Ownership by invitation, never delegation** — GitHub OAuth proves identity only; the org invites the user's linked login as a collaborator. The service never holds a user's repo credentials. (006f, 006c)
 - **The redistribution gate fails closed** — third-party data is never published; the method keeps downloads out of the mounted repo, and the verifier bars a leaked repo from ever going public. (002, 006f)
@@ -88,6 +88,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | draft | 007a, 006f |
 | 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | draft | 007b |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
+| 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
 
 ## The three tracks
 
@@ -105,7 +106,7 @@ Engine first; the web shell last, because every screen it renders needs an engin
 
 ```
 002 ✓ → 003 ✓ → 006f-core ✓ → 005 (next) → 007a → 007b → 007c
-     → 006a / 006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d
+     → 006a / 006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
 ```
 
 Done so far: 001, 002, 003, 004, and 006f's core. **Next: 005** (transcript), the engine's missing evidence layer. 007a–007c are engine work and slot in before the server; 007d comes after it, because a hosted study needs the server, the database, and identity underneath. Within 007 the order inverts how the capabilities were first asked for — the synthetic pilot (007c) comes third, because a cohort is only checkable where the paper released real data to check it against.

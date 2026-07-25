@@ -1,7 +1,7 @@
 # 006 — The web application
 
 **Status:** draft
-**Scope:** turning the audit engine into a single-tenant web service — submit a paper, watch it run, then take the reproduction out: own the repository, or, if the platform trusts you, publish it publicly. Open at first only to an invited set of seed users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
+**Scope:** turning the audit engine into a web application where each user owns private research **projects** — submit a paper, watch it run, iterate the project, and, when the owner is ready, publish it to a public zone. Open at first only to an invited set of seed users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
 **Depends on:** 002 (publishing). Consumes 003 (registry) and 005 (transcript).
 
 ## Problem
@@ -26,17 +26,25 @@ The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
 
 ## Decisions
 
-**Single-tenant, one backend credential.** One deployment, one `open-hai` organisation, one `REPLICHAI_API_KEY` runs every audit. This defers the genuinely hard problems — per-user credentials, tenant isolation, billing — to a later product. What single-tenant does *not* mean is single-user: many people sign in and submit; they share one backend and one organisation. It is one shared credential paying for every run, which is the other reason access starts closed — see the gate below.
+**The project is the tenant.** There is no organisation in the product — only individual users, each owning private research **projects**. A project is one replication effort; it holds one or more runs and their artifacts (the reproduction, later the 007 experiments), and the user iterates it and manages its lifecycle. Private by default; the *owner* decides when it goes public. Collaboration is per-project invitation, not an org. This is the ownership model, and it is the app's — not the forge's, not the IDP's.
 
-**Three kinds of state, three homes.** This is the load-bearing decision, and it reconciles with 003's "derived, not stored":
+Three roles fall out, all project-scoped except the first: **platform admin** (oversees everything, controls the invite-only login gate), **project admin** (the owning user), **project contributor** (invited into a private project).
+
+**One backend credential.** One deployment, one `REPLICHAI_API_KEY` runs every audit — one shared credential paying for every run, which is the other reason access starts closed (see the gate below). Per-user credentials and billing are deferred.
+
+**Storage: the forge for the MVP, a `Store` seam for later.** The proven GitHub workflow (006f) is the MVP's artifact store: each project's runs are repositories under `open-hai`, private by default. The app serves their file tree and downloads by *pass-through* — read-only over the forge API — so a user who never connects a GitHub account still browses and downloads artifacts (OSF-style) in the UI, and a project going public simply lists it in the public zone. A user who *does* connect their GitHub account additionally gets real repository operation (collaborator access, external clone/push, and an optional public flip of the repository itself). Repository access, file reads, and visibility go behind a single `Store` interface — one GitHub implementation now — so **integrating [drive](https://drive.latere.ai) later** (its S3-backed git hosting, sharing, and public zone, with GitHub demoted to an optional mirror) is a second implementation, not a rewrite. That integration is deferred; see [008](008-drive-data-plane.md).
+
+**State homes.** Reconciling with 003's "derived, not stored":
 
 | State | Home | Why |
 |---|---|---|
-| Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process; the forge cannot hold it |
-| Access grants, linked forge accounts, and who made what public — the deployment's own authorisation and audit trail | **Postgres** | Durable state the deployment owns; neither the IDP nor the forge is asked to model it |
-| The finished-reproduction registry | **Derived from the forge** (003) | Already decided; the manifests are the source of truth, and nothing should drift from them |
+| Projects, membership, visibility, and lifecycle — the app's ownership model | **Postgres** | The product's own model, which neither the forge nor the IDP holds |
+| Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process |
+| Access grants, linked forge accounts, and who made what public — authorisation and audit trail | **Postgres** | Durable state the deployment owns |
+| Reproduction artifacts | **The `Store`** (forge for the MVP) | Repositories with agent-authored history; the app reads them through the seam |
+| The finished-reproduction registry | **Derived from the store** (003) | The manifests are the source of truth; nothing should drift from them |
 
-So the database holds *jobs in flight* and *who may start one*, never reproductions. A completed job's durable record is its published repository, read back through 003. Deleting the job row loses nothing that matters; deleting a grant row only revokes access.
+So Postgres holds the ownership model, jobs in flight, and who may start one — never the artifacts, and never a second copy of the registry.
 
 **The identity provider is an OIDC provider and nothing more.** latere auth is where our users already have accounts, so it is the deployment's IDP — but the coupling stops at the standard. What we consume is one ID token payload:
 
@@ -71,6 +79,8 @@ The link is stored against the principal, not the session — one row per princi
 Rejected: an env-var list of emails — cheap, but every grant costs a redeploy and leaves no record of who admitted whom.
 
 The grant table is an ACL, not a user table: it stores a principal, an email used once as a seed key, and a tier. No name, no avatar, no profile. Display data is read from `/userinfo` per request and never persisted.
+
+> **Superseded by the project-as-tenant decision above, and to be reworked when 006c/006f are built.** The sections below describe an earlier model where a platform *trusted tier* could make *any* reproduction public. Under the revised model, publishing is the **project owner's** action on **their own** project: the roles are platform admin / project admin (owner) / project contributor, and the public flip is authorised by project ownership, not a cross-project tier. The redistribution-gate guarantees below still hold; only *who* may flip changes. The prose is kept for its gate-and-audit reasoning until those child specs are rewritten.
 
 **Three roles, and only one of them can make something public.** The `tier` on a grant is the whole authorisation model; there is no self-serve path up it.
 
