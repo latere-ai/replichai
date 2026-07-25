@@ -33,7 +33,7 @@ The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
 | State | Home | Why |
 |---|---|---|
 | Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process; GitHub cannot hold it |
-| Access grants — who the platform admin has let in, and which GitHub account they proved | **Postgres** | Durable authorisation the deployment owns; neither auth nor GitHub is asked to model it |
+| Access grants and GitHub links — who the platform admin has let in, and which GitHub account each proved | **Postgres** | Durable authorisation the deployment owns; neither auth nor GitHub is asked to model it |
 | The finished-reproduction registry | **Derived from GitHub** (003) | Already decided; the manifests are the source of truth, and nothing should drift from them |
 
 So the database holds *jobs in flight* and *who may start one*, never reproductions. A completed job's durable record is its published repository, read back through 003. Deleting the job row loses nothing that matters; deleting a grant row only revokes access.
@@ -44,6 +44,8 @@ So the database holds *jobs in flight* and *who may start one*, never reproducti
 |---|---|---|
 | latere principal (`sub`, email) | latere auth OIDC (`latere.ai/x/pkg/oidc`) | Who this person is; the access gate below |
 | GitHub login | A separate, one-time **link** step, OAuth-verified | The target of the repository invitation |
+
+The link is stored against the principal, not the session — one row per principal, so a claim months later still knows where to send the invitation. Whether it is a column on the grant row or its own table is 006c/006f's to settle; it is written only by the link callback, never by a request body.
 
 The GitHub login is *proven*, never typed. An earlier sketch had `claim { github_login }` take the name as a parameter; a wrong or hostile value would hand collaborator access on a private reproduction to a stranger, so the claim carries no name — it invites the linked account or fails. The GitHub OAuth here requests identity only; `repo` scope is never requested, at any point, for any user.
 
