@@ -28,7 +28,7 @@ And what it is **not** for: estimating the paper's effect, standing in for the s
 
 Separating them keeps the strong uses from borrowing credibility they do not need from a language model, and the weak use from lending credibility it does not have to the strong ones.
 
-**The label is indelible and travels.** `cohort_kind` is a non-null column, present on the experiment, on every artifact, on every export, and on every API response. The report is `PILOT.md` — never `RESULTS.md` — and it opens with what it does not establish before it shows a single number. A synthetic result that reaches a reader stripped of its label is the one failure mode this spec exists to prevent, so the test is not "the field is set" but "the label survives every path out of the system" ([007](007-from-reproduction-to-replication.md), criterion 4).
+**The label is indelible and travels.** `cohort_kind` is a required field on the experiment record — and a `NOT NULL` column when 006b's schema lands — present on every artifact, every export, and every API response. The report is `PILOT.md` — never `RESULTS.md` — and it opens with what it does not establish before it shows a single number. A synthetic result that reaches a reader stripped of its label is the one failure mode this spec exists to prevent, so the test is not "the field is set" but "the label survives every path out of the system" ([007](007-from-reproduction-to-replication.md), criterion 4).
 
 **A synthetic comparison is a calibration, and it is a statement about the model.** `Compare` from [007b](007b-experiments-over-instruments.md) is reused — comparing a cohort's statistics against `protocol.reported` is exactly the right operation — but its rendering is not. For a `released` source the comparison reads as re-analysis of the paper. For a synthetic one it reads as *how close a model cohort came to what people did*, which measures the cohort and never the paper. Same arithmetic, different subject, and the `Source` on the `Comparison` is what distinguishes them.
 
@@ -36,7 +36,11 @@ Separating them keeps the strong uses from borrowing credibility they do not nee
 
 This is the sequencing argument from [007](007-from-reproduction-to-replication.md) made structural rather than advisory. A synthetic pilot on a paper with no released data produces numbers no one can falsify, which is how this feature would fail. The restriction is a gate to relax deliberately once calibration has been measured on papers where it can be, not a permanent property.
 
-**A model cohort requires a servable protocol.** `servability` from [007a](007a-the-study-protocol-as-an-artifact.md) is the same gate: if the protocol cannot be presented on a screen without an experimenter or a physical rig, a model cannot be driven through it either, and the refusal cites the failed criteria. One gate protects both cohorts, which is the point of having written it as a closed list.
+**A model cohort requires servable *components*, not a servable protocol.** [007a](007a-the-study-protocol-as-an-artifact.md)'s servability is per component, and that resolution matters here: gating on the roll-up would make the feature unreachable. If a component cannot be presented on a screen without an experimenter or a physical rig, a model cannot be driven through it either — but a study with one unservable manipulation and a perfectly servable task still has a task worth piloting.
+
+So a model cohort covers the servable components and refuses the rest, citing their failed criteria, and the pilot states which components it did not cover. A manipulation the page cannot administer is one a model cannot undergo either: describing it in a prompt and recording what the model then does is precisely the fabrication this spec exists to prevent.
+
+This is also what keeps the feature testable. The gate is an intersection — released data, `protocol.reported`, and servability — and gating on `all_servable` would empty it: 007a establishes that *neither* golden case is servable end to end. Per component, case-02 qualifies on its prospective-memory task, so 007c has a real instrument with a real ground truth to be exercised against in CI. A gate that admits nothing is not a strict gate, it is an unbuilt feature.
 
 **No demographic personas, and this is a refusal rather than a deferral.** The platform does not assign a model cohort ages, genders, cultures, occupations, or abilities, and does not report subgroup differences over them. Inventing a population and reporting how its strata differ is fabricated participant data with extra steps — the exact thing [`method/rubric.md`](../method/rubric.md):15 fails a run for. Rejected outright, not scoped out for later.
 
@@ -88,12 +92,13 @@ type Pilot struct {
 4. `PILOT.md` states what it does not establish before its first number, and no synthetic artifact is named or shaped like a result.
 5. A `Pilot` cannot be consumed where a `Result` is expected — asserted by the type, so the boundary cannot erode.
 6. A synthetic `Comparison` renders as calibration of the cohort and never as re-analysis of the paper; the two renderings are distinguished by `Source` and both are tested.
-7. `synthetic:model` is refused for an instrument lacking released data or `protocol.reported`, and refused for a non-servable protocol with the failed criteria cited. Both refusals are server-side.
-8. No demographic or persona attribute reaches a model cohort's prompt, and no subgroup statistic appears in a pilot — asserted against the prompt template and the report.
-9. Every pilot records model, snapshot, prompt template, per-participant ordering seeds, N, and caps; a pilot missing any of them is not written.
-10. A run exceeding its cap is refused before it starts, and usage is reported on every pilot.
-11. `verdict` and `rate` in the 002 manifest are untouched, and no synthetic artifact is eligible for publication into a reproduction repository.
-12. Every test runs against the in-process provider — no network, no credential, no model calls in CI.
+7. `synthetic:model` is refused for an instrument lacking released data or `protocol.reported`, and drives only the servable components — an unservable component is skipped with its failed criteria cited and named in the pilot as not covered. Refusals are server-side.
+8. The gate admits case-02's prospective-memory task, so the model-cohort path is exercised in CI against an instrument with real ground truth. A gate that admits no golden case fails this criterion.
+9. No demographic or persona attribute reaches a model cohort's prompt, and no subgroup statistic appears in a pilot — asserted against the prompt template and the report.
+10. Every pilot records model, snapshot, prompt template, per-participant ordering seeds, N, and caps; a pilot missing any of them is not written.
+11. A run exceeding its cap is refused before it starts, and usage is reported on every pilot.
+12. `verdict` and `rate` in the 002 manifest are untouched, and no synthetic artifact is eligible for publication into a reproduction repository.
+13. Every test runs against the in-process provider — no network, no credential, no model calls in CI.
 
 ## Out of scope
 

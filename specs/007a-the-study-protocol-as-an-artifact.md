@@ -34,7 +34,7 @@ A paper that describes its procedure too vaguely to extract yields `protocol: nu
 
 This is a small method change with a large consequence: it is the difference between an implementation and an instrument, and it is what lets [007b](007b-experiments-over-instruments.md) run the same pipeline over four different data sources without knowing anything about the paper.
 
-**Servability is a closed criteria list, answered with a justification.** "Highly replicable" becomes a decision the audit makes against declared, mechanical criteria rather than a judgement call. A protocol is servable only if all hold:
+**Servability is a closed criteria list, answered per component.** "Highly replicable" becomes a decision the audit makes against declared, mechanical criteria rather than a judgement call. A component is servable only if all hold:
 
 | Criterion | Excludes |
 |---|---|
@@ -42,9 +42,14 @@ This is a small method change with a large consequence: it is the difference bet
 | Screen-based, no physical apparatus | eye trackers, EEG, VR rigs, tangible devices |
 | No experimenter or confederate in the loop | interviews, think-aloud, Wizard-of-Oz, moderated tasks |
 | Every measure capturable in a browser | physiological signals, observation, video coding |
+| **The manipulation is administrable by the page** | conditions the participant must carry out elsewhere, in software we neither control nor can verify |
 | The apparatus is recovered in `src/` or specified completely enough to build | studies of a system the reproduction could not rebuild |
 
-`servability` records the verdict plus which criteria failed. Most HCI papers will answer `false`, and that is the correct and useful answer — it is the same value the boundary table provides by refusing to overclaim. The last criterion is the one that most often decides it: a paper's mechanism may be reproducible while the *interface* participants actually saw is not, and a study cannot be served without the thing being studied.
+**Per component, not per protocol**, because the answer is almost never uniform and the uniform answer throws away the useful part. `REPRODUCIBILITY.md`'s boundary table is already component-wise; servability is the same decomposition carried one step further, and it tells a researcher exactly which parts of their study a hosted page can run and which they must administer themselves. A roll-up field says whether *every* outer-loop component is servable — that is what [007d](007d-hosting-a-study.md) gates a fully hosted run on — but the per-component answer is the deliverable.
+
+Two criteria do most of the deciding. The apparatus one: a paper's mechanism may be reproducible while the *interface* participants actually saw is not, and a study cannot be served without the thing being studied. And the manipulation one, which is easy to miss because the *measures* look servable — a task whose reaction times a browser captures perfectly may still assign participants to spend ten minutes in a third-party application, which a page can ask for and can neither deliver nor verify.
+
+Most components will answer `false`. That is the correct and useful answer, and it is the same value the boundary table provides by refusing to overclaim.
 
 **The rubric gains a seventh criterion, and the six existing ones do not move.** The new criterion grades the *declaration*, never the extraction:
 
@@ -54,7 +59,14 @@ So a paper with no extractable protocol passes criterion 7 by saying so. This ke
 
 **A malformed instrument is a revision trigger, not a failed audit.** The auditor validates `instrument.json` against the schema after the run and folds the result into the existing grade-and-revise loop, so an invalid or dishonest instrument is fed back to the worker within its revision budget — the machinery [004](004-go-port.md) already built for every other criterion. Rejected: rejecting the run, which would throw away a good reproduction over a bad JSON file; and accepting silently, which would let unvalidated agent-written JSON reach the executors downstream.
 
-**Both golden cases gain instrument expectations, and they discriminate.** The eval pair is chosen to fail in opposite directions, and it does so here too: case-02's protocol is a screen-based single-session task whose measures are trial-level reaction time and accuracy — the shape servability was written for — while case-01's outer loop is a study *of a visual interface* the reproduction does not rebuild, so it must answer `servability: false` on the apparatus criterion however cleanly its protocol extracts. A change that makes the audit credulous about servability shows up in case-01; one that makes it uselessly conservative shows up in case-02.
+**Both golden cases gain instrument expectations, and neither is a fully servable study.** This is worth stating plainly rather than discovering during implementation:
+
+- **case-01** — the outer loop is a study *of a visual interface* the reproduction does not rebuild, so its components fail the apparatus criterion however cleanly the protocol extracts.
+- **case-02** — the measures are trial-level reaction time and accuracy, exactly what a browser captures, so the prospective-memory task's *apparatus* is servable. But assignment sends participants to spend ten minutes on their own feeds in Rest / Twitter / YouTube / TikTok ([`evals/case-02/expected.md`](../evals/case-02/expected.md):39), which fails the manipulation criterion: a page can ask and can neither administer nor verify. So the roll-up is `false` and the per-component answer is the informative one — *this task we can host; this manipulation you must administer*.
+
+Which means the pair discriminates in only one direction here. A change making the audit credulous about servability shows up immediately in both. A change making it uselessly conservative shows up in neither, because there is no case in the golden set whose outer loop is servable end to end. **That gap is a third eval case to add**, chosen for a fully hostable study, and until it exists the conservative direction is unguarded — which is the honest state of the regression set, not a property to paper over by asserting a `true` the papers do not support.
+
+**`instrument.json` must join the publish gate's worker-written allowlist.** `publish.Classify` is an *allowlist*: `internal/publish/gate.go` includes `OriginWorker` and withholds everything else, and `originOf` recognises exactly four fixed report names plus `src/`. A new top-level deliverable is therefore withheld from every publication by default — silently, because withholding is the safe direction and produces no error. So `originOf` gains `instrument.json`, and a test asserts the file survives a publish. Overlooking this would ship an audit whose new artifact never reaches a single published repository.
 
 ## Interface (sketch)
 
@@ -85,9 +97,17 @@ type Analysis struct {
 }
 
 type Servability struct {
-	Servable bool     `json:"servable"`
-	Failed   []string `json:"failed_criteria"` // the closed list above
-	Why      string   `json:"why"`
+	// Per component, keyed as the boundary table names it. The roll-up below is
+	// derived, never asserted independently.
+	Components []ComponentServability `json:"components"`
+	AllServable bool                  `json:"all_servable"` // every outer-loop component
+}
+
+type ComponentServability struct {
+	Component string   `json:"component"`
+	Servable  bool     `json:"servable"`
+	Failed    []string `json:"failed_criteria"` // from the closed list above
+	Why       string   `json:"why"`
 }
 
 // Validate reports every schema violation, so one revision can fix all of them.
@@ -104,9 +124,11 @@ Field names are implementation's to settle; this fixes what must be declared. Th
 4. Every `reported` entry carries a section, table, or figure citation — a fabricated or uncited statistic fails, on the same terms as the existing honesty criterion.
 5. `analysis.command` parameterises its input path: a test substitutes a different data path and the command is well-formed without editing.
 6. `analysis.input` validates a conforming dataset and rejects a non-conforming one with a message naming the offending column — the check [007b](007b-experiments-over-instruments.md)'s `uploaded` source runs before execution.
-7. Servability is answered against every criterion in the closed list, with failures enumerated. Case-02 answers `true`; case-01 answers `false` on the apparatus criterion.
-8. A schema-invalid `instrument.json` triggers a revision rather than failing the run, and the revision receives every violation at once.
-9. No network and no credential: schema and validation tests are pure; the graded-run tests use the in-process provider.
+7. Servability is answered for every outer-loop component in the boundary table against every criterion in the closed list, with failures enumerated. `all_servable` is derived from the components, never set independently — asserted by constructing a mixed set and checking the roll-up.
+8. The golden cases assert the answers the papers support: case-01 fails the apparatus criterion; case-02's PM task is servable while its feed manipulation fails the manipulation criterion, so its roll-up is `false`. Neither is asserted `true` end to end, and the missing positive-direction case is recorded as an open eval gap rather than fabricated.
+9. `instrument.json` survives a publish — `originOf` classifies it `OriginWorker` and it appears in the published tree, asserted against `internal/publish` directly, because an allowlist withholds a new file silently.
+10. A schema-invalid `instrument.json` triggers a revision rather than failing the run, and the revision receives every violation at once.
+11. No network and no credential: schema and validation tests are pure; the graded-run tests use the in-process provider.
 
 ## Out of scope
 
