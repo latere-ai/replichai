@@ -46,13 +46,14 @@ So the database holds *jobs in flight* and *who may start one*, never reproducti
 | `email` + `email_verified` | Seeding a grant for someone who has not signed in yet, and nothing else |
 | name / picture, from `/userinfo` | Display only, never stored |
 
-Nothing else. No IDP-issued roles, scopes, org membership, superadmin flag, delegation, or billing claim reaches an authorisation decision here — those are auth's vocabulary, and reading them would weld this product to one IDP's authorisation model. **Authentication is portable; authorisation is ours.** Concretely: use the standard-OIDC path (`latere.ai/x/pkg/oidclogin`, or any conformant library), a public PKCE client, and treat the result as a plain verified account. Swapping the issuer for another OIDC provider should be a config change, and a test that boots the gate against a stub issuer is what keeps it one.
+Nothing else. No IDP-issued roles, scopes, org membership, superadmin flag, delegation, or billing claim reaches an authorisation decision here — those belong to the identity product's model, and reading them would weld this one to it. **Authentication is portable; authorisation is ours.** The contract is the standard and only the standard: discover the issuer, run a public PKCE login, verify the ID token, keep `sub` and the verified email, discard the rest. Which library implements that is 006c's to pick — a conformant one, not a vendor SDK whose value is the claims we have just refused. Swapping the issuer is then a config change.
 
-Rejected: gating on an auth-issued `replichai:operate` scope or membership of a seed org. It looks like less code, but it puts our product's access policy in another service's schema and admin UI, and makes the beta undeployable against any other issuer.
+Rejected: gating on an IDP-issued `replichai:operate` scope or membership of a seed org. It looks like less code, but it puts our product's access policy in another service's schema and admin UI, and makes the beta undeployable against any other issuer.
 
 **GitHub is optional, and contained behind one seam.** The product is about reproductions. GitHub is where they happen to be hosted — a *forge*, the word 002 already chose — and it stays that way in the code and in the UI:
 
-- **In the code**, the web layer reaches GitHub only through 002's `publish.Forge` interface, which grows the two verbs this spec needs — `InviteCollaborator(ctx, repo, account)` and `SetVisibility(ctx, repo, public)` — plus one account-link adapter for the OAuth handshake. Nothing else imports a GitHub client. The job model, the access gate, the registry reader, and the HTTP handlers speak `Repo`, *account*, and *visibility*; only the adapter knows those mean collaborator invitations and `PATCH /repos/{owner}/{repo}`.
+- **In the code**, the web layer reaches GitHub only through 002's forge adapter, plus one account-link adapter for the OAuth handshake. Nothing else imports a GitHub client. The job model, the access gate, the registry reader, and the HTTP handlers speak `Repo`, *account*, and *visibility*; only the adapter knows those mean collaborator invitations and `PATCH /repos/{owner}/{repo}`.
+- The two verbs this spec needs — `InviteCollaborator(ctx, repo, account)` and `SetVisibility(ctx, repo, public)` — do **not** go on `publish.Forge`. That interface is the publishing seam: `Exists`, `Create`, `Push`, all called inside one publish. These are user-driven actions taken days later, and 003 already wants a read side of its own. They land on their own small interface (`publish.Granter`, say) that the same GitHub adapter satisfies, so the filesystem forge is not made to stub verbs it has no meaning for. One adapter, several narrow interfaces — the shape `provider.Provider` and `Classify` already set here.
 - **In the UI**, GitHub appears on exactly one screen: the finished reproduction's *take it out* panel, for a user who wants to own it. It is absent from sign-in, from submitting, from watching a run, and from reading a result. A user who never wants a repository never sees the word.
 - Consequently `/me` reports *linked accounts*, not a `github_login`, and the link routes are `/{forge}`-parameterised. GitHub is the only implementation today; it is not the only shape the surface admits.
 
@@ -81,7 +82,7 @@ The grant table is an ACL, not a user table: it stores a principal, an email use
 
 Everyone else — signed in, ungranted — sees the not-invited screen.
 
-**Making a reproduction public is a trusted action, and it is one-way.** 002 publishes to the organisation privately and leaves the decision to go public to a human; this is the surface for that decision, and it needs no forge account on the user's side. The backend calls `Forge.SetVisibility` with the organisation's own credential. The constraints:
+**Making a reproduction public is a trusted action, and it is one-way.** 002 publishes to the organisation privately and leaves the decision to go public to a human; this is the surface for that decision, and it needs no forge account on the user's side. The backend calls `SetVisibility` with the organisation's own credential. The constraints:
 
 - **Trusted tier only.** A seed user sees the control and is told it needs trusted access; the server refuses regardless of what the UI shows.
 - **002's gate is the reason this is safe, and it is not bypassable here.** Only worker-written files were ever pushed, so going public redistributes nothing third-party by construction. The flip therefore refuses any repository it cannot account for as its own gated publication — no `replication.json`, an unknown schema, or a manifest whose `redistribution` block is missing means no flip.
@@ -89,7 +90,7 @@ Everyone else — signed in, ungranted — sees the not-invited screen.
 - **Trust, not ownership, is the check.** Any trusted user may publish any reproduction in the organisation, including one they did not submit. That is deliberate for a small closed beta of colleagues who can already read every reproduction, and the recorded decider is what makes it accountable. Scoping the flip to the submitter is a change to make when the population outgrows that assumption.
 - The registry (003) still derives from the forge, so a newly public reproduction needs no separate index entry — it is the same repository, differently visible.
 
-**Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's credential, calls `Forge.InviteCollaborator` with the linked account, which for a non-member creates an invitation the user accepts. The consequence is the whole trust model:
+**Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's credential, calls `InviteCollaborator` with the linked account, which for a non-member creates an invitation the user accepts. The consequence is the whole trust model:
 
 - The link's OAuth is used only to **verify identity** — which account is really this person — never to act on their behalf.
 - The service **never holds a user's repository credentials.** Trust flows outward: the organisation invites; the user accepts.
@@ -114,7 +115,7 @@ Each is tightly scoped and gets its own design/implementation pass:
 | **006c — Identity, tiers & the access gate** | Standard-OIDC sign-in, the `access_grants` table with its tier, the fail-closed gate, and the platform-admin grant endpoints | consumes `sub` + verified email only; seeds by email, binds on first login |
 | **006d — PDF ingestion** | Drag-and-drop upload → identity | un-defers 001's PDF-extraction path (text → DOI/arXiv, else content digest) |
 | **006e — Frontend** | Submit (URL or drop), live progress, hindsight inspection of transcript and usage, the not-invited screen, and the two exits (link/claim, go public) | consumes 006a's API; all copy in en and zh |
-| **006f — Taking a reproduction out** | The optional account link and collaborator invitation, and the trusted-only visibility flip | extends 002's `Forge` with `InviteCollaborator` + `SetVisibility`; the only package that names GitHub; the flip re-checks 002's manifest |
+| **006f — Taking a reproduction out** | The optional account link and collaborator invitation, and the trusted-only visibility flip | adds the `Granter` interface beside 002's `Forge`, not onto it; the only package that names GitHub; the flip re-checks 002's manifest |
 
 ## Interface (the API surface, sketched)
 
@@ -132,6 +133,7 @@ GET    /reproductions                                         -> registry (003),
 GET    /reproductions/{id}                                    -> manifest + verdict + rate
 GET    /reproductions/{id}/transcript                         -> transcript (005)
 GET    /links/{forge}  ·  GET /links/{forge}/callback         -> optional; prove an account, identity scope only
+                                                                 {forge} is a closed set — today, only `github`
 
 trusted users only
 POST   /reproductions/{id}/visibility  { public: true }       -> flips the org repository public, one-way
@@ -158,7 +160,7 @@ These are invariants the whole must hold, verified as the children land:
 8. A grant seeded by a verified email admits that person on their first sign-in and binds to their principal; a second principal presenting that email afterwards is refused. Revoking the grant locks the holder out on the next request, with no session left standing.
 9. A forge account is required for nothing but the collaborator invitation. A test drives an unlinked seed user from submission to a read result and transcript end to end; `claim` is the only route that answers differently (`409`).
 10. Only a trusted user can make a reproduction public — with no forge account linked — and only one this service published under 002's gate. A seed user's flip is refused server-side even when the request is forged past the UI, and a repository with no accountable manifest is refused for everyone.
-11. The IDP is replaceable and the forge is contained. Every gate and tier test runs against a stub issuer, with no claim beyond `sub` and verified email reaching an authorisation decision; every job, gate, and API test runs against a fake `Forge`, with GitHub named only inside its adapter and the account-link adapter.
+11. The IDP is replaceable and the forge is contained. Every gate and tier test runs against a stub issuer, with no claim beyond `sub` and verified email reaching an authorisation decision; every job, gate, and API test runs against fake forge interfaces, with GitHub named only inside its adapter and the account-link adapter.
 
 ## Out of scope
 
