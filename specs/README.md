@@ -92,7 +92,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 ## The three tracks
 
-**The engine (001–005) — done except the transcript.** 001 decides what a paper *is*; 002 decides where a reproduction *goes* and gates what may be republished; 003 relates repeat reproductions of one paper by identity; 004 is the record of why the core is Go. 005 is the missing evidence layer: capture the agent's full session transcript and commit it, by the system, in the same finalize step as the manifest — turning each reproduction into claim + evidence + verdict.
+**The engine (001–005) — done.** 001 decides what a paper *is*; 002 decides where a reproduction *goes* and gates what may be republished; 003 relates repeat reproductions of one paper by identity; 004 is the record of why the core is Go. 005 closed the evidence layer: the agent's full session transcript is fetched and committed, by the system, in the same finalize step as the manifest — so each reproduction is claim + evidence + verdict.
 
 **The web application (006).** A single-tenant service that wraps the engine: submit a paper (URL or dropped PDF), watch it run, be granted the resulting repository, and inspect the transcript and cost afterwards. It spawns six children — **006a** the HTTP API and SSE, **006b** the job model and Postgres, **006c** identity and the fail-closed access gate, **006d** PDF ingestion, **006e** the frontend, **006f** taking a reproduction out (the mount publish, invitation, and visibility flip — the one child already built at its core). Closed beta: signing in grants nothing until a platform admin seeds you.
 
@@ -109,4 +109,4 @@ Engine first; the web shell last, because every screen it renders needs an engin
      → 006a / 006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
 ```
 
-Done so far: 001, 002, 003, 004, and 006f's core. **Next: 005** (transcript), the engine's missing evidence layer. 007a–007c are engine work and slot in before the server; 007d comes after it, because a hosted study needs the server, the database, and identity underneath. Within 007 the order inverts how the capabilities were first asked for — the synthetic pilot (007c) comes third, because a cohort is only checkable where the paper released real data to check it against.
+Done so far: 001–005 and 006f's core. **Next: 007a** (the study protocol as an artifact). 007a–007c are engine work and slot in before the server; 007d comes after it, because a hosted study needs the server, the database, and identity underneath. Within 007 the order inverts how the capabilities were first asked for — the synthetic pilot (007c) comes third, because a cohort is only checkable where the paper released real data to check it against.
