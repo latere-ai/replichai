@@ -9,7 +9,7 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-func TestRenderTranscript(t *testing.T) {
+func TestRenderTranscriptFiles(t *testing.T) {
 	events := []provider.Event{
 		{Role: "agent", Kind: "message", Content: "Reproducing the inner loop.",
 			Time: time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC),
@@ -18,40 +18,76 @@ func TestRenderTranscript(t *testing.T) {
 		{Role: "agent", Kind: "tool_result", Content: "main.py\ndata/"},
 		{Role: "agent", Kind: "thinking"},
 	}
-	jsonl, md := RenderTranscript(events)
+	files := RenderTranscriptFiles(events)
+
+	// The expected file set: the machine stream, the index, and one chunk.
+	for _, want := range []string{TranscriptJSONL, TranscriptMD, transcriptDir + "/001.md"} {
+		if _, ok := files[want]; !ok {
+			t.Errorf("missing file %q; have %v", want, keys(files))
+		}
+	}
 
 	// jsonl: one normalised event per line — typed fields up top, raw nested.
-	lines := strings.Split(strings.TrimSpace(string(jsonl)), "\n")
+	lines := strings.Split(strings.TrimSpace(string(files[TranscriptJSONL])), "\n")
 	if len(lines) != 4 {
 		t.Fatalf("want 4 jsonl lines, got %d", len(lines))
 	}
-	if !strings.Contains(lines[0], `"role":"agent"`) || !strings.Contains(lines[0], `"kind":"message"`) {
-		t.Errorf("jsonl not normalised: %s", lines[0])
-	}
-	if !strings.Contains(lines[0], `"type":"agent.message"`) {
-		t.Errorf("jsonl did not nest the raw event: %s", lines[0])
+	if !strings.Contains(lines[0], `"role":"agent"`) || !strings.Contains(lines[0], `"type":"agent.message"`) {
+		t.Errorf("jsonl not normalised + nested: %s", lines[0])
 	}
 	if !strings.Contains(lines[1], `"tool":"bash"`) {
 		t.Errorf("jsonl tool_use missing the tool: %s", lines[1])
 	}
 
-	s := string(md)
+	// The index links the chunk.
+	if !strings.Contains(string(files[TranscriptMD]), transcriptDir+"/001.md") {
+		t.Errorf("index does not link the chunk:\n%s", files[TranscriptMD])
+	}
+
+	// The chunk: details blocks, per-kind rendering, no colliding headings.
+	chunk := string(files[transcriptDir+"/001.md"])
 	for _, want := range []string{
-		"<details open>",                     // message reads inline, in a details block
-		"Reproducing the inner loop.",        // message text
-		"<summary>agent · tool_use · `bash`", // tool in the summary, not a heading
-		`"command":"ls -la"`,                 // tool input
-		"main.py",                            // tool result output
-		"reasoned here",                      // thinking marker
+		"<details open>", "Reproducing the inner loop.",
+		"<summary>agent · tool_use · `bash`", `"command":"ls -la"`,
+		"main.py", "reasoned here",
 	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("md missing %q:\n%s", want, s)
+		if !strings.Contains(chunk, want) {
+			t.Errorf("chunk missing %q:\n%s", want, chunk)
 		}
 	}
-	// No markdown heading is used for event boundaries — that is the whole point.
-	if strings.Contains(s, "\n### ") {
-		t.Errorf("event boundaries must not be markdown headings:\n%s", s)
+	if strings.Contains(chunk, "\n### ") {
+		t.Errorf("event boundaries must not be markdown headings:\n%s", chunk)
 	}
+}
+
+func TestRenderTranscriptChunksAndInterlinks(t *testing.T) {
+	events := make([]provider.Event, 45) // > eventsPerChunk, so two parts
+	for i := range events {
+		events[i] = provider.Event{Role: "agent", Kind: "message", Content: "step"}
+	}
+	files := RenderTranscriptFiles(events)
+
+	if _, ok := files[transcriptDir+"/002.md"]; !ok {
+		t.Fatalf("45 events should span two chunks; have %v", keys(files))
+	}
+	// The first chunk links to the next and the index; the second links back.
+	if !strings.Contains(string(files[transcriptDir+"/001.md"]), "002.md") {
+		t.Error("part 001 should link to part 002")
+	}
+	if !strings.Contains(string(files[transcriptDir+"/002.md"]), "001.md") {
+		t.Error("part 002 should link back to part 001")
+	}
+	if !strings.Contains(string(files[transcriptDir+"/001.md"]), "../"+TranscriptMD) {
+		t.Error("a chunk should link up to the index")
+	}
+}
+
+func keys(m map[string][]byte) []string {
+	var ks []string
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
 }
 
 func TestTranscriptLeaksFlagsSecrets(t *testing.T) {

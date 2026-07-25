@@ -361,22 +361,18 @@ func commitManifestIfChanged(ctx context.Context, gh *github.Client, owner, name
 	return true, nil
 }
 
-// commitTranscript renders the run's events and commits transcript.jsonl and
-// TRANSCRIPT.md when they change — the evidence layer, committed by the system
-// beside the manifest. A transcript carrying a secret is reported and bars the
-// public flip.
+// commitTranscript renders the run's events into a chunked, interlinked set of
+// files and commits them in one atomic Git Data API commit — the evidence
+// layer, committed by the system beside the manifest. A transcript carrying a
+// secret is reported and bars the public flip.
 func commitTranscript(ctx context.Context, gh *github.Client, owner, name string, events []provider.Event, stdout *os.File) error {
-	jsonl, md := publish.RenderTranscript(events)
-	changedJ, err := commitBytesIfChanged(ctx, gh, owner, name, publish.TranscriptJSONL, jsonl, "chore: reproduction transcript")
+	files := publish.RenderTranscriptFiles(events)
+	committed, err := gh.CommitFiles(ctx, owner, name, "chore: reproduction transcript", files)
 	if err != nil {
-		return err
+		return fmt.Errorf("commit transcript: %w", err)
 	}
-	changedM, err := commitBytesIfChanged(ctx, gh, owner, name, publish.TranscriptMD, md, "chore: reproduction transcript")
-	if err != nil {
-		return err
-	}
-	if changedJ || changedM {
-		fmt.Fprintf(stdout, "transcript: %d events committed\n", len(events))
+	if committed {
+		fmt.Fprintf(stdout, "transcript: %d events across %d file(s) committed\n", len(events), len(files))
 	} else {
 		fmt.Fprintln(stdout, "transcript: already current (no new commit)")
 	}
@@ -387,22 +383,6 @@ func commitTranscript(ctx context.Context, gh *github.Client, owner, name string
 		}
 	}
 	return nil
-}
-
-// commitBytesIfChanged writes a file only when it differs from what is there,
-// so re-finalizing adds no redundant commit. It compares by git blob sha, which
-// works for files of any size — the transcript can exceed the Contents API's
-// inline limit.
-func commitBytesIfChanged(ctx context.Context, gh *github.Client, owner, name, path string, content []byte, message string) (bool, error) {
-	if unchanged, err := gh.FileUnchanged(ctx, owner, name, path, content); err != nil {
-		return false, err
-	} else if unchanged {
-		return false, nil
-	}
-	if err := gh.PutFile(ctx, owner, name, path, message, content); err != nil {
-		return false, fmt.Errorf("commit %s: %w", path, err)
-	}
-	return true, nil
 }
 
 // runFinish reattaches to a still-running or finished audit session, waits for
