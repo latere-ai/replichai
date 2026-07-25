@@ -33,19 +33,30 @@ Free-text measures would break that property, because a participant can type any
 
 **Participant data never reaches a repository, a mount, or the registry — and reaches a sandbox only as the de-identified dataset it is.** This is the corrected form of [007](007-from-reproduction-to-replication.md)'s rule. Analysing collected data means running the instrument's pipeline over it, and [007b](007b-experiments-over-instruments.md) runs pipelines in the provider sandbox; a rule forbidding the sandbox outright would make a `human`-source experiment impossible, which cannot be the intent.
 
-So the rule is: collected data is attached as a session resource *outside the mount*, exactly as an uploaded dataset is, and it is safe there for a reason specific to this spec — the schema above guarantees it carries no identifier. It never enters the mounted repository, never enters the manifest, and never reaches [003](003-reproduction-registry.md)'s forge-derived registry. `publish.Classify` gains its participant origin as the belt-and-braces refusal 007 describes, for a file that should never be presented to it.
+So the rule is: collected data is attached as a session resource *outside the mount*, exactly as an uploaded dataset is, and it is safe there for a reason specific to this spec — the schema above guarantees it carries no identifier. It never enters the mounted repository, never enters the manifest, and never reaches [003](003-reproduction-registry.md)'s forge-derived registry. And `publish.Classify` needs no change to refuse it: its allowlist includes only worker-written paths, so a response file appearing in a tree is withheld already ([007](007-from-reproduction-to-replication.md)).
 
 **Consent precedes the first trial, and withdrawal deletes.** Consent text is the researcher's, versioned, and shown before any measure is recorded; each session records which version it accepted and when. A participant can withdraw from the page, which deletes that session's responses — not a flag, an absence, on the same terms [007b](007b-experiments-over-instruments.md) sets for deleting an uploaded dataset. Retention is declared per run against a platform maximum, and expiry deletes.
 
 **Opening a run requires an ethics attestation, and the platform never evaluates it.** Moving `draft → open` requires an explicit attestation naming the approving body and its reference, recorded with the attesting principal and timestamp. The platform does not review, verify, or infer approval — it records who asserted what, which is the only honest thing a piece of software can do here, and it is the same accountability shape as [006](006-web-application.md)'s recorded `made_public_by`.
 
-**A run also requires a servable protocol, refused server-side.** [007a](007a-the-study-protocol-as-an-artifact.md)'s closed criteria list is the gate, and a refusal cites the criteria that failed. Both this and the attestation are checked in the server regardless of what the UI offers.
+**A run declares which components it hosts, and servability is checked per component.** [007a](007a-the-study-protocol-as-an-artifact.md)'s servability is component-wise, and gating a run on the `all_servable` roll-up would refuse almost every real study — including case-02, whose prospective-memory task a page can run perfectly while its feed manipulation it cannot administer at all.
+
+So a run names the components it hosts; each must be servable, and a refusal cites the criteria that failed. Components not hosted are recorded as **administered out of band by the researcher**, and the collected dataset says so, because a dataset silently missing a manipulation the analysis assumes is worse than one that states the gap. This is the useful shape: the platform runs the part it can run, and is explicit about the part it cannot. Both this and the attestation are checked in the server regardless of what the UI offers.
+
+**`study/` must join the publish gate's worker-written allowlist.** The same trap [007a](007a-the-study-protocol-as-an-artifact.md) names for `instrument.json`: `publish.Classify` is an allowlist and `originOf` recognises four report names plus `src/`, so an agent-written `study/` directory is withheld from publication silently. It is worker-written and it is the apparatus — a reproduction that publishes its analysis but not the page participants saw has published half an instrument. `originOf` gains the `study/` prefix, with a test asserting the bundle survives a publish.
 
 **A human cohort is the third `Cohort`, so analysis is not rebuilt.** Collection produces a dataset; the dataset becomes a `human`-source experiment; the experiment runs the instrument's declared pipeline through [007b](007b-experiments-over-instruments.md)'s runner. Nothing about analysing a new sample is special, which is the payoff of having generalised the data source rather than adding features.
 
 The result is a **re-observation** — the first thing the platform produces that can bear on a paper's claim about the world. And it still is not a verdict: the platform reports the statistics beside `protocol.reported`, and whether a new sample upholds the paper is the researchers' conclusion to draw and defend.
 
 **Recruitment and payment stay outside.** The platform issues a participation link and a completion code a panel can verify. It does not recruit, screen, pay, or hold a participant's identity — the researcher brings their own panel, and the completion code is the entire integration surface.
+
+**Two kinds of participant-facing copy, and only one of them is ours.** [006e](006e-frontend.md) commits every platform string to English and Chinese, and this page is seen by more people than any authenticated screen, so the split has to be explicit:
+
+- **Platform chrome** — the consent screen's framing, progress and error states, the withdrawal control, the completion screen: ours, and it ships in en and zh like the rest of 006e.
+- **Protocol-derived text** — instructions, stimuli, question and scale wording: the *paper's*, reproduced in the language the paper used, and never machine-translated. Translating a validated instrument's wording changes the instrument, which is the one thing a replication must not do silently. A protocol whose language a participant cannot read is a recruitment problem for the researcher, not a string for us to localise.
+
+Consent text is the researcher's and follows their approval, so it is theirs to supply in whatever languages they need; the platform stores it versioned and renders it as given.
 
 ## Interface (sketch)
 
@@ -85,12 +96,14 @@ func (h HumanCohort) Kind() string { return "human" }
 5. Consent is recorded with its version before the first measure exists for that session; a session with no recorded consent has no responses.
 6. Withdrawal deletes that session's responses — absence, not a flag — and the same holds for dataset deletion and for retention expiry.
 7. Opening a run without an ethics attestation is refused server-side; the attestation records body, reference, principal, and time.
-8. A non-servable protocol is refused for hosting with the failed criteria cited, even when the request is forged past the UI.
-9. A `human`-source experiment runs through 007b's existing runner with no analysis path of its own, and collected data reaches the sandbox only outside the mount.
-10. Collected data never appears in a repository, a manifest, or the registry — asserted structurally, and again by `Classify` refusing a participant-origin path.
-11. Only project members reach the operator routes for a run, and project membership admits nobody to the platform ([007](007-from-reproduction-to-replication.md), criterion 7).
-12. The reported outcome sits beside `protocol.reported` and emits no pass/fail judgement about the paper.
-13. No network and no credential: the public path is tested against the server directly, the analysis against the in-process provider, identity against 006c's stub issuer.
+8. Hosting is refused for any component that is not servable, with the failed criteria cited, even when the request is forged past the UI; components the run does not host are recorded as administered out of band and appear as such in the exported dataset. Case-02's PM task hosts and its feed manipulation is refused — asserted as the pair.
+9. `study/` survives a publish: `originOf` classifies it `OriginWorker` and the bundle appears in the published tree, asserted against `internal/publish`.
+10. Platform chrome exists in en and zh; protocol-derived instruction and stimulus text is rendered as the paper wrote it and passes through no translation path — asserted by driving a protocol whose text is not English and finding it unchanged.
+11. A `human`-source experiment runs through 007b's existing runner with no analysis path of its own, and collected data reaches the sandbox only outside the mount.
+12. Collected data never appears in a repository, a manifest, or the registry — asserted structurally, and again by `Classify`'s allowlist withholding a response path presented to it.
+13. Only project members reach the operator routes for a run, and project membership admits nobody to the platform ([007](007-from-reproduction-to-replication.md), criterion 7).
+14. The reported outcome sits beside `protocol.reported` and emits no pass/fail judgement about the paper.
+15. No network and no credential: the public path is tested against the server directly, the analysis against the in-process provider, identity against 006c's stub issuer.
 
 ## Out of scope
 
