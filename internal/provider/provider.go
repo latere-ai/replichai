@@ -20,11 +20,12 @@ import (
 // happened during the run, translated to a neutral shape. Raw preserves the
 // backend's original event losslessly, so nothing is lost to the translation.
 type Event struct {
-	Role    string          // "agent" | "user" | "system"
-	Kind    string          // "message" | "thinking" | "tool_use" | "tool_result" | ...
-	Content string          // best-effort text, empty when the event carries none
-	Time    time.Time       // when the backend recorded it
-	Raw     json.RawMessage // the backend's original event
+	Role    string          `json:"role"`           // "agent" | "user" | "system"
+	Kind    string          `json:"kind"`           // "message" | "thinking" | "tool_use" | "tool_result" | ...
+	Tool    string          `json:"tool,omitempty"` // the tool for a tool_use, else empty
+	Content string          `json:"content,omitempty"`
+	Time    time.Time       `json:"time"`
+	Raw     json.RawMessage `json:"raw,omitempty"` // the backend's original event
 }
 
 // ErrUnknownProvider is returned by Get for a name that is not registered.

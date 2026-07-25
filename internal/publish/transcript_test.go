@@ -13,27 +13,38 @@ func TestRenderTranscript(t *testing.T) {
 	events := []provider.Event{
 		{Role: "agent", Kind: "message", Content: "Reproducing the inner loop.",
 			Time: time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC),
-			Raw:  json.RawMessage(`{"type":"agent.message","text":"Reproducing the inner loop."}`)},
-		{Role: "agent", Kind: "tool_use", Content: ""},
+			Raw:  json.RawMessage(`{"type":"agent.message","content":[{"type":"text","text":"Reproducing the inner loop."}]}`)},
+		{Role: "agent", Kind: "tool_use", Tool: "bash", Content: `{"command":"ls -la"}`},
+		{Role: "agent", Kind: "tool_result", Content: "main.py\ndata/"},
+		{Role: "agent", Kind: "thinking"},
 	}
 	jsonl, md := RenderTranscript(events)
 
-	// jsonl: one line per event, the raw preserved.
+	// jsonl: one normalised event per line — typed fields up top, raw nested.
 	lines := strings.Split(strings.TrimSpace(string(jsonl)), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("want 2 jsonl lines, got %d", len(lines))
+	if len(lines) != 4 {
+		t.Fatalf("want 4 jsonl lines, got %d", len(lines))
+	}
+	if !strings.Contains(lines[0], `"role":"agent"`) || !strings.Contains(lines[0], `"kind":"message"`) {
+		t.Errorf("jsonl not normalised: %s", lines[0])
 	}
 	if !strings.Contains(lines[0], `"type":"agent.message"`) {
-		t.Errorf("jsonl did not preserve the raw event: %s", lines[0])
+		t.Errorf("jsonl did not nest the raw event: %s", lines[0])
 	}
-	// A line with no raw falls back to the neutral event.
-	if !strings.Contains(lines[1], `"Kind":"tool_use"`) {
-		t.Errorf("jsonl line without raw should marshal the event: %s", lines[1])
+	if !strings.Contains(lines[1], `"tool":"bash"`) {
+		t.Errorf("jsonl tool_use missing the tool: %s", lines[1])
 	}
 
-	// md: human narrative with role/kind and content.
-	if !strings.Contains(string(md), "agent · message") || !strings.Contains(string(md), "Reproducing the inner loop.") {
-		t.Errorf("md missing the message:\n%s", md)
+	s := string(md)
+	for _, want := range []string{
+		"Reproducing the inner loop.",       // message text
+		"call `bash`", `"command":"ls -la"`, // tool call + input
+		"main.py",                 // tool result output
+		"the agent reasoned here", // thinking marker
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("md missing %q:\n%s", want, s)
+		}
 	}
 }
 

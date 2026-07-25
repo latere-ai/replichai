@@ -16,34 +16,53 @@ const (
 )
 
 // RenderTranscript renders a run's events two ways: transcript.jsonl, the
-// canonical one-event-per-line stream (each line the backend's original event,
-// so nothing is lost), and TRANSCRIPT.md, a human-readable narrative.
+// canonical machine-readable stream — one normalised event per line, with the
+// typed fields (role, kind, tool, content) up top and the backend's original
+// event nested under `raw`, so it is both consistent to parse and lossless —
+// and TRANSCRIPT.md, a human-readable narrative rendered per kind.
 func RenderTranscript(events []provider.Event) (jsonl, md []byte) {
 	var j, m bytes.Buffer
 	m.WriteString("# Reproduction transcript\n\n")
-	m.WriteString("The agent's full session, as recorded by the backend — the evidence behind the verdict.\n\n")
+	m.WriteString("The agent's full session, as recorded by the backend — the evidence behind the verdict. The canonical machine-readable form is `transcript.jsonl`; this file is the narrative.\n")
 
 	for _, e := range events {
-		line := e.Raw
-		if len(line) == 0 {
-			line, _ = json.Marshal(e)
+		if line, err := json.Marshal(e); err == nil {
+			j.Write(line)
+			j.WriteByte('\n')
 		}
-		j.Write(bytes.TrimSpace(line))
-		j.WriteByte('\n')
-
-		stamp := ""
-		if !e.Time.IsZero() {
-			stamp = e.Time.UTC().Format(time.RFC3339) + " · "
-		}
-		fmt.Fprintf(&m, "### %s%s · %s\n", stamp, e.Role, e.Kind)
-		if e.Content != "" {
-			m.WriteString("\n")
-			m.WriteString(e.Content)
-			m.WriteString("\n")
-		}
-		m.WriteString("\n")
+		renderEventMD(&m, e)
 	}
 	return j.Bytes(), m.Bytes()
+}
+
+// renderEventMD writes one event as a markdown block, shaped to its kind:
+// a tool call shows its name and input, a tool result its output, a message its
+// text, and thinking a marker (the backend exposes no thinking content).
+func renderEventMD(m *bytes.Buffer, e provider.Event) {
+	stamp := ""
+	if !e.Time.IsZero() {
+		stamp = " · " + e.Time.UTC().Format(time.RFC3339)
+	}
+	fmt.Fprintf(m, "\n### %s · %s%s\n\n", e.Role, e.Kind, stamp)
+
+	switch {
+	case e.Tool != "":
+		fmt.Fprintf(m, "call `%s`\n", e.Tool)
+		if e.Content != "" {
+			fmt.Fprintf(m, "\n```json\n%s\n```\n", e.Content)
+		}
+	case e.Kind == "thinking":
+		m.WriteString("_(the agent reasoned here; the backend does not expose the content)_\n")
+	case e.Kind == "tool_result":
+		if e.Content != "" {
+			fmt.Fprintf(m, "```\n%s\n```\n", e.Content)
+		} else {
+			m.WriteString("_(no output)_\n")
+		}
+	case e.Content != "":
+		m.WriteString(e.Content)
+		m.WriteString("\n")
+	}
 }
 
 // TranscriptLeak is one event whose content carries a redistribution risk.
