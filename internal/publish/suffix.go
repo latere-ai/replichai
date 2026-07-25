@@ -17,13 +17,17 @@ const suffixAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 // NewSuffix returns suffixLen lowercase base-32 characters from a cryptographic
 // source. 003 wraps this with a collision check against the registry;
 // standalone, one draw is enough.
-func NewSuffix() (string, error) {
-	b := make([]byte, suffixLen)
+func NewSuffix() (string, error) { return NewSuffixN(suffixLen) }
+
+// NewSuffixN returns n lowercase base-32 characters. 003 widens from four to
+// six after repeated collisions.
+func NewSuffixN(n int) (string, error) {
+	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	var sb strings.Builder
-	sb.Grow(suffixLen)
+	sb.Grow(n)
 	for _, c := range b {
 		sb.WriteByte(suffixAlphabet[int(c)%len(suffixAlphabet)])
 	}
