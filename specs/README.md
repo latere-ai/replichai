@@ -5,7 +5,7 @@ Designs for work not yet built. One spec per tightly-scoped feature; each states
 | # | Spec | Status | Depends on |
 |---|---|---|---|
 | 001 | [Paper identity and slugs](001-paper-identity-and-slugs.md) | implemented | — |
-| 002 | [Publishing reproductions](002-publishing-reproductions.md) | draft | 001 |
+| 002 | [Publishing reproductions](002-publishing-reproductions.md) | implemented | 001 |
 | 003 | [The reproduction registry](003-reproduction-registry.md) | draft | 001, 002 |
 | 004 | [Port the core to Go](004-go-port.md) | implemented | — |
 | 005 | Capture and publish the reproduction transcript | planned | 002 |
