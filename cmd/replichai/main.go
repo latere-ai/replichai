@@ -26,6 +26,7 @@ import (
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
+	"github.com/latere-ai/replichai/internal/registry"
 
 	// Adapters register themselves.
 	_ "github.com/latere-ai/replichai/internal/provider/anthropic"
@@ -146,7 +147,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	// worker commits its reproduction into it as it runs.
 	var pub *publisher
 	if *doPublish {
-		pub, err = newPublisher(ctx, *owner, paper, *timeout)
+		pub, err = newPublisher(ctx, *owner, paper, m.Digest(), *timeout, stderr)
 		if err != nil {
 			return err
 		}
@@ -209,9 +210,10 @@ type publisher struct {
 
 func (p *publisher) repoFullName() string { return p.owner + "/" + p.name }
 
-// newPublisher resolves the paper, creates the private repository, and prepares
-// the mount. The GitHub token comes from REPLICHAI_GITHUB_TOKEN.
-func newPublisher(ctx context.Context, owner, paperRef string, timeout time.Duration) (*publisher, error) {
+// newPublisher resolves the paper, warns about any prior reproduction, allocates
+// a collision-free name through the registry, and creates the private
+// repository. The GitHub token comes from REPLICHAI_GITHUB_TOKEN.
+func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, timeout time.Duration, stderr *os.File) (*publisher, error) {
 	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	if token == "" {
 		return nil, fmt.Errorf("--publish needs REPLICHAI_GITHUB_TOKEN set")
@@ -220,13 +222,33 @@ func newPublisher(ctx context.Context, owner, paperRef string, timeout time.Dura
 	if err != nil {
 		return nil, err
 	}
-	suffix, err := publish.NewSuffix()
-	if err != nil {
-		return nil, err
-	}
-	name := id.Slug + "-" + suffix
 
 	gh := github.New(token)
+	reg := registry.New(registry.NewGitHubSource(gh, owner),
+		registry.WithWarner(func(m string) { fmt.Fprintf(stderr, "  %s\n", m) }))
+
+	// Tell the operator about any prior reproduction before a sibling is created.
+	priors, err := reg.Lookup(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("check prior reproductions: %w", err)
+	}
+	if len(priors) > 0 {
+		fmt.Fprintf(stderr, "  ! %s reproduced before:\n", id)
+		for _, p := range priors {
+			note := ""
+			if p.MethodDigest == methodDigest {
+				note = " — same method, re-running"
+			}
+			fmt.Fprintf(stderr, "      %s (%s · %s · %s)%s\n",
+				p.Repo, p.Created.Format("2006-01-02"), shortDigest(p.MethodDigest), p.Verdict, note)
+		}
+	}
+
+	name, err := reg.AllocateName(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("allocate name: %w", err)
+	}
+
 	repo, err := gh.CreateRepo(ctx, owner, name, true)
 	if errors.Is(err, github.ErrRepoExists) {
 		repo, err = gh.GetRepo(ctx, owner, name)
@@ -241,6 +263,14 @@ func newPublisher(ctx context.Context, owner, paperRef string, timeout time.Dura
 		id:    id,
 		mount: provider.RepoMount{URL: repo.HTMLURL, Token: token, MountPath: audit.DefaultMountPath},
 	}, nil
+}
+
+// shortDigest abbreviates "sha256:1f2e3a…" to "sha256:1f2e" for operator output.
+func shortDigest(d string) string {
+	if i := strings.IndexByte(d, ':'); i >= 0 && len(d) > i+5 {
+		return d[:i+5]
+	}
+	return d
 }
 
 // finalize runs after the audit: verify what was committed, write the manifest,
