@@ -266,17 +266,16 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 	leaked := publish.VerifyTree(tree)
 
 	manifest := publish.ManifestFor(id, repoFull, methodDigest, verdict, time.Now(), len(leaked) == 0)
-	raw, err := json.MarshalIndent(manifest, "", "  ")
+	committed, err := commitManifestIfChanged(ctx, gh, owner, name, manifest)
 	if err != nil {
 		return err
-	}
-	if err := gh.PutFile(ctx, owner, name, publish.ManifestFile,
-		"chore: reproduction manifest", append(raw, '\n')); err != nil {
-		return fmt.Errorf("commit manifest: %w", err)
 	}
 
 	fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", repoFull)
 	fmt.Fprintf(stdout, "commit:    %s\n", head)
+	if !committed {
+		fmt.Fprintln(stdout, "manifest:  already current (no new commit)")
+	}
 	if len(leaked) == 0 {
 		fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
 	} else {
@@ -292,6 +291,29 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 		fmt.Fprintf(stdout, "invited:   %s\n", invite)
 	}
 	return nil
+}
+
+// commitManifestIfChanged writes replication.json only when it is new or
+// materially different from what is already there, so re-finalizing the same
+// reproduction adds no redundant commit. It reports whether it committed.
+func commitManifestIfChanged(ctx context.Context, gh *github.Client, owner, name string, m publish.Manifest) (bool, error) {
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	if existing, ok, err := gh.GetFileContent(ctx, owner, name, publish.ManifestFile); err != nil {
+		return false, err
+	} else if ok {
+		var prev publish.Manifest
+		if json.Unmarshal(existing, &prev) == nil && publish.SameManifest(prev, m) {
+			return false, nil // unchanged — no commit
+		}
+	}
+	if err := gh.PutFile(ctx, owner, name, publish.ManifestFile,
+		"chore: reproduction manifest", append(raw, '\n')); err != nil {
+		return false, fmt.Errorf("commit manifest: %w", err)
+	}
+	return true, nil
 }
 
 // runFinish reattaches to a still-running or finished audit session, waits for

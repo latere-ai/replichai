@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -190,6 +191,35 @@ func (c *Client) PutFile(ctx context.Context, owner, name, path, message string,
 		return fmt.Errorf("put %s in %s/%s: unexpected status %d", path, owner, name, status)
 	}
 	return nil
+}
+
+// GetFileContent returns the decoded bytes of a file, or ok=false if it is
+// absent — so a caller can compare against what it is about to write and skip a
+// no-op commit.
+func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) ([]byte, bool, error) {
+	var file struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	status, err := c.do(ctx, http.MethodGet, "/repos/"+owner+"/"+name+"/contents/"+path, nil, &file)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("read %s in %s/%s: unexpected status %d", path, owner, name, status)
+	}
+	if file.Encoding != "base64" {
+		return nil, false, fmt.Errorf("%s in %s/%s has unexpected encoding %q", path, owner, name, file.Encoding)
+	}
+	// GitHub wraps base64 content at 60 columns; strip the newlines to decode.
+	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
+	if err != nil {
+		return nil, false, fmt.Errorf("decoding %s: %w", path, err)
+	}
+	return decoded, true, nil
 }
 
 // fileSHA returns the blob sha of an existing file, or ok=false if it is absent.
