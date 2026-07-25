@@ -65,7 +65,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 - **Never simulate the outer loop** — outer-loop execution is a downstream engine, `verdict`/`rate` stay audit-only, a synthetic cohort is labelled indelibly. Regression-tested in `evals/case-01`. (007)
 - **Closed beta, fail-closed access** — anyone signs in with a latere account; only seed users a platform admin grants reach the operator UI. (006c)
 
-**Still open in 006f:** the two-token split (a fine-grained mount token distinct from the org token — one token for now) and the trusted-only public-visibility flip (needs 006c's tiers).
+**Still open in 006f:** the two-token split (a fine-grained mount token distinct from the org token — one token for now) and the trusted-only public-visibility flip (needs 006c's tiers). The flip has a prerequisite: **009**, secret containment. Because the agent commits live, nothing filters before the push, and a secret can reach the tree, the history, or the transcript. `VerifyTree` covers the head tree and reaches the manifest; `TranscriptLeaks` only warns, which diverges from 005. Deferred for the MVP and safe to defer only because nothing makes a repository public today.
 
 ## The spec map
 
@@ -89,6 +89,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | draft | 007b |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
+| 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | deferred | 002, 005, 006f |
 
 ## The three tracks
 
