@@ -16,6 +16,11 @@ Designs for work not yet built. One spec per tightly-scoped feature; each states
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | draft | 006a |
 | 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | draft | 002, 004, (006c) |
+| 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
+| 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | draft | 004 |
+| 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | draft | 007a, 006f |
+| 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | draft | 007b |
+| 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
 
 Read 001-003 in order: 001 decides what a paper *is*; 002 decides where a reproduction *goes*; 003 decides how repeat reproductions of one paper find each other. 004 is done and kept as the record of why the core is Go and what the port had to preserve.
 
@@ -23,4 +28,8 @@ Read 001-003 in order: 001 decides what a paper *is*; 002 decides where a reprod
 
 **006f is in progress** and its spike passed: publishing to GitHub with agent-authored commit history, on the native repo-mount mechanism confirmed live. It revises 002's push model for the backend path (002's forge stays for offline/CLI), moves the redistribution gate from a pre-filter to a post-run verifier, and adds the collaborator invitation and the trusted-only visibility flip.
 
-**Build sequence:** 006f (now) → 003 (registry, once there are real GitHub repos to derive from) → 005 (transcript, once there is a repo to publish it into) → 006a/006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend). The web shell comes last, on purpose: every screen it renders needs an engine capability that the earlier specs deliver.
+007 is a design spec for the track past the inner loop, and it spawns four children. It turns a reproduction into a re-runnable **instrument** — the study protocol, the analysis entrypoint, and a servability verdict, declared as data (**007a**) — and then generalises the unit of work: an **experiment** binds one instrument to one **data source**, of which there are four. The paper's released data gives re-analysis; a researcher's uploaded dataset gives them a new finding on the paper's instrument (**007b**); an LLM cohort gives a *pilot* that shakes the apparatus down and never becomes evidence about people (**007c**); real participants, through a page the platform hosts, give re-observation (**007d**). One generalisation, four bindings — the "run it on my own data" capability is a row in a table rather than a feature of its own.
+
+What 007 does **not** do is touch the audit. "Never simulate the outer loop" is regression-tested in `evals/case-01`, a failing condition in the rubric, and the product's thesis; outer-loop execution is a downstream engine, `verdict` and `rate` stay audit-only, and a synthetic cohort is labelled indelibly. 007 also revises **006b** (a job runs an audit *or* an experiment) and **006c** (project membership beside the tiers, admitting nobody to the platform) — written before either is built, because afterwards it would be a migration.
+
+**Build sequence:** 006f (now) → 003 (registry, once there are real GitHub repos to derive from) → 005 (transcript, once there is a repo to publish it into) → 007a → 007b → 007c → 006a/006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d. The web shell comes last, on purpose: every screen it renders needs an engine capability that the earlier specs deliver. 007a–007c sit before it for the same reason — they are engine work — and 007d sits after it because a hosted study needs the server, the database, and identity underneath it. Within 007 the order also inverts the order these capabilities were first asked for: the synthetic pilot comes third, because a cohort is only checkable where the paper released real data to check it against.
