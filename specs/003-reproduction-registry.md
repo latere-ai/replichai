@@ -32,11 +32,10 @@ Four base-32 characters is ~1M values. With a few thousand reproductions the bir
 
 ## Interface
 
-Package `internal/registry`. The registry reads through the same `Forge` seam
-002 defines, extended here with the read side — enumerate the organisation, read
-one repository's manifest. Because the registry is derived, `Registry` holds no
-state of its own beyond the forge and its cache; every method takes a context
-and is safe to call concurrently.
+Package `internal/registry`. The registry reads through a narrow `Source` seam
+(below) — enumerate the organisation, read one repository's manifest. Because
+the registry is derived, `Registry` holds no state of its own beyond the source
+and its cache; every method takes a context and is safe to call concurrently.
 
 ```go
 // PriorReproduction is one existing reproduction of a paper, read from a
@@ -68,20 +67,24 @@ func (r *Registry) CanonicalSlug(ctx context.Context, id paper.Identity) (string
 func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string, error)
 ```
 
-**Forge, read side.** 002's `Forge` gains the two methods the registry needs.
-The GitHub adapter enumerates the `open-hai` organisation; a **filesystem
-adapter — a directory of `replication.json` files — is the local
-implementation, so the full audit→publish→registry loop runs offline** with no
-organisation and no network. This is the same adapter that acceptance criterion
-7 already requires for testing; it is not new scope, it is the seam named.
+**Read seam.** The registry reads through its own narrow `Source`, not 002's
+write-side `Forge`: 006f's real GitHub access went through `internal/github`
+(list, read a file), not `publish.Forge`, so the registry wraps that. A GitHub
+source enumerates the `open-hai` organisation and reads each manifest via
+`internal/github`; a **filesystem source — a directory of `replication.json`
+files — is the local implementation, so the full audit→publish→registry loop
+runs offline** with no organisation and no network (acceptance criterion 7).
 
 ```go
-type Forge interface {
-	// ... the write side from 002 ...
-	List(ctx context.Context) ([]string, error)             // repository names
-	Manifest(ctx context.Context, repo string) (Manifest, error)
+// Source enumerates published reproductions and reads their manifests.
+type Source interface {
+	List(ctx context.Context) ([]string, error)                  // repository names
+	Manifest(ctx context.Context, repo string) (publish.Manifest, error)
 }
 ```
+
+The manifest type is `publish.Manifest` (002), so the registry never redefines
+the record it reads.
 
 ## Acceptance criteria
 
