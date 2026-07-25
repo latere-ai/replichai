@@ -2,6 +2,16 @@
 
 What one audit does, in order, and why each step is shaped the way it is.
 
+Steps 1–7 are the agent's work, and they are the audit whether or not it is published. Publishing wraps them: identity and a repository before, verification and attestation after.
+
+## 0. Before the agent starts (publishing runs only)
+
+Resolve the paper to a stable identity, ask the registry whether this paper has been reproduced before — a prior reproduction is reported with its date, its method digest, and its verdict, so an operator knows whether they are re-running or duplicating — allocate a name that cannot collide with a sibling, and create the repository private.
+
+The repository is then mounted into the sandbox, and the agent commits into it as it works. Its history is part of the result: a reproduction that arrives as one squashed drop says nothing about how it was reached.
+
+That makes the workspace boundary load-bearing. The agent writes its reproduction inside the mounted repository and keeps every download — the paper PDF, datasets, benchmarks, anything third-party — outside it, in `/tmp`. Nothing filters the push, so this discipline is what keeps the repository publishable, and it is checked afterwards rather than assumed.
+
 ## 1. Acquire the paper
 
 Fetch the reference. If only an abstract comes back, download the PDF and extract the full text. Read all of it — appendices, footnotes, the data-availability statement, acknowledgements.
@@ -52,6 +62,16 @@ The verdict must also separate **re-analysis** from **re-observation**. Reproduc
 ## Grading
 
 Every run is graded against `method/rubric.md` — six binary criteria covering the verdict, the boundary, the hidden decisions, the open-science score, evidence that code was actually run, and honesty of citation. The worker revises and is re-graded up to its revision budget.
+
+## 8. Finalize (publishing runs only)
+
+Everything so far was authored by the agent. What follows is authored by the system, outside the sandbox, and that separation is the whole reason the record is worth anything.
+
+Read the tree the agent actually committed and check it for third-party content. Fetch the run's event log from the backend and commit it as `transcript.jsonl` and `TRANSCRIPT.md` — the evidence behind the verdict, not the agent's account of it. Write `replication.json`: the paper's identity, the repository, the digest of the method that produced the run, the verdict, the decomposed rate when one could be read out of the report, and whether the redistribution check cleared — the manifest is what the registry reads, so this is also how the next reproduction of this paper learns that this one happened. Then invite the requesting login as a collaborator, which is how ownership is granted — by invitation, never by handing the service someone's credentials.
+
+Finalizing is idempotent. The manifest and the transcript are compared against what is already committed and rewritten only when they differ, so re-running it costs nothing and leaves no redundant commit.
+
+Because the agent commits independently of the process that started it, finalizing does not have to happen in the same breath as the run. `audit --publish --detach` starts the run and prints the `finish` command; `finish` reattaches to the session, waits for it to settle, and performs this step. That is also the recovery path when a long run outlives its CLI.
 
 ## Regression
 
