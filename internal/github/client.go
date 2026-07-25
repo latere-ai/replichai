@@ -11,6 +11,7 @@ package github
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,6 +133,81 @@ func (c *Client) HeadCommit(ctx context.Context, owner, name string) (string, er
 		return "", fmt.Errorf("%s/%s has no commits", owner, name)
 	}
 	return commits[0].SHA, nil
+}
+
+// TreePaths lists the blob paths committed on a ref (a branch or a commit sha),
+// recursively — the committed tree the post-run verifier checks against the
+// bounded-workspace rule.
+func (c *Client) TreePaths(ctx context.Context, owner, name, ref string) ([]string, error) {
+	var tree struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+		Truncated bool `json:"truncated"`
+	}
+	status, err := c.do(ctx, http.MethodGet,
+		"/repos/"+owner+"/"+name+"/git/trees/"+ref+"?recursive=1", nil, &tree)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tree of %s/%s@%s: unexpected status %d", owner, name, ref, status)
+	}
+	if tree.Truncated {
+		return nil, fmt.Errorf("tree of %s/%s is too large to list in one page", owner, name)
+	}
+	paths := make([]string, 0, len(tree.Tree))
+	for _, e := range tree.Tree {
+		if e.Type == "blob" {
+			paths = append(paths, e.Path)
+		}
+	}
+	return paths, nil
+}
+
+// PutFile commits a single file, creating or updating it. The server uses it to
+// add replication.json after the agent's history — the manifest records facts
+// the agent never had (the method digest, the head commit, the repository name).
+func (c *Client) PutFile(ctx context.Context, owner, name, path, message string, content []byte) error {
+	body := map[string]any{
+		"message": message,
+		"content": base64.StdEncoding.EncodeToString(content),
+	}
+	// If the file already exists (a republish), its blob sha is required; fetch
+	// it and include it so the update is accepted rather than rejected.
+	if sha, ok, err := c.fileSHA(ctx, owner, name, path); err != nil {
+		return err
+	} else if ok {
+		body["sha"] = sha
+	}
+	status, err := c.do(ctx, http.MethodPut,
+		"/repos/"+owner+"/"+name+"/contents/"+path, body, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusCreated {
+		return fmt.Errorf("put %s in %s/%s: unexpected status %d", path, owner, name, status)
+	}
+	return nil
+}
+
+// fileSHA returns the blob sha of an existing file, or ok=false if it is absent.
+func (c *Client) fileSHA(ctx context.Context, owner, name, path string) (string, bool, error) {
+	var file struct {
+		SHA string `json:"sha"`
+	}
+	status, err := c.do(ctx, http.MethodGet, "/repos/"+owner+"/"+name+"/contents/"+path, nil, &file)
+	if err != nil {
+		return "", false, err
+	}
+	if status == http.StatusNotFound {
+		return "", false, nil
+	}
+	if status != http.StatusOK {
+		return "", false, fmt.Errorf("stat %s in %s/%s: unexpected status %d", path, owner, name, status)
+	}
+	return file.SHA, true, nil
 }
 
 // SetPublic makes a repository public. It is deliberately one-way: this package
