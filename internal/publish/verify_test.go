@@ -3,6 +3,10 @@ package publish
 import (
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 func TestVerifyTreeCleanWhenOnlyWorkerFiles(t *testing.T) {
@@ -20,6 +24,27 @@ func TestVerifyTreeFlagsCommittedThirdParty(t *testing.T) {
 	want := []string{"data/benchmark.csv", "paper.pdf"}
 	if !slices.Equal(leaked, want) {
 		t.Errorf("leaked = %v, want %v", leaked, want)
+	}
+}
+
+func TestManifestForReflectsCleanliness(t *testing.T) {
+	id := paper.Identity{Key: "arxiv:2302.03714", Scheme: paper.SchemeArXiv, Title: "A Paper", Slug: "a-paper"}
+	when := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
+
+	clean := ManifestFor(id, "open-hai/a-paper-a3f9", "sha256:x", provider.GradePassed, when, true)
+	if clean.Redistribution.ThirdPartyData || clean.Redistribution.Review != ReviewClear {
+		t.Errorf("clean manifest = %+v", clean.Redistribution)
+	}
+	if clean.Reproduction.Repo != "open-hai/a-paper-a3f9" || !clean.Reproduction.Created.Equal(when) {
+		t.Errorf("reproduction = %+v", clean.Reproduction)
+	}
+	if clean.Paper.Scheme != paper.SchemeArXiv {
+		t.Errorf("paper scheme = %v", clean.Paper.Scheme)
+	}
+
+	dirty := ManifestFor(id, "open-hai/a-paper-a3f9", "sha256:x", provider.GradePassed, when, false)
+	if !dirty.Redistribution.ThirdPartyData || dirty.Redistribution.Review != ReviewExcluded {
+		t.Errorf("dirty manifest = %+v", dirty.Redistribution)
 	}
 }
 
