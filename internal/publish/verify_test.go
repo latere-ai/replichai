@@ -9,21 +9,35 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-func TestVerifyTreeCleanWhenOnlyWorkerFiles(t *testing.T) {
-	clean := []string{"README.md", "REPRODUCIBILITY.md", "SOURCES.md", "UNVERIFIED.md",
-		"src/main.py", "src/lib/util.py"}
-	if leaked := VerifyTree(clean); len(leaked) != 0 {
-		t.Errorf("a bounded workspace should verify clean, leaked %v", leaked)
+func TestVerifyTreeAcceptsARealReproductionRepo(t *testing.T) {
+	// A normal software repo: reports, source, tests, config, deps, generated
+	// results — none of it third-party. This is the case that must not
+	// false-positive (an agent-authored repo is not four report files).
+	clean := []string{
+		"README.md", "REPRODUCIBILITY.md", "SOURCES.md", "UNVERIFIED.md",
+		".gitignore", "LICENSE", "requirements.txt", "pyproject.toml", "Makefile",
+		"src/main.py", "src/lib/util.py", "tests/test_main.py",
+		"configs/default.yaml", "results/accuracy.csv", "figures/fig1.png",
+	}
+	if flagged := VerifyTree(clean); len(flagged) != 0 {
+		t.Errorf("a real reproduction repo must verify clean, flagged %v", flagged)
 	}
 }
 
-func TestVerifyTreeFlagsCommittedThirdParty(t *testing.T) {
-	tree := []string{"README.md", "src/main.py", "data/benchmark.csv", "paper.pdf"}
-	leaked := VerifyTree(tree)
-	slices.Sort(leaked)
-	want := []string{"data/benchmark.csv", "paper.pdf"}
-	if !slices.Equal(leaked, want) {
-		t.Errorf("leaked = %v, want %v", leaked, want)
+func TestVerifyTreeFlagsThirdPartyDataAndSecrets(t *testing.T) {
+	tree := []string{
+		"README.md", "src/main.py", // the reproduction
+		"paper.pdf",            // the paper
+		"data/imagenet.tar.gz", // a dataset archive
+		"models/weights.pt",    // model weights
+		"cache/store.sqlite",   // a database
+		".env",                 // a secret
+	}
+	flagged := VerifyTree(tree)
+	slices.Sort(flagged)
+	want := []string{".env", "cache/store.sqlite", "data/imagenet.tar.gz", "models/weights.pt", "paper.pdf"}
+	if !slices.Equal(flagged, want) {
+		t.Errorf("flagged = %v, want %v", flagged, want)
 	}
 }
 
