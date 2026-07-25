@@ -1,6 +1,6 @@
 # 002 — Publishing reproductions
 
-**Status:** draft
+**Status:** implemented (`2670d1a`)
 **Scope:** taking one completed audit's artifacts and publishing them as their own repository.
 **Depends on:** 001
 
@@ -178,3 +178,16 @@ type Forge interface {
 ## Out of scope
 
 Conflict detection across reproductions — that is 003. Making anything public.
+
+## Outcome
+
+Implemented in `internal/publish` across three commits (`5da951a` core, `3acfda5` plan, `2670d1a` forge and publish), all eight acceptance criteria covered by tests that run entirely offline against the filesystem forge; 91% statement coverage.
+
+Built as specified after the redistribution gate was rebased onto reality:
+
+- **The gate became fail-closed structural** (`b07ee8d`). `SOURCES.md` records the paper's identity and artifact searches, not per-file redistribution clearance, so the original "read `SOURCES.md` for clearance" premise did not hold. Classification is now by origin (worker-written reports + `src/` are included, everything else is quarantined, always), and the old AC6 — a term quarantining an otherwise-included file — collapsed into AC5, because the gated benchmark is third-party and quarantined by origin. Per-item clearance is deferred to a spec with structured provenance.
+- **`Classify` is a pure, reusable gate** — 005's transcript gate will reuse it rather than re-deriving the rule.
+- **The composability nudges landed**: `PlanPublication` takes an injected suffix and stays pure and deterministic (naming *allocation* is 003's); `Publish` returns a `Published{Repo}` handle so 006c's collaborator invitation bolts on; the `Forge` gained `Exists` for idempotency, and `Publish` pushes even when the repo already existed so a failed mid-push converges on retry.
+- **`method_digest` needed a source**: `method.Method.Digest()` (length-framed sha256 of the three documents) was added and carried on `audit.Result`, set by the `Auditor` — the natural home for "which method produced this run."
+
+Deferred, as designed: a GitHub `Forge` (the real host adapter belongs with 006c, which needs the org admin token anyway); parsing the decomposed `rate` out of `REPRODUCIBILITY.md` (the manifest tolerates its absence); and any clearance path for third-party data.
