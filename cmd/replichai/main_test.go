@@ -3,13 +3,53 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/provider"
 )
+
+func TestHTTPFetcherRetriesTransientFailures(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls < 2 {
+			http.Error(w, "slow", http.StatusServiceUnavailable) // transient
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(server.Close)
+
+	body, err := httpFetcher{timeout: 5 * time.Second}.Fetch(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if string(body) != "ok" || calls != 2 {
+		t.Errorf("expected a retry to succeed: body=%q calls=%d", body, calls)
+	}
+}
+
+func TestHTTPFetcherDoesNotRetryNotFound(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+
+	if _, err := (httpFetcher{timeout: 5 * time.Second}).Fetch(context.Background(), server.URL); err == nil {
+		t.Error("a 404 should error")
+	}
+	if calls != 1 {
+		t.Errorf("a 404 is not retryable, want 1 call, got %d", calls)
+	}
+}
 
 // capture runs the CLI with stdout and stderr redirected to temp files, and
 // returns what each received. The command writes to *os.File, so real files

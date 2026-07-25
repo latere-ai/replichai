@@ -643,28 +643,61 @@ func collectArtifacts(dir string) ([]provider.Artifact, error) {
 	return arts, nil
 }
 
-// httpFetcher is the resolver's network seam at the CLI edge: an ordinary HTTP
-// GET. The internal/paper package stays network-free and testable; the real
-// transport lives here.
+// httpFetcher is the resolver's network seam at the CLI edge: an HTTP GET that
+// retries transient failures. The internal/paper package stays network-free and
+// testable; the real transport lives here. Retry matters because arXiv's
+// metadata API is slow and rate-limited, and a single timeout there would
+// otherwise fail an audit's identity resolution.
 type httpFetcher struct{ timeout time.Duration }
 
+// fetchAttempts is how many times a fetch is tried before giving up.
+const fetchAttempts = 3
+
 func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < fetchAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * time.Second): // linear backoff
+			}
+		}
+		body, retryable, err := h.fetchOnce(ctx, url)
+		if err == nil {
+			return body, nil
+		}
+		lastErr = err
+		if !retryable {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+// fetchOnce performs one GET. retryable is true for a timeout, a network error,
+// or a 429/5xx — the failures a retry can recover from.
+func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, retryable bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, h.timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("User-Agent", "replichai")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return nil, true, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.StatusCode != http.StatusOK {
+		return nil, false, fmt.Errorf("%s returned %s", url, resp.Status)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	return b, false, err
 }
 
 func usage(w *os.File) {
