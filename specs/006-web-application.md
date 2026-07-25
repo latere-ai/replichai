@@ -1,7 +1,7 @@
 # 006 — The web application
 
 **Status:** draft
-**Scope:** turning the audit engine into a single-tenant web service — submit a paper, watch it run, and be granted ownership of the reproduction — open at first only to an invited set of seed users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
+**Scope:** turning the audit engine into a single-tenant web service — submit a paper, watch it run, then take the reproduction out: own it on GitHub, or, if the platform trusts you, publish it publicly. Open at first only to an invited set of seed users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
 **Depends on:** 002 (publishing). Consumes 003 (registry) and 005 (transcript).
 
 ## Problem
@@ -38,12 +38,14 @@ The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
 
 So the database holds *jobs in flight* and *who may start one*, never reproductions. A completed job's durable record is its published repository, read back through 003. Deleting the job row loses nothing that matters; deleting a grant row only revokes access.
 
-**Two identity facts, two purposes.** Signing in is latere's job; being invited to a repository is GitHub's. The web layer keeps both and never conflates them:
+**One identity is required; GitHub is optional.** Signing in is latere's job. A GitHub account is not a condition of using the service — it is one of two ways to take a finished reproduction out of it:
 
-| Fact | Established by | Used for |
-|---|---|---|
-| latere principal (`sub`, email) | latere auth OIDC (`latere.ai/x/pkg/oidc`) | Who this person is; the access gate below |
-| GitHub login | A separate, one-time **link** step, OAuth-verified | The target of the repository invitation |
+| Fact | Established by | Required? | Used for |
+|---|---|---|---|
+| latere principal (`sub`, email) | latere auth OIDC (`latere.ai/x/pkg/oidc`) | Always | Who this person is; the access gate below |
+| GitHub login | A one-time **link** step, OAuth-verified | Only to be invited as a collaborator | The target of the repository invitation |
+
+A user with no GitHub account runs an audit end to end, watches it, and reads its result, verdict, and transcript in the web application. What they cannot do without linking is receive the repository as a collaborator, because that is a GitHub-side grant and GitHub needs an account to grant it to. Making the reproduction *public* needs no GitHub account at all — the organisation already owns the repository, and the flip is the organisation's to make (see the trusted tier below).
 
 The link is stored against the principal, not the session — one row per principal, so a claim months later still knows where to send the invitation. Whether it is a column on the grant row or its own table is 006c/006f's to settle; it is written only by the link callback, never by a request body.
 
@@ -51,15 +53,31 @@ The GitHub login is *proven*, never typed. An earlier sketch had `claim { github
 
 **Access by invitation only — a closed beta, fail-closed.** Anyone with a latere account can sign in. Signing in grants *nothing*. The operator surface — submitting papers, watching jobs, claiming reproductions, reading a run — is open only to principals a platform admin has granted access to. An authenticated, ungranted user is a first-class state, not an error: the UI tells them they are not yet a seed user and to contact the latere platform owners.
 
-- Grants live in an `access_grants` table: `email` (primary key, how an admin seeds someone who has never signed in), `principal` (bound on that person's first login, unique thereafter), `granted_by`, `granted_at`.
-- Seeding by email is what makes the flow work: an admin invites a colleague who has no latere `sub` yet, and the row binds to the principal when they first arrive. Match on `principal` once bound; fall back to verified email only until then.
+- Grants live in an `access_grants` table: `email` (primary key, how an admin seeds someone who has never signed in), `principal` (bound on that person's first login, unique thereafter), `tier`, `granted_by`, `granted_at`.
+- Seeding by email is what makes the flow work: an admin invites a colleague who has no latere `sub` yet, and the row binds to the principal when they first arrive. Match on the *verified* email from `/userinfo`, never a self-asserted one, and only until the row is bound. **Binding is one-way**: once `principal` is set, email is not consulted again for that row, and a second principal presenting the same email is refused rather than admitted onto someone else's grant.
 - **Fail-closed structurally.** An empty table admits nobody. The gate is a single check the operator routes cannot be mounted without, not a condition sprinkled through handlers — the same shape as 002's redistribution gate.
-- Two roles, named: the **platform admin** manages the grant list (auth's `IsSuperadmin`, plus a bootstrap list of admin emails in the deployment env); the **seed user** uses the operator UI. There is no self-serve path between them.
 - `AUTH_DEV_BYPASS` must never confer a grant on a non-loopback deployment. The dev bypass is for local work, not a back door into the beta.
 
 Rejected: an env-var list of emails — cheap, but every grant costs a redeploy and leaves no record of who admitted whom. Deferred: delegating the decision to auth's org RBAC (a `replichai:operate` scope, membership of a seed org). It is the better long-run home, but the browser cookie session surfaces `Sub`/`Email`, not scopes or org, so it is a cross-repo project rather than a config choice. The gate is one seam; moving it there later changes one function.
 
 An allowlist keyed on `principal_id` is not the local user table auth's integration guide forbids. It stores no profile — no name, no avatar, no email of record beyond the seed key. Display data still comes from `/userinfo`.
+
+**Three roles, and only one of them can make something public.** The `tier` on a grant is the whole authorisation model; there is no self-serve path up it.
+
+| Role | Who sets it | May |
+|---|---|---|
+| **Platform admin** | auth's `IsSuperadmin`, plus a bootstrap list of admin emails in the deployment env | Grant, revoke, and promote — and everything below |
+| **Trusted user** | A platform admin, explicitly | Everything below, **and** publish a reproduction publicly |
+| **Seed user** | A platform admin | Submit papers, watch runs, read results and transcripts, claim ownership if they have linked GitHub |
+
+Everyone else — signed in, ungranted — sees the not-invited screen.
+
+**Making a reproduction public is a trusted action, and it is one-way.** 002 publishes to the organisation privately and leaves the decision to go public to a human; this is the surface for that decision, and it needs no GitHub account on the user's side. The backend flips visibility with the organisation's own token (`PATCH /repos/{owner}/{repo}`). The constraints:
+
+- **Trusted tier only.** A seed user sees the control and is told it needs trusted access; the server refuses regardless of what the UI shows.
+- **002's gate is the reason this is safe, and it is not bypassable here.** Only worker-written files were ever pushed, so going public redistributes nothing third-party by construction. The flip therefore refuses any repository it cannot account for as its own gated publication — no `replication.json`, an unknown schema, or a manifest whose `redistribution` block is missing means no flip.
+- **Treated as irreversible.** Public content is forked, cached, and crawled within minutes; flipping back is not an undo. It requires an explicit confirmation and records `made_public_by` and `made_public_at`, so the decision has a name attached to it.
+- The registry (003) still derives from GitHub, so a newly public reproduction needs no separate index entry — it is the same repository, differently visible.
 
 **Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's admin token, adds the user's linked GitHub username as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation the user accepts. The consequence is the whole trust model:
 
@@ -81,35 +99,38 @@ Each is tightly scoped and gets its own design/implementation pass:
 
 | Child | Scope | Notes |
 |---|---|---|
-| **006a — HTTP API & progress streaming** | The server: submit, status, SSE event stream, and read endpoints wrapping 003/005 | wraps `internal/audit`, adds no engine logic |
+| **006a — HTTP API & progress streaming** | The server: submit, status, SSE event stream, and read endpoints wrapping 003/005 | wraps `internal/audit`, adds no engine logic; exposes its route set so 006c's gate test can enumerate it |
 | **006b — Job model & persistence** | The job lifecycle state machine and its Postgres schema; the in-process worker | submitted → resolving → running → publishing → done / failed |
-| **006c — Identity & the access gate** | latere OIDC sign-in, the `access_grants` table, the fail-closed gate, and the platform-admin grant endpoints | `latere.ai/x/pkg/oidc`; seeds by email, binds on first login |
+| **006c — Identity, tiers & the access gate** | latere OIDC sign-in, the `access_grants` table with its tier, the fail-closed gate, and the platform-admin grant endpoints | `latere.ai/x/pkg/oidc`; seeds by email, binds on first login |
 | **006d — PDF ingestion** | Drag-and-drop upload → identity | un-defers 001's PDF-extraction path (text → DOI/arXiv, else content digest) |
-| **006e — Frontend** | Submit (URL or drop), live progress, hindsight inspection of transcript and usage, and the not-invited screen | consumes 006a's API; all copy in en and zh |
-| **006f — GitHub linking & ownership** | The one-time OAuth link that proves a GitHub login, and the collaborator invitation on claim | extends 002's publish; no `repo`-scope tokens |
+| **006e — Frontend** | Submit (URL or drop), live progress, hindsight inspection of transcript and usage, the not-invited screen, and the two exits (link/claim, go public) | consumes 006a's API; all copy in en and zh |
+| **006f — Taking a reproduction out** | The optional GitHub link and collaborator invitation, and the trusted-only visibility flip | extends 002's publish; no `repo`-scope tokens; the flip re-checks 002's manifest |
 
 ## Interface (the API surface, sketched)
 
 ```
 open to any latere account
 GET    /login  ·  /callback  ·  /logout  ·  /logout/notify    -> latere OIDC session
-GET    /me                                                    -> { principal, granted, github_login? }
+GET    /me                                                    -> { principal, tier, github_login? }
 
 behind the access gate (granted seed users only)
 POST   /papers                 { url } | multipart PDF        -> { job_id }
 GET    /jobs/{id}                                             -> job status + phase
 GET    /jobs/{id}/events        (SSE)                         -> progress + transcript events
-POST   /jobs/{id}/claim                                       -> invites the linked GitHub account
+POST   /jobs/{id}/claim                                       -> invites the linked GitHub account (409 if unlinked)
 GET    /reproductions                                         -> registry (003), derived
 GET    /reproductions/{id}                                    -> manifest + verdict + rate
 GET    /reproductions/{id}/transcript                         -> transcript (005)
-GET    /link/github  ·  GET /link/github/callback             -> prove a GitHub login, identity scope only
+GET    /link/github  ·  GET /link/github/callback             -> optional; prove a GitHub login, identity scope only
+
+trusted users only
+POST   /reproductions/{id}/visibility  { public: true }       -> flips the org repo public, one-way
 
 platform admin only
-GET    /admin/access  ·  POST /admin/access { email }  ·  DELETE /admin/access/{email}
+GET    /admin/access  ·  POST /admin/access { email, tier }  ·  DELETE /admin/access/{email}
 ```
 
-`GET /me` is deliberately outside the gate: it is how the frontend learns to render the not-invited screen instead of the operator UI. Everything the gate covers returns `403` with a machine-readable `not_invited` reason — including the read surfaces, because 002 keeps reproduction repositories private and a registry listing is not public information.
+`GET /me` is deliberately outside the gate: it is how the frontend learns to render the not-invited screen instead of the operator UI, and how it knows whether to offer the visibility control. Everything the gate covers returns `403` with a machine-readable reason — `not_invited` for an ungranted principal, `not_trusted` for a seed user reaching for the visibility flip — including the read surfaces, because 002 keeps reproduction repositories private and a registry listing is not public information.
 
 Exact shapes are 006a's to settle; this fixes the surface, not the field names.
 
@@ -124,8 +145,10 @@ These are invariants the whole must hold, verified as the children land:
 5. The whole system comes up locally with `docker compose` and one backend credential — no per-user secrets.
 6. Every read surface (registry, a reproduction, its transcript) is the same data the CLI and GitHub already hold, presented — never a divergent copy.
 7. The access gate is fail-closed: with an empty `access_grants` table, a valid latere session reaches no operator route. A test enumerates the gated routes and asserts each answers `not_invited` for an authenticated, ungranted principal — enumerated from the router, so a new route added without a grant check fails the test rather than silently shipping open.
-8. A grant seeded by email admits that person on their first sign-in and binds to their principal; revoking the grant locks them out on the next request, with no session left standing.
+8. A grant seeded by a verified email admits that person on their first sign-in and binds to their principal; a second principal presenting that email afterwards is refused. Revoking the grant locks the holder out on the next request, with no session left standing.
+9. A GitHub account is required for nothing but the collaborator invitation. A test drives a submission to a read result and a public reproduction with no GitHub identity linked at all.
+10. Only a trusted user can make a reproduction public, and only one this service published under 002's gate. A seed user's flip is refused server-side even when the request is forged past the UI, and a repository with no accountable manifest is refused for everyone.
 
 ## Out of scope
 
-Multi-tenancy, tenant isolation, per-user backend credentials, and billing — the single-tenant scoping exists precisely to defer these. Self-serve access: no signup, no waitlist queue, no automated approval — a platform admin grants access out of band, and the not-invited screen says so. Moving authorisation into auth's org RBAC (deferred behind the gate seam, above). Making repositories public (002 keeps them private; publishing is a separate human decision). The engine's internals. The choice of frontend framework, which is 006e's to make.
+Multi-tenancy, tenant isolation, per-user backend credentials, and billing — the single-tenant scoping exists precisely to defer these. Self-serve access: no signup, no waitlist queue, no automated approval — a platform admin grants access out of band, and the not-invited screen says so. Moving authorisation into auth's org RBAC (deferred behind the gate seam, above). Clearing a third-party file for redistribution — 002 defers it and going public inherits that deferral, so a public reproduction is still worker-written files only. Un-publishing: flipping a repository back to private is a manual operation on GitHub, not a product feature, because it does not undo anything. The engine's internals. The choice of frontend framework, which is 006e's to make.
