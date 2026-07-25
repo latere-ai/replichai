@@ -74,6 +74,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	case "publish":
 		return runPublish(ctx, args[1:], stdout, stderr)
 
+	case "finish":
+		return runFinish(ctx, args[1:], stdout, stderr)
+
 	case "-h", "--help", "help":
 		usage(stdout)
 		return nil
@@ -98,6 +101,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		doPublish    = fs.Bool("publish", false, "mount a GitHub repo and publish the reproduction to it")
 		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
+		detach       = fs.Bool("detach", false, "with --publish, start the run and return; finish it later")
 	)
 	// flag stops parsing at the first non-flag argument, so a plain
 	// fs.Parse would silently drop every flag in
@@ -151,6 +155,26 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	}
 
 	auditor := audit.New(p, m, opts...)
+
+	// Detached: the agent commits to the mounted repo on its own, so there is
+	// no reason to hold the process open for the whole run. Start it, print how
+	// to finish, and return. finish reattaches and finalizes when it is done.
+	if *detach {
+		if pub == nil {
+			fmt.Fprintln(stderr, "--detach needs --publish")
+			return errExitQuiet
+		}
+		handle, err := auditor.Start(ctx, paper)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "session:   %s\n", handle.ID)
+		fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", pub.repoFullName())
+		fmt.Fprintf(stdout, "finish:    replichai finish %s %q --session %s%s\n",
+			pub.repoFullName(), paper, handle.ID, inviteFlag(*invite))
+		return nil
+	}
+
 	dst := filepath.Join(*out, slugify(paper))
 	started := time.Now()
 	result, err := auditor.Run(ctx, paper, dst)
@@ -222,28 +246,36 @@ func newPublisher(ctx context.Context, owner, paperRef string, timeout time.Dura
 // finalize runs after the audit: verify what was committed, write the manifest,
 // and invite the collaborator.
 func (p *publisher) finalize(ctx context.Context, result audit.Result, invite string, stdout *os.File) error {
-	head, err := p.gh.HeadCommit(ctx, p.owner, p.name)
+	return finalizePublication(ctx, p.gh, p.owner, p.name, p.id,
+		result.MethodDigest, result.Grade(), invite, stdout)
+}
+
+// finalizePublication verifies the committed tree, writes replication.json, and
+// invites the collaborator. It reads the repository from GitHub, so it works
+// whether the run finished in-process or is picked up afterwards by finish.
+func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, invite string, stdout *os.File) error {
+	repoFull := owner + "/" + name
+	head, err := gh.HeadCommit(ctx, owner, name)
 	if err != nil {
 		return fmt.Errorf("read head commit: %w", err)
 	}
-	tree, err := p.gh.TreePaths(ctx, p.owner, p.name, head)
+	tree, err := gh.TreePaths(ctx, owner, name, head)
 	if err != nil {
 		return fmt.Errorf("read committed tree: %w", err)
 	}
 	leaked := publish.VerifyTree(tree)
 
-	manifest := publish.ManifestFor(p.id, p.repoFullName(), result.MethodDigest,
-		result.Grade(), time.Now(), len(leaked) == 0)
+	manifest := publish.ManifestFor(id, repoFull, methodDigest, verdict, time.Now(), len(leaked) == 0)
 	raw, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := p.gh.PutFile(ctx, p.owner, p.name, publish.ManifestFile,
+	if err := gh.PutFile(ctx, owner, name, publish.ManifestFile,
 		"chore: reproduction manifest", append(raw, '\n')); err != nil {
 		return fmt.Errorf("commit manifest: %w", err)
 	}
 
-	fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", p.repoFullName())
+	fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", repoFull)
 	fmt.Fprintf(stdout, "commit:    %s\n", head)
 	if len(leaked) == 0 {
 		fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
@@ -254,12 +286,115 @@ func (p *publisher) finalize(ctx context.Context, result audit.Result, invite st
 		}
 	}
 	if invite != "" {
-		if err := p.gh.Invite(ctx, p.owner, p.name, invite); err != nil {
+		if err := gh.Invite(ctx, owner, name, invite); err != nil {
 			return fmt.Errorf("invite %s: %w", invite, err)
 		}
 		fmt.Fprintf(stdout, "invited:   %s\n", invite)
 	}
 	return nil
+}
+
+// runFinish reattaches to a still-running or finished audit session, waits for
+// it to settle, then finalizes the publication of an already-created repository.
+// This is the recovery path when `audit --publish` times out while the agent
+// keeps committing to the mounted repo.
+func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) error {
+	fs := flag.NewFlagSet("finish", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var (
+		session      = fs.String("session", "", "session id to reattach to and wait for")
+		providerName = fs.String("provider", provider.DefaultName, "provider to poll the session with")
+		methodDir    = fs.String("method", "", "the method directory the audit used")
+		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
+		verdictFlag  = fs.String("verdict", "", "override the recorded verdict when no session is polled")
+		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
+		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long to wait for the session")
+	)
+	var positional []string
+	for rest := args; ; {
+		if err := fs.Parse(rest); err != nil {
+			return errExitQuiet
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		positional = append(positional, fs.Arg(0))
+		rest = fs.Args()[1:]
+	}
+	if len(positional) != 2 {
+		fmt.Fprintln(stderr, "finish takes <owner>/<repo> and a paper reference")
+		return errExitQuiet
+	}
+	owner, name, ok := strings.Cut(positional[0], "/")
+	if !ok {
+		fmt.Fprintln(stderr, "the repository must be <owner>/<repo>")
+		return errExitQuiet
+	}
+	paperRef := positional[1]
+
+	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("finish needs REPLICHAI_GITHUB_TOKEN set")
+	}
+	id, err := paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: 30 * time.Second}))
+	if err != nil {
+		return err
+	}
+	m, err := method.Load(*methodDir)
+	if err != nil {
+		return err
+	}
+
+	verdict := provider.GradeUnknown
+	if *session != "" {
+		p, err := provider.Get(*providerName)
+		if err != nil {
+			return err
+		}
+		status, err := waitForSession(ctx, p, *session, *interval, *timeout, stderr)
+		if err != nil {
+			return err
+		}
+		if status.Verdict != nil {
+			verdict = status.Verdict.Grade
+		}
+	} else if *verdictFlag != "" {
+		_ = verdict.UnmarshalJSON([]byte(`"` + *verdictFlag + `"`))
+	}
+
+	return finalizePublication(ctx, github.New(token), owner, name, id, m.Digest(), verdict, *invite, stdout)
+}
+
+// waitForSession polls a session by id until it settles or the deadline passes.
+func waitForSession(ctx context.Context, p provider.Provider, session string, interval, timeout time.Duration, stderr *os.File) (provider.RunStatus, error) {
+	h := provider.RunHandle{ID: session}
+	deadline := time.Now().Add(timeout)
+	for {
+		status, err := p.Poll(ctx, h)
+		if err != nil {
+			return provider.RunStatus{}, fmt.Errorf("poll %s: %w", session, err)
+		}
+		fmt.Fprintf(stderr, "  %s\n", status.State)
+		if status.State.Terminal() {
+			return status, nil
+		}
+		if !time.Now().Before(deadline) {
+			return status, fmt.Errorf("%w: session %s (last state: %s)", audit.ErrTimedOut, session, status.State)
+		}
+		select {
+		case <-ctx.Done():
+			return status, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// inviteFlag renders the --invite portion of the suggested finish command.
+func inviteFlag(login string) string {
+	if login == "" {
+		return ""
+	}
+	return " --invite " + login
 }
 
 // envOr returns the environment value for key, or fallback when it is unset.
@@ -441,6 +576,7 @@ usage:
   replichai audit <paper-ref> [flags]
   replichai resolve <paper-ref>
   replichai publish <artifact-dir> <paper-ref> [flags]
+  replichai finish <owner>/<repo> <paper-ref> --session <id> [flags]
   replichai providers
 
 a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
@@ -455,6 +591,13 @@ flags for audit:
   -publish        mount a GitHub repo and publish the reproduction to it
   -owner          GitHub owner for -publish (default "`+publish.DefaultOrg+`")
   -invite         GitHub login to invite as a collaborator
+  -detach         with -publish, start the run and return; finish it later
+
+flags for finish:
+  -session        session id to reattach to and wait for
+  -invite         GitHub login to invite as a collaborator
+  -method         the method directory the audit used
+  -timeout        how long to wait for the session
 
 flags for resolve:
   -timeout        network timeout for a single fetch (default 30s)

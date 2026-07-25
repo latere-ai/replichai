@@ -241,6 +241,27 @@ func TestAuditPublishNeedsAToken(t *testing.T) {
 	}
 }
 
+func TestAuditDetachNeedsPublish(t *testing.T) {
+	_, stderr, err := capture(t, "audit", "paper",
+		"--provider", "memory", "--method", writeMethod(t), "--detach")
+	if !errors.Is(err, errExitQuiet) {
+		t.Errorf("want errExitQuiet, got %v", err)
+	}
+	if !strings.Contains(stderr, "needs --publish") {
+		t.Errorf("stderr should explain the problem, got %q", stderr)
+	}
+}
+
+func TestFinishNeedsRepoAndPaper(t *testing.T) {
+	_, stderr, err := capture(t, "finish", "only-one")
+	if !errors.Is(err, errExitQuiet) {
+		t.Errorf("want errExitQuiet, got %v", err)
+	}
+	if !strings.Contains(stderr, "owner>/<repo") {
+		t.Errorf("stderr should explain the usage, got %q", stderr)
+	}
+}
+
 func TestPublishRequiresTwoPositionals(t *testing.T) {
 	for _, args := range [][]string{{"publish"}, {"publish", "only-one-arg"}} {
 		_, stderr, err := capture(t, args...)
