@@ -87,6 +87,31 @@ func (c *Client) CreateRepo(ctx context.Context, owner, name string, private boo
 	}
 }
 
+// ListRepos returns the names of every repository in an organisation, following
+// pagination. The registry (003) enumerates the organisation this way.
+func (c *Client) ListRepos(ctx context.Context, owner string) ([]string, error) {
+	var names []string
+	for page := 1; ; page++ {
+		var repos []struct {
+			Name string `json:"name"`
+		}
+		status, err := c.do(ctx, http.MethodGet,
+			fmt.Sprintf("/orgs/%s/repos?per_page=100&page=%d", owner, page), nil, &repos)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("list repos of %s: unexpected status %d", owner, status)
+		}
+		for _, r := range repos {
+			names = append(names, r.Name)
+		}
+		if len(repos) < 100 {
+			return names, nil
+		}
+	}
+}
+
 // GetRepo fetches a repository, so a caller can recover after ErrRepoExists.
 func (c *Client) GetRepo(ctx context.Context, owner, name string) (Repo, error) {
 	var repo Repo

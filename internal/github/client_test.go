@@ -54,6 +54,28 @@ func TestCreateRepoExistsIsTyped(t *testing.T) {
 	}
 }
 
+func TestListReposPaginates(t *testing.T) {
+	// A full first page forces a second request; a short second page ends it.
+	full := make([]map[string]string, 100)
+	for i := range full {
+		full[i] = map[string]string{"name": "repo-" + string(rune('a'+i%26))}
+	}
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "1" {
+			_ = json.NewEncoder(w).Encode(full)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]string{{"name": "last-one"}})
+	})
+	names, err := c.ListRepos(context.Background(), "open-hai")
+	if err != nil {
+		t.Fatalf("ListRepos: %v", err)
+	}
+	if len(names) != 101 || names[len(names)-1] != "last-one" {
+		t.Errorf("got %d names, last %q", len(names), names[len(names)-1])
+	}
+}
+
 func TestGetRepoRecoversAfterExists(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/repos/open-hai/x-a3f9" {
