@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/publish"
 
 	// Adapters register themselves.
 	_ "github.com/latere-ai/replichai/internal/provider/anthropic"
@@ -66,6 +68,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 
 	case "resolve":
 		return runResolve(ctx, args[1:], stdout, stderr)
+
+	case "publish":
+		return runPublish(ctx, args[1:], stdout, stderr)
 
 	case "-h", "--help", "help":
 		usage(stdout)
@@ -174,6 +179,116 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 	return nil
 }
 
+func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) error {
+	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var (
+		out       = fs.String("out", "published", "filesystem forge root")
+		live      = fs.Bool("live", false, "write the repository instead of previewing")
+		verdict   = fs.String("verdict", "passed", "the run's grade recorded in the manifest")
+		methodDir = fs.String("method", "", "path to a method directory")
+		timeout   = fs.Duration("timeout", 30*time.Second, "network timeout for identity resolution")
+	)
+	// flag stops parsing at the first non-flag argument, so collect positionals
+	// and keep parsing the flags that follow each — the same shape runAudit uses.
+	var positional []string
+	for rest := args; ; {
+		if err := fs.Parse(rest); err != nil {
+			return errExitQuiet
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		positional = append(positional, fs.Arg(0))
+		rest = fs.Args()[1:]
+	}
+	if len(positional) != 2 {
+		fmt.Fprintln(stderr, "publish takes an artifact directory and a paper reference")
+		return errExitQuiet
+	}
+	dir, ref := positional[0], positional[1]
+
+	id, err := paper.Resolve(ctx, ref, paper.WithFetcher(httpFetcher{timeout: *timeout}))
+	if err != nil {
+		return err
+	}
+	m, err := method.Load(*methodDir)
+	if err != nil {
+		return err
+	}
+	var grade provider.Grade
+	if err := grade.UnmarshalJSON([]byte(`"` + *verdict + `"`)); err != nil {
+		return fmt.Errorf("invalid -verdict %q", *verdict)
+	}
+	artifacts, err := collectArtifacts(dir)
+	if err != nil {
+		return err
+	}
+
+	suffix, err := publish.NewSuffix()
+	if err != nil {
+		return err
+	}
+	result := audit.Result{
+		ArtifactDir:  dir,
+		MethodDigest: m.Digest(),
+		Status:       provider.RunStatus{Verdict: &provider.Verdict{Grade: grade}},
+		Artifacts:    artifacts,
+	}
+	plan, err := publish.PlanPublication(result, id, suffix)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "repo:        %s\n", plan.Manifest.Reproduction.Repo)
+	fmt.Fprintf(stdout, "verdict:     %s\n", plan.Manifest.Reproduction.Verdict)
+	fmt.Fprintf(stdout, "included:    %d files\n", len(plan.Include))
+	fmt.Fprintf(stdout, "quarantined: %d files\n", len(plan.Quarantine))
+	for _, q := range plan.Quarantine {
+		fmt.Fprintf(stdout, "  - %s — %s\n", q.Path, q.Reason)
+	}
+
+	forge := publish.NewFSForge(*out, publish.DefaultOrg)
+	var opts []publish.PublishOption
+	if *live {
+		opts = append(opts, publish.Live())
+	}
+	pub, err := publish.Publish(ctx, plan, forge, opts...)
+	if err != nil {
+		return err
+	}
+	if pub.Preview {
+		fmt.Fprintln(stdout, "preview only — pass -live to write the repository")
+	} else {
+		fmt.Fprintf(stdout, "written:     %s\n", filepath.Join(*out, plan.RepoName))
+	}
+	return nil
+}
+
+// collectArtifacts lists every file under dir as an artifact, its path relative
+// to dir and forward-slashed, so the publish gate can classify it.
+func collectArtifacts(dir string) ([]provider.Artifact, error) {
+	var arts []provider.Artifact
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		arts = append(arts, provider.Artifact{Path: filepath.ToSlash(rel)})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading artifact directory %q: %w", dir, err)
+	}
+	return arts, nil
+}
+
 // httpFetcher is the resolver's network seam at the CLI edge: an ordinary HTTP
 // GET. The internal/paper package stays network-free and testable; the real
 // transport lives here.
@@ -202,9 +317,12 @@ func usage(w *os.File) {
 	fmt.Fprint(w, `replichai - audit the reproducibility of a research paper
 
 usage:
-  replichai audit <paper-url> [flags]
+  replichai audit <paper-ref> [flags]
   replichai resolve <paper-ref>
+  replichai publish <artifact-dir> <paper-ref> [flags]
   replichai providers
+
+a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
 
 flags for audit:
   -out            directory for artifacts (default "runs")
@@ -216,6 +334,12 @@ flags for audit:
 
 flags for resolve:
   -timeout        network timeout for a single fetch (default 30s)
+
+flags for publish:
+  -out            filesystem forge root (default "published")
+  -live           write the repository instead of previewing
+  -verdict        the run's grade recorded in the manifest (default "passed")
+  -method         path to a method directory
 `)
 }
 
