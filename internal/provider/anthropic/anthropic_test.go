@@ -258,7 +258,12 @@ func TestTranscriptTranslatesEvents(t *testing.T) {
 					"processed_at": "2026-07-25T10:00:00Z",
 				},
 				map[string]any{"type": "agent.thinking", "processed_at": "2026-07-25T10:00:01Z"},
-				map[string]any{"type": "span.outcome_evaluation_end", "occurred_at": "2026-07-25T10:00:02Z"},
+				map[string]any{
+					"type": "agent.tool_use", "name": "bash",
+					"input":        map[string]any{"command": "ls"},
+					"processed_at": "2026-07-25T10:00:02Z",
+				},
+				map[string]any{"type": "span.outcome_evaluation_end", "occurred_at": "2026-07-25T10:00:03Z"},
 			},
 		})
 	})
@@ -267,17 +272,20 @@ func TestTranscriptTranslatesEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Transcript: %v", err)
 	}
-	if len(events) != 3 {
-		t.Fatalf("want 3 events, got %d", len(events))
+	if len(events) != 4 {
+		t.Fatalf("want 4 events, got %d", len(events))
 	}
 	if events[0].Role != "agent" || events[0].Kind != "message" || events[0].Content != "hello" {
 		t.Errorf("message event = %+v", events[0])
 	}
-	if events[1].Role != "agent" || events[1].Kind != "thinking" || events[1].Content != "" {
+	if events[1].Kind != "thinking" || events[1].Content != "" {
 		t.Errorf("thinking event = %+v", events[1])
 	}
-	if events[2].Role != "system" || events[2].Kind != "outcome_evaluation_end" {
-		t.Errorf("span event = %+v", events[2])
+	if events[2].Kind != "tool_use" || events[2].Tool != "bash" || !strings.Contains(events[2].Content, `"command":"ls"`) {
+		t.Errorf("tool_use event = %+v", events[2])
+	}
+	if events[3].Role != "system" || events[3].Kind != "outcome_evaluation_end" {
+		t.Errorf("span event = %+v", events[3])
 	}
 	if len(events[0].Raw) == 0 {
 		t.Error("Raw should preserve the original event")

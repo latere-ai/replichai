@@ -14,6 +14,7 @@
 package anthropic
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -389,47 +390,55 @@ func (p *Provider) Transcript(ctx context.Context, h provider.RunHandle) ([]prov
 	return events, nil
 }
 
-// translateEvent maps one backend event's raw JSON to a neutral Event.
+// translateEvent maps one backend event's raw JSON to a neutral Event. It reads
+// the fields that carry meaning across the event types — text content, a tool
+// name and input, a tool result, a grade — and picks by what is present, so no
+// per-variant type switch is needed and Raw still preserves everything.
 func translateEvent(raw []byte) provider.Event {
 	var head struct {
-		Type        string          `json:"type"`
-		ProcessedAt time.Time       `json:"processed_at"`
-		OccurredAt  time.Time       `json:"occurred_at"`
-		CreatedAt   time.Time       `json:"created_at"`
-		Content     json.RawMessage `json:"content"`
+		Type          string          `json:"type"`
+		ProcessedAt   time.Time       `json:"processed_at"`
+		OccurredAt    time.Time       `json:"occurred_at"`
+		CreatedAt     time.Time       `json:"created_at"`
+		Content       json.RawMessage `json:"content"`
+		Name          string          `json:"name"`
+		MCPServerName string          `json:"mcp_server_name"`
+		Input         json.RawMessage `json:"input"`
+		IsError       bool            `json:"is_error"`
+		Result        string          `json:"result"`
+		Explanation   string          `json:"explanation"`
 	}
 	_ = json.Unmarshal(raw, &head)
 
 	role, kind := splitEventType(head.Type)
-	return provider.Event{
-		Role:    role,
-		Kind:    kind,
-		Content: eventText(head.Content),
-		Time:    firstNonZeroTime(head.ProcessedAt, head.OccurredAt, head.CreatedAt),
-		Raw:     append(json.RawMessage(nil), raw...),
+	ev := provider.Event{
+		Role: role,
+		Kind: kind,
+		Time: firstNonZeroTime(head.ProcessedAt, head.OccurredAt, head.CreatedAt),
+		Raw:  append(json.RawMessage(nil), raw...),
 	}
+
+	switch {
+	case head.Name != "": // a tool use: the tool and its input
+		ev.Tool = head.Name
+		if head.MCPServerName != "" {
+			ev.Tool = head.MCPServerName + "/" + head.Name
+		}
+		ev.Content = compactJSON(head.Input)
+	case len(head.Content) > 0: // a message or a tool result: text blocks
+		ev.Content = blocksText(head.Content)
+		if head.IsError && ev.Content != "" {
+			ev.Content = "error: " + ev.Content
+		}
+	case head.Result != "" || head.Explanation != "": // a grade / outcome
+		ev.Content = strings.TrimSpace(head.Result + " " + head.Explanation)
+	}
+	return ev
 }
 
-// splitEventType turns a namespaced type like "agent.message" into a neutral
-// role and kind. Anything not agent- or user-scoped is the system's own record.
-func splitEventType(t string) (role, kind string) {
-	prefix, rest, ok := strings.Cut(t, ".")
-	if !ok {
-		return "system", t
-	}
-	switch prefix {
-	case "agent":
-		return "agent", rest
-	case "user":
-		return "user", rest
-	default:
-		return "system", rest
-	}
-}
-
-// eventText pulls best-effort text out of an event's content — an array of text
-// blocks, or a plain string, or nothing.
-func eventText(raw json.RawMessage) string {
+// blocksText concatenates the text of an event's content blocks (or a plain
+// string), best-effort.
+func blocksText(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
@@ -456,6 +465,35 @@ func eventText(raw json.RawMessage) string {
 		return s
 	}
 	return ""
+}
+
+// compactJSON renders a tool input as compact JSON, or "" when empty.
+func compactJSON(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if json.Compact(&buf, raw) != nil {
+		return string(raw)
+	}
+	return buf.String()
+}
+
+// splitEventType turns a namespaced type like "agent.message" into a neutral
+// role and kind. Anything not agent- or user-scoped is the system's own record.
+func splitEventType(t string) (role, kind string) {
+	prefix, rest, ok := strings.Cut(t, ".")
+	if !ok {
+		return "system", t
+	}
+	switch prefix {
+	case "agent":
+		return "agent", rest
+	case "user":
+		return "user", rest
+	default:
+		return "system", rest
+	}
 }
 
 func firstNonZeroTime(ts ...time.Time) time.Time {
