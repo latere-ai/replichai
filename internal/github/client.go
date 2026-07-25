@@ -55,9 +55,11 @@ func WithBaseURL(base string) Option { return func(c *Client) { c.base = base } 
 // WithHTTPClient overrides the HTTP client.
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
 
-// New builds a client authenticating with token.
+// New builds a client authenticating with token. The default timeout is
+// generous because a reproduction's transcript can be several megabytes, and the
+// Contents API base64-encodes the whole file into one request body.
 func New(token string, opts ...Option) *Client {
-	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 30 * time.Second}}
+	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute}}
 	for _, o := range opts {
 		o(c)
 	}
