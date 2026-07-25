@@ -33,7 +33,7 @@ The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
 | State | Home | Why |
 |---|---|---|
 | Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process; GitHub cannot hold it |
-| Access grants and GitHub links — who the platform admin has let in, and which GitHub account each proved | **Postgres** | Durable authorisation the deployment owns; neither auth nor GitHub is asked to model it |
+| Access grants, GitHub links, and who made what public — the deployment's own authorisation and audit trail | **Postgres** | Durable state the deployment owns; neither auth nor GitHub is asked to model it |
 | The finished-reproduction registry | **Derived from GitHub** (003) | Already decided; the manifests are the source of truth, and nothing should drift from them |
 
 So the database holds *jobs in flight* and *who may start one*, never reproductions. A completed job's durable record is its published repository, read back through 003. Deleting the job row loses nothing that matters; deleting a grant row only revokes access.
@@ -76,7 +76,8 @@ Everyone else — signed in, ungranted — sees the not-invited screen.
 
 - **Trusted tier only.** A seed user sees the control and is told it needs trusted access; the server refuses regardless of what the UI shows.
 - **002's gate is the reason this is safe, and it is not bypassable here.** Only worker-written files were ever pushed, so going public redistributes nothing third-party by construction. The flip therefore refuses any repository it cannot account for as its own gated publication — no `replication.json`, an unknown schema, or a manifest whose `redistribution` block is missing means no flip.
-- **Treated as irreversible.** Public content is forked, cached, and crawled within minutes; flipping back is not an undo. It requires an explicit confirmation and records `made_public_by` and `made_public_at`, so the decision has a name attached to it.
+- **Treated as irreversible.** Public content is forked, cached, and crawled within minutes; flipping back is not an undo. It requires an explicit confirmation and records `made_public_by` and `made_public_at` in Postgres alongside the grants — audit state the deployment owns, and the one fact neither the manifest nor GitHub records, since GitHub knows the repository is public but not which of our principals decided it.
+- **Trust, not ownership, is the check.** Any trusted user may publish any reproduction in the organisation, including one they did not submit. That is deliberate for a small closed beta of colleagues who can already read every reproduction, and the recorded decider is what makes it accountable. Scoping the flip to the submitter is a change to make when the population outgrows that assumption.
 - The registry (003) still derives from GitHub, so a newly public reproduction needs no separate index entry — it is the same repository, differently visible.
 
 **Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's admin token, adds the user's linked GitHub username as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation the user accepts. The consequence is the whole trust model:
@@ -146,8 +147,8 @@ These are invariants the whole must hold, verified as the children land:
 6. Every read surface (registry, a reproduction, its transcript) is the same data the CLI and GitHub already hold, presented — never a divergent copy.
 7. The access gate is fail-closed: with an empty `access_grants` table, a valid latere session reaches no operator route. A test enumerates the gated routes and asserts each answers `not_invited` for an authenticated, ungranted principal — enumerated from the router, so a new route added without a grant check fails the test rather than silently shipping open.
 8. A grant seeded by a verified email admits that person on their first sign-in and binds to their principal; a second principal presenting that email afterwards is refused. Revoking the grant locks the holder out on the next request, with no session left standing.
-9. A GitHub account is required for nothing but the collaborator invitation. A test drives a submission to a read result and a public reproduction with no GitHub identity linked at all.
-10. Only a trusted user can make a reproduction public, and only one this service published under 002's gate. A seed user's flip is refused server-side even when the request is forged past the UI, and a repository with no accountable manifest is refused for everyone.
+9. A GitHub account is required for nothing but the collaborator invitation. A test drives an unlinked seed user from submission to a read result and transcript end to end; `claim` is the only route that answers differently (`409`).
+10. Only a trusted user can make a reproduction public — with no GitHub identity linked — and only one this service published under 002's gate. A seed user's flip is refused server-side even when the request is forged past the UI, and a repository with no accountable manifest is refused for everyone.
 
 ## Out of scope
 
