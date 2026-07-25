@@ -49,7 +49,7 @@ func mountProtocol(mountPath string) string {
 A git repository is mounted at %[1]s, and its commit history is published as part of the result. Treat it as the home of your reproduction:
 
 - Write your reproduction files (README.md, REPRODUCIBILITY.md, src/, UNVERIFIED.md, SOURCES.md) inside %[1]s.
-- Commit your progress with git as you finish each part — small, meaningful commits — and run "git push" so the history is preserved.
+- Commit your progress with git as you finish each part — small, meaningful commits — and run "git push" so the history is preserved. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
 - Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use /tmp. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, mountPath)
 }
 
