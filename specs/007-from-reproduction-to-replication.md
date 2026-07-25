@@ -63,7 +63,8 @@ Rejected: having a project invitation seed a seed-tier grant. It is the obvious 
 
 **Participant responses are a third origin class, and they are structurally unpublishable.** `publish.Classify` today keys on `Origin` — worker-written versus third-party-fetched. Participant data is neither, and the consequences are not cosmetic:
 
-- It never enters a reproduction repository and never enters an agent sandbox. It lives in Postgres and is exported directly to the project's researchers. The redistribution gate therefore never sees it, because it is never in a tree — that is the primary control, and it is structural.
+- It never enters a reproduction repository, a mount, or a manifest. It lives in Postgres and is exported directly to the project's researchers. The redistribution gate therefore never sees it, because it is never in a tree — that is the primary control, and it is structural.
+- It reaches an agent sandbox only as the de-identified dataset it is: attached outside the mount, exactly as an uploaded dataset is, so the project's own analysis can run over it. Forbidding the sandbox outright would make a `human`-source experiment impossible, since analysing a new sample means running the instrument's pipeline. What makes that safe is a property of the collection schema, not a promise — [007d](007d-hosting-a-study.md) admits only the protocol's declared closed-form measures plus an opaque token, so there is no field an identifier could occupy.
 - `Origin` nonetheless gains a participant case, so that if such a file ever *does* appear in a tree, `Classify` refuses it and the repository is barred from the visibility flip. Belt and braces, in the direction that fails safe.
 - [003](003-reproduction-registry.md)'s registry is derived from the forge. Participant data can never reach it, by the same structural fact.
 
@@ -111,7 +112,7 @@ Invariants for the whole track, verified as the children land:
 2. An instrument is optional and honest: a paper with no extractable protocol and no declarable analysis produces a reproduction of undiminished quality plus a stated reason, and never a fabricated protocol.
 3. `verdict` and `rate` in a 002 manifest are written only by an audit. A test drives an experiment of every data source and asserts neither field moves.
 4. A result carries its data source indelibly. No report, export, or API response derived from a `synthetic` cohort can be read as evidence about people, and a test asserts the label survives every path out of the system.
-5. Participant data never enters a repository, a mount, a sandbox, or the registry. Asserted structurally — by where the writes go — and again by `Classify` refusing a participant-origin path if one is ever presented.
+5. Participant data never enters a repository, a mount, a manifest, or the registry, and reaches a sandbox only as a de-identified dataset placed outside the mount. Asserted structurally — by where the writes go and by the collection schema admitting no identifier field — and again by `Classify` refusing a participant-origin path if one is ever presented.
 6. The participant page is served from an origin that holds no session cookie, and the platform's own pages embed it only sandboxed. Asserted against the served headers, not by convention.
 7. Project membership admits nobody to the platform. A test adds an ungranted email to a project and asserts that principal still reaches no operator route on first sign-in.
 8. An experiment executes only in the provider sandbox. No path in the server runs instrument code in-process or in a container it manages.
