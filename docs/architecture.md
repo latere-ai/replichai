@@ -83,7 +83,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **CLI** (`cmd/replichai/`) is argument parsing, output, and the composition root: it is where the vendor adapter is imported, where the HTTP fetcher is supplied, and where the pieces above are wired into `audit`, `resolve`, `publish`, `finish`, and `providers`.
 
-A second implementation of the core — orchestrator, provider seam, and method loading — lives in `reference/python/`. It is not dead code: `method/` and `evals/` are shared, and the two conform when they produce the same verdict for the same case. Identity, publishing, and the registry are Go-only.
+A second implementation of the core — orchestrator, backend seam, and method loading — lives in `reference/python/`. It is not dead code: `method/` and `evals/` are shared, and the two conform when they produce the same verdict for the same case. It has not followed the Go seam past 005, so its provider has no `Transcript`; identity, publishing, and the registry are Go-only.
 
 ## Grading
 
@@ -107,7 +107,7 @@ The transcript is rendered twice from the same events: `transcript.jsonl` is can
 
 **The mount path** is the real one. The repository is created before the run and mounted into the sandbox, and the agent commits and pushes its own history as it works. Because nothing can be filtered before the push, the gate becomes a post-run verifier: `VerifyTree` reads what was actually committed and flags what is almost certainly third-party — the paper, a dataset, model weights, an archive, a leaked secret. It cannot allow-list, because an agent-authored repository is a real software project, not a fixed set of report files. So the method is the primary control (keep downloads out of the repository) and the verifier is the backstop.
 
-**The filesystem path** stays as the offline way to exercise publishing with no backend at all: `Classify`'s allow-list, `PlanPublication`, `FSForge`, and the `publish` subcommand, which previews by default and writes only with `-live`. It is how the gate is tested and how the manifest shape is checked without touching GitHub.
+**The filesystem path** stays as the offline way to exercise publishing with no backend at all: `Classify`'s allow-list, `PlanPublication`, `FSForge`, and the `publish` subcommand, which previews by default and writes only with `--live`. It is how the gate is tested and how the manifest shape is checked without touching GitHub.
 
 ## Trust boundaries
 
@@ -117,7 +117,9 @@ Artifact paths and file contents come out of a sandbox that has just executed co
 - compiled residue (`.pyc`, `__pycache__/`) is dropped — machine-specific, and a reproduction repository should hold sources;
 - silence from the grader is never success. The backend rests in the same state both before a run starts and after it ends, so resting with no grader record means **pending**, not finished — calling it terminal would abort a healthy run polled between kickoff and pickup. Either way it does not pass.
 
-Publication fails closed. A repository is created private and stays private; a tree carrying third-party paths, or a transcript carrying a secret, bars it from ever being made public, and the manifest records that the redistribution check did not clear. Ownership is granted by invitation — the organisation invites a GitHub login as a collaborator — so the service never holds anyone's repository credentials.
+Publication fails closed. A repository is created private and stays private. A tree carrying third-party paths is recorded in the manifest as a redistribution that did not clear, and `EligibleForPublic` reads that manifest — so the decision to make a reproduction public has a fact behind it rather than an operator's memory. A transcript carrying a secret is reported at finalize; folding that into the eligibility decision, and wiring the visibility flip itself to a caller, is designed and not yet built (006f). Nothing today makes a repository public, which is why the gap is not yet a hole.
+
+Ownership is granted by invitation — the organisation invites a GitHub login as a collaborator — so the service never holds anyone's repository credentials.
 
 The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and there is a test asserting that. The GitHub token is read from `REPLICHAI_GITHUB_TOKEN` at the CLI edge; only the mount credential enters the sandbox, and it is meant to be scoped to the one repository being written.
 
