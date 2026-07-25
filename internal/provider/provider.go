@@ -8,11 +8,24 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
+
+// Event is one entry in a run's transcript — the backend's own record of what
+// happened during the run, translated to a neutral shape. Raw preserves the
+// backend's original event losslessly, so nothing is lost to the translation.
+type Event struct {
+	Role    string          // "agent" | "user" | "system"
+	Kind    string          // "message" | "thinking" | "tool_use" | "tool_result" | ...
+	Content string          // best-effort text, empty when the event carries none
+	Time    time.Time       // when the backend recorded it
+	Raw     json.RawMessage // the backend's original event
+}
 
 // ErrUnknownProvider is returned by Get for a name that is not registered.
 var ErrUnknownProvider = errors.New("unknown provider")
@@ -157,6 +170,11 @@ type Provider interface {
 
 	// FetchArtifact downloads one artifact's bytes.
 	FetchArtifact(ctx context.Context, h RunHandle, a Artifact) ([]byte, error)
+
+	// Transcript returns the run's full event stream — the backend's record of
+	// what the worker did, as evidence (005). Fetch it before CloseRun, which
+	// may make the run unreadable.
+	Transcript(ctx context.Context, h RunHandle) ([]Event, error)
 
 	// CloseRun releases a finished run. It must be safe to call more than once.
 	CloseRun(ctx context.Context, h RunHandle) error

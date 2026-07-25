@@ -15,11 +15,13 @@ package anthropic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -367,6 +369,102 @@ func (p *Provider) FetchArtifact(ctx context.Context, h provider.RunHandle, a pr
 		return nil, fmt.Errorf("read %s: %w", a.Path, err)
 	}
 	return body, nil
+}
+
+// Transcript returns the run's full event stream, translated to neutral events.
+// Each event is translated generically from its raw JSON — a type, a timestamp,
+// best-effort text — with the original preserved in Raw, so the many event
+// shapes need no per-variant mapping and nothing is lost.
+func (p *Provider) Transcript(ctx context.Context, h provider.RunHandle) ([]provider.Event, error) {
+	iter := p.client.Beta.Sessions.Events.ListAutoPaging(ctx, h.ID, anthropic.BetaSessionEventListParams{
+		Betas: []anthropic.AnthropicBeta{anthropic.AnthropicBetaManagedAgents2026_04_01},
+	})
+	var events []provider.Event
+	for iter.Next() {
+		events = append(events, translateEvent([]byte(iter.Current().RawJSON())))
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("list session events for %s: %w", h.ID, err)
+	}
+	return events, nil
+}
+
+// translateEvent maps one backend event's raw JSON to a neutral Event.
+func translateEvent(raw []byte) provider.Event {
+	var head struct {
+		Type        string          `json:"type"`
+		ProcessedAt time.Time       `json:"processed_at"`
+		OccurredAt  time.Time       `json:"occurred_at"`
+		CreatedAt   time.Time       `json:"created_at"`
+		Content     json.RawMessage `json:"content"`
+	}
+	_ = json.Unmarshal(raw, &head)
+
+	role, kind := splitEventType(head.Type)
+	return provider.Event{
+		Role:    role,
+		Kind:    kind,
+		Content: eventText(head.Content),
+		Time:    firstNonZeroTime(head.ProcessedAt, head.OccurredAt, head.CreatedAt),
+		Raw:     append(json.RawMessage(nil), raw...),
+	}
+}
+
+// splitEventType turns a namespaced type like "agent.message" into a neutral
+// role and kind. Anything not agent- or user-scoped is the system's own record.
+func splitEventType(t string) (role, kind string) {
+	prefix, rest, ok := strings.Cut(t, ".")
+	if !ok {
+		return "system", t
+	}
+	switch prefix {
+	case "agent":
+		return "agent", rest
+	case "user":
+		return "user", rest
+	default:
+		return "system", rest
+	}
+}
+
+// eventText pulls best-effort text out of an event's content — an array of text
+// blocks, or a plain string, or nothing.
+func eventText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var blocks []struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) == nil {
+		var b strings.Builder
+		for _, bl := range blocks {
+			if bl.Text == "" {
+				continue
+			}
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(bl.Text)
+		}
+		if b.Len() > 0 {
+			return b.String()
+		}
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	return ""
+}
+
+func firstNonZeroTime(ts ...time.Time) time.Time {
+	for _, t := range ts {
+		if !t.IsZero() {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // CloseRun releases a finished run. Releasing is best-effort: a run that is

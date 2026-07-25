@@ -28,6 +28,8 @@ type Provider struct {
 	Grade provider.Grade
 	// Files are the artifacts every run produces, keyed by path.
 	Files map[string][]byte
+	// Events is the transcript every run returns.
+	Events []provider.Event
 	// Err, when set, is returned by every contract method.
 	Err error
 
@@ -188,6 +190,14 @@ func (p *Provider) FetchArtifact(ctx context.Context, h provider.RunHandle, a pr
 		return nil, fmt.Errorf("no such artifact: %s", a.Path)
 	}
 	return body, nil
+}
+
+// Transcript returns the configured events, or nothing.
+func (p *Provider) Transcript(ctx context.Context, h provider.RunHandle) ([]provider.Event, error) {
+	if err := p.check(ctx); err != nil {
+		return nil, err
+	}
+	return p.Events, nil
 }
 
 // CloseRun records the release. It never fails.
