@@ -2,7 +2,7 @@
 
 **Status:** draft
 **Scope:** the job lifecycle — its states, its Postgres home, and the in-process worker that drives it — so a submission survives the request that made it. A child of [006](006-web-application.md).
-**Depends on:** [002](002-publishing-reproductions.md) (publishing is a job phase), [004](004-go-port.md) (the `audit.Auditor` a worker calls).
+**Depends on:** [002](002-publishing-reproductions.md) (publishing is a job phase), [004](004-go-port.md) (the `audit.Auditor` a worker calls). Revised by [007](007-from-reproduction-to-replication.md): a job runs an audit *or* an experiment, and belongs to a project.
 
 ## Problem
 
@@ -12,6 +12,10 @@ An audit runs for up to an hour, and the browser that submitted it will be long 
 
 **Jobs live in Postgres; reproductions never do.** The database holds work *in flight* — a paper submitted, now resolving, now running — and the deployment's own authorisation trail. It does not hold finished reproductions: those are their published repositories, read back through 003. This split is the load-bearing rule. A job row is disposable; deleting it loses a bit of history, not a reproduction. The registry stays derived, so nothing in Postgres can drift from what the forge actually holds.
 
+**A job is the unit of *execution*, and it runs an audit or an experiment.** [007](007-from-reproduction-to-replication.md) puts a project / instrument / experiment model *above* the job; it does not replace the job. A job gains a `Kind` and a project, and the phases below are identical for both kinds — the same claim path, the same transition function, the same progress observation, a different callee. This spec is written with that in place because 007 landed before it was built; retrofitting a kind onto a live table would have been a migration.
+
+**A job row stays disposable, but an experiment row is not, so they are different tables.** An experiment is a *finding* — the record of what was run against what data, with results nobody else holds a copy of. Losing it loses something real, which is exactly what "a job row is disposable" says a job is not. [007b](007b-experiments-over-instruments.md) owns that table; this one owns the job, and the split keeps the rule above honest instead of quietly widening it.
+
 **One explicit state machine, its transitions the only writer.** A job moves through a fixed set of phases, and only the worker advances it, through one function that persists each transition:
 
 ```
@@ -20,7 +24,7 @@ submitted → resolving → running → publishing → done
                         failed (from any active phase, with the error kept)
 ```
 
-`resolving` runs `paper.Resolve`; `running` is the audit; `publishing` is 006f (or 002's local path). The phase and its timestamps are what `GET /jobs/{id}` reports and what the SSE stream narrates. A phase is never inferred from side effects; it is a column.
+`resolving` runs `paper.Resolve` (for an experiment, it resolves the instrument at its pinned commit); `running` is the audit or the experiment; `publishing` is 006f (or 002's local path), and an experiment passes straight through it — there is nothing to publish. The phase and its timestamps are what `GET /jobs/{id}` reports and what the SSE stream narrates. A phase is never inferred from side effects; it is a column.
 
 **An in-process worker over the job table — no external queue.** For a single-tenant, low-volume beta, the queue *is* the table: a small pool of goroutines claims `submitted` rows with `SELECT … FOR UPDATE SKIP LOCKED`, runs them, and writes each transition back. Durability and retry come from the row, not from Redis. On restart, a job left `running` by a crash is visible and can be reaped. Rejected: a dedicated broker — it is operational weight the volume does not justify, and it would put job state in a second place.
 
@@ -32,11 +36,14 @@ submitted → resolving → running → publishing → done
 
 ```go
 type Phase string // submitted | resolving | running | publishing | done | failed
+type Kind  string // audit | experiment  (007)
 
 type Job struct {
     ID        string
+    Kind      Kind         // what this job runs; the phases are the same either way
     Principal string       // who submitted it (006c)
-    Ref       string       // the paper reference
+    ProjectID string       // the project it belongs to (007); empty for a bare audit
+    Ref       string       // the paper reference, or the experiment id for Kind=experiment
     Phase     Phase
     Status    provider.RunStatus // latest observation while running
     RepoName  string       // set once publishing begins
@@ -45,13 +52,15 @@ type Job struct {
 }
 
 type Store interface {
-    Enqueue(ctx, principal, ref string) (Job, error)
+    Enqueue(ctx, principal, ref string, k Kind, project string) (Job, error)
     Get(ctx, id string) (Job, error)
     Claim(ctx) (Job, bool, error)          // FOR UPDATE SKIP LOCKED
     Advance(ctx, id string, to Phase, mutate func(*Job)) error
 }
 
-// Worker pulls claimed jobs and drives them through the phases via audit.Auditor.
+// Worker pulls claimed jobs and drives them through the phases — an audit via
+// audit.Auditor, an experiment via experiment.Runner (007b). One lifecycle,
+// one claim path, one progress observation; only the callee differs.
 ```
 
 The store is an interface; the HTTP layer (006a) and the worker depend on it, so handlers and lifecycle logic test against an in-memory fake with no database.
@@ -64,7 +73,8 @@ The store is an interface; the HTTP layer (006a) and the worker depend on it, so
 4. Two workers do not run the same job: concurrent `Claim` calls hand out disjoint jobs (`SKIP LOCKED`), asserted under contention.
 5. The latest `RunStatus` is recorded on the job as the audit observes it, and is available to a reader who connects after the run started.
 6. The store interface has an in-memory implementation the rest of 006 tests against, with no Postgres required for a unit test.
+7. Both kinds walk the same phases through the same transition function, asserted by driving an audit job and an experiment job through the identical lifecycle; only the callee differs. No second state machine exists.
 
 ## Out of scope
 
-The HTTP surface (006a) and who may enqueue (006c) — this spec is the store and the worker. The registry (003), which is derived, not a table here. The publishing mechanics of the `publishing` phase (002 for the local path, 006f for GitHub). Retry policy tuning and dead-letter handling beyond "a crashed job is visible" — a beta reaps by hand.
+The HTTP surface (006a) and who may enqueue (006c) — this spec is the store and the worker. The experiment table and runner ([007b](007b-experiments-over-instruments.md)) and the project table ([006c](006c-identity-and-access.md)): this spec's job row *references* a project and dispatches to a runner, and defines neither. The registry (003), which is derived, not a table here. The publishing mechanics of the `publishing` phase (002 for the local path, 006f for GitHub). Retry policy tuning and dead-letter handling beyond "a crashed job is visible" — a beta reaps by hand.

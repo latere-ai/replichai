@@ -2,7 +2,7 @@
 
 **Status:** draft
 **Scope:** who may sign in, who may operate, and how a reproduction gets granted — the OIDC login, the fail-closed `access_grants` gate, the three tiers, and the proven forge-account link. A child of [006](006-web-application.md).
-**Depends on:** [006b](006b-job-model-and-persistence.md) (Postgres, and the routes the gate mounts on).
+**Depends on:** [006b](006b-job-model-and-persistence.md) (Postgres, and the routes the gate mounts on). Revised by [007](007-from-reproduction-to-replication.md): project membership sits beside the tiers, sharing their seed-and-bind rule and none of their authority.
 
 ## Problem
 
@@ -37,6 +37,10 @@ No IDP-issued role, scope, org membership, or admin flag reaches an authorisatio
 
 There is no self-serve path up the tiers.
 
+**Project membership reuses the seed-and-bind rule, and admits nobody to the platform.** [007](007-from-reproduction-to-replication.md) needs replication projects led by researchers named by email. That is this table's *shape* applied to a second relation — `(principal, project, role)` with roles *lead* and *collaborator*, seeded by verified email and bound one-way on first login — not a second membership system, and not an extension of the tier ladder.
+
+The two are orthogonal, and that is the load-bearing part. Tier decides what someone may do on the platform; project role decides which project's experiments and data they may touch. A project lead may add a colleague by email, and that colleague still reaches no operator route until a platform admin grants them a tier — the UI says so plainly when a lead adds someone ungranted. Rejected: having a project invitation seed a seed-tier grant. It is the obvious convenience, and it is exactly the self-serve escalation [006](006-web-application.md) rejected — one lead could then admit the world onto a shared credential.
+
 **The forge link is proven, stored against the principal, identity-scoped.** Linking a forge account is a separate OAuth handshake requesting **identity only** — `repo` scope is never requested, for anyone, ever. The proven login is written by the link callback alone, never a request body: one row per principal and forge, so a claim months later still knows where to send the invitation. This is what 006f's collaborator invitation consumes. `/me` reports *linked accounts*, and the routes are `/{forge}`-parameterised — GitHub is the only forge today, not the only shape.
 
 **No development shortcut confers a grant.** A stub issuer for local work authenticates a synthetic principal but seeds no row, and a deployment reachable off loopback refuses to start with the dev bypass configured. The bypass is for local work, not a back door into the beta.
@@ -55,6 +59,16 @@ type Access interface {
     LinkedAccount(ctx, principal, forge string) (login string, ok bool, err error)
 }
 
+type Role int // Collaborator | Lead   (007)
+
+// Membership is the second relation, sharing Access's seed-by-email and
+// bind-on-first-login rules and none of its tier semantics.
+type Membership interface {
+    Add(ctx, byLead Principal, project, email string, r Role) error
+    Remove(ctx, byLead Principal, project, email string) error
+    Role(ctx, principal, project string) (Role, bool, error) // binds on first login
+}
+
 // Gate is the middleware 006a mounts; RequireTier guards the visibility flip.
 func Gate(a Access) func(http.Handler) http.Handler
 ```
@@ -67,6 +81,8 @@ func Gate(a Access) func(http.Handler) http.Handler
 4. Tier is enforced server-side: a seed user's visibility flip is refused even when the request is forged past the UI; only a platform admin may grant, revoke, or promote.
 5. The forge link requests identity scope only and stores the proven login against the principal; a client-supplied login is never trusted — asserted by driving `claim` for an unlinked user (`409`) and a linked one (invitation sent).
 6. The dev bypass authenticates but never grants, and a non-loopback deployment refuses to start with it enabled.
+7. Project membership admits nobody to the platform: a test adds an ungranted email to a project, signs that principal in, and asserts they still answer `not_invited` on every gated route. Membership and tier are resolved independently, and neither can be satisfied by the other.
+8. Project membership binds one-way on the same terms as a grant — seeded by verified email, bound to the first principal, a second principal presenting that email refused.
 
 ## Out of scope
 
