@@ -171,6 +171,77 @@ func TestResolveReportsAnIdentity(t *testing.T) {
 	}
 }
 
+func TestPublishPreviewThenLive(t *testing.T) {
+	src := t.TempDir()
+	files := map[string]string{
+		"README.md":          "# reproduction",
+		"REPRODUCIBILITY.md": "verdict: passed",
+		"src/main.py":        "print(1)",
+		"data/benchmark.csv": "gated,rows", // third-party
+		"paper.pdf":          "PDF",        // third-party
+	}
+	for rel, content := range files {
+		full := filepath.Join(src, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	forgeRoot := t.TempDir()
+	const doi = "10.1145/3025453.3025912" // resolves offline, no network
+
+	// Preview creates nothing.
+	stdout, _, err := capture(t, "publish", src, doi, "--out", forgeRoot)
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	for _, want := range []string{"included:    3 files", "quarantined: 2 files", "preview only"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("preview missing %q:\n%s", want, stdout)
+		}
+	}
+	if entries, _ := os.ReadDir(forgeRoot); len(entries) != 0 {
+		t.Errorf("preview wrote %d entries", len(entries))
+	}
+
+	// Live writes exactly one repository with the worker files, never the
+	// third-party ones.
+	stdout, _, err = capture(t, "publish", src, doi, "--out", forgeRoot, "--live")
+	if err != nil {
+		t.Fatalf("live: %v", err)
+	}
+	if !strings.Contains(stdout, "written:") {
+		t.Errorf("live output missing 'written:'\n%s", stdout)
+	}
+	entries, _ := os.ReadDir(forgeRoot)
+	if len(entries) != 1 {
+		t.Fatalf("want one repository directory, got %d", len(entries))
+	}
+	repo := filepath.Join(forgeRoot, entries[0].Name())
+	for _, f := range []string{"replication.json", "README.md", "REPRODUCIBILITY.md", "src/main.py", "EXCLUDED.md"} {
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(f))); err != nil {
+			t.Errorf("expected %s in the published repository", f)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repo, "data", "benchmark.csv")); err == nil {
+		t.Error("a third-party file was published")
+	}
+}
+
+func TestPublishRequiresTwoPositionals(t *testing.T) {
+	for _, args := range [][]string{{"publish"}, {"publish", "only-one-arg"}} {
+		_, stderr, err := capture(t, args...)
+		if !errors.Is(err, errExitQuiet) {
+			t.Errorf("%v: want errExitQuiet, got %v", args, err)
+		}
+		if !strings.Contains(stderr, "artifact directory and a paper reference") {
+			t.Errorf("%v: stderr should explain the problem, got %q", args, stderr)
+		}
+	}
+}
+
 func TestResolveRequiresExactlyOneReference(t *testing.T) {
 	for _, args := range [][]string{{"resolve"}, {"resolve", "a", "b"}} {
 		_, stderr, err := capture(t, args...)
