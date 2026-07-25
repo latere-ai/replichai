@@ -1,0 +1,70 @@
+# 006b — Job model and persistence
+
+**Status:** draft
+**Scope:** the job lifecycle — its states, its Postgres home, and the in-process worker that drives it — so a submission survives the request that made it. A child of [006](006-web-application.md).
+**Depends on:** [002](002-publishing-reproductions.md) (publishing is a job phase), [004](004-go-port.md) (the `audit.Auditor` a worker calls).
+
+## Problem
+
+An audit runs for up to an hour, and the browser that submitted it will be long gone. The submission therefore has to become a durable record that outlives the request, the connection, and a server restart — a *job* — with somewhere to live and something to drive it. This is the one place the project keeps mutable state, and getting its boundary right is what keeps 003's "derived, not stored" registry intact.
+
+## Decisions
+
+**Jobs live in Postgres; reproductions never do.** The database holds work *in flight* — a paper submitted, now resolving, now running — and the deployment's own authorisation trail. It does not hold finished reproductions: those are their published repositories, read back through 003. This split is the load-bearing rule. A job row is disposable; deleting it loses a bit of history, not a reproduction. The registry stays derived, so nothing in Postgres can drift from what the forge actually holds.
+
+**One explicit state machine, its transitions the only writer.** A job moves through a fixed set of phases, and only the worker advances it, through one function that persists each transition:
+
+```
+submitted → resolving → running → publishing → done
+                     ↘         ↘            ↘
+                        failed (from any active phase, with the error kept)
+```
+
+`resolving` runs `paper.Resolve`; `running` is the audit; `publishing` is 006f (or 002's local path). The phase and its timestamps are what `GET /jobs/{id}` reports and what the SSE stream narrates. A phase is never inferred from side effects; it is a column.
+
+**An in-process worker over the job table — no external queue.** For a single-tenant, low-volume beta, the queue *is* the table: a small pool of goroutines claims `submitted` rows with `SELECT … FOR UPDATE SKIP LOCKED`, runs them, and writes each transition back. Durability and retry come from the row, not from Redis. On restart, a job left `running` by a crash is visible and can be reaped. Rejected: a dedicated broker — it is operational weight the volume does not justify, and it would put job state in a second place.
+
+**Progress is observed into the row, streamed from it.** The worker passes `audit.WithObserver` a callback that records the latest `RunStatus` (phase, usage) onto the job. The SSE endpoint (006a) tails that, so a viewer who connects late still sees where the run is, and a viewer who never connects costs nothing. The run does not depend on anyone watching.
+
+**Migrations are in the binary.** Schema is versioned SQL applied at startup, so `docker compose up` is the whole install. 006c adds its `access_grants` and link tables against the same foundation.
+
+## Interface (sketch)
+
+```go
+type Phase string // submitted | resolving | running | publishing | done | failed
+
+type Job struct {
+    ID        string
+    Principal string       // who submitted it (006c)
+    Ref       string       // the paper reference
+    Phase     Phase
+    Status    provider.RunStatus // latest observation while running
+    RepoName  string       // set once publishing begins
+    Err       string       // set with the failed phase
+    // timestamps per transition
+}
+
+type Store interface {
+    Enqueue(ctx, principal, ref string) (Job, error)
+    Get(ctx, id string) (Job, error)
+    Claim(ctx) (Job, bool, error)          // FOR UPDATE SKIP LOCKED
+    Advance(ctx, id string, to Phase, mutate func(*Job)) error
+}
+
+// Worker pulls claimed jobs and drives them through the phases via audit.Auditor.
+```
+
+The store is an interface; the HTTP layer (006a) and the worker depend on it, so handlers and lifecycle logic test against an in-memory fake with no database.
+
+## Acceptance criteria
+
+1. A submitted job persists and is readable after the submitting request returns; a simulated restart with a job mid-`running` leaves it visible and reapable, not lost.
+2. Every phase change goes through the one transition function and is durable; a test walks a job submitted → done and asserts each phase and timestamp was written.
+3. A failure in any active phase moves the job to `failed` with the error recorded, and never to `done`.
+4. Two workers do not run the same job: concurrent `Claim` calls hand out disjoint jobs (`SKIP LOCKED`), asserted under contention.
+5. The latest `RunStatus` is recorded on the job as the audit observes it, and is available to a reader who connects after the run started.
+6. The store interface has an in-memory implementation the rest of 006 tests against, with no Postgres required for a unit test.
+
+## Out of scope
+
+The HTTP surface (006a) and who may enqueue (006c) — this spec is the store and the worker. The registry (003), which is derived, not a table here. The publishing mechanics of the `publishing` phase (002 for the local path, 006f for GitHub). Retry policy tuning and dead-letter handling beyond "a crashed job is visible" — a beta reaps by hand.
