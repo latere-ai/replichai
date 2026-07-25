@@ -1,6 +1,6 @@
 # 005 — Capture and publish the reproduction transcript
 
-**Status:** draft
+**Status:** implemented (`c33af42`)
 **Scope:** capturing the agent's full session transcript and publishing it into the reproduction repository as first-class evidence.
 **Depends on:** [002](002-publishing-reproductions.md) (the redistribution gate), [006f](006f-taking-a-reproduction-out.md) (the finalize step it hooks into).
 
@@ -68,3 +68,16 @@ The anthropic adapter implements `Transcript`; `finish` fetches it, runs `Transc
 ## Out of scope
 
 Diffing two reproductions' transcripts; a web viewer for the transcript (that is 006e). Redacting *within* a transcript to make an otherwise-gated one publishable — a leak bars the public flip; it is not laundered.
+
+## Outcome
+
+Implemented across three commits (`f22fd2a` the provider seam, `5723402` the render + gate, `c33af42` the finalize wiring), tested offline.
+
+- **`provider.Event` + `Transcript`** on the contract. The anthropic adapter reads `Sessions.Events.ListAutoPaging` and translates each event *generically* from its raw JSON — a namespaced type becomes a neutral role+kind, best-effort text is pulled from content blocks, the original is preserved in `Raw` — so the many event shapes needed no per-variant mapping and nothing is lost. The memory adapter returns a settable `Events` slice.
+- **`RenderTranscript`** produces `transcript.jsonl` (the lossless canonical stream) and `TRANSCRIPT.md` (a narrative). **`TranscriptLeaks`** flags events carrying a high-signal secret.
+- **Finalize commits both**, in the same system-authored moment as the manifest, idempotently. Both publish paths (`audit --publish` and `finish`) fetch the transcript best-effort and commit it.
+
+Two honest limitations folded back from implementation:
+
+- **`TranscriptLeaks` is a secret backstop, not exhaustive third-party detection.** Detecting an embedded dataset or a paper's bulk text in freeform reasoning is not reliable structurally, and flagging *any* paper text would bar nearly every transcript from going public — self-defeating. So the content gate flags only what is concretely detectable (secrets); private-by-default plus the owner's review before going public is the real guard. The spec's AC4 is met at that scope.
+- **AC2 ("captured before release") holds cleanly on the detach→finish path** (the session is never archived, so the events are fully readable when `finish` fetches them). On the blocking `audit --publish` path the fetch happens after the run's deferred release, so it is best-effort; the detached flow is the one to use when the transcript matters.
