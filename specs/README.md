@@ -25,9 +25,9 @@ replichai finish <owner>/<repo> <paper> --session <id>
 
 This was proven end to end: a real reproduction (`open-hai/short-form-videos-…-wtmk`) with agent-authored history, an independent manifest, and a collaborator invitation. `audit --publish` blocks; `--detach` starts it and hands you a `finish` command to run later, since the agent commits independently of the CLI.
 
-**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
+**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
 
-**Designed, not built:** 005 (transcript), the web application 006 and its children 006a–006e, and the replication track 007a–007d.
+**Designed, not built:** the web application 006 and its children 006a–006e, and the replication track 007a–007d.
 
 ## Architecture at a glance
 
@@ -51,7 +51,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | Layer | Author | Artifact |
 |---|---|---|
 | Claim | the agent, in the sandbox | the reproduction — code, history, `REPRODUCIBILITY.md` |
-| Evidence | the backend's event log, fetched by the system | the transcript (005, designed) |
+| Evidence | the backend's event log, fetched by the system | the transcript (005) |
 | Verdict | the system, outside the sandbox | `replication.json` |
 
 **Two publish paths, on purpose.** The *mount* path (006f) is the real one: the agent commits into a live GitHub repo, and the gate becomes a post-run *verifier* (`VerifyTree`, a blocklist of third-party data, because an agent-authored repo is a full project, not a fixed file set). The *filesystem* path (002: `Forge`/`FSForge`, `Classify` allow-list, the `publish` CLI command) stays as the offline, no-backend way to exercise publishing.
@@ -75,7 +75,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 002 | [Publishing reproductions](002-publishing-reproductions.md) | implemented | 001 |
 | 003 | [The reproduction registry](003-reproduction-registry.md) | implemented | 001, 002 |
 | 004 | [Port the core to Go](004-go-port.md) | implemented | — |
-| 005 | [Capture and publish the reproduction transcript](005-transcript.md) | draft | 002, 006f |
+| 005 | [Capture and publish the reproduction transcript](005-transcript.md) | implemented | 002, 006f |
 | 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
 | 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | draft | 006b, (003, 005) |
 | 006b | [Job model and persistence](006b-job-model-and-persistence.md) | draft | 002, 004 |
@@ -105,7 +105,7 @@ What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop b
 Engine first; the web shell last, because every screen it renders needs an engine capability the earlier specs deliver.
 
 ```
-002 ✓ → 003 ✓ → 006f-core ✓ → 005 (next) → 007a → 007b → 007c
+002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a (next) → 007b → 007c
      → 006a / 006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
 ```
 
