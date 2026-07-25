@@ -14,8 +14,11 @@ That is the honest case for a cohort with no people in it, and it is a smaller c
 |---|---|
 | Apparatus and pipeline shakedown | An end-to-end run producing data of the declared shape debugs the page and the analysis before a human sees either. This is the primary value. |
 | Positive control on the analysis | A cohort built to carry a *stated* effect tests whether the pipeline detects an effect it is known to contain. This is a claim about the instrument, not the paper. |
+| Distribution and sensitivity exploration | Sweeping the instrument across parameter ranges, condition orderings, and response distributions the paper never sampled, to find where its analysis becomes unstable. A finding about the *instrument's* behaviour, cheap to run because no one is inconvenienced by it. |
 | Protocol comprehensibility | Instructions a model cannot follow are a weak but real signal that participants will struggle too. |
 | Calibration as its own research question | How closely model cohorts track human data is a question worth measuring, and a platform holding both is well placed to measure it. The answer is about models, not about the paper. |
+
+Every row is a claim about the **instrument**, never about the paper or about people, and every one of them happens *after* an audit is finished and graded. Nothing here flows back into an audit: [007](007-from-reproduction-to-replication.md) makes that a package-direction rule the import graph enforces, precisely because a synthetic cohort quietly informing a boundary classification would be the same violation as writing `verdict` outright.
 
 And what it is **not** for: estimating the paper's effect, standing in for the study, powering a sample-size calculation off a synthetic effect size, or producing anything that appears in a claim about people. [007](007-from-reproduction-to-replication.md) fixed the name for this reason — a **pilot**, which by construction precedes a study and never is one.
 
@@ -28,13 +31,15 @@ And what it is **not** for: estimating the paper's effect, standing in for the s
 
 Separating them keeps the strong uses from borrowing credibility they do not need from a language model, and the weak use from lending credibility it does not have to the strong ones.
 
-**The label is indelible and travels.** `cohort_kind` is a required field on the experiment record — and a `NOT NULL` column when 006b's schema lands — present on every artifact, every export, and every API response. The report is `PILOT.md` — never `RESULTS.md` — and it opens with what it does not establish before it shows a single number. A synthetic result that reaches a reader stripped of its label is the one failure mode this spec exists to prevent, so the test is not "the field is set" but "the label survives every path out of the system" ([007](007-from-reproduction-to-replication.md), criterion 4).
+**The label is indelible and travels.** `cohort_kind` is a required field on the experiment record — and a `NOT NULL` column when 006b's schema lands — present on every artifact, every export, and every API response. The report is `PILOT.md` — never `RESULTS.md` — and it opens with what it does not establish before it shows a single number. A synthetic result that reaches a reader stripped of its label is the one failure mode this spec exists to prevent, so the test is not "the field is set" but "the label survives every path out of the system" ([007](007-from-reproduction-to-replication.md), criterion 5).
 
 **A synthetic comparison is a calibration, and it is a statement about the model.** `Compare` from [007b](007b-experiments-over-instruments.md) is reused — comparing a cohort's statistics against `protocol.reported` is exactly the right operation — but its rendering is not. For a `released` source the comparison reads as re-analysis of the paper. For a synthetic one it reads as *how close a model cohort came to what people did*, which measures the cohort and never the paper. Same arithmetic, different subject, and the `Source` on the `Comparison` is what distinguishes them.
 
 **A model cohort requires ground truth, in the first version.** `synthetic:model` is available only for instruments that have both released data and `protocol.reported` — so every model cohort the platform runs at first can be checked against a real answer immediately.
 
-This is the sequencing argument from [007](007-from-reproduction-to-replication.md) made structural rather than advisory. A synthetic pilot on a paper with no released data produces numbers no one can falsify, which is how this feature would fail. The restriction is a gate to relax deliberately once calibration has been measured on papers where it can be, not a permanent property.
+This is the sequencing argument from [007](007-from-reproduction-to-replication.md) made structural rather than advisory. A model cohort on a paper with no released data produces numbers no one can falsify, which is how this feature would fail. The restriction is a gate to relax deliberately once calibration has been measured on papers where it can be, not a permanent property.
+
+**The gate binds `synthetic:model` only, and that is why it costs little.** `synthetic:generated` is ungated: it is declared synthetic data from a declared seed, claiming nothing about responders, so there is nothing to falsify and nothing to calibrate. Which means the distribution and sensitivity sweeps — the use with the widest appetite for runs — are served by the *unrestricted, free, deterministic* half of this spec, and the gate applies only where a model's behaviour is being read as informative. The restriction lands on the one use that needs ground truth and leaves the others alone.
 
 **A model cohort requires servable *components*, not a servable protocol.** [007a](007a-the-study-protocol-as-an-artifact.md)'s servability is per component, and that resolution matters here: gating on the roll-up would make the feature unreachable. If a component cannot be presented on a screen without an experimenter or a physical rig, a model cannot be driven through it either — but a study with one unservable manipulation and a perfectly servable task still has a task worth piloting.
 
@@ -88,17 +93,19 @@ type Pilot struct {
 
 1. `synthetic:generated` emits data conforming to `analysis.input`, deterministic from its recorded seed, and the instrument's own pipeline runs on it end to end without a model or a credential.
 2. A cohort carrying a specified effect is detected by the instrument's analysis, and a null cohort is not — the positive and negative control, asserted as a pair.
-3. The label survives every path out: report, artifact, export, and API response each carry `cohort_kind`, and a test enumerates the output paths rather than checking one of them.
-4. `PILOT.md` states what it does not establish before its first number, and no synthetic artifact is named or shaped like a result.
-5. A `Pilot` cannot be consumed where a `Result` is expected — asserted by the type, so the boundary cannot erode.
-6. A synthetic `Comparison` renders as calibration of the cohort and never as re-analysis of the paper; the two renderings are distinguished by `Source` and both are tested.
-7. `synthetic:model` is refused for an instrument lacking released data or `protocol.reported`, and drives only the servable components — an unservable component is skipped with its failed criteria cited and named in the pilot as not covered. Refusals are server-side.
-8. The gate admits case-02's prospective-memory task, so the model-cohort path is exercised in CI against an instrument with real ground truth. A gate that admits no golden case fails this criterion.
-9. No demographic or persona attribute reaches a model cohort's prompt, and no subgroup statistic appears in a pilot — asserted against the prompt template and the report.
-10. Every pilot records model, snapshot, prompt template, per-participant ordering seeds, N, and caps; a pilot missing any of them is not written.
-11. A run exceeding its cap is refused before it starts, and usage is reported on every pilot.
-12. `verdict` and `rate` in the 002 manifest are untouched, and no synthetic artifact is eligible for publication into a reproduction repository.
-13. Every test runs against the in-process provider — no network, no credential, no model calls in CI.
+3. A sweep over `synthetic:generated` runs without a gate, a model, or a credential, and reports where the instrument's analysis becomes unstable across the swept range. Every finding is stated about the instrument; none is stated about the paper or about people.
+4. No pilot of any sub-kind reaches an audit. Asserted by [007](007-from-reproduction-to-replication.md)'s import-graph test and by re-auditing a paper after pilots have run against its instrument and getting the same verdict.
+5. The label survives every path out: report, artifact, export, and API response each carry `cohort_kind`, and a test enumerates the output paths rather than checking one of them.
+6. `PILOT.md` states what it does not establish before its first number, and no synthetic artifact is named or shaped like a result.
+7. A `Pilot` cannot be consumed where a `Result` is expected — asserted by the type, so the boundary cannot erode.
+8. A synthetic `Comparison` renders as calibration of the cohort and never as re-analysis of the paper; the two renderings are distinguished by `Source` and both are tested.
+9. `synthetic:model` is refused for an instrument lacking released data or `protocol.reported`, and drives only the servable components — an unservable component is skipped with its failed criteria cited and named in the pilot as not covered. Refusals are server-side.
+10. The gate admits case-02's prospective-memory task, so the model-cohort path is exercised in CI against an instrument with real ground truth. A gate that admits no golden case fails this criterion.
+11. No demographic or persona attribute reaches a model cohort's prompt, and no subgroup statistic appears in a pilot — asserted against the prompt template and the report.
+12. Every pilot records model, snapshot, prompt template, per-participant ordering seeds, N, and caps; a pilot missing any of them is not written.
+13. A run exceeding its cap is refused before it starts, and usage is reported on every pilot.
+14. `verdict` and `rate` in the 002 manifest are untouched, and no synthetic artifact is eligible for publication into a reproduction repository.
+15. Every test runs against the in-process provider — no network, no credential, no model calls in CI.
 
 ## Out of scope
 
