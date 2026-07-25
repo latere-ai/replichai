@@ -8,7 +8,7 @@ Designs for work not yet built. One spec per tightly-scoped feature; each states
 | 002 | [Publishing reproductions](002-publishing-reproductions.md) | implemented | 001 |
 | 003 | [The reproduction registry](003-reproduction-registry.md) | draft | 001, 002 |
 | 004 | [Port the core to Go](004-go-port.md) | implemented | — |
-| 005 | Capture and publish the reproduction transcript | planned | 002 |
+| 005 | [Capture and publish the reproduction transcript](005-transcript.md) | draft | 002, 006f |
 | 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
 | 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | draft | 006b, (003, 005) |
 | 006b | [Job model and persistence](006b-job-model-and-persistence.md) | draft | 002, 004 |
