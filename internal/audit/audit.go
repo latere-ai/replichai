@@ -34,7 +34,24 @@ const (
 	DefaultMaxRevisions    = 3
 	DefaultPollInterval    = 20 * time.Second
 	DefaultTimeout         = time.Hour
+	// DefaultMountPath is where a mounted repository lands when the caller does
+	// not choose a path.
+	DefaultMountPath = "/workspace/repro"
 )
+
+// mountProtocol tells the worker how to use a mounted repository: commit the
+// reproduction into it and push, keeping third-party downloads out. This
+// bounded workspace is what makes a live push safe — third-party data is never
+// committed, so the publisher's gate can verify after the fact (006f).
+func mountProtocol(mountPath string) string {
+	return fmt.Sprintf(`
+
+A git repository is mounted at %[1]s, and its commit history is published as part of the result. Treat it as the home of your reproduction:
+
+- Write your reproduction files (README.md, REPRODUCIBILITY.md, src/, UNVERIFIED.md, SOURCES.md) inside %[1]s.
+- Commit your progress with git as you finish each part — small, meaningful commits — and run "git push" so the history is preserved.
+- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use /tmp. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, mountPath)
+}
 
 // DefaultPackages are installed into every sandbox: enough to pull a paper
 // down and read it, with anything domain-specific installed per run.
@@ -76,6 +93,7 @@ type Auditor struct {
 	maxRevisions int
 	pollInterval time.Duration
 	timeout      time.Duration
+	mount        provider.RepoMount
 	observe      func(provider.RunStatus)
 	sleep        func(context.Context, time.Duration) error
 }
@@ -115,6 +133,13 @@ func WithTimeout(d time.Duration) Option {
 // WithObserver installs a callback invoked on every status observation.
 func WithObserver(f func(provider.RunStatus)) Option {
 	return func(a *Auditor) { a.observe = f }
+}
+
+// WithMount mounts a repository into the run so the worker commits its
+// reproduction directly, with the history published as part of the result. The
+// worker is told to keep third-party downloads out of the repository (006f).
+func WithMount(m provider.RepoMount) Option {
+	return func(a *Auditor) { a.mount = m }
 }
 
 // withSleep replaces the wait between polls. Tests use it to run instantly.
@@ -159,9 +184,24 @@ func (a *Auditor) Start(ctx context.Context, paper string) (provider.RunHandle, 
 	if err != nil {
 		return provider.RunHandle{}, fmt.Errorf("ensure workspace: %w", err)
 	}
+	// With a repository mounted, the worker writes and commits into it; without
+	// one, it writes to the backend's output directory as before.
+	mount := a.mount
+	outputDir := a.provider.OutputDir()
+	if mount.Set() {
+		if mount.MountPath == "" {
+			mount.MountPath = DefaultMountPath
+		}
+		outputDir = mount.MountPath
+	}
+	instructions := a.method.InstructionsFor(outputDir)
+	if mount.Set() {
+		instructions += mountProtocol(mount.MountPath)
+	}
+
 	worker, err := a.provider.EnsureWorker(ctx, provider.WorkerSpec{
 		Name:         a.workerName,
-		Instructions: a.method.InstructionsFor(a.provider.OutputDir()),
+		Instructions: instructions,
 		Model:        model,
 		Description:  "Audits the reproducibility of a research paper.",
 	})
@@ -172,6 +212,7 @@ func (a *Auditor) Start(ctx context.Context, paper string) (provider.RunHandle, 
 		Task:         task,
 		Rubric:       a.method.Rubric,
 		MaxRevisions: a.maxRevisions,
+		Mount:        mount,
 	})
 	if err != nil {
 		return provider.RunHandle{}, fmt.Errorf("start run: %w", err)

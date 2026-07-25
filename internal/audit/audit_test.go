@@ -65,6 +65,35 @@ func TestStartResolvesOutputDirFromTheProvider(t *testing.T) {
 	}
 }
 
+func TestStartMountsARepository(t *testing.T) {
+	p := memory.New()
+	mount := provider.RepoMount{URL: "https://github.com/open-hai/x-a3f9", Token: "mount-token"}
+	if _, err := newTestAuditor(t, p, WithMount(mount)).Start(context.Background(), "paper"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// The run carries the mount, with the default path filled in.
+	run := p.Runs()[0]
+	if !run.Mount.Set() {
+		t.Fatal("the run should carry the mount")
+	}
+	if run.Mount.MountPath != DefaultMountPath {
+		t.Errorf("mount path = %q, want default %q", run.Mount.MountPath, DefaultMountPath)
+	}
+
+	// The worker is told the bounded-workspace protocol, rooted at the mount and
+	// not the backend output directory.
+	instr := p.Workers()[0].Instructions
+	for _, want := range []string{DefaultMountPath, "git push", "Never"} {
+		if !strings.Contains(instr, want) {
+			t.Errorf("instructions missing %q:\n%s", want, instr)
+		}
+	}
+	if strings.Contains(instr, p.OutputDir()) {
+		t.Error("with a mount, output must route to the mount, not the backend directory")
+	}
+}
+
 func TestStartRejectsAnEmptyPaperReference(t *testing.T) {
 	if _, err := newTestAuditor(t, memory.New()).Start(context.Background(), "  "); !errors.Is(err, method.ErrInvalid) {
 		t.Fatalf("want ErrInvalid, got %v", err)
