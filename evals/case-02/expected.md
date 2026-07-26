@@ -47,6 +47,16 @@ Reproducing the analysis is **not** the same as re-validating the effect. A run 
 
 The load-bearing expectation is the per-component conclusion, not a single number: accuracy preprocessing, the accuracy LMM, the DDM fitting, the Table 1 ANOVA, and the questionnaire ANOVAs all reproduce from the released data; the reaction-time GLMM is the one that resists — Run 2 could not recover the reported null without the exact Gamma/log crossed-random-effects specification chosen by BIC. A run that reaches those component-level conclusions passes, whatever overall rate it reports. Do not treat any particular rate (Run 2's was 5/6) as a target; the number depends on how the analysis is sliced and is not comparable across papers or runs. The shortfall must come from specific model-specification gaps, never from "it's a study paper".
 
+### 5. The instrument (007a)
+
+`instrument.json` is additive and moves nothing above. This case is the one that exercises servability's **discriminating** call, because it splits:
+
+- **`protocol`** extracts: between-subjects assignment to Rest/Twitter/YouTube/TikTok, the prospective-memory task, trial-level RT and accuracy measures, and `reported` entries drawn from the paper's own tables (the Table 1 ANOVA and the RT/accuracy models), each cited.
+- **`analysis`** is the released-data pipeline the run recovered in `src/` (§4), its command parameterising the input path so it runs on a new dataset.
+- **`servability`** splits by component. The **PM task apparatus is servable** — trial-level RT and accuracy are exactly what a browser captures, it is screen-based, single-session, and needs no experimenter. The **feed manipulation is not**: assignment sends participants to spend ten minutes on their own feeds in software the page neither controls nor can verify (§3, [`expected.md`](expected.md):39), which fails `page_administrable`. So `all_servable` is `false` and the per-component answer is the informative one — *this task we can host; this manipulation you must administer*.
+
+A run **passes** criterion 7 by reaching that per-component split. A run **fails** if it marks the whole protocol servable (missing that the manipulation is unadministrable) or the whole protocol unservable (throwing away that the PM task itself is hostable). Neither the roll-up nor any component is asserted `true` end to end.
+
 ## Open items for the author to confirm
 
 1. Is the RT GLMM's reported null robust, or is it genuinely conditional on the Gamma/log crossed-random-effects specification chosen by BIC? Run 2 found a naive Gaussian LMM recovers significant terms.

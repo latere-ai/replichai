@@ -23,6 +23,12 @@ Open questions:
 - **A replicability spectrum**, not a binary: fully re-runnable → partially → apparatus-bound → not mechanically replicable. The 007 instrument/experiment model presumes an instrument *exists* to bind data to; the non-replicable end needs an honest verdict rather than being forced into that model.
 - **Where the line sits** between "the instrument *is* the outer loop (needs people or hardware)" and "the instrument is a re-runnable artifact." The inner/outer thesis already answers part of this — a VR apparatus arguably falls on the outer, non-machine side — but 007 has not reconciled its instrument model with that boundary.
 
+## 3. The golden set has no fully-servable study (007a eval gap)
+
+007a's servability assessment ([`specs/007a`](007a-the-study-protocol-as-an-artifact.md)) is judged against both golden cases, but both discriminate in **one direction only**. `case-01`'s outer loop studies a visual interface the reproduction never rebuilds (fails `apparatus_recovered`); `case-02`'s prospective-memory task is servable but its feed manipulation is not (fails `page_administrable`). Neither has an outer loop that is servable end to end.
+
+So a change making the audit *credulous* about servability shows up immediately in both, but a change making it *uselessly conservative* — marking a genuinely hostable study unservable — shows up in neither. Until a third case is added, chosen for a fully hostable screen-based study (single session, browser measures, page-administrable manipulation, apparatus recovered), the conservative direction is unguarded. This is the honest state of the regression set, recorded rather than patched over by asserting a `true` the current papers do not support.
+
 ## Why these are backlog, not roadmap
 
 They are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). Recorded here to be picked up as a deliberate later-stage investigation, each likely its own spec, once the single-study loop is solid.
