@@ -37,6 +37,11 @@ type Experiment struct {
 	DatasetID string        `json:"dataset_id,omitempty"` // empty for released
 	Command   string        `json:"command"`              // resolved from analysis
 	Outcome   *Outcome      `json:"outcome,omitempty"`    // nil until the run completes
+	// CohortKind is the indelible synthetic label (007c) — CohortGenerated or
+	// CohortModel — empty for a non-synthetic source. It is a required field on
+	// every synthetic experiment and becomes a NOT NULL column when 006b lands,
+	// so no synthetic result can reach a reader stripped of what it is.
+	CohortKind string `json:"cohort_kind,omitempty"`
 }
 
 // Dataset is an uploaded or collected file's record. Its bytes live in the
