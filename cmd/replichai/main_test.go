@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/github"
+	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -80,6 +81,75 @@ func TestHTTPFetcherDoesNotRetryNotFound(t *testing.T) {
 		t.Errorf("a 404 is not retryable, want 1 call, got %d", calls)
 	}
 }
+
+func TestReportInstrument(t *testing.T) {
+	cases := []struct {
+		name       string
+		present    bool
+		violations []instrument.Violation
+		want       string
+	}{
+		{"absent", false, nil, "instrument: none written"},
+		{"valid", true, nil, "instrument: valid"},
+		{"invalid", true, []instrument.Violation{{Field: "protocol", Message: "is null without a reason"}},
+			"instrument: 1 schema violation"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newTemp(t)
+			reportInstrument(f, tc.present, tc.violations)
+			if got := readAll(t, f); !strings.Contains(got, tc.want) {
+				t.Errorf("reportInstrument output = %q, want to contain %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerifyInstrument(t *testing.T) {
+	serve := func(status int, body []byte) *github.Client {
+		return github.New("t", github.WithBaseURL(httptest.NewServer(http.HandlerFunc(
+			func(w http.ResponseWriter, _ *http.Request) {
+				if status != http.StatusOK {
+					w.WriteHeader(status)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"content": base64.StdEncoding.EncodeToString(body), "encoding": "base64",
+				})
+			})).URL))
+	}
+
+	// A committed, well-formed instrument validates.
+	present, vs, err := verifyInstrument(context.Background(),
+		serve(http.StatusOK, []byte(validInstrumentJSON)), "open-hai", "x")
+	if err != nil || !present || len(vs) != 0 {
+		t.Fatalf("valid instrument: present=%v vs=%v err=%v", present, vs, err)
+	}
+
+	// A malformed one reports a violation without erroring.
+	present, vs, err = verifyInstrument(context.Background(),
+		serve(http.StatusOK, []byte(`{"protocol":null,"analysis":null,"servability":{"components":[],"all_servable":true}}`)),
+		"open-hai", "x")
+	if err != nil || !present || len(vs) == 0 {
+		t.Fatalf("malformed instrument: present=%v vs=%v err=%v", present, vs, err)
+	}
+
+	// Absent → not present, no error, so the caller reports it and moves on.
+	present, _, err = verifyInstrument(context.Background(),
+		serve(http.StatusNotFound, nil), "open-hai", "x")
+	if err != nil || present {
+		t.Fatalf("absent instrument: present=%v err=%v", present, err)
+	}
+}
+
+// A well-formed instrument.json for the cmd-level tests above.
+const validInstrumentJSON = `{
+  "protocol": {"design":"2x2","trials":"120","measures":[{"name":"rt"}],"plan":["LMM"],
+    "reported":[{"metric":"RT","value":"p=.003","citation":"Table 2"}]},
+  "analysis": {"command":"python src/analyze.py {{INPUT}}",
+    "input":{"columns":[{"name":"rt","type":"number","required":true}]},"outputs":["out.csv"]},
+  "servability": {"components":[{"component":"task","servable":true}],"all_servable":true}
+}`
 
 // capture runs the CLI with stdout and stderr redirected to temp files, and
 // returns what each received. The command writes to *os.File, so real files

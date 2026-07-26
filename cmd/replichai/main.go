@@ -22,6 +22,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/github"
+	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -189,6 +190,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 
 	fmt.Fprintf(stdout, "verdict:   %s\n", result.Grade())
 	fmt.Fprintf(stdout, "artifacts: %d -> %s\n", len(result.Artifacts), result.ArtifactDir)
+	reportInstrument(stdout, result.InstrumentPresent, result.InstrumentViolations)
 	fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
 
 	if pub != nil {
@@ -331,6 +333,11 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 	}
 	leaked := publish.VerifyTree(tree)
 
+	present, iviol, err := verifyInstrument(ctx, gh, owner, name)
+	if err != nil {
+		return err
+	}
+
 	manifest := publish.ManifestFor(id, repoFull, methodDigest, verdict, time.Now(), len(leaked) == 0)
 	committed, err := commitManifestIfChanged(ctx, gh, owner, name, manifest)
 	if err != nil {
@@ -350,6 +357,7 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 			fmt.Fprintf(stdout, "  - %s\n", path)
 		}
 	}
+	reportInstrument(stdout, present, iviol)
 
 	// Commit the transcript — the evidence layer — in the same moment.
 	if len(events) > 0 {
@@ -365,6 +373,42 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 		fmt.Fprintf(stdout, "invited:   %s\n", invite)
 	}
 	return nil
+}
+
+// verifyInstrument reads instrument.json from the committed tree and checks it
+// against the 007a schema, mirroring the auditor's finalize-time report for the
+// live mount path. Absence is not an error — criterion 7 fails it in the run's
+// grade-and-revise loop; this only reports what reached the repository.
+func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string) (present bool, violations []instrument.Violation, err error) {
+	raw, ok, err := gh.GetFileContent(ctx, owner, name, audit.InstrumentFile)
+	if err != nil {
+		return false, nil, fmt.Errorf("read %s: %w", audit.InstrumentFile, err)
+	}
+	if !ok {
+		return false, nil, nil
+	}
+	vs, verr := instrument.Validate(raw)
+	if verr != nil {
+		return true, []instrument.Violation{{Field: audit.InstrumentFile, Message: verr.Error()}}, nil
+	}
+	return true, vs, nil
+}
+
+// reportInstrument prints the finalize-time instrument check as one status line,
+// with any schema violations beneath it. It is a report, not a gate — a bad
+// instrument does not block a publish; criterion 7 handles it in the run.
+func reportInstrument(stdout *os.File, present bool, violations []instrument.Violation) {
+	switch {
+	case !present:
+		fmt.Fprintln(stdout, "instrument: none written (criterion 7 fails the run)")
+	case len(violations) == 0:
+		fmt.Fprintln(stdout, "instrument: valid")
+	default:
+		fmt.Fprintf(stdout, "instrument: %d schema violation(s):\n", len(violations))
+		for _, v := range violations {
+			fmt.Fprintf(stdout, "  - %s\n", v)
+		}
+	}
 }
 
 // commitManifestIfChanged writes replication.json only when it is new or
