@@ -1,0 +1,37 @@
+name: Release
+
+# Tag-triggered release + production deploy via the central reusable pipeline
+# (latere-ai/ci). Pushing a v* tag builds the image, applies deploy/prod/ and
+# rolls the Deployment in the `latere` namespace, smokes the live URL, and
+# publishes the GitHub release. Deploy always targets prod; there is no CI
+# staging deploy (the staging overlay is a prepared stub). Local dev runs via
+# `docker compose` / `make up` and never touches this pipeline.
+#
+#   git tag v0.1.0 && git push origin v0.1.0   # -> builds, deploys to prod
+#
+# replichai builds from a single Dockerfile (build_mode: dockerfile) and runs
+# its own migrations at startup, so no separate build or migrate step is needed.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
+jobs:
+  release:
+    uses: latere-ai/ci/.github/workflows/service-release.yml@v1
+    with:
+      service: replichai
+      image: ghcr.io/latere-ai/replichai
+      namespace: latere
+      url: https://replichai.latere.ai
+      title: Replichai
+      build_mode: dockerfile
+      dockerfile: Dockerfile
+      has_frontend: false
+      smoke_script: test/release-smoke.sh
+    secrets: inherit
