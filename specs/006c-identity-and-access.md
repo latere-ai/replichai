@@ -1,7 +1,9 @@
 # 006c — Identity, tiers, and the access gate
 
-**Status:** draft
+**Status:** implemented (the forge-account link is deferred to [006f](006f-taking-a-reproduction-out.md), its only consumer)
 **Scope:** who may sign in, who may operate, and how a reproduction gets granted — the OIDC login, the fail-closed `access_grants` gate, the three tiers, and the proven forge-account link. A child of [006](006-web-application.md).
+
+**As built.** `internal/access` is the model (grants, tiers, project membership, seed-by-verified-email with one-way binding; in-memory and Postgres against one contract). `internal/webauth` is the HTTP edge: the fail-closed gate that re-resolves a grant per request, the OIDC login via `latere.ai/x/pkg/oidclogin` (portable standard OIDC), a session cookie carrying only `{sub, email, email_verified}` — sealed with a hand-rolled AES-256-GCM codec, because `oidclogin` owns the token flow but not session storage and `pkg/oidc`'s codec is welded to its own login `Client` — `/me`, and the `/admin/access` endpoints. The whitelist is bootstrapped from `ADMIN_EMAILS`/`SEED_EMAILS` (both `SeedGrant`, `granted_by=bootstrap`); runtime changes go through an admin. A loopback-only dev bypass authenticates a synthetic principal for local runs and grants nothing.
 **Depends on:** [006b](006b-job-model-and-persistence.md) (Postgres, and the routes the gate mounts on). Revised by [007](007-from-reproduction-to-replication.md): project membership sits beside the tiers, sharing their seed-and-bind rule and none of their authority.
 
 ## Problem

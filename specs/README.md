@@ -27,9 +27,11 @@ replichai finish <owner>/<repo> <paper> --session <id>
 
 This was proven end to end: a real reproduction (`open-hai/short-form-videos-…-wtmk`) with agent-authored history, an independent manifest, and a collaborator invitation. `audit --publish` blocks; `--detach` starts it and hands you a `finish` command to run later, since the agent commits independently of the CLI.
 
-**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b (experiments over instruments — engine half), 007c (the synthetic pilot — engine half). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
+**Implemented:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b/007c (experiments and the synthetic pilot — engine halves), and the **web application core**: 006a (HTTP + SSE), 006b (job model + Postgres), 006c (OIDC login + the fail-closed access gate). **006f is implemented at its core** (mount, publish, finish, verifier, invite); two pieces stay open (below). **010** provisions production — domain, database, k8s manifests, and a tag-triggered deploy pipeline.
 
-**Designed, not built:** the web application 006 and its children 006a–006e, and the hosted-study spec 007d. The 007b/007c Postgres stores and their HTTP/UI surface land with 006b/006a.
+**The app runs**: `docker compose up` (or `make up`) brings up Postgres + the server; a paper submitted through the API walks `submitted → done` behind the real gate. Production is provisioned and fail-closed.
+
+**Designed, not built:** 006d (PDF ingestion), 006e (the frontend), and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006a/006e. 006c's forge-account link lands with its consumer, 006f.
 
 ## Architecture at a glance
 
@@ -89,7 +91,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
 | 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | built | 006b, (003, 005) |
 | 006b | [Job model and persistence](006b-job-model-and-persistence.md) | built | 002, 004 |
-| 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | core built | 006b |
+| 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | implemented | 006b |
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | draft | 006a |
 | 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, (006c) |
@@ -125,7 +127,7 @@ Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, a
 
 **006c's core is built**: the authorisation model (`internal/access` — grants, three tiers, project membership, seed-by-verified-email with one-way binding, in-memory and Postgres against one contract) and the fail-closed gate policy (`internal/webauth`) that resolves a grant per request. What remains of 006c is the **OIDC login front door** — sign-in via `latere.ai/x/pkg/oidclogin`, the session cookie holding only `sub`+email, `/me`, the `/admin/access` endpoints, the dev-bypass off-loopback refusal, and rewiring `cmd/server` from the `--dev` gate to the real one. Until that lands the server still runs behind `--dev`.
 
-**Next: finish 006c's login**, then **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today), then 006d (PDF), 006e (frontend), 007d.
+**Next: 006e (the frontend)** — the researcher-facing UI (bun + React) that makes the app usable end to end: sign-in, submit, live progress, hindsight inspection, and the not-invited screen. Then **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today), **006d** (PDF ingestion), and 007d.
 
 **Production is provisioned** ([010](010-deployment-and-release.md)): `replichai.latere.ai` DNS, the `replichai` database and its secret (terraform, applied), the k8s kustomize manifests (`deploy/prod` in the `latere` namespace), and the CI/release pipeline — a `v*` tag builds, deploys to prod, and smokes. Prod is **fail-closed**: with no login yet it admits nobody, and the release smoke fails if the dev bypass ever reaches production.
 
