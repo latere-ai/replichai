@@ -9,6 +9,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -53,11 +54,18 @@ type JobStore interface {
 // ReproReader is the read surface over the derived registry (003) and the
 // transcript (005). It presents what the forge and the manifests already hold;
 // no handler caches a reproduction into its own shape.
+//
+// A genuine miss must be reported as ErrReproNotFound; any other error is a
+// transport or backend failure and becomes a 500, so a canceled request or a
+// forge outage is never disguised as "not found".
 type ReproReader interface {
 	List(ctx context.Context) ([]Reproduction, error)
 	Get(ctx context.Context, id string) (Reproduction, error)
 	Transcript(ctx context.Context, id string) ([]byte, error)
 }
+
+// ErrReproNotFound is the sentinel a ReproReader returns for a genuine miss.
+var ErrReproNotFound = errors.New("reproduction not found")
 
 // Reproduction is the presented shape of one published reproduction. Field
 // details settle here; it is a view over 003's manifest, never a stored copy.

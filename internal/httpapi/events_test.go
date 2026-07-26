@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // AC2: the SSE stream snapshots current state first (a late viewer sees where
@@ -78,6 +79,68 @@ func TestSSESnapshotThenStream(t *testing.T) {
 	// Event ids are present and increase.
 	if len(ids) < 2 || ids[0] == ids[len(ids)-1] {
 		t.Errorf("event ids should increment, got %v", ids)
+	}
+}
+
+// progressRunner drives a job through the phases and reports usage several times
+// during the running phase (an Observe-only update, no phase change).
+type progressRunner struct{ step time.Duration }
+
+func (progressRunner) Resolve(context.Context, *job.Job) error { return nil }
+func (r progressRunner) Execute(_ context.Context, _ *job.Job, observe func(provider.RunStatus)) error {
+	for i := 1; i <= 3; i++ {
+		observe(provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: int64(i * 100)}})
+		time.Sleep(r.step)
+	}
+	return nil
+}
+func (progressRunner) Publish(context.Context, *job.Job) error { return nil }
+
+// AC2+AC5 through the HTTP surface: a real worker's Observe-only progress (usage
+// with no phase change) reaches the SSE stream — not just phase transitions.
+func TestSSEStreamsWorkerProgress(t *testing.T) {
+	store := job.NewMemStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "")
+
+	rt := NewRouter(Deps{Jobs: store, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
+	srv := httptest.NewServer(rt.Handler())
+	defer srv.Close()
+
+	// Connect first (snapshot: submitted), then let the worker drive the job.
+	reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer reqCancel()
+	req, _ := http.NewRequestWithContext(reqCtx, "GET", srv.URL+"/jobs/"+j.ID+"/events", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer resp.Body.Close()
+
+	go job.NewWorker(store, progressRunner{step: 15 * time.Millisecond}).Process(ctx)
+
+	var sawProgress, sawDone bool
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		d := strings.TrimPrefix(line, "data: ")
+		if strings.Contains(d, `"input_tokens":100`) || strings.Contains(d, `"input_tokens":300`) || strings.Contains(d, `"InputTokens":100`) {
+			sawProgress = true
+		}
+		if strings.Contains(d, `"phase":"done"`) {
+			sawDone = true
+			resp.Body.Close()
+		}
+	}
+	if !sawProgress {
+		t.Error("the stream never carried the run's observed usage — Observe-only updates are not reaching SSE")
+	}
+	if !sawDone {
+		t.Error("the stream did not reach the terminal phase")
 	}
 }
 

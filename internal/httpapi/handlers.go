@@ -43,6 +43,17 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/reproductions/{id}/transcript", rt.getTranscript)
 }
 
+// writeReadError maps a ReproReader error to a status: a genuine miss is 404, a
+// transport or backend failure is 500, so a canceled request is never disguised
+// as not-found.
+func writeReadError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrReproNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "registry_unavailable")
+}
+
 // health is the unauthenticated liveness check.
 func (rt *Router) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -104,7 +115,7 @@ func (rt *Router) listReproductions(w http.ResponseWriter, r *http.Request) {
 func (rt *Router) getReproduction(w http.ResponseWriter, r *http.Request) {
 	repro, err := rt.repro.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found")
+		writeReadError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, repro)
@@ -114,7 +125,7 @@ func (rt *Router) getReproduction(w http.ResponseWriter, r *http.Request) {
 func (rt *Router) getTranscript(w http.ResponseWriter, r *http.Request) {
 	body, err := rt.repro.Transcript(r.Context(), r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found")
+		writeReadError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
