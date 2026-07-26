@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // MemStore is an in-memory Store for tests and for the rest of 006 to build
@@ -99,6 +101,33 @@ func (s *MemStore) Advance(_ context.Context, id string, to Phase, mutate func(*
 	s.transition(&j, to, mutate)
 	s.jobs[id] = j
 	return nil
+}
+
+// Observe records the latest run status without a phase change.
+func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStatus) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	j.Status = status
+	j.UpdatedAt = s.clock()
+	s.jobs[id] = j
+	return nil
+}
+
+// Active returns copies of every non-terminal job, in submission order.
+func (s *MemStore) Active(_ context.Context) ([]Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Job
+	for _, id := range s.order {
+		if j := s.jobs[id]; !j.Phase.Terminal() {
+			out = append(out, cloneJob(j))
+		}
+	}
+	return out, nil
 }
 
 // transition applies a validated phase change: run the caller's mutation, then

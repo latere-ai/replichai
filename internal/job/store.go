@@ -1,6 +1,10 @@
 package job
 
-import "context"
+import (
+	"context"
+
+	"github.com/latere-ai/replichai/internal/provider"
+)
 
 // Store is where jobs live. It is an interface so the HTTP layer (006a) and the
 // worker test against an in-memory fake with no database; the Postgres
@@ -22,4 +26,11 @@ type Store interface {
 	// publishing, the latest status). It refuses a transition the state machine
 	// forbids with ErrIllegalTransition.
 	Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error
+	// Observe records the latest run status on a job without changing its phase,
+	// so a reader who connects mid-run sees where it is. Progress is not a
+	// transition.
+	Observe(ctx context.Context, id string, status provider.RunStatus) error
+	// Active returns the jobs that are not terminal, so a restart can find work
+	// a crash left mid-flight and reap it.
+	Active(ctx context.Context) ([]Job, error)
 }
