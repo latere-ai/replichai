@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  vet:
+    name: go vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: go vet ./...
+
+  test:
+    name: test (race) + postgres contracts
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: replichai
+          POSTGRES_USER: replichai
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U replichai -d replichai"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      # A live database makes the job and access store contracts run their
+      # Postgres path (SELECT ... FOR UPDATE SKIP LOCKED) instead of skipping.
+      TEST_DATABASE_URL: postgres://replichai:testpass@localhost:5432/replichai?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: go test -race -timeout 300s ./...
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: go build ./...
