@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/instrument"
+	"github.com/latere-ai/replichai/internal/provider/memory"
 )
 
 func generatorInstrument() instrument.Instrument {
@@ -52,6 +53,36 @@ func TestGeneratedConformsAndIsDeterministic(t *testing.T) {
 	rows, _ := csv.NewReader(bytes.NewReader(a.CSV)).ReadAll()
 	if len(rows) != 51 {
 		t.Errorf("got %d rows, want 50 + header", len(rows))
+	}
+}
+
+// AC1 (end to end): generated data feeds the instrument's own pipeline — the
+// 007b runner — with no model and no credential. This closes the loop the
+// generator exists for: its CSV must actually be consumable by the executor.
+func TestGeneratedFeedsTheRunnerEndToEnd(t *testing.T) {
+	decl := generatorInstrument()
+	data, err := (Generated{N: 20, Seed: 5}).Collect(context.Background(), decl)
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	p := memory.New()
+	p.Files = map[string][]byte{ResultFile: []byte(`{"ran":true,"recomputed":[{"metric":"score","value":"50"}]}`)}
+	inst := mountedInstrument()
+	inst.Decl = decl // the generator's schema is the instrument's analysis input
+	e := &Experiment{ID: "exp-gen", Source: SourceSynthetic, CohortKind: CohortGenerated}
+
+	out, err := newTestRunner(t, p, NewMemArtifactStore()).Run(context.Background(), e, inst, data.CSV)
+	if err != nil {
+		t.Fatalf("Run on generated data: %v", err)
+	}
+	if !out.Ran {
+		t.Error("the instrument's pipeline should run on generated data")
+	}
+	// The generated CSV is what the runner attached, outside the mount.
+	att := p.Runs()[0].Attachments
+	if len(att) != 1 || !bytes.Equal(att[0].Content, data.CSV) {
+		t.Error("the generated data should be the run's attached input")
 	}
 }
 

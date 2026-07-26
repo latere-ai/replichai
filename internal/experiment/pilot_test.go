@@ -2,6 +2,7 @@ package experiment
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode"
@@ -143,9 +144,18 @@ func TestPilotIsNotAnOutcome(t *testing.T) {
 	if _, err := (Pilot{}).Export(); err == nil {
 		t.Error("a Pilot with no cohort_kind must not export")
 	}
-	// The types do not convert: a Pilot has no Ran/ExitCode, an Outcome no Kind.
-	// This is asserted structurally so the boundary cannot silently erode.
-	if _, ok := any(Pilot{}).(interface{ Ran() bool }); ok {
-		t.Error("a Pilot must not present as a run outcome")
+	// The types do not convert: neither embeds or holds the other, so a pilot
+	// cannot flow into a path that consumes a run outcome. Asserted structurally
+	// (like the stored-declaration guard) so the boundary cannot silently erode.
+	pilotT, outcomeT := reflect.TypeOf(Pilot{}), reflect.TypeOf(Outcome{})
+	for i := 0; i < pilotT.NumField(); i++ {
+		if pilotT.Field(i).Type == outcomeT {
+			t.Errorf("Pilot.%s holds an Outcome — the pilot boundary would erode", pilotT.Field(i).Name)
+		}
+	}
+	for i := 0; i < outcomeT.NumField(); i++ {
+		if outcomeT.Field(i).Type == pilotT {
+			t.Errorf("Outcome.%s holds a Pilot — the pilot boundary would erode", outcomeT.Field(i).Name)
+		}
 	}
 }
