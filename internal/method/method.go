@@ -110,6 +110,33 @@ func Load(dir string) (Method, error) {
 	return m, nil
 }
 
+// LoadExperiment reads the experiment runner's instructions (experiment.md)
+// from the method directory. Like Load, an empty dir discovers the method
+// directory by walking up from the working directory.
+//
+// It is separate from Load and outside Digest because the experiment worker
+// (007b) is graded by nothing — it runs a declared command and reports what
+// happened — so it needs no rubric or task template, and editing its doctrine
+// must not change an audit's method digest.
+func LoadExperiment(dir string) (string, error) {
+	if dir == "" {
+		found, err := discover()
+		if err != nil {
+			return "", err
+		}
+		dir = found
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "experiment.md")) //nolint:gosec // G304: fixed name under an operator-supplied directory
+	if err != nil {
+		return "", fmt.Errorf("%w: method directory is missing experiment.md: %s", ErrInvalid, dir)
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return "", fmt.Errorf("%w: method file is empty: experiment.md", ErrInvalid)
+	}
+	return text, nil
+}
+
 // discover walks up from the working directory looking for a method directory.
 //
 // A candidate must actually contain the method, not merely be named "method" —

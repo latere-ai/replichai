@@ -29,6 +29,32 @@ func writeMethod(t *testing.T, root string, overrides map[string]string) string 
 	return root
 }
 
+func TestLoadExperiment(t *testing.T) {
+	root := writeMethod(t, filepath.Join(t.TempDir(), "method"), nil)
+
+	// Absent experiment.md → error.
+	if _, err := LoadExperiment(root); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("missing experiment.md should be ErrInvalid, got %v", err)
+	}
+
+	// Present and non-empty → returned.
+	if err := os.WriteFile(filepath.Join(root, "experiment.md"), []byte("Run the command exactly as given."), 0o644); err != nil {
+		t.Fatalf("write experiment.md: %v", err)
+	}
+	got, err := LoadExperiment(root)
+	if err != nil || got != "Run the command exactly as given." {
+		t.Fatalf("LoadExperiment = %q, err %v", got, err)
+	}
+
+	// Present but empty → error.
+	if err := os.WriteFile(filepath.Join(root, "experiment.md"), []byte("   "), 0o644); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	if _, err := LoadExperiment(root); !errors.Is(err, ErrInvalid) {
+		t.Errorf("empty experiment.md should be ErrInvalid, got %v", err)
+	}
+}
+
 func TestLoadReadsAllThreeDocuments(t *testing.T) {
 	m, err := Load(writeMethod(t, filepath.Join(t.TempDir(), "method"), nil))
 	if err != nil {
