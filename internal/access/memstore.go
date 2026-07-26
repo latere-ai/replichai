@@ -44,15 +44,17 @@ func NewMemStore(opts ...MemOption) *MemStore {
 // SeedAdmin creates or promotes an admin grant with no admin check — the
 // bootstrap path for the platform-admin email list, applied at startup. A
 // development shortcut it is not: it is the deployment operator writing the
-// first admins, and it seeds by email like every other grant.
-func (s *MemStore) SeedAdmin(email string) {
+// first admins, and it seeds by email like every other grant. It takes a
+// context and returns an error to match the Postgres store's signature.
+func (s *MemStore) SeedAdmin(_ context.Context, email string) error {
 	email = normalizeEmail(email)
 	if email == "" {
-		return
+		return ErrNoEmail
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.upsert(email, TierAdmin, "bootstrap")
+	return nil
 }
 
 // Resolve returns a principal's tier, binding a seeded grant on first login.

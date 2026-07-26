@@ -12,7 +12,7 @@ var ctx = context.Background()
 // bootstrapAdmin seeds an admin and returns its principal, bound.
 func bootstrapAdmin(t *testing.T, s *MemStore) Principal {
 	t.Helper()
-	s.SeedAdmin("admin@example.com")
+	_ = s.SeedAdmin(ctx, "admin@example.com")
 	admin := Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
 	if tier, ok, _ := s.Resolve(ctx, admin); !ok || tier != TierAdmin {
 		t.Fatalf("admin should resolve as admin, got %s/%v", tier, ok)

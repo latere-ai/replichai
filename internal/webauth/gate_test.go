@@ -42,7 +42,7 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 	}
 
 	// Grant the email; first request binds and admits.
-	store.SeedAdmin("admin@example.com")
+	_ = store.SeedAdmin(ctx, "admin@example.com")
 	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
 	if err := store.Grant(ctx, admin, "seed@example.com", access.TierSeed); err != nil {
 		t.Fatalf("grant: %v", err)
@@ -64,7 +64,7 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 // and admits one at or above the required tier.
 func TestRequireTier(t *testing.T) {
 	store := access.NewMemStore()
-	store.SeedAdmin("admin@example.com")
+	_ = store.SeedAdmin(ctx, "admin@example.com")
 	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
 	_ = store.Grant(ctx, admin, "seed@example.com", access.TierSeed)
 	_ = store.Grant(ctx, admin, "trusted@example.com", access.TierTrusted)
