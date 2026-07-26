@@ -6,3 +6,6 @@ reference
 evals
 docs
 specs
+# The frontend is rebuilt in the image; don't ship local deps or build output.
+frontend/node_modules
+internal/spa/dist
