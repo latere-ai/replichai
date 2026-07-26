@@ -37,6 +37,7 @@ func (rt *Router) routes() {
 	rt.openHandle("GET", "/healthz", rt.health)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
+	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 	rt.gatedHandle("GET", "/reproductions", rt.listReproductions)
 	rt.gatedHandle("GET", "/reproductions/{id}", rt.getReproduction)
 	rt.gatedHandle("GET", "/reproductions/{id}/transcript", rt.getTranscript)

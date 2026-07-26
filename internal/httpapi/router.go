@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/job"
 )
@@ -72,6 +73,9 @@ type Deps struct {
 	Jobs          JobStore
 	Reproductions ReproReader
 	Gate          Gate
+	// SSEInterval is how often the event stream re-reads a job's state. Zero
+	// selects a sensible default.
+	SSEInterval time.Duration
 }
 
 // Router wires the routes, mounts the gate on the operator set, and keeps the
@@ -83,9 +87,14 @@ type Router struct {
 	gated []Route
 	open  []Route
 
-	jobs  JobStore
-	repro ReproReader
+	jobs        JobStore
+	repro       ReproReader
+	sseInterval time.Duration
 }
+
+// defaultSSEInterval is how often the event stream re-reads a job when the
+// caller does not choose.
+const defaultSSEInterval = time.Second
 
 // NewRouter builds a fully wired router. A nil gate is fail-closed (DenyAll).
 func NewRouter(d Deps) *Router {
@@ -93,7 +102,11 @@ func NewRouter(d Deps) *Router {
 	if gate == nil {
 		gate = DenyAll
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, repro: d.Reproductions}
+	interval := d.SSEInterval
+	if interval <= 0 {
+		interval = defaultSSEInterval
+	}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, repro: d.Reproductions, sseInterval: interval}
 	rt.routes()
 	return rt
 }
@@ -146,4 +159,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeError writes a machine-readable error code.
 func writeError(w http.ResponseWriter, status int, code string) {
 	writeJSON(w, status, map[string]string{"error": code})
+}
+
+// mustJSON marshals v, returning an empty object on the impossible error so a
+// stream write never panics.
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("{}")
+	}
+	return b
 }
