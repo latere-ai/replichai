@@ -27,9 +27,9 @@ replichai finish <owner>/<repo> <paper> --session <id>
 
 This was proven end to end: a real reproduction (`open-hai/short-form-videos-…-wtmk`) with agent-authored history, an independent manifest, and a collaborator invitation. `audit --publish` blocks; `--detach` starts it and hands you a `finish` command to run later, since the agent commits independently of the CLI.
 
-**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b (experiments over instruments — engine half). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
+**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b (experiments over instruments — engine half), 007c (the synthetic pilot — engine half). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
 
-**Designed, not built:** the web application 006 and its children 006a–006e, and the rest of the replication track 007c–007d. 007b's Postgres store and its HTTP/UI surface land with 006b/006a.
+**Designed, not built:** the web application 006 and its children 006a–006e, and the hosted-study spec 007d. The 007b/007c Postgres stores and their HTTP/UI surface land with 006b/006a.
 
 ## Architecture at a glance
 
@@ -90,7 +90,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |
-| 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | draft | 007b |
+| 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | engine built | 007b |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
 | 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | deferred | 002, 005, 006f |
@@ -110,8 +110,8 @@ What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop b
 Engine first; the web shell last, because every screen it renders needs an engine capability the earlier specs deliver.
 
 ```
-002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a ✓ → 007b ✓ → 007c (next)
-     → 006a / 006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
+002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a ✓ → 007b ✓ → 007c ✓
+     → 006a / 006b (HTTP + Postgres, next) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
 ```
 
-Done so far: 001–005, 006f's core, 007a, and 007b's engine half (the domain model, the stores behind interfaces, the runner in the provider sandbox; Postgres and the HTTP/UI land with 006b/006a). **Next: 007c** (the synthetic pilot — an LLM cohort driven through `protocol`, calibrated against papers that released real data). 007c is engine work and slots in before the server; 007d comes after it, because a hosted study needs the server, the database, and identity underneath. Within 007 the order inverts how the capabilities were first asked for — the synthetic pilot (007c) comes third, because a cohort is only checkable where the paper released real data to check it against.
+Done so far: 001–005, 006f's core, 007a, and the engine halves of 007b and 007c (the domain model, the stores behind interfaces, the runner and the synthetic cohorts in the provider sandbox; Postgres and the HTTP/UI land with 006b/006a). **Next: the web shell (006a/006b)** — the HTTP API and the job model with Postgres, which is where the deferred halves of 007b/007c land against the interfaces they fixed. 007d (a hosted study) comes after the frontend, because it needs the server, the database, and identity underneath. Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.

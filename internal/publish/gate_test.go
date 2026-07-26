@@ -54,6 +54,21 @@ func TestInstrumentJSONSurvivesPublish(t *testing.T) {
 	}
 }
 
+// A synthetic pilot's artifacts are never worker-written reproduction files, so
+// the allowlist must withhold them from any publication into a reproduction
+// repository (007c AC14). They live in the deployment's artifact store and
+// never enter a mount, but the gate is the backstop if one ever appeared.
+func TestSyntheticArtifactsAreNotPublishable(t *testing.T) {
+	for _, p := range []string{"PILOT.md", "cohort.csv", "pilot/PILOT.md"} {
+		if originOf(p) == OriginWorker {
+			t.Errorf("originOf(%q) = worker — a synthetic artifact must not be publishable", p)
+		}
+		if include, _ := Classify(Provenance{Path: p, Origin: originOf(p)}); include {
+			t.Errorf("Classify admitted %q — a synthetic artifact must be withheld", p)
+		}
+	}
+}
+
 func TestIsSecretName(t *testing.T) {
 	secret := []string{".env", ".env.local", "id_rsa", "server.pem", "app.key",
 		"deploy/.netrc", "certs/cert.p12"}
