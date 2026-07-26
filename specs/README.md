@@ -27,9 +27,9 @@ replichai finish <owner>/<repo> <paper> --session <id>
 
 This was proven end to end: a real reproduction (`open-hai/short-form-videos-…-wtmk`) with agent-authored history, an independent manifest, and a collaborator invitation. `audit --publish` blocks; `--detach` starts it and hands you a `finish` command to run later, since the agent commits independently of the CLI.
 
-**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
+**Implemented specs:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument). **006f is implemented at its core** (mount, publish, finish, verifier, invite) with two pieces still open (below).
 
-**Designed, not built:** the web application 006 and its children 006a–006e, and the replication track 007a–007d.
+**Designed, not built:** the web application 006 and its children 006a–006e, and the rest of the replication track 007b–007d.
 
 ## Architecture at a glance
 
@@ -86,7 +86,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006e | [Frontend](006e-frontend.md) | draft | 006a |
 | 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, (006c) |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
-| 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | draft | 004 |
+| 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | draft | 007a, 006f |
 | 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | draft | 007b |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
@@ -108,8 +108,8 @@ What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop b
 Engine first; the web shell last, because every screen it renders needs an engine capability the earlier specs deliver.
 
 ```
-002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a (next) → 007b → 007c
+002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a ✓ → 007b (next) → 007c
      → 006a / 006b (HTTP + Postgres) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
 ```
 
-Done so far: 001–005 and 006f's core. **Next: 007a** (the study protocol as an artifact). 007a–007c are engine work and slot in before the server; 007d comes after it, because a hosted study needs the server, the database, and identity underneath. Within 007 the order inverts how the capabilities were first asked for — the synthetic pilot (007c) comes third, because a cohort is only checkable where the paper released real data to check it against.
+Done so far: 001–005, 006f's core, and 007a. **Next: 007b** (experiments over instruments — the `released` and `uploaded` data sources, executed in the provider sandbox). 007b–007c are engine work and slot in before the server; 007d comes after it, because a hosted study needs the server, the database, and identity underneath. Within 007 the order inverts how the capabilities were first asked for — the synthetic pilot (007c) comes third, because a cohort is only checkable where the paper released real data to check it against.
