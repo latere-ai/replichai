@@ -24,7 +24,7 @@ func TestClassifyIncludesOnlyWorkerOrigin(t *testing.T) {
 
 func TestOriginOfClassifiesStructurally(t *testing.T) {
 	worker := []string{"README.md", "REPRODUCIBILITY.md", "UNVERIFIED.md", "SOURCES.md",
-		"src/main.py", "src/lib/util.py", "./src/model.py"}
+		"instrument.json", "src/main.py", "src/lib/util.py", "./src/model.py"}
 	for _, p := range worker {
 		if originOf(p) != OriginWorker {
 			t.Errorf("originOf(%q) = third-party, want worker", p)
@@ -36,6 +36,21 @@ func TestOriginOfClassifiesStructurally(t *testing.T) {
 		if originOf(p) != OriginThirdParty {
 			t.Errorf("originOf(%q) = worker, want third-party", p)
 		}
+	}
+}
+
+// AC9: instrument.json survives a publish on both paths — classified
+// worker-written by the offline allowlist, and not flagged by the mount-path
+// verifier. A worker-written file the gate does not know is withheld silently.
+func TestInstrumentJSONSurvivesPublish(t *testing.T) {
+	if got := originOf("instrument.json"); got != OriginWorker {
+		t.Errorf("originOf(instrument.json) = %v, want OriginWorker", got)
+	}
+	if include, _ := Classify(Provenance{Path: "instrument.json", Origin: originOf("instrument.json")}); !include {
+		t.Error("Classify withheld instrument.json from the filesystem publish path")
+	}
+	if flagged := VerifyTree([]string{"README.md", "instrument.json", "src/main.py"}); len(flagged) != 0 {
+		t.Errorf("VerifyTree flagged instrument.json on the mount path: %v", flagged)
 	}
 }
 
