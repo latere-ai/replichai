@@ -42,6 +42,14 @@ code=$(curl -sS -L --retry 5 --retry-delay 2 --retry-max-time 30 \
 grep -q '"status":"ok"' "$tmp/health" || fail "healthz: body is not ok ($(cat "$tmp/health"))"
 pass "healthz ($code) -> $(cat "$tmp/health")"
 
+# The frontend shell is served (public), so a researcher gets the app to sign
+# into. A "not built" notice would mean the image shipped without the bundle.
+code=$(curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/root" -w '%{http_code}' "${BASE_URL}/") || fail "app: curl failed"
+[ "$code" = "200" ] || fail "app: GET / returned $code, want 200"
+grep -q 'not built into this binary' "$tmp/root" && fail "app: the frontend bundle is missing from the image"
+grep -qi 'assets/index' "$tmp/root" || fail "app: GET / did not serve the built app shell"
+pass "app shell served ($code)"
+
 # The gate must be fail-closed: an unauthenticated operator route is refused,
 # not served. This proves the production build is not running the dev bypass.
 code=$(curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/repro" -w '%{http_code}' "${BASE_URL}/reproductions") || fail "gate: curl failed"

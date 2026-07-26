@@ -60,3 +60,15 @@ jobs:
           go-version: "1.26.x"
           cache: true
       - run: go build ./...
+
+  frontend:
+    name: frontend (bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1"
+      - run: cd frontend && bun install --frozen-lockfile
+      - run: cd frontend && bun run typecheck
+      - run: cd frontend && bun run build
