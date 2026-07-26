@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -19,25 +20,26 @@ func testDeps(gate Gate) Deps {
 	return Deps{Jobs: job.NewMemStore(), Reproductions: &fakeRepro{}, Gate: gate}
 }
 
-type fakeRepro struct{ err error }
+type fakeRepro struct{ err, getErr error }
 
 func (f *fakeRepro) List(context.Context) ([]Reproduction, error) {
 	return []Reproduction{{ID: "r1", Repo: "open-hai/x", Verdict: "passed"}}, f.err
 }
 func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
+	if f.getErr != nil {
+		return Reproduction{}, f.getErr
+	}
 	if id != "r1" {
-		return Reproduction{}, errNotFound
+		return Reproduction{}, ErrReproNotFound
 	}
 	return Reproduction{ID: "r1", Repo: "open-hai/x"}, nil
 }
 func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 	if id != "r1" {
-		return nil, errNotFound
+		return nil, ErrReproNotFound
 	}
 	return []byte(`{"event":1}` + "\n"), nil
 }
-
-var errNotFound = context.Canceled // any non-nil error; the handler maps to 404
 
 func do(t *testing.T, h http.Handler, method, path, body, principalSub string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -117,6 +119,15 @@ func TestReadSurfaces(t *testing.T) {
 	}
 	if w := do(t, h, "GET", "/reproductions/nope", "", "sub"); w.Code != http.StatusNotFound {
 		t.Errorf("missing repro: status %d, want 404", w.Code)
+	}
+
+	// A backend failure (not a miss) is a 500, never disguised as not-found.
+	backendDown := NewRouter(Deps{
+		Jobs: job.NewMemStore(), Gate: allowAll,
+		Reproductions: &fakeRepro{getErr: errors.New("forge timeout")},
+	}).Handler()
+	if w := do(t, backendDown, "GET", "/reproductions/r1", "", "sub"); w.Code != http.StatusInternalServerError {
+		t.Errorf("a backend error should be 500, got %d", w.Code)
 	}
 }
 
