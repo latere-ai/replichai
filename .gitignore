@@ -10,3 +10,12 @@
 
 # Scratch
 *.tfplan
+
+# Secrets and local artifacts (never commit .env — it holds deployment secrets)
+.env
+.coverage
+*.tsbuildinfo
+
+# Python reference caches
+__pycache__/
+/replichai
