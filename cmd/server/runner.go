@@ -27,11 +27,29 @@ type engineRunner struct {
 	method   method.Method
 	fetch    paper.Fetcher
 	workDir  string
+	// delay pauses at the start of each phase. It is a dev affordance: with the
+	// instant memory provider a job finishes in ~1s, so a small delay makes the
+	// phase progression watchable over SSE. Zero in production.
+	delay time.Duration
+}
+
+// pause waits out the configured per-phase delay, honouring cancellation.
+func (e *engineRunner) pause(ctx context.Context) {
+	if e.delay <= 0 {
+		return
+	}
+	t := time.NewTimer(e.delay)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
 }
 
 // Resolve validates the paper reference against the resolver (the resolving
 // phase). A reference that cannot resolve fails the job here, before a run.
 func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
+	e.pause(ctx)
 	if j.Kind != job.KindAudit {
 		return fmt.Errorf("job kind %q is not yet wired in this build", j.Kind)
 	}
@@ -44,6 +62,7 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 // Execute runs the audit, reporting progress through observe. A fresh Auditor
 // per job carries that job's observer.
 func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
+	e.pause(ctx)
 	auditor := audit.New(e.provider, e.method, audit.WithObserver(observe))
 	res, err := auditor.Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
 	if err != nil {
@@ -57,7 +76,10 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 // packaged for the server, so a reproduction runs and is graded but is not
 // pushed to a repository. Wiring the mount publish here is the deployable
 // layer's next step.
-func (e *engineRunner) Publish(_ context.Context, _ *job.Job) error { return nil }
+func (e *engineRunner) Publish(ctx context.Context, _ *job.Job) error {
+	e.pause(ctx)
+	return nil
+}
 
 // registryReader adapts the derived registry (003) to the HTTP read surface. It
 // presents what the manifests hold and caches nothing of its own.
