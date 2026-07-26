@@ -1,6 +1,6 @@
 # 007b — Experiments over instruments
 
-**Status:** draft
+**Status:** implemented (engine half — the Postgres store and the HTTP/UI surface remain, per Out of scope)
 **Scope:** the project / instrument / experiment domain model, and its two offline data sources — re-running a reproduction's analysis on the paper's released data, and on a dataset a researcher brings. A child of [007](007-from-reproduction-to-replication.md).
 **Depends on:** [007a](007a-the-study-protocol-as-an-artifact.md) (the instrument declaration it executes), [006f](006f-taking-a-reproduction-out.md) (the repository mount), [004](004-go-port.md) (the provider seam).
 
@@ -26,9 +26,9 @@ This is 006b's own pattern, borrowed deliberately — "the store is an interface
 
 **A job will run an audit or an experiment; the job state machine survives.** When 006b arrives, its lifecycle, its `FOR UPDATE SKIP LOCKED` worker, and its progress observation are reused unchanged — a job gains a *kind* and a project, and dispatches to `audit.Auditor` or `experiment.Runner`. That is the whole of the revision 007 announced, and 006b already carries it. Nothing in *this* spec builds a lifecycle: the runner is called directly, and by a worker later.
 
-**An experiment executes in the provider sandbox, on a read-only mount.** The run mounts the instrument repository and attaches the dataset as a session resource, then executes `analysis.command`. Two tightenings of [006f](006f-taking-a-reproduction-out.md)'s token model, both structural:
+**An experiment executes in the provider sandbox, on a read-only mount.** The run mounts the instrument repository and attaches the dataset as a session resource, then executes `analysis.command`. It reuses `provider.Provider` unchanged — an experiment is a run with an empty rubric and no revision budget (`Rubric: ""`, `MaxRevisions: 0`), not a second execution substrate. Two tightenings of [006f](006f-taking-a-reproduction-out.md)'s token model, both structural:
 
-- **No push credential ever enters an experiment sandbox.** An experiment reads an instrument; it has no business writing to the reproduction. The mount token is read-only, which makes 006f's two blast radii into three, the smallest of them being this one.
+- **No push credential ever enters an experiment sandbox.** An experiment reads an instrument; it has no business writing to the reproduction. The mount carries a `ReadOnly` intent, which makes 006f's two blast radii into three, the smallest of them being this one. As built, `ReadOnly` is an honest signal, not a guarantee the backend imposes: the managed-agents `github_repository` resource has no read-only field, so the enforcement is the *token's* GitHub scope — a read-only-scoped mount token. That scoping is 006f's still-open two-token split, so the seam expresses the intent today and a read-only token makes it real when 006f lands.
 - **The dataset lands outside the mount**, as 006f's bounded-workspace rule already requires of every download, and results are written outside it too. So a researcher's uploaded data physically cannot be committed into a reproduction repository, which is the primary control behind 007's "uploaded data is not ours to redistribute".
 
 Rejected, again and for the reason 007 gives: a container runner in the server. Instrument code is agent-written and uploaded data is untrusted; the managed sandbox is the component built to hold exactly that pair.
@@ -72,8 +72,10 @@ type Experiment struct {
 }
 
 // Run executes one experiment in the provider sandbox: read-only instrument
-// mount, dataset attached outside it, declared command, captured output.
-func (r *Runner) Run(ctx context.Context, e *Experiment) (Outcome, error)
+// mount, dataset (input) attached outside it, declared command, captured
+// output. input is the bytes to analyse — the researcher's dataset for an
+// uploaded source, the paper's released data for a released one.
+func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input []byte) (Outcome, error)
 
 // Compare lays a released-source outcome against Decl.Protocol.Reported.
 // It reports deltas; it does not judge them.
@@ -84,7 +86,7 @@ func Compare(o Outcome, reported []instrument.Reported) Comparison
 
 1. An instrument resolves from a published repository at a pinned commit, and the store keeps no copy of `instrument.json` or `src/`. Asserted by resolving twice across a new commit and getting the pinned declaration both times.
 2. Everything here runs with no database: `experiment.Store` and `ArtifactStore` have in-memory and filesystem implementations, and the full runner path is tested against them. No Postgres schema, migration, or job-kind wiring is in this spec's scope — those land with 006b, against these interfaces, and 006b's criterion 7 covers the lifecycle.
-3. No push credential reaches an experiment sandbox: a test asserts the mount token for an experiment run is read-only and that the server token is absent, on 006f's terms.
+3. No push credential reaches an experiment sandbox: a test asserts the experiment run's mount is `ReadOnly` and carries the read-only-scoped mount token, never the organisation token. Full scope enforcement is the token's GitHub permission — 006f's still-open two-token split — so this asserts the seam's intent and the absence of the org token, which is the honest state until 006f lands.
 4. Uploaded data cannot be committed into a reproduction repository. Asserted structurally — the dataset and the outputs are placed outside the mount — and by the resulting tree containing neither.
 5. A dataset conforming to `analysis.input` is accepted and a non-conforming one is refused before any run starts, with the offending column named.
 6. An analysis that fails on conforming data yields a recorded failure with its real output, and the run is not retried with a modified command. A test asserts the worker's instruction contains no license to repair, and that a failed outcome is a complete, reportable result.
