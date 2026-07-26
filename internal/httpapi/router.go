@@ -84,6 +84,9 @@ type Deps struct {
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
 	SSEInterval time.Duration
+	// SPA, when set, serves the frontend for any GET path not matched by an API
+	// route — the public app shell (006e). Nil in API-only tests.
+	SPA http.Handler
 }
 
 // Router wires the routes, mounts the gate on the operator set, and keeps the
@@ -98,6 +101,7 @@ type Router struct {
 	jobs        JobStore
 	repro       ReproReader
 	sseInterval time.Duration
+	spa         http.Handler
 }
 
 // defaultSSEInterval is how often the event stream re-reads a job when the
@@ -114,7 +118,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, repro: d.Reproductions, sseInterval: interval}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, repro: d.Reproductions, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

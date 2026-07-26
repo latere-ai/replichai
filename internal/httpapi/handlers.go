@@ -62,6 +62,13 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/reproductions", rt.listReproductions)
 	rt.gatedHandle("GET", "/reproductions/{id}", rt.getReproduction)
 	rt.gatedHandle("GET", "/reproductions/{id}/transcript", rt.getTranscript)
+
+	// The frontend shell is public and serves any GET path not matched above,
+	// so a deep link loads the app and lets it route (006e). More specific API
+	// patterns take precedence; the app's data calls are still gated.
+	if rt.spa != nil {
+		rt.openHandle("GET", "/", rt.spa.ServeHTTP)
+	}
 }
 
 // writeReadError maps a ReproReader error to a status: a genuine miss is 404, a
