@@ -48,6 +48,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/publish` | the manifest, the redistribution gate, naming, the filesystem forge |
 | `internal/github` | the small GitHub client publishing and the registry need |
 | `internal/registry` | the derived registry: relate reproductions of one paper (003) |
+| `internal/job` | the job lifecycle: the state machine, the store seam, the worker (006b) |
+| `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
 | `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers` |
 
 **The trust model — a reproduction is a claim / evidence / verdict triad**, and who authors each is deliberate: the subject of an audit never writes its own grade.
@@ -81,8 +83,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 004 | [Port the core to Go](004-go-port.md) | implemented | — |
 | 005 | [Capture and publish the reproduction transcript](005-transcript.md) | implemented | 002, 006f |
 | 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
-| 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | draft | 006b, (003, 005) |
-| 006b | [Job model and persistence](006b-job-model-and-persistence.md) | draft | 002, 004 |
+| 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | engine built | 006b, (003, 005) |
+| 006b | [Job model and persistence](006b-job-model-and-persistence.md) | engine built | 002, 004 |
 | 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | draft | 006b |
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | draft | 006a |
@@ -111,7 +113,15 @@ Engine first; the web shell last, because every screen it renders needs an engin
 
 ```
 002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a ✓ → 007b ✓ → 007c ✓
-     → 006a / 006b (HTTP + Postgres, next) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008 (drive)
+     → 006a / 006b engine ✓ → the deployable layer (next) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008
 ```
 
-Done so far: 001–005, 006f's core, 007a, and the engine halves of 007b and 007c (the domain model, the stores behind interfaces, the runner and the synthetic cohorts in the provider sandbox; Postgres and the HTTP/UI land with 006b/006a). **Next: the web shell (006a/006b)** — the HTTP API and the job model with Postgres, which is where the deferred halves of 007b/007c land against the interfaces they fixed. 007d (a hosted study) comes after the frontend, because it needs the server, the database, and identity underneath. Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.
+Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, and the **engine halves of 006a and 006b** — the job state machine and its in-process worker behind a store seam (`internal/job`), and the HTTP router, SSE stream, read surfaces, and fail-closed gate seam (`internal/httpapi`), all tested against fakes with no database and no network.
+
+**Next: the deployable layer**, which ties the web shell to the running engine and is a natural single pass:
+- the composition root (`cmd/server`) wiring `audit.Auditor`/`experiment.Runner` into `job.Runner`, the registry into `httpapi.ReproReader`, and starting the worker pool + HTTP server;
+- the **Postgres** implementations of `job.Store` (and the 007b/007c stores) with in-binary migrations, run against the same contract tests the in-memory stores pass, plus the `docker compose` file;
+- **006c** (identity, the `access_grants` table, and the gate *policy* the seam is waiting for — today the gate is fail-closed `DenyAll`) and **006f** packaged for reuse (the `publishing` phase);
+- then 006d (PDF), 006e (frontend), 007d.
+
+Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.
