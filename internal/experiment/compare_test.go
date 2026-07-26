@@ -85,6 +85,36 @@ func TestCompareFor(t *testing.T) {
 	})
 }
 
+// AC8: a synthetic comparison renders as calibration of the cohort, a released
+// one as re-analysis of the paper — distinguished by Source, both tested.
+func TestComparisonSubjectBylSource(t *testing.T) {
+	released := Comparison{Source: SourceReleased}
+	if !strings.Contains(released.Subject(), "re-analysis of the paper") {
+		t.Errorf("released should read as re-analysis, got %q", released.Subject())
+	}
+	synthetic := Comparison{Source: SourceSynthetic}
+	subj := synthetic.Subject()
+	if !strings.Contains(subj, "calibration") || strings.Contains(subj, "re-analysis of the paper") {
+		t.Errorf("synthetic should read as calibration, never re-analysis, got %q", subj)
+	}
+	if !strings.Contains(subj, "never about the paper") {
+		t.Errorf("synthetic subject must disclaim speaking about the paper, got %q", subj)
+	}
+}
+
+func TestCompareForCarriesSource(t *testing.T) {
+	inst := Instrument{Decl: instrument.Instrument{Protocol: &instrument.Protocol{
+		Reported: []instrument.Reported{{Metric: "m", Value: "1", Citation: "T1"}},
+	}}}
+	out := &Outcome{Ran: true}
+	for _, src := range []Source{SourceReleased, SourceSynthetic} {
+		c, ok := CompareFor(&Experiment{Source: src, Outcome: out}, inst)
+		if !ok || c.Source != src {
+			t.Errorf("%s: CompareFor should carry the source, got ok=%v source=%s", src, ok, c.Source)
+		}
+	}
+}
+
 func TestCompareEmptyIsEmpty(t *testing.T) {
 	if c := Compare(Outcome{Ran: true}, nil); len(c.Rows) != 0 {
 		t.Errorf("no reported and no recomputed should yield no rows, got %v", c.Rows)

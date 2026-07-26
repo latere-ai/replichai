@@ -19,7 +19,26 @@ import (
 // AC8 asserts the absence of such a field structurally, so a later change
 // cannot add one silently.
 type Comparison struct {
-	Rows []ComparisonRow `json:"rows"`
+	// Source is what the comparison is about. It carries the whole difference in
+	// meaning: the same arithmetic reads as re-analysis of the paper for a
+	// released source and as calibration of a cohort for a synthetic one (007c).
+	Source Source          `json:"source"`
+	Rows   []ComparisonRow `json:"rows"`
+}
+
+// Subject names what the comparison establishes, so a synthetic calibration can
+// never be rendered as re-analysis of the paper. This is the rendering half of
+// 007c's labelling: a released comparison speaks about the paper, a synthetic
+// one speaks about the model cohort and never about the paper or about people.
+func (c Comparison) Subject() string {
+	switch c.Source {
+	case SourceReleased:
+		return "re-analysis of the paper's released data against its reported results"
+	case SourceSynthetic:
+		return "calibration — how closely a synthetic cohort tracked the paper's reported results, a statement about the cohort and never about the paper"
+	default:
+		return "comparison against the paper's reported results"
+	}
 }
 
 // ComparisonRow pairs one metric's reported value with its recomputed one.
@@ -41,10 +60,20 @@ type ComparisonRow struct {
 // instrument, the runner fills the outcome, and this decides whether a
 // comparison is meaningful.
 func CompareFor(e *Experiment, inst Instrument) (Comparison, bool) {
-	if e.Source != SourceReleased || e.Outcome == nil || inst.Decl.Protocol == nil {
+	// Released re-analysis and synthetic calibration are both laid beside the
+	// paper's reported results; an uploaded finding is the researcher's own, with
+	// no paper baseline to compare against.
+	switch e.Source {
+	case SourceReleased, SourceSynthetic:
+	default:
 		return Comparison{}, false
 	}
-	return Compare(*e.Outcome, inst.Decl.Protocol.Reported), true
+	if e.Outcome == nil || inst.Decl.Protocol == nil {
+		return Comparison{}, false
+	}
+	c := Compare(*e.Outcome, inst.Decl.Protocol.Reported)
+	c.Source = e.Source
+	return c, true
 }
 
 // Compare pairs every reported statistic with its recomputed counterpart by
