@@ -38,6 +38,14 @@ Note the trap deliberately: the arXiv landing page carries **no** code or data a
 
 This paper has been audited more than once under the same method and produced very different overall rates — 40% over five components, 79% over seven — while every run agreed on the load-bearing facts: the verdict, the empty repository, the inner/outer boundary, and the component-level conclusion that the pragmatic-repair core is reproducible only by reimplementation and the visual interface is not. The scalar swings because the decomposition is a judgment, not a measurement. Grade this case on the component-level conclusions and the discriminating fact in §1; do not treat the rate as a value to reproduce.
 
+### 5. The instrument (007a)
+
+`instrument.json` is additive and does not move any conclusion above. The discriminating fact here is **servability**: the outer loop is a study *of the visual interface*, and the reproduction does not rebuild that interface (§1: the repository is empty; §3: the interface is outer-loop). So every outer-loop component fails the `apparatus_recovered` criterion — a study cannot be served without the thing being studied — and `all_servable` is `false`.
+
+A run **passes** criterion 7 by declaring this honestly: protocol extracted or null-with-reason, and servability marking the interface components not servable with `apparatus_recovered` among their failed criteria. A run **fails** if it marks the interface servable, which would claim the platform could host a study of an apparatus the reproduction never recovered.
+
+This case does not exercise the positive direction of servability — no component here is servable end to end — so a change making the audit *uselessly conservative* would not show up. That gap is tracked in [`specs/BACKLOG.md`](../../specs/BACKLOG.md), not papered over with a fabricated `true`.
+
 ---
 
 ## Grading note
