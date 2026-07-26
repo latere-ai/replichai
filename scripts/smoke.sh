@@ -8,11 +8,24 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 BASE=${BASE:-http://localhost:8080}
 
-cleanup() { docker compose down -v >/dev/null 2>&1 || true; }
+# Work with either Docker or podman (the compose subcommand or the standalone).
+detect_compose() {
+  if [ -n "${COMPOSE:-}" ]; then echo "$COMPOSE"; return; fi
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo "docker compose"; return; fi
+  if command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; return; fi
+  if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then echo "podman compose"; return; fi
+  if command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; return; fi
+  echo ""
+}
+COMPOSE=$(detect_compose)
+[ -n "$COMPOSE" ] || { echo "no docker/podman compose found on PATH"; exit 1; }
+echo "==> using: $COMPOSE"
+
+cleanup() { $COMPOSE down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "==> bringing up postgres + server (memory provider)"
-docker compose up -d --build >/dev/null
+$COMPOSE up -d --build >/dev/null
 
 echo -n "==> waiting for health"
 for i in $(seq 1 30); do
@@ -40,7 +53,7 @@ for i in $(seq 1 30); do
 done
 
 echo "==> confirming the job persisted in Postgres"
-docker compose exec -T postgres psql -U replichai -d replichai -tAc \
+$COMPOSE exec -T postgres psql -U replichai -d replichai -tAc \
   "SELECT phase FROM jobs WHERE id='$ID'" | grep -qx done \
   && echo "    row present, phase=done" \
   || { echo "job not found in Postgres"; exit 1; }
