@@ -37,6 +37,12 @@ services:
       PROVIDER: ${PROVIDER:-memory}
       REPLICHAI_API_KEY: ${REPLICHAI_API_KEY:-}
       DEV: "true"
+      # The container binds all interfaces (:8080), so the loopback-only dev
+      # bypass needs this explicit override; never set it in production.
+      DEV_INSECURE: "true"
+      # The dev bypass authenticates as dev@local but grants nothing; seeding it
+      # as a platform admin is what lets it operate locally (like a real admin).
+      ADMIN_EMAILS: dev@local
       ADDR: ":8080"
       # A per-phase pause so the SSE stream shows resolving -> running ->
       # publishing -> done instead of finishing instantly. Dev only; set to 0
