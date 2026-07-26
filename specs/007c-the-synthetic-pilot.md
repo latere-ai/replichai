@@ -1,6 +1,6 @@
 # 007c — The synthetic pilot
 
-**Status:** draft
+**Status:** implemented (engine half — the Postgres `NOT NULL cohort_kind` column and the HTTP/UI surface remain, per Out of scope)
 **Scope:** the `synthetic` data source — driving a cohort through an extracted protocol without any people, in two sub-kinds: a deterministic data generator that shakes the pipeline down, and a model cohort that answers the protocol's task. Plus the labelling that keeps neither from ever being read as evidence about people. A child of [007](007-from-reproduction-to-replication.md).
 **Depends on:** [007b](007b-experiments-over-instruments.md) (the experiment model and runner), [007a](007a-the-study-protocol-as-an-artifact.md) (the protocol and its reported ground truth).
 
@@ -35,7 +35,7 @@ Separating them keeps the strong uses from borrowing credibility they do not nee
 
 **A synthetic comparison is a calibration, and it is a statement about the model.** `Compare` from [007b](007b-experiments-over-instruments.md) is reused — comparing a cohort's statistics against `protocol.reported` is exactly the right operation — but its rendering is not. For a `released` source the comparison reads as re-analysis of the paper. For a synthetic one it reads as *how close a model cohort came to what people did*, which measures the cohort and never the paper. Same arithmetic, different subject, and the `Source` on the `Comparison` is what distinguishes them.
 
-**A model cohort requires ground truth, in the first version.** `synthetic:model` is available only for instruments that have both released data and `protocol.reported` — so every model cohort the platform runs at first can be checked against a real answer immediately.
+**A model cohort requires ground truth, in the first version.** `synthetic:model` is available only for instruments that have both released data and `protocol.reported` — so every model cohort the platform runs at first can be checked against a real answer immediately. Whether the platform *holds* the released data is a **store fact**, not an instrument-declared one — a 007b dataset row exists or it does not — and it is supplied to the gate by the caller (`GateModelCohort(inst, releasedAvailable)`). It is not a field on `instrument.json`, because 007a's schema must never assert what the audit cannot verify: the audit reads the paper, not a particular deployment's holdings.
 
 This is the sequencing argument from [007](007-from-reproduction-to-replication.md) made structural rather than advisory. A model cohort on a paper with no released data produces numbers no one can falsify, which is how this feature would fail. The restriction is a gate to relax deliberately once calibration has been measured on papers where it can be, not a permanent property.
 
@@ -97,7 +97,7 @@ type Pilot struct {
 4. No pilot of any sub-kind reaches an audit. Asserted by [007](007-from-reproduction-to-replication.md)'s import-graph test and by re-auditing a paper after pilots have run against its instrument and getting the same verdict.
 5. The label survives every path out: report, artifact, export, and API response each carry `cohort_kind`, and a test enumerates the output paths rather than checking one of them.
 6. `PILOT.md` states what it does not establish before its first number, and no synthetic artifact is named or shaped like a result.
-7. A `Pilot` cannot be consumed where a `Result` is expected — asserted by the type, so the boundary cannot erode.
+7. A `Pilot` cannot be consumed where a run result is expected — asserted by the type, so the boundary cannot erode. There is no `Result` inside `internal/experiment` (the audit's `Result` is unreachable across the firewall of criterion 4), so the enforced boundary is `Pilot` vs the package's own `Outcome`: they do not convert, and `Pilot.Kind` is required — a zero `Pilot` never renders or exports.
 8. A synthetic `Comparison` renders as calibration of the cohort and never as re-analysis of the paper; the two renderings are distinguished by `Source` and both are tested.
 9. `synthetic:model` is refused for an instrument lacking released data or `protocol.reported`, and drives only the servable components — an unservable component is skipped with its failed criteria cited and named in the pilot as not covered. Refusals are server-side.
 10. The gate admits case-02's prospective-memory task, so the model-cohort path is exercised in CI against an instrument with real ground truth. A gate that admits no golden case fails this criterion.
