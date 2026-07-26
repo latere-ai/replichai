@@ -83,8 +83,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 004 | [Port the core to Go](004-go-port.md) | implemented | — |
 | 005 | [Capture and publish the reproduction transcript](005-transcript.md) | implemented | 002, 006f |
 | 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
-| 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | engine built | 006b, (003, 005) |
-| 006b | [Job model and persistence](006b-job-model-and-persistence.md) | engine built | 002, 004 |
+| 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | built | 006b, (003, 005) |
+| 006b | [Job model and persistence](006b-job-model-and-persistence.md) | built | 002, 004 |
 | 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | draft | 006b |
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | draft | 006a |
@@ -113,15 +113,13 @@ Engine first; the web shell last, because every screen it renders needs an engin
 
 ```
 002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a ✓ → 007b ✓ → 007c ✓
-     → 006a / 006b engine ✓ → the deployable layer (next) → 006c (identity) → 006d (PDF) → 006e (frontend) → 007d → 008
+     → 006a ✓ / 006b ✓ (runs on Postgres via compose) → 006c (identity, next) → 006d (PDF) → 006e (frontend) → 007d → 008
 ```
 
-Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, and the **engine halves of 006a and 006b** — the job state machine and its in-process worker behind a store seam (`internal/job`), and the HTTP router, SSE stream, read surfaces, and fail-closed gate seam (`internal/httpapi`), all tested against fakes with no database and no network.
+Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, and **006a and 006b** — the job state machine and its in-process worker (`internal/job`, with in-memory and Postgres stores behind one contract), the HTTP router, SSE stream, read surfaces, and fail-closed gate seam (`internal/httpapi`), and the composition root (`cmd/server`) that wires them to the engine. **The web app runs locally**: `docker compose up` brings up Postgres + the server, a submitted paper walks `submitted → done` through the real HTTP + worker path, and the job survives a restart. It defaults to the in-process memory provider (no API key); `--provider anthropic` does real audits.
 
-**Next: the deployable layer**, which ties the web shell to the running engine and is a natural single pass:
-- the composition root (`cmd/server`) wiring `audit.Auditor`/`experiment.Runner` into `job.Runner`, the registry into `httpapi.ReproReader`, and starting the worker pool + HTTP server;
-- the **Postgres** implementations of `job.Store` (and the 007b/007c stores) with in-binary migrations, run against the same contract tests the in-memory stores pass, plus the `docker compose` file;
-- **006c** (identity, the `access_grants` table, and the gate *policy* the seam is waiting for — today the gate is fail-closed `DenyAll`) and **006f** packaged for reuse (the `publishing` phase);
-- then 006d (PDF), 006e (frontend), 007d.
+**Next: 006c** (identity, the `access_grants` table, and the gate *policy* the seam is waiting for — today the gate is fail-closed `DenyAll`, with a `--dev` bypass for local runs) and **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today). Then 006d (PDF), 006e (frontend), 007d.
+
+Still open in the server: the experiment `Kind` in `job.Runner` (the dispatch is there; the experiment callee is 007b's server wiring), the Postgres stores for 007b/007c, and reading a transcript through `ReproReader`.
 
 Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.
