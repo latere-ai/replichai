@@ -21,14 +21,14 @@ Your value is in placing that boundary precisely and defending it. A component b
 4. **Enumerate the hidden decisions.** The choices a reimplementation must make but the paper never states: hyperparameters, prompt text, model versions and dates, data filtering and splits, thresholds, tie-breaking, normalization, random seeds, stopping conditions, interface defaults, timeouts. For each, give: where the paper leaves it open, what you assumed instead, and how sensitive the result is to that choice.
 5. **Implement the inner loop.** Write real code in `src/`. Install what you need with pip. Run it at least once — a smoke test on synthetic or small public data is enough when the paper's own data is unavailable. Record the exact command and its real output.
 6. **Score open science.** Code, data, license, preregistration, supplementary artifacts — each with a verified URL or an explicit "none found, searched X, Y, Z".
-7. **Write the verdict.** An inner-loop reproducibility rate with a stated denominator: which components you counted, how you counted them, what each scored.
+7. **Write the verdict.** Lead with a per-component reproduction table — each inner-loop component marked *reproduced*, *partial*, or *blocked*, with the evidence or the specific blocker. That table is the result, because how many components an inner loop has is itself a judgment, and the same paper honestly slices into different counts. If you also give an overall rate, derive it from the table and say plainly that it depends on your decomposition; never present it as a number comparable to other papers or other runs.
 
 ## Output — write a repo to {{OUTPUT_DIR}}
 
 | File | Contents |
 |---|---|
 | `README.md` | What the paper is, what this repo is, how to run it |
-| `REPRODUCIBILITY.md` | Verdict and rate first, then the inner/outer boundary table, the hidden decisions, and the open-science scorecard |
+| `REPRODUCIBILITY.md` | The verdict and the per-component reproduction table first, then the inner/outer boundary, the hidden decisions, and the open-science scorecard. Any overall rate is a derived footnote to the table, not the headline |
 | `src/` | Your best-effort inner-loop implementation, runnable |
 | `UNVERIFIED.md` | Everything you could not confirm, each with its specific blocker |
 | `SOURCES.md` | The paper's identity (title, authors, venue, DOI) and every artifact search you performed, with its result |
@@ -38,5 +38,5 @@ Your value is in placing that boundary precisely and defending it. A component b
 - Never claim a repository, dataset, or artifact exists without a URL you actually fetched successfully.
 - Never fabricate numbers, results, or participant data. Never simulate the outer loop or invent what a user study would have found.
 - Never present an assumption as something the paper stated. Every claim about the paper's contents cites a section, figure, or table.
-- Never report a reproducibility rate you cannot decompose into the components it was computed from.
+- Never present an overall reproducibility rate as if it were decomposition-independent, and never compare it across papers or across runs. The per-component table is the comparable artifact; a rate is a derived summary of one particular slicing.
 - Never contact anyone. Research, implementation, and writing only.

@@ -55,7 +55,7 @@ Most components will answer `false`. That is the correct and useful answer, and 
 
 > **7. Instrument.** `instrument.json` is present and validates against the schema. Each of `protocol` and `analysis` is either populated from the paper with section, table, or figure references, or explicitly null with a specific reason. `servability` is answered against every criterion. A fabricated protocol, an unstated null, or a schema violation fails.
 
-So a paper with no extractable protocol passes criterion 7 by saying so. This keeps the bar on honesty, where the other six already are, and keeps the audit's *verdict and rate* untouched — criterion 7 is graded like the others, but the reproducibility rate it feeds is still the inner loop's, computed exactly as today.
+So a paper with no extractable protocol passes criterion 7 by saying so. This keeps the bar on honesty, where the other six already are, and leaves the audit's *inner-loop verdict* untouched — criterion 7 is graded like the others, and the inner-loop reproduction table it sits beside is unchanged.
 
 **A malformed instrument is a revision trigger, not a failed audit.** The auditor validates `instrument.json` against the schema after the run and folds the result into the existing grade-and-revise loop, so an invalid or dishonest instrument is fed back to the worker within its revision budget — the machinery [004](004-go-port.md) already built for every other criterion. Rejected: rejecting the run, which would throw away a good reproduction over a bad JSON file; and accepting silently, which would let unvalidated agent-written JSON reach the executors downstream.
 

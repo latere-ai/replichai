@@ -55,7 +55,9 @@ Worth scoring separately: whether released code still *runs*. Code that exists b
 
 ## 7. Write the verdict
 
-A reproducibility rate for the inner loop, with a stated denominator: which components were counted, how they were counted, what each scored. A rate that cannot be decomposed back into its components is not a measurement, and the rubric fails it.
+A per-component reproduction table for the inner loop: each component the boundary marked inner, scored *reproduced*, *partial*, or *blocked*, with the evidence or the specific blocker. This table is the load-bearing result, not a single number.
+
+How many components an inner loop has is itself a judgment, so the scalar rate is treated as a summary, not a measurement. The same paper, audited twice under an identical method, honestly decomposes into different counts — in one pair of runs, five and seven — and any rate derived from it swings with the slicing (there, 40% and 79%) while the verdict, the boundary, and the component-level conclusions stay put. A rate is therefore reported only as a derived footnote to the table, labelled as a summary of one particular decomposition, and never compared across papers or across runs. The rubric grades the table, not the number.
 
 The verdict must also separate **re-analysis** from **re-observation**. Reproducing a paper's statistics from its released data does not re-validate its claim about the world; that claim rests on the outer loop and on the sample that was collected. An audit that blurs the two overstates what it proved.
 
