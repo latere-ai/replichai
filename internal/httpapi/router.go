@@ -169,6 +169,12 @@ func writeError(w http.ResponseWriter, status int, code string) {
 	writeJSON(w, status, map[string]string{"error": code})
 }
 
+// WriteError writes a machine-readable error code, for middleware (006c's tier
+// guard) that refuses a request before the handler runs.
+func WriteError(w http.ResponseWriter, status int, code string) {
+	writeError(w, status, code)
+}
+
 // mustJSON marshals v, returning an empty object on the impossible error so a
 // stream write never panics.
 func mustJSON(v any) []byte {
