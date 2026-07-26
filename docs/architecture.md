@@ -89,7 +89,7 @@ A second implementation of the core — orchestrator, backend seam, and method l
 
 Grading is not a post-processing step; it runs inside the loop. Each run carries its rubric and a revision budget. The runtime grades the worker's output, and if it falls short the worker revises and is graded again, up to the budget. What comes back is a verdict, not just a deliverable.
 
-This is why the rubric criteria are written as binary checks with stated evidence requirements. "A useful report" cannot be graded. "A rate derived from a stated denominator, or it fails" can.
+This is why the rubric criteria are written as binary checks with stated evidence requirements. "A useful report" cannot be graded. "A per-component reproduction table, each inner-loop component marked reproduced / partial / blocked with evidence, or it fails" can.
 
 ## Claim, evidence, verdict
 
