@@ -98,6 +98,45 @@ type Access interface {
 	LinkAccount(ctx context.Context, principalSub, forge, login string) error
 }
 
+// Role is a principal's role within one project (007). It is orthogonal to Tier:
+// a role decides which project's experiments and data a principal may touch, and
+// admits nobody to the platform. The zero value is RoleNone.
+type Role uint8
+
+// The project roles.
+const (
+	RoleNone         Role = iota
+	RoleCollaborator      // invited into a project
+	RoleLead              // owns the project and its membership
+)
+
+// String names the role.
+func (r Role) String() string {
+	switch r {
+	case RoleCollaborator:
+		return "collaborator"
+	case RoleLead:
+		return "lead"
+	default:
+		return "none"
+	}
+}
+
+// Membership is the second relation, sharing Access's seed-by-email and
+// bind-on-first-login rules and none of its tier authority. It never admits a
+// principal to the platform — that is a grant's job, resolved independently.
+type Membership interface {
+	// Add invites an email into a project with a role. The caller must be the
+	// project's lead.
+	Add(ctx context.Context, byLead Principal, project, email string, r Role) error
+	// Remove drops a member by email. The caller must be the project's lead.
+	Remove(ctx context.Context, byLead Principal, project, email string) error
+	// Role returns a principal's role in a project, binding a seeded membership
+	// to it on first login. It consumes a verified email to bind, exactly as a
+	// grant does, and refuses a second principal on a bound email.
+	Role(ctx context.Context, p Principal, project string) (Role, bool, error)
+}
+
 // normalizeEmail lowercases and trims, so a seed and a login match regardless of
 // how either was typed.
 func normalizeEmail(email string) string {
