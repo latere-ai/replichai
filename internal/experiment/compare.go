@@ -32,6 +32,21 @@ type ComparisonRow struct {
 	Citation   string `json:"citation,omitempty"` // the reported value's paper citation
 }
 
+// CompareFor produces the released-source comparison for an experiment's
+// outcome, or reports that this experiment is not compared. Only a released run
+// against an instrument that declares reported results is laid beside
+// protocol.reported — an uploaded finding is the researcher's own, with no paper
+// baseline to compare it to, and a source with nothing reported has nothing to
+// compare against. This is what actually drives Compare: the caller resolves the
+// instrument, the runner fills the outcome, and this decides whether a
+// comparison is meaningful.
+func CompareFor(e *Experiment, inst Instrument) (Comparison, bool) {
+	if e.Source != SourceReleased || e.Outcome == nil || inst.Decl.Protocol == nil {
+		return Comparison{}, false
+	}
+	return Compare(*e.Outcome, inst.Decl.Protocol.Reported), true
+}
+
 // Compare pairs every reported statistic with its recomputed counterpart by
 // metric, in the reported order, then appends any recomputed metric the paper
 // did not report. Each pair carries a numeric delta only when both values parse
