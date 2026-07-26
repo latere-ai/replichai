@@ -31,6 +31,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/registry"
+	"github.com/latere-ai/replichai/internal/spa"
 	"github.com/latere-ai/replichai/internal/webauth"
 
 	// Register the provider adapters so provider.Get can resolve them.
@@ -119,10 +120,15 @@ func run() error {
 	}
 	go worker.Start(ctx, *workers)
 
+	spaHandler, err := spa.Handler()
+	if err != nil {
+		return err
+	}
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
 		Reproductions: &registryReader{source: registry.NewFSSource(*reproDir)},
 		Gate:          webauth.Gate(accessStore),
+		SPA:           spaHandler,
 	})
 
 	handler, err := buildHandler(ctx, router.Handler(), accessStore, *dev, baseURL)
