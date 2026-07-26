@@ -47,13 +47,31 @@ type WorkerSpec struct {
 }
 
 // RunSpec is one unit of work: a task, the bar it is graded against, a budget
-// for how many times the worker may revise before giving up, and optionally a
-// repository to mount so the worker commits its output directly.
+// for how many times the worker may revise before giving up, optionally a
+// repository to mount, and optionally files to attach outside that mount.
+//
+// An audit uses Task/Rubric/MaxRevisions/Mount. An experiment (007b) reuses the
+// same contract with an empty rubric and no revision budget, a read-only mount,
+// and a dataset in Attachments — one substrate, not a second execution path.
 type RunSpec struct {
 	Task         string
 	Rubric       string
 	MaxRevisions int
 	Mount        RepoMount
+	Attachments  []Attachment
+}
+
+// Attachment is a file placed into a run's sandbox OUTSIDE any mounted
+// repository — an experiment's input dataset, or a file it must read without
+// committing. Keeping it outside the mount is structural: a researcher's data
+// physically cannot be committed into a reproduction repository, which is the
+// primary control behind 007's "uploaded data is not ours to redistribute".
+type Attachment struct {
+	// Path is where the file lands in the sandbox. It must be outside any mount.
+	// Empty lets the backend choose a location, which is outside the mount by
+	// construction.
+	Path    string
+	Content []byte
 }
 
 // RepoMount is a version-control repository to mount into the run's sandbox so
@@ -64,10 +82,18 @@ type RunSpec struct {
 //
 // Token is a write credential that lives only inside the sandbox; it must be
 // scoped to this one repository, never a broad organisation token.
+//
+// ReadOnly requests a mount the worker must not push to — an experiment reads an
+// instrument, it has no business writing to the reproduction (007b). The seam
+// carries the intent; the real enforcement is the token's GitHub scope, so a
+// read-only mount must be handed a read-only-scoped token. That scoping is
+// 006f's still-open two-token split, so today ReadOnly is an honest signal, not
+// a guarantee the backend imposes on its own.
 type RepoMount struct {
 	URL       string
 	Token     string
 	MountPath string
+	ReadOnly  bool
 }
 
 // Set reports whether a repository is to be mounted.

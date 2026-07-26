@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/provider"
@@ -37,6 +38,43 @@ func TestRecordsWhatItWasAskedToDo(t *testing.T) {
 	}
 	if closed := p.Closed(); len(closed) != 1 || closed[0] != handle.ID {
 		t.Errorf("closed = %v, want [%s]", closed, handle.ID)
+	}
+}
+
+// The seam carries an experiment's shape (007b): a read-only mount and a
+// dataset attached outside it. The provider records the RunSpec verbatim, so a
+// runner's choices are observable without a backend.
+func TestRecordsReadOnlyMountAndAttachments(t *testing.T) {
+	p := New()
+	ctx := context.Background()
+	ws, _ := p.EnsureWorkspace(ctx, provider.WorkspaceSpec{Name: "w"})
+	worker, _ := p.EnsureWorker(ctx, provider.WorkerSpec{Name: "n", Instructions: "i", Model: "m"})
+
+	spec := provider.RunSpec{
+		Task:  "run the analysis",
+		Mount: provider.RepoMount{URL: "https://example.com/r", Token: "t", MountPath: "/workspace/repro", ReadOnly: true},
+		Attachments: []provider.Attachment{
+			{Path: "/workspace/input/data.csv", Content: []byte("rt\n1\n")},
+		},
+	}
+	if _, err := p.StartRun(ctx, worker, ws, spec); err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	runs := p.Runs()
+	if len(runs) != 1 {
+		t.Fatalf("recorded %d runs, want 1", len(runs))
+	}
+	got := runs[0]
+	if !got.Mount.ReadOnly {
+		t.Error("read-only mount intent was not recorded")
+	}
+	if len(got.Attachments) != 1 || got.Attachments[0].Path != "/workspace/input/data.csv" {
+		t.Errorf("attachment not recorded: %+v", got.Attachments)
+	}
+	// The attachment path is outside the mount — the structural guarantee.
+	if strings.HasPrefix(got.Attachments[0].Path, got.Mount.MountPath) {
+		t.Error("the dataset must land outside the mount")
 	}
 }
 

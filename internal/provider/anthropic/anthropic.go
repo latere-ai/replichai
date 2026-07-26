@@ -276,9 +276,31 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 		if spec.Mount.MountPath != "" {
 			repo.MountPath = param.NewOpt(spec.Mount.MountPath)
 		}
+		// A read-only mount is expressed by the token's GitHub scope, not by this
+		// resource — the SDK's github_repository has no read-only field. Handing a
+		// read-only-scoped token is what makes spec.Mount.ReadOnly real (006f).
 		params.Resources = []anthropic.BetaSessionNewParamsResourceUnion{
 			{OfGitHubRepository: &repo},
 		}
+	}
+
+	// Attachments become uploaded file resources, mounted outside the repository
+	// so an experiment's dataset (007b) cannot be committed into the reproduction.
+	for _, att := range spec.Attachments {
+		meta, err := p.client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
+			File: bytes.NewReader(att.Content),
+		})
+		if err != nil {
+			return provider.RunHandle{}, fmt.Errorf("upload attachment: %w", err)
+		}
+		file := anthropic.BetaManagedAgentsFileResourceParams{
+			Type:   anthropic.BetaManagedAgentsFileResourceParamsTypeFile,
+			FileID: meta.ID,
+		}
+		if att.Path != "" {
+			file.MountPath = param.NewOpt(att.Path)
+		}
+		params.Resources = append(params.Resources, anthropic.BetaSessionNewParamsResourceUnion{OfFile: &file})
 	}
 
 	session, err := p.client.Beta.Sessions.New(ctx, params)
