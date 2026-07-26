@@ -10,22 +10,43 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 )
 
-// principalKey carries the authenticated principal (an OIDC sub) on the request
-// context. 006c's auth middleware sets it; this package only reads it, so who a
-// principal is stays 006c's concern.
-type ctxKey int
-
-const principalKey ctxKey = iota
-
-// WithPrincipal returns a context carrying the authenticated principal.
-func WithPrincipal(ctx context.Context, sub string) context.Context {
-	return context.WithValue(ctx, principalKey, sub)
+// Identity is the authenticated caller as the auth middleware (006c) resolved it
+// from a verified ID token: the stable subject and, for seeding a not-yet-bound
+// grant, a verified email. The gate consumes these and nothing else. This
+// package only reads the identity off the request; who a principal *is* and what
+// they may do stays 006c's concern.
+type Identity struct {
+	Sub           string
+	Email         string
+	EmailVerified bool
 }
 
-// principal reads the authenticated principal, empty when unauthenticated.
+// identityKey carries the Identity on the request context.
+type ctxKey int
+
+const identityKey ctxKey = iota
+
+// WithIdentity returns a context carrying the authenticated identity.
+func WithIdentity(ctx context.Context, id Identity) context.Context {
+	return context.WithValue(ctx, identityKey, id)
+}
+
+// IdentityFrom reads the authenticated identity, ok=false when unauthenticated.
+func IdentityFrom(r *http.Request) (Identity, bool) {
+	id, ok := r.Context().Value(identityKey).(Identity)
+	return id, ok
+}
+
+// WithPrincipal carries a subject-only identity, for callers (the dev bypass,
+// tests) that have just a sub.
+func WithPrincipal(ctx context.Context, sub string) context.Context {
+	return WithIdentity(ctx, Identity{Sub: sub})
+}
+
+// principal reads the authenticated subject, empty when unauthenticated.
 func principal(r *http.Request) string {
-	s, _ := r.Context().Value(principalKey).(string)
-	return s
+	id, _ := IdentityFrom(r)
+	return id.Sub
 }
 
 // routes registers every endpoint through the two registration helpers, so the
