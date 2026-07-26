@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: replichai
+  labels:
+    app: replichai
+spec:
+  # One replica: a low-volume single-tenant beta. Jobs are durable in Postgres
+  # and a restart reaps anything a crash left mid-flight, so a brief rollout gap
+  # loses no work. Two workers still run inside the pod; a surge pod overlapping
+  # during a deploy is safe because Claim uses SELECT ... FOR UPDATE SKIP LOCKED.
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: replichai
+  template:
+    metadata:
+      labels:
+        app: replichai
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: replichai
+          image: ghcr.io/latere-ai/replichai:latest
+          ports:
+            - containerPort: 8080
+          # replichai-config is created from the deployment's .env (secrets: the
+          # OIDC client, REPLICHAI_API_KEY, REPLICHAI_GITHUB_TOKEN,
+          # AUTH_COOKIE_KEY, ADMIN_EMAILS). See deploy/README.md.
+          envFrom:
+            - secretRef:
+                name: replichai-config
+          env:
+            # DATABASE_URL comes from the terraform-owned db secret, not .env, so
+            # the app and the cluster agree on one connection string.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: replichai-db
+                  key: DATABASE_URL
+            - name: ADDR
+              value: ":8080"
+            - name: BASE_URL
+              value: https://replichai.latere.ai
+            # Real audits run on the managed-agents backend (memory is dev only).
+            - name: PROVIDER
+              value: anthropic
+            # DEV is deliberately unset in production: the gate is fail-closed
+            # until the OIDC login (006c) lands. Setting DEV here would admit
+            # every request as a synthetic principal on a public domain.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.observability.svc:4318
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
