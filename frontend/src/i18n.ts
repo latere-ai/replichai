@@ -1,0 +1,90 @@
+import { useCallback, useState } from 'react'
+
+export type Lang = 'en' | 'zh'
+
+// All user-facing copy in English and Chinese. Keys are shared; a missing key
+// falls back to English so a half-translated string never renders blank.
+const strings: Record<Lang, Record<string, string>> = {
+  en: {
+    tagline: 'Audit the reproducibility of a research paper.',
+    signInWith: 'Sign in with latere',
+    notInvitedTitle: 'Not yet invited',
+    notInvitedBody:
+      "You're signed in as {email}, but this is a closed beta and your account has not been granted access yet. Ask a platform admin to add you.",
+    signedInAs: 'Signed in as',
+    access: 'Access',
+    signOut: 'Sign out',
+    submitTitle: 'Audit a paper',
+    submitHint: 'Paste a paper URL — an arXiv link, a DOI, or an ACM Digital Library link.',
+    submit: 'Submit',
+    submitting: 'Submitting…',
+    submitError: 'Could not submit — check the URL and try again.',
+    yourRuns: 'Your runs',
+    noRuns: 'No runs yet. Submit a paper above to start one.',
+    reproductions: 'Published reproductions',
+    noReproductions: 'No published reproductions yet.',
+    verdict: 'Verdict',
+    error: 'Error',
+    tierNone: 'none',
+    tierSeed: 'seed',
+    tierTrusted: 'trusted',
+    tierAdmin: 'admin',
+    'phase.submitted': 'submitted',
+    'phase.resolving': 'resolving',
+    'phase.running': 'running',
+    'phase.publishing': 'publishing',
+    'phase.done': 'done',
+    'phase.failed': 'failed',
+  },
+  zh: {
+    tagline: '审计一篇研究论文的可复现性。',
+    signInWith: '使用 latere 登录',
+    notInvitedTitle: '尚未受邀',
+    notInvitedBody:
+      '你已以 {email} 登录，但这是一个封闭测试，你的账户尚未获得访问权限。请联系平台管理员将你加入。',
+    signedInAs: '登录身份',
+    access: '权限',
+    signOut: '退出登录',
+    submitTitle: '审计论文',
+    submitHint: '粘贴论文链接 —— arXiv 链接、DOI 或 ACM 数字图书馆链接。',
+    submit: '提交',
+    submitting: '提交中…',
+    submitError: '提交失败 —— 请检查链接后重试。',
+    yourRuns: '你的运行',
+    noRuns: '暂无运行。请在上方提交一篇论文以开始。',
+    reproductions: '已发布的复现',
+    noReproductions: '暂无已发布的复现。',
+    verdict: '结论',
+    error: '错误',
+    tierNone: '无',
+    tierSeed: '种子用户',
+    tierTrusted: '受信用户',
+    tierAdmin: '管理员',
+    'phase.submitted': '已提交',
+    'phase.resolving': '解析中',
+    'phase.running': '运行中',
+    'phase.publishing': '发布中',
+    'phase.done': '完成',
+    'phase.failed': '失败',
+  },
+}
+
+// useI18n stores the chosen language in localStorage and returns a translate
+// function that interpolates {name} placeholders.
+export function useI18n() {
+  const [lang, setLangState] = useState<Lang>((localStorage.getItem('lang') as Lang) || 'en')
+  const setLang = useCallback((l: Lang) => {
+    localStorage.setItem('lang', l)
+    setLangState(l)
+    document.documentElement.lang = l
+  }, [])
+  const t = useCallback(
+    (key: string, vars?: Record<string, string>) => {
+      let s = strings[lang][key] ?? strings.en[key] ?? key
+      if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])
+      return s
+    },
+    [lang],
+  )
+  return { lang, setLang, t }
+}
