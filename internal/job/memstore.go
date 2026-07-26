@@ -1,0 +1,136 @@
+package job
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"time"
+)
+
+// MemStore is an in-memory Store for tests and for the rest of 006 to build
+// against with no database. It copies on every boundary, so a caller cannot
+// mutate stored state through a value it holds.
+type MemStore struct {
+	mu    sync.Mutex
+	jobs  map[string]Job
+	order []string // submission order, so Claim is FIFO
+	clock func() time.Time
+}
+
+// MemOption configures a MemStore.
+type MemOption func(*MemStore)
+
+// WithClock sets the time source, so tests get deterministic timestamps.
+func WithClock(f func() time.Time) MemOption {
+	return func(s *MemStore) { s.clock = f }
+}
+
+// NewMemStore builds an empty in-memory store.
+func NewMemStore(opts ...MemOption) *MemStore {
+	s := &MemStore{jobs: map[string]Job{}, clock: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// Enqueue records a new submitted job.
+func (s *MemStore) Enqueue(_ context.Context, principal, ref string, k Kind, project string) (Job, error) {
+	if strings.TrimSpace(ref) == "" {
+		return Job{}, ErrEmptyRef
+	}
+	id, err := newID()
+	if err != nil {
+		return Job{}, err
+	}
+	now := s.clock()
+	j := Job{
+		ID: id, Kind: k, Principal: principal, ProjectID: project, Ref: ref,
+		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
+		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobs[id] = j
+	s.order = append(s.order, id)
+	return cloneJob(j), nil
+}
+
+// Get returns a copy of one job.
+func (s *MemStore) Get(_ context.Context, id string) (Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	return cloneJob(j), nil
+}
+
+// Claim takes the oldest submitted job into resolving and returns it. The lock
+// makes the take atomic, so two concurrent claims never hand out the same job.
+func (s *MemStore) Claim(_ context.Context) (Job, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range s.order {
+		j := s.jobs[id]
+		if j.Phase != PhaseSubmitted {
+			continue
+		}
+		s.transition(&j, PhaseResolving, nil)
+		s.jobs[id] = j
+		return cloneJob(j), true, nil
+	}
+	return Job{}, false, nil
+}
+
+// Advance moves a job through the one transition function, refusing anything the
+// state machine forbids.
+func (s *MemStore) Advance(_ context.Context, id string, to Phase, mutate func(*Job)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if !CanTransition(j.Phase, to) {
+		return illegal(j.Phase, to)
+	}
+	s.transition(&j, to, mutate)
+	s.jobs[id] = j
+	return nil
+}
+
+// transition applies a validated phase change: run the caller's mutation, then
+// stamp the new phase and its timestamp. It assumes the transition is legal —
+// Advance and Claim check first.
+func (s *MemStore) transition(j *Job, to Phase, mutate func(*Job)) {
+	if mutate != nil {
+		mutate(j)
+	}
+	now := s.clock()
+	j.Phase = to
+	j.UpdatedAt = now
+	if j.PhaseAt == nil {
+		j.PhaseAt = map[Phase]time.Time{}
+	} else {
+		j.PhaseAt = clonePhaseAt(j.PhaseAt)
+	}
+	j.PhaseAt[to] = now
+}
+
+func cloneJob(j Job) Job {
+	j.PhaseAt = clonePhaseAt(j.PhaseAt)
+	return j
+}
+
+func clonePhaseAt(m map[Phase]time.Time) map[Phase]time.Time {
+	if m == nil {
+		return nil
+	}
+	c := make(map[Phase]time.Time, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
+}
