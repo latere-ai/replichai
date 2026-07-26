@@ -39,6 +39,10 @@ var workerReports = map[string]bool{
 	"REPRODUCIBILITY.md": true,
 	"UNVERIFIED.md":      true,
 	"SOURCES.md":         true,
+	// instrument.json is the audit's declared study protocol (007a). It is a
+	// worker-written deliverable like the reports; without this line the
+	// allowlist would withhold it from every publication silently.
+	"instrument.json": true,
 }
 
 // originOf classifies an artifact path structurally, with no I/O.
