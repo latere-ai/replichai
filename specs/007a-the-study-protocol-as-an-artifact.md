@@ -1,6 +1,6 @@
 # 007a — The study protocol as an artifact
 
-**Status:** draft
+**Status:** implemented
 **Scope:** the audit writes `instrument.json` — the paper's study protocol, the analysis entrypoint contract for `src/`, and a servability assessment — as declared, machine-readable data beside the prose reports. A child of [007](007-from-reproduction-to-replication.md).
 **Depends on:** [004](004-go-port.md) (the method is data; the auditor's grade-and-revise loop).
 
@@ -57,7 +57,7 @@ Most components will answer `false`. That is the correct and useful answer, and 
 
 So a paper with no extractable protocol passes criterion 7 by saying so. This keeps the bar on honesty, where the other six already are, and leaves the audit's *inner-loop verdict* untouched — criterion 7 is graded like the others, and the inner-loop reproduction table it sits beside is unchanged.
 
-**A malformed instrument is a revision trigger, not a failed audit.** The auditor validates `instrument.json` against the schema after the run and folds the result into the existing grade-and-revise loop, so an invalid or dishonest instrument is fed back to the worker within its revision budget — the machinery [004](004-go-port.md) already built for every other criterion. Rejected: rejecting the run, which would throw away a good reproduction over a bad JSON file; and accepting silently, which would let unvalidated agent-written JSON reach the executors downstream.
+**A malformed instrument is a revision trigger, not a failed audit — and the revision is the backend's.** There is no auditor-side grade-and-revise loop: criteria 1–6 are enforced by the backend grading against `rubric.md`, with `MaxRevisions` handed to the run. Criterion 7 joins them, so the same loop [004](004-go-port.md) built feeds an invalid or dishonest instrument back to the worker within its revision budget — no new machinery. `instrument.Validate` is the Go half, and it plays two roles neither of which is that loop: the schema [007b](007b-experiments-over-instruments.md) consumes, and a **finalize-time report** the auditor runs over the written file (and the live path over the committed tree) and surfaces to the caller. Rejected: rejecting the run, which would throw away a good reproduction over a bad JSON file; accepting silently, which would let unvalidated agent-written JSON reach the executors downstream; and folding the finalize report into `replication.json` or the public-eligibility gate, since a malformed JSON file is not a redistribution risk and must not become a publication control.
 
 **Both golden cases gain instrument expectations, and neither is a fully servable study.** This is worth stating plainly rather than discovering during implementation:
 
@@ -126,8 +126,8 @@ Field names are implementation's to settle; this fixes what must be declared. Th
 6. `analysis.input` validates a conforming dataset and rejects a non-conforming one with a message naming the offending column — the check [007b](007b-experiments-over-instruments.md)'s `uploaded` source runs before execution.
 7. Servability is answered for every outer-loop component in the boundary table against every criterion in the closed list, with failures enumerated. `all_servable` is derived from the components, never set independently — asserted by constructing a mixed set and checking the roll-up.
 8. The golden cases assert the answers the papers support: case-01 fails the apparatus criterion; case-02's PM task is servable while its feed manipulation fails the manipulation criterion, so its roll-up is `false`. Neither is asserted `true` end to end, and the missing positive-direction case is recorded as an open eval gap rather than fabricated.
-9. `instrument.json` survives a publish — `originOf` classifies it `OriginWorker` and it appears in the published tree, asserted against `internal/publish` directly, because an allowlist withholds a new file silently.
-10. A schema-invalid `instrument.json` triggers a revision rather than failing the run, and the revision receives every violation at once.
+9. `instrument.json` survives a publish on both paths — `originOf` classifies it `OriginWorker` on the offline path, and the mount-path verifier `VerifyTree` does not flag it — asserted against `internal/publish` directly, because an allowlist withholds a new file silently.
+10. `Validate` reports every schema violation in one pass, so a single revision can fix them all — asserted directly. A schema-invalid `instrument.json` is surfaced at finalize as a report, never a failed run; criterion 7 in the rubric is what triggers the backend's revision.
 11. No network and no credential: schema and validation tests are pure; the graded-run tests use the in-process provider.
 
 ## Out of scope
