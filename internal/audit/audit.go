@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -69,7 +70,21 @@ type Result struct {
 	// MethodDigest pins which version of the method produced this run, so a
 	// published reproduction records what it is comparable against.
 	MethodDigest string
+	// InstrumentPresent reports whether the run wrote instrument.json (007a).
+	InstrumentPresent bool
+	// InstrumentViolations is the finalize-time schema check of instrument.json:
+	// empty when it validates. This is a report to the caller, never folded into
+	// the verdict or the manifest — rubric criterion 7 is what drives revision.
+	InstrumentViolations []instrument.Violation
 }
+
+// InstrumentOK reports whether the run wrote a schema-valid instrument.json.
+func (r Result) InstrumentOK() bool {
+	return r.InstrumentPresent && len(r.InstrumentViolations) == 0
+}
+
+// InstrumentFile is the audit's declared study protocol (007a).
+const InstrumentFile = "instrument.json"
 
 // Passed reports whether the run met the rubric.
 func (r Result) Passed() bool { return r.Status.Passed() }
@@ -309,7 +324,34 @@ func (a *Auditor) Run(ctx context.Context, paper, dst string) (Result, error) {
 		return result, err
 	}
 	result.Artifacts = artifacts
+
+	present, violations, err := validateInstrument(dst)
+	if err != nil {
+		return result, err
+	}
+	result.InstrumentPresent = present
+	result.InstrumentViolations = violations
 	return result, nil
+}
+
+// validateInstrument reads the collected instrument.json and checks it against
+// the 007a schema. A missing file is reported as absence, not an error — that
+// is criterion 7's job to fail in the grade-and-revise loop, and this is only a
+// finalize-time report. Content that is not JSON at all is reported as one
+// violation rather than failing the whole audit over a malformed file.
+func validateInstrument(dir string) (present bool, violations []instrument.Violation, err error) {
+	raw, err := os.ReadFile(filepath.Join(dir, InstrumentFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, fmt.Errorf("read %s: %w", InstrumentFile, err)
+	}
+	vs, verr := instrument.Validate(raw)
+	if verr != nil {
+		return true, []instrument.Violation{{Field: InstrumentFile, Message: verr.Error()}}, nil
+	}
+	return true, vs, nil
 }
 
 // safeJoin resolves rel under root, refusing to escape it.

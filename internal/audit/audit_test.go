@@ -273,6 +273,88 @@ func TestRunEndToEnd(t *testing.T) {
 	}
 }
 
+// A well-formed instrument.json the memory provider can hand back as an
+// artifact, so Run's finalize-time check has something to validate.
+const validInstrumentJSON = `{
+  "protocol": {
+    "design": "2x2 within",
+    "trials": "120 trials",
+    "measures": [{"name": "rt", "scale": "ms", "level": "per_trial"}],
+    "plan": ["LMM"],
+    "reported": [{"metric": "RT", "value": "p=.003", "citation": "Table 2"}]
+  },
+  "analysis": {
+    "command": "python src/analyze.py {{INPUT}}",
+    "input": {"columns": [{"name": "rt", "type": "number", "required": true}]},
+    "outputs": ["results.csv"]
+  },
+  "servability": {
+    "components": [{"component": "task", "servable": true}],
+    "all_servable": true
+  }
+}`
+
+func TestRunValidatesTheInstrument(t *testing.T) {
+	t.Run("valid instrument", func(t *testing.T) {
+		p := memory.New()
+		p.Files = map[string][]byte{InstrumentFile: []byte(validInstrumentJSON)}
+		result, err := newTestAuditor(t, p).Run(context.Background(), "paper", t.TempDir())
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !result.InstrumentPresent {
+			t.Error("instrument should be present")
+		}
+		if !result.InstrumentOK() {
+			t.Errorf("instrument should validate, got %v", result.InstrumentViolations)
+		}
+	})
+
+	t.Run("invalid instrument is reported, not fatal", func(t *testing.T) {
+		p := memory.New()
+		// A null protocol without a reason — a schema violation.
+		p.Files = map[string][]byte{InstrumentFile: []byte(
+			`{"protocol": null, "analysis": null, "servability": {"components": [], "all_servable": true}}`)}
+		result, err := newTestAuditor(t, p).Run(context.Background(), "paper", t.TempDir())
+		if err != nil {
+			t.Fatalf("Run should not fail over a bad instrument: %v", err)
+		}
+		if result.InstrumentOK() {
+			t.Error("an unstated null should not validate")
+		}
+		if len(result.InstrumentViolations) < 2 {
+			t.Errorf("both null fields should be flagged, got %v", result.InstrumentViolations)
+		}
+	})
+
+	t.Run("non-JSON is one violation, not fatal", func(t *testing.T) {
+		p := memory.New()
+		p.Files = map[string][]byte{InstrumentFile: []byte("not json")}
+		result, err := newTestAuditor(t, p).Run(context.Background(), "paper", t.TempDir())
+		if err != nil {
+			t.Fatalf("Run should not fail over non-JSON: %v", err)
+		}
+		if result.InstrumentOK() || len(result.InstrumentViolations) != 1 {
+			t.Errorf("non-JSON should be one violation, got %v", result.InstrumentViolations)
+		}
+	})
+
+	t.Run("absent instrument", func(t *testing.T) {
+		p := memory.New()
+		p.Files = map[string][]byte{"REPRODUCIBILITY.md": []byte("verdict")}
+		result, err := newTestAuditor(t, p).Run(context.Background(), "paper", t.TempDir())
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if result.InstrumentPresent {
+			t.Error("no instrument was written; present should be false")
+		}
+		if result.InstrumentOK() {
+			t.Error("an absent instrument is not OK")
+		}
+	})
+}
+
 func TestRunReleasesTheRunEvenWhenItFails(t *testing.T) {
 	p := memory.New()
 	p.PollsBeforeDone = 99
