@@ -50,9 +50,25 @@ spec:
             # Real audits run on the managed-agents backend (memory is dev only).
             - name: PROVIDER
               value: anthropic
-            # DEV is deliberately unset in production: the gate is fail-closed
-            # until the OIDC login (006c) lands. Setting DEV here would admit
-            # every request as a synthetic principal on a public domain.
+            # DEV is deliberately unset in production: the gate is fail-closed and
+            # every request must carry a real OIDC session. Setting DEV would
+            # admit a synthetic principal on a public domain.
+            #
+            # OIDC login against latere auth (public PKCE client; the cookie key
+            # and any API keys live in the replichai-config secret).
+            - name: AUTH_ISSUER
+              value: https://auth.latere.ai
+            - name: AUTH_CLIENT_ID
+              value: replichai
+            - name: AUTH_REDIRECT_URL
+              value: https://replichai.latere.ai/callback
+            # The access whitelist — a policy, not a secret, so it lives in the
+            # manifest (version-controlled and reviewable), not the .env secret.
+            # Runtime changes go through an admin via /admin/access.
+            - name: ADMIN_EMAILS
+              value: hi@changkun.de
+            - name: SEED_EMAILS
+              value: changkun@latere.ai
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector.observability.svc:4318
           resources:

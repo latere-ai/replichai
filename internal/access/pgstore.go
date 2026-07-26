@@ -22,14 +22,19 @@ func NewPGAccess(pool *pgxpool.Pool) *PGAccess {
 	return &PGAccess{pool: pool, clock: time.Now}
 }
 
-// SeedAdmin creates or promotes an admin grant with no admin check — the
-// bootstrap path applied at startup.
-func (s *PGAccess) SeedAdmin(ctx context.Context, email string) error {
+// SeedGrant creates or promotes a grant at a tier with no admin check — the
+// bootstrap path for the admin and seed whitelists, applied at startup.
+func (s *PGAccess) SeedGrant(ctx context.Context, email string, tier Tier) error {
 	email = normalizeEmail(email)
 	if email == "" {
 		return ErrNoEmail
 	}
-	return s.upsert(ctx, email, TierAdmin, "bootstrap")
+	return s.upsert(ctx, email, tier, "bootstrap")
+}
+
+// SeedAdmin bootstraps an admin grant.
+func (s *PGAccess) SeedAdmin(ctx context.Context, email string) error {
+	return s.SeedGrant(ctx, email, TierAdmin)
 }
 
 // Resolve returns a principal's tier, binding a seeded grant on first login.

@@ -9,11 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/registry"
+	"github.com/latere-ai/replichai/internal/webauth"
 )
 
 // TestServerEndToEnd is the lightweight full-stack check: it wires the real
@@ -40,13 +42,19 @@ func TestServerEndToEnd(t *testing.T) {
 	}
 	go job.NewWorker(store, runner, job.WithPoll(5*time.Millisecond)).Start(ctx, 1)
 
+	// The dev principal is seeded as an admin (as ADMIN_EMAILS does in compose),
+	// so it clears the real fail-closed gate.
+	acc := access.NewMemStore()
+	if err := acc.SeedAdmin(ctx, devEmail); err != nil {
+		t.Fatalf("seed admin: %v", err)
+	}
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          store,
 		Reproductions: &registryReader{source: registry.NewFSSource(t.TempDir())},
-		Gate:          devGate,
+		Gate:          webauth.Gate(acc),
 		SSEInterval:   10 * time.Millisecond,
 	})
-	srv := httptest.NewServer(withDevPrincipal(router.Handler()))
+	srv := httptest.NewServer(webauth.DevMiddleware(devSub, devEmail)(router.Handler()))
 	defer srv.Close()
 
 	// Submit a paper (a DOI resolves offline, so the whole run stays free).
