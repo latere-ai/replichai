@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/instrument"
@@ -82,6 +83,28 @@ func TestResolvePinsToACommit(t *testing.T) {
 	}
 	if latest.Ref.Commit != "bbbbbbbb2222" || latest.Decl.Protocol.Design != "design-v2" {
 		t.Errorf("fresh resolve = %q/%q, want the new head/design-v2", latest.Ref.Commit, latest.Decl.Protocol.Design)
+	}
+}
+
+// AC1 (second clause): the store keeps no copy of the instrument declaration —
+// only a reference. Asserted structurally, so swapping Experiment.Ref for a
+// stored Instrument would trip here rather than silently persisting src/ and
+// instrument.json against 003's no-drift rule.
+func TestStoredExperimentHoldsNoDeclaration(t *testing.T) {
+	declType := reflect.TypeOf(Instrument{})
+	stored := reflect.TypeOf(Experiment{})
+	for i := 0; i < stored.NumField(); i++ {
+		if stored.Field(i).Type == declType {
+			t.Errorf("Experiment.%s stores a resolved Instrument — persist a reference, not a copy",
+				stored.Field(i).Name)
+		}
+	}
+	// The reference carries only repo + commit, no declaration.
+	refType := reflect.TypeOf(InstrumentRef{})
+	for i := 0; i < refType.NumField(); i++ {
+		if refType.Field(i).Type == declType || refType.Field(i).Type == reflect.TypeOf(instrument.Instrument{}) {
+			t.Errorf("InstrumentRef.%s embeds a declaration — it must be a bare reference", refType.Field(i).Name)
+		}
 	}
 }
 

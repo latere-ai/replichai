@@ -48,6 +48,43 @@ func TestComparePairsByMetric(t *testing.T) {
 	}
 }
 
+// CompareFor is what wires Compare to a run: only a released experiment with an
+// outcome and a reported baseline is compared.
+func TestCompareFor(t *testing.T) {
+	inst := Instrument{Decl: instrument.Instrument{Protocol: &instrument.Protocol{
+		Reported: []instrument.Reported{{Metric: "effect_size", Value: "0.42", Citation: "Table 2"}},
+	}}}
+	outcome := &Outcome{Ran: true, Recomputed: []Statistic{{Metric: "effect_size", Value: "0.40"}}}
+
+	t.Run("released is compared", func(t *testing.T) {
+		e := &Experiment{Source: SourceReleased, Outcome: outcome}
+		c, ok := CompareFor(e, inst)
+		if !ok || len(c.Rows) != 1 || c.Rows[0].Delta == "" {
+			t.Fatalf("a released outcome should compare, got ok=%v rows=%v", ok, c.Rows)
+		}
+	})
+
+	t.Run("uploaded is not compared", func(t *testing.T) {
+		e := &Experiment{Source: SourceUploaded, Outcome: outcome}
+		if _, ok := CompareFor(e, inst); ok {
+			t.Error("an uploaded finding has no paper baseline; it must not be compared")
+		}
+	})
+
+	t.Run("no outcome, nothing to compare", func(t *testing.T) {
+		if _, ok := CompareFor(&Experiment{Source: SourceReleased}, inst); ok {
+			t.Error("a run with no outcome cannot be compared")
+		}
+	})
+
+	t.Run("no reported baseline, nothing to compare", func(t *testing.T) {
+		bare := Instrument{Decl: instrument.Instrument{}} // nil Protocol
+		if _, ok := CompareFor(&Experiment{Source: SourceReleased, Outcome: outcome}, bare); ok {
+			t.Error("an instrument with no reported results has no baseline")
+		}
+	})
+}
+
 func TestCompareEmptyIsEmpty(t *testing.T) {
 	if c := Compare(Outcome{Ran: true}, nil); len(c.Rows) != 0 {
 		t.Errorf("no reported and no recomputed should yield no rows, got %v", c.Rows)
