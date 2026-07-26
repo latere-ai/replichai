@@ -9,7 +9,7 @@ import (
 // verified email, bound to the first principal, a second principal refused.
 func TestMembershipSeedBindOneWay(t *testing.T) {
 	m := NewMemMembership()
-	m.SeedLead("proj-1", "lead@example.com")
+	_ = m.SeedLead(ctx, "proj-1", "lead@example.com")
 
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
 	if role, ok, _ := m.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
@@ -38,7 +38,7 @@ func TestMembershipSeedBindOneWay(t *testing.T) {
 // Only a project's lead may change its membership.
 func TestMembershipLeadOnly(t *testing.T) {
 	m := NewMemMembership()
-	m.SeedLead("proj-1", "lead@example.com")
+	_ = m.SeedLead(ctx, "proj-1", "lead@example.com")
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
 	_ = m.Add(ctx, lead, "proj-1", "collab@example.com", RoleCollaborator)
 	collab := Principal{Sub: "collab-sub", Email: "collab@example.com", EmailVerified: true}
@@ -69,7 +69,7 @@ func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
 	members := NewMemMembership()
 
 	// A principal is a project lead but has no platform grant.
-	members.SeedLead("proj-1", "lead@example.com")
+	_ = members.SeedLead(ctx, "proj-1", "lead@example.com")
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
 	if role, ok, _ := members.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
 		t.Fatal("precondition: lead has a project role")

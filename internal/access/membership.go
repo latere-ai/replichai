@@ -33,15 +33,16 @@ func NewMemMembership() *MemMembership {
 
 // SeedLead creates the first lead of a project with no lead check — the
 // bootstrap path project creation (007) uses, mirroring SeedAdmin. It seeds by
-// email like every other membership.
-func (m *MemMembership) SeedLead(project, email string) {
+// email like every other membership, and matches the Postgres signature.
+func (m *MemMembership) SeedLead(_ context.Context, project, email string) error {
 	email = normalizeEmail(email)
 	if project == "" || email == "" {
-		return
+		return ErrNoEmail
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.put(project, email, RoleLead)
+	return nil
 }
 
 // Add invites an email into a project. The caller must be the project's lead.
