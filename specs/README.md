@@ -49,7 +49,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/github` | the small GitHub client publishing and the registry need |
 | `internal/registry` | the derived registry: relate reproductions of one paper (003) |
 | `internal/job` | the job lifecycle: the state machine, the store seam, the worker (006b) |
+| `internal/access` | the authorisation model: grants, tiers, project membership, seed-and-bind (006c) |
 | `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
+| `internal/webauth` | wires access to httpapi: the fail-closed gate policy and tier guard (006c) |
 | `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers` |
 
 **The trust model — a reproduction is a claim / evidence / verdict triad**, and who authors each is deliberate: the subject of an audit never writes its own grade.
@@ -85,7 +87,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
 | 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | built | 006b, (003, 005) |
 | 006b | [Job model and persistence](006b-job-model-and-persistence.md) | built | 002, 004 |
-| 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | draft | 006b |
+| 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | core built | 006b |
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | draft | 006a |
 | 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, (006c) |
@@ -118,7 +120,9 @@ Engine first; the web shell last, because every screen it renders needs an engin
 
 Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, and **006a and 006b** — the job state machine and its in-process worker (`internal/job`, with in-memory and Postgres stores behind one contract), the HTTP router, SSE stream, read surfaces, and fail-closed gate seam (`internal/httpapi`), and the composition root (`cmd/server`) that wires them to the engine. **The web app runs locally**: `docker compose up` brings up Postgres + the server, a submitted paper walks `submitted → done` through the real HTTP + worker path, and the job survives a restart. It defaults to the in-process memory provider (no API key); `--provider anthropic` does real audits.
 
-**Next: 006c** (identity, the `access_grants` table, and the gate *policy* the seam is waiting for — today the gate is fail-closed `DenyAll`, with a `--dev` bypass for local runs) and **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today). Then 006d (PDF), 006e (frontend), 007d.
+**006c's core is built**: the authorisation model (`internal/access` — grants, three tiers, project membership, seed-by-verified-email with one-way binding, in-memory and Postgres against one contract) and the fail-closed gate policy (`internal/webauth`) that resolves a grant per request. What remains of 006c is the **OIDC login front door** — sign-in via `latere.ai/x/pkg/oidclogin`, the session cookie holding only `sub`+email, `/me`, the `/admin/access` endpoints, the dev-bypass off-loopback refusal, and rewiring `cmd/server` from the `--dev` gate to the real one. Until that lands the server still runs behind `--dev`.
+
+**Next: finish 006c's login**, then **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today), then 006d (PDF), 006e (frontend), 007d.
 
 Still open in the server: the experiment `Kind` in `job.Runner` (the dispatch is there; the experiment callee is 007b's server wiring), the Postgres stores for 007b/007c, and reading a transcript through `ReproReader`.
 
