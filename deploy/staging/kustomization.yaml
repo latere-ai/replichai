@@ -1,0 +1,57 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ── STAGING (STUB — NOT DEPLOYED YET) ────────────────────────────────────────
+# Placeholder overlay so a future staging environment is a small diff, not a new
+# setup. Nothing applies this today; only deploy/prod/ is deployed. Before using
+# staging, provision the `latere-staging` namespace, a
+# `replichai-config`/`replichai-db` secret, DNS + a cert for
+# replichai-staging.latere.ai, and register an OIDC redirect for it on a
+# dedicated staging client (keep loopback/staging redirects off the prod client).
+namespace: latere-staging
+
+resources:
+  - ../base
+
+# Override the prod values the base carries with their staging equivalents.
+patches:
+  - target:
+      kind: Deployment
+      name: replichai
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: replichai
+      spec:
+        template:
+          spec:
+            containers:
+              - name: replichai
+                env:
+                  - name: BASE_URL
+                    value: https://replichai-staging.latere.ai
+  - target:
+      kind: Ingress
+      name: replichai
+    patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: replichai
+      spec:
+        tls:
+          - hosts:
+              - replichai-staging.latere.ai
+            secretName: latere-replichai-staging-tls
+        rules:
+          - host: replichai-staging.latere.ai
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: replichai
+                      port:
+                        number: 80
