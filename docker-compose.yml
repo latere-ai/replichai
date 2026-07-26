@@ -38,5 +38,9 @@ services:
       REPLICHAI_API_KEY: ${REPLICHAI_API_KEY:-}
       DEV: "true"
       ADDR: ":8080"
+      # A per-phase pause so the SSE stream shows resolving -> running ->
+      # publishing -> done instead of finishing instantly. Dev only; set to 0
+      # (or override) for the memory provider's true speed.
+      RUNNER_DELAY: ${RUNNER_DELAY:-1500ms}
     ports:
       - "8080:8080"

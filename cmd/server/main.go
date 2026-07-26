@@ -47,7 +47,10 @@ func run() error {
 	reproDir := flag.String("repro-dir", os.Getenv("REPRO_DIR"), "filesystem registry source; empty is an empty registry")
 	workers := flag.Int("workers", 2, "number of job workers")
 	dev := flag.Bool("dev", envBool("DEV"), "enable the INSECURE dev gate (no auth); local use only")
+	runnerDelay := flag.String("runner-delay", os.Getenv("RUNNER_DELAY"), "dev: pause per phase so SSE progression is watchable (e.g. 1500ms)")
 	flag.Parse()
+
+	delay, _ := time.ParseDuration(*runnerDelay) // empty or bad -> 0, no delay
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -73,6 +76,10 @@ func run() error {
 		method:   m,
 		fetch:    newHTTPFetcher(30 * time.Second),
 		workDir:  filepath.Join(os.TempDir(), "replichai-runs"),
+		delay:    delay,
+	}
+	if delay > 0 {
+		log.Printf("runner delay: %s per phase (dev; makes SSE progression watchable)", delay)
 	}
 	worker := job.NewWorker(store, runner)
 	if n, err := worker.Reap(ctx); err != nil {
