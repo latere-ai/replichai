@@ -98,6 +98,32 @@ func (s *MemStore) ListByPrincipal(_ context.Context, principal string) ([]Job, 
 	return out, nil
 }
 
+// ListByProject returns a project's sessions, newest first.
+func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Job
+	for i := len(s.order) - 1; i >= 0; i-- {
+		if j := s.jobs[s.order[i]]; j.ProjectID == projectID {
+			out = append(out, cloneJob(j))
+		}
+	}
+	return out, nil
+}
+
+// CountByProject counts an owner's sessions grouped by project.
+func (s *MemStore) CountByProject(_ context.Context, owner string) (map[string]int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]int{}
+	for _, j := range s.jobs {
+		if j.Principal == owner {
+			out[j.ProjectID]++
+		}
+	}
+	return out, nil
+}
+
 // Claim takes the oldest submitted job into resolving and returns it. The lock
 // makes the take atomic, so two concurrent claims never hand out the same job.
 func (s *MemStore) Claim(_ context.Context) (Job, bool, error) {

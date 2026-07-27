@@ -25,6 +25,14 @@ type Store interface {
 	// user sees the projects they submitted. An unknown principal yields no rows,
 	// never an error — the ownership scope is the caller's sub, enforced above.
 	ListByPrincipal(ctx context.Context, principal string) ([]Job, error)
+	// ListByProject returns a project's sessions, newest first — the detail view
+	// of one project (006g). An unknown project yields no rows, never an error;
+	// the caller's ownership of the project is checked against the project store.
+	ListByProject(ctx context.Context, projectID string) ([]Job, error)
+	// CountByProject returns, for one owner, how many sessions each of their
+	// projects holds, so the project list shows a count in one query rather than
+	// a read per project.
+	CountByProject(ctx context.Context, owner string) (map[string]int, error)
 	// Claim atomically takes one submitted job into resolving and returns it, or
 	// reports false when none is waiting. Two concurrent claims return disjoint
 	// jobs — in Postgres by SELECT … FOR UPDATE SKIP LOCKED, in memory by a lock.
