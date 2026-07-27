@@ -49,6 +49,7 @@ var DenyAll Gate = GateFunc(func(*http.Request) (bool, string) { return false, "
 type JobStore interface {
 	Enqueue(ctx context.Context, principal, ref string, k job.Kind, project string) (job.Job, error)
 	Get(ctx context.Context, id string) (job.Job, error)
+	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 }
 
 // ReproReader is the read surface over the derived registry (003) and the

@@ -69,6 +69,20 @@ func (s *MemStore) Get(_ context.Context, id string) (Job, error) {
 	return cloneJob(j), nil
 }
 
+// ListByPrincipal returns a principal's jobs, newest first.
+func (s *MemStore) ListByPrincipal(_ context.Context, principal string) ([]Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Job
+	// s.order is oldest-first; walk it in reverse for newest-first.
+	for i := len(s.order) - 1; i >= 0; i-- {
+		if j := s.jobs[s.order[i]]; j.Principal == principal {
+			out = append(out, cloneJob(j))
+		}
+	}
+	return out, nil
+}
+
 // Claim takes the oldest submitted job into resolving and returns it. The lock
 // makes the take atomic, so two concurrent claims never hand out the same job.
 func (s *MemStore) Claim(_ context.Context) (Job, bool, error) {

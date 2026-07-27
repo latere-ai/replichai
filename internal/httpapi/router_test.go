@@ -105,6 +105,33 @@ func TestGetJob(t *testing.T) {
 	}
 }
 
+// GET /jobs lists only the caller's own jobs — the projects they submitted.
+// Another principal's jobs never appear, even through the same handler.
+func TestListMyJobs(t *testing.T) {
+	d := testDeps(allowAll)
+	mine, _ := d.Jobs.Enqueue(context.Background(), "me", "ref-mine", job.KindAudit, "")
+	_, _ = d.Jobs.Enqueue(context.Background(), "other", "ref-other", job.KindAudit, "")
+	h := NewRouter(d).Handler()
+
+	w := do(t, h, "GET", "/jobs", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var got []job.Job
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != mine.ID {
+		t.Fatalf("listed %d jobs %+v, want only my job %s", len(got), got, mine.ID)
+	}
+	// A caller with jobs-of-others but none of their own gets an empty JSON array,
+	// never null.
+	w = do(t, h, "GET", "/jobs", "", "nobody")
+	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Errorf("empty list = %d %q, want 200 []", w.Code, w.Body.String())
+	}
+}
+
 // AC3: read surfaces return what 003/005 hold, through their interfaces.
 func TestReadSurfaces(t *testing.T) {
 	h := NewRouter(testDeps(allowAll)).Handler()

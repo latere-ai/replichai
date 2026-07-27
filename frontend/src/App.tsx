@@ -1,16 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getJob, getMe, listReproductions, submitPaper, watchJob, type Job, type Me, type Reproduction } from './api'
+import { getMe, listMyJobs, listReproductions, submitPaper, watchJob, type Job, type Me, type Reproduction } from './api'
 import { useI18n, type Lang } from './i18n'
-
-type Tracked = { id: string; ref: string }
-
-function loadTracked(): Tracked[] {
-  try {
-    return JSON.parse(localStorage.getItem('runs') || '[]') as Tracked[]
-  } catch {
-    return []
-  }
-}
 
 export default function App() {
   const i18n = useI18n()
@@ -99,35 +89,40 @@ function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
 }
 
 function Dashboard({ i18n }: { i18n: I18n }) {
-  const [runs, setRuns] = useState<Tracked[]>(loadTracked)
+  const [jobs, setJobs] = useState<Job[] | null>(null)
+  const [repros, setRepros] = useState<Reproduction[]>([])
 
-  const onSubmitted = (id: string, ref: string) => {
-    const next = [{ id, ref }, ...runs.filter((r) => r.id !== id)].slice(0, 25)
-    localStorage.setItem('runs', JSON.stringify(next))
-    setRuns(next)
-  }
+  const refresh = () => listMyJobs().then((j) => setJobs(j ?? [])).catch(() => setJobs([]))
+  useEffect(() => {
+    refresh()
+    listReproductions()
+      .then((r) => setRepros(r ?? []))
+      .catch(() => setRepros([]))
+  }, [])
 
   return (
     <>
-      <Submit i18n={i18n} onSubmitted={onSubmitted} />
+      <Submit i18n={i18n} onSubmitted={refresh} />
       <section>
-        <h2>{i18n.t('yourRuns')}</h2>
-        {runs.length === 0 ? (
-          <p className="muted">{i18n.t('noRuns')}</p>
+        <h2>{i18n.t('myProjects')}</h2>
+        {jobs === null ? (
+          <p className="muted">…</p>
+        ) : jobs.length === 0 ? (
+          <p className="muted">{i18n.t('noProjects')}</p>
         ) : (
           <ul className="runs">
-            {runs.map((r) => (
-              <RunRow key={r.id} i18n={i18n} tracked={r} />
+            {jobs.map((j) => (
+              <ProjectRow key={j.id} i18n={i18n} job={j} repros={repros} />
             ))}
           </ul>
         )}
       </section>
-      <Reproductions i18n={i18n} />
+      <Reproductions i18n={i18n} repros={repros} />
     </>
   )
 }
 
-function Submit({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (id: string, ref: string) => void }) {
+function Submit({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: () => void }) {
   const { t } = i18n
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -139,8 +134,8 @@ function Submit({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (id: string, r
     setBusy(true)
     setErr('')
     try {
-      const { job_id } = await submitPaper(url.trim())
-      onSubmitted(job_id, url.trim())
+      await submitPaper(url.trim())
+      onSubmitted()
       setUrl('')
     } catch {
       setErr(t('submitError'))
@@ -170,33 +165,42 @@ function Submit({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (id: string, r
   )
 }
 
-function RunRow({ i18n, tracked }: { i18n: I18n; tracked: Tracked }) {
-  const [job, setJob] = useState<Job | null>(null)
+function ProjectRow({ i18n, job, repros }: { i18n: I18n; job: Job; repros: Reproduction[] }) {
+  const [j, setJob] = useState<Job>(job)
 
   useEffect(() => {
-    getJob(tracked.id).then(setJob).catch(() => {})
-    return watchJob(tracked.id, setJob)
-  }, [tracked.id])
+    setJob(job)
+    // Live-track a project whose run is still in flight; a finished one is static.
+    if (job.phase !== 'done' && job.phase !== 'failed') {
+      return watchJob(job.id, setJob)
+    }
+  }, [job])
 
-  const phase = job?.phase ?? 'submitted'
+  const repro = repros.find((r) => r.repo && r.repo === j.repo_name)
+  const title = repro?.title || j.ref
+  const phase = j.phase
   return (
     <li className={`run ${phase}`}>
-      <span className="ref">{tracked.ref}</span>
+      {repro ? (
+        <a className="ref" href={`https://github.com/${repro.repo}`} target="_blank" rel="noreferrer">
+          {title}
+        </a>
+      ) : (
+        <span className="ref">{title}</span>
+      )}
       <span className={`badge ${phase}`}>{phaseLabel(i18n.t, phase)}</span>
-      {job?.error && <span className="err small">{job.error}</span>}
+      {repro?.verdict && (
+        <span className="muted small">
+          {' '}
+          · {i18n.t('verdict')}: {repro.verdict}
+        </span>
+      )}
+      {j.error && <span className="err small">{j.error}</span>}
     </li>
   )
 }
 
-function Reproductions({ i18n }: { i18n: I18n }) {
-  const [repros, setRepros] = useState<Reproduction[] | null>(null)
-  useEffect(() => {
-    listReproductions()
-      .then((r) => setRepros(r ?? []))
-      .catch(() => setRepros([]))
-  }, [])
-
-  if (repros === null) return null
+function Reproductions({ i18n, repros }: { i18n: I18n; repros: Reproduction[] }) {
   return (
     <section>
       <h2>{i18n.t('reproductions')}</h2>

@@ -17,6 +17,10 @@ type Store interface {
 	Enqueue(ctx context.Context, principal, ref string, k Kind, project string) (Job, error)
 	// Get returns one job by id, or ErrNotFound.
 	Get(ctx context.Context, id string) (Job, error)
+	// ListByPrincipal returns a principal's own jobs, newest first, so a signed-in
+	// user sees the projects they submitted. An unknown principal yields no rows,
+	// never an error — the ownership scope is the caller's sub, enforced above.
+	ListByPrincipal(ctx context.Context, principal string) ([]Job, error)
 	// Claim atomically takes one submitted job into resolving and returns it, or
 	// reports false when none is waiting. Two concurrent claims return disjoint
 	// jobs — in Postgres by SELECT … FOR UPDATE SKIP LOCKED, in memory by a lock.

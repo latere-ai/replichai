@@ -158,6 +158,24 @@ func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunSta
 	return nil
 }
 
+// ListByPrincipal returns a principal's jobs, newest first.
+func (s *PGStore) ListByPrincipal(ctx context.Context, principal string) ([]Job, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE principal = $1 ORDER BY created_at DESC`, principal)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Job
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
 // Active returns every non-terminal job.
 func (s *PGStore) Active(ctx context.Context) ([]Job, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE phase NOT IN ($1,$2) ORDER BY created_at`,
