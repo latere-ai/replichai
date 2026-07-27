@@ -63,6 +63,23 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("SetTitle on a missing project: %v", err)
 	}
 
+	// SetPublic marks a project public and records the sign-off; ListPublic
+	// returns it (and never a private one). One-way — no un-publish path.
+	if err := s.SetPublic(ctx, second.ID, "owner", "v1"); err != nil {
+		t.Fatalf("SetPublic: %v", err)
+	}
+	pub, err := s.Get(ctx, second.ID)
+	if err != nil || pub.Visibility != VisibilityPublic || pub.SignedOffBy != "owner" || pub.AttestationVersion != "v1" || pub.SignedOffAt == nil {
+		t.Fatalf("after SetPublic: %+v err=%v", pub, err)
+	}
+	list, err := s.ListPublic(ctx)
+	if err != nil || len(list) != 1 || list[0].ID != second.ID {
+		t.Fatalf("ListPublic = %+v err=%v; want only the public project", list, err)
+	}
+	if err := s.SetPublic(ctx, "nope", "owner", "v1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SetPublic on a missing project: want ErrNotFound, got %v", err)
+	}
+
 	// Delete removes it, idempotently.
 	if err := s.Delete(ctx, p.ID); err != nil {
 		t.Fatalf("Delete: %v", err)

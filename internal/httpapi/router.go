@@ -62,7 +62,17 @@ type ProjectStore interface {
 	Create(ctx context.Context, owner, title string) (project.Project, error)
 	Get(ctx context.Context, id string) (project.Project, error)
 	ListByOwner(ctx context.Context, owner string) ([]project.Project, error)
+	ListPublic(ctx context.Context) ([]project.Project, error)
 	Delete(ctx context.Context, id string) error
+	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
+}
+
+// RepoPublisher flips a forge repository public — the optional half of the
+// project public flip (006f). It runs with the server token, never in the
+// sandbox. Nil when no forge is wired (a local run, tests), in which case a
+// project still goes public in-app without touching a repository.
+type RepoPublisher interface {
+	SetPublic(ctx context.Context, repo string) error
 }
 
 // ReproReader is the read surface over the derived registry (003) and the
@@ -88,6 +98,9 @@ type Reproduction struct {
 	Repo    string `json:"repo"`
 	Title   string `json:"title"`
 	Verdict string `json:"verdict"`
+	// CanPublish reports whether the manifest cleared 002's redistribution gate
+	// (`review == "clear"`) — the precondition the public flip enforces (006f).
+	CanPublish bool `json:"can_publish"`
 }
 
 // Deps are what a Router is built from — all interfaces, so tests supply fakes.
@@ -95,6 +108,7 @@ type Deps struct {
 	Jobs          JobStore
 	Projects      ProjectStore
 	Reproductions ReproReader
+	RepoPublisher RepoPublisher
 	Gate          Gate
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
@@ -116,6 +130,7 @@ type Router struct {
 	jobs        JobStore
 	projects    ProjectStore
 	repro       ReproReader
+	repoPub     RepoPublisher
 	sseInterval time.Duration
 	spa         http.Handler
 }
@@ -134,7 +149,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, repro: d.Reproductions, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, repro: d.Reproductions, repoPub: d.RepoPublisher, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

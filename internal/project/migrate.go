@@ -43,6 +43,12 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE jobs ADD CONSTRAINT jobs_project_fk
 	FOREIGN KEY (project_id) REFERENCES projects (id) NOT VALID;
 `},
+	{2, `
+-- The public-flip provenance (006f): the recorded responsibility sign-off.
+ALTER TABLE projects ADD COLUMN signed_off_by       TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN signed_off_at       TIMESTAMPTZ;
+ALTER TABLE projects ADD COLUMN attestation_version TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies the project schema and the one-time backfill. Safe to run on

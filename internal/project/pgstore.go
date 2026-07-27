@@ -23,12 +23,13 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 }
 
 // projectColumns is the column list every read selects, in scan order.
-const projectColumns = `id, owner, title, visibility, created_at`
+const projectColumns = `id, owner, title, visibility, created_at, signed_off_by, signed_off_at, attestation_version`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
-	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.CreatedAt,
+		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -82,6 +83,39 @@ func (s *PGStore) ListByOwner(ctx context.Context, owner string) ([]Project, err
 func (s *PGStore) SetTitle(ctx context.Context, id, title string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE projects SET title = $2 WHERE id = $1`, id, title)
 	return err
+}
+
+// SetPublic marks a project public and records the sign-off. One-way.
+func (s *PGStore) SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE projects SET visibility='public', signed_off_by=$2, signed_off_at=$3, attestation_version=$4
+		WHERE id=$1`,
+		id, signedOffBy, s.clock(), attestationVersion)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListPublic returns every public project, newest first.
+func (s *PGStore) ListPublic(ctx context.Context) ([]Project, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects WHERE visibility='public' ORDER BY created_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Project
+	for rows.Next() {
+		p, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // Delete removes a project by id, idempotently.
