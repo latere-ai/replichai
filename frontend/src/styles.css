@@ -184,3 +184,147 @@ footer {
   border-top: 1px solid var(--line);
   font-size: 13px;
 }
+
+/* Projects: the owned containers, each opening to its sessions. */
+ul.projects {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.project-card {
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.project-card:hover {
+  border-color: var(--accent);
+}
+.project-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-meta {
+  margin-top: 4px;
+}
+.project-heading {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg);
+  font-size: 18px;
+  margin: 12px 0 14px;
+  overflow-wrap: anywhere;
+}
+.badge.private {
+  background: #efeeea;
+  color: #6b6b66;
+}
+.badge.public {
+  background: #e6f4ec;
+  color: var(--ok);
+}
+.badge.grade {
+  background: #e7f0fb;
+  color: var(--accent);
+}
+h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 24px 0 10px;
+}
+
+/* A session row is clickable through to its transcript. */
+.run {
+  cursor: pointer;
+}
+.run:hover {
+  border-color: var(--accent);
+}
+.run .chev {
+  white-space: nowrap;
+}
+.add-replication {
+  margin-top: 14px;
+}
+
+/* Token usage summary. */
+.usage {
+  margin-top: 14px;
+}
+.usage h3 {
+  margin-top: 0;
+}
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.stat.strong {
+  border-color: var(--accent);
+}
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The agent trajectory: message / thinking / tool call+result / grade. */
+.trajectory {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.event {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--card);
+}
+.event-head {
+  margin-bottom: 6px;
+}
+.event-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.event.thinking {
+  font-style: italic;
+  background: transparent;
+  border-style: dashed;
+}
+.event.grade {
+  border-color: var(--accent);
+}
+.event.tool {
+  background: #fafaf8;
+}
+.tool-io {
+  margin: 6px 0 0;
+  padding: 10px;
+  background: #f4f3ef;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.tool-result summary {
+  cursor: pointer;
+}
