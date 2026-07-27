@@ -31,7 +31,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **The app runs end to end**: `docker compose up` (or `make up`) brings up Postgres + the server, which serves the React frontend (006e) and the API. A researcher signs in, submits a paper URL, and watches its phases stream live to `done` behind the real fail-closed gate. Production is provisioned and fail-closed.
 
-**Designed, not built:** the project/session rework — 006g (projects as first-class records holding replication sessions), 006h (the session transcript viewer), and 006f's remaining collaboration API and owner public flip with its sign-off. 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
+**Designed, not built:** 006f's collaboration API and owner public flip with its sign-off (and the code removal of the trusted tier it carries). 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
+
+**Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
 ## Architecture at a glance
 
@@ -97,8 +99,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | implemented | 006a |
 | 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, 006g, (006c) |
-| 006g | [Projects and replication sessions](006g-projects-and-replication-sessions.md) | draft | 006b, 006c |
-| 006h | [Session transcript viewer](006h-session-transcript-viewer.md) | draft | 006g, 005, 003 |
+| 006g | [Projects and replication sessions](006g-projects-and-replication-sessions.md) | implemented, deployed | 006b, 006c |
+| 006h | [Session transcript viewer](006h-session-transcript-viewer.md) | implemented, deployed | 006g, 005, 003 |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |
