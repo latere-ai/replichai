@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -153,6 +154,48 @@ func runGuardContract(t *testing.T, s Store) {
 	}
 }
 
+// runProjectJoinContract asserts the two project-join reads both stores must
+// hold: sessions scoped to one project, newest-first, and per-project counts
+// for one owner in a single call.
+func runProjectJoinContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	_, _ = s.Enqueue(ctx, "owner", "ref-1", KindAudit, "pX", "")
+	_, _ = s.Enqueue(ctx, "stranger", "ref-4", KindAudit, "pX", "")
+	_, _ = s.Enqueue(ctx, "owner", "ref-3", KindAudit, "pY", "")
+	two, _ := s.Enqueue(ctx, "owner", "ref-2", KindAudit, "pX", "") // newest in pX
+
+	inX, err := s.ListByProject(ctx, "pX")
+	if err != nil {
+		t.Fatalf("ListByProject: %v", err)
+	}
+	// pX holds both owner sessions and the stranger's, newest-first.
+	if len(inX) != 3 || inX[0].ID != two.ID {
+		t.Fatalf("pX sessions = %d, first %s; want 3 newest-first %s", len(inX), first3(inX), two.ID)
+	}
+
+	counts, err := s.CountByProject(ctx, "owner")
+	if err != nil {
+		t.Fatalf("CountByProject: %v", err)
+	}
+	if counts["pX"] != 2 || counts["pY"] != 1 {
+		t.Errorf("owner counts = %v; want pX:2 pY:1 (no stranger)", counts)
+	}
+}
+
+// first3 renders up to three ids, for a failure message.
+func first3(js []Job) string {
+	var ids []string
+	for i, j := range js {
+		if i == 3 {
+			break
+		}
+		ids = append(ids, j.ID)
+	}
+	return strings.Join(ids, ",")
+}
+
 // runClaimContention asserts concurrent claims are disjoint — the assertion that
 // only really means something against Postgres's SKIP LOCKED.
 func runClaimContention(t *testing.T, s Store) {
@@ -192,6 +235,7 @@ func runClaimContention(t *testing.T, s Store) {
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewMemStore())
 	runGuardContract(t, NewMemStore())
+	runProjectJoinContract(t, NewMemStore())
 	runClaimContention(t, NewMemStore())
 }
 
@@ -221,6 +265,10 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 		t.Fatalf("truncate: %v", err)
 	}
 	runGuardContract(t, NewPGStore(pool))
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	runProjectJoinContract(t, NewPGStore(pool))
 	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}

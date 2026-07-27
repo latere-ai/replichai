@@ -189,6 +189,43 @@ func (s *PGStore) ListByPrincipal(ctx context.Context, principal string) ([]Job,
 	return out, rows.Err()
 }
 
+// ListByProject returns a project's sessions, newest first.
+func (s *PGStore) ListByProject(ctx context.Context, projectID string) ([]Job, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE project_id = $1 ORDER BY created_at DESC, id DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Job
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+// CountByProject counts an owner's sessions grouped by project, in one query.
+func (s *PGStore) CountByProject(ctx context.Context, owner string) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `SELECT project_id, COUNT(*) FROM jobs WHERE principal = $1 GROUP BY project_id`, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
 // Active returns every non-terminal job.
 func (s *PGStore) Active(ctx context.Context) ([]Job, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE phase NOT IN ($1,$2) ORDER BY created_at`,
