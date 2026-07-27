@@ -104,11 +104,13 @@ export const removeMember = (id: string, email: string) =>
 export const ATTESTATION_VERSION = 'v1'
 
 // makeProjectPublic is the owner's one-way public flip with a recorded sign-off.
-export const makeProjectPublic = (id: string) =>
+// flipRepo opts the GitHub repository into the flip (default); false keeps the
+// repo private while the in-app artifacts still go public.
+export const makeProjectPublic = (id: string, flipRepo = true) =>
   fetch(`/projects/${id}/public`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ attestation_version: ATTESTATION_VERSION }),
+    body: JSON.stringify({ attestation_version: ATTESTATION_VERSION, flip_repo: flipRepo }),
   }).then(json<Project>)
 
 // getTranscript returns a session's trajectory and token usage. It rejects with
