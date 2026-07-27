@@ -13,6 +13,7 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
 	"github.com/latere-ai/replichai/internal/registry"
@@ -26,6 +27,7 @@ type engineRunner struct {
 	provider provider.Provider
 	method   method.Method
 	fetch    paper.Fetcher
+	projects project.Store
 	workDir  string
 	// delay pauses at the start of each phase. It is a dev affordance: with the
 	// instant memory provider a job finishes in ~1s, so a small delay makes the
@@ -53,8 +55,18 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 	if j.Kind != job.KindAudit {
 		return fmt.Errorf("job kind %q is not yet wired in this build", j.Kind)
 	}
-	if _, err := paper.Resolve(ctx, j.Ref, paper.WithFetcher(e.fetch)); err != nil {
+	id, err := paper.Resolve(ctx, j.Ref, paper.WithFetcher(e.fetch))
+	if err != nil {
 		return fmt.Errorf("resolve %q: %w", j.Ref, err)
+	}
+	// Enrich the project's offline placeholder title with the resolved paper
+	// title, but only while it is still the placeholder (the submitted ref) — so
+	// a project that already carries a real title, or gathers a second paper, is
+	// never clobbered. Best-effort: a failure here must not fail the run.
+	if id.Title != "" && e.projects != nil && j.ProjectID != "" {
+		if p, err := e.projects.Get(ctx, j.ProjectID); err == nil && (p.Title == "" || p.Title == j.Ref) {
+			_ = e.projects.SetTitle(ctx, j.ProjectID, id.Title)
+		}
 	}
 	return nil
 }

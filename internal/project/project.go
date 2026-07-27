@@ -58,6 +58,10 @@ type Store interface {
 	Get(ctx context.Context, id string) (Project, error)
 	// ListByOwner returns a principal's own projects, newest first.
 	ListByOwner(ctx context.Context, owner string) ([]Project, error)
+	// SetTitle updates a project's title, so the worker can replace the offline
+	// placeholder with the resolved paper title once its Resolve phase has run.
+	// A missing project is not an error — the enrichment is best-effort.
+	SetTitle(ctx context.Context, id, title string) error
 	// Delete removes a project by id. It is the compensating action when the
 	// first session of a just-created project fails to enqueue, so a project is
 	// never left empty. Idempotent: deleting a missing project is not an error.

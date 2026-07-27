@@ -111,6 +111,7 @@ func run() error {
 		provider: prov,
 		method:   m,
 		fetch:    newHTTPFetcher(30 * time.Second),
+		projects: projectStore,
 		workDir:  filepath.Join(os.TempDir(), "replichai-runs"),
 		delay:    delay,
 	}
