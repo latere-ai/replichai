@@ -136,6 +136,7 @@ export const getTranscript = (id: string) => fetch(`/jobs/${id}/transcript`).the
 // that works even when the underlying repository stays private.
 export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`).then(json<Reproduction>)
 export const listArtifacts = (id: string) => fetch(`/jobs/${id}/artifacts`).then(json<{ files: string[] }>)
+export const artifactUrl = (id: string, path: string) => `/jobs/${id}/artifact?path=${encodeURIComponent(path)}`
 export const getArtifact = (id: string, path: string) =>
   fetch(`/jobs/${id}/artifact?path=${encodeURIComponent(path)}`).then((r) => {
     if (!r.ok) throw new Error(`${r.status}`)

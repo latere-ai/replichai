@@ -671,9 +671,32 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 		writeReadError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	// Serve images with a real image type so the browser renders them; serve
+	// everything else as plain text (never text/html — a committed .html must not
+	// execute on our origin). nosniff stops the browser from re-sniffing it.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Type", artifactContentType(path))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
+}
+
+// artifactContentType maps a committed file's extension to a safe content type:
+// a real image type for images, plain text for everything else.
+func artifactContentType(path string) string {
+	switch strings.ToLower(path[strings.LastIndex(path, ".")+1:]) {
+	case "png":
+		return "image/png"
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "gif":
+		return "image/gif"
+	case "webp":
+		return "image/webp"
+	case "svg":
+		return "image/svg+xml"
+	default:
+		return "text/plain; charset=utf-8"
+	}
 }
 
 // parseTranscriptEvents parses the newline-delimited provider.Event stream
