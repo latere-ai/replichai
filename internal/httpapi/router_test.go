@@ -279,6 +279,46 @@ func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 	}
 }
 
+// fakeRepoPub records which repositories were flipped public.
+type fakeRepoPub struct{ flipped []string }
+
+func (f *fakeRepoPub) SetPublic(_ context.Context, repo string) error {
+	f.flipped = append(f.flipped, repo)
+	return nil
+}
+
+// 006f: the owner may opt the forge repo out of the public flip — the project
+// still goes public in-app, but SetPublic is not called.
+func TestPublicFlipRepoOptOut(t *testing.T) {
+	pub := &fakeRepoPub{}
+	d := testDeps(allowAll)
+	d.RepoPublisher = pub
+	h := NewRouter(d).Handler()
+
+	// Default (flip_repo omitted): the repository is flipped.
+	p1, _ := d.Projects.Create(context.Background(), "me", "One")
+	_ = publishInto(t, d.Jobs, "me", p1.ID, "r1")
+	if w := do(t, h, "POST", "/projects/"+p1.ID+"/public", `{"attestation_version":"v1"}`, "me"); w.Code != http.StatusOK {
+		t.Fatalf("default flip: status %d", w.Code)
+	}
+	if len(pub.flipped) != 1 || pub.flipped[0] != "r1" {
+		t.Fatalf("default should flip the repo, flipped=%v", pub.flipped)
+	}
+
+	// Opt-out (flip_repo:false): the project goes public but the repo is not flipped.
+	p2, _ := d.Projects.Create(context.Background(), "me", "Two")
+	_ = publishInto(t, d.Jobs, "me", p2.ID, "r1")
+	if w := do(t, h, "POST", "/projects/"+p2.ID+"/public", `{"attestation_version":"v1","flip_repo":false}`, "me"); w.Code != http.StatusOK {
+		t.Fatalf("opt-out flip: status %d", w.Code)
+	}
+	if len(pub.flipped) != 1 {
+		t.Errorf("opt-out must not flip the repo, flipped=%v", pub.flipped)
+	}
+	if got, _ := d.Projects.Get(context.Background(), p2.ID); got.Visibility != project.VisibilityPublic {
+		t.Errorf("opt-out project should still be public in-app")
+	}
+}
+
 // 006f AC8: a public project appears in the public zone to another signed-in
 // user and opens; a private one never does.
 func TestPublicZone(t *testing.T) {

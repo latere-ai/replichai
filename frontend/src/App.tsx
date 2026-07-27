@@ -294,6 +294,7 @@ function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID:
   const { t } = i18n
   const [open, setOpen] = useState(false)
   const [affirmed, setAffirmed] = useState(false)
+  const [flipRepo, setFlipRepo] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -302,7 +303,7 @@ function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID:
     setBusy(true)
     setErr('')
     try {
-      await makeProjectPublic(projectID)
+      await makeProjectPublic(projectID, flipRepo)
       onPublished()
     } catch (e) {
       setErr((e as Error).message === '409' ? t('publishNotClear') : t('publishError'))
@@ -325,6 +326,10 @@ function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID:
       <label className="affirm">
         <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
         <span>{t('publishAffirm')}</span>
+      </label>
+      <label className="affirm">
+        <input type="checkbox" checked={flipRepo} onChange={(e) => setFlipRepo(e.target.checked)} />
+        <span>{t('flipRepoLabel')}</span>
       </label>
       <div className="row">
         <button className="btn" disabled={!affirmed || busy} onClick={publish}>

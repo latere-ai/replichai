@@ -63,6 +63,7 @@ const strings: Record<Lang, Record<string, string>> = {
     publishBody:
       'Going public opens this project — its sessions, transcripts, and artifacts — to everyone on the platform, and cannot be undone. Only a project that passed the redistribution check can go public.',
     publishAffirm: 'I take responsibility for publishing these reproduction results.',
+    flipRepoLabel: 'Also make the GitHub repository public (uncheck to keep the repo private)',
     publishConfirm: 'Sign off & make public',
     publishCancel: 'Cancel',
     publishNotClear: 'This project cannot be made public: its reproduction did not pass the redistribution check.',
@@ -140,6 +141,7 @@ const strings: Record<Lang, Record<string, string>> = {
     publishBody:
       '设为公开后，此项目及其会话、记录与产物将对平台上所有人可见，且无法撤销。只有通过再分发检查的项目才能公开。',
     publishAffirm: '我对发布这些复现结果负责。',
+    flipRepoLabel: '同时将 GitHub 仓库设为公开（取消勾选则保持仓库私有）',
     publishConfirm: '签署并公开',
     publishCancel: '取消',
     publishNotClear: '此项目无法公开：其复现未通过再分发检查。',

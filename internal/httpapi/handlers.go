@@ -270,6 +270,11 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		AttestationVersion string `json:"attestation_version"`
+		// FlipRepo opts the forge repository into the public flip. Absent means
+		// yes (the common intent — publish the reproduction), so a GitHub-connected
+		// owner opts out by sending false: the in-app artifacts still go public,
+		// but the repository stays private.
+		FlipRepo *bool `json:"flip_repo"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	if strings.TrimSpace(body.AttestationVersion) == "" {
@@ -296,9 +301,11 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "publish_failed")
 		return
 	}
-	// Best-effort forge flip: the project is already public in-app; a repo flip
-	// failure must not fail the request, only be reported.
-	if rt.repoPub != nil {
+	// Best-effort forge flip, unless the owner opted the repository out: the
+	// project is already public in-app either way, and a repo flip failure must
+	// not fail the request, only be reported.
+	flipRepo := body.FlipRepo == nil || *body.FlipRepo
+	if flipRepo && rt.repoPub != nil {
 		for _, repo := range repos {
 			if err := rt.repoPub.SetPublic(r.Context(), repo); err != nil {
 				log.Printf("public flip: repo %s not flipped: %v", repo, err)
