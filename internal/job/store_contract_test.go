@@ -20,7 +20,7 @@ func runStoreContract(t *testing.T, s Store) {
 	ctx := context.Background()
 
 	// Enqueue and read back.
-	j, err := s.Enqueue(ctx, "sub", "arxiv:2302.03714", KindAudit, "proj")
+	j, err := s.Enqueue(ctx, "sub", "arxiv:2302.03714", KindAudit, "proj", "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -54,7 +54,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// Observe records status in place, without a phase change.
-	obs, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "")
+	obs, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
 	if err := s.Observe(ctx, obs.ID, provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 7}}); err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -63,7 +63,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// A failure records its cause and lands in failed (submitted -> failed).
-	fj, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "")
+	fj, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
 	_ = s.Advance(ctx, fj.ID, PhaseFailed, func(jb *Job) { jb.Err = "boom" })
 	if got, _ := s.Get(ctx, fj.ID); got.Phase != PhaseFailed || got.Err != "boom" {
 		t.Errorf("failure: phase=%s err=%q", got.Phase, got.Err)
@@ -83,9 +83,9 @@ func runStoreContract(t *testing.T, s Store) {
 	// ListByPrincipal is scoped to one owner and newest-first. Enqueue two jobs
 	// for "owner" and one for a stranger, then assert the stranger's job never
 	// appears and the two are ordered newest-first.
-	first, _ := s.Enqueue(ctx, "owner", "ref-a", KindAudit, "")
-	second, _ := s.Enqueue(ctx, "owner", "ref-b", KindAudit, "")
-	_, _ = s.Enqueue(ctx, "stranger", "ref-c", KindAudit, "")
+	first, _ := s.Enqueue(ctx, "owner", "ref-a", KindAudit, "", "")
+	second, _ := s.Enqueue(ctx, "owner", "ref-b", KindAudit, "", "")
+	_, _ = s.Enqueue(ctx, "stranger", "ref-c", KindAudit, "", "")
 	mine, err := s.ListByPrincipal(ctx, "owner")
 	if err != nil {
 		t.Fatalf("ListByPrincipal: %v", err)
@@ -107,6 +107,52 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 }
 
+// runGuardContract asserts the double-trigger guard both stores must enforce:
+// a non-terminal session for a paper blocks a second one (in the project or
+// anywhere the principal owns), a deliberate re-run after the prior finished is
+// allowed, a different paper is never blocked, and an empty key never guards.
+func runGuardContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+	const key = "arxiv:2302.03714"
+
+	// First session for the paper opens.
+	first, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key)
+	if err != nil {
+		t.Fatalf("first enqueue: %v", err)
+	}
+
+	// A second, same paper same project, is refused — the accidental double-fire.
+	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key); !errors.Is(err, ErrActiveSession) {
+		t.Errorf("same project double-fire: want ErrActiveSession, got %v", err)
+	}
+	// Same paper, a different project the same principal owns, is also refused —
+	// the per-principal guard that closes the bare-submit hole.
+	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projB", key); !errors.Is(err, ErrActiveSession) {
+		t.Errorf("cross-project double-fire: want ErrActiveSession, got %v", err)
+	}
+	// A different paper in the same project is never blocked.
+	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", "arxiv:9999.99999"); err != nil {
+		t.Errorf("different paper blocked: %v", err)
+	}
+	// An empty key never guards (an experiment, or an unkeyable ref).
+	for i := 0; i < 2; i++ {
+		if _, err := s.Enqueue(ctx, "owner", "exp", KindExperiment, "projA", ""); err != nil {
+			t.Errorf("empty-key enqueue %d blocked: %v", i, err)
+		}
+	}
+
+	// Finish the first session; a re-run of the same paper is now allowed.
+	for _, p := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing, PhaseDone} {
+		if err := s.Advance(ctx, first.ID, p, nil); err != nil {
+			t.Fatalf("advance first to %s: %v", p, err)
+		}
+	}
+	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key); err != nil {
+		t.Errorf("re-run after done blocked: %v", err)
+	}
+}
+
 // runClaimContention asserts concurrent claims are disjoint — the assertion that
 // only really means something against Postgres's SKIP LOCKED.
 func runClaimContention(t *testing.T, s Store) {
@@ -114,7 +160,7 @@ func runClaimContention(t *testing.T, s Store) {
 	ctx := context.Background()
 	const n = 30
 	for i := 0; i < n; i++ {
-		if _, err := s.Enqueue(ctx, "sub", "ref", KindAudit, ""); err != nil {
+		if _, err := s.Enqueue(ctx, "sub", "ref", KindAudit, "", ""); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}
@@ -145,6 +191,7 @@ func runClaimContention(t *testing.T, s Store) {
 
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewMemStore())
+	runGuardContract(t, NewMemStore())
 	runClaimContention(t, NewMemStore())
 }
 
@@ -170,6 +217,10 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	}
 
 	runStoreContract(t, NewPGStore(pool))
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	runGuardContract(t, NewPGStore(pool))
 	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}

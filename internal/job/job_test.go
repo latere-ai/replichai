@@ -46,7 +46,7 @@ func TestTransitionsAreConstrained(t *testing.T) {
 
 func TestAdvanceRefusesIllegalTransition(t *testing.T) {
 	s := NewMemStore()
-	j, _ := s.Enqueue(context.Background(), "sub-1", "arxiv:1", KindAudit, "")
+	j, _ := s.Enqueue(context.Background(), "sub-1", "arxiv:1", KindAudit, "", "")
 
 	// submitted -> running skips resolving and must be refused.
 	if err := s.Advance(context.Background(), j.ID, PhaseRunning, nil); !errors.Is(err, ErrIllegalTransition) {
@@ -65,7 +65,7 @@ func TestFailureFromAnyActivePhase(t *testing.T) {
 	ctx := context.Background()
 	for _, start := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing} {
 		s := NewMemStore()
-		j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "")
+		j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
 		// Walk to the phase under test.
 		for _, p := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing} {
 			if err := s.Advance(ctx, j.ID, p, nil); err != nil {
@@ -96,7 +96,7 @@ func TestLifecycleWalkRecordsEveryPhase(t *testing.T) {
 	s := NewMemStore(WithClock(func() time.Time { return <-tick }))
 	ctx := context.Background()
 
-	j, _ := s.Enqueue(ctx, "sub", "arxiv:2302.03714", KindAudit, "proj-1")
+	j, _ := s.Enqueue(ctx, "sub", "arxiv:2302.03714", KindAudit, "proj-1", "")
 	for _, p := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing, PhaseDone} {
 		if err := s.Advance(ctx, j.ID, p, nil); err != nil {
 			t.Fatalf("advance to %s: %v", p, err)
@@ -118,7 +118,7 @@ func TestLifecycleWalkRecordsEveryPhase(t *testing.T) {
 }
 
 func TestEnqueueRejectsEmptyRef(t *testing.T) {
-	if _, err := NewMemStore().Enqueue(context.Background(), "sub", "  ", KindAudit, ""); !errors.Is(err, ErrEmptyRef) {
+	if _, err := NewMemStore().Enqueue(context.Background(), "sub", "  ", KindAudit, "", ""); !errors.Is(err, ErrEmptyRef) {
 		t.Fatalf("an empty reference should be refused, got %v", err)
 	}
 }
@@ -131,7 +131,7 @@ func TestGetMissingIsNotFound(t *testing.T) {
 
 func TestStoreCopiesOnBoundary(t *testing.T) {
 	s := NewMemStore()
-	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "")
+	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "", "")
 	j.PhaseAt[PhaseSubmitted] = time.Unix(0, 0) // mutate the returned copy
 	got, _ := s.Get(context.Background(), j.ID)
 	if got.PhaseAt[PhaseSubmitted].Equal(time.Unix(0, 0)) {
@@ -148,7 +148,7 @@ func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 	ctx := context.Background()
 	const n = 50
 	for i := 0; i < n; i++ {
-		if _, err := s.Enqueue(ctx, "sub", "ref", KindAudit, ""); err != nil {
+		if _, err := s.Enqueue(ctx, "sub", "ref", KindAudit, "", ""); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}

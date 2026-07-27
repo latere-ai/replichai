@@ -71,7 +71,7 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 		t.Run(string(k), func(t *testing.T) {
 			s := NewMemStore()
 			r := &fakeRunner{repo: "open-hai/x"}
-			j, _ := s.Enqueue(context.Background(), "sub", "ref", k, "proj")
+			j, _ := s.Enqueue(context.Background(), "sub", "ref", k, "proj", "")
 
 			drained(t, NewWorker(s, r))
 
@@ -101,7 +101,7 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 func TestProgressIsObservedOntoTheJob(t *testing.T) {
 	s := NewMemStore()
 	r := &fakeRunner{observed: provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 42}}}
-	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "")
+	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "", "")
 
 	drained(t, NewWorker(s, r))
 
@@ -116,7 +116,7 @@ func TestWorkerFailurePhases(t *testing.T) {
 	for _, at := range []string{"resolve", "execute", "publish"} {
 		t.Run(at, func(t *testing.T) {
 			s := NewMemStore()
-			j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "")
+			j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "", "")
 			drained(t, NewWorker(s, &fakeRunner{failAt: at}))
 
 			got, _ := s.Get(context.Background(), j.ID)
@@ -134,13 +134,13 @@ func TestWorkerFailurePhases(t *testing.T) {
 func TestReapFailsStrandedJobs(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	stranded, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "")
+	stranded, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
 	// Claim moves it to resolving; then the "process crashes" — nothing advances it.
 	if _, ok, _ := s.Claim(ctx); !ok {
 		t.Fatal("claim should have taken the job")
 	}
 	// A fresh submitted job must be left alone (still claimable).
-	fresh, _ := s.Enqueue(ctx, "sub", "ref2", KindAudit, "")
+	fresh, _ := s.Enqueue(ctx, "sub", "ref2", KindAudit, "", "")
 
 	w := NewWorker(s, &fakeRunner{})
 	reaped, err := w.Reap(ctx)
@@ -163,7 +163,7 @@ func TestStartProcessesThePool(t *testing.T) {
 	s := NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	for i := 0; i < 5; i++ {
-		_, _ = s.Enqueue(ctx, "sub", "ref", KindAudit, "")
+		_, _ = s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
 	}
 
 	w := NewWorker(s, &fakeRunner{}, WithPoll(time.Millisecond),

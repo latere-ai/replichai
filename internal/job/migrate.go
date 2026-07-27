@@ -33,6 +33,20 @@ CREATE TABLE jobs (
 -- The claim query hits this partial index: only submitted rows are claimable.
 CREATE INDEX jobs_claimable ON jobs (created_at) WHERE phase = 'submitted';
 `},
+	{2, `
+-- A session records the offline paper identity it targets (006g), so the guard
+-- can key on it. Empty for an experiment or an unkeyable ref, and then unguarded.
+ALTER TABLE jobs ADD COLUMN paper_key TEXT NOT NULL DEFAULT '';
+-- The double-trigger guard, structural: at most one non-terminal session per
+-- paper — in a project (so two people cannot double-run a shared project) and
+-- per principal (so one person cannot double-run the same paper across their
+-- own projects). Terminal and unkeyed rows are excluded, so a re-run after the
+-- prior finished, and every experiment, are free.
+CREATE UNIQUE INDEX jobs_active_paper_project ON jobs (project_id, paper_key)
+	WHERE phase NOT IN ('done','failed') AND paper_key <> '';
+CREATE UNIQUE INDEX jobs_active_paper_principal ON jobs (principal, paper_key)
+	WHERE phase NOT IN ('done','failed') AND paper_key <> '';
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own
