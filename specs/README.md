@@ -31,7 +31,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **The app runs end to end**: `docker compose up` (or `make up`) brings up Postgres + the server, which serves the React frontend (006e) and the API. A researcher signs in, submits a paper URL, and watches its phases stream live to `done` behind the real fail-closed gate. Production is provisioned and fail-closed.
 
-**Designed, not built:** 006f's collaboration API and owner public flip with its sign-off (and the code removal of the trusted tier it carries). 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
+**Designed, being built:** [006i](006i-server-side-mount-and-publish.md) wires the CLI's live-mount publish into the server `engineRunner`, so a web-submitted session gets a real repository, manifest, and committed transcript rather than evaporating with the sandbox — the backend half of 006f, extracting the CLI's finalize into a shared `publish.FinalizeLive`.
+
+**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
