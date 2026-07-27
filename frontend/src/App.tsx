@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fileKind, highlightIn, langOf, renderMarkdown } from './artifact'
+import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
   addMember,
   artifactUrl,
@@ -655,14 +655,27 @@ function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
           ))}
         </div>
       </div>
-      {sel ? <FileView i18n={i18n} jobId={session.id} path={sel} /> : <div className="card card-pad"><div className="empty">{t('selectArtifact')}</div></div>}
+      {sel ? (
+        <FileView
+          i18n={i18n}
+          jobId={session.id}
+          path={sel}
+          onNavigate={(target) => {
+            // A relative link resolves to a repository path; follow it in-app when
+            // it names a file we have, rather than letting the browser navigate.
+            if (files.includes(target)) setSel(target)
+          }}
+        />
+      ) : (
+        <div className="card card-pad"><div className="empty">{t('selectArtifact')}</div></div>
+      )}
     </div>
   )
 }
 
 // FileView renders one artifact by its kind: an image inline, markdown as
 // formatted (sanitized) HTML, code syntax-highlighted, anything else as text.
-function FileView({ i18n, jobId, path }: { i18n: I18n; jobId: string; path: string }) {
+function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string; path: string; onNavigate: (target: string) => void }) {
   const { t } = i18n
   const kind = fileKind(path)
   const [text, setText] = useState<string | null>(null)
@@ -678,9 +691,35 @@ function FileView({ i18n, jobId, path }: { i18n: I18n; jobId: string; path: stri
       .catch(() => setErr(true))
   }, [jobId, path, kind])
 
+  // After the markdown mounts: highlight code, point relative image sources at
+  // the in-app artifact endpoint (so a committed PNG renders, not 404s), and
+  // send external links to a new tab so the app is never navigated away.
   useEffect(() => {
-    if (text !== null) highlightIn(bodyRef.current)
-  })
+    const el = bodyRef.current
+    if (text === null || !el) return
+    highlightIn(el)
+    el.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') ?? ''
+      if (src && !isExternalHref(src)) img.src = artifactUrl(jobId, resolveRelative(path, src))
+    })
+    el.querySelectorAll('a').forEach((a) => {
+      if (isExternalHref(a.getAttribute('href') ?? '')) {
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+      }
+    })
+  }, [text, jobId, path])
+
+  // A click on a repository-relative link switches the viewed file in-app
+  // instead of letting the browser resolve it against the SPA's URL.
+  const onBodyClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest('a')
+    if (!a) return
+    const href = a.getAttribute('href') ?? ''
+    if (!href || isExternalHref(href)) return
+    e.preventDefault()
+    onNavigate(resolveRelative(path, href))
+  }
 
   return (
     <div className="card card-pad" style={{ minWidth: 0 }}>
@@ -694,7 +733,7 @@ function FileView({ i18n, jobId, path }: { i18n: I18n; jobId: string; path: stri
       ) : text === null ? (
         <div className="center-load">…</div>
       ) : kind === 'markdown' ? (
-        <div ref={bodyRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+        <div ref={bodyRef} className="markdown-body" onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
       ) : kind === 'code' ? (
         <div ref={bodyRef}>
           <pre className="event-io" style={{ maxHeight: '72vh' }}>
