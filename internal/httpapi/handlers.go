@@ -106,7 +106,7 @@ func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_url")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), principal(r), body.URL, job.KindAudit, body.Project)
+	j, err := rt.jobs.Enqueue(r.Context(), principal(r), body.URL, job.KindAudit, body.Project, "")
 	if err != nil {
 		if errors.Is(err, job.ErrEmptyRef) {
 			writeError(w, http.StatusBadRequest, "missing_url")

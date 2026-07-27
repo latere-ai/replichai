@@ -56,6 +56,12 @@ var (
 	ErrIllegalTransition = errors.New("illegal job phase transition")
 	// ErrEmptyRef reports enqueuing with no paper or experiment reference.
 	ErrEmptyRef = errors.New("job needs a paper or experiment reference")
+	// ErrActiveSession reports a submit refused because a non-terminal session for
+	// the same paper already exists — in the same project, or anywhere the same
+	// principal owns. It is the double-trigger guard, a 409, not a 500: a
+	// deliberate re-run after the prior finished is allowed, an accidental
+	// concurrent double-fire is not.
+	ErrActiveSession = errors.New("an active session for this paper already exists")
 )
 
 // Job is the durable record of one submission.
@@ -63,8 +69,9 @@ type Job struct {
 	ID        string             `json:"id"`
 	Kind      Kind               `json:"kind"`
 	Principal string             `json:"principal"`            // who submitted it; an opaque OIDC sub (006c)
-	ProjectID string             `json:"project_id,omitempty"` // the project it belongs to (007)
+	ProjectID string             `json:"project_id,omitempty"` // the project it belongs to (006g)
 	Ref       string             `json:"ref"`                  // the paper reference, or an experiment id
+	PaperKey  string             `json:"paper_key,omitempty"`  // the offline paper identity the session targets, keying the double-trigger guard (006g)
 	Phase     Phase              `json:"phase"`
 	Status    provider.RunStatus `json:"status"`              // latest observation while running
 	RepoName  string             `json:"repo_name,omitempty"` // set once publishing begins

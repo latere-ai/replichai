@@ -36,8 +36,9 @@ func NewMemStore(opts ...MemOption) *MemStore {
 	return s
 }
 
-// Enqueue records a new submitted job.
-func (s *MemStore) Enqueue(_ context.Context, principal, ref string, k Kind, project string) (Job, error) {
+// Enqueue records a new submitted job, refusing a paper already running under
+// the double-trigger guard.
+func (s *MemStore) Enqueue(_ context.Context, principal, ref string, k Kind, project, paperKey string) (Job, error) {
 	if strings.TrimSpace(ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
@@ -47,12 +48,26 @@ func (s *MemStore) Enqueue(_ context.Context, principal, ref string, k Kind, pro
 	}
 	now := s.clock()
 	j := Job{
-		ID: id, Kind: k, Principal: principal, ProjectID: project, Ref: ref,
+		ID: id, Kind: k, Principal: principal, ProjectID: project, Ref: ref, PaperKey: paperKey,
 		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// The guard: at most one non-terminal session per paper, per project and per
+	// principal. An empty key (an experiment, or a paper that could not be keyed)
+	// never guards. This mirrors the two partial unique indexes Postgres enforces,
+	// so the in-memory and database stores refuse the same double-fire.
+	if paperKey != "" {
+		for _, other := range s.jobs {
+			if other.PaperKey != paperKey || other.Phase.Terminal() {
+				continue
+			}
+			if other.ProjectID == project || other.Principal == principal {
+				return Job{}, ErrActiveSession
+			}
+		}
+	}
 	s.jobs[id] = j
 	s.order = append(s.order, id)
 	return cloneJob(j), nil

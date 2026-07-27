@@ -94,7 +94,7 @@ func TestSubmitValidation(t *testing.T) {
 
 func TestGetJob(t *testing.T) {
 	d := testDeps(allowAll)
-	j, _ := d.Jobs.Enqueue(context.Background(), "sub", "ref", job.KindAudit, "")
+	j, _ := d.Jobs.Enqueue(context.Background(), "sub", "ref", job.KindAudit, "", "")
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "sub"); w.Code != http.StatusOK {
@@ -109,8 +109,8 @@ func TestGetJob(t *testing.T) {
 // Another principal's jobs never appear, even through the same handler.
 func TestListMyJobs(t *testing.T) {
 	d := testDeps(allowAll)
-	mine, _ := d.Jobs.Enqueue(context.Background(), "me", "ref-mine", job.KindAudit, "")
-	_, _ = d.Jobs.Enqueue(context.Background(), "other", "ref-other", job.KindAudit, "")
+	mine, _ := d.Jobs.Enqueue(context.Background(), "me", "ref-mine", job.KindAudit, "", "")
+	_, _ = d.Jobs.Enqueue(context.Background(), "other", "ref-other", job.KindAudit, "", "")
 	h := NewRouter(d).Handler()
 
 	w := do(t, h, "GET", "/jobs", "", "me")

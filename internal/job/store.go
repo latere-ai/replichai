@@ -13,8 +13,12 @@ import (
 // The queue is the table: a worker claims a submitted job and drives it through
 // the phases, writing each transition back. There is no external broker.
 type Store interface {
-	// Enqueue records a new submission as a submitted job.
-	Enqueue(ctx context.Context, principal, ref string, k Kind, project string) (Job, error)
+	// Enqueue records a new submission as a submitted job — a session in a
+	// project. paperKey is the offline paper identity (006g); when non-empty it
+	// keys the double-trigger guard, and a submit for a paper already running
+	// (in the project, or anywhere the principal owns) is refused with
+	// ErrActiveSession rather than opening a second concurrent run.
+	Enqueue(ctx context.Context, principal, ref string, k Kind, project, paperKey string) (Job, error)
 	// Get returns one job by id, or ErrNotFound.
 	Get(ctx context.Context, id string) (Job, error)
 	// ListByPrincipal returns a principal's own jobs, newest first, so a signed-in

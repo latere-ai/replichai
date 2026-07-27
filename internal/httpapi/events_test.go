@@ -19,7 +19,7 @@ import (
 func TestSSESnapshotThenStream(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := context.Background()
-	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "")
+	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "", "")
 	// The run is already mid-flight before anyone connects.
 	_ = store.Advance(ctx, j.ID, job.PhaseResolving, nil)
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
@@ -102,7 +102,7 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 	store := job.NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "")
+	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "", "")
 
 	rt := NewRouter(Deps{Jobs: store, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
 	srv := httptest.NewServer(rt.Handler())
@@ -148,7 +148,7 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 func TestSSEResumesFromLastEventID(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := context.Background()
-	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "")
+	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "", "")
 	// A terminal job: the handler sends one snapshot and returns.
 	_ = store.Advance(ctx, j.ID, job.PhaseResolving, nil)
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)

@@ -9,10 +9,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/latere-ai/replichai/internal/provider"
 )
+
+// uniqueViolation is the SQLSTATE Postgres returns when an insert breaks a
+// unique index — here, the double-trigger guard's partial indexes.
+const uniqueViolation = "23505"
 
 // PGStore is the Postgres implementation of Store. It satisfies the same
 // contract the in-memory store does — the phase machine is enforced in Go's
@@ -29,7 +34,7 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, phase, status, repo_name, error, created_at, updated_at, phase_at`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at`
 
 // scanJob reads one row in jobColumns order.
 func scanJob(row pgx.Row) (Job, error) {
@@ -38,7 +43,7 @@ func scanJob(row pgx.Row) (Job, error) {
 		statusRaw  []byte
 		phaseAtRaw []byte
 	)
-	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.Phase,
+	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
 		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
@@ -59,8 +64,10 @@ func scanJob(row pgx.Row) (Job, error) {
 	return j, nil
 }
 
-// Enqueue inserts a new submitted job.
-func (s *PGStore) Enqueue(ctx context.Context, principal, ref string, k Kind, project string) (Job, error) {
+// Enqueue inserts a new submitted job. A unique_violation on either partial
+// guard index (a non-terminal session for the same paper in this project, or
+// anywhere this principal owns) surfaces as ErrActiveSession — a 409, not a 500.
+func (s *PGStore) Enqueue(ctx context.Context, principal, ref string, k Kind, project, paperKey string) (Job, error) {
 	if strings.TrimSpace(ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
@@ -73,11 +80,17 @@ func (s *PGStore) Enqueue(ctx context.Context, principal, ref string, k Kind, pr
 	phaseAt, _ := json.Marshal(map[Phase]time.Time{PhaseSubmitted: now})
 
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO jobs (id, kind, principal, project_id, ref, phase, status, repo_name, error, created_at, updated_at, phase_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,'','',$8,$8,$9)
+		INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10)
 		RETURNING `+jobColumns,
-		id, k, principal, project, ref, PhaseSubmitted, status, now, phaseAt)
-	return scanJob(row)
+		id, k, principal, project, ref, paperKey, PhaseSubmitted, status, now, phaseAt)
+	j, err := scanJob(row)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation &&
+		(pgErr.ConstraintName == "jobs_active_paper_project" || pgErr.ConstraintName == "jobs_active_paper_principal") {
+		return Job{}, ErrActiveSession
+	}
+	return j, err
 }
 
 // Get returns one job by id.
@@ -160,7 +173,7 @@ func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunSta
 
 // ListByPrincipal returns a principal's jobs, newest first.
 func (s *PGStore) ListByPrincipal(ctx context.Context, principal string) ([]Job, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE principal = $1 ORDER BY created_at DESC`, principal)
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE principal = $1 ORDER BY created_at DESC, id DESC`, principal)
 	if err != nil {
 		return nil, err
 	}
