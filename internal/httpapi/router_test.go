@@ -11,13 +11,14 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/project"
 )
 
 // allowAll is a permissive gate for testing the handlers behind the gate.
 var allowAll = GateFunc(func(*http.Request) (bool, string) { return true, "" })
 
 func testDeps(gate Gate) Deps {
-	return Deps{Jobs: job.NewMemStore(), Reproductions: &fakeRepro{}, Gate: gate}
+	return Deps{Jobs: job.NewMemStore(), Projects: project.NewMemStore(), Reproductions: &fakeRepro{}, Gate: gate}
 }
 
 type fakeRepro struct{ err, getErr error }
@@ -58,27 +59,83 @@ func do(t *testing.T, h http.Handler, method, path, body, principalSub string) *
 	return w
 }
 
-// AC1: POST /papers returns a job id without blocking on the run.
-func TestSubmitReturnsAJobWithoutBlocking(t *testing.T) {
+// submitResult is the shape POST /papers returns.
+type submitResult struct {
+	JobID     string `json:"job_id"`
+	ProjectID string `json:"project_id"`
+}
+
+func submit(t *testing.T, h http.Handler, body, sub string) (*httptest.ResponseRecorder, submitResult) {
+	t.Helper()
+	w := do(t, h, "POST", "/papers", body, sub)
+	var got submitResult
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	return w, got
+}
+
+// AC2: a bare submit (no project) opens a fresh project and its first session,
+// returning both ids without blocking on the run.
+func TestSubmitBareOpensAProjectAndSession(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
-	w := do(t, h, "POST", "/papers", `{"url":"https://arxiv.org/abs/2302.03714","project":"p1"}`, "sub-1")
+	w, got := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1")
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want 202", w.Code)
 	}
-	var got struct {
-		JobID string `json:"job_id"`
+	if got.JobID == "" || got.ProjectID == "" {
+		t.Fatalf("missing ids: %+v", got)
 	}
-	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if got.JobID == "" {
-		t.Fatal("no job id returned")
+	// The project exists, owned by the caller; the session persisted, submitted,
+	// under that project — the run has not started blocking anything.
+	p, err := d.Projects.Get(context.Background(), got.ProjectID)
+	if err != nil || p.Owner != "sub-1" {
+		t.Fatalf("project = %+v, err %v", p, err)
 	}
-	// The job persisted, submitted, and carries the principal — the run has not
-	// started blocking anything.
 	j, err := d.Jobs.Get(context.Background(), got.JobID)
-	if err != nil || j.Phase != job.PhaseSubmitted || j.Principal != "sub-1" {
-		t.Errorf("job = %+v, err %v", j, err)
+	if err != nil || j.Phase != job.PhaseSubmitted || j.Principal != "sub-1" || j.ProjectID != got.ProjectID {
+		t.Errorf("session = %+v, err %v", j, err)
+	}
+	if j.PaperKey != "arxiv:2302.03714" {
+		t.Errorf("session paper_key = %q, want arxiv:2302.03714", j.PaperKey)
+	}
+}
+
+// AC2: submitting with an owned project adds a second session to it.
+func TestSubmitToOwnedProjectAddsASession(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "sub-1", "My project")
+
+	w, got := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714","project":"`+p.ID+`"}`, "sub-1")
+	if w.Code != http.StatusAccepted || got.ProjectID != p.ID {
+		t.Fatalf("status %d, project %q; want 202 into %s", w.Code, got.ProjectID, p.ID)
+	}
+	sessions, _ := d.Jobs.ListByProject(context.Background(), p.ID)
+	if len(sessions) != 1 {
+		t.Fatalf("project has %d sessions, want 1", len(sessions))
+	}
+}
+
+// AC3: a second concurrent submit of the same paper is refused 409, and creates
+// no orphan project — the double-trigger guard, including its bare-submit hole.
+func TestSubmitDoubleFireIsRefused(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+
+	if w, _ := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1"); w.Code != http.StatusAccepted {
+		t.Fatalf("first submit: %d", w.Code)
+	}
+	// Same paper again, still running: refused, even though it is a bare submit
+	// that would otherwise open a brand-new project.
+	w, _ := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("double-fire status = %d, want 409", w.Code)
+	}
+	// Exactly one project exists — the compensating delete removed the second.
+	ps, _ := d.Projects.ListByOwner(context.Background(), "sub-1")
+	if len(ps) != 1 {
+		t.Errorf("owner has %d projects, want 1 (no orphan)", len(ps))
 	}
 }
 
@@ -89,6 +146,65 @@ func TestSubmitValidation(t *testing.T) {
 	}
 	if w := do(t, h, "POST", "/papers", `not json`, "sub"); w.Code != http.StatusBadRequest {
 		t.Errorf("bad json: status %d, want 400", w.Code)
+	}
+	// A reference that is not a DOI, arXiv ID, or URL is rejected at the edge.
+	if w := do(t, h, "POST", "/papers", `{"url":"just some words"}`, "sub"); w.Code != http.StatusBadRequest {
+		t.Errorf("garbage url: status %d, want 400", w.Code)
+	}
+	// Submitting into a project the caller does not own is refused.
+	d := testDeps(allowAll)
+	other, _ := d.Projects.Create(context.Background(), "someone-else", "Theirs")
+	h2 := NewRouter(d).Handler()
+	if w := do(t, h2, "POST", "/papers", `{"url":"https://arxiv.org/abs/2302.03714","project":"`+other.ID+`"}`, "me"); w.Code != http.StatusForbidden {
+		t.Errorf("not-owner submit: status %d, want 403", w.Code)
+	}
+	// Submitting into a project that does not exist is a 404.
+	if w := do(t, h2, "POST", "/papers", `{"url":"https://arxiv.org/abs/2302.03714","project":"nope"}`, "me"); w.Code != http.StatusNotFound {
+		t.Errorf("missing-project submit: status %d, want 404", w.Code)
+	}
+}
+
+// AC1: GET /projects lists the caller's own projects with a session count, and
+// GET /projects/{id} returns a project with its sessions, refusing others'.
+func TestProjectListAndDetail(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+
+	// Two bare submits for the same owner open two projects.
+	_, a := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "me")
+	_, _ = submit(t, h, `{"url":"https://doi.org/10.1145/3313831"}`, "me")
+	// A stranger's project must never appear in my list or be readable by me.
+	strangerP, _ := d.Projects.Create(context.Background(), "stranger", "Theirs")
+
+	w := do(t, h, "GET", "/projects", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d", w.Code)
+	}
+	var list []ProjectView
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list) != 2 {
+		t.Fatalf("listed %d projects, want 2", len(list))
+	}
+	for _, p := range list {
+		if p.SessionCount != 1 {
+			t.Errorf("project %s count = %d, want 1", p.ID, p.SessionCount)
+		}
+	}
+
+	// Detail returns the project and its one session.
+	w = do(t, h, "GET", "/projects/"+a.ProjectID, "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("detail status = %d", w.Code)
+	}
+	var detail ProjectDetail
+	_ = json.Unmarshal(w.Body.Bytes(), &detail)
+	if detail.Project.ID != a.ProjectID || len(detail.Sessions) != 1 {
+		t.Errorf("detail = %+v", detail)
+	}
+
+	// Another owner's project is refused, not disclosed.
+	if w := do(t, h, "GET", "/projects/"+strangerP.ID, "", "me"); w.Code != http.StatusForbidden {
+		t.Errorf("stranger project detail: status %d, want 403", w.Code)
 	}
 }
 

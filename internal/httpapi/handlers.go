@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/project"
 )
 
 // Identity is the authenticated caller as the auth middleware (006c) resolved
@@ -55,6 +57,8 @@ func (rt *Router) routes() {
 	// sign-in and /me routes join the open set with 006c.
 	rt.openHandle("GET", "/healthz", rt.health)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
+	rt.gatedHandle("GET", "/projects", rt.listProjects)
+	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
@@ -86,8 +90,11 @@ func (rt *Router) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// submitPaper enqueues a job and returns its id without waiting on the run. No
-// request handler ever blocks on an audit.
+// submitPaper opens a replication session in a project (006g): it resolves the
+// paper's offline identity (rejecting garbage early, never touching the
+// network), then either opens a fresh project for it or adds a session to a
+// project the caller already owns. It returns the session and project ids
+// without waiting on the run — no request handler ever blocks on an audit.
 func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
 		// PDF ingestion is 006d; the URL path works today.
@@ -106,16 +113,143 @@ func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_url")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), principal(r), body.URL, job.KindAudit, body.Project, "")
+	// The offline paper key: it fails fast on a reference that is not a DOI,
+	// arXiv ID, or URL, and keys the double-trigger guard. The worker's Resolve
+	// phase does the enriching lookup; a submit never rides arXiv's availability.
+	paperKey, err := paper.Key(body.URL)
 	if err != nil {
-		if errors.Is(err, job.ErrEmptyRef) {
-			writeError(w, http.StatusBadRequest, "missing_url")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "enqueue_failed")
+		writeError(w, http.StatusBadRequest, "unresolvable_paper")
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID})
+	owner := principal(r)
+
+	if strings.TrimSpace(body.Project) == "" {
+		rt.submitToNewProject(w, r, owner, body.URL, paperKey)
+		return
+	}
+	rt.submitToExistingProject(w, r, owner, body.Project, body.URL, paperKey)
+}
+
+// submitToNewProject opens a fresh project and its first session. If the session
+// fails to enqueue — including the per-principal guard catching the same paper
+// already running under this owner — the just-created project is deleted, so a
+// project is never left empty.
+func (rt *Router) submitToNewProject(w http.ResponseWriter, r *http.Request, owner, url, paperKey string) {
+	proj, err := rt.projects.Create(r.Context(), owner, defaultTitle(url))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_create_failed")
+		return
+	}
+	j, err := rt.jobs.Enqueue(r.Context(), owner, url, job.KindAudit, proj.ID, paperKey)
+	if err != nil {
+		_ = rt.projects.Delete(r.Context(), proj.ID) // compensate: never leave an empty project
+		rt.writeEnqueueError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
+}
+
+// submitToExistingProject adds a session to a project the caller owns, refusing
+// a project they do not own and a paper already running in it.
+func (rt *Router) submitToExistingProject(w http.ResponseWriter, r *http.Request, owner, projectID, url, paperKey string) {
+	proj, err := rt.projects.Get(r.Context(), projectID)
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project_not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	if proj.Owner != owner {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return
+	}
+	j, err := rt.jobs.Enqueue(r.Context(), owner, url, job.KindAudit, proj.ID, paperKey)
+	if err != nil {
+		rt.writeEnqueueError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
+}
+
+// writeEnqueueError maps an Enqueue failure to a status: the double-trigger
+// guard is a 409, an empty reference a 400, anything else a 500.
+func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, job.ErrActiveSession):
+		writeError(w, http.StatusConflict, "active_session")
+	case errors.Is(err, job.ErrEmptyRef):
+		writeError(w, http.StatusBadRequest, "missing_url")
+	default:
+		writeError(w, http.StatusInternalServerError, "enqueue_failed")
+	}
+}
+
+// defaultTitle is the offline placeholder a new project is born with — the paper
+// reference itself. The worker enriches it with the resolved paper title once
+// its Resolve phase has run.
+func defaultTitle(url string) string { return strings.TrimSpace(url) }
+
+// ProjectView is a project in the owner's list, carrying how many sessions it
+// holds so the list needs no per-project read on the client.
+type ProjectView struct {
+	project.Project
+	SessionCount int `json:"session_count"`
+}
+
+// listProjects reports the caller's own projects, newest first, each with a
+// session count. The scope is the authenticated principal alone.
+func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
+	owner := principal(r)
+	projects, err := rt.projects.ListByOwner(r.Context(), owner)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	counts, err := rt.jobs.CountByProject(r.Context(), owner)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	out := make([]ProjectView, 0, len(projects))
+	for _, p := range projects {
+		out = append(out, ProjectView{Project: p, SessionCount: counts[p.ID]})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// ProjectDetail is one project with its sessions, newest first.
+type ProjectDetail struct {
+	Project  project.Project `json:"project"`
+	Sessions []job.Job       `json:"sessions"`
+}
+
+// getProject returns a project and its sessions, refusing a project the caller
+// does not own.
+func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	if proj.Owner != principal(r) {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return
+	}
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	if sessions == nil {
+		sessions = []job.Job{}
+	}
+	writeJSON(w, http.StatusOK, ProjectDetail{Project: proj, Sessions: sessions})
 }
 
 // listJobs reports the caller's own jobs, newest first — the projects they

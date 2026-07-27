@@ -30,6 +30,7 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/spa"
@@ -87,7 +88,7 @@ func run() error {
 	}
 	log.Printf("provider: %s", prov.Name())
 
-	jobStore, accessStore, closeStores, err := openStores(ctx, *dbURL)
+	jobStore, projectStore, accessStore, closeStores, err := openStores(ctx, *dbURL)
 	if err != nil {
 		return err
 	}
@@ -141,6 +142,7 @@ func run() error {
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
+		Projects:      projectStore,
 		Reproductions: &registryReader{source: reproSource},
 		Gate:          webauth.Gate(accessStore),
 		SPA:           spaHandler,
@@ -241,31 +243,38 @@ type accessStore interface {
 	SeedGrant(ctx context.Context, email string, tier access.Tier) error
 }
 
-// openStores returns the job and access stores over one Postgres pool (or their
-// in-memory equivalents), migrating both, with a matching close function.
-func openStores(ctx context.Context, dbURL string) (job.Store, accessStore, func(), error) {
+// openStores returns the job, project, and access stores over one Postgres pool
+// (or their in-memory equivalents), migrating each, with a matching close
+// function. The project migration runs after the job migration: its backfill
+// reads the jobs table.
+func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, accessStore, func(), error) {
 	if dbURL == "" {
 		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
-		return job.NewMemStore(), access.NewMemStore(), func() {}, nil
+		return job.NewMemStore(), project.NewMemStore(), access.NewMemStore(), func() {}, nil
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if err := waitForDB(ctx, pool); err != nil {
 		pool.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	if err := job.Migrate(ctx, pool); err != nil {
-		pool.Close()
-		return nil, nil, nil, err
-	}
-	if err := access.Migrate(ctx, pool); err != nil {
-		pool.Close()
-		return nil, nil, nil, err
+	for _, m := range []struct {
+		name string
+		fn   func(context.Context, *pgxpool.Pool) error
+	}{
+		{"job", job.Migrate},
+		{"access", access.Migrate},
+		{"project", project.Migrate}, // after job: its backfill reads jobs
+	} {
+		if err := m.fn(ctx, pool); err != nil {
+			pool.Close()
+			return nil, nil, nil, nil, err
+		}
 	}
 	log.Printf("connected to Postgres and applied migrations")
-	return job.NewPGStore(pool), access.NewPGAccess(pool), pool.Close, nil
+	return job.NewPGStore(pool), project.NewPGStore(pool), access.NewPGAccess(pool), pool.Close, nil
 }
 
 // waitForDB retries until Postgres accepts a connection, so the app can start
