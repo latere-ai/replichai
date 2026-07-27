@@ -1,8 +1,8 @@
 # 006f — Taking a reproduction out
 
-**Status:** core built (the mount publish, verifier, and invite; the two-token split and the public-visibility flip remain — see below)
-**Scope:** publishing a reproduction as a real GitHub repository with agent-authored commit history, granting it to a user by invitation, and — for trusted users — making it public. A child of [006](006-web-application.md).
-**Depends on:** [002](002-publishing-reproductions.md) (the redistribution gate, reused as a verifier; the manifest), [004](004-go-port.md) (the provider seam it extends). Consumes [006c](006-web-application.md) (the linked GitHub login, the trusted tier).
+**Status:** core built (the mount publish, verifier, and invite); the two-token split, the public flip, and the per-project collaboration + sign-off surface remain — see below.
+**Scope:** publishing a project's reproduction as a real GitHub repository with agent-authored commit history, inviting collaborators to the project, and — for the owner, with a signed responsibility attestation — making the project (and optionally its repository) public. A child of [006](006-web-application.md).
+**Depends on:** [002](002-publishing-reproductions.md) (the redistribution gate, reused as a verifier; the manifest), [004](004-go-port.md) (the provider seam it extends), [006g](006g-projects-and-replication-sessions.md) (the project that owns visibility and the membership it invites into). Consumes [006c](006-web-application.md) (the linked GitHub login, the membership store).
 
 ## Problem
 
@@ -39,7 +39,22 @@ The mount token grants write to exactly the one repository it belongs to. A leak
 
 **Ownership by invitation.** The user is added as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation they accept. The username is the *proven* GitHub login from 006c's link step, never a typed one. No user ever grants the service `repo` scope; the organisation invites outward.
 
-**Public is a trusted-tier, gated, one-way, recorded action.** Making a reproduction public is never automatic. It is available only to admin-set *trusted* users (006c); it refuses any repository whose manifest does not show it passed 002's gate (`redistribution.review == "clear"`); it is treated as irreversible; and it records the deciding principal. Trust, not ownership: any trusted user may publish any reproduction.
+**Collaboration is per-project, driven by the owner, and admits nobody to the platform.** A project owner (006g) invites a collaborator *by email* into the project — a row in the membership store (006c), bound one-way on the collaborator's first login. This is the app-level invitation; the forge collaborator invite above is what follows once that person has a *proven* GitHub login and a session's repository to be added to. The two are distinct on purpose: project membership decides who may *see and operate the project in the app*; the forge invite decides who may *push to the repository*. Adding a collaborator by email never grants a platform tier — the person still answers `not_invited` on every operator route until a platform admin grants them one (006c's orthogonality rule), and the UI says so when the owner adds an ungranted email. The membership store already exists (006c); this spec gives it its first HTTP surface: `GET/POST/DELETE /projects/{id}/members`, owner-only.
+
+**Public is an owner action, gated by a responsibility sign-off, one-way and recorded — at the project.** Visibility lives on the *project* (006g), not on a loose repository, and the *owner* decides. Making a project public is never automatic and never a bare toggle:
+
+- It refuses any project whose reproduction manifest does not show it passed 002's gate (`redistribution.review == "clear"`) — a flagged tree can never be made public, the fail-closed posture enforced after the fact.
+- It requires an **explicit responsibility sign-off**: the owner affirms, in a recorded attestation, that they are responsible for publishing these results. The signed attestation's text version, the deciding principal, and the timestamp are written to Postgres (`signed_off_by`, `signed_off_at`, `attestation_version`) as the app's audit trail.
+- Only then does it mark the project `public` and, *optionally*, flip the repository public.
+
+**The repository flip is optional; the project's artifacts are public either way.** Because every project's artifacts are also served by the app's own read-only pass-through (the file tree and download in [006](006-web-application.md), OSF-style), a project can go public without ever exposing — or even revealing — an underlying GitHub repository. Two modes fall out of [006](006-web-application.md)'s storage decision:
+
+- **No GitHub connection.** The user never sees a repo; the app serves the artifact file tree and a full download, and going public opens exactly those artifacts. The repo under `open-hai` stays a private implementation detail.
+- **GitHub-connected.** The user operates the repository externally (collaborator access, clone, push), and on going public may **opt the repository out** of the public flip — the in-app artifacts still go public, but `SetPublic` is not called, so the repo itself stays private.
+
+(Where those artifact files physically live — the `open-hai` repo today, a cheaper S3-backed git store later — is [006](006-web-application.md)'s `Store` seam and [008](008-drive-data-plane.md)'s drive integration, deferred and out of scope here.)
+
+Rejected: a trusted-tier that lets any trusted user publish anyone's project — it separates the decision from the person responsible for it. Rejected: flipping the repo without recording a sign-off — publishing results carries responsibility, and the record is what makes that responsibility real rather than implied.
 
 ## Interface
 
@@ -71,6 +86,25 @@ func (c *Client) SetPublic(ctx, owner, name string) error
 func (c *Client) MintMountToken(ctx, owner, name string) (string, error)
 ```
 
+The public flip is an owner action recorded on the project (006g), so the project store gains the sign-off write, and the membership store (006c) gains its owner-only HTTP surface:
+
+```go
+// On the project store (006g): the one-way public flip with its recorded sign-off.
+// Refuses a project whose manifest is not `clear`; writes signed_off_by / signed_off_at /
+// attestation_version and marks the project public; then flips the repo (SetPublic).
+SetPublic(ctx, owner Principal, projectID, attestationVersion string) error
+
+// Owner-only project membership routes (over the existing access.Membership store):
+//   GET    /projects/{id}/members            list contributors
+//   POST   /projects/{id}/members {email,role}   invite by email (binds one-way on first login)
+//   DELETE /projects/{id}/members/{email}    remove
+// And the public flip:
+//   POST   /projects/{id}/public {attestation_version}   owner + sign-off; 403 if not owner,
+//                                                          409 if manifest not clear
+```
+
+**The public zone shows the initiator.** A project made public joins a **public zone** — a read surface every signed-in user can browse — that lists public projects with their owner (the initiator who triggered the replication), the paper, and the verdict, and opens the full public project: its sessions, transcripts (006h), datasets, and artifacts. There is no org, so the public zone *is* the shared visibility — individuals and their public replications, nothing between.
+
 The manifest from 002 is reused unchanged. The redistribution *check* is not: `publish.VerifyTree` flags committed third-party data (by a blocklist of paper/dataset/weights/archive/database extensions, plus secret names), where 002's `PlanPublication` allow-listed a fixed output set. Different shape of input — a full repository, not a method's fixed output — demands a different rule.
 
 ## Acceptance criteria
@@ -80,8 +114,10 @@ The manifest from 002 is reused unchanged. The redistribution *check* is not: `p
 3. The bounded-workspace method keeps third-party data out of the repo — verified by an evaluation case whose reproduction repository contains only worker-written paths.
 4. `VerifyTree` flags committed third-party data (a paper PDF, dataset, weights, archive, database, or secret) but not a normal repository's own files (`.gitignore`, deps, tests, results); a flagged tree yields `redistribution.review != "clear"` and is refused for the public flip. A test asserts a real reproduction repo verifies clean.
 5. Inviting a user adds them as a collaborator and requests no `repo` scope from them — asserted against a fake GitHub server.
-6. `SetPublic` is trusted-only, refuses a repository whose manifest is not `clear`, and records the deciding principal — asserted directly.
+6. The public flip is **owner-only**, requires the recorded **sign-off** (writes `signed_off_by`/`signed_off_at`/`attestation_version`), refuses a project whose manifest is not `clear` (`409`), and is one-way — asserted directly, including that a non-owner is refused `403` and an un-signed request changes nothing.
+7. The per-project members API is owner-only and admits nobody to the platform: a test has an owner invite a contributor by email, asserts the contributor can access that private project but still answers `not_invited` on every platform operator route until a platform admin grants a tier.
+8. A project made public appears in the public zone to a different signed-in user, showing its owner/initiator, and opens the full project (sessions, transcripts, artifacts); a private project never appears there.
 
 ## Out of scope
 
-The web surfaces that drive this — the submit/track API (006a), the identity and trusted-tier gate (006c), the frontend (006e). Multi-tenancy. Rewriting history to *filter* a repository that committed third-party data — a violation is flagged and quarantined from publication, not laundered.
+The submit/track API (006a) and the project/session entity (006g), the identity gate (006c), the transcript viewer itself (006h), and the frontend rendering (006e) — this spec makes the flip, the sign-off record, the members API, and the public-zone data; those specs render and mount them. Multi-tenancy beyond individual users and the public zone (no orgs). Rewriting history to *filter* a repository that committed third-party data — a violation is flagged and quarantined from publication, not laundered.
