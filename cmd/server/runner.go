@@ -85,6 +85,19 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 	return nil
 }
 
+// Resume rejoins the managed-agents session a restart left in flight (by the id
+// observed onto the job) and drives it to completion, so the job's state tracks
+// the real backend session rather than being guessed as failed.
+func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
+	auditor := audit.New(e.provider, e.method, audit.WithObserver(observe))
+	res, err := auditor.Resume(ctx, provider.RunHandle{ID: j.Status.RunID}, j.Ref, filepath.Join(e.workDir, j.ID))
+	if err != nil {
+		return err
+	}
+	observe(res.Status)
+	return nil
+}
+
 // Close releases a managed-agents run by its session id, so a run left in flight
 // by a restart is archived (stopped) rather than orphaned. Idempotent.
 func (e *engineRunner) Close(ctx context.Context, runID string) error {

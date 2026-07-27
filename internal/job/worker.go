@@ -24,6 +24,10 @@ type Runner interface {
 	Resolve(ctx context.Context, j *Job) error
 	// Execute runs the audit or experiment, reporting progress through observe.
 	Execute(ctx context.Context, j *Job, observe func(provider.RunStatus)) error
+	// Resume reconnects to a run already in flight (by the id observed onto the
+	// job) and drives it to completion — how a restart rejoins a live backend
+	// session instead of guessing it failed.
+	Resume(ctx context.Context, j *Job, observe func(provider.RunStatus)) error
 	// Publish runs the publishing phase — 006f for an audit, a no-op for an
 	// experiment, which has nothing to publish.
 	Publish(ctx context.Context, j *Job) error
@@ -130,33 +134,34 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 	}
 }
 
-// Reap fails jobs a crash left mid-flight, so a restart does not leave them
-// stranded. A beta reaps rather than retries; the row was never lost, which is
-// the durability the table buys.
-func (w *Worker) Reap(ctx context.Context) (int, error) {
+// Reconcile brings jobs left in flight by a restart back in line with the
+// backend, rather than guessing they failed. A run whose backend session id was
+// observed is *rejoined* — resumed and driven to completion, reflecting the
+// backend's real outcome — so a session still running on the backend keeps being
+// tracked instead of being marked failed while it burns on. A job with no run to
+// rejoin (it never reached the backend, or its id was never recorded) cannot be
+// synced and is failed. It returns how many were resumed and how many failed.
+func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error) {
 	active, err := w.store.Active(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("list active: %w", err)
+		return 0, 0, fmt.Errorf("list active: %w", err)
 	}
-	reaped := 0
 	for _, j := range active {
 		if j.Phase == PhaseSubmitted {
 			continue // still claimable; not stranded
 		}
-		// Close the backend run this restart orphaned, so it stops rather than
-		// keeps running (and spending) unreachable. Only possible if its id was
-		// observed and persisted before the crash.
-		cause := fmt.Sprintf("interrupted by a restart in %s", j.Phase)
-		if j.Status.RunID != "" {
-			_ = w.runner.Close(ctx, j.Status.RunID)
-			cause = fmt.Sprintf("stopped: interrupted by a restart in %s; the agent session was closed", j.Phase)
+		if j.Phase == PhaseRunning && j.Status.RunID != "" {
+			go w.driveResume(ctx, j) // rejoin the live backend session
+			resumed++
+			continue
 		}
-		if err := w.store.Advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); err != nil {
-			return reaped, err
+		cause := fmt.Sprintf("interrupted by a restart in %s; no live run to rejoin", j.Phase)
+		if aErr := w.store.Advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); aErr != nil {
+			return resumed, failed, aErr
 		}
-		reaped++
+		failed++
 	}
-	return reaped, nil
+	return resumed, failed, nil
 }
 
 // drive walks one claimed job (already in resolving) through the phases under a
@@ -185,6 +190,38 @@ func (w *Worker) drive(pool context.Context, j Job) {
 		return
 	}
 	if err := w.runner.Execute(ctx, &j, observe); err != nil {
+		w.fail(j.ID, err)
+		return
+	}
+	if err := w.store.Advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
+		w.fail(j.ID, err)
+		return
+	}
+	if err := w.runner.Publish(ctx, &j); err != nil {
+		w.fail(j.ID, err)
+		return
+	}
+	_ = w.store.Advance(ctx, j.ID, PhaseDone, apply(j))
+}
+
+// driveResume rejoins a run already in flight (in the running phase) and drives
+// it the rest of the way — resume, then publish, then done — under a per-job
+// context Cancel can interrupt, exactly like a fresh drive minus the phases
+// already passed.
+func (w *Worker) driveResume(pool context.Context, j Job) {
+	ctx, cancel := context.WithCancel(pool)
+	w.mu.Lock()
+	w.running[j.ID] = cancel
+	w.mu.Unlock()
+	defer func() {
+		w.mu.Lock()
+		delete(w.running, j.ID)
+		w.mu.Unlock()
+		cancel()
+	}()
+
+	observe := func(s provider.RunStatus) { _ = w.store.Observe(ctx, j.ID, s) }
+	if err := w.runner.Resume(ctx, &j, observe); err != nil {
 		w.fail(j.ID, err)
 		return
 	}
