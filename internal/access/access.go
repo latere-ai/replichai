@@ -46,13 +46,13 @@ func (t Tier) String() string {
 func (t Tier) Granted() bool { return t >= TierSeed }
 
 // Principal is everything an authorisation decision may consume: the stable
-// subject and, only for seeding a not-yet-bound grant, a verified email. There
-// is deliberately nowhere to put a role, scope, or org claim — reading one would
-// weld the beta to a single issuer's schema.
+// subject and, for seeding a not-yet-bound grant, the IdP-authenticated email.
+// There is deliberately nowhere to put a role, scope, or org claim — reading one
+// would weld the beta to a single issuer's schema. The email is auth's assertion
+// for the session (not self-asserted), and the operator whitelist is the guard.
 type Principal struct {
-	Sub           string
-	Email         string
-	EmailVerified bool
+	Sub   string
+	Email string
 }
 
 // Errors this package returns.

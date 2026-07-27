@@ -15,11 +15,11 @@ func adminSetup(t *testing.T) (*Admin, httpapi.Identity, httpapi.Identity) {
 	t.Helper()
 	store := access.NewMemStore()
 	_ = store.SeedAdmin(context.Background(), "admin@example.com")
-	admin := httpapi.Identity{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
-	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email, EmailVerified: true})
-	_ = store.Grant(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email, EmailVerified: true}, "seed@example.com", access.TierSeed)
-	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
-	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: seed.Sub, Email: seed.Email, EmailVerified: true})
+	admin := httpapi.Identity{Sub: "admin-sub", Email: "admin@example.com"}
+	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email})
+	_ = store.Grant(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email}, "seed@example.com", access.TierSeed)
+	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com"}
+	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: seed.Sub, Email: seed.Email})
 	return NewAdmin(store), admin, seed
 }
 

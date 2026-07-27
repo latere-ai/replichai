@@ -36,7 +36,7 @@ func TestDevMiddlewareSetsIdentity(t *testing.T) {
 		got, ok = httpapi.IdentityFrom(r)
 	}))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/jobs/x", nil))
-	if !ok || got.Sub != "dev-user" || got.Email != "dev@local" || !got.EmailVerified {
+	if !ok || got.Sub != "dev-user" || got.Email != "dev@local" {
 		t.Fatalf("dev identity = %+v ok=%v", got, ok)
 	}
 }

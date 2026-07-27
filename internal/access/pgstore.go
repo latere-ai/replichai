@@ -52,8 +52,8 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		// Seed by verified email, binding only an unbound grant.
-		if !p.EmailVerified || p.Email == "" {
+		// Seed by the IdP-authenticated email, binding only an unbound grant.
+		if p.Email == "" {
 			return nil
 		}
 		email := normalizeEmail(p.Email)

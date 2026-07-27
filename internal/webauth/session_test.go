@@ -13,7 +13,7 @@ func TestCodecRoundTripAndTamper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCodec: %v", err)
 	}
-	sealed, err := c.Seal(Session{Sub: "u1", Email: "u@x.com", EmailVerified: true})
+	sealed, err := c.Seal(Session{Sub: "u1", Email: "u@x.com"})
 	if err != nil {
 		t.Fatalf("Seal: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestCodecRoundTripAndTamper(t *testing.T) {
 	if err := c.Open(sealed, &got); err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if got.Sub != "u1" || got.Email != "u@x.com" || !got.EmailVerified {
+	if got.Sub != "u1" || got.Email != "u@x.com" {
 		t.Fatalf("round-trip mismatch: %+v", got)
 	}
 

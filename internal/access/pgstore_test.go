@@ -34,7 +34,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if err := acc.SeedAdmin(ctx, "admin@example.com"); err != nil {
 		t.Fatalf("SeedAdmin: %v", err)
 	}
-	admin := Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
+	admin := Principal{Sub: "admin-sub", Email: "admin@example.com"}
 	if tier, ok, _ := acc.Resolve(ctx, admin); !ok || tier != TierAdmin {
 		t.Fatalf("admin resolve = %s/%v", tier, ok)
 	}
@@ -42,12 +42,12 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if err := acc.Grant(ctx, admin, "seed@example.com", TierSeed); err != nil {
 		t.Fatalf("Grant: %v", err)
 	}
-	seed := Principal{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
+	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	if tier, ok, _ := acc.Resolve(ctx, seed); !ok || tier != TierSeed {
 		t.Fatalf("seed bind = %s/%v", tier, ok)
 	}
 	// One-way: a second principal on the bound email is refused.
-	if _, ok, _ := acc.Resolve(ctx, Principal{Sub: "imposter", Email: "seed@example.com", EmailVerified: true}); ok {
+	if _, ok, _ := acc.Resolve(ctx, Principal{Sub: "imposter", Email: "seed@example.com"}); ok {
 		t.Error("a second principal on a bound email must be refused")
 	}
 	// Admin-only.
@@ -74,14 +74,14 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if err := mem.SeedLead(ctx, "proj-1", "lead@example.com"); err != nil {
 		t.Fatalf("SeedLead: %v", err)
 	}
-	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
+	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	if role, ok, _ := mem.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
 		t.Fatalf("lead role = %s/%v", role, ok)
 	}
 	if err := mem.Add(ctx, lead, "proj-1", "collab@example.com", RoleCollaborator); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	collab := Principal{Sub: "collab-sub", Email: "collab@example.com", EmailVerified: true}
+	collab := Principal{Sub: "collab-sub", Email: "collab@example.com"}
 	if role, ok, _ := mem.Role(ctx, collab, "proj-1"); !ok || role != RoleCollaborator {
 		t.Errorf("collab role = %s/%v", role, ok)
 	}

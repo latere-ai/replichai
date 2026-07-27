@@ -36,14 +36,14 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 	}
 
 	// Authenticated but ungranted -> not_invited (fail-closed on empty table).
-	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
+	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com"}
 	if ok, reason := gate.Allow(requestAs(&seed)); ok || reason != "not_invited" {
 		t.Errorf("ungranted: ok=%v reason=%q", ok, reason)
 	}
 
 	// Grant the email; first request binds and admits.
 	_ = store.SeedAdmin(ctx, "admin@example.com")
-	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
 	if err := store.Grant(ctx, admin, "seed@example.com", access.TierSeed); err != nil {
 		t.Fatalf("grant: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 func TestRequireTier(t *testing.T) {
 	store := access.NewMemStore()
 	_ = store.SeedAdmin(ctx, "admin@example.com")
-	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
 	_ = store.Grant(ctx, admin, "seed@example.com", access.TierSeed)
 	_ = store.Grant(ctx, admin, "trusted@example.com", access.TierTrusted)
 
@@ -79,15 +79,15 @@ func TestRequireTier(t *testing.T) {
 	}
 
 	// A seed user is refused not_trusted even reaching the route directly.
-	if code := call(httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}); code != http.StatusForbidden {
+	if code := call(httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com"}); code != http.StatusForbidden {
 		t.Errorf("seed user at a trusted route: %d, want 403", code)
 	}
 	// A trusted user passes.
-	if code := call(httpapi.Identity{Sub: "trusted-sub", Email: "trusted@example.com", EmailVerified: true}); code != http.StatusOK {
+	if code := call(httpapi.Identity{Sub: "trusted-sub", Email: "trusted@example.com"}); code != http.StatusOK {
 		t.Errorf("trusted user at a trusted route: %d, want 200", code)
 	}
 	// An ungranted principal is refused before the tier check.
-	if code := call(httpapi.Identity{Sub: "nobody", Email: "nobody@example.com", EmailVerified: true}); code != http.StatusForbidden {
+	if code := call(httpapi.Identity{Sub: "nobody", Email: "nobody@example.com"}); code != http.StatusForbidden {
 		t.Errorf("ungranted at a trusted route: %d, want 403", code)
 	}
 	// No identity at all is refused.

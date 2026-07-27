@@ -41,31 +41,30 @@ func DiscoverUserInfo(ctx context.Context, issuer string) (string, error) {
 }
 
 // HTTPUserInfo builds a UserInfoFunc that GETs the OIDC userinfo endpoint with
-// the access token and returns the email and its verification.
+// the access token and returns the email.
 func HTTPUserInfo(endpoint string) UserInfoFunc {
-	return func(ctx context.Context, accessToken string) (string, bool, error) {
+	return func(ctx context.Context, accessToken string) (string, error) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
-			return "", false, err
+			return "", err
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return "", false, err
+			return "", err
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return "", false, fmt.Errorf("userinfo: status %d", resp.StatusCode)
+			return "", fmt.Errorf("userinfo: status %d", resp.StatusCode)
 		}
 		var claims struct {
-			Email         string `json:"email"`
-			EmailVerified any    `json:"email_verified"`
+			Email string `json:"email"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&claims); err != nil {
-			return "", false, err
+			return "", err
 		}
-		return claims.Email, verifiedFromAny(claims.EmailVerified), nil
+		return claims.Email, nil
 	}
 }

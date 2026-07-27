@@ -25,9 +25,8 @@ func Gate(a access.Access) httpapi.Gate {
 			return false, "not_authenticated"
 		}
 		_, granted, err := a.Resolve(r.Context(), access.Principal{
-			Sub:           id.Sub,
-			Email:         id.Email,
-			EmailVerified: id.EmailVerified,
+			Sub:   id.Sub,
+			Email: id.Email,
 		})
 		if err != nil || !granted {
 			return false, "not_invited"
@@ -49,9 +48,8 @@ func RequireTier(a access.Access, min access.Tier) func(http.Handler) http.Handl
 				return
 			}
 			tier, granted, err := a.Resolve(r.Context(), access.Principal{
-				Sub:           id.Sub,
-				Email:         id.Email,
-				EmailVerified: id.EmailVerified,
+				Sub:   id.Sub,
+				Email: id.Email,
 			})
 			if err != nil || !granted {
 				httpapi.WriteError(w, http.StatusForbidden, "not_invited")

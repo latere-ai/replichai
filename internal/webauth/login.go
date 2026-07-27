@@ -29,11 +29,11 @@ type OIDCClient interface {
 	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidclogin.Identity, error)
 }
 
-// UserInfoFunc fetches the email and its verification from the OIDC userinfo
-// endpoint with an access token. Some issuers (latere auth) carry the verified
-// sub in the ID token but the email only at /userinfo, so the login fetches it
-// there when the ID token has none. Behind a function so it tests offline.
-type UserInfoFunc func(ctx context.Context, accessToken string) (email string, verified bool, err error)
+// UserInfoFunc fetches the email from the OIDC userinfo endpoint with an access
+// token. latere auth carries the sub in the ID token but the email (PII) only at
+// /userinfo, so the login fetches it there when the ID token has none. Behind a
+// function so it tests offline.
+type UserInfoFunc func(ctx context.Context, accessToken string) (email string, err error)
 
 // Login is the OIDC login front door: a standard public PKCE flow, sealed
 // session and flow cookies, and the middleware that turns a session into an
@@ -118,12 +118,11 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := sessionFromIdentity(id)
-	// The verified sub comes from the ID token; the email may only be at
-	// /userinfo (latere auth). Fetch it there when the ID token carried none.
+	// The sub comes from the ID token; the email may live only at /userinfo
+	// (latere auth keeps PII out of the token). Fetch it when the token had none.
 	if sess.Email == "" && l.userInfo != nil {
-		if email, verified, err := l.userInfo(r.Context(), tok.AccessToken); err == nil && email != "" {
+		if email, err := l.userInfo(r.Context(), tok.AccessToken); err == nil && email != "" {
 			sess.Email = email
-			sess.EmailVerified = verified
 		}
 	}
 
@@ -151,9 +150,8 @@ func (l *Login) Middleware(next http.Handler) http.Handler {
 			var s Session
 			if err := l.codec.Open(raw, &s); err == nil && s.Sub != "" {
 				r = r.WithContext(httpapi.WithIdentity(r.Context(), httpapi.Identity{
-					Sub:           s.Sub,
-					Email:         s.Email,
-					EmailVerified: s.EmailVerified,
+					Sub:   s.Sub,
+					Email: s.Email,
 				}))
 			}
 		}
@@ -171,7 +169,7 @@ func Me(acc access.Access) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
 			return
 		}
-		tier, _, _ := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email, EmailVerified: id.EmailVerified})
+		tier, _, _ := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"authenticated":   true,
 			"principal":       id.Sub,
@@ -182,32 +180,11 @@ func Me(acc access.Access) http.HandlerFunc {
 	}
 }
 
-// sessionFromIdentity maps a verified ID token to the session, keeping only sub
-// and the verified email. Roles, name, and every other claim are dropped — no
-// IDP-issued authority may reach a grant decision (006c AC1).
+// sessionFromIdentity maps the verified ID token to the session, keeping only
+// sub and email. Roles, name, and every other claim are dropped — no IdP-issued
+// authority may reach a grant decision (006c AC1).
 func sessionFromIdentity(id oidclogin.Identity) Session {
-	return Session{
-		Sub:           id.Subject,
-		Email:         id.Email,
-		EmailVerified: emailVerified(id.Raw),
-	}
-}
-
-// emailVerified reads the ID token's email_verified claim.
-func emailVerified(raw map[string]any) bool { return verifiedFromAny(raw["email_verified"]) }
-
-// verifiedFromAny reads an email_verified value as either a bool or the string
-// "true"; anything else is false, so a mis-typed claim never admits the wrong
-// person.
-func verifiedFromAny(v any) bool {
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		return t == "true"
-	default:
-		return false
-	}
+	return Session{Sub: id.Subject, Email: id.Email}
 }
 
 // safeNext allows only a same-site relative path, so ?next= cannot become an
