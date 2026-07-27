@@ -30,6 +30,8 @@ submitted → resolving → running → publishing → done
 
 **Progress is observed into the row, streamed from it.** The worker passes `audit.WithObserver` a callback that records the latest `RunStatus` (phase, usage) onto the job. The SSE endpoint (006a) tails that, so a viewer who connects late still sees where the run is, and a viewer who never connects costs nothing. The run does not depend on anyone watching.
 
+**A user reads back their own jobs — one project, one session.** `Store.ListByPrincipal` returns the caller's jobs newest-first, exposed as the gated `GET /jobs` and rendered as the frontend's "My projects". The scope is the authenticated principal alone; the query filters on `principal`, so a caller never sees another's work, and the list is server truth, not browser-local state. For the beta this treats **one job as one project** — the durable session record of a submission — deferring 007's `(principal, project, role)` membership; a finished job's title, verdict, and forge link come from the join to the published reproduction (003), never stored on the row. Reproductions that predate the service (produced by the `replichai audit` CLI) are backfilled as `done` job rows carrying their manifest's true `created` timestamp and `open-hai/<name>` repo, so provenance is not fabricated as a service run.
+
 **Migrations are in the binary.** Schema is versioned SQL applied at startup, so `docker compose up` is the whole install. 006c adds its `access_grants` and link tables against the same foundation.
 
 ## Interface (sketch)
@@ -54,6 +56,7 @@ type Job struct {
 type Store interface {
     Enqueue(ctx, principal, ref string, k Kind, project string) (Job, error)
     Get(ctx, id string) (Job, error)
+    ListByPrincipal(ctx, principal string) ([]Job, error) // the caller's own jobs, newest-first
     Claim(ctx) (Job, bool, error)          // FOR UPDATE SKIP LOCKED
     Advance(ctx, id string, to Phase, mutate func(*Job)) error
 }

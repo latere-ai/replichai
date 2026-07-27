@@ -16,7 +16,7 @@ The engine and the API exist; a researcher has no way to reach them but `curl`. 
 
 **`/me` drives the view.** On load the app fetches `/me` and renders one of three states: unauthenticated → a sign-in button linking to `/login`; authenticated but tier `none` → the not-invited screen (naming the email, telling them to ask an admin); granted → the operator dashboard. This is exactly the state 006c's `/me` was built to expose.
 
-**Runs are tracked client-side, for now.** The API addresses a job by id and has no "list my jobs" endpoint, so the dashboard remembers submitted job ids in `localStorage` and streams each one's phase live over SSE. A server-side per-principal job list is a later addition when the population outgrows a single browser; it is deliberately not built yet to keep the API surface small.
+**"My projects" is server truth.** The dashboard lists the caller's own jobs from the gated `GET /jobs` (006b's `ListByPrincipal`), newest-first, streaming each still-running one's phase over SSE — one project per job for the beta. Each finished project shows its title, verdict, and forge link by joining to the published reproduction (003), which the same dashboard already fetches. This replaced an earlier `localStorage` list of submitted ids: ownership is durable and follows the principal across browsers, not a per-device cache.
 
 **All copy is English and Chinese.** Every user-facing string lives in one `i18n` table with `en` and `zh`, a language toggle, and a missing-key fallback to English, so the two never drift and a half-translated string never renders blank.
 
@@ -30,4 +30,4 @@ The engine and the API exist; a researcher has no way to reach them but `curl`. 
 
 ## Out of scope
 
-Dropping a PDF to submit ([006d](006d-pdf-ingestion.md)). The take-it-out actions — claim the repository, flip it public ([006f](006f-taking-a-reproduction-out.md)). An admin console beyond the `/admin/access` API. A server-side job list, and per-run detail pages beyond the live phase — added when the beta outgrows client-side tracking. A component library or design system: a small hand-written stylesheet is enough for a beta.
+Dropping a PDF to submit ([006d](006d-pdf-ingestion.md)). The take-it-out actions — claim the repository, flip it public ([006f](006f-taking-a-reproduction-out.md)). An admin console beyond the `/admin/access` API. Per-run detail pages beyond the live phase and the forge link. A component library or design system: a small hand-written stylesheet is enough for a beta.
