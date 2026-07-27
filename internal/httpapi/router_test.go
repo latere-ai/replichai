@@ -692,6 +692,48 @@ func TestSessionTranscriptNotReadyVsMissing(t *testing.T) {
 	}
 }
 
+// fakeLive is a stand-in backend live-event stream keyed by run id.
+type fakeLive struct {
+	events []provider.Event
+	err    error
+}
+
+func (f *fakeLive) Events(context.Context, string) ([]provider.Event, error) {
+	return f.events, f.err
+}
+
+// 006h: a session still in flight (a run id observed, no repository yet) serves
+// the backend's LIVE event stream, flagged live so the client keeps polling —
+// not the 409 not_ready a session with no live run gets.
+func TestSessionTranscriptLive(t *testing.T) {
+	d := testDeps(allowAll)
+	store := job.NewMemStore()
+	d.Jobs = store
+	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "thinking"}}}
+	p, _ := d.Projects.Create(context.Background(), "me", "t")
+	j, _ := store.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	// Reach running with an observed backend run id — the in-flight state.
+	_, _, _ = store.Claim(context.Background())
+	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
+	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
+	h := NewRouter(d).Handler()
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("live transcript status = %d, want 200", w.Code)
+	}
+	var tr Transcript
+	if err := json.Unmarshal(w.Body.Bytes(), &tr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !tr.Live {
+		t.Error("an in-flight run's transcript must be flagged live")
+	}
+	if len(tr.Events) != 1 || tr.Events[0].Content != "thinking" {
+		t.Errorf("live events = %+v, want the backend's stream", tr.Events)
+	}
+}
+
 // GET /jobs lists only the caller's own jobs — the projects they submitted.
 // Another principal's jobs never appear, even through the same handler.
 func TestListMyJobs(t *testing.T) {

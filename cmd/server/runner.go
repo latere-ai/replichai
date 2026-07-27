@@ -116,6 +116,15 @@ func (e *engineRunner) Publish(ctx context.Context, _ *job.Job) error {
 	return nil
 }
 
+// liveTranscript reads a run's live event stream from the backend by its run id,
+// so a session still in flight is inspectable before it publishes (006h).
+type liveTranscript struct{ prov provider.Provider }
+
+// Events returns the backend's live trajectory for a run.
+func (l liveTranscript) Events(ctx context.Context, runID string) ([]provider.Event, error) {
+	return l.prov.Transcript(ctx, provider.RunHandle{ID: runID})
+}
+
 // forgePublisher flips a repository public with the server token (006f) — the
 // optional half of the project public flip, never inside the sandbox. The
 // owner is fixed to the org the reproductions live under.
@@ -193,7 +202,6 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 		Repo:         full,
 		Title:        m.Paper.Title,
 		Verdict:      m.Reproduction.Verdict.String(), // the name ("passed"), not the uint8 code point
-
 		Created:      created,
 		MethodDigest: m.Reproduction.MethodDigest,
 		Review:       m.Redistribution.Review,

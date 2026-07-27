@@ -151,6 +151,7 @@ func run() error {
 		Reproductions: &registryReader{source: reproSource},
 		RepoPublisher: repoPublisher,
 		Canceler:      worker,
+		Live:          liveTranscript{prov: prov},
 		Gate:          webauth.Gate(accessStore),
 		SPA:           spaHandler,
 	})

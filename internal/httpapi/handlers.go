@@ -571,32 +571,49 @@ func (rt *Router) listJobs(w http.ResponseWriter, r *http.Request) {
 type Transcript struct {
 	Events []provider.Event `json:"events"`
 	Usage  *provider.Usage  `json:"usage"`
+	// Live reports that these events came from an in-flight run's live stream, so
+	// the client keeps polling for more.
+	Live bool `json:"live"`
 }
 
-// getSessionTranscript serves a session's committed transcript as structured
-// events plus its recorded usage (006h). It resolves the session, reads its
-// repository's transcript.jsonl through the forge pass-through, parses the
-// events, and pairs them with the session's usage. A session that has not
-// published a transcript yet answers 409 not_ready, distinct from a 404 for a
-// session that does not exist.
+// getSessionTranscript serves a session's transcript as structured events plus
+// its usage (006h). A finished session reads its committed transcript.jsonl
+// through the forge; a session still in flight reads the backend's live event
+// stream directly, so its trajectory is inspectable in real time — not only
+// after it publishes. Only a session with neither a repository nor a live run
+// answers 409 not_ready, and its `live` flag tells the client to keep polling.
 func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
-	if j.RepoName == "" {
-		// The run has not published its transcript yet — not a miss, not ready.
+	var events []provider.Event
+	live := false
+	switch {
+	case j.RepoName != "":
+		raw, err := rt.repro.Transcript(r.Context(), repoName(j.RepoName))
+		if err != nil {
+			writeReadError(w, err) // 404 for a genuine miss, 500 for a transport failure
+			return
+		}
+		events, err = parseTranscriptEvents(raw)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "transcript_malformed")
+			return
+		}
+	case j.Status.RunID != "" && rt.live != nil:
+		// The session is still in flight: read its live event stream from the
+		// backend by its run id.
+		evs, err := rt.live.Events(r.Context(), j.Status.RunID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
+			return
+		}
+		events = evs
+		live = !j.Phase.Terminal()
+	default:
+		// No committed transcript, no live run — not a miss, not ready.
 		writeError(w, http.StatusConflict, "not_ready")
-		return
-	}
-	raw, err := rt.repro.Transcript(r.Context(), repoName(j.RepoName))
-	if err != nil {
-		writeReadError(w, err) // 404 for a genuine miss, 500 for a transport failure
-		return
-	}
-	events, err := parseTranscriptEvents(raw)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "transcript_malformed")
 		return
 	}
 	// Prefer the session's recorded usage; when it was never recorded (a
@@ -614,7 +631,7 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 			usage = &u
 		}
 	}
-	writeJSON(w, http.StatusOK, Transcript{Events: stripRaw(events), Usage: usage})
+	writeJSON(w, http.StatusOK, Transcript{Events: stripRaw(events), Usage: usage, Live: live})
 }
 
 // repoName strips an "owner/" prefix from a repository path, so a session's
