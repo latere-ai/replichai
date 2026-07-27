@@ -16,6 +16,7 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/project"
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // Route is one registered endpoint, method and pattern, so the gated set is
@@ -60,6 +61,13 @@ type JobStore interface {
 // replica): cancelling interrupts the run in flight and marks it cancelled.
 type Canceler interface {
 	Cancel(ctx context.Context, id string) error
+}
+
+// LiveTranscript reads a run's event stream from the backend by its run id — the
+// live trajectory of a session still in flight, before it has published a
+// committed transcript. A seam so the handlers stay off the provider adapter.
+type LiveTranscript interface {
+	Events(ctx context.Context, runID string) ([]provider.Event, error)
 }
 
 // ProjectStore is the slice of the project store the handlers need — open a
@@ -146,6 +154,7 @@ type Deps struct {
 	Reproductions ReproReader
 	RepoPublisher RepoPublisher
 	Canceler      Canceler
+	Live          LiveTranscript
 	Gate          Gate
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
@@ -170,6 +179,7 @@ type Router struct {
 	repro       ReproReader
 	repoPub     RepoPublisher
 	canceler    Canceler
+	live        LiveTranscript
 	sseInterval time.Duration
 	spa         http.Handler
 }
@@ -188,7 +198,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }
