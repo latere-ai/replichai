@@ -1,12 +1,13 @@
 # 006c — Identity, tiers, and the access gate
 
 **Status:** implemented (the forge-account link is deferred to [006f](006f-taking-a-reproduction-out.md), its only consumer)
-**Scope:** who may sign in, who may operate, and how a reproduction gets granted — the OIDC login, the fail-closed `access_grants` gate, the three tiers, and the proven forge-account link. A child of [006](006-web-application.md).
+**Scope:** who may sign in, who may operate, and how a reproduction gets granted — the OIDC login, the fail-closed `access_grants` gate, the two tiers, and the proven forge-account link. A child of [006](006-web-application.md).
 
 **As built.** `internal/access` is the model (grants, tiers, project membership, seed-by-email with one-way binding; in-memory and Postgres against one contract). `internal/webauth` is the HTTP edge: the fail-closed gate that re-resolves a grant per request, the OIDC login via `latere.ai/x/pkg/oidclogin` (portable standard OIDC), a session cookie carrying only `{sub, email}` — sealed with a hand-rolled AES-256-GCM codec, because `oidclogin` owns the token flow but not session storage and `pkg/oidc`'s codec is welded to its own login `Client` — `/me`, and the `/admin/access` endpoints. Because latere auth keeps `email` (PII) out of the ID token, the callback fetches it from `/userinfo`. The whitelist is bootstrapped from `ADMIN_EMAILS`/`SEED_EMAILS` (both `SeedGrant`, `granted_by=bootstrap`); runtime changes go through an admin. A loopback-only dev bypass authenticates a synthetic principal for local runs and grants nothing.
 
-**Note on `email_verified` (dropped).** An earlier draft matched grants on a *verified* email — a guard against a self-asserted address, meaningful for an untrusted IdP. Against latere auth — our own trusted IdP, which vouches for the email of an authenticated session and enforces email uniqueness — it is redundant: we already trust auth for `sub`, so trusting the email from the same session is consistent, and the operator whitelist is the actual guard. The requirement was removed; binding is on the IdP-authenticated email, and the one-way bind still refuses a second principal on a bound email. The "verified" wording below is kept for the reasoning but no longer reflects a runtime check.
 **Depends on:** [006b](006b-job-model-and-persistence.md) (Postgres, and the routes the gate mounts on). Revised by [007](007-from-reproduction-to-replication.md): project membership sits beside the tiers, sharing their seed-and-bind rule and none of their authority.
+
+Binding is on the **IdP-authenticated email**: latere auth vouches for the email of an authenticated session and enforces its uniqueness, so the session's email is trusted the same way its `sub` is, and the operator whitelist is the actual guard. There is no `email_verified` check.
 
 ## Problem
 
@@ -19,31 +20,30 @@ One shared credential pays for every run, so access starts closed. Signing in mu
 | Claim | Use |
 |---|---|
 | `sub` | the stable principal every row keys on |
-| `email` + `email_verified` | seeding a grant for someone not yet signed in — nothing else |
+| `email` | seeding a grant for someone not yet signed in — nothing else |
 
 No IDP-issued role, scope, org membership, or admin flag reaches an authorisation decision. Reading them would weld the beta to one issuer's schema; swapping issuers must be a config change. The library is a conformant OIDC client, not a vendor SDK whose value is the claims we just refused. Rejected: gating on an IDP `replichai:operate` scope or seed-org membership — it puts our access policy in another service's admin UI.
 
-**The gate is a single structural check, fail-closed.** The `access_grants` table is the whole model: an empty table admits nobody. The operator routes (006a) are mounted behind one gate they cannot be served without — not a condition sprinkled through handlers, the same shape as 002's redistribution gate. `GET /me` sits *outside* it, so the frontend can render the not-invited screen; everything else answers `403` with a reason (`not_invited`, or `not_trusted` for a seed user reaching the visibility flip), read surfaces included, because 002 keeps repositories private.
+**The gate is a single structural check, fail-closed.** The `access_grants` table is the whole model: an empty table admits nobody. The operator routes (006a) are mounted behind one gate they cannot be served without — not a condition sprinkled through handlers, the same shape as 002's redistribution gate. `GET /me` sits *outside* it, so the frontend can render the not-invited screen; everything else answers `403` with a reason (`not_invited` for an ungranted principal; `not_owner` for a caller reaching another owner's project actions), read surfaces included, because a private project's repositories are private.
 
 **Grants seed by email, bind to a principal, one-way.**
 
 - A row is `(email PK, principal, tier, granted_by, granted_at)`. An admin seeds by email someone who has never signed in.
-- On that person's first login, the row binds to their `sub` — matched on a *verified* email, never a self-asserted one, and only until bound. **Binding is one-way:** once `principal` is set, email is never consulted for that row again, and a second principal presenting the same email is refused, not admitted onto someone else's grant.
+- On that person's first login, the row binds to their `sub` — matched on the IdP-authenticated email, and only until bound. **Binding is one-way:** once `principal` is set, email is never consulted for that row again, and a second principal presenting the same email is refused, not admitted onto someone else's grant.
 - The table is an ACL, not a user table: principal, a seed email, a tier. No name, no avatar — display data comes from `/userinfo` per request and is never stored. Rejected: an env-var email list — every grant would cost a redeploy and leave no record of who admitted whom.
 
-**Three tiers, and only one may publish publicly.**
+**Two tiers gate the platform; publishing is not one of them.**
 
 | Tier | Set by | May |
 |---|---|---|
 | **Platform admin** | bootstrap admin-email list in the env, seeded at startup; admins promote others | grant, revoke, promote — and all below |
-| **Trusted user** | a platform admin, explicitly | all below, **and** flip a reproduction public |
-| **Seed user** | a platform admin | submit, watch, read results and transcripts, claim ownership if a forge account is linked |
+| **User** (invited) | a platform admin | sign in, own projects, submit, watch, read results and transcripts, invite collaborators to their own projects, claim ownership if a forge account is linked, and make *their own* project public with a responsibility sign-off ([006f](006f-taking-a-reproduction-out.md)) |
 
-There is no self-serve path up the tiers.
+There is no self-serve path up the tiers. The public flip is authorised by *project ownership* plus a sign-off, not by a platform tier — so it lives with the project (006f), not here.
 
-**Project membership reuses the seed-and-bind rule, and admits nobody to the platform.** [007](007-from-reproduction-to-replication.md) needs replication projects led by researchers named by email. That is this table's *shape* applied to a second relation — `(principal, project, role)` with roles *lead* and *collaborator*, seeded by verified email and bound one-way on first login — not a second membership system, and not an extension of the tier ladder.
+**Project membership reuses the seed-and-bind rule, and admits nobody to the platform.** [007](007-from-reproduction-to-replication.md) needs replication projects led by researchers named by email. That is this table's *shape* applied to a second relation — `(principal, project, role)` with roles *lead* and *collaborator*, seeded by email and bound one-way on first login — not a second membership system, and not an extension of the tier ladder.
 
-The two are orthogonal, and that is the load-bearing part. Tier decides what someone may do on the platform; project role decides which project's experiments and data they may touch. A project lead may add a colleague by email, and that colleague still reaches no operator route until a platform admin grants them a tier — the UI says so plainly when a lead adds someone ungranted. Rejected: having a project invitation seed a seed-tier grant. It is the obvious convenience, and it is exactly the self-serve escalation [006](006-web-application.md) rejected — one lead could then admit the world onto a shared credential.
+The two are orthogonal, and that is the load-bearing part. Tier decides what someone may do on the platform; project role decides which project's experiments and data they may touch. A project lead may add a colleague by email, and that colleague still reaches no operator route until a platform admin grants them a tier — the UI says so plainly when a lead adds someone ungranted. Rejected: having a project invitation seed a platform grant. It is the obvious convenience, and it is exactly the self-serve escalation [006](006-web-application.md) rejected — one lead could then admit the world onto a shared credential.
 
 **The forge link is proven, stored against the principal, identity-scoped.** Linking a forge account is a separate OAuth handshake requesting **identity only** — `repo` scope is never requested, for anyone, ever. The proven login is written by the link callback alone, never a request body: one row per principal and forge, so a claim months later still knows where to send the invitation. This is what 006f's collaborator invitation consumes. `/me` reports *linked accounts*, and the routes are `/{forge}`-parameterised — GitHub is the only forge today, not the only shape.
 
@@ -52,9 +52,9 @@ The two are orthogonal, and that is the load-bearing part. Tier decides what som
 ## Interface (sketch)
 
 ```go
-type Tier int // SeedUser | TrustedUser | PlatformAdmin
+type Tier int // User | PlatformAdmin
 
-type Principal struct { Sub, Email string; EmailVerified bool }
+type Principal struct { Sub, Email string }
 
 type Access interface {
     Resolve(ctx, Principal) (tier Tier, granted bool, err error) // binds on first login
@@ -73,21 +73,21 @@ type Membership interface {
     Role(ctx, principal, project string) (Role, bool, error) // binds on first login
 }
 
-// Gate is the middleware 006a mounts; RequireTier guards the visibility flip.
+// Gate is the middleware 006a mounts; RequireTier guards the admin-only routes.
 func Gate(a Access) func(http.Handler) http.Handler
 ```
 
 ## Acceptance criteria
 
-1. Only `sub` and a verified email are consumed; a test drives login against a stub issuer whose token also carries roles/scopes/org claims and asserts none reach an authorisation decision.
+1. Only `sub` and the IdP-authenticated email are consumed; a test drives login against a stub issuer whose token also carries roles/scopes/org claims and asserts none reach an authorisation decision.
 2. With an empty `access_grants` table, an authenticated session reaches no operator route — the gate enumerates 006a's gated routes and each answers `not_invited`; a route added without the gate fails the test.
-3. A grant seeded by verified email admits on first sign-in and binds to the principal; a second principal presenting that email afterwards is refused; revoking locks the holder out on the next request with no session left standing.
-4. Tier is enforced server-side: a seed user's visibility flip is refused even when the request is forged past the UI; only a platform admin may grant, revoke, or promote.
+3. A grant seeded by email admits on first sign-in and binds to the principal; a second principal presenting that email afterwards is refused; revoking locks the holder out on the next request with no session left standing.
+4. Tier is enforced server-side: only a platform admin may grant, revoke, or promote, refused even when the request is forged past the UI. (The public flip's owner check lives with the project, 006f.)
 5. The forge link requests identity scope only and stores the proven login against the principal; a client-supplied login is never trusted — asserted by driving `claim` for an unlinked user (`409`) and a linked one (invitation sent).
 6. The dev bypass authenticates but never grants, and a non-loopback deployment refuses to start with it enabled.
 7. Project membership admits nobody to the platform: a test adds an ungranted email to a project, signs that principal in, and asserts they still answer `not_invited` on every gated route. Membership and tier are resolved independently, and neither can be satisfied by the other.
-8. Project membership binds one-way on the same terms as a grant — seeded by verified email, bound to the first principal, a second principal presenting that email refused.
+8. Project membership binds one-way on the same terms as a grant — seeded by email, bound to the first principal, a second principal presenting that email refused.
 
 ## Out of scope
 
-The routes themselves and their mounting (006a). The collaborator invitation and visibility flip that consume the link and tier (006f). Any use of the IDP beyond the two claims — its roles, orgs, billing are another product's model. Multi-tenant authorisation, org RBAC, and per-user credentials — deferred with the rest of multi-tenancy. The frontend's not-invited screen (006e); this spec makes the state, that spec renders it.
+The routes themselves and their mounting (006a). The collaborator invitation and the owner's public flip that consume the link and project ownership (006f). Any use of the IDP beyond the two claims — its roles, orgs, billing are another product's model. Multi-tenant authorisation, org RBAC, and per-user credentials — deferred with the rest of multi-tenancy. The frontend's not-invited screen (006e); this spec makes the state, that spec renders it.

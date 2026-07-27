@@ -31,7 +31,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **The app runs end to end**: `docker compose up` (or `make up`) brings up Postgres + the server, which serves the React frontend (006e) and the API. A researcher signs in, submits a paper URL, and watches its phases stream live to `done` behind the real fail-closed gate. Production is provisioned and fail-closed.
 
-**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006a/006e. 006c's forge-account link lands with its consumer, 006f.
+**Designed, not built:** the project/session rework — 006g (projects as first-class records holding replication sessions), 006h (the session transcript viewer), and 006f's remaining collaboration API and owner public flip with its sign-off. 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 ## Architecture at a glance
 
@@ -77,9 +77,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 - **Ownership by invitation, never delegation** — GitHub OAuth proves identity only; the org invites the user's linked login as a collaborator. The service never holds a user's repo credentials. (006f, 006c)
 - **The redistribution gate fails closed** — third-party data is never published; the method keeps downloads out of the mounted repo, and the verifier bars a leaked repo from ever going public. (002, 006f)
 - **Never simulate the outer loop** — outer-loop execution is a downstream engine, `verdict`/`rate` stay audit-only, a synthetic cohort is labelled indelibly. Regression-tested in `evals/case-01`. (007)
-- **Closed beta, fail-closed access** — anyone signs in with a latere account; only seed users a platform admin grants reach the operator UI. (006c)
+- **Closed beta, fail-closed access** — anyone signs in with a latere account; only invited users a platform admin grants reach the operator UI. (006c)
 
-**Still open in 006f:** the two-token split (a fine-grained mount token distinct from the org token — one token for now) and the trusted-only public-visibility flip (needs 006c's tiers). The flip has a prerequisite: **009**, secret containment. Because the agent commits live, nothing filters before the push, and a secret can reach the tree, the history, or the transcript. `VerifyTree` covers the head tree and reaches the manifest; `TranscriptLeaks` only warns, which diverges from 005. Deferred for the MVP and safe to defer only because nothing makes a repository public today.
+**Still open in 006f:** the two-token split (a fine-grained mount token distinct from the org token — one token for now), the per-project collaboration API, and the owner's public flip gated by a recorded responsibility sign-off (joining the public zone). The flip has a prerequisite: **009**, secret containment. Because the agent commits live, nothing filters before the push, and a secret can reach the tree, the history, or the transcript. `VerifyTree` covers the head tree and reaches the manifest; `TranscriptLeaks` only warns, which diverges from 005. Deferred for the MVP and safe to defer only because nothing makes a repository public today.
 
 ## The spec map
 
@@ -96,7 +96,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | implemented | 006b |
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | implemented | 006a |
-| 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, (006c) |
+| 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, 006g, (006c) |
+| 006g | [Projects and replication sessions](006g-projects-and-replication-sessions.md) | draft | 006b, 006c |
+| 006h | [Session transcript viewer](006h-session-transcript-viewer.md) | draft | 006g, 005, 003 |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |

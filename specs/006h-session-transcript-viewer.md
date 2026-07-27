@@ -21,8 +21,9 @@ The transcript is the evidence — "the backend's own event log, not the agent's
 ## Interface (sketch)
 
 ```go
-// On the read surface (006a): a session-scoped transcript.
-// GET /sessions/{id}/transcript -> { events: []provider.Event, usage: Usage|null }
+// On the read surface (006a): a session-scoped transcript (the session is the
+// job, so it hangs off the existing /jobs path — no API rename).
+// GET /jobs/{id}/transcript -> { events: []provider.Event, usage: Usage|null }
 type Transcript struct {
     Events []provider.Event `json:"events"`
     Usage  *provider.Usage  `json:"usage"` // nil == not recorded
@@ -38,7 +39,7 @@ Frontend ([006e](006e-frontend.md) revision): a trajectory component under a ses
 
 ## Acceptance criteria
 
-1. `GET /sessions/{id}/transcript` returns the parsed event sequence and the session's usage for a published session; the three existing reproductions each render a non-empty trajectory read from their committed `transcript.jsonl`.
+1. `GET /jobs/{id}/transcript` returns the parsed event sequence and the session's usage for a published session; the three existing reproductions each render a non-empty trajectory read from their committed `transcript.jsonl`.
 2. The events carry their kind (message | thinking | tool_use | tool_result | grade), tool name, content, and time, and are time-ordered, so the client pairs each tool call with its result and shows the final grade.
 3. Usage is shown from the recorded `RunStatus.Usage`; a session with no recorded usage shows "not recorded", not a zero — asserted with a backfilled session.
 4. A session that has not yet published a transcript answers `409 not_ready`, distinct from a `404` for a session that does not exist.
