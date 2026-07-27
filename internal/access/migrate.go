@@ -38,6 +38,12 @@ CREATE TABLE forge_links (
 	PRIMARY KEY (principal, forge)
 );
 `},
+	{2, `
+-- The "trusted" tier (value 2) was removed in the two-tier rework: publishing is
+-- authorised by project ownership plus a sign-off (006f), not a tier. Fold any
+-- stray trusted grant down to a plain user so no orphan tier lingers in the ACL.
+UPDATE access_grants SET tier = 1 WHERE tier = 2;
+`},
 }
 
 // Migrate applies the access schema. It uses its own version namespace table so

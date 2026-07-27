@@ -36,9 +36,9 @@ func Gate(a access.Access) httpapi.Gate {
 }
 
 // RequireTier guards a route that needs a tier above plain admission — the
-// visibility flip needs TierTrusted (006f). It resolves per request and answers
-// not_trusted for a granted-but-insufficient principal, so the check holds even
-// when a request is forged past the UI. Mounted by 006f, not wired here.
+// admin surface (grant, revoke, promote) needs TierAdmin. It resolves per
+// request and answers insufficient_tier for a granted-but-insufficient
+// principal, so the check holds even when a request is forged past the UI.
 func RequireTier(a access.Access, min access.Tier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,7 @@ func RequireTier(a access.Access, min access.Tier) func(http.Handler) http.Handl
 				return
 			}
 			if tier < min {
-				httpapi.WriteError(w, http.StatusForbidden, "not_trusted")
+				httpapi.WriteError(w, http.StatusForbidden, "insufficient_tier")
 				return
 			}
 			next.ServeHTTP(w, r)
