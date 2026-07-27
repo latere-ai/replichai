@@ -43,3 +43,8 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 	}
 	return m, nil
 }
+
+// File reads one file from a repository through the forge.
+func (s *GitHubSource) File(ctx context.Context, repo, path string) ([]byte, bool, error) {
+	return s.client.GetFileContent(ctx, s.owner, repo, path)
+}

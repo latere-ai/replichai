@@ -49,3 +49,15 @@ func (s *FSSource) Manifest(_ context.Context, repo string) (publish.Manifest, e
 	}
 	return m, nil
 }
+
+// File reads one file from a repository directory.
+func (s *FSSource) File(_ context.Context, repo, path string) ([]byte, bool, error) {
+	raw, err := os.ReadFile(filepath.Join(s.Root, repo, path))
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return raw, true, nil
+}

@@ -62,3 +62,22 @@ func TestFSSourceMissingRootIsEmpty(t *testing.T) {
 		t.Errorf("a missing root should list nothing without error, got %v err=%v", names, err)
 	}
 }
+
+// File reads an arbitrary committed artifact (the transcript, 005/006h) and
+// reports a genuinely absent file as a miss, not an error.
+func TestFSSourceFile(t *testing.T) {
+	root := t.TempDir()
+	writeRepo(t, root, "repo-a", []byte("{}"))
+	if err := os.WriteFile(filepath.Join(root, "repo-a", "transcript.jsonl"), []byte("line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := NewFSSource(root)
+
+	raw, ok, err := src.File(context.Background(), "repo-a", "transcript.jsonl")
+	if err != nil || !ok || string(raw) != "line\n" {
+		t.Fatalf("File present = %q ok=%v err=%v", raw, ok, err)
+	}
+	if _, ok, err := src.File(context.Background(), "repo-a", "absent.txt"); ok || err != nil {
+		t.Errorf("absent file: ok=%v err=%v; want false, nil", ok, err)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // Identity is the authenticated caller as the auth middleware (006c) resolved
@@ -62,6 +63,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
+	rt.gatedHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
 	rt.gatedHandle("GET", "/reproductions", rt.listReproductions)
 	rt.gatedHandle("GET", "/reproductions/{id}", rt.getReproduction)
 	rt.gatedHandle("GET", "/reproductions/{id}/transcript", rt.getTranscript)
@@ -266,6 +268,79 @@ func (rt *Router) listJobs(w http.ResponseWriter, r *http.Request) {
 		jobs = []job.Job{}
 	}
 	writeJSON(w, http.StatusOK, jobs)
+}
+
+// Transcript is a session's trajectory and token usage (006h): the parsed
+// provider.Event sequence the agent produced, and what the run consumed. Usage
+// is nil when it was never recorded (a historical backfill), never a fabricated
+// zero.
+type Transcript struct {
+	Events []provider.Event `json:"events"`
+	Usage  *provider.Usage  `json:"usage"`
+}
+
+// getSessionTranscript serves a session's committed transcript as structured
+// events plus its recorded usage (006h). It resolves the session, reads its
+// repository's transcript.jsonl through the forge pass-through, parses the
+// events, and pairs them with the session's usage. A session that has not
+// published a transcript yet answers 409 not_ready, distinct from a 404 for a
+// session that does not exist.
+func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
+	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if j.RepoName == "" {
+		// The run has not published its transcript yet — not a miss, not ready.
+		writeError(w, http.StatusConflict, "not_ready")
+		return
+	}
+	raw, err := rt.repro.Transcript(r.Context(), repoName(j.RepoName))
+	if err != nil {
+		writeReadError(w, err) // 404 for a genuine miss, 500 for a transport failure
+		return
+	}
+	events, err := parseTranscriptEvents(raw)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "transcript_malformed")
+		return
+	}
+	out := Transcript{Events: events}
+	// A run always spends tokens, so a zero total means usage was never
+	// recorded — show "not recorded" (nil), never a fabricated zero.
+	if j.Status.Usage.Total() > 0 {
+		u := j.Status.Usage
+		out.Usage = &u
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// repoName strips an "owner/" prefix from a repository path, so a session's
+// recorded "open-hai/name" resolves to the "name" the forge source keys on.
+func repoName(full string) string {
+	if i := strings.LastIndex(full, "/"); i >= 0 {
+		return full[i+1:]
+	}
+	return full
+}
+
+// parseTranscriptEvents parses the newline-delimited provider.Event stream
+// committed as transcript.jsonl (005). A blank line is skipped; a malformed
+// line fails the parse, so a corrupt transcript is a 500, not a silent gap.
+func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
+	events := []provider.Event{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var e provider.Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
 }
 
 // getJob reports a job's status and phase.

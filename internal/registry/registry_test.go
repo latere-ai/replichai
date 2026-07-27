@@ -17,6 +17,7 @@ type fakeSource struct {
 	names     []string
 	manifests map[string]publish.Manifest
 	errs      map[string]error
+	files     map[string][]byte // "repo/path" -> content
 	listCalls int
 }
 
@@ -30,6 +31,13 @@ func (f *fakeSource) Manifest(_ context.Context, repo string) (publish.Manifest,
 		return publish.Manifest{}, e
 	}
 	return f.manifests[repo], nil
+}
+
+func (f *fakeSource) File(_ context.Context, repo, path string) ([]byte, bool, error) {
+	if raw, ok := f.files[repo+"/"+path]; ok {
+		return raw, true, nil
+	}
+	return nil, false, nil
 }
 
 func manifestOf(repo, key, slug string, created time.Time) publish.Manifest {

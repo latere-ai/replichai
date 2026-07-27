@@ -12,6 +12,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/project"
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // allowAll is a permissive gate for testing the handlers behind the gate.
@@ -39,7 +40,11 @@ func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 	if id != "r1" {
 		return nil, ErrReproNotFound
 	}
-	return []byte(`{"event":1}` + "\n"), nil
+	// A small valid transcript.jsonl: a message, a tool call, its result. The
+	// `"event":1` marker keeps the raw /reproductions passthrough test meaningful.
+	return []byte(`{"role":"agent","kind":"message","content":"start","event":1}` + "\n" +
+		`{"role":"agent","kind":"tool_use","tool":"bash","content":"ls"}` + "\n" +
+		`{"role":"user","kind":"tool_result","content":"file.txt"}` + "\n"), nil
 }
 
 func do(t *testing.T, h http.Handler, method, path, body, principalSub string) *httptest.ResponseRecorder {
@@ -218,6 +223,90 @@ func TestGetJob(t *testing.T) {
 	}
 	if w := do(t, h, "GET", "/jobs/missing", "", "sub"); w.Code != http.StatusNotFound {
 		t.Errorf("missing job: status %d, want 404", w.Code)
+	}
+}
+
+// publishedSession drives a job to publishing under repo "open-hai/r1", so its
+// transcript resolves through the fake forge.
+func publishedSession(t *testing.T, s JobStore, sub string, usage *provider.Usage) job.Job {
+	t.Helper()
+	ctx := context.Background()
+	j, err := s.Enqueue(ctx, sub, "ref", job.KindAudit, "p", "arxiv:1")
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	adv := s.(*job.MemStore)
+	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing} {
+		phase := p
+		if err := adv.Advance(ctx, j.ID, phase, func(jb *job.Job) {
+			if phase == job.PhasePublishing {
+				jb.RepoName = "open-hai/r1"
+			}
+		}); err != nil {
+			t.Fatalf("advance %s: %v", phase, err)
+		}
+	}
+	if usage != nil {
+		if err := adv.Observe(ctx, j.ID, provider.RunStatus{Usage: *usage}); err != nil {
+			t.Fatalf("observe: %v", err)
+		}
+	}
+	got, _ := s.Get(ctx, j.ID)
+	return got
+}
+
+// 006h AC1-4: a session's transcript is served as parsed events plus usage, with
+// not_ready and not_found kept distinct.
+func TestSessionTranscript(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d.Jobs, "me", &provider.Usage{InputTokens: 100, OutputTokens: 50})
+
+	// A published session: parsed events, paired tool call/result, and usage.
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var tr Transcript
+	if err := json.Unmarshal(w.Body.Bytes(), &tr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(tr.Events) != 3 || tr.Events[1].Kind != "tool_use" || tr.Events[1].Tool != "bash" || tr.Events[2].Kind != "tool_result" {
+		t.Fatalf("events = %+v", tr.Events)
+	}
+	if tr.Usage == nil || tr.Usage.Total() != 150 {
+		t.Fatalf("usage = %+v, want total 150", tr.Usage)
+	}
+}
+
+// A session whose usage was never recorded shows "not recorded" (nil), never a
+// fabricated zero — 006h AC3.
+func TestSessionTranscriptUsageNotRecorded(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d.Jobs, "me", nil) // no usage observed
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	var tr Transcript
+	_ = json.Unmarshal(w.Body.Bytes(), &tr)
+	if w.Code != http.StatusOK || tr.Usage != nil {
+		t.Fatalf("status %d usage %+v; want 200 and nil usage", w.Code, tr.Usage)
+	}
+}
+
+// A session that has not published a transcript is 409 not_ready, distinct from
+// a 404 for a session that does not exist — 006h AC4.
+func TestSessionTranscriptNotReadyVsMissing(t *testing.T) {
+	d := testDeps(allowAll)
+	// A submitted session with no repository yet.
+	j, _ := d.Jobs.Enqueue(context.Background(), "me", "ref", job.KindAudit, "p", "arxiv:1")
+	h := NewRouter(d).Handler()
+
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me"); w.Code != http.StatusConflict {
+		t.Errorf("not-ready: status %d, want 409", w.Code)
+	}
+	if w := do(t, h, "GET", "/jobs/missing/transcript", "", "me"); w.Code != http.StatusNotFound {
+		t.Errorf("missing session: status %d, want 404", w.Code)
 	}
 }
 
