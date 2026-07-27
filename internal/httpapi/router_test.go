@@ -555,7 +555,10 @@ func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Us
 		t.Fatalf("enqueue: %v", err)
 	}
 	adv := d.Jobs.(*job.MemStore)
-	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing} {
+	// A published session has finished: it reaches done with a committed repo. It
+	// must be terminal, so the transcript reader takes the committed-repo path
+	// rather than the live one (006i).
+	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing, job.PhaseDone} {
 		phase := p
 		if err := adv.Advance(ctx, j.ID, phase, func(jb *job.Job) {
 			if phase == job.PhasePublishing {
@@ -731,6 +734,36 @@ func TestSessionTranscriptLive(t *testing.T) {
 	}
 	if len(tr.Events) != 1 || tr.Events[0].Content != "thinking" {
 		t.Errorf("live events = %+v, want the backend's stream", tr.Events)
+	}
+}
+
+// 006i regression: a still-running session whose repository was created up front
+// for the live mount (repo_name set) must STILL read the live stream — its
+// committed transcript does not exist yet, so reading the repo would 404. The
+// non-terminal phase wins over the presence of a repository.
+func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
+	d := testDeps(allowAll)
+	store := job.NewMemStore()
+	d.Jobs = store
+	// The committed-repo reader would answer, wrongly, if we took that branch.
+	d.Reproductions = &fakeRepro{}
+	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "live-not-committed"}}}
+	p, _ := d.Projects.Create(context.Background(), "me", "t")
+	j, _ := store.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	_, _, _ = store.Claim(context.Background())
+	// Running, with a repo created in resolve AND a run id observed — the 006i state.
+	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, func(jb *job.Job) { jb.RepoName = "open-hai/r1" })
+	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
+	h := NewRouter(d).Handler()
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("running-with-repo transcript status = %d, want 200 (live)", w.Code)
+	}
+	var tr Transcript
+	_ = json.Unmarshal(w.Body.Bytes(), &tr)
+	if !tr.Live || len(tr.Events) != 1 || tr.Events[0].Content != "live-not-committed" {
+		t.Errorf("running-with-repo served %+v, want the LIVE stream flagged live", tr)
 	}
 }
 

@@ -775,7 +775,25 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 	var events []provider.Event
 	live := false
 	switch {
+	case !j.Phase.Terminal():
+		// The session is still in flight — its committed transcript does not exist
+		// yet (it is written at publish), and a repository created up front for the
+		// live mount (006i) must NOT be mistaken for one. Read the backend's live
+		// event stream by the observed run id; until that id lands, it is not a
+		// miss, just not ready (the client keeps polling).
+		if j.Status.RunID == "" || rt.live == nil {
+			writeError(w, http.StatusConflict, "not_ready")
+			return
+		}
+		evs, err := rt.live.Events(r.Context(), j.Status.RunID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
+			return
+		}
+		events = evs
+		live = true
 	case j.RepoName != "":
+		// A finished session reads its committed transcript.jsonl through the forge.
 		raw, err := rt.repro.Transcript(r.Context(), repoName(j.RepoName))
 		if err != nil {
 			writeReadError(w, err) // 404 for a genuine miss, 500 for a transport failure
@@ -787,17 +805,16 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case j.Status.RunID != "" && rt.live != nil:
-		// The session is still in flight: read its live event stream from the
-		// backend by its run id.
+		// A finished session with no committed repository (a server run that never
+		// published) still shows its trajectory via the backend session's events.
 		evs, err := rt.live.Events(r.Context(), j.Status.RunID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
 			return
 		}
 		events = evs
-		live = !j.Phase.Terminal()
 	default:
-		// No committed transcript, no live run — not a miss, not ready.
+		// No live run, no committed transcript — not a miss, not ready.
 		writeError(w, http.StatusConflict, "not_ready")
 		return
 	}
