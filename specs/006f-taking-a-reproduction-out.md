@@ -1,6 +1,6 @@
 # 006f — Taking a reproduction out
 
-**Status:** draft
+**Status:** core built (the mount publish, verifier, and invite; the two-token split and the public-visibility flip remain — see below)
 **Scope:** publishing a reproduction as a real GitHub repository with agent-authored commit history, granting it to a user by invitation, and — for trusted users — making it public. A child of [006](006-web-application.md).
 **Depends on:** [002](002-publishing-reproductions.md) (the redistribution gate, reused as a verifier; the manifest), [004](004-go-port.md) (the provider seam it extends). Consumes [006c](006-web-application.md) (the linked GitHub login, the trusted tier).
 

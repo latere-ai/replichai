@@ -1,6 +1,6 @@
 # 006b — Job model and persistence
 
-**Status:** draft
+**Status:** built
 **Scope:** the job lifecycle — its states, its Postgres home, and the in-process worker that drives it — so a submission survives the request that made it. A child of [006](006-web-application.md).
 **Depends on:** [002](002-publishing-reproductions.md) (publishing is a job phase), [004](004-go-port.md) (the `audit.Auditor` a worker calls). Revised by [007](007-from-reproduction-to-replication.md): a job runs an audit *or* an experiment, and belongs to a project.
 

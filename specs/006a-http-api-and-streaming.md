@@ -1,6 +1,6 @@
 # 006a — HTTP API and progress streaming
 
-**Status:** draft
+**Status:** built
 **Scope:** the HTTP server that wraps the audit engine — submit a paper, watch a job, read a result — and the seam the access gate mounts on. A child of [006](006-web-application.md).
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store and worker it enqueues onto). Consumes [003](003-reproduction-registry.md) and [005](spec 005) for its read surfaces.
 
