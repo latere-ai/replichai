@@ -354,6 +354,7 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 	return provider.RunStatus{
 		State:   state,
 		Verdict: verdict,
+		RunID:   h.ID, // persist the session id so a restart can close this run
 		Usage: provider.Usage{
 			InputTokens:       session.Usage.InputTokens,
 			OutputTokens:      session.Usage.OutputTokens,

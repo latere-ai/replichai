@@ -64,6 +64,18 @@ var (
 	ErrActiveSession = errors.New("an active session for this paper already exists")
 )
 
+// CancelCause is the error recorded on a session a user stopped, so the UI can
+// tell a deliberate stop from a real failure.
+const CancelCause = "cancelled"
+
+// ProjectStatus summarises a project's sessions for the list view: the total,
+// how many are still running, and the newest session's phase.
+type ProjectStatus struct {
+	Total   int   `json:"total"`
+	Running int   `json:"running"`
+	Latest  Phase `json:"latest"`
+}
+
 // Job is the durable record of one submission.
 type Job struct {
 	ID        string             `json:"id"`

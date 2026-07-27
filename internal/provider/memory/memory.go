@@ -146,7 +146,7 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 	p.polls[h.ID]++
 	count := p.polls[h.ID]
 	if count < p.PollsBeforeDone {
-		return provider.RunStatus{State: provider.StateRunning}, nil
+		return provider.RunStatus{State: provider.StateRunning, RunID: h.ID}, nil
 	}
 	state := provider.StateDone
 	if p.Grade == provider.GradeFailed {
@@ -155,6 +155,7 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 	return provider.RunStatus{
 		State:   state,
 		Verdict: &provider.Verdict{Grade: p.Grade, Explanation: "recorded by memory provider"},
+		RunID:   h.ID,
 		Usage:   provider.Usage{InputTokens: int64(count)},
 	}, nil
 }

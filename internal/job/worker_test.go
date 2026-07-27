@@ -17,6 +17,7 @@ type fakeRunner struct {
 	failAt   string
 	repo     string
 	observed provider.RunStatus
+	closed   []string // run ids Close was called with
 }
 
 func (f *fakeRunner) record(s string) {
@@ -48,6 +49,13 @@ func (f *fakeRunner) Publish(_ context.Context, j *Job) error {
 	if f.failAt == "publish" {
 		return errors.New("publish boom")
 	}
+	return nil
+}
+
+func (f *fakeRunner) Close(_ context.Context, runID string) error {
+	f.mu.Lock()
+	f.closed = append(f.closed, runID)
+	f.mu.Unlock()
 	return nil
 }
 
@@ -155,6 +163,51 @@ func TestReapFailsStrandedJobs(t *testing.T) {
 	}
 	if got, _ := s.Get(ctx, fresh.ID); got.Phase != PhaseSubmitted {
 		t.Errorf("a fresh submitted job must not be reaped, got %s", got.Phase)
+	}
+}
+
+// A stranded job whose backend run id was observed is not just failed — its
+// backend session is closed, so a restart stops the run rather than orphaning it
+// (the bug: a "reaped" session that keeps running and spending on the backend).
+func TestReapClosesTheOrphanedRun(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
+	_, _, _ = s.Claim(ctx) // -> resolving
+	// The run reported its session id before the "crash".
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_01"})
+
+	r := &fakeRunner{}
+	reaped, err := NewWorker(s, r).Reap(ctx)
+	if err != nil || reaped != 1 {
+		t.Fatalf("Reap = %d, err %v", reaped, err)
+	}
+	if len(r.closed) != 1 || r.closed[0] != "sesn_live_01" {
+		t.Errorf("reap should close the orphaned session, closed=%v", r.closed)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseFailed {
+		t.Errorf("reaped job phase = %s, want failed", got.Phase)
+	}
+}
+
+// Cancelling an orphaned running session (one no worker is driving) still closes
+// it on the backend, via its persisted run id.
+func TestCancelClosesAnOrphanRun(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "p", "arxiv:1")
+	_, _, _ = s.Claim(ctx)
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_02"})
+
+	r := &fakeRunner{}
+	if err := NewWorker(s, r).Cancel(ctx, j.ID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(r.closed) != 1 || r.closed[0] != "sesn_live_02" {
+		t.Errorf("cancel should close the backend session, closed=%v", r.closed)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseFailed || got.Err != CancelCause {
+		t.Errorf("cancelled job = %s/%q, want failed/cancelled", got.Phase, got.Err)
 	}
 }
 

@@ -3,6 +3,7 @@ import { fileKind, highlightIn, langOf, renderMarkdown } from './artifact'
 import {
   addMember,
   artifactUrl,
+  cancelSession,
   getArtifact,
   getMe,
   getProject,
@@ -279,6 +280,7 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
                     {t('sessionCount', { n: String(p.session_count) })}
                   </div>
                 </div>
+                <StatusBadge i18n={i18n} p={p} />
                 <span className={'badge ' + p.visibility}>{t(p.visibility)}</span>
                 <Svg d={Icon.chev} size={14} />
               </div>
@@ -319,6 +321,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
                     {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
                   </div>
                 </div>
+                <StatusBadge i18n={i18n} p={p} />
                 <span className="badge public">{t('public')}</span>
                 <Svg d={Icon.chev} size={14} />
               </div>
@@ -524,7 +527,7 @@ function ProjectScreen({
               ) : (
                 <div className="rows">
                   {sessions.map((s) => (
-                    <SessionRow key={s.id} i18n={i18n} job={s} onOpen={() => onOpenSession(s.id, s.ref, project.title)} />
+                    <SessionRow key={s.id} i18n={i18n} job={s} onOpen={() => onOpenSession(s.id, s.ref, project.title)} onChanged={refresh} />
                   ))}
                 </div>
               )}
@@ -737,25 +740,69 @@ function ProjectSubmit({ i18n, projectID, onSubmitted }: { i18n: I18n; projectID
   )
 }
 
-function SessionRow({ i18n, job, onOpen }: { i18n: I18n; job: Job; onOpen: () => void }) {
+// StatusBadge shows a project's session status at a glance: how many are
+// running (pulsing), else the newest session's terminal phase.
+function StatusBadge({ i18n, p }: { i18n: I18n; p: ProjectView }) {
+  const { t } = i18n
+  if (p.running > 0)
+    return (
+      <span className="badge running">
+        <span className="dot" />
+        {t('runningN', { n: String(p.running) })}
+      </span>
+    )
+  if (p.latest_phase === 'done') return <span className="badge done">{phaseLabel(t, 'done')}</span>
+  if (p.latest_phase === 'failed') return <span className="badge failed">{phaseLabel(t, 'failed')}</span>
+  return null
+}
+
+// stopLabel reads a stopped run (cancelled, or reap-closed by a restart) as
+// "stopped" rather than a bare "failed".
+const isStopped = (j: Job) => j.phase === 'failed' && !!j.error && /cancel|stopped|restart/i.test(j.error)
+
+function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; onOpen: () => void; onChanged: () => void }) {
+  const { t } = i18n
   const [j, setJob] = useState<Job>(job)
+  const [stopping, setStopping] = useState(false)
   useEffect(() => {
     setJob(job)
     if (!terminal(job.phase)) return watchJob(job.id, setJob)
   }, [job])
+
+  const stop = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (stopping) return
+    setStopping(true)
+    try {
+      const updated = await cancelSession(j.id)
+      setJob(updated)
+      onChanged()
+    } catch {
+      /* leave as-is */
+    } finally {
+      setStopping(false)
+    }
+  }
+
+  const phaseTxt = isStopped(j) ? t('stopped') : phaseLabel(t, j.phase)
   return (
     <div className="row" onClick={onOpen}>
-      <span className={'badge ' + phaseClass(j.phase) + ' ' + j.phase} style={{ width: 96, justifyContent: 'center' }}>
+      <span className={'badge ' + phaseClass(j.phase) + ' ' + j.phase} style={{ minWidth: 96, justifyContent: 'center' }}>
         <span className="dot" />
-        {phaseLabel(i18n.t, j.phase)}
+        {phaseTxt}
       </span>
       <span className="row-mono row-title">{j.ref}</span>
+      {!terminal(j.phase) && (
+        <button className="btn ghost sm" onClick={stop} disabled={stopping}>
+          {stopping ? t('stopping') : t('stop')}
+        </button>
+      )}
       {j.repo_name && (
         <a className="muted small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
           ↗ GitHub
         </a>
       )}
-      {j.error && <span className="err small">{j.error}</span>}
+      {j.error && !isStopped(j) && <span className="err small">{j.error}</span>}
       <span className="muted small">{i18n.t('viewTranscript')}</span>
       <Svg d={Icon.chev} size={14} />
     </div>

@@ -71,6 +71,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("DELETE", "/projects/{id}/members/{email}", rt.removeMember)
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
+	rt.gatedHandle("POST", "/jobs/{id}/cancel", rt.cancelSession)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 	rt.gatedHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
 	rt.gatedHandle("GET", "/jobs/{id}/reproduction", rt.getSessionReproduction)
@@ -202,15 +203,18 @@ func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 // its Resolve phase has run.
 func defaultTitle(url string) string { return strings.TrimSpace(url) }
 
-// ProjectView is a project in the owner's list, carrying how many sessions it
-// holds so the list needs no per-project read on the client.
+// ProjectView is a project in a list, carrying a session summary so the list
+// shows status (how many sessions, how many running, the newest phase) at a
+// glance without a per-project read on the client.
 type ProjectView struct {
 	project.Project
-	SessionCount int `json:"session_count"`
+	SessionCount int    `json:"session_count"`
+	Running      int    `json:"running"`
+	LatestPhase  string `json:"latest_phase,omitempty"`
 }
 
 // listProjects reports the caller's own projects, newest first, each with a
-// session count. The scope is the authenticated principal alone.
+// session summary. The scope is the authenticated principal alone.
 func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 	owner := principal(r)
 	projects, err := rt.projects.ListByOwner(r.Context(), owner)
@@ -218,16 +222,32 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	counts, err := rt.jobs.CountByProject(r.Context(), owner)
+	status, err := rt.jobs.StatusByProject(r.Context(), owner)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
 	out := make([]ProjectView, 0, len(projects))
 	for _, p := range projects {
-		out = append(out, ProjectView{Project: p, SessionCount: counts[p.ID]})
+		st := status[p.ID]
+		out = append(out, ProjectView{Project: p, SessionCount: st.Total, Running: st.Running, LatestPhase: string(st.Latest)})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// summarize builds a project's session summary from its sessions (for lists
+// where the sessions are already loaded — shared and public projects).
+func summarize(sessions []job.Job) ProjectView {
+	v := ProjectView{SessionCount: len(sessions)}
+	for i, s := range sessions {
+		if s.Phase != job.PhaseDone && s.Phase != job.PhaseFailed {
+			v.Running++
+		}
+		if i == 0 {
+			v.LatestPhase = string(s.Phase) // sessions are newest-first
+		}
+	}
+	return v
 }
 
 // listPublic is the public zone: every public project, newest first, each
@@ -239,14 +259,14 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	counts := map[string]int{}
 	out := make([]ProjectView, 0, len(projects))
 	for _, p := range projects {
-		// Best-effort session count per public project.
+		v := ProjectView{Project: p}
 		if sessions, err := rt.jobs.ListByProject(r.Context(), p.ID); err == nil {
-			counts[p.ID] = len(sessions)
+			v = summarize(sessions)
+			v.Project = p
 		}
-		out = append(out, ProjectView{Project: p, SessionCount: counts[p.ID]})
+		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -448,11 +468,12 @@ func (rt *Router) listShared(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue // a membership whose project is gone is skipped, not fatal
 		}
-		count := 0
+		v := ProjectView{Project: p}
 		if sessions, err := rt.jobs.ListByProject(r.Context(), pid); err == nil {
-			count = len(sessions)
+			v = summarize(sessions)
+			v.Project = p
 		}
-		out = append(out, ProjectView{Project: p, SessionCount: count})
+		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -768,4 +789,30 @@ func (rt *Router) getJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, j)
+}
+
+// cancelSession stops a running session. Only the owner of the session's project
+// may stop it (a write action, so 403 explains rather than hides). It returns
+// the resulting job; stopping an already-finished session is a no-op.
+func (rt *Router) cancelSession(w http.ResponseWriter, r *http.Request) {
+	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	proj, err := rt.projects.Get(r.Context(), j.ProjectID)
+	if err != nil || proj.Owner != principal(r) {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return
+	}
+	if rt.canceler == nil {
+		writeError(w, http.StatusNotImplemented, "cancel_unavailable")
+		return
+	}
+	if err := rt.canceler.Cancel(r.Context(), j.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "cancel_failed")
+		return
+	}
+	updated, _ := rt.jobs.Get(r.Context(), j.ID)
+	writeJSON(w, http.StatusOK, updated)
 }

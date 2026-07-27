@@ -466,6 +466,39 @@ func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 	}
 }
 
+// storeCanceler cancels through the mem store, as the real worker does.
+type storeCanceler struct{ s *job.MemStore }
+
+func (c storeCanceler) Cancel(ctx context.Context, id string) error {
+	_, err := c.s.Cancel(ctx, id)
+	return err
+}
+
+// 006g: only the owner may stop a running session; a stopped session ends
+// failed/cancelled.
+func TestCancelSession(t *testing.T) {
+	d := testDeps(allowAll)
+	jobs := d.Jobs.(*job.MemStore)
+	d.Canceler = storeCanceler{jobs}
+	ctx := context.Background()
+	p, _ := d.Projects.Create(ctx, "me", "P")
+	j, _ := jobs.Enqueue(ctx, "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	_, _, _ = jobs.Claim(ctx) // -> resolving (non-terminal)
+	h := NewRouter(d).Handler()
+
+	// A non-owner cannot stop it.
+	if w := do(t, h, "POST", "/jobs/"+j.ID+"/cancel", "", "stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner cancel: %d, want 403", w.Code)
+	}
+	// The owner stops it; it ends failed/cancelled.
+	if w := do(t, h, "POST", "/jobs/"+j.ID+"/cancel", "", "me"); w.Code != http.StatusOK {
+		t.Fatalf("owner cancel: %d, want 200", w.Code)
+	}
+	if got, _ := jobs.Get(ctx, j.ID); got.Phase != job.PhaseFailed || got.Err != job.CancelCause {
+		t.Errorf("cancelled session = %s/%q, want failed/cancelled", got.Phase, got.Err)
+	}
+}
+
 // publishInto adds a session to a project and points it at a published repo.
 func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job {
 	t.Helper()

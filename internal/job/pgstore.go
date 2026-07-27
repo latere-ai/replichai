@@ -207,23 +207,50 @@ func (s *PGStore) ListByProject(ctx context.Context, projectID string) ([]Job, e
 	return out, rows.Err()
 }
 
-// CountByProject counts an owner's sessions grouped by project, in one query.
-func (s *PGStore) CountByProject(ctx context.Context, owner string) (map[string]int, error) {
-	rows, err := s.pool.Query(ctx, `SELECT project_id, COUNT(*) FROM jobs WHERE principal = $1 GROUP BY project_id`, owner)
+// StatusByProject summarises an owner's sessions grouped by project, in one
+// query. The running filter uses the same terminal set as Phase.Terminal, so the
+// in-memory and Postgres stores agree.
+func (s *PGStore) StatusByProject(ctx context.Context, owner string) (map[string]ProjectStatus, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT project_id,
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE phase NOT IN ('done','failed')) AS running,
+			(array_agg(phase ORDER BY created_at DESC, id DESC))[1] AS latest
+		FROM jobs WHERE principal = $1 GROUP BY project_id`, owner)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]int{}
+	out := map[string]ProjectStatus{}
 	for rows.Next() {
 		var id string
-		var n int
-		if err := rows.Scan(&id, &n); err != nil {
+		var st ProjectStatus
+		if err := rows.Scan(&id, &st.Total, &st.Running, &st.Latest); err != nil {
 			return nil, err
 		}
-		out[id] = n
+		out[id] = st
 	}
 	return out, rows.Err()
+}
+
+// Cancel stops a non-terminal session with a guarded UPDATE — the WHERE clause
+// is the guard, so a stop wins from any active phase and never routes through
+// the phase machine. An already-terminal session is returned unchanged.
+func (s *PGStore) Cancel(ctx context.Context, id string) (Job, error) {
+	now := s.clock()
+	row := s.pool.QueryRow(ctx, `
+		UPDATE jobs SET phase='failed', error=$2, updated_at=$3,
+			phase_at = phase_at || jsonb_build_object('failed', to_jsonb($3::timestamptz))
+		WHERE id=$1 AND phase NOT IN ('done','failed')
+		RETURNING `+jobColumns,
+		id, CancelCause, now)
+	j, err := scanJob(row)
+	if errors.Is(err, ErrNotFound) {
+		// No active row updated: either it does not exist, or it is already
+		// terminal. Return the current row (idempotent), or ErrNotFound.
+		return s.Get(ctx, id)
+	}
+	return j, err
 }
 
 // Active returns every non-terminal job.

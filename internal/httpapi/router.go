@@ -53,7 +53,13 @@ type JobStore interface {
 	Get(ctx context.Context, id string) (job.Job, error)
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
-	CountByProject(ctx context.Context, owner string) (map[string]int, error)
+	StatusByProject(ctx context.Context, owner string) (map[string]job.ProjectStatus, error)
+}
+
+// Canceler stops a running session. It is the worker (one process, one
+// replica): cancelling interrupts the run in flight and marks it cancelled.
+type Canceler interface {
+	Cancel(ctx context.Context, id string) error
 }
 
 // ProjectStore is the slice of the project store the handlers need — open a
@@ -139,6 +145,7 @@ type Deps struct {
 	Members       MembershipStore
 	Reproductions ReproReader
 	RepoPublisher RepoPublisher
+	Canceler      Canceler
 	Gate          Gate
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
@@ -162,6 +169,7 @@ type Router struct {
 	members     MembershipStore
 	repro       ReproReader
 	repoPub     RepoPublisher
+	canceler    Canceler
 	sseInterval time.Duration
 	spa         http.Handler
 }
@@ -180,7 +188,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }
