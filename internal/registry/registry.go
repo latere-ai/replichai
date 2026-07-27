@@ -32,6 +32,10 @@ type Source interface {
 	// file that is genuinely absent; a transport failure is an error, never a
 	// disguised miss (the 003 read-error rule).
 	File(ctx context.Context, repo, path string) ([]byte, bool, error)
+	// Tree lists a repository's committed file paths, so the app can serve the
+	// artifact file tree (006f) — an OSF-style pass-through that works even when
+	// the underlying forge repository stays private.
+	Tree(ctx context.Context, repo string) ([]string, error)
 }
 
 // PriorReproduction is one existing reproduction of a paper, read from a

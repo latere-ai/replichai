@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   addMember,
+  getArtifact,
   getMe,
   getProject,
+  getReproduction,
   getTranscript,
+  listArtifacts,
   listMembers,
   listProjects,
   listPublic,
@@ -18,6 +21,7 @@ import {
   type Member,
   type Project,
   type ProjectView,
+  type Reproduction,
   type Transcript,
   type Usage,
 } from './api'
@@ -460,7 +464,7 @@ function ProjectScreen({
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
-  const [tab, setTab] = useState<'sessions' | 'people'>('sessions')
+  const [tab, setTab] = useState<'sessions' | 'verdict' | 'artifacts' | 'people'>('sessions')
 
   const refresh = useCallback(() => {
     getProject(id)
@@ -475,6 +479,9 @@ function ProjectScreen({
   }, [refresh])
 
   const isOwner = project != null && project.owner === me.principal
+  // The latest published session (with a repository) backs the verdict and
+  // artifact views; sessions are newest-first.
+  const published = (sessions ?? []).find((s) => s.repo_name) ?? null
 
   if (project === null) return <div className="center-load">…</div>
 
@@ -502,6 +509,12 @@ function ProjectScreen({
         <div className="detail-tabs">
           <button className={'tab' + (tab === 'sessions' ? ' on' : '')} onClick={() => setTab('sessions')}>
             {t('projectSessions')}
+          </button>
+          <button className={'tab' + (tab === 'verdict' ? ' on' : '')} onClick={() => setTab('verdict')}>
+            {t('verdict')}
+          </button>
+          <button className={'tab' + (tab === 'artifacts' ? ' on' : '')} onClick={() => setTab('artifacts')}>
+            {t('artifacts')}
           </button>
           {isOwner && (
             <button className={'tab' + (tab === 'people' ? ' on' : '')} onClick={() => setTab('people')}>
@@ -531,11 +544,145 @@ function ProjectScreen({
             </div>
           </div>
         )}
+        {tab === 'verdict' && <VerdictTab i18n={i18n} session={published} />}
+        {tab === 'artifacts' && <ArtifactsTab i18n={i18n} session={published} />}
         {tab === 'people' && isOwner && (
           <div className="detail-grid">
             <Members i18n={i18n} projectID={id} />
             {project.visibility === 'private' ? <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} /> : <PublishedCard i18n={i18n} project={project} />}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// verdictTone maps a manifest verdict to a semantic colour.
+function verdictTone(v: string) {
+  const s = v.toLowerCase()
+  if (s.includes('pass')) return 'var(--ok)'
+  if (s.includes('fail') || s.includes('not')) return 'var(--err)'
+  return 'var(--warn)'
+}
+
+// VerdictTab shows the latest published session's manifest verdict and metadata —
+// real data only. Per-component scorecards are not something the backend
+// produces, so they are not shown.
+function VerdictTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
+  const { t } = i18n
+  const [repro, setRepro] = useState<Reproduction | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'none'>('loading')
+  useEffect(() => {
+    if (!session) {
+      setState('none')
+      return
+    }
+    getReproduction(session.id)
+      .then((r) => {
+        setRepro(r)
+        setState('ready')
+      })
+      .catch(() => setState('none'))
+  }, [session])
+
+  if (state === 'none') return <div className="card"><div className="empty">{t('noVerdict')}</div></div>
+  if (state === 'loading' || !repro) return <div className="center-load">…</div>
+  return (
+    <div className="card card-pad stack" style={{ maxWidth: 720 }}>
+      <span className="eyebrow">{t('verdict')}</span>
+      <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: verdictTone(repro.verdict) }}>
+        {repro.verdict ? repro.verdict[0].toUpperCase() + repro.verdict.slice(1) : t('noVerdict')}
+      </div>
+      <div className="usage-rows">
+        {repro.created && (
+          <div className="usage-line">
+            {t('graded')}
+            <span className="v">{new Date(repro.created).toLocaleDateString()}</span>
+          </div>
+        )}
+        <div className="usage-line">
+          {t('redistribution')}
+          <span className="v" style={{ color: repro.review === 'clear' ? 'var(--ok)' : 'var(--warn)' }}>
+            {repro.review || '—'}
+          </span>
+        </div>
+        {repro.method_digest && (
+          <div className="usage-line">
+            {t('methodDigest')}
+            <span className="v mono small">{repro.method_digest.replace('sha256:', '').slice(0, 12)}</span>
+          </div>
+        )}
+        <div className="usage-line">
+          {t('repository')}
+          <a className="v mono small" href={`https://github.com/${repro.repo}`} target="_blank" rel="noreferrer">
+            ↗ {repro.repo}
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ArtifactsTab is the in-app file browser over the reproduction repository — a
+// forge pass-through that works even when the repository stays private.
+function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
+  const { t } = i18n
+  const [files, setFiles] = useState<string[] | null>(null)
+  const [sel, setSel] = useState<string | null>(null)
+  const [content, setContent] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!session) {
+      setFiles([])
+      return
+    }
+    listArtifacts(session.id).then((r) => setFiles(r.files ?? [])).catch(() => setFiles([]))
+  }, [session])
+
+  const open = (path: string) => {
+    if (!session) return
+    setSel(path)
+    setLoading(true)
+    getArtifact(session.id, path)
+      .then((text) => setContent(text))
+      .catch(() => setContent(t('artifactError')))
+      .finally(() => setLoading(false))
+  }
+
+  if (files === null) return <div className="center-load">…</div>
+  if (files.length === 0) return <div className="card"><div className="empty">{session ? t('noArtifacts') : t('noVerdict')}</div></div>
+
+  return (
+    <div className="detail-grid" style={{ gridTemplateColumns: '280px 1fr' }}>
+      <div className="card">
+        <div className="card-head">
+          <span className="eyebrow">{t('artifacts')}</span>
+        </div>
+        <div className="rows">
+          {files.map((f) => (
+            <div key={f} className="row" style={{ padding: '9px 14px' }} onClick={() => open(f)}>
+              <span className="row-mono row-title" style={{ color: sel === f ? 'var(--fg-1)' : 'var(--fg-2)' }}>
+                {f}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="card card-pad">
+        {sel === null ? (
+          <div className="empty">{t('selectArtifact')}</div>
+        ) : loading ? (
+          <div className="center-load">…</div>
+        ) : (
+          <>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>
+              {sel}
+            </div>
+            <pre className="event-io" style={{ maxHeight: '68vh' }}>
+              {content || t('noContent')}
+            </pre>
+          </>
         )}
       </div>
     </div>

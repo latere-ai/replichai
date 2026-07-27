@@ -45,6 +45,18 @@ func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 		return Reproduction{}, ErrReproNotFound
 	}
 }
+func (f *fakeRepro) Files(_ context.Context, id string) ([]string, error) {
+	if id != "r1" {
+		return nil, nil
+	}
+	return []string{"replication.json", "README.md", "src/main.py"}, nil
+}
+func (f *fakeRepro) Artifact(_ context.Context, id, path string) ([]byte, error) {
+	if id != "r1" || path == "missing" {
+		return nil, ErrReproNotFound
+	}
+	return []byte("content of " + path), nil
+}
 func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 	if f.transcriptErr != nil {
 		return nil, f.transcriptErr // a forge/transport failure — must become a 500, not a 404
@@ -569,6 +581,49 @@ func TestSessionTranscriptUsageDerived(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &tr)
 	if w.Code != http.StatusOK || tr.Usage == nil || tr.Usage.Total() != 160 {
 		t.Fatalf("status %d usage %+v; want derived total 160 (100+50+10)", w.Code, tr.Usage)
+	}
+}
+
+// 006f: a published session serves its repository file tree, individual files,
+// and its manifest verdict — a forge pass-through, scoped like every session
+// read (a stranger sees 404).
+func TestSessionArtifactsAndReproduction(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
+
+	// File tree, sorted.
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/artifacts", "", "me")
+	var tree struct{ Files []string }
+	_ = json.Unmarshal(w.Body.Bytes(), &tree)
+	if w.Code != http.StatusOK || len(tree.Files) != 3 || tree.Files[0] != "README.md" {
+		t.Fatalf("artifacts = %d %+v; want sorted 3 files", w.Code, tree.Files)
+	}
+	// One file's contents, as text.
+	w = do(t, h, "GET", "/jobs/"+j.ID+"/artifact?path=README.md", "", "me")
+	if w.Code != http.StatusOK || w.Body.String() != "content of README.md" {
+		t.Errorf("artifact = %d %q", w.Code, w.Body.String())
+	}
+	// A missing file is 404; a missing path param is 400.
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/artifact?path=missing", "", "me"); w.Code != http.StatusNotFound {
+		t.Errorf("missing artifact: %d, want 404", w.Code)
+	}
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/artifact", "", "me"); w.Code != http.StatusBadRequest {
+		t.Errorf("no path: %d, want 400", w.Code)
+	}
+	// The manifest verdict.
+	w = do(t, h, "GET", "/jobs/"+j.ID+"/reproduction", "", "me")
+	var repro Reproduction
+	_ = json.Unmarshal(w.Body.Bytes(), &repro)
+	if w.Code != http.StatusOK || repro.Verdict != "passed" {
+		t.Errorf("reproduction = %d %+v", w.Code, repro)
+	}
+	// A stranger cannot reach any of it — the artifacts stay behind the same
+	// project scope as everything else (the point of the in-app pass-through).
+	for _, p := range []string{"/artifacts", "/artifact?path=README.md", "/reproduction"} {
+		if w := do(t, h, "GET", "/jobs/"+j.ID+p, "", "stranger"); w.Code != http.StatusNotFound {
+			t.Errorf("stranger %s = %d, want 404", p, w.Code)
+		}
 	}
 }
 

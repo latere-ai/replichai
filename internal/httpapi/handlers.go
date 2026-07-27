@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -72,6 +73,9 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 	rt.gatedHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
+	rt.gatedHandle("GET", "/jobs/{id}/reproduction", rt.getSessionReproduction)
+	rt.gatedHandle("GET", "/jobs/{id}/artifacts", rt.listSessionArtifacts)
+	rt.gatedHandle("GET", "/jobs/{id}/artifact", rt.getSessionArtifact)
 
 	// The frontend shell is public and serves any GET path not matched above,
 	// so a deep link loads the app and lets it route (006e). More specific API
@@ -599,6 +603,77 @@ func repoName(full string) string {
 		return full[i+1:]
 	}
 	return full
+}
+
+// getSessionReproduction serves a session's manifest summary (006f): the
+// verdict, the redistribution review, and the reproduction metadata, read from
+// the committed repository. Scoped exactly like the transcript.
+func (rt *Router) getSessionReproduction(w http.ResponseWriter, r *http.Request) {
+	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if j.RepoName == "" {
+		writeError(w, http.StatusConflict, "not_ready")
+		return
+	}
+	repro, err := rt.repro.Get(r.Context(), repoName(j.RepoName))
+	if err != nil {
+		writeReadError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, repro)
+}
+
+// listSessionArtifacts serves the session's repository file tree — the in-app
+// artifact browser (006f), an OSF-style pass-through that works even when the
+// forge repository stays private.
+func (rt *Router) listSessionArtifacts(w http.ResponseWriter, r *http.Request) {
+	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if j.RepoName == "" {
+		writeError(w, http.StatusConflict, "not_ready")
+		return
+	}
+	files, err := rt.repro.Files(r.Context(), repoName(j.RepoName))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "registry_unavailable")
+		return
+	}
+	if files == nil {
+		files = []string{}
+	}
+	sort.Strings(files)
+	writeJSON(w, http.StatusOK, map[string][]string{"files": files})
+}
+
+// getSessionArtifact serves one committed file's bytes as text. The path is a
+// query parameter; the forge scopes reads to the one repository, so a path can
+// only reach that repository's committed tree.
+func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
+	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if j.RepoName == "" {
+		writeError(w, http.StatusConflict, "not_ready")
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if strings.TrimSpace(path) == "" {
+		writeError(w, http.StatusBadRequest, "missing_path")
+		return
+	}
+	raw, err := rt.repro.Artifact(r.Context(), repoName(j.RepoName), path)
+	if err != nil {
+		writeReadError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
 }
 
 // parseTranscriptEvents parses the newline-delimited provider.Event stream

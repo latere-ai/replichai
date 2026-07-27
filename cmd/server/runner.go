@@ -137,6 +137,24 @@ func (r *registryReader) Transcript(ctx context.Context, repo string) ([]byte, e
 	return raw, nil
 }
 
+// Files lists a repository's committed artifact paths through the forge.
+func (r *registryReader) Files(ctx context.Context, repo string) ([]string, error) {
+	return r.source.Tree(ctx, repo)
+}
+
+// Artifact reads one committed file's bytes through the forge. A genuinely
+// absent file is a miss (404); a transport failure becomes a 500.
+func (r *registryReader) Artifact(ctx context.Context, repo, path string) ([]byte, error) {
+	raw, ok, err := r.source.File(ctx, repo, path)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, httpapi.ErrReproNotFound
+	}
+	return raw, nil
+}
+
 func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 	// The manifest records the full "owner/name" repo path; prefer it so the
 	// frontend's github.com/<repo> link resolves. Fall back to the source's id.
@@ -144,12 +162,20 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 	if m.Reproduction.Repo != "" {
 		full = m.Reproduction.Repo
 	}
+	created := ""
+	if !m.Reproduction.Created.IsZero() {
+		created = m.Reproduction.Created.Format(time.RFC3339)
+	}
 	return httpapi.Reproduction{
-		ID:         repo,
-		Repo:       full,
-		Title:      m.Paper.Title,
-		Verdict:    string(m.Reproduction.Verdict),
-		CanPublish: m.Redistribution.Review == publish.ReviewClear,
+		ID:           repo,
+		Repo:         full,
+		Title:        m.Paper.Title,
+		Verdict:      m.Reproduction.Verdict.String(), // the name ("passed"), not the uint8 code point
+
+		Created:      created,
+		MethodDigest: m.Reproduction.MethodDigest,
+		Review:       m.Redistribution.Review,
+		CanPublish:   m.Redistribution.Review == publish.ReviewClear,
 	}
 }
 
