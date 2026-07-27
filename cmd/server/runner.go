@@ -85,6 +85,15 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 	return nil
 }
 
+// Close releases a managed-agents run by its session id, so a run left in flight
+// by a restart is archived (stopped) rather than orphaned. Idempotent.
+func (e *engineRunner) Close(ctx context.Context, runID string) error {
+	if runID == "" {
+		return nil
+	}
+	return e.provider.CloseRun(ctx, provider.RunHandle{ID: runID})
+}
+
 // Publish is a pass-through in this build: the GitHub publish (006f) is not yet
 // packaged for the server, so a reproduction runs and is graded but is not
 // pushed to a repository. Wiring the mount publish here is the deployable

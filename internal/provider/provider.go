@@ -146,6 +146,11 @@ type RunStatus struct {
 	State   RunState
 	Verdict *Verdict
 	Usage   Usage
+	// RunID is the backend's identifier for the run in flight (the managed-agents
+	// session id). It is observed so the worker can persist it and, after a
+	// restart, close a session the process was driving — otherwise a run left in
+	// flight by a restart keeps running on the backend, unreachable.
+	RunID string `json:"run_id,omitempty"`
 }
 
 // Passed reports whether the run finished and met the rubric. A run with no

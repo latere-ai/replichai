@@ -29,10 +29,15 @@ type Store interface {
 	// of one project (006g). An unknown project yields no rows, never an error;
 	// the caller's ownership of the project is checked against the project store.
 	ListByProject(ctx context.Context, projectID string) ([]Job, error)
-	// CountByProject returns, for one owner, how many sessions each of their
-	// projects holds, so the project list shows a count in one query rather than
-	// a read per project.
-	CountByProject(ctx context.Context, owner string) (map[string]int, error)
+	// StatusByProject returns, for one owner, a summary of each of their
+	// projects' sessions — the total, how many are still running, and the newest
+	// session's phase — so the project list shows status at a glance in one query.
+	StatusByProject(ctx context.Context, owner string) (map[string]ProjectStatus, error)
+	// Cancel stops a non-terminal session, moving it to failed with a "cancelled"
+	// cause, and returns the resulting job. It is idempotent: cancelling an
+	// already-terminal session returns it unchanged. It never routes through the
+	// phase machine — a stop must win from any active phase.
+	Cancel(ctx context.Context, id string) (Job, error)
 	// Claim atomically takes one submitted job into resolving and returns it, or
 	// reports false when none is waiting. Two concurrent claims return disjoint
 	// jobs — in Postgres by SELECT … FOR UPDATE SKIP LOCKED, in memory by a lock.

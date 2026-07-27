@@ -150,6 +150,7 @@ func run() error {
 		Members:       memberStore,
 		Reproductions: &registryReader{source: reproSource},
 		RepoPublisher: repoPublisher,
+		Canceler:      worker,
 		Gate:          webauth.Gate(accessStore),
 		SPA:           spaHandler,
 	})

@@ -56,6 +56,10 @@ const strings: Record<Lang, Record<string, string>> = {
     // project detail
     projectSessions: 'Sessions',
     noSessions: 'No sessions yet.',
+    runningN: '{n} running',
+    stop: 'Stop',
+    stopping: 'Stopping…',
+    stopped: 'stopped',
     verdict: 'Verdict',
     artifacts: 'Artifacts',
     noVerdict: 'No published session yet — the verdict appears once a session finishes.',

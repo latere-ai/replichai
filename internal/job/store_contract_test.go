@@ -152,6 +152,26 @@ func runGuardContract(t *testing.T, s Store) {
 	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key); err != nil {
 		t.Errorf("re-run after done blocked: %v", err)
 	}
+
+	// Cancelling a session frees the guard slot immediately (cancel writes the
+	// terminal 'failed'), so the same paper can be stopped and resubmitted — the
+	// natural next action. Proven against the partial index, not just the mem check.
+	const key2 = "arxiv:1111.11111"
+	c1, _ := s.Enqueue(ctx, "owner", "ref", KindAudit, "projC", key2)
+	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projC", key2); !errors.Is(err, ErrActiveSession) {
+		t.Errorf("pre-cancel double-fire: want ErrActiveSession, got %v", err)
+	}
+	got, err := s.Cancel(ctx, c1.ID)
+	if err != nil || got.Phase != PhaseFailed || got.Err != CancelCause {
+		t.Fatalf("Cancel = %+v err=%v; want failed/cancelled", got, err)
+	}
+	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projC", key2); err != nil {
+		t.Errorf("resubmit after cancel blocked: %v", err)
+	}
+	// Cancelling an already-terminal session is a no-op, not an error.
+	if again, err := s.Cancel(ctx, c1.ID); err != nil || again.Phase != PhaseFailed {
+		t.Errorf("idempotent cancel: %+v err=%v", again, err)
+	}
 }
 
 // runProjectJoinContract asserts the two project-join reads both stores must
@@ -175,12 +195,17 @@ func runProjectJoinContract(t *testing.T, s Store) {
 		t.Fatalf("pX sessions = %d, first %s; want 3 newest-first %s", len(inX), first3(inX), two.ID)
 	}
 
-	counts, err := s.CountByProject(ctx, "owner")
+	status, err := s.StatusByProject(ctx, "owner")
 	if err != nil {
-		t.Fatalf("CountByProject: %v", err)
+		t.Fatalf("StatusByProject: %v", err)
 	}
-	if counts["pX"] != 2 || counts["pY"] != 1 {
-		t.Errorf("owner counts = %v; want pX:2 pY:1 (no stranger)", counts)
+	// The owner's own sessions only (no stranger), with the newest phase and a
+	// running count — all four are still submitted (non-terminal).
+	if status["pX"].Total != 2 || status["pY"].Total != 1 {
+		t.Errorf("owner status = %v; want pX total 2, pY total 1 (no stranger)", status)
+	}
+	if status["pX"].Running != 2 || status["pX"].Latest != PhaseSubmitted {
+		t.Errorf("pX status = %+v; want running 2, latest submitted", status["pX"])
 	}
 }
 

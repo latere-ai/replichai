@@ -116,7 +116,8 @@ func (r progressRunner) Execute(_ context.Context, _ *job.Job, observe func(prov
 	}
 	return nil
 }
-func (progressRunner) Publish(context.Context, *job.Job) error { return nil }
+func (progressRunner) Publish(context.Context, *job.Job) error   { return nil }
+func (progressRunner) Close(context.Context, string) error       { return nil }
 
 // AC2+AC5 through the HTTP surface: a real worker's Observe-only progress (usage
 // with no phase change) reaches the SSE stream — not just phase transitions.

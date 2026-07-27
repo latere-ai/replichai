@@ -111,17 +111,54 @@ func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, er
 	return out, nil
 }
 
-// CountByProject counts an owner's sessions grouped by project.
-func (s *MemStore) CountByProject(_ context.Context, owner string) (map[string]int, error) {
+// StatusByProject summarises an owner's sessions grouped by project.
+func (s *MemStore) StatusByProject(_ context.Context, owner string) (map[string]ProjectStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := map[string]int{}
-	for _, j := range s.jobs {
-		if j.Principal == owner {
-			out[j.ProjectID]++
+	out := map[string]ProjectStatus{}
+	latestAt := map[string]time.Time{}
+	// s.order is oldest-first; the last non-before wins as the newest.
+	for _, id := range s.order {
+		j := s.jobs[id]
+		if j.Principal != owner {
+			continue
 		}
+		st := out[j.ProjectID]
+		st.Total++
+		if !j.Phase.Terminal() {
+			st.Running++
+		}
+		if at, ok := latestAt[j.ProjectID]; !ok || !j.CreatedAt.Before(at) {
+			st.Latest = j.Phase // st already carries the prior latest; update only when newer
+			latestAt[j.ProjectID] = j.CreatedAt
+		}
+		out[j.ProjectID] = st
 	}
 	return out, nil
+}
+
+// Cancel stops a non-terminal session, idempotently.
+func (s *MemStore) Cancel(_ context.Context, id string) (Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	if j.Phase.Terminal() {
+		return cloneJob(j), nil // already done or failed — nothing to stop
+	}
+	now := s.clock()
+	j.Phase = PhaseFailed
+	j.Err = CancelCause
+	j.UpdatedAt = now
+	j.PhaseAt = clonePhaseAt(j.PhaseAt)
+	if j.PhaseAt == nil {
+		j.PhaseAt = map[Phase]time.Time{}
+	}
+	j.PhaseAt[PhaseFailed] = now
+	s.jobs[id] = j
+	return cloneJob(j), nil
 }
 
 // Claim takes the oldest submitted job into resolving and returns it. The lock

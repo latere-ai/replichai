@@ -34,7 +34,7 @@ export type Project = {
   attestation_version?: string
 }
 
-export type ProjectView = Project & { session_count: number }
+export type ProjectView = Project & { session_count: number; running: number; latest_phase?: string }
 
 export type ProjectDetail = { project: Project; sessions: Job[] }
 
@@ -89,6 +89,10 @@ export const submitPaper = (url: string, project = '') =>
   }).then(json<{ job_id: string; project_id: string }>)
 
 export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
+
+// cancelSession stops a running session (owner-only). It returns the resulting
+// job — failed with a "cancelled" cause.
+export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)
 
 // listProjects returns the caller's own projects, newest first, each with a
 // session count. The session cookie scopes the result server-side.
