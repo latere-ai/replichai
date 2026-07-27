@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
+  addMember,
   getMe,
   getProject,
   getTranscript,
-  addMember,
   listMembers,
   listProjects,
   listPublic,
@@ -21,70 +21,201 @@ import {
   type Transcript,
   type Usage,
 } from './api'
-import { useI18n, type Lang } from './i18n'
+import { useI18n } from './i18n'
 
-// A view is where the user is: the projects list, one project's sessions, or one
-// session's transcript. Navigation is state, not a router — the app is small.
+type I18n = ReturnType<typeof useI18n>
+
+// A view is where the operator is. Navigation is state, not a router.
 type View =
   | { name: 'projects' }
-  | { name: 'project'; id: string }
-  | { name: 'session'; jobId: string; projectId: string }
+  | { name: 'public' }
+  | { name: 'submit' }
+  | { name: 'settings' }
+  | { name: 'project'; id: string; title?: string }
+  | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string }
+
+// useTheme persists the light/dark choice and stamps it on <html>. Dark is the
+// default, matching the operator console.
+function useTheme(): [string, () => void] {
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('theme', theme)
+  }, [theme])
+  return [theme, () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))]
+}
+
+const terminal = (p: string) => p === 'done' || p === 'failed'
+// phaseClass tones a phase badge: any non-terminal phase reads as "running".
+const phaseClass = (p: string) => (terminal(p) ? p : 'running')
 
 export default function App() {
   const i18n = useI18n()
+  const [theme, toggleTheme] = useTheme()
   const [me, setMe] = useState<Me | null>(null)
 
   useEffect(() => {
     getMe().then(setMe).catch(() => setMe({ authenticated: false }))
   }, [])
 
+  if (me === null) return <div className="center-load">…</div>
+  if (!me.authenticated) return <SignIn i18n={i18n} />
+  if ((me.tier ?? 'none') === 'none') return <NotInvited i18n={i18n} email={me.email ?? ''} />
+  return <Shell i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />
+}
+
+/* ─── Auth screens ─── */
+
+function Logo({ big }: { big?: boolean }) {
+  return <div className={big ? 'auth-logo' : 'rail-logo'}>r</div>
+}
+
+function SignIn({ i18n }: { i18n: I18n }) {
   return (
-    <div className="app">
-      <Header i18n={i18n} me={me} />
-      <main>
-        {me === null ? (
-          <p className="muted">…</p>
-        ) : !me.authenticated ? (
-          <SignIn i18n={i18n} />
-        ) : (me.tier ?? 'none') === 'none' ? (
-          <NotInvited i18n={i18n} email={me.email ?? ''} />
-        ) : (
-          <Dashboard i18n={i18n} me={me} />
-        )}
-      </main>
-      <footer className="muted">replichai · latere.ai</footer>
+    <div className="auth-center">
+      <div className="auth-card">
+        <Logo big />
+        <h2>replichai</h2>
+        <p>{i18n.t('tagline')}</p>
+        <a className="btn lg" href="/login" style={{ justifyContent: 'center' }}>
+          {i18n.t('signInWith')}
+        </a>
+      </div>
     </div>
   )
 }
 
-type I18n = ReturnType<typeof useI18n>
-
-function Header({ i18n, me }: { i18n: I18n; me: Me | null }) {
-  const { t, lang, setLang } = i18n
+function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
   return (
-    <header>
-      <div className="brand">
-        <strong>replichai</strong>
-        <span className="muted">{t('tagline')}</span>
+    <div className="auth-center">
+      <div className="auth-card">
+        <Logo big />
+        <h2>{i18n.t('notInvitedTitle')}</h2>
+        <p>{i18n.t('notInvitedBody', { email })}</p>
       </div>
-      <div className="header-right">
-        <LangToggle lang={lang} setLang={setLang} />
-        {me?.authenticated && (
-          <>
-            <span className="muted small">
-              {me.email} · {t('access')}: {tierLabel(t, me.tier)}
-            </span>
-            <a className="btn ghost" href="/logout">
-              {t('signOut')}
-            </a>
-          </>
-        )}
-      </div>
-    </header>
+    </div>
   )
 }
 
-function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+/* ─── Shell ─── */
+
+const Icon = {
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z',
+  globe: 'M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18',
+  gear: '', // rendered as circle below
+  plus: 'M12 5v14M5 12h14',
+  moon: 'M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z',
+  back: 'm15 6-6 6 6 6',
+  chev: 'm9 6 6 6-6 6',
+}
+
+function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
+      {d === 'globe' ? (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d={Icon.globe} />
+        </>
+      ) : (
+        <path d={d} />
+      )}
+    </svg>
+  )
+}
+
+function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: string; toggleTheme: () => void }) {
+  const { t } = i18n
+  const [view, setView] = useState<View>({ name: 'projects' })
+  const openProject = (id: string, title?: string) => setView({ name: 'project', id, title })
+  const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string) =>
+    setView({ name: 'session', jobId, projectId, ref, projectTitle })
+
+  return (
+    <div className="shell">
+      <nav className="rail">
+        <div className="rail-head">
+          <Logo />
+          <span className="rail-name">replichai</span>
+          <span className="rail-beta">BETA</span>
+        </div>
+        <div className="rail-nav">
+          <div className="rail-group">
+            <div className="eyebrow">{t('workspace')}</div>
+            <button className={'nav-btn' + (view.name === 'projects' || view.name === 'project' || view.name === 'session' ? ' active' : '')} onClick={() => setView({ name: 'projects' })}>
+              <Svg d={Icon.folder} /> {t('navProjects')}
+            </button>
+            <button className={'nav-btn' + (view.name === 'public' ? ' active' : '')} onClick={() => setView({ name: 'public' })}>
+              <Svg d="globe" /> {t('navPublic')}
+            </button>
+          </div>
+        </div>
+        <div className="rail-foot">
+          <button className="user-btn" onClick={() => setView({ name: 'settings' })}>
+            <span className="user-avatar">{initials(me.email)}</span>
+            <span className="user-meta">
+              <span className="user-email">{me.email}</span>
+              <span className="user-tier">{tierLabel(t, me.tier)}</span>
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      <div className="main">
+        <header className="topbar">
+          <Breadcrumb i18n={i18n} view={view} setView={setView} />
+          <div className="topbar-actions">
+            <LangToggle i18n={i18n} />
+            <button className="icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light' : 'Dark'} aria-label="theme">
+              <Svg d={Icon.moon} />
+            </button>
+            <button className="btn" onClick={() => setView({ name: 'submit' })}>
+              <Svg d={Icon.plus} size={13} w={2.1} /> {t('newAudit')}
+            </button>
+          </div>
+        </header>
+
+        {view.name === 'projects' && <ProjectsScreen i18n={i18n} onOpen={openProject} />}
+        {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
+        {view.name === 'submit' && <SubmitScreen i18n={i18n} onSubmitted={(id) => openProject(id)} />}
+        {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />}
+        {view.name === 'project' && <ProjectScreen i18n={i18n} me={me} id={view.id} onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)} />}
+        {view.name === 'session' && (
+          <SessionScreen i18n={i18n} jobId={view.jobId} onBack={() => openProject(view.projectId, view.projectTitle)} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: (v: View) => void }) {
+  const { t } = i18n
+  const root = () =>
+    view.name === 'public' ? t('navPublic') : view.name === 'submit' ? t('newAudit') : view.name === 'settings' ? t('settings') : t('navProjects')
+  const rootView: View = view.name === 'public' ? { name: 'public' } : { name: 'projects' }
+  return (
+    <div className="crumb">
+      <button onClick={() => setView(rootView)}>{root()}</button>
+      {view.name === 'project' && view.title && (
+        <>
+          <span className="sep">/</span>
+          <span className="leaf">{view.title}</span>
+        </>
+      )}
+      {view.name === 'session' && (
+        <>
+          <span className="sep">/</span>
+          <button onClick={() => setView({ name: 'project', id: view.projectId, title: view.projectTitle })}>{view.projectTitle ?? '…'}</button>
+          <span className="sep">/</span>
+          <span className="leaf">{view.ref ?? t('transcript')}</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+function LangToggle({ i18n }: { i18n: I18n }) {
+  const { lang, setLang } = i18n
   return (
     <div className="lang">
       <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>
@@ -97,260 +228,388 @@ function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void 
   )
 }
 
-function SignIn({ i18n }: { i18n: I18n }) {
+/* ─── Projects ─── */
+
+function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title?: string) => void }) {
+  const { t } = i18n
+  const [tab, setTab] = useState<'mine' | 'shared'>('mine')
+  const [mine, setMine] = useState<ProjectView[] | null>(null)
+  const [shared, setShared] = useState<ProjectView[]>([])
+
+  useEffect(() => {
+    listProjects().then((p) => setMine(p ?? [])).catch(() => setMine([]))
+    listShared().then((p) => setShared(p ?? [])).catch(() => setShared([]))
+  }, [])
+
+  const list = tab === 'mine' ? mine ?? [] : shared
+  const sessionTotal = (mine ?? []).reduce((n, p) => n + p.session_count, 0)
+
   return (
-    <div className="card center">
-      <a className="btn" href="/login">
-        {i18n.t('signInWith')}
-      </a>
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('navProjects')}</h1>
+        <p className="screen-desc">{t('projectsIntro')}</p>
+      </div>
+
+      <div className="stat-grid">
+        <div className="stat">
+          <span className="eyebrow">{t('statProjects')}</span>
+          <span className="stat-value">{mine === null ? '—' : mine.length}</span>
+        </div>
+        <div className="stat">
+          <span className="eyebrow">{t('statSessions')}</span>
+          <span className="stat-value">{mine === null ? '—' : sessionTotal}</span>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div className="segmented">
+            <button className={'seg-btn' + (tab === 'mine' ? ' on' : '')} onClick={() => setTab('mine')}>
+              {t('myProjects')}
+            </button>
+            <button className={'seg-btn' + (tab === 'shared' ? ' on' : '')} onClick={() => setTab('shared')}>
+              {t('sharedWithMe')}
+            </button>
+          </div>
+        </div>
+        {mine === null ? (
+          <div className="empty">…</div>
+        ) : list.length === 0 ? (
+          <div className="empty">{tab === 'mine' ? t('noProjects') : t('noShared')}</div>
+        ) : (
+          <div className="rows">
+            {list.map((p) => (
+              <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="row-title">{p.title}</div>
+                  <div className="row-sub">
+                    {tab === 'shared' ? `${t('initiator')}: ${p.owner} · ` : ''}
+                    {t('sessionCount', { n: String(p.session_count) })}
+                  </div>
+                </div>
+                <span className={'badge ' + p.visibility}>{t(p.visibility)}</span>
+                <Svg d={Icon.chev} size={14} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
+/* ─── Public registry (zone) ─── */
+
+function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title?: string) => void }) {
+  const { t } = i18n
+  const [list, setList] = useState<ProjectView[] | null>(null)
+  useEffect(() => {
+    listPublic().then((p) => setList(p ?? [])).catch(() => setList([]))
+  }, [])
   return (
-    <div className="card">
-      <h2>{i18n.t('notInvitedTitle')}</h2>
-      <p>{i18n.t('notInvitedBody', { email })}</p>
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('navPublic')}</h1>
+        <p className="screen-desc">{t('publicIntro')}</p>
+      </div>
+      <div className="card">
+        {list === null ? (
+          <div className="empty">…</div>
+        ) : list.length === 0 ? (
+          <div className="empty">{t('noPublic')}</div>
+        ) : (
+          <div className="rows">
+            {list.map((p) => (
+              <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="row-title">{p.title}</div>
+                  <div className="row-sub">
+                    {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
+                  </div>
+                </div>
+                <span className="badge public">{t('public')}</span>
+                <Svg d={Icon.chev} size={14} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function Dashboard({ i18n, me }: { i18n: I18n; me: Me }) {
-  const [view, setView] = useState<View>({ name: 'projects' })
-  const open = (id: string) => setView({ name: 'project', id })
+/* ─── Submit / New audit ─── */
 
-  if (view.name === 'project') {
-    return <ProjectPage i18n={i18n} me={me} id={view.id} onBack={() => setView({ name: 'projects' })} onOpenSession={(jobId) => setView({ name: 'session', jobId, projectId: view.id })} />
-  }
-  if (view.name === 'session') {
-    return <SessionPage i18n={i18n} jobId={view.jobId} onBack={() => setView({ name: 'project', id: view.projectId })} />
-  }
-  return (
-    <>
-      <Submit i18n={i18n} onSubmitted={open} />
-      <ProjectsList i18n={i18n} onOpen={open} />
-      <SharedWithMe i18n={i18n} onOpen={open} />
-      <PublicZone i18n={i18n} onOpen={open} />
-    </>
-  )
-}
-
-// Submit opens a fresh project for a paper and navigates into it, so a user goes
-// straight from a link to the project that now holds its first session.
-function Submit({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (projectID: string) => void }) {
+function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (projectId: string) => void }) {
   const { t } = i18n
   const [url, setUrl] = useState('')
+  const [project, setProject] = useState('')
+  const [owned, setOwned] = useState<ProjectView[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  useEffect(() => {
+    listProjects().then((p) => setOwned(p ?? [])).catch(() => setOwned([]))
+  }, [])
+
+  const submit = async () => {
     if (!url.trim() || busy) return
     setBusy(true)
     setErr('')
     try {
-      const { project_id } = await submitPaper(url.trim())
-      setUrl('')
+      const { project_id } = await submitPaper(url.trim(), project)
       onSubmitted(project_id)
-    } catch {
-      setErr(t('submitError'))
+    } catch (e) {
+      setErr((e as Error).message === '409' ? t('activeSession') : t('submitError'))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h2>{t('submitTitle')}</h2>
-      <p className="muted small">{t('submitHint')}</p>
-      <div className="row">
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://arxiv.org/abs/…"
-          spellCheck={false}
-        />
-        <button className="btn" disabled={busy}>
-          {busy ? t('submitting') : t('submit')}
-        </button>
+    <div className="screen">
+      <div className="submit-form">
+        <div className="screen-head">
+          <h1 className="screen-title">{t('newAudit')}</h1>
+          <p className="screen-desc">{t('submitHint')}</p>
+        </div>
+        <div className="submit-input-row">
+          <input
+            className="submit-input"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://arxiv.org/abs/… · DOI · ACM DL"
+            spellCheck={false}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+          />
+          <button className="btn lg" disabled={busy} onClick={submit}>
+            {busy ? t('submitting') : t('submit')}
+          </button>
+        </div>
+        <div className="card submit-options">
+          <span className="eyebrow">{t('sessionOptions')}</span>
+          <label className="field">
+            {t('destinationProject')}
+            <select className="text" value={project} onChange={(e) => setProject(e.target.value)}>
+              <option value="">{t('newProjectOption')}</option>
+              {owned.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="attestation">{t('submitNoSpend')}</span>
+        </div>
+        {err && <p className="err small">{err}</p>}
       </div>
-      {err && <p className="err">{err}</p>}
-    </form>
+    </div>
   )
 }
 
-function ProjectsList({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string) => void }) {
+/* ─── Settings ─── */
+
+function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: string; toggleTheme: () => void }) {
   const { t } = i18n
-  const [projects, setProjects] = useState<ProjectView[] | null>(null)
-
-  useEffect(() => {
-    listProjects().then((p) => setProjects(p ?? [])).catch(() => setProjects([]))
-  }, [])
-
   return (
-    <section>
-      <h2>{t('myProjects')}</h2>
-      {projects === null ? (
-        <p className="muted">…</p>
-      ) : projects.length === 0 ? (
-        <p className="muted">{t('noProjects')}</p>
-      ) : (
-        <ul className="projects">
-          {projects.map((p) => (
-            <li key={p.id} className="project-card" onClick={() => onOpen(p.id)}>
-              <div className="project-title">{p.title}</div>
-              <div className="project-meta muted small">
-                <span className={`badge ${p.visibility}`}>{t(p.visibility)}</span>
-                {' · '}
-                {t('sessionCount', { n: String(p.session_count) })}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('settings')}</h1>
+      </div>
+      <div className="card card-pad stack" style={{ maxWidth: 520 }}>
+        <div className="usage-rows">
+          <div className="usage-line">
+            {t('signedInAs')}
+            <span className="v">{me.email}</span>
+          </div>
+          <div className="usage-line">
+            {t('access')}
+            <span className="v">{tierLabel(t, me.tier)}</span>
+          </div>
+          <div className="usage-line">
+            {t('theme')}
+            <span className="v">
+              <button className="btn ghost sm" onClick={toggleTheme}>
+                {theme === 'dark' ? t('themeDark') : t('themeLight')}
+              </button>
+            </span>
+          </div>
+        </div>
+        <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
+          {t('signOut')}
+        </a>
+      </div>
+    </div>
   )
 }
 
-function ProjectPage({
+/* ─── Project detail ─── */
+
+function ProjectScreen({
   i18n,
   me,
   id,
-  onBack,
   onOpenSession,
 }: {
   i18n: I18n
   me: Me
   id: string
-  onBack: () => void
-  onOpenSession: (jobId: string) => void
+  onOpenSession: (jobId: string, ref: string, projectTitle: string) => void
 }) {
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
+  const [tab, setTab] = useState<'sessions' | 'people'>('sessions')
 
-  const refresh = () =>
+  const refresh = useCallback(() => {
     getProject(id)
       .then((d) => {
         setProject(d.project)
         setSessions(d.sessions ?? [])
       })
       .catch(() => setSessions([]))
+  }, [id])
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [refresh])
 
   const isOwner = project != null && project.owner === me.principal
 
+  if (project === null) return <div className="center-load">…</div>
+
   return (
-    <>
-      <div className="card">
-        <button className="btn ghost small" onClick={onBack}>
-          {t('backToProjects')}
-        </button>
-        <div className="project-head-row">
-          <h2 className="project-heading">{project?.title ?? '…'}</h2>
-          {project && <span className={`badge ${project.visibility}`}>{t(project.visibility)}</span>}
+    <div className="tx" style={{ overflowY: 'auto' }}>
+      <div className="detail-head">
+        <div className="detail-title-row">
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <h1 className="detail-title">{project.title}</h1>
+              <span className={'badge ' + project.visibility}>{t(project.visibility)}</span>
+            </div>
+            {project.visibility === 'public' && project.signed_off_at && (
+              <div className="detail-meta">{t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() })}</div>
+            )}
+          </div>
+          {isOwner && (
+            <div className="detail-actions">
+              <button className="btn ghost" onClick={() => setTab('sessions')}>
+                {t('addReplication')}
+              </button>
+            </div>
+          )}
         </div>
-        {project && isOwner && project.visibility === 'private' && (
-          <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} />
-        )}
-        {project && project.visibility === 'public' && project.signed_off_at && (
-          <p className="muted small">{t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() })}</p>
-        )}
-        {isOwner && <ProjectSubmit i18n={i18n} projectID={id} onSubmitted={refresh} />}
+        <div className="detail-tabs">
+          <button className={'tab' + (tab === 'sessions' ? ' on' : '')} onClick={() => setTab('sessions')}>
+            {t('projectSessions')}
+          </button>
+          {isOwner && (
+            <button className={'tab' + (tab === 'people' ? ' on' : '')} onClick={() => setTab('people')}>
+              {t('members')}
+            </button>
+          )}
+        </div>
       </div>
-      {isOwner && <Members i18n={i18n} projectID={id} />}
-      <section>
-        <h3>{t('projectSessions')}</h3>
-        {sessions === null ? (
-          <p className="muted">…</p>
-        ) : (
-          <ul className="runs">
-            {sessions.map((s) => (
-              <SessionRow key={s.id} i18n={i18n} job={s} onOpen={() => onOpenSession(s.id)} />
-            ))}
-          </ul>
+
+      <div className="screen" style={{ animation: 'none' }}>
+        {tab === 'sessions' && (
+          <div className="stack">
+            {isOwner && <ProjectSubmit i18n={i18n} projectID={id} onSubmitted={refresh} />}
+            <div className="card">
+              <div className="card-head">
+                <span className="eyebrow">{t('projectSessions')}</span>
+              </div>
+              {sessions === null || sessions.length === 0 ? (
+                <div className="empty">{t('noSessions')}</div>
+              ) : (
+                <div className="rows">
+                  {sessions.map((s) => (
+                    <SessionRow key={s.id} i18n={i18n} job={s} onOpen={() => onOpenSession(s.id, s.ref, project.title)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
-      </section>
-    </>
-  )
-}
-
-// PublishPanel is the owner's public flip with its responsibility sign-off: a
-// deliberate affirmation, never a bare toggle. A 409 means the reproduction did
-// not clear the redistribution check and the project can never go public.
-function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
-  const { t } = i18n
-  const [open, setOpen] = useState(false)
-  const [affirmed, setAffirmed] = useState(false)
-  const [flipRepo, setFlipRepo] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-
-  const publish = async () => {
-    if (!affirmed || busy) return
-    setBusy(true)
-    setErr('')
-    try {
-      await makeProjectPublic(projectID, flipRepo)
-      onPublished()
-    } catch (e) {
-      setErr((e as Error).message === '409' ? t('publishNotClear') : t('publishError'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (!open) {
-    return (
-      <button className="btn ghost small publish-open" onClick={() => setOpen(true)}>
-        {t('makePublic')}
-      </button>
-    )
-  }
-  return (
-    <div className="publish-panel">
-      <strong>{t('publishTitle')}</strong>
-      <p className="muted small">{t('publishBody')}</p>
-      <label className="affirm">
-        <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
-        <span>{t('publishAffirm')}</span>
-      </label>
-      <label className="affirm">
-        <input type="checkbox" checked={flipRepo} onChange={(e) => setFlipRepo(e.target.checked)} />
-        <span>{t('flipRepoLabel')}</span>
-      </label>
-      <div className="row">
-        <button className="btn" disabled={!affirmed || busy} onClick={publish}>
-          {busy ? t('submitting') : t('publishConfirm')}
-        </button>
-        <button className="btn ghost" onClick={() => setOpen(false)}>
-          {t('publishCancel')}
-        </button>
+        {tab === 'people' && isOwner && (
+          <div className="detail-grid">
+            <Members i18n={i18n} projectID={id} />
+            {project.visibility === 'private' ? <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} /> : <PublishedCard i18n={i18n} project={project} />}
+          </div>
+        )}
       </div>
-      {err && <p className="err small">{err}</p>}
     </div>
   )
 }
 
-// Members is the owner's collaborator panel: invite by email, list, remove. An
-// invited collaborator still needs a platform grant to sign in — the hint says so.
+function ProjectSubmit({ i18n, projectID, onSubmitted }: { i18n: I18n; projectID: string; onSubmitted: () => void }) {
+  const { t } = i18n
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!url.trim() || busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await submitPaper(url.trim(), projectID)
+      setUrl('')
+      onSubmitted()
+    } catch (e) {
+      setErr((e as Error).message === '409' ? t('activeSession') : t('submitError'))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="card card-pad" onSubmit={submit} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <input className="text" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t('addReplicationHint')} spellCheck={false} />
+      <button className="btn ghost" disabled={busy}>
+        {busy ? t('submitting') : t('addReplication')}
+      </button>
+      {err && <span className="err small">{err}</span>}
+    </form>
+  )
+}
+
+function SessionRow({ i18n, job, onOpen }: { i18n: I18n; job: Job; onOpen: () => void }) {
+  const [j, setJob] = useState<Job>(job)
+  useEffect(() => {
+    setJob(job)
+    if (!terminal(job.phase)) return watchJob(job.id, setJob)
+  }, [job])
+  return (
+    <div className="row" onClick={onOpen}>
+      <span className={'badge ' + phaseClass(j.phase) + ' ' + j.phase} style={{ width: 96, justifyContent: 'center' }}>
+        <span className="dot" />
+        {phaseLabel(i18n.t, j.phase)}
+      </span>
+      <span className="row-mono row-title">{j.ref}</span>
+      {j.repo_name && (
+        <a className="muted small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+          ↗ GitHub
+        </a>
+      )}
+      {j.error && <span className="err small">{j.error}</span>}
+      <span className="muted small">{i18n.t('viewTranscript')}</span>
+      <Svg d={Icon.chev} size={14} />
+    </div>
+  )
+}
+
 function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
   const { t } = i18n
   const [members, setMembers] = useState<Member[]>([])
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-
-  const refresh = () => listMembers(projectID).then((m) => setMembers(m ?? [])).catch(() => setMembers([]))
+  const refresh = useCallback(() => {
+    listMembers(projectID).then((m) => setMembers(m ?? [])).catch(() => setMembers([]))
+  }, [projectID])
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectID])
+  }, [refresh])
 
   const invite = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -367,154 +626,112 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
       setBusy(false)
     }
   }
-
   const drop = async (target: string) => {
     await removeMember(projectID, target).catch(() => {})
     refresh()
   }
-
   return (
-    <section>
-      <h3>{t('members')}</h3>
+    <div className="card">
+      <div className="card-head">
+        <span className="eyebrow">{t('members')}</span>
+      </div>
       {members.length === 0 ? (
-        <p className="muted small">{t('noMembers')}</p>
+        <div className="empty">{t('noMembers')}</div>
       ) : (
-        <ul className="members">
-          {members.map((m) => (
-            <li key={m.email}>
-              <span className="member-email">{m.email}</span>
-              {!m.bound && <span className="badge">{t('pending')}</span>}
-              <button className="btn ghost small" onClick={() => drop(m.email)}>
-                {t('remove')}
-              </button>
-            </li>
-          ))}
-        </ul>
+        members.map((m) => (
+          <div key={m.email} className="member-row">
+            <span className="user-avatar">{initials(m.email)}</span>
+            <span className="member-email">{m.email}</span>
+            {!m.bound && <span className="role-tag pending">{t('pending')}</span>}
+            <button className="btn ghost sm" onClick={() => drop(m.email)}>
+              {t('remove')}
+            </button>
+          </div>
+        ))
       )}
-      <form className="row add-replication" onSubmit={invite}>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder={t('inviteEmail')}
-          spellCheck={false}
-        />
+      <form className="field-row" onSubmit={invite}>
+        <input className="text" style={{ flex: 1 }} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('inviteEmail')} spellCheck={false} />
         <button className="btn ghost" disabled={busy}>
           {busy ? t('submitting') : t('invite')}
         </button>
       </form>
-      <p className="muted small">{t('inviteHint')}</p>
-      {err && <p className="err small">{err}</p>}
-    </section>
+      <div style={{ padding: '0 14px 12px' }}>
+        <span className="muted small">{t('inviteHint')}</span>
+      </div>
+      {err && <p className="err small" style={{ padding: '0 14px 12px' }}>{err}</p>}
+    </div>
   )
 }
 
-function PublicZone({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string) => void }) {
+function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
   const { t } = i18n
-  const [projects, setProjects] = useState<ProjectView[]>([])
-
-  useEffect(() => {
-    listPublic().then((p) => setProjects(p ?? [])).catch(() => setProjects([]))
-  }, [])
-
-  return (
-    <section>
-      <h2>{t('publicZone')}</h2>
-      {projects.length === 0 ? (
-        <p className="muted">{t('noPublic')}</p>
-      ) : (
-        <ul className="projects">
-          {projects.map((p) => (
-            <li key={p.id} className="project-card" onClick={() => onOpen(p.id)}>
-              <div className="project-title">{p.title}</div>
-              <div className="project-meta muted small">
-                {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
-
-// ProjectSubmit adds another replication of a paper to this project, so a user
-// can deliberately re-run — the guard blocks only a concurrent double-fire.
-function ProjectSubmit({ i18n, projectID, onSubmitted }: { i18n: I18n; projectID: string; onSubmitted: () => void }) {
-  const { t } = i18n
-  const [url, setUrl] = useState('')
+  const [affirmed, setAffirmed] = useState(false)
+  const [flipRepo, setFlipRepo] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!url.trim() || busy) return
+  const publish = async () => {
+    if (!affirmed || busy) return
     setBusy(true)
     setErr('')
     try {
-      await submitPaper(url.trim(), projectID)
-      setUrl('')
-      onSubmitted()
-    } catch {
-      setErr(t('submitError'))
+      await makeProjectPublic(projectID, flipRepo)
+      onPublished()
+    } catch (e) {
+      setErr((e as Error).message === '409' ? t('publishNotClear') : t('publishError'))
     } finally {
       setBusy(false)
     }
   }
-
   return (
-    <form className="row add-replication" onSubmit={submit}>
-      <input
-        type="text"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder={t('addReplicationHint')}
-        spellCheck={false}
-      />
-      <button className="btn ghost" disabled={busy}>
-        {busy ? t('submitting') : t('addReplication')}
+    <div className="card publish-panel">
+      <span className="eyebrow">{t('publishTitle')}</span>
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {t('publishBody')}
+      </p>
+      <label className="affirm">
+        <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
+        <span>{t('publishAffirm')}</span>
+      </label>
+      <label className="affirm">
+        <input type="checkbox" checked={flipRepo} onChange={(e) => setFlipRepo(e.target.checked)} />
+        <span>{t('flipRepoLabel')}</span>
+      </label>
+      <button className="btn" disabled={!affirmed || busy} onClick={publish}>
+        {busy ? t('submitting') : t('publishConfirm')}
       </button>
-      {err && <p className="err small">{err}</p>}
-    </form>
+      <span className="attestation">{t('attestationNote')}</span>
+      {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
+    </div>
   )
 }
 
-function SessionRow({ i18n, job, onOpen }: { i18n: I18n; job: Job; onOpen: () => void }) {
-  const [j, setJob] = useState<Job>(job)
-
-  useEffect(() => {
-    setJob(job)
-    if (job.phase !== 'done' && job.phase !== 'failed') {
-      return watchJob(job.id, setJob)
-    }
-  }, [job])
-
+function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
+  const { t } = i18n
   return (
-    <li className={`run ${j.phase}`} onClick={onOpen}>
-      <span className="ref">{j.ref}</span>
-      <span className={`badge ${j.phase}`}>{phaseLabel(i18n.t, j.phase)}</span>
-      {j.repo_name && (
-        <a
-          className="muted small"
-          href={`https://github.com/${j.repo_name}`}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {' '}
-          · {i18n.t('openOnGitHub')}
-        </a>
-      )}
-      {j.error && <span className="err small">{j.error}</span>}
-      <span className="muted small chev"> · {i18n.t('viewTranscript')} →</span>
-    </li>
+    <div className="card publish-panel">
+      <span className="eyebrow">{t('publishTitle')}</span>
+      <div className="publish-note">
+        <span style={{ color: 'var(--ok)' }} className="mono">
+          ✓
+        </span>
+        {project.signed_off_at ? t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() }) : t('public')}
+      </div>
+    </div>
   )
 }
 
-function SessionPage({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onBack: () => void }) {
+/* ─── Session / Transcript viewer ─── */
+
+// plumbingKinds are backend lifecycle ticks, hidden by default.
+const plumbingKinds = new Set(['status_idle', 'status_running', 'thread_status_idle', 'thread_status_running', 'model_request_start', 'model_request_end'])
+const gradeKinds = new Set(['grade', 'define_outcome', 'outcome_evaluation_end'])
+
+function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onBack: () => void }) {
   const { t } = i18n
   const [tr, setTr] = useState<Transcript | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_ready' | 'error'>('loading')
+  const [hidePlumbing, setHidePlumbing] = useState(true)
+  const [off, setOff] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let live = true
@@ -533,183 +750,206 @@ function SessionPage({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onBac
     }
   }, [jobId])
 
-  return (
-    <>
-      <div className="card">
-        <button className="btn ghost small" onClick={onBack}>
-          {t('back')}
-        </button>
-        <h2>{t('transcript')}</h2>
-      </div>
-      {state === 'loading' && <p className="muted">…</p>}
-      {state === 'not_ready' && <p className="muted">{t('transcriptNotReady')}</p>}
-      {state === 'error' && <p className="err">{t('transcriptError')}</p>}
-      {state === 'ready' && tr && (
-        <>
-          <UsageSummary i18n={i18n} usage={tr.usage} />
-          <section>
-            <h3>{t('trajectory')}</h3>
-            <Trajectory i18n={i18n} events={tr.events} />
-          </section>
-        </>
-      )}
-    </>
+  const backBtn = (
+    <button className="icon-btn" onClick={onBack} aria-label="back">
+      <Svg d={Icon.back} size={14} w={1.8} />
+    </button>
   )
-}
 
-function UsageSummary({ i18n, usage }: { i18n: I18n; usage: Usage | null }) {
-  const { t } = i18n
-  if (!usage) {
+  if (state !== 'ready' || !tr) {
     return (
-      <div className="card usage">
-        <h3>{t('usage')}</h3>
-        <p className="muted small">{t('usageNotRecorded')}</p>
-      </div>
-    )
-  }
-  const total = usage.InputTokens + usage.OutputTokens + usage.CachedInputTokens
-  return (
-    <div className="card usage">
-      <h3>{t('usage')}</h3>
-      <div className="usage-grid">
-        <Stat label={t('usageInput')} value={usage.InputTokens} />
-        <Stat label={t('usageOutput')} value={usage.OutputTokens} />
-        <Stat label={t('usageCached')} value={usage.CachedInputTokens} />
-        <Stat label={t('usageTotal')} value={total} strong />
-      </div>
-    </div>
-  )
-}
-
-function Stat({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
-  return (
-    <div className={`stat ${strong ? 'strong' : ''}`}>
-      <div className="stat-value">{value.toLocaleString()}</div>
-      <div className="stat-label muted small">{label}</div>
-    </div>
-  )
-}
-
-// plumbingKinds are the backend's lifecycle ticks — not trajectory content, so
-// the viewer hides them to keep the agent's actual work legible.
-const plumbingKinds = new Set([
-  'status_idle',
-  'status_running',
-  'thread_status_idle',
-  'thread_status_running',
-  'model_request_start',
-  'model_request_end',
-])
-
-// gradeKinds carry the grader's outcome — called out like the grade.
-const gradeKinds = new Set(['grade', 'define_outcome', 'outcome_evaluation_end'])
-
-// Trajectory renders the agent's events in time order, pairing each tool call
-// with the result that follows it so the reader sees a call and its output
-// together, hiding the backend's lifecycle ticks, and calling out the outcome.
-function Trajectory({ i18n, events: all }: { i18n: I18n; events: Event[] }) {
-  const { t } = i18n
-  const events = all.filter((e) => !plumbingKinds.has(e.kind))
-  const blocks: React.ReactNode[] = []
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i]
-    if (e.kind === 'tool_use') {
-      const result = events[i + 1]?.kind === 'tool_result' ? events[i + 1] : undefined
-      if (result) i++
-      blocks.push(<ToolBlock key={i} i18n={i18n} call={e} result={result} />)
-      continue
-    }
-    if (e.kind === 'tool_result') {
-      blocks.push(<ToolBlock key={i} i18n={i18n} result={e} />)
-      continue
-    }
-    if (e.kind === 'thinking') {
-      blocks.push(
-        <div key={i} className="event thinking muted small">
-          {e.role} · {t('thinking')}
-        </div>,
-      )
-      continue
-    }
-    if (gradeKinds.has(e.kind)) {
-      blocks.push(
-        <div key={i} className="event grade">
-          <div className="event-head">
-            <span className="badge grade">{t('grade')}</span> <span className="muted small">{e.kind}</span>
-          </div>
-          <div className="event-body">{e.content || t('noContent')}</div>
-        </div>,
-      )
-      continue
-    }
-    blocks.push(
-      <div key={i} className={`event ${e.kind}`}>
-        <div className="event-head muted small">
-          {e.role} · {e.kind}
+      <div className="tx">
+        <div className="tx-head">
+          {backBtn}
+          <span className="tx-head-ref">{t('transcript')}</span>
         </div>
-        <div className="event-body">{e.content || t('noContent')}</div>
-      </div>,
+        <div className="center-load">{state === 'not_ready' ? t('transcriptNotReady') : state === 'error' ? t('transcriptError') : '…'}</div>
+      </div>
     )
   }
-  return <div className="trajectory">{blocks}</div>
-}
 
-function ToolBlock({ i18n, call, result }: { i18n: I18n; call?: Event; result?: Event }) {
-  const { t } = i18n
+  // Real counts by kind, and tools used — never fabricated.
+  const shown = tr.events.filter((e) => !(hidePlumbing && plumbingKinds.has(e.kind)))
+  const kindCounts = new Map<string, number>()
+  const toolCounts = new Map<string, number>()
+  for (const e of shown) {
+    kindCounts.set(displayKind(e.kind), (kindCounts.get(displayKind(e.kind)) ?? 0) + 1)
+    if (e.kind === 'tool_use' && e.tool) toolCounts.set(e.tool, (toolCounts.get(e.tool) ?? 0) + 1)
+  }
+  const visible = shown.filter((e) => !off.has(displayKind(e.kind)))
+  const usage = tr.usage
+
   return (
-    <div className="event tool">
-      {call && (
-        <>
-          <div className="event-head muted small">
-            {t('toolCall')} · <code>{call.tool}</code>
+    <div className="tx">
+      <div className="tx-head">
+        {backBtn}
+        <div className="tx-head-meta">
+          <span className="tx-head-ref">{t('transcript')}</span>
+          <span className="tx-head-sub">{t('eventsCounted', { n: String(tr.events.length) })}</span>
+        </div>
+        <div className="tx-stats">
+          {usage && (
+            <div className="tx-stat">
+              <span className="tx-stat-label">{t('usageTotal')}</span>
+              <span className="tx-stat-value">{total(usage).toLocaleString()}</span>
+            </div>
+          )}
+          <div className="tx-stat">
+            <span className="tx-stat-label">{t('events')}</span>
+            <span className="tx-stat-value">{tr.events.length.toLocaleString()}</span>
           </div>
-          {call.content && <pre className="tool-io">{call.content}</pre>}
-        </>
-      )}
-      {result && (
-        <details className="tool-result">
-          <summary className="muted small">{t('toolResult')}</summary>
-          <pre className="tool-io">{result.content || t('noContent')}</pre>
-        </details>
-      )}
+        </div>
+      </div>
+
+      <div className="tx-body">
+        <aside className="tx-side">
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>
+              {t('showEvents')}
+            </div>
+            {[...kindCounts.entries()].map(([kind, n]) => (
+              <button key={kind} className={'kind-btn' + (off.has(kind) ? ' off' : '')} onClick={() => setOff((s) => toggle(s, kind))}>
+                <span className="sq" style={{ background: kindColor(kind) }} />
+                <span>{kindLabel(t, kind)}</span>
+                <span className="n">{n}</span>
+              </button>
+            ))}
+          </div>
+          {toolCounts.size > 0 && (
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                {t('toolsUsed')}
+              </div>
+              {[...toolCounts.entries()].sort((a, b) => b[1] - a[1]).map(([name, n]) => (
+                <div key={name} className="kind-btn" style={{ cursor: 'default' }}>
+                  <span className="mono small">{name}</span>
+                  <span className="n">{n}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="kind-btn" style={{ cursor: 'pointer' }}>
+            <input type="checkbox" checked={hidePlumbing} onChange={(e) => setHidePlumbing(e.target.checked)} style={{ accentColor: 'var(--fg-1)' }} />
+            <span>{t('hideLifecycle')}</span>
+          </label>
+        </aside>
+
+        <main className="tx-stream">
+          {visible.map((e, i) => (
+            <EventCard key={i} i18n={i18n} e={e} />
+          ))}
+        </main>
+
+        <aside className="tx-side tx-inspector">
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>
+              {t('usage')}
+            </div>
+            {usage ? (
+              <div className="usage-rows">
+                <UsageLine label={t('usageInput')} v={usage.InputTokens} />
+                <UsageLine label={t('usageOutput')} v={usage.OutputTokens} />
+                <UsageLine label={t('usageCached')} v={usage.CachedInputTokens} />
+                <UsageLine label={t('usageTotal')} v={total(usage)} strong />
+              </div>
+            ) : (
+              <p className="muted small" style={{ margin: 0 }}>
+                {t('usageNotRecorded')}
+              </p>
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }
 
-// SharedWithMe lists projects the signed-in user was invited to as a
-// collaborator — projects they can see and operate but do not own.
-function SharedWithMe({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string) => void }) {
-  const { t } = i18n
-  const [projects, setProjects] = useState<ProjectView[]>([])
-
-  useEffect(() => {
-    listShared().then((p) => setProjects(p ?? [])).catch(() => setProjects([]))
-  }, [])
-
-  if (projects.length === 0) {
-    return null // nothing shared → no empty section cluttering the page
-  }
+function UsageLine({ label, v, strong }: { label: string; v: number; strong?: boolean }) {
   return (
-    <section>
-      <h2>{t('sharedWithMe')}</h2>
-      <ul className="projects">
-        {projects.map((p) => (
-          <li key={p.id} className="project-card" onClick={() => onOpen(p.id)}>
-            <div className="project-title">{p.title}</div>
-            <div className="project-meta muted small">
-              {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <div className="usage-line">
+      {label}
+      <span className="v" style={strong ? { color: 'var(--fg-1)', fontWeight: 600 } : undefined}>
+        {v.toLocaleString()}
+      </span>
+    </div>
   )
 }
 
+function EventCard({ i18n, e }: { i18n: I18n; e: Event }) {
+  const { t } = i18n
+  const dk = displayKind(e.kind)
+  const isTool = e.kind === 'tool_use' || e.kind === 'tool_result'
+  const isGrade = gradeKinds.has(e.kind)
+  const cls = 'event' + (e.kind === 'thinking' ? ' thinking' : isGrade ? ' grade' : isTool ? ' tool' : '')
+  return (
+    <div className={cls}>
+      <div className="event-gutter">
+        <span className="event-role">{e.role}</span>
+        <span className="event-kind">{kindLabel(t, dk)}</span>
+      </div>
+      <div className="event-main">
+        {e.kind === 'thinking' ? (
+          <div className="event-body" style={{ fontStyle: 'italic' }}>
+            {t('thinking')}
+          </div>
+        ) : e.kind === 'tool_use' ? (
+          <>
+            <div className="event-title">
+              {t('toolCall')} {e.tool && <code>{e.tool}</code>}
+            </div>
+            {e.content && <pre className="event-io">{e.content}</pre>}
+          </>
+        ) : e.kind === 'tool_result' ? (
+          <details className="event-io" open={false}>
+            <summary>{t('toolResult')}</summary>
+            <pre style={{ margin: '6px 0 0' }}>{e.content || t('noContent')}</pre>
+          </details>
+        ) : (
+          <div className="event-body">{e.content || t('noContent')}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── helpers ─── */
+
+function total(u: Usage) {
+  return u.InputTokens + u.OutputTokens + u.CachedInputTokens
+}
+function toggle(s: Set<string>, k: string) {
+  const n = new Set(s)
+  n.has(k) ? n.delete(k) : n.add(k)
+  return n
+}
+function initials(email?: string) {
+  if (!email) return '·'
+  return email.slice(0, 2).toUpperCase()
+}
 function tierLabel(t: I18n['t'], tier?: string) {
   return t('tier' + (tier ? tier[0].toUpperCase() + tier.slice(1) : 'None'))
 }
-
 function phaseLabel(t: I18n['t'], phase: string) {
   return t(`phase.${phase}`)
+}
+// displayKind collapses the grade family so filters read cleanly.
+function displayKind(kind: string) {
+  if (gradeKinds.has(kind)) return 'grade'
+  return kind
+}
+function kindLabel(t: I18n['t'], kind: string) {
+  const map: Record<string, string> = {
+    message: 'message',
+    thinking: 'thinking',
+    tool_use: 'toolCall',
+    tool_result: 'toolResult',
+    grade: 'grade',
+  }
+  return map[kind] ? t(map[kind]) : kind
+}
+function kindColor(kind: string) {
+  if (kind === 'grade') return 'var(--run)'
+  if (kind === 'tool_use' || kind === 'tool_result') return 'var(--warn)'
+  if (kind === 'thinking') return 'var(--fg-3)'
+  return 'var(--fg-2)'
 }
