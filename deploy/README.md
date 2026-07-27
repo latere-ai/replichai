@@ -47,23 +47,6 @@ SEED_EMAILS=colleague@x.com    # bootstrap invited users (tier: user), comma-sep
 `DATABASE_URL`, `ADDR`, `BASE_URL`, and `PROVIDER` are set by the manifest and
 override any same-named key in `.env`, so the two cannot drift.
 
-## Optional: the mount token's GitHub App (006f two-token split)
-
-Live mount-publish gives the agent a write token *inside the sandbox*. To keep a
-sandbox leak from costing the whole org, that token is minted short-lived and
-scoped to the one repository — which requires a GitHub App (a PAT cannot be
-scoped programmatically). Provision an App on the org, install it, and set:
-
-```
-GITHUB_APP_ID=...                 # the App's numeric id
-GITHUB_APP_INSTALLATION_ID=...    # the org installation's id
-GITHUB_APP_PRIVATE_KEY=...        # the App's PEM private key (or *_PATH to a file)
-```
-
-Without these, publishing still works but the mount falls back to
-`REPLICHAI_GITHUB_TOKEN` (a warning is logged); a mount-token leak would then
-carry the server token's blast radius.
-
 ## Build and push the image
 
 There is no release pipeline yet; build and push by hand (a `Dockerfile` is at

@@ -39,14 +39,11 @@ type Repo struct {
 	Private bool   `json:"private"`
 }
 
-// Client talks to the GitHub REST API with one token. It optionally also holds a
-// GitHub App identity (WithApp) used only to mint short-lived, repo-scoped mount
-// tokens — never to make the server-side calls, which use the org token.
+// Client talks to the GitHub REST API with one token.
 type Client struct {
 	token string
 	base  string
 	http  *http.Client
-	app   *appAuth
 }
 
 // Option configures a Client.
