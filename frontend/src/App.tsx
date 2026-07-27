@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { fileKind, highlightIn, langOf, renderMarkdown } from './artifact'
 import {
   addMember,
+  artifactUrl,
   getArtifact,
   getMe,
   getProject,
@@ -169,7 +171,6 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
         <header className="topbar">
           <Breadcrumb i18n={i18n} view={view} setView={setView} />
           <div className="topbar-actions">
-            <LangToggle i18n={i18n} />
             <button className="icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light' : 'Dark'} aria-label="theme">
               <Svg d={Icon.moon} />
             </button>
@@ -214,20 +215,6 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
           <span className="leaf">{view.ref ?? t('transcript')}</span>
         </>
       )}
-    </div>
-  )
-}
-
-function LangToggle({ i18n }: { i18n: I18n }) {
-  const { lang, setLang } = i18n
-  return (
-    <div className="lang">
-      <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>
-        EN
-      </button>
-      <button className={lang === 'zh' ? 'on' : ''} onClick={() => setLang('zh')}>
-        中文
-      </button>
     </div>
   )
 }
@@ -624,67 +611,97 @@ function VerdictTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
 }
 
 // ArtifactsTab is the in-app file browser over the reproduction repository — a
-// forge pass-through that works even when the repository stays private.
+// forge pass-through that works even when the repository stays private. Files
+// render properly: markdown formatted, code highlighted, images inline.
 function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
   const { t } = i18n
   const [files, setFiles] = useState<string[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
-  const [content, setContent] = useState<string>('')
-  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!session) {
       setFiles([])
       return
     }
-    listArtifacts(session.id).then((r) => setFiles(r.files ?? [])).catch(() => setFiles([]))
+    listArtifacts(session.id)
+      .then((r) => {
+        const list = r.files ?? []
+        setFiles(list)
+        setSel(list.find((f) => /readme/i.test(f)) ?? list[0] ?? null)
+      })
+      .catch(() => setFiles([]))
   }, [session])
 
-  const open = (path: string) => {
-    if (!session) return
-    setSel(path)
-    setLoading(true)
-    getArtifact(session.id, path)
-      .then((text) => setContent(text))
-      .catch(() => setContent(t('artifactError')))
-      .finally(() => setLoading(false))
-  }
-
   if (files === null) return <div className="center-load">…</div>
-  if (files.length === 0) return <div className="card"><div className="empty">{session ? t('noArtifacts') : t('noVerdict')}</div></div>
+  if (files.length === 0 || !session) return <div className="card"><div className="empty">{session ? t('noArtifacts') : t('noVerdict')}</div></div>
 
   return (
-    <div className="detail-grid" style={{ gridTemplateColumns: '280px 1fr' }}>
-      <div className="card">
+    <div className="detail-grid" style={{ gridTemplateColumns: '260px 1fr' }}>
+      <div className="card" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
         <div className="card-head">
           <span className="eyebrow">{t('artifacts')}</span>
         </div>
         <div className="rows">
           {files.map((f) => (
-            <div key={f} className="row" style={{ padding: '9px 14px' }} onClick={() => open(f)}>
-              <span className="row-mono row-title" style={{ color: sel === f ? 'var(--fg-1)' : 'var(--fg-2)' }}>
+            <div key={f} className="row" style={{ padding: '8px 14px' }} onClick={() => setSel(f)}>
+              <span className="row-mono row-title" style={{ fontSize: 12, color: sel === f ? 'var(--fg-1)' : 'var(--fg-2)' }}>
                 {f}
               </span>
             </div>
           ))}
         </div>
       </div>
-      <div className="card card-pad">
-        {sel === null ? (
-          <div className="empty">{t('selectArtifact')}</div>
-        ) : loading ? (
-          <div className="center-load">…</div>
-        ) : (
-          <>
-            <div className="eyebrow" style={{ marginBottom: 10 }}>
-              {sel}
-            </div>
-            <pre className="event-io" style={{ maxHeight: '68vh' }}>
-              {content || t('noContent')}
-            </pre>
-          </>
-        )}
+      {sel ? <FileView i18n={i18n} jobId={session.id} path={sel} /> : <div className="card card-pad"><div className="empty">{t('selectArtifact')}</div></div>}
+    </div>
+  )
+}
+
+// FileView renders one artifact by its kind: an image inline, markdown as
+// formatted (sanitized) HTML, code syntax-highlighted, anything else as text.
+function FileView({ i18n, jobId, path }: { i18n: I18n; jobId: string; path: string }) {
+  const { t } = i18n
+  const kind = fileKind(path)
+  const [text, setText] = useState<string | null>(null)
+  const [err, setErr] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (kind === 'image') return
+    setText(null)
+    setErr(false)
+    getArtifact(jobId, path)
+      .then(setText)
+      .catch(() => setErr(true))
+  }, [jobId, path, kind])
+
+  useEffect(() => {
+    if (text !== null) highlightIn(bodyRef.current)
+  })
+
+  return (
+    <div className="card card-pad" style={{ minWidth: 0 }}>
+      <div className="eyebrow mono" style={{ marginBottom: 12 }}>
+        {path}
       </div>
+      {kind === 'image' ? (
+        <img src={artifactUrl(jobId, path)} alt={path} style={{ maxWidth: '100%', borderRadius: 8, background: 'var(--bg-raised)' }} />
+      ) : err ? (
+        <div className="err small">{t('artifactError')}</div>
+      ) : text === null ? (
+        <div className="center-load">…</div>
+      ) : kind === 'markdown' ? (
+        <div ref={bodyRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+      ) : kind === 'code' ? (
+        <div ref={bodyRef}>
+          <pre className="event-io" style={{ maxHeight: '72vh' }}>
+            <code className={`language-${langOf(path)}`}>{text}</code>
+          </pre>
+        </div>
+      ) : (
+        <pre className="event-io" style={{ maxHeight: '72vh' }}>
+          {text || t('noContent')}
+        </pre>
+      )}
     </div>
   )
 }
