@@ -196,8 +196,9 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 	if err != nil {
 		return nil, err
 	}
+	issuer := envOr("AUTH_ISSUER", "https://auth.latere.ai")
 	auth, err := oidclogin.New(ctx, oidclogin.Config{
-		Issuer:       envOr("AUTH_ISSUER", "https://auth.latere.ai"),
+		Issuer:       issuer,
 		ClientID:     os.Getenv("AUTH_CLIENT_ID"),
 		ClientSecret: os.Getenv("AUTH_CLIENT_SECRET"),
 		RedirectURL:  envOr("AUTH_REDIRECT_URL", baseURL+"/callback"),
@@ -206,8 +207,16 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 	if err != nil {
 		return nil, err
 	}
+	// The email may live only at /userinfo (latere auth's ID token carries the
+	// sub, not the email), so discover it and fetch it in the callback.
+	var userInfo webauth.UserInfoFunc
+	if endpoint, err := webauth.DiscoverUserInfo(ctx, issuer); err != nil {
+		log.Printf("userinfo discovery failed (%v); email will come from the ID token only", err)
+	} else {
+		userInfo = webauth.HTTPUserInfo(endpoint)
+	}
 	secure := strings.HasPrefix(baseURL, "https") && !envBool("AUTH_INSECURE_COOKIES")
-	return webauth.NewLogin(auth, codec, acc, baseURL, secure), nil
+	return webauth.NewLogin(auth, codec, acc, baseURL, secure, userInfo), nil
 }
 
 // accessStore is the access model plus its bootstrap seeder, satisfied by both

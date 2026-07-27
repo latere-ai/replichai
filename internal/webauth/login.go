@@ -29,21 +29,29 @@ type OIDCClient interface {
 	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidclogin.Identity, error)
 }
 
+// UserInfoFunc fetches the email and its verification from the OIDC userinfo
+// endpoint with an access token. Some issuers (latere auth) carry the verified
+// sub in the ID token but the email only at /userinfo, so the login fetches it
+// there when the ID token has none. Behind a function so it tests offline.
+type UserInfoFunc func(ctx context.Context, accessToken string) (email string, verified bool, err error)
+
 // Login is the OIDC login front door: a standard public PKCE flow, sealed
 // session and flow cookies, and the middleware that turns a session into an
 // httpapi.Identity. It consumes only sub + verified email from the ID token —
 // roles, scopes, and org claims are dropped (006c AC1).
 type Login struct {
-	auth    OIDCClient
-	codec   *Codec
-	access  access.Access
-	baseURL string
-	secure  bool // __Host- cookies require Secure; false only for insecure dev
+	auth     OIDCClient
+	codec    *Codec
+	access   access.Access
+	baseURL  string
+	secure   bool // __Host- cookies require Secure; false only for insecure dev
+	userInfo UserInfoFunc
 }
 
-// NewLogin builds the login front door.
-func NewLogin(auth OIDCClient, codec *Codec, acc access.Access, baseURL string, secure bool) *Login {
-	return &Login{auth: auth, codec: codec, access: acc, baseURL: strings.TrimRight(baseURL, "/"), secure: secure}
+// NewLogin builds the login front door. userInfo may be nil, in which case the
+// email is taken only from the ID token.
+func NewLogin(auth OIDCClient, codec *Codec, acc access.Access, baseURL string, secure bool, userInfo UserInfoFunc) *Login {
+	return &Login{auth: auth, codec: codec, access: acc, baseURL: strings.TrimRight(baseURL, "/"), secure: secure, userInfo: userInfo}
 }
 
 // flowState is the per-login secret carried in the flow cookie across the
@@ -109,7 +117,17 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sealed, err := l.codec.Seal(sessionFromIdentity(id))
+	sess := sessionFromIdentity(id)
+	// The verified sub comes from the ID token; the email may only be at
+	// /userinfo (latere auth). Fetch it there when the ID token carried none.
+	if sess.Email == "" && l.userInfo != nil {
+		if email, verified, err := l.userInfo(r.Context(), tok.AccessToken); err == nil && email != "" {
+			sess.Email = email
+			sess.EmailVerified = verified
+		}
+	}
+
+	sealed, err := l.codec.Seal(sess)
 	if err != nil {
 		http.Error(w, "session init failed", http.StatusInternalServerError)
 		return
@@ -175,14 +193,18 @@ func sessionFromIdentity(id oidclogin.Identity) Session {
 	}
 }
 
-// emailVerified reads the claim as either a bool or the string "true"; anything
-// else is false, so a mis-typed claim never admits the wrong person.
-func emailVerified(raw map[string]any) bool {
-	switch v := raw["email_verified"].(type) {
+// emailVerified reads the ID token's email_verified claim.
+func emailVerified(raw map[string]any) bool { return verifiedFromAny(raw["email_verified"]) }
+
+// verifiedFromAny reads an email_verified value as either a bool or the string
+// "true"; anything else is false, so a mis-typed claim never admits the wrong
+// person.
+func verifiedFromAny(v any) bool {
+	switch t := v.(type) {
 	case bool:
-		return v
+		return t
 	case string:
-		return v == "true"
+		return t == "true"
 	default:
 		return false
 	}
