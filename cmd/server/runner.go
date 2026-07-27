@@ -111,9 +111,19 @@ func (r *registryReader) Get(ctx context.Context, id string) (httpapi.Reproducti
 	return toRepro(id, m), nil
 }
 
-// Transcript reading from the forge is not yet wired in this build.
-func (r *registryReader) Transcript(_ context.Context, _ string) ([]byte, error) {
-	return nil, httpapi.ErrReproNotFound
+// Transcript reads a repository's committed transcript.jsonl (005) through the
+// forge pass-through — the same read-only path the reproduction list uses. A
+// genuinely absent file is a miss (404); a transport failure is returned as-is
+// and becomes a 500, never disguised as not-found.
+func (r *registryReader) Transcript(ctx context.Context, repo string) ([]byte, error) {
+	raw, ok, err := r.source.File(ctx, repo, publish.TranscriptJSONL)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, httpapi.ErrReproNotFound
+	}
+	return raw, nil
 }
 
 func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {

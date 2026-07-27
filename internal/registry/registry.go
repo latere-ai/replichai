@@ -22,11 +22,16 @@ import (
 // DefaultTTL is how long a derived snapshot is reused before refetching.
 const DefaultTTL = time.Minute
 
-// Source enumerates published reproductions and reads their manifests. A GitHub
+// Source enumerates published reproductions and reads their files. A GitHub
 // source lists an organisation; a filesystem source reads a directory.
 type Source interface {
 	List(ctx context.Context) ([]string, error)
 	Manifest(ctx context.Context, repo string) (publish.Manifest, error)
+	// File reads one file from a repository — the transcript (005) and any other
+	// committed artifact — for the read surface's pass-through. ok is false for a
+	// file that is genuinely absent; a transport failure is an error, never a
+	// disguised miss (the 003 read-error rule).
+	File(ctx context.Context, repo, path string) ([]byte, bool, error)
 }
 
 // PriorReproduction is one existing reproduction of a paper, read from a
