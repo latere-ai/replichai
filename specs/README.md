@@ -31,7 +31,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **The app runs end to end**: `docker compose up` (or `make up`) brings up Postgres + the server, which serves the React frontend (006e) and the API. A researcher signs in, submits a paper URL, and watches its phases stream live to `done` behind the real fail-closed gate. Production is provisioned and fail-closed.
 
-**Designed, being built:** [006i](006i-server-side-mount-and-publish.md) wires the CLI's live-mount publish into the server `engineRunner`, so a web-submitted session gets a real repository, manifest, and committed transcript rather than evaporating with the sandbox — the backend half of 006f, extracting the CLI's finalize into a shared `publish.FinalizeLive`.
+**Built (pending a full prod run):** [006i](006i-server-side-mount-and-publish.md) wires the CLI's live-mount publish into the server `engineRunner`, so a web-submitted session gets a real repository, manifest, and committed transcript rather than evaporating with the sandbox — the backend half of 006f, with the CLI's finalize extracted into a shared `publish.FinalizeLive` so the two paths cannot drift.
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
