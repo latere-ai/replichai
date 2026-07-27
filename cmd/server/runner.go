@@ -117,9 +117,15 @@ func (r *registryReader) Transcript(_ context.Context, _ string) ([]byte, error)
 }
 
 func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
+	// The manifest records the full "owner/name" repo path; prefer it so the
+	// frontend's github.com/<repo> link resolves. Fall back to the source's id.
+	full := repo
+	if m.Reproduction.Repo != "" {
+		full = m.Reproduction.Repo
+	}
 	return httpapi.Reproduction{
 		ID:      repo,
-		Repo:    repo,
+		Repo:    full,
 		Title:   m.Paper.Title,
 		Verdict: string(m.Reproduction.Verdict),
 	}
