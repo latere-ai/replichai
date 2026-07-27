@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"sort"
 	"sync"
 )
 
@@ -101,6 +102,18 @@ func (m *MemMembership) Role(_ context.Context, p Principal, project string) (Ro
 		}
 	}
 	return RoleNone, false, nil
+}
+
+// List returns a project's members, sorted by email for a stable view.
+func (m *MemMembership) List(_ context.Context, project string) ([]Member, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Member
+	for email, row := range m.members[project] {
+		out = append(out, Member{Email: email, Role: row.Role, Bound: row.Principal != ""})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	return out, nil
 }
 
 // put writes a member's role while preserving any binding. Caller holds the lock.

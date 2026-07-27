@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -19,7 +20,13 @@ import (
 var allowAll = GateFunc(func(*http.Request) (bool, string) { return true, "" })
 
 func testDeps(gate Gate) Deps {
-	return Deps{Jobs: job.NewMemStore(), Projects: project.NewMemStore(), Reproductions: &fakeRepro{}, Gate: gate}
+	return Deps{
+		Jobs:          job.NewMemStore(),
+		Projects:      project.NewMemStore(),
+		Members:       access.NewMemMembership(),
+		Reproductions: &fakeRepro{},
+		Gate:          gate,
+	}
 }
 
 type fakeRepro struct{ err, getErr error }
@@ -292,6 +299,70 @@ func TestPublicZone(t *testing.T) {
 	// A different user can open the public project…
 	if w := do(t, h, "GET", "/projects/"+pub.ID, "", "someone-else"); w.Code != http.StatusOK {
 		t.Errorf("open public project: status %d, want 200", w.Code)
+	}
+}
+
+// doAs sends a request carrying a full identity (sub + email), which the member
+// routes need (the owner's email seeds the lead bridge).
+func doAs(t *testing.T, h http.Handler, method, path, body string, id Identity) *httptest.ResponseRecorder {
+	t.Helper()
+	var req *http.Request
+	if body != "" {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	req = req.WithContext(WithIdentity(req.Context(), id))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
+}
+
+// 006f AC7: the members API is owner-only — the owner invites and removes by
+// email; a non-owner is refused.
+func TestMembersAPI(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
+	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Proj")
+
+	// The owner invites a collaborator by email.
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"collab@x.com"}`, owner); w.Code != http.StatusNoContent {
+		t.Fatalf("owner add: status %d, want 204", w.Code)
+	}
+	// It appears in the members list.
+	w := doAs(t, h, "GET", "/projects/"+p.ID+"/members", "", owner)
+	var members []access.Member
+	_ = json.Unmarshal(w.Body.Bytes(), &members)
+	found := false
+	for _, m := range members {
+		if m.Email == "collab@x.com" {
+			found = true
+		}
+	}
+	if w.Code != http.StatusOK || !found {
+		t.Fatalf("members = %+v (status %d); want collab@x.com listed", members, w.Code)
+	}
+
+	// A non-owner may neither list, add, nor remove.
+	stranger := Identity{Sub: "stranger", Email: "s@x.com"}
+	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/members", "", stranger); w.Code != http.StatusForbidden {
+		t.Errorf("non-owner list: status %d, want 403", w.Code)
+	}
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"x@x.com"}`, stranger); w.Code != http.StatusForbidden {
+		t.Errorf("non-owner add: status %d, want 403", w.Code)
+	}
+
+	// The owner removes the collaborator.
+	if w := doAs(t, h, "DELETE", "/projects/"+p.ID+"/members/collab@x.com", "", owner); w.Code != http.StatusNoContent {
+		t.Errorf("owner remove: status %d, want 204", w.Code)
+	}
+	after, _ := d.Members.List(context.Background(), p.ID)
+	for _, m := range after {
+		if m.Email == "collab@x.com" {
+			t.Errorf("collaborator still present after remove")
+		}
 	}
 }
 

@@ -88,7 +88,7 @@ func run() error {
 	}
 	log.Printf("provider: %s", prov.Name())
 
-	jobStore, projectStore, accessStore, closeStores, err := openStores(ctx, *dbURL)
+	jobStore, projectStore, accessStore, memberStore, closeStores, err := openStores(ctx, *dbURL)
 	if err != nil {
 		return err
 	}
@@ -147,6 +147,7 @@ func run() error {
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
 		Projects:      projectStore,
+		Members:       memberStore,
 		Reproductions: &registryReader{source: reproSource},
 		RepoPublisher: repoPublisher,
 		Gate:          webauth.Gate(accessStore),
@@ -252,18 +253,18 @@ type accessStore interface {
 // (or their in-memory equivalents), migrating each, with a matching close
 // function. The project migration runs after the job migration: its backfill
 // reads the jobs table.
-func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, accessStore, func(), error) {
+func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, accessStore, access.Membership, func(), error) {
 	if dbURL == "" {
 		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
-		return job.NewMemStore(), project.NewMemStore(), access.NewMemStore(), func() {}, nil
+		return job.NewMemStore(), project.NewMemStore(), access.NewMemStore(), access.NewMemMembership(), func() {}, nil
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	if err := waitForDB(ctx, pool); err != nil {
 		pool.Close()
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	for _, m := range []struct {
 		name string
@@ -275,11 +276,11 @@ func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, ac
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			pool.Close()
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 	}
 	log.Printf("connected to Postgres and applied migrations")
-	return job.NewPGStore(pool), project.NewPGStore(pool), access.NewPGAccess(pool), pool.Close, nil
+	return job.NewPGStore(pool), project.NewPGStore(pool), access.NewPGAccess(pool), access.NewPGMembership(pool), pool.Close, nil
 }
 
 // waitForDB retries until Postgres accepts a connection, so the app can start

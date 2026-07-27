@@ -93,6 +93,28 @@ func (m *PGMembership) Role(ctx context.Context, p Principal, project string) (R
 	return role, found, err
 }
 
+// List returns a project's members, sorted by email.
+func (m *PGMembership) List(ctx context.Context, project string) ([]Member, error) {
+	rows, err := m.pool.Query(ctx,
+		`SELECT email, role, principal FROM project_members WHERE project=$1 ORDER BY email`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Member
+	for rows.Next() {
+		var mem Member
+		var r int16
+		var principal *string
+		if err := rows.Scan(&mem.Email, &r, &principal); err != nil {
+			return nil, err
+		}
+		mem.Role, mem.Bound = Role(r), principal != nil
+		out = append(out, mem)
+	}
+	return out, rows.Err()
+}
+
 func (m *PGMembership) upsert(ctx context.Context, project, email string, r Role) error {
 	_, err := m.pool.Exec(ctx, `
 		INSERT INTO project_members (project, email, role) VALUES ($1,$2,$3)

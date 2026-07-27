@@ -122,6 +122,14 @@ func (r Role) String() string {
 	}
 }
 
+// Member is one project-membership row as the owner's members view reads it:
+// the seeded email, the role, and whether a principal has bound (logged in) yet.
+type Member struct {
+	Email string `json:"email"`
+	Role  Role   `json:"role"`
+	Bound bool   `json:"bound"`
+}
+
 // Membership is the second relation, sharing Access's seed-by-email and
 // bind-on-first-login rules and none of its tier authority. It never admits a
 // principal to the platform — that is a grant's job, resolved independently.
@@ -135,6 +143,13 @@ type Membership interface {
 	// to it on first login. It consumes a verified email to bind, exactly as a
 	// grant does, and refuses a second principal on a bound email.
 	Role(ctx context.Context, p Principal, project string) (Role, bool, error)
+	// List returns a project's members, for the owner's members view.
+	List(ctx context.Context, project string) ([]Member, error)
+	// SeedLead creates a project's lead with no lead-check — the bootstrap seed
+	// project creation uses, and the bridge the owner-driven members API (006f)
+	// uses to seed the project owner as its lead before an owner-authorised
+	// add/remove.
+	SeedLead(ctx context.Context, project, email string) error
 }
 
 // normalizeEmail lowercases and trims, so a seed and a login match regardless of

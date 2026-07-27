@@ -3,15 +3,19 @@ import {
   getMe,
   getProject,
   getTranscript,
+  addMember,
+  listMembers,
   listProjects,
   listPublic,
   listReproductions,
   makeProjectPublic,
+  removeMember,
   submitPaper,
   watchJob,
   type Event,
   type Job,
   type Me,
+  type Member,
   type Project,
   type ProjectView,
   type Reproduction,
@@ -266,6 +270,7 @@ function ProjectPage({
         )}
         {isOwner && <ProjectSubmit i18n={i18n} projectID={id} onSubmitted={refresh} />}
       </div>
+      {isOwner && <Members i18n={i18n} projectID={id} />}
       <section>
         <h3>{t('projectSessions')}</h3>
         {sessions === null ? (
@@ -331,6 +336,78 @@ function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID:
       </div>
       {err && <p className="err small">{err}</p>}
     </div>
+  )
+}
+
+// Members is the owner's collaborator panel: invite by email, list, remove. An
+// invited collaborator still needs a platform grant to sign in — the hint says so.
+function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
+  const { t } = i18n
+  const [members, setMembers] = useState<Member[]>([])
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const refresh = () => listMembers(projectID).then((m) => setMembers(m ?? [])).catch(() => setMembers([]))
+  useEffect(() => {
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectID])
+
+  const invite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim() || busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await addMember(projectID, email.trim())
+      setEmail('')
+      refresh()
+    } catch {
+      setErr(t('inviteError'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const drop = async (target: string) => {
+    await removeMember(projectID, target).catch(() => {})
+    refresh()
+  }
+
+  return (
+    <section>
+      <h3>{t('members')}</h3>
+      {members.length === 0 ? (
+        <p className="muted small">{t('noMembers')}</p>
+      ) : (
+        <ul className="members">
+          {members.map((m) => (
+            <li key={m.email}>
+              <span className="member-email">{m.email}</span>
+              {!m.bound && <span className="badge">{t('pending')}</span>}
+              <button className="btn ghost small" onClick={() => drop(m.email)}>
+                {t('remove')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="row add-replication" onSubmit={invite}>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t('inviteEmail')}
+          spellCheck={false}
+        />
+        <button className="btn ghost" disabled={busy}>
+          {busy ? t('submitting') : t('invite')}
+        </button>
+      </form>
+      <p className="muted small">{t('inviteHint')}</p>
+      {err && <p className="err small">{err}</p>}
+    </section>
   )
 }
 

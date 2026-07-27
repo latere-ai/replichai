@@ -44,6 +44,19 @@ func TestMembershipLeadOnly(t *testing.T) {
 	collab := Principal{Sub: "collab-sub", Email: "collab@example.com"}
 	_, _, _ = m.Role(ctx, collab, "proj-1") // bind
 
+	// List returns both members, sorted by email, with roles and binding. Both
+	// have bound: the collaborator via Role above, the lead via its Add call.
+	members, err := m.List(ctx, "proj-1")
+	if err != nil || len(members) != 2 {
+		t.Fatalf("List = %+v err=%v; want 2 members", members, err)
+	}
+	if members[0].Email != "collab@example.com" || !members[0].Bound || members[0].Role != RoleCollaborator {
+		t.Errorf("collab member = %+v", members[0])
+	}
+	if members[1].Email != "lead@example.com" || members[1].Role != RoleLead {
+		t.Errorf("lead member = %+v", members[1])
+	}
+
 	// A collaborator cannot add or remove.
 	if err := m.Add(ctx, collab, "proj-1", "other@example.com", RoleCollaborator); !errors.Is(err, ErrNotLead) {
 		t.Errorf("add by a collaborator should be ErrNotLead, got %v", err)

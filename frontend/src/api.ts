@@ -40,6 +40,10 @@ export type ProjectView = Project & { session_count: number }
 
 export type ProjectDetail = { project: Project; sessions: Job[] }
 
+// A project member: the seeded email, the role (1 = collaborator, 2 = lead), and
+// whether they have signed in yet (bound).
+export type Member = { email: string; role: number; bound: boolean }
+
 // One entry in a session's trajectory — an agent message, its thinking, a tool
 // call, a tool result, or the grade.
 export type Event = {
@@ -55,6 +59,11 @@ export type Transcript = { events: Event[]; usage: Usage | null }
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) throw new Error(`${r.status}`)
   return r.json() as Promise<T>
+}
+
+// ok resolves for a 2xx response with no body (204), rejecting with the status.
+async function ok(r: Response): Promise<void> {
+  if (!r.ok) throw new Error(`${r.status}`)
 }
 
 export const getMe = () => fetch('/me').then(json<Me>)
@@ -79,6 +88,17 @@ export const getProject = (id: string) => fetch(`/projects/${id}`).then(json<Pro
 
 // listPublic returns the public zone: every public project, newest first.
 export const listPublic = () => fetch('/public').then(json<ProjectView[]>)
+
+// Project members (owner-only): list, invite by email, remove by email.
+export const listMembers = (id: string) => fetch(`/projects/${id}/members`).then(json<Member[]>)
+export const addMember = (id: string, email: string) =>
+  fetch(`/projects/${id}/members`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email }),
+  }).then(ok)
+export const removeMember = (id: string, email: string) =>
+  fetch(`/projects/${id}/members/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
 
 // The current responsibility-attestation text version the sign-off records.
 export const ATTESTATION_VERSION = 'v1'
