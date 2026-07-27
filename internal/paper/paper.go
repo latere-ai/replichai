@@ -22,6 +22,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -108,6 +109,48 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 	}
 
 	return Identity{}, fmt.Errorf("%w: %q is not a DOI, arXiv ID, or URL", ErrUnresolvable, ref)
+}
+
+// Key extracts a paper's stable identity offline — with no network — for the
+// double-trigger guard and the project a submit opens. A DOI or arXiv ID in the
+// reference yields its canonical "scheme:key"; a plain URL yields a normalised
+// "url:<ref>" so the same link submitted twice keys alike; a reference that is
+// neither a DOI, an arXiv ID, nor URL-shaped is rejected, so a garbage submit
+// fails fast at the edge. It never fetches, so a submit never rides arXiv's
+// availability — the worker's Resolve phase does the enriching lookup, and the
+// key it guards on need not equal the identity that lookup finally records.
+func Key(reference string) (string, error) {
+	ref := strings.TrimSpace(reference)
+	if ref == "" {
+		return "", fmt.Errorf("%w: empty reference", ErrUnresolvable)
+	}
+	if doi, ok := extractDOI(ref); ok {
+		return SchemeDOI.String() + ":" + doi, nil
+	}
+	if id, ok := extractArXiv(ref); ok {
+		return SchemeArXiv.String() + ":" + id, nil
+	}
+	if looksLikeURL(ref) {
+		return "url:" + normalizeURLKey(ref), nil
+	}
+	return "", fmt.Errorf("%w: %q is not a DOI, arXiv ID, or URL", ErrUnresolvable, ref)
+}
+
+// normalizeURLKey folds a URL to a stable guard key: lower-cased scheme and
+// host, no fragment, no trailing slash — so http/HTTPS, a stray fragment, or a
+// trailing slash on the same link do not read as two papers. It is deliberately
+// conservative: distinct URLs for the same paper are not collapsed (that is the
+// worker's resolving job), only trivially different renderings of one link.
+func normalizeURLKey(ref string) string {
+	u, err := url.Parse(ref)
+	if err != nil {
+		return strings.TrimRight(ref, "/")
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	u.Fragment = ""
+	u.Path = strings.TrimRight(u.Path, "/")
+	return u.String()
 }
 
 // finish assembles an Identity, deriving the slug from the title and falling

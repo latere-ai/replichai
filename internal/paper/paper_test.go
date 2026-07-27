@@ -230,3 +230,56 @@ func TestResolveEmptyReference(t *testing.T) {
 		t.Errorf("err = %v, want ErrUnresolvable", err)
 	}
 }
+
+// Key is the offline guard key: it must never fetch, must fold trivial URL
+// renderings to one key, must fail fast on garbage, and — for an arXiv or DOI
+// reference — must agree with Resolve's identity string so the guard keys on the
+// same paper the run records.
+func TestKeyIsOfflineAndStable(t *testing.T) {
+	cases := []struct {
+		name, ref, want string
+	}{
+		{"doi", "https://doi.org/10.1145/3313831", "doi:10.1145/3313831"},
+		{"arxiv abs", "https://arxiv.org/abs/2302.03714", "arxiv:2302.03714"},
+		{"arxiv pdf same key", "https://arxiv.org/pdf/2302.03714", "arxiv:2302.03714"},
+		{"bare arxiv id", "2302.03714", "arxiv:2302.03714"},
+		{"url trailing slash", "https://example.com/paper/", "url:https://example.com/paper"},
+		{"url fragment and case", "HTTPS://Example.com/paper#sec2", "url:https://example.com/paper"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := Key(c.ref)
+			if err != nil {
+				t.Fatalf("Key(%q) errored: %v", c.ref, err)
+			}
+			if got != c.want {
+				t.Errorf("Key(%q) = %q, want %q", c.ref, got, c.want)
+			}
+		})
+	}
+}
+
+func TestKeyRejectsGarbage(t *testing.T) {
+	for _, ref := range []string{"   ", "not a paper", "just some words"} {
+		if _, err := Key(ref); !errors.Is(err, ErrUnresolvable) {
+			t.Errorf("Key(%q) err = %v, want ErrUnresolvable", ref, err)
+		}
+	}
+}
+
+// Key agrees with Resolve on the canonical identity for the offline schemes, so
+// guarding on Key and recording Resolve's identity never disagree about a DOI.
+func TestKeyAgreesWithResolveForDOI(t *testing.T) {
+	ref := "https://doi.org/10.1145/3313831"
+	id, err := Resolve(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	key, err := Key(ref)
+	if err != nil {
+		t.Fatalf("Key: %v", err)
+	}
+	if key != id.String() {
+		t.Errorf("Key = %q, Resolve identity = %q; want equal", key, id.String())
+	}
+}
