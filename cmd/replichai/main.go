@@ -234,7 +234,7 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		return nil, err
 	}
 
-	gh := github.New(token, appOptions(stderr)...)
+	gh := github.New(token)
 	reg := registry.New(registry.NewGitHubSource(gh, owner),
 		registry.WithWarner(func(m string) { fmt.Fprintf(stderr, "  %s\n", m) }))
 
@@ -277,53 +277,13 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		}
 	}
 
-	// The sandbox mount carries a token, not the server token (006f's two-token
-	// split): mint a short-lived token scoped to this one repository when a
-	// GitHub App is configured. Without one, fall back to the server token and
-	// say so loudly — a leak inside the sandbox would then cost the whole org.
-	mountToken := token
-	if gh.HasApp() {
-		if minted, mErr := gh.MintMountToken(ctx, owner, name); mErr != nil {
-			return nil, fmt.Errorf("mint mount token: %w", mErr)
-		} else {
-			mountToken = minted
-		}
-	} else {
-		fmt.Fprintf(stderr, "  ! no GitHub App configured — the sandbox mount uses the server token (set GITHUB_APP_ID/GITHUB_APP_INSTALLATION_ID/GITHUB_APP_PRIVATE_KEY to scope it to one repo)\n")
-	}
-
 	return &publisher{
 		gh:    gh,
 		owner: owner,
 		name:  name,
 		id:    id,
-		mount: provider.RepoMount{URL: repo.HTMLURL, Token: mountToken, MountPath: audit.DefaultMountPath},
+		mount: provider.RepoMount{URL: repo.HTMLURL, Token: token, MountPath: audit.DefaultMountPath},
 	}, nil
-}
-
-// appOptions builds the GitHub App client options from the environment, or none
-// when unset. The private key comes from GITHUB_APP_PRIVATE_KEY (PEM) or
-// GITHUB_APP_PRIVATE_KEY_PATH (a file). A malformed key is a warning, not a
-// hard failure: publishing still works via the server-token fallback.
-func appOptions(stderr *os.File) []github.Option {
-	appID, installID := os.Getenv("GITHUB_APP_ID"), os.Getenv("GITHUB_APP_INSTALLATION_ID")
-	if appID == "" || installID == "" {
-		return nil
-	}
-	pemBytes := []byte(os.Getenv("GITHUB_APP_PRIVATE_KEY"))
-	if len(pemBytes) == 0 {
-		if path := os.Getenv("GITHUB_APP_PRIVATE_KEY_PATH"); path != "" {
-			if raw, err := os.ReadFile(path); err == nil {
-				pemBytes = raw
-			}
-		}
-	}
-	key, err := github.ParseAppKey(pemBytes)
-	if err != nil {
-		fmt.Fprintf(stderr, "  ! GitHub App key unusable (%v) — falling back to the server token for the mount\n", err)
-		return nil
-	}
-	return []github.Option{github.WithApp(appID, installID, key)}
 }
 
 // readRecordedIdentity returns the identity the publisher recorded in the repo,
