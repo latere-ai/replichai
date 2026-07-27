@@ -95,6 +95,50 @@ export const submitPaper = (url: string, project = '') =>
 
 export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
 
+// A previewed paper reference: the resolved identity the New-project screen
+// shows before anything is created.
+export type ResolvedPaper = { key: string; title: string; scheme: string; slug: string }
+
+// resolvePaper previews a reference against the source. It rejects with the HTTP
+// status: 400 for a reference that is not a DOI/arXiv/URL, 502 when the source
+// could not be reached.
+export const resolvePaper = (url: string) =>
+  fetch('/resolve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url }),
+  }).then(json<ResolvedPaper>)
+
+// One paper's fate in a create: a job id when it started, or an error code.
+export type SessionResult = { url: string; job_id?: string; error?: string }
+export type CreatedProject = { project_id?: string; title?: string; sessions?: SessionResult[]; members?: string[]; error?: string }
+
+// createProject opens a named project with one session per paper and seeded
+// collaborators (006j). It returns the HTTP status alongside the body, so the
+// caller can surface per-paper results whether the create fully or partly
+// succeeded (201) or every paper failed (422).
+export async function createProject(
+  title: string,
+  papers: string[],
+  collaborators: string[],
+): Promise<{ status: number; data: CreatedProject }> {
+  const r = await fetch('/projects', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title, papers, collaborators }),
+  })
+  const data = (await r.json().catch(() => ({}))) as CreatedProject
+  return { status: r.status, data }
+}
+
+// renameProject renames an owned project.
+export const renameProject = (id: string, title: string) =>
+  fetch(`/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title }),
+  }).then(json<Project>)
+
 // cancelSession stops a running session (owner-only). It returns the resulting
 // job — failed with a "cancelled" cause.
 export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)

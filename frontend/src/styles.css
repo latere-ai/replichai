@@ -808,6 +808,29 @@ input.submit-input {
   color: var(--fg-3);
 }
 
+/* New-project: one paper reference + its Resolve control and preview */
+.paper-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.paper-row-input {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.paper-row-input input.text {
+  flex: 1;
+}
+.paper-preview {
+  font: 500 12px/1.35 var(--font-sans, inherit);
+  color: var(--fg-2);
+  padding: 2px 2px 0 2px;
+}
+.paper-preview.err {
+  color: var(--err);
+}
+
 /* ── Transcript viewer ── */
 .tx {
   flex: 1;

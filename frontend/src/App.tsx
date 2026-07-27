@@ -4,6 +4,7 @@ import {
   addMember,
   artifactUrl,
   cancelSession,
+  createProject,
   getArtifact,
   getJob,
   getMe,
@@ -17,8 +18,10 @@ import {
   listShared,
   makeProjectPublic,
   removeMember,
+  resolvePaper,
   submitPaper,
   watchJob,
+  type ResolvedPaper,
   type Event,
   type Job,
   type Me,
@@ -115,6 +118,7 @@ const Icon = {
   moon: 'M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z',
   back: 'm15 6-6 6 6 6',
   chev: 'm9 6 6 6-6 6',
+  x: 'M6 6l12 12M18 6L6 18',
 }
 
 function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }) {
@@ -177,7 +181,7 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
               <Svg d={Icon.moon} />
             </button>
             <button className="btn" onClick={() => setView({ name: 'submit' })}>
-              <Svg d={Icon.plus} size={13} w={2.1} /> {t('newAudit')}
+              <Svg d={Icon.plus} size={13} w={2.1} /> {t('newProject')}
             </button>
           </div>
         </header>
@@ -198,7 +202,7 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
 function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: (v: View) => void }) {
   const { t } = i18n
   const root = () =>
-    view.name === 'public' ? t('navPublic') : view.name === 'submit' ? t('newAudit') : view.name === 'settings' ? t('settings') : t('navProjects')
+    view.name === 'public' ? t('navPublic') : view.name === 'submit' ? t('newProject') : view.name === 'settings' ? t('settings') : t('navProjects')
   const rootView: View = view.name === 'public' ? { name: 'public' } : { name: 'projects' }
   return (
     <div className="crumb">
@@ -336,27 +340,66 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
 
 /* ─── Submit / New audit ─── */
 
+// A paper row in the New-project form: the reference, and its live-resolved
+// preview (title) or error, filled by the Resolve button.
+type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
+
+// sessionErrLabel turns a per-paper error code from POST /projects into a short
+// human label.
+function sessionErrLabel(t: I18n['t'], code?: string): string {
+  if (code === 'active_session') return t('errActiveSession')
+  if (code === 'unresolvable_paper') return t('errUnresolvable')
+  return t('errEnqueue')
+}
+
 function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (projectId: string) => void }) {
   const { t } = i18n
-  const [url, setUrl] = useState('')
-  const [project, setProject] = useState('')
-  const [owned, setOwned] = useState<ProjectView[]>([])
+  const [title, setTitle] = useState('')
+  const [rows, setRows] = useState<PaperRow[]>([{ url: '' }])
+  const [collaborators, setCollaborators] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  useEffect(() => {
-    listProjects().then((p) => setOwned(p ?? [])).catch(() => setOwned([]))
-  }, [])
+  const setRow = (i: number, patch: Partial<PaperRow>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)))
+  const addRow = () => setRows((rs) => [...rs, { url: '' }])
+  const removeRow = (i: number) => setRows((rs) => (rs.length > 1 ? rs.filter((_, k) => k !== i) : rs))
+
+  // Resolve one row's reference and show the previewed title (or an error).
+  const resolveRow = async (i: number) => {
+    const url = rows[i].url.trim()
+    if (!url) return
+    setRow(i, { resolving: true, preview: undefined, error: undefined })
+    try {
+      const preview = await resolvePaper(url)
+      setRow(i, { preview, resolving: false })
+    } catch (e) {
+      const code = (e as Error).message
+      setRow(i, { error: code === '400' ? t('unresolvablePaper') : t('resolveFailed'), resolving: false })
+    }
+  }
 
   const submit = async () => {
-    if (!url.trim() || busy) return
+    const papers = rows.map((r) => r.url.trim()).filter(Boolean)
+    if (papers.length === 0) {
+      setErr(t('noPapers'))
+      return
+    }
+    if (busy) return
     setBusy(true)
     setErr('')
+    const collabs = collaborators.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
     try {
-      const { project_id } = await submitPaper(url.trim(), project)
-      onSubmitted(project_id)
-    } catch (e) {
-      setErr((e as Error).message === '409' ? t('activeSession') : t('submitError'))
+      const { status, data } = await createProject(title.trim(), papers, collabs)
+      if (status === 201 && data.project_id) {
+        onSubmitted(data.project_id)
+        return
+      }
+      // 422: every paper failed — surface the per-paper reasons on their rows.
+      const byURL = new Map((data.sessions ?? []).map((s) => [s.url, s.error]))
+      setRows((rs) => rs.map((r) => (byURL.has(r.url.trim()) ? { ...r, error: sessionErrLabel(t, byURL.get(r.url.trim())) } : r)))
+      setErr(t('allPapersFailed'))
+    } catch {
+      setErr(t('submitError'))
     } finally {
       setBusy(false)
     }
@@ -366,36 +409,59 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
     <div className="screen">
       <div className="submit-form">
         <div className="screen-head">
-          <h1 className="screen-title">{t('newAudit')}</h1>
-          <p className="screen-desc">{t('submitHint')}</p>
+          <h1 className="screen-title">{t('newProject')}</h1>
+          <p className="screen-desc">{t('newProjectDesc')}</p>
         </div>
-        <div className="submit-input-row">
-          <input
-            className="submit-input"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://arxiv.org/abs/… · DOI · ACM DL"
-            spellCheck={false}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-          />
-          <button className="btn lg" disabled={busy} onClick={submit}>
-            {busy ? t('submitting') : t('submit')}
+
+        <label className="field">
+          {t('projectNameLabel')}
+          <input className="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('projectNamePlaceholder')} spellCheck={false} />
+        </label>
+
+        <div className="field">
+          {t('papersLabel')}
+          <div className="stack" style={{ gap: 10 }}>
+            {rows.map((row, i) => (
+              <div key={i} className="paper-row">
+                <div className="paper-row-input">
+                  <input
+                    className="text"
+                    value={row.url}
+                    onChange={(e) => setRow(i, { url: e.target.value, preview: undefined, error: undefined })}
+                    placeholder={t('paperPlaceholder')}
+                    spellCheck={false}
+                    onKeyDown={(e) => e.key === 'Enter' && resolveRow(i)}
+                  />
+                  <button className="btn ghost sm" disabled={!row.url.trim() || row.resolving} onClick={() => resolveRow(i)}>
+                    {row.resolving ? t('resolvingPaper') : t('resolve')}
+                  </button>
+                  {rows.length > 1 && (
+                    <button className="icon-btn" aria-label={t('removePaper')} onClick={() => removeRow(i)}>
+                      <Svg d={Icon.x} size={13} w={1.8} />
+                    </button>
+                  )}
+                </div>
+                {row.preview && <div className="paper-preview">{row.preview.title || row.preview.key}</div>}
+                {row.error && <div className="paper-preview err">{row.error}</div>}
+              </div>
+            ))}
+          </div>
+          <button className="btn ghost sm" onClick={addRow} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+            <Svg d={Icon.plus} size={12} w={2} /> {t('addPaper')}
           </button>
         </div>
-        <div className="card submit-options">
-          <span className="eyebrow">{t('sessionOptions')}</span>
-          <label className="field">
-            {t('destinationProject')}
-            <select className="text" value={project} onChange={(e) => setProject(e.target.value)}>
-              <option value="">{t('newProjectOption')}</option>
-              {owned.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="attestation">{t('submitNoSpend')}</span>
+
+        <label className="field">
+          {t('collaboratorsLabel')}
+          <input className="text" value={collaborators} onChange={(e) => setCollaborators(e.target.value)} placeholder={t('collaboratorsPlaceholder')} spellCheck={false} />
+          <span className="attestation">{t('collaboratorsHint')}</span>
+        </label>
+
+        <div className="submit-input-row">
+          <button className="btn lg" disabled={busy} onClick={submit}>
+            {busy ? t('creatingProject') : t('createProjectBtn')}
+          </button>
+          <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>
         </div>
         {err && <p className="err small">{err}</p>}
       </div>
