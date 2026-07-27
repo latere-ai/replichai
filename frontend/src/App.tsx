@@ -7,7 +7,7 @@ import {
   listMembers,
   listProjects,
   listPublic,
-  listReproductions,
+  listShared,
   makeProjectPublic,
   removeMember,
   submitPaper,
@@ -18,7 +18,6 @@ import {
   type Member,
   type Project,
   type ProjectView,
-  type Reproduction,
   type Transcript,
   type Usage,
 } from './api'
@@ -119,13 +118,7 @@ function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
 
 function Dashboard({ i18n, me }: { i18n: I18n; me: Me }) {
   const [view, setView] = useState<View>({ name: 'projects' })
-  const [repros, setRepros] = useState<Reproduction[]>([])
-
-  useEffect(() => {
-    listReproductions()
-      .then((r) => setRepros(r ?? []))
-      .catch(() => setRepros([]))
-  }, [])
+  const open = (id: string) => setView({ name: 'project', id })
 
   if (view.name === 'project') {
     return <ProjectPage i18n={i18n} me={me} id={view.id} onBack={() => setView({ name: 'projects' })} onOpenSession={(jobId) => setView({ name: 'session', jobId, projectId: view.id })} />
@@ -135,10 +128,10 @@ function Dashboard({ i18n, me }: { i18n: I18n; me: Me }) {
   }
   return (
     <>
-      <Submit i18n={i18n} onSubmitted={(projectID) => setView({ name: 'project', id: projectID })} />
-      <ProjectsList i18n={i18n} onOpen={(id) => setView({ name: 'project', id })} />
-      <PublicZone i18n={i18n} onOpen={(id) => setView({ name: 'project', id })} />
-      <Reproductions i18n={i18n} repros={repros} />
+      <Submit i18n={i18n} onSubmitted={open} />
+      <ProjectsList i18n={i18n} onOpen={open} />
+      <SharedWithMe i18n={i18n} onOpen={open} />
+      <PublicZone i18n={i18n} onOpen={open} />
     </>
   )
 }
@@ -683,29 +676,32 @@ function ToolBlock({ i18n, call, result }: { i18n: I18n; call?: Event; result?: 
   )
 }
 
-function Reproductions({ i18n, repros }: { i18n: I18n; repros: Reproduction[] }) {
+// SharedWithMe lists projects the signed-in user was invited to as a
+// collaborator — projects they can see and operate but do not own.
+function SharedWithMe({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string) => void }) {
+  const { t } = i18n
+  const [projects, setProjects] = useState<ProjectView[]>([])
+
+  useEffect(() => {
+    listShared().then((p) => setProjects(p ?? [])).catch(() => setProjects([]))
+  }, [])
+
+  if (projects.length === 0) {
+    return null // nothing shared → no empty section cluttering the page
+  }
   return (
     <section>
-      <h2>{i18n.t('reproductions')}</h2>
-      {repros.length === 0 ? (
-        <p className="muted">{i18n.t('noReproductions')}</p>
-      ) : (
-        <ul className="repros">
-          {repros.map((r) => (
-            <li key={r.id}>
-              <a href={`https://github.com/${r.repo}`} target="_blank" rel="noreferrer">
-                {r.title || r.repo}
-              </a>
-              {r.verdict && (
-                <span className="muted small">
-                  {' '}
-                  · {i18n.t('verdict')}: {r.verdict}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <h2>{t('sharedWithMe')}</h2>
+      <ul className="projects">
+        {projects.map((p) => (
+          <li key={p.id} className="project-card" onClick={() => onOpen(p.id)}>
+            <div className="project-title">{p.title}</div>
+            <div className="project-meta muted small">
+              {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
