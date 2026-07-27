@@ -75,6 +75,9 @@ const strings: Record<Lang, Record<string, string>> = {
     errEnqueue: 'Could not start.',
     allPapersFailed: 'No paper could be started — check the references.',
     partialStarted: '{n} session(s) started; some papers were skipped.',
+    rename: 'Rename',
+    save: 'Save',
+    cancel: 'Cancel',
     // project detail
     projectSessions: 'Sessions',
     noSessions: 'No sessions yet.',
