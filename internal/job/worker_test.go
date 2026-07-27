@@ -43,6 +43,15 @@ func (f *fakeRunner) Execute(_ context.Context, j *Job, observe func(provider.Ru
 	return nil
 }
 
+func (f *fakeRunner) Resume(_ context.Context, j *Job, observe func(provider.RunStatus)) error {
+	f.record("resume")
+	observe(f.observed)
+	if f.failAt == "resume" {
+		return errors.New("resume boom")
+	}
+	return nil
+}
+
 func (f *fakeRunner) Publish(_ context.Context, j *Job) error {
 	f.record("publish")
 	j.RepoName = f.repo
@@ -138,55 +147,65 @@ func TestWorkerFailurePhases(t *testing.T) {
 	}
 }
 
-// AC1: a job a crash left mid-run is visible after a restart and can be reaped.
-func TestReapFailsStrandedJobs(t *testing.T) {
+// A job left mid-run with no live backend session to rejoin (its run id was
+// never observed) cannot be synced, so reconcile fails it. A fresh submitted job
+// is left claimable.
+func TestReconcileFailsUnrecoverable(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	stranded, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
-	// Claim moves it to resolving; then the "process crashes" — nothing advances it.
-	if _, ok, _ := s.Claim(ctx); !ok {
+	if _, ok, _ := s.Claim(ctx); !ok { // -> resolving, no run id
 		t.Fatal("claim should have taken the job")
 	}
-	// A fresh submitted job must be left alone (still claimable).
 	fresh, _ := s.Enqueue(ctx, "sub", "ref2", KindAudit, "", "")
 
-	w := NewWorker(s, &fakeRunner{})
-	reaped, err := w.Reap(ctx)
-	if err != nil {
-		t.Fatalf("Reap: %v", err)
-	}
-	if reaped != 1 {
-		t.Fatalf("reaped %d, want 1", reaped)
+	resumed, failed, err := NewWorker(s, &fakeRunner{}).Reconcile(ctx)
+	if err != nil || resumed != 0 || failed != 1 {
+		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 0/1/nil", resumed, failed, err)
 	}
 	if got, _ := s.Get(ctx, stranded.ID); got.Phase != PhaseFailed || got.Err == "" {
-		t.Errorf("stranded job should be failed with a cause, got %s/%q", got.Phase, got.Err)
+		t.Errorf("unrecoverable job should be failed with a cause, got %s/%q", got.Phase, got.Err)
 	}
 	if got, _ := s.Get(ctx, fresh.ID); got.Phase != PhaseSubmitted {
-		t.Errorf("a fresh submitted job must not be reaped, got %s", got.Phase)
+		t.Errorf("a fresh submitted job must not be touched, got %s", got.Phase)
 	}
 }
 
-// A stranded job whose backend run id was observed is not just failed — its
-// backend session is closed, so a restart stops the run rather than orphaning it
-// (the bug: a "reaped" session that keeps running and spending on the backend).
-func TestReapClosesTheOrphanedRun(t *testing.T) {
+// A run whose backend session id was observed is REJOINED on restart, not
+// failed: reconcile resumes it and drives it to done, reflecting the live
+// session rather than guessing it failed while it kept running.
+func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
-	_, _, _ = s.Claim(ctx) // -> resolving
-	// The run reported its session id before the "crash".
-	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_01"})
+	_, _, _ = s.Claim(ctx)                                                 // -> resolving
+	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)                            // reached running
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})    // id observed before the "crash"
 
-	r := &fakeRunner{}
-	reaped, err := NewWorker(s, r).Reap(ctx)
-	if err != nil || reaped != 1 {
-		t.Fatalf("Reap = %d, err %v", reaped, err)
+	r := &fakeRunner{repo: "open-hai/x"}
+	resumed, failed, err := NewWorker(s, r).Reconcile(ctx)
+	if err != nil || resumed != 1 || failed != 0 {
+		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 1/0/nil", resumed, failed, err)
 	}
-	if len(r.closed) != 1 || r.closed[0] != "sesn_live_01" {
-		t.Errorf("reap should close the orphaned session, closed=%v", r.closed)
+	// The resume goroutine drives it to done; wait for it.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if got, _ := s.Get(ctx, j.ID); got.Phase == PhaseDone {
+			break
+		}
+		if time.Now().After(deadline) {
+			got, _ := s.Get(ctx, j.ID)
+			t.Fatalf("rejoined run did not reach done, phase %s", got.Phase)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseFailed {
-		t.Errorf("reaped job phase = %s, want failed", got.Phase)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.calls) == 0 || r.calls[0] != "resume" {
+		t.Errorf("reconcile should have resumed (not restarted) the run, calls=%v", r.calls)
+	}
+	if len(r.closed) != 0 {
+		t.Errorf("a live run should be rejoined, not closed; closed=%v", r.closed)
 	}
 }
 
@@ -258,9 +277,9 @@ func TestProcessSurfacesClaimError(t *testing.T) {
 	}
 }
 
-func TestReapSurfacesActiveError(t *testing.T) {
-	if _, err := NewWorker(failActiveStore{NewMemStore()}, &fakeRunner{}).Reap(context.Background()); err == nil {
-		t.Fatal("an Active failure should surface from Reap")
+func TestReconcileSurfacesActiveError(t *testing.T) {
+	if _, _, err := NewWorker(failActiveStore{NewMemStore()}, &fakeRunner{}).Reconcile(context.Background()); err == nil {
+		t.Fatal("an Active failure should surface from Reconcile")
 	}
 }
 

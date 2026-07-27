@@ -299,14 +299,26 @@ func (a *Auditor) Collect(ctx context.Context, h provider.RunHandle, dst string)
 }
 
 // Run performs one audit end to end: start, wait, collect, release.
-//
-// The run is released even when the audit fails, and release uses a context
-// detached from ctx so a canceled audit still cleans up after itself.
 func (a *Auditor) Run(ctx context.Context, paper, dst string) (Result, error) {
 	h, err := a.Start(ctx, paper)
 	if err != nil {
 		return Result{Paper: paper}, err
 	}
+	return a.finish(ctx, h, paper, dst)
+}
+
+// Resume reconnects to an already-started run by its handle and drives it the
+// rest of the way — wait, collect, release. It is how the worker reconciles a
+// run left in flight by a restart: rather than guess the run failed, it rejoins
+// the live backend session and reflects its real outcome (006b reconciliation).
+func (a *Auditor) Resume(ctx context.Context, h provider.RunHandle, paper, dst string) (Result, error) {
+	return a.finish(ctx, h, paper, dst)
+}
+
+// finish drives a started run to completion: it waits for a terminal state,
+// collects the artifacts, and releases the run even on failure — release on a
+// context detached from ctx so a cancelled audit still cleans up after itself.
+func (a *Auditor) finish(ctx context.Context, h provider.RunHandle, paper, dst string) (Result, error) {
 	result := Result{Paper: paper, Handle: h, ArtifactDir: dst, MethodDigest: a.method.Digest()}
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)

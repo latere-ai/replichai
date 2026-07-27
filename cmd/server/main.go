@@ -116,10 +116,10 @@ func run() error {
 		delay:    delay,
 	}
 	worker := job.NewWorker(jobStore, runner)
-	if n, err := worker.Reap(ctx); err != nil {
-		log.Printf("reap on startup: %v", err)
-	} else if n > 0 {
-		log.Printf("reaped %d jobs stranded by a prior restart", n)
+	if resumed, failed, err := worker.Reconcile(ctx); err != nil {
+		log.Printf("reconcile on startup: %v", err)
+	} else if resumed > 0 || failed > 0 {
+		log.Printf("reconcile: rejoined %d live run(s), failed %d unrecoverable", resumed, failed)
 	}
 	go worker.Start(ctx, *workers)
 
