@@ -113,6 +113,11 @@ const strings: Record<Lang, Record<string, string>> = {
     usageCached: 'Cached',
     usageTotal: 'Total',
     usageNotRecorded: 'Token usage was not recorded for this session.',
+    // timeline + live stream
+    timeline: 'Timeline',
+    inProgress: 'in progress',
+    liveStreaming: 'live',
+    transcriptWaitingLive: 'Waiting for the agent to emit its first events…',
     // tiers + phases
     tierNone: 'none',
     tierUser: 'user',

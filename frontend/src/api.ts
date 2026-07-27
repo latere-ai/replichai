@@ -18,6 +18,9 @@ export type Job = {
   status?: { State: string; Usage: Usage }
   repo_name?: string
   error?: string
+  created_at?: string
+  // phase_at records when the session entered each phase — the timeline's spine.
+  phase_at?: Record<string, string>
 }
 
 // A project is the container a user owns; it holds one or more replication
@@ -52,7 +55,9 @@ export type Event = {
   time?: string
 }
 
-export type Transcript = { events: Event[]; usage: Usage | null }
+// live is true when these events came from an in-flight run's live stream, so
+// the client keeps polling for more.
+export type Transcript = { events: Event[]; usage: Usage | null; live: boolean }
 
 // A session's manifest summary — the reproduction verdict and metadata, read
 // from the committed repository.
