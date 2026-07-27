@@ -259,6 +259,34 @@ func TestGetFileContentAbsent(t *testing.T) {
 	}
 }
 
+// GetFileRaw streams content via the raw media type — the path a large file
+// (a full transcript, over the inline limit) must use.
+func TestGetFileRawStreamsRawMedia(t *testing.T) {
+	want := []byte(`{"role":"agent","kind":"message"}` + "\n")
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/open-hai/x/contents/transcript.jsonl" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Accept"); got != "application/vnd.github.raw" {
+			t.Errorf("Accept = %q, want the raw media type", got)
+		}
+		_, _ = w.Write(want) // raw bytes, not JSON-wrapped
+	})
+	got, ok, err := c.GetFileRaw(context.Background(), "open-hai", "x", "transcript.jsonl")
+	if err != nil || !ok || string(got) != string(want) {
+		t.Fatalf("GetFileRaw = %q ok=%v err=%v", got, ok, err)
+	}
+}
+
+func TestGetFileRawAbsent(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	if _, ok, err := c.GetFileRaw(context.Background(), "open-hai", "x", "transcript.jsonl"); ok || err != nil {
+		t.Errorf("absent file: ok=%v err=%v; want false, nil", ok, err)
+	}
+}
+
 func TestFileUnchangedComparesBlobSHA(t *testing.T) {
 	content := []byte("a large transcript...\n")
 	// The git blob sha of the content, so the server can echo it.

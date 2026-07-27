@@ -417,11 +417,26 @@ function Stat({ label, value, strong }: { label: string; value: number; strong?:
   )
 }
 
+// plumbingKinds are the backend's lifecycle ticks — not trajectory content, so
+// the viewer hides them to keep the agent's actual work legible.
+const plumbingKinds = new Set([
+  'status_idle',
+  'status_running',
+  'thread_status_idle',
+  'thread_status_running',
+  'model_request_start',
+  'model_request_end',
+])
+
+// gradeKinds carry the grader's outcome — called out like the grade.
+const gradeKinds = new Set(['grade', 'define_outcome', 'outcome_evaluation_end'])
+
 // Trajectory renders the agent's events in time order, pairing each tool call
 // with the result that follows it so the reader sees a call and its output
-// together, and calling out the final grade.
-function Trajectory({ i18n, events }: { i18n: I18n; events: Event[] }) {
+// together, hiding the backend's lifecycle ticks, and calling out the outcome.
+function Trajectory({ i18n, events: all }: { i18n: I18n; events: Event[] }) {
   const { t } = i18n
+  const events = all.filter((e) => !plumbingKinds.has(e.kind))
   const blocks: React.ReactNode[] = []
   for (let i = 0; i < events.length; i++) {
     const e = events[i]
@@ -443,11 +458,11 @@ function Trajectory({ i18n, events }: { i18n: I18n; events: Event[] }) {
       )
       continue
     }
-    if (e.kind === 'grade') {
+    if (gradeKinds.has(e.kind)) {
       blocks.push(
         <div key={i} className="event grade">
           <div className="event-head">
-            <span className="badge grade">{t('grade')}</span>
+            <span className="badge grade">{t('grade')}</span> <span className="muted small">{e.kind}</span>
           </div>
           <div className="event-body">{e.content || t('noContent')}</div>
         </div>,

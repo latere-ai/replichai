@@ -254,6 +254,37 @@ func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) (
 	return decoded, true, nil
 }
 
+// GetFileRaw reads a file's bytes through the Contents API's raw media type,
+// which streams the content directly rather than inlining base64 — so it works
+// for files the JSON path will not return (over ~1MB, e.g. a full transcript),
+// up to GitHub's 100MB limit. ok is false for an absent file; a non-200 is an
+// error, never a disguised miss.
+func (c *Client) GetFileRaw(ctx context.Context, owner, name, path string) ([]byte, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/repos/"+owner+"/"+name+"/contents/"+path, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/vnd.github.raw")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, false, fmt.Errorf("read %s in %s/%s: unexpected status %d", path, owner, name, resp.StatusCode)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s in %s/%s: %w", path, owner, name, err)
+	}
+	return raw, true, nil
+}
+
 // FileUnchanged reports whether path already holds exactly content, by comparing
 // git blob shas. This works for any size — including files too large for the
 // Contents API to inline — so it is the reliable idempotency check.
