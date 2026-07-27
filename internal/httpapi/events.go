@@ -22,9 +22,8 @@ func (rt *Router) jobEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	j, err := rt.jobs.Get(r.Context(), id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found")
+	j, ok := rt.viewableSession(w, r, id)
+	if !ok {
 		return
 	}
 

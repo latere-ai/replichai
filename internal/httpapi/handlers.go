@@ -61,6 +61,7 @@ func (rt *Router) routes() {
 	rt.openHandle("GET", "/healthz", rt.health)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
+	rt.gatedHandle("GET", "/shared", rt.listShared)
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
@@ -71,9 +72,6 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 	rt.gatedHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
-	rt.gatedHandle("GET", "/reproductions", rt.listReproductions)
-	rt.gatedHandle("GET", "/reproductions/{id}", rt.getReproduction)
-	rt.gatedHandle("GET", "/reproductions/{id}/transcript", rt.getTranscript)
 
 	// The frontend shell is public and serves any GET path not matched above,
 	// so a deep link loads the app and lets it route (006e). More specific API
@@ -431,6 +429,30 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listShared is the "shared with me" surface: projects the caller is a
+// collaborator on (not their own), each with a session count.
+func (rt *Router) listShared(w http.ResponseWriter, r *http.Request) {
+	id, _ := IdentityFrom(r)
+	ids, err := rt.members.Projects(r.Context(), id.Sub)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	out := make([]ProjectView, 0, len(ids))
+	for _, pid := range ids {
+		p, err := rt.projects.Get(r.Context(), pid)
+		if err != nil {
+			continue // a membership whose project is gone is skipped, not fatal
+		}
+		count := 0
+		if sessions, err := rt.jobs.ListByProject(r.Context(), pid); err == nil {
+			count = len(sessions)
+		}
+		out = append(out, ProjectView{Project: p, SessionCount: count})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // ProjectDetail is one project with its sessions, newest first.
 type ProjectDetail struct {
 	Project  project.Project `json:"project"`
@@ -439,6 +461,41 @@ type ProjectDetail struct {
 
 // getProject returns a project and its sessions, refusing a project the caller
 // does not own.
+// mayViewProject is the one predicate every project- and session-scoped read
+// consults (006f): a public project is open to anyone signed in, an owner sees
+// their own, and a collaborator sees one they were invited to. Visibility lives
+// on the project, so everything under it (sessions, transcripts, history)
+// inherits this decision — there is no second, unscoped "published" surface.
+func (rt *Router) mayViewProject(r *http.Request, p project.Project) bool {
+	id, _ := IdentityFrom(r)
+	if p.Visibility == project.VisibilityPublic || p.Owner == id.Sub {
+		return true
+	}
+	if rt.members == nil {
+		return false
+	}
+	_, ok, _ := rt.members.Role(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, p.ID)
+	return ok
+}
+
+// viewableSession resolves a session and the project it belongs to, and asserts
+// the caller may view that project — so a session read is scoped exactly like
+// its project. It writes 404 and returns ok=false otherwise, hiding a session
+// the caller may not see rather than revealing that it exists.
+func (rt *Router) viewableSession(w http.ResponseWriter, r *http.Request, id string) (job.Job, bool) {
+	j, err := rt.jobs.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found")
+		return job.Job{}, false
+	}
+	p, err := rt.projects.Get(r.Context(), j.ProjectID)
+	if err != nil || !rt.mayViewProject(r, p) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return job.Job{}, false
+	}
+	return j, true
+}
+
 func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, project.ErrNotFound) {
@@ -449,10 +506,10 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	// The owner always sees their project; anyone signed in sees a public one
-	// (the public zone). A private project the caller does not own is refused.
-	if proj.Owner != principal(r) && proj.Visibility != project.VisibilityPublic {
-		writeError(w, http.StatusForbidden, "not_owner")
+	// A project the caller may not view is hidden, not merely refused — a private
+	// project reads as not-found to anyone but its owner and collaborators.
+	if !rt.mayViewProject(r, proj) {
+		writeError(w, http.StatusNotFound, "not_found")
 		return
 	}
 	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
@@ -498,9 +555,8 @@ type Transcript struct {
 // published a transcript yet answers 409 not_ready, distinct from a 404 for a
 // session that does not exist.
 func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
-	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found")
+	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	if j.RepoName == "" {
@@ -606,44 +662,12 @@ func deriveUsage(events []provider.Event) (provider.Usage, bool) {
 	return u, found
 }
 
-// getJob reports a job's status and phase.
+// getJob reports a session's status and phase, scoped to who may view its
+// project.
 func (rt *Router) getJob(w http.ResponseWriter, r *http.Request) {
-	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found")
+	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, j)
-}
-
-// listReproductions reads the derived registry (003) straight through.
-func (rt *Router) listReproductions(w http.ResponseWriter, r *http.Request) {
-	list, err := rt.repro.List(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "registry_unavailable")
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
-}
-
-// getReproduction reads one reproduction's manifest view.
-func (rt *Router) getReproduction(w http.ResponseWriter, r *http.Request) {
-	repro, err := rt.repro.Get(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeReadError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, repro)
-}
-
-// getTranscript reads a reproduction's transcript (005) through the reader.
-func (rt *Router) getTranscript(w http.ResponseWriter, r *http.Request) {
-	body, err := rt.repro.Transcript(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeReadError(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
 }

@@ -10,8 +10,30 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 )
+
+// publicSession enqueues a session in a fresh public project, so the SSE tests'
+// unauthenticated client may view it (the stream is scoped like every session
+// read). It returns the project store to wire into Deps and the session.
+func publicSession(t *testing.T, store *job.MemStore) (*project.MemStore, job.Job) {
+	t.Helper()
+	ctx := context.Background()
+	projects := project.NewMemStore()
+	p, err := projects.Create(ctx, "sub", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := projects.SetPublic(ctx, p.ID, "sub", "v1"); err != nil {
+		t.Fatal(err)
+	}
+	j, err := store.Enqueue(ctx, "sub", "ref", job.KindAudit, p.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return projects, j
+}
 
 // AC2: the SSE stream snapshots current state first (a late viewer sees where
 // the run is, not a blank screen), flushes each event, and streams subsequent
@@ -19,12 +41,12 @@ import (
 func TestSSESnapshotThenStream(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := context.Background()
-	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "", "")
+	projects, j := publicSession(t, store)
 	// The run is already mid-flight before anyone connects.
 	_ = store.Advance(ctx, j.ID, job.PhaseResolving, nil)
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
 
-	rt := NewRouter(Deps{Jobs: store, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
+	rt := NewRouter(Deps{Jobs: store, Projects: projects, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
 	srv := httptest.NewServer(rt.Handler())
 	defer srv.Close()
 
@@ -102,9 +124,9 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 	store := job.NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "", "")
+	projects, j := publicSession(t, store)
 
-	rt := NewRouter(Deps{Jobs: store, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
+	rt := NewRouter(Deps{Jobs: store, Projects: projects, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
 	srv := httptest.NewServer(rt.Handler())
 	defer srv.Close()
 
@@ -148,14 +170,14 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 func TestSSEResumesFromLastEventID(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := context.Background()
-	j, _ := store.Enqueue(ctx, "sub", "ref", job.KindAudit, "", "")
+	projects, j := publicSession(t, store)
 	// A terminal job: the handler sends one snapshot and returns.
 	_ = store.Advance(ctx, j.ID, job.PhaseResolving, nil)
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
 	_ = store.Advance(ctx, j.ID, job.PhasePublishing, nil)
 	_ = store.Advance(ctx, j.ID, job.PhaseDone, nil)
 
-	rt := NewRouter(Deps{Jobs: store, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
+	rt := NewRouter(Deps{Jobs: store, Projects: projects, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})
 	srv := httptest.NewServer(rt.Handler())
 	defer srv.Close()
 

@@ -77,6 +77,12 @@ type MembershipStore interface {
 	Add(ctx context.Context, byLead access.Principal, project, email string, r access.Role) error
 	Remove(ctx context.Context, byLead access.Principal, project, email string) error
 	SeedLead(ctx context.Context, project, email string) error
+	// Role resolves a caller's role in a project (binding on first login) — the
+	// collaborator half of the view predicate.
+	Role(ctx context.Context, p access.Principal, project string) (access.Role, bool, error)
+	// Projects lists the project ids a principal is a member of — the "shared
+	// with me" surface.
+	Projects(ctx context.Context, principalSub string) ([]string, error)
 }
 
 // RepoPublisher flips a forge repository public — the optional half of the
@@ -94,8 +100,11 @@ type RepoPublisher interface {
 // A genuine miss must be reported as ErrReproNotFound; any other error is a
 // transport or backend failure and becomes a 500, so a canceled request or a
 // forge outage is never disguised as "not found".
+// It is no longer a user-facing list: the project is the unit of visibility
+// (006f), so Get and Transcript here serve internal checks only — the publish
+// gate's manifest-clear check and the session transcript reader — never an
+// unscoped org-wide listing.
 type ReproReader interface {
-	List(ctx context.Context) ([]Reproduction, error)
 	Get(ctx context.Context, id string) (Reproduction, error)
 	Transcript(ctx context.Context, id string) ([]byte, error)
 }

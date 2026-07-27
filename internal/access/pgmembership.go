@@ -115,6 +115,25 @@ func (m *PGMembership) List(ctx context.Context, project string) ([]Member, erro
 	return out, rows.Err()
 }
 
+// Projects returns the project ids this principal is a bound member of.
+func (m *PGMembership) Projects(ctx context.Context, principalSub string) ([]string, error) {
+	rows, err := m.pool.Query(ctx,
+		`SELECT project FROM project_members WHERE principal=$1 ORDER BY project`, principalSub)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (m *PGMembership) upsert(ctx context.Context, project, email string, r Role) error {
 	_, err := m.pool.Exec(ctx, `
 		INSERT INTO project_members (project, email, role) VALUES ($1,$2,$3)
