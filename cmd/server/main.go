@@ -26,6 +26,7 @@ import (
 	"latere.ai/x/pkg/oidclogin"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
@@ -124,9 +125,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	// Reproductions are read from the forge (the derived registry, 003): the
+	// published repositories under the org are the source of truth. Falls back to
+	// a filesystem dir for a local run with no forge token.
+	var reproSource registry.Source
+	if token := os.Getenv("REPLICHAI_GITHUB_TOKEN"); token != "" {
+		owner := envOr("REPLICHAI_GITHUB_OWNER", "open-hai")
+		reproSource = registry.NewGitHubSource(github.New(token), owner)
+		log.Printf("reproductions: reading the %s org on GitHub", owner)
+	} else {
+		reproSource = registry.NewFSSource(*reproDir)
+		log.Printf("reproductions: reading filesystem dir %q (set REPLICHAI_GITHUB_TOKEN to read the forge)", *reproDir)
+	}
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
-		Reproductions: &registryReader{source: registry.NewFSSource(*reproDir)},
+		Reproductions: &registryReader{source: reproSource},
 		Gate:          webauth.Gate(accessStore),
 		SPA:           spaHandler,
 	})
