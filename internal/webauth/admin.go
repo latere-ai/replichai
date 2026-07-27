@@ -80,7 +80,7 @@ func ParseTier(s string) (access.Tier, bool) {
 // principalFrom reads the authenticated caller as an access.Principal.
 func principalFrom(r *http.Request) access.Principal {
 	id, _ := httpapi.IdentityFrom(r)
-	return access.Principal{Sub: id.Sub, Email: id.Email, EmailVerified: id.EmailVerified}
+	return access.Principal{Sub: id.Sub, Email: id.Email}
 }
 
 // writeAdminError maps an access error to a status: a non-admin caller is

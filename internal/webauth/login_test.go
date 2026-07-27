@@ -55,30 +55,11 @@ func TestSessionFromIdentityDropsClaims(t *testing.T) {
 		},
 	}
 	s := sessionFromIdentity(id)
-	if s.Sub != "user-1" || s.Email != "u@example.com" || !s.EmailVerified {
+	if s.Sub != "user-1" || s.Email != "u@example.com" {
 		t.Fatalf("session = %+v, want only sub/email/verified", s)
 	}
 	// The session type has no field any of those claims could land in — checked
 	// structurally in TestSessionCarriesNoTier and by the shape of Session here.
-}
-
-func TestEmailVerifiedParsing(t *testing.T) {
-	cases := map[string]struct {
-		raw  map[string]any
-		want bool
-	}{
-		"bool true":      {map[string]any{"email_verified": true}, true},
-		"bool false":     {map[string]any{"email_verified": false}, false},
-		"string true":    {map[string]any{"email_verified": "true"}, true},
-		"string false":   {map[string]any{"email_verified": "false"}, false},
-		"missing":        {map[string]any{}, false},
-		"unexpected int": {map[string]any{"email_verified": 1}, false},
-	}
-	for name, tc := range cases {
-		if got := emailVerified(tc.raw); got != tc.want {
-			t.Errorf("%s: emailVerified = %v, want %v", name, got, tc.want)
-		}
-	}
 }
 
 func TestHandleLoginSetsFlowCookieAndRedirects(t *testing.T) {
@@ -117,7 +98,7 @@ func TestCallbackHappyPathSetsSession(t *testing.T) {
 		t.Fatal("session cookie was not set")
 	}
 	var s Session
-	if err := l.codec.Open(sealed, &s); err != nil || s.Sub != "u1" || !s.EmailVerified {
+	if err := l.codec.Open(sealed, &s); err != nil || s.Sub != "u1" {
 		t.Errorf("session cookie = %+v, err %v", s, err)
 	}
 }
@@ -129,8 +110,8 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	// The ID token yields a sub but no email.
 	client := fakeOIDC{identity: oidclogin.Identity{Subject: "uuid-1", Raw: map[string]any{}}}
-	userInfo := func(_ context.Context, _ string) (string, bool, error) {
-		return "hi@changkun.de", true, nil
+	userInfo := func(_ context.Context, _ string) (string, error) {
+		return "hi@changkun.de", nil
 	}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, userInfo)
 
@@ -145,7 +126,7 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	if err := l.codec.Open(sealed, &s); err != nil {
 		t.Fatalf("open session: %v", err)
 	}
-	if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" || !s.EmailVerified {
+	if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" {
 		t.Errorf("session = %+v, want the userinfo email bound to the sub", s)
 	}
 }
@@ -179,7 +160,7 @@ func TestCallbackRejections(t *testing.T) {
 
 func TestMiddlewareSetsIdentityFromSession(t *testing.T) {
 	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore())
-	sealed, _ := l.codec.Seal(Session{Sub: "u1", Email: "u@example.com", EmailVerified: true})
+	sealed, _ := l.codec.Seal(Session{Sub: "u1", Email: "u@example.com"})
 
 	var got httpapi.Identity
 	var ok bool
@@ -190,7 +171,7 @@ func TestMiddlewareSetsIdentityFromSession(t *testing.T) {
 	r.AddCookie(&http.Cookie{Name: cookieName(sessionCookie, false), Value: sealed})
 	h.ServeHTTP(httptest.NewRecorder(), r)
 
-	if !ok || got.Sub != "u1" || got.Email != "u@example.com" || !got.EmailVerified {
+	if !ok || got.Sub != "u1" || got.Email != "u@example.com" {
 		t.Fatalf("identity = %+v ok=%v", got, ok)
 	}
 
@@ -227,10 +208,10 @@ func TestMeReportsTier(t *testing.T) {
 	if out := call(nil); out["authenticated"] != false {
 		t.Errorf("unauthenticated /me = %v", out)
 	}
-	if out := call(&httpapi.Identity{Sub: "nobody", Email: "nobody@example.com", EmailVerified: true}); out["tier"] != "none" {
+	if out := call(&httpapi.Identity{Sub: "nobody", Email: "nobody@example.com"}); out["tier"] != "none" {
 		t.Errorf("ungranted /me tier = %v, want none", out["tier"])
 	}
-	if out := call(&httpapi.Identity{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}); out["tier"] != "admin" {
+	if out := call(&httpapi.Identity{Sub: "admin-sub", Email: "admin@example.com"}); out["tier"] != "admin" {
 		t.Errorf("admin /me tier = %v, want admin", out["tier"])
 	}
 }

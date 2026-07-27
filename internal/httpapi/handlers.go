@@ -10,15 +10,13 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 )
 
-// Identity is the authenticated caller as the auth middleware (006c) resolved it
-// from a verified ID token: the stable subject and, for seeding a not-yet-bound
-// grant, a verified email. The gate consumes these and nothing else. This
-// package only reads the identity off the request; who a principal *is* and what
-// they may do stays 006c's concern.
+// Identity is the authenticated caller as the auth middleware (006c) resolved
+// it: the stable subject and the IdP-authenticated email. The gate consumes
+// these and nothing else. This package only reads the identity off the request;
+// who a principal *is* and what they may do stays 006c's concern.
 type Identity struct {
-	Sub           string
-	Email         string
-	EmailVerified bool
+	Sub   string
+	Email string
 }
 
 // identityKey carries the Identity on the request context.

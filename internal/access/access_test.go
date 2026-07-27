@@ -13,7 +13,7 @@ var ctx = context.Background()
 func bootstrapAdmin(t *testing.T, s *MemStore) Principal {
 	t.Helper()
 	_ = s.SeedAdmin(ctx, "admin@example.com")
-	admin := Principal{Sub: "admin-sub", Email: "admin@example.com", EmailVerified: true}
+	admin := Principal{Sub: "admin-sub", Email: "admin@example.com"}
 	if tier, ok, _ := s.Resolve(ctx, admin); !ok || tier != TierAdmin {
 		t.Fatalf("admin should resolve as admin, got %s/%v", tier, ok)
 	}
@@ -24,7 +24,7 @@ func bootstrapAdmin(t *testing.T, s *MemStore) Principal {
 // type, so a later change cannot add a role, scope, or org claim that a login
 // could smuggle into a grant decision.
 func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
-	allowed := map[string]bool{"Sub": true, "Email": true, "EmailVerified": true}
+	allowed := map[string]bool{"Sub": true, "Email": true}
 	ty := reflect.TypeOf(Principal{})
 	for i := 0; i < ty.NumField(); i++ {
 		if !allowed[ty.Field(i).Name] {
@@ -36,7 +36,7 @@ func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
 // The fail-closed default: an empty table grants nobody.
 func TestEmptyTableGrantsNobody(t *testing.T) {
 	s := NewMemStore()
-	if tier, ok, _ := s.Resolve(ctx, Principal{Sub: "x", Email: "x@y.com", EmailVerified: true}); ok || tier != TierNone {
+	if tier, ok, _ := s.Resolve(ctx, Principal{Sub: "x", Email: "x@y.com"}); ok || tier != TierNone {
 		t.Errorf("an empty table must admit nobody, got %s/%v", tier, ok)
 	}
 }
@@ -53,14 +53,14 @@ func TestSeedBindAndRevoke(t *testing.T) {
 	}
 
 	// First login binds the grant and admits.
-	seed := Principal{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
+	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	if tier, ok, _ := s.Resolve(ctx, seed); !ok || tier != TierSeed {
 		t.Fatalf("seed should be admitted at first login, got %s/%v", tier, ok)
 	}
 
 	// A second principal presenting the same email is refused, not admitted onto
 	// the grant.
-	imposter := Principal{Sub: "imposter-sub", Email: "seed@example.com", EmailVerified: true}
+	imposter := Principal{Sub: "imposter-sub", Email: "seed@example.com"}
 	if _, ok, _ := s.Resolve(ctx, imposter); ok {
 		t.Error("a second principal on a bound email must be refused")
 	}
@@ -74,24 +74,12 @@ func TestSeedBindAndRevoke(t *testing.T) {
 	}
 }
 
-// An unverified email never seeds a grant.
-func TestUnverifiedEmailNeverBinds(t *testing.T) {
-	s := NewMemStore()
-	admin := bootstrapAdmin(t, s)
-	_ = s.Grant(ctx, admin, "seed@example.com", TierSeed)
-
-	unverified := Principal{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: false}
-	if _, ok, _ := s.Resolve(ctx, unverified); ok {
-		t.Error("an unverified email must never bind a grant")
-	}
-}
-
 // AC4: only a platform admin may grant, revoke, or list.
 func TestAdminOnlyOperations(t *testing.T) {
 	s := NewMemStore()
 	admin := bootstrapAdmin(t, s)
 	_ = s.Grant(ctx, admin, "seed@example.com", TierSeed)
-	seed := Principal{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
+	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	_, _, _ = s.Resolve(ctx, seed) // bind
 
 	for _, op := range []struct {
@@ -105,7 +93,7 @@ func TestAdminOnlyOperations(t *testing.T) {
 		if err := op.call(seed); !errors.Is(err, ErrNotAdmin) {
 			t.Errorf("%s by a seed user should be ErrNotAdmin, got %v", op.name, err)
 		}
-		ungranted := Principal{Sub: "nobody", Email: "nobody@example.com", EmailVerified: true}
+		ungranted := Principal{Sub: "nobody", Email: "nobody@example.com"}
 		if err := op.call(ungranted); !errors.Is(err, ErrNotAdmin) {
 			t.Errorf("%s by an ungranted principal should be ErrNotAdmin, got %v", op.name, err)
 		}
@@ -120,7 +108,7 @@ func TestGrantPromotesAndPreservesBinding(t *testing.T) {
 	s := NewMemStore()
 	admin := bootstrapAdmin(t, s)
 	_ = s.Grant(ctx, admin, "seed@example.com", TierSeed)
-	seed := Principal{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
+	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	_, _, _ = s.Resolve(ctx, seed) // bind at seed
 
 	if err := s.Grant(ctx, admin, "seed@example.com", TierTrusted); err != nil {

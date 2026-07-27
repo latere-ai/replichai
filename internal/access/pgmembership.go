@@ -67,7 +67,7 @@ func (m *PGMembership) Role(ctx context.Context, p Principal, project string) (R
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if !p.EmailVerified || p.Email == "" {
+		if p.Email == "" {
 			return nil
 		}
 		email := normalizeEmail(p.Email)

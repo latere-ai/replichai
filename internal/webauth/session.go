@@ -20,9 +20,8 @@ import (
 // out immediately and no session caches authority (006c AC3). A structural test
 // enforces the absence of a tier field.
 type Session struct {
-	Sub           string `json:"sub"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"ev"`
+	Sub   string `json:"sub"`
+	Email string `json:"email"`
 }
 
 // Cookie names. The __Host- prefix binds a cookie to Secure + Path=/ + no

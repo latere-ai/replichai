@@ -72,9 +72,12 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 	if email, ok := s.principalEmail[p.Sub]; ok {
 		return s.grants[email].Tier, true, nil
 	}
-	// Seed by a verified email, and only if the grant is not already bound to
-	// someone else — a second principal is refused, not admitted onto the grant.
-	if p.EmailVerified && p.Email != "" {
+	// Seed by the IdP-authenticated email, and only if the grant is not already
+	// bound to someone else — a second principal is refused, not admitted onto
+	// the grant. The email is auth's assertion for this authenticated session
+	// (not a self-asserted value), and the operator whitelist is the guard, so
+	// no separate email_verified flag is required.
+	if p.Email != "" {
 		email := normalizeEmail(p.Email)
 		if g, ok := s.grants[email]; ok && g.Principal == "" {
 			g.Principal = p.Sub

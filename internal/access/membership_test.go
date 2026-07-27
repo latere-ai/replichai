@@ -11,7 +11,7 @@ func TestMembershipSeedBindOneWay(t *testing.T) {
 	m := NewMemMembership()
 	_ = m.SeedLead(ctx, "proj-1", "lead@example.com")
 
-	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
+	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	if role, ok, _ := m.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
 		t.Fatalf("lead should bind to RoleLead, got %s/%v", role, ok)
 	}
@@ -20,12 +20,12 @@ func TestMembershipSeedBindOneWay(t *testing.T) {
 	if err := m.Add(ctx, lead, "proj-1", "collab@example.com", RoleCollaborator); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	collab := Principal{Sub: "collab-sub", Email: "collab@example.com", EmailVerified: true}
+	collab := Principal{Sub: "collab-sub", Email: "collab@example.com"}
 	if role, ok, _ := m.Role(ctx, collab, "proj-1"); !ok || role != RoleCollaborator {
 		t.Fatalf("collaborator should bind, got %s/%v", role, ok)
 	}
 	// A second principal on the bound email is refused.
-	imposter := Principal{Sub: "imposter", Email: "collab@example.com", EmailVerified: true}
+	imposter := Principal{Sub: "imposter", Email: "collab@example.com"}
 	if _, ok, _ := m.Role(ctx, imposter, "proj-1"); ok {
 		t.Error("a second principal on a bound membership must be refused")
 	}
@@ -39,9 +39,9 @@ func TestMembershipSeedBindOneWay(t *testing.T) {
 func TestMembershipLeadOnly(t *testing.T) {
 	m := NewMemMembership()
 	_ = m.SeedLead(ctx, "proj-1", "lead@example.com")
-	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
+	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	_ = m.Add(ctx, lead, "proj-1", "collab@example.com", RoleCollaborator)
-	collab := Principal{Sub: "collab-sub", Email: "collab@example.com", EmailVerified: true}
+	collab := Principal{Sub: "collab-sub", Email: "collab@example.com"}
 	_, _, _ = m.Role(ctx, collab, "proj-1") // bind
 
 	// A collaborator cannot add or remove.
@@ -52,7 +52,7 @@ func TestMembershipLeadOnly(t *testing.T) {
 		t.Errorf("remove by a collaborator should be ErrNotLead, got %v", err)
 	}
 	// A stranger to the project cannot either.
-	stranger := Principal{Sub: "s", Email: "s@example.com", EmailVerified: true}
+	stranger := Principal{Sub: "s", Email: "s@example.com"}
 	if err := m.Add(ctx, stranger, "proj-1", "x@example.com", RoleLead); !errors.Is(err, ErrNotLead) {
 		t.Errorf("add by a stranger should be ErrNotLead, got %v", err)
 	}
@@ -70,7 +70,7 @@ func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
 
 	// A principal is a project lead but has no platform grant.
 	_ = members.SeedLead(ctx, "proj-1", "lead@example.com")
-	lead := Principal{Sub: "lead-sub", Email: "lead@example.com", EmailVerified: true}
+	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	if role, ok, _ := members.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
 		t.Fatal("precondition: lead has a project role")
 	}
@@ -82,7 +82,7 @@ func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
 	// Conversely a granted seed user has no project role they were not given.
 	admin := bootstrapAdmin(t, grants)
 	_ = grants.Grant(ctx, admin, "seed@example.com", TierSeed)
-	seed := Principal{Sub: "seed-sub", Email: "seed@example.com", EmailVerified: true}
+	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	if tier, ok, _ := grants.Resolve(ctx, seed); !ok || tier != TierSeed {
 		t.Fatal("precondition: seed user is granted")
 	}

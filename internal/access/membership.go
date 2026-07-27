@@ -87,8 +87,8 @@ func (m *MemMembership) Role(_ context.Context, p Principal, project string) (Ro
 	if email, ok := m.bound[project][p.Sub]; ok {
 		return m.members[project][email].Role, true, nil
 	}
-	// Seed by a verified email, only if not already bound to someone else.
-	if p.EmailVerified && p.Email != "" {
+	// Seed by the IdP-authenticated email, only if not already bound to someone else.
+	if p.Email != "" {
 		email := normalizeEmail(p.Email)
 		if row, ok := m.members[project][email]; ok && row.Principal == "" {
 			row.Principal = p.Sub
