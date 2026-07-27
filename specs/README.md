@@ -33,6 +33,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built (pending a full prod run):** [006i](006i-server-side-mount-and-publish.md) wires the CLI's live-mount publish into the server `engineRunner`, so a web-submitted session gets a real repository, manifest, and committed transcript rather than evaporating with the sandbox — the backend half of 006f, with the CLI's finalize extracted into a shared `publish.FinalizeLive` so the two paths cannot drift.
 
+**Designed, being built:** [006j](006j-the-new-project-flow.md) makes "New project" a deliberate act — name it, preview each paper link (`POST /resolve`), start several papers, and invite collaborators, through a dedicated `POST /projects`.
+
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
