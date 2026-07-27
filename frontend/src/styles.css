@@ -859,6 +859,97 @@ input.submit-input {
   font: 600 13px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+/* a pulsing "live" pill for an in-flight run's streaming transcript */
+.live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 2px 7px 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok, #3fb950) 16%, transparent);
+  color: var(--ok, #3fb950);
+  font: 600 9.5px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.live-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: livepulse 1.4s ease-in-out infinite;
+}
+@keyframes livepulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* the phase progression strip, built from the durable phase_at timestamps */
+.timeline {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.tl-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-right: 20px;
+  position: relative;
+}
+.tl-step:not(:last-child)::after {
+  content: '';
+  width: 26px;
+  height: 1px;
+  background: var(--border);
+  margin-left: 4px;
+}
+.tl-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--fg-3);
+}
+.tl-dot.done {
+  background: var(--ok, #3fb950);
+}
+.tl-dot.failed {
+  background: var(--err, #f85149);
+}
+.tl-dot.running {
+  background: var(--accent, #4493f8);
+}
+.tl-step.active .tl-dot {
+  animation: livepulse 1.4s ease-in-out infinite;
+}
+.tl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tl-phase {
+  font: 500 12px/1 var(--font-mono);
+}
+.tl-dur {
+  font: 500 10px/1 var(--font-mono);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .tx-body {
   flex: 1;
   min-height: 0;

@@ -5,6 +5,7 @@ import {
   artifactUrl,
   cancelSession,
   getArtifact,
+  getJob,
   getMe,
   getProject,
   getReproduction,
@@ -940,24 +941,55 @@ const gradeKinds = new Set(['grade', 'define_outcome', 'outcome_evaluation_end']
 function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onBack: () => void }) {
   const { t } = i18n
   const [tr, setTr] = useState<Transcript | null>(null)
+  const [job, setJob] = useState<Job | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_ready' | 'error'>('loading')
   const [hidePlumbing, setHidePlumbing] = useState(true)
   const [off, setOff] = useState<Set<string>>(new Set())
 
+  // Watch the job: its phase_at feeds the timeline, and its terminal phase tells
+  // the transcript poll when to stop chasing a run that will never publish.
+  const jobRef = useRef<Job | null>(null)
   useEffect(() => {
-    let live = true
-    getTranscript(jobId)
-      .then((data) => {
-        if (!live) return
-        setTr(data)
-        setState('ready')
-      })
-      .catch((e: Error) => {
-        if (!live) return
-        setState(e.message === '409' ? 'not_ready' : 'error')
-      })
+    jobRef.current = job
+  }, [job])
+  useEffect(() => {
+    getJob(jobId).then(setJob).catch(() => {})
+    return watchJob(jobId, setJob)
+  }, [jobId])
+
+  // Poll the transcript. While the run is live (or not yet ready but still in
+  // flight) keep re-fetching so an in-flight session's trajectory streams in
+  // real time — not only after it publishes.
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const again = () => {
+      timer = setTimeout(poll, 4000)
+    }
+    const poll = () => {
+      getTranscript(jobId)
+        .then((data) => {
+          if (!alive) return
+          setTr(data)
+          setState('ready')
+          if (data.live) again() // an in-flight run — keep streaming
+        })
+        .catch((e: Error) => {
+          if (!alive) return
+          if (e.message === '409') {
+            setState('not_ready')
+            // A session may observe a run id or publish shortly; keep polling
+            // until it reaches a terminal phase with still no transcript.
+            if (!jobRef.current || !terminal(jobRef.current.phase)) again()
+          } else {
+            setState('error')
+          }
+        })
+    }
+    poll()
     return () => {
-      live = false
+      alive = false
+      if (timer) clearTimeout(timer)
     }
   }, [jobId])
 
@@ -968,13 +1000,21 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   )
 
   if (state !== 'ready' || !tr) {
+    // A session still working (non-terminal) hasn't failed to produce a
+    // transcript — it just hasn't emitted events yet. Show its live timeline and
+    // wait, rather than the "not ready" dead-end reserved for terminal misses.
+    const waitingLive = state === 'not_ready' && job && !terminal(job.phase)
     return (
       <div className="tx">
         <div className="tx-head">
           {backBtn}
           <span className="tx-head-ref">{t('transcript')}</span>
+          {waitingLive && <span className="live-dot">{t('liveStreaming')}</span>}
         </div>
-        <div className="center-load">{state === 'not_ready' ? t('transcriptNotReady') : state === 'error' ? t('transcriptError') : '…'}</div>
+        {job && <Timeline i18n={i18n} job={job} />}
+        <div className="center-load">
+          {waitingLive ? t('transcriptWaitingLive') : state === 'not_ready' ? t('transcriptNotReady') : state === 'error' ? t('transcriptError') : '…'}
+        </div>
       </div>
     )
   }
@@ -995,7 +1035,10 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
       <div className="tx-head">
         {backBtn}
         <div className="tx-head-meta">
-          <span className="tx-head-ref">{t('transcript')}</span>
+          <span className="tx-head-ref">
+            {t('transcript')}
+            {tr.live && <span className="live-dot">{t('liveStreaming')}</span>}
+          </span>
           <span className="tx-head-sub">{t('eventsCounted', { n: String(tr.events.length) })}</span>
         </div>
         <div className="tx-stats">
@@ -1011,6 +1054,8 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
           </div>
         </div>
       </div>
+
+      {job && <Timeline i18n={i18n} job={job} />}
 
       <div className="tx-body">
         <aside className="tx-side">
@@ -1142,6 +1187,51 @@ function tierLabel(t: I18n['t'], tier?: string) {
 }
 function phaseLabel(t: I18n['t'], phase: string) {
   return t(`phase.${phase}`)
+}
+
+// PHASE_ORDER is the lifecycle spine the timeline walks. phase_at only ever
+// carries phases the session actually entered, so a missing phase is simply
+// skipped — the timeline never fabricates a step.
+const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed']
+
+// fmtDur renders a millisecond span as a compact human duration.
+function fmtDur(ms: number): string {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${s % 60}s`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m`
+}
+
+// Timeline draws the session's phase progression from the durable phase_at
+// timestamps: each phase, when it started, and how long it took to reach the
+// next. The final phase carries no duration; a still-running phase shows "in
+// progress" rather than a fabricated elapsed count.
+function Timeline({ i18n, job }: { i18n: I18n; job: Job }) {
+  const { t } = i18n
+  const at = job.phase_at ?? {}
+  const steps = PHASE_ORDER.filter((p) => at[p])
+    .map((p) => ({ phase: p, time: new Date(at[p]).getTime() }))
+    .sort((a, b) => a.time - b.time)
+  if (steps.length === 0) return null
+  return (
+    <div className="timeline">
+      {steps.map((s, i) => {
+        const next = steps[i + 1]
+        const active = !next && !terminal(job.phase)
+        return (
+          <div key={s.phase} className={'tl-step' + (active ? ' active' : '')}>
+            <span className={'tl-dot ' + phaseClass(s.phase)} />
+            <div className="tl-body">
+              <span className="tl-phase">{phaseLabel(t, s.phase)}</span>
+              <span className="tl-dur">{active ? t('inProgress') : next ? fmtDur(next.time - s.time) : ''}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 // displayKind collapses the grade family so filters read cleanly.
 function displayKind(kind: string) {
