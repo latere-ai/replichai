@@ -132,9 +132,12 @@ func run() error {
 	// published repositories under the org are the source of truth. Falls back to
 	// a filesystem dir for a local run with no forge token.
 	var reproSource registry.Source
+	var repoPublisher httpapi.RepoPublisher
 	if token := os.Getenv("REPLICHAI_GITHUB_TOKEN"); token != "" {
 		owner := envOr("REPLICHAI_GITHUB_OWNER", "open-hai")
-		reproSource = registry.NewGitHubSource(github.New(token), owner)
+		client := github.New(token)
+		reproSource = registry.NewGitHubSource(client, owner)
+		repoPublisher = &forgePublisher{client: client, owner: owner}
 		log.Printf("reproductions: reading the %s org on GitHub", owner)
 	} else {
 		reproSource = registry.NewFSSource(*reproDir)
@@ -145,6 +148,7 @@ func run() error {
 		Jobs:          jobStore,
 		Projects:      projectStore,
 		Reproductions: &registryReader{source: reproSource},
+		RepoPublisher: repoPublisher,
 		Gate:          webauth.Gate(accessStore),
 		SPA:           spaHandler,
 	})

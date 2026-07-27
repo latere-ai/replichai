@@ -31,10 +31,15 @@ func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 	if f.getErr != nil {
 		return Reproduction{}, f.getErr
 	}
-	if id != "r1" {
+	switch id {
+	case "r1":
+		return Reproduction{ID: "r1", Repo: "open-hai/r1", Verdict: "passed", CanPublish: true}, nil
+	case "flagged":
+		// A reproduction whose tree flagged third-party data — barred from public.
+		return Reproduction{ID: "flagged", Repo: "open-hai/flagged", CanPublish: false}, nil
+	default:
 		return Reproduction{}, ErrReproNotFound
 	}
-	return Reproduction{ID: "r1", Repo: "open-hai/x"}, nil
 }
 func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 	switch id {
@@ -214,10 +219,103 @@ func TestProjectListAndDetail(t *testing.T) {
 		t.Errorf("detail = %+v", detail)
 	}
 
-	// Another owner's project is refused, not disclosed.
+	// Another owner's private project is refused, not disclosed.
 	if w := do(t, h, "GET", "/projects/"+strangerP.ID, "", "me"); w.Code != http.StatusForbidden {
 		t.Errorf("stranger project detail: status %d, want 403", w.Code)
 	}
+}
+
+// 006f AC6: the public flip is owner-only, needs a recorded sign-off, refuses a
+// non-clear project (409), and is one-way.
+func TestMakeProjectPublic(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	// A project whose one session cleared the gate (fake repro r1, CanPublish).
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+
+	// A non-owner is refused, and nothing changes.
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v1"}`, "stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner flip: status %d, want 403", w.Code)
+	}
+	// An un-signed flip changes nothing.
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{}`, "me"); w.Code != http.StatusBadRequest {
+		t.Fatalf("unsigned flip: status %d, want 400", w.Code)
+	}
+	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPrivate {
+		t.Fatalf("project went public without a valid request")
+	}
+
+	// The owner, with a sign-off, flips it public and the attestation is recorded.
+	w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v1"}`, "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("owner flip: status %d, want 200", w.Code)
+	}
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if got.Visibility != project.VisibilityPublic || got.SignedOffBy != "me" || got.AttestationVersion != "v1" || got.SignedOffAt == nil {
+		t.Fatalf("after flip: %+v", got)
+	}
+}
+
+// 006f AC6: a project whose reproduction did not clear the gate is barred (409).
+func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish == false
+
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v1"}`, "me"); w.Code != http.StatusConflict {
+		t.Fatalf("not-clear flip: status %d, want 409", w.Code)
+	}
+	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPrivate {
+		t.Errorf("a non-clear project must stay private")
+	}
+}
+
+// 006f AC8: a public project appears in the public zone to another signed-in
+// user and opens; a private one never does.
+func TestPublicZone(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	pub, _ := d.Projects.Create(context.Background(), "owner", "Public one")
+	_ = publishInto(t, d.Jobs, "owner", pub.ID, "r1")
+	_ = do(t, h, "POST", "/projects/"+pub.ID+"/public", `{"attestation_version":"v1"}`, "owner")
+	_, _ = d.Projects.Create(context.Background(), "owner", "Private one")
+
+	// The public zone lists only the public project, to a different user.
+	w := do(t, h, "GET", "/public", "", "someone-else")
+	var zone []ProjectView
+	_ = json.Unmarshal(w.Body.Bytes(), &zone)
+	if w.Code != http.StatusOK || len(zone) != 1 || zone[0].ID != pub.ID || zone[0].Owner != "owner" {
+		t.Fatalf("public zone = %+v (status %d); want only the public project showing its owner", zone, w.Code)
+	}
+	// A different user can open the public project…
+	if w := do(t, h, "GET", "/projects/"+pub.ID, "", "someone-else"); w.Code != http.StatusOK {
+		t.Errorf("open public project: status %d, want 200", w.Code)
+	}
+}
+
+// publishInto adds a session to a project and points it at a published repo.
+func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job {
+	t.Helper()
+	ctx := context.Background()
+	j, err := s.Enqueue(ctx, sub, "ref", job.KindAudit, projectID, "arxiv:"+repo)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	adv := s.(*job.MemStore)
+	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing, job.PhaseDone} {
+		phase := p
+		if err := adv.Advance(ctx, j.ID, phase, func(jb *job.Job) {
+			if phase == job.PhasePublishing {
+				jb.RepoName = "open-hai/" + repo
+			}
+		}); err != nil {
+			t.Fatalf("advance %s: %v", phase, err)
+		}
+	}
+	got, _ := s.Get(ctx, j.ID)
+	return got
 }
 
 func TestGetJob(t *testing.T) {

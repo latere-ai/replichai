@@ -85,6 +85,36 @@ func (s *MemStore) SetTitle(_ context.Context, id, title string) error {
 	return nil
 }
 
+// SetPublic marks a project public and records the sign-off. One-way.
+func (s *MemStore) SetPublic(_ context.Context, id, signedOffBy, attestationVersion string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	now := s.clock()
+	p.Visibility = VisibilityPublic
+	p.SignedOffBy = signedOffBy
+	p.SignedOffAt = &now
+	p.AttestationVersion = attestationVersion
+	s.projects[id] = p
+	return nil
+}
+
+// ListPublic returns every public project, newest first.
+func (s *MemStore) ListPublic(_ context.Context) ([]Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Project
+	for i := len(s.order) - 1; i >= 0; i-- {
+		if p := s.projects[s.order[i]]; p.Visibility == VisibilityPublic {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // Delete removes a project by id, idempotently.
 func (s *MemStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()

@@ -45,6 +45,12 @@ type Project struct {
 	Title      string     `json:"title"`      // defaults from the first session's paper
 	Visibility Visibility `json:"visibility"` // private by default; the public flip is 006f
 	CreatedAt  time.Time  `json:"created_at"`
+	// The public-flip provenance (006f): who signed the responsibility
+	// attestation, when, and which attestation text version. Zero until the
+	// owner makes the project public.
+	SignedOffBy        string     `json:"signed_off_by,omitempty"`
+	SignedOffAt        *time.Time `json:"signed_off_at,omitempty"`
+	AttestationVersion string     `json:"attestation_version,omitempty"`
 }
 
 // Store is where projects live. Sessions are not stored here — they are jobs in
@@ -62,6 +68,14 @@ type Store interface {
 	// placeholder with the resolved paper title once its Resolve phase has run.
 	// A missing project is not an error — the enrichment is best-effort.
 	SetTitle(ctx context.Context, id, title string) error
+	// SetPublic marks a project public and records the responsibility sign-off
+	// (006f): who signed, the attestation text version, and the time. One-way —
+	// there is no un-publish. The caller (the HTTP owner check and the
+	// manifest-clear gate) authorises; this store only records.
+	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
+	// ListPublic returns every public project, newest first — the public zone's
+	// read surface, across all owners.
+	ListPublic(ctx context.Context) ([]Project, error)
 	// Delete removes a project by id. It is the compensating action when the
 	// first session of a just-created project fails to enqueue, so a project is
 	// never left empty. Idempotent: deleting a missing project is not an error.

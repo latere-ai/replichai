@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
@@ -93,6 +94,19 @@ func (e *engineRunner) Publish(ctx context.Context, _ *job.Job) error {
 	return nil
 }
 
+// forgePublisher flips a repository public with the server token (006f) — the
+// optional half of the project public flip, never inside the sandbox. The
+// owner is fixed to the org the reproductions live under.
+type forgePublisher struct {
+	client *github.Client
+	owner  string
+}
+
+// SetPublic flips one repository public.
+func (p *forgePublisher) SetPublic(ctx context.Context, repo string) error {
+	return p.client.SetPublic(ctx, p.owner, repo)
+}
+
 // registryReader adapts the derived registry (003) to the HTTP read surface. It
 // presents what the manifests hold and caches nothing of its own.
 type registryReader struct{ source registry.Source }
@@ -146,10 +160,11 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 		full = m.Reproduction.Repo
 	}
 	return httpapi.Reproduction{
-		ID:      repo,
-		Repo:    full,
-		Title:   m.Paper.Title,
-		Verdict: string(m.Reproduction.Verdict),
+		ID:         repo,
+		Repo:       full,
+		Title:      m.Paper.Title,
+		Verdict:    string(m.Reproduction.Verdict),
+		CanPublish: m.Redistribution.Review == publish.ReviewClear,
 	}
 }
 

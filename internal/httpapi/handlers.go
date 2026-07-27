@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -59,7 +60,9 @@ func (rt *Router) routes() {
 	rt.openHandle("GET", "/healthz", rt.health)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
+	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
+	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
@@ -221,6 +224,111 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listPublic is the public zone: every public project, newest first, each
+// carrying its initiator (the owning principal), so any signed-in user can
+// browse what others have published (006f).
+func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
+	projects, err := rt.projects.ListPublic(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	counts := map[string]int{}
+	out := make([]ProjectView, 0, len(projects))
+	for _, p := range projects {
+		// Best-effort session count per public project.
+		if sessions, err := rt.jobs.ListByProject(r.Context(), p.ID); err == nil {
+			counts[p.ID] = len(sessions)
+		}
+		out = append(out, ProjectView{Project: p, SessionCount: counts[p.ID]})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// makeProjectPublic is the owner's one-way public flip, gated by a responsibility
+// sign-off (006f). It refuses a non-owner (403), refuses a project none of whose
+// published sessions cleared 002's redistribution gate (409 not_clear), records
+// the sign-off, marks the project public, and — best-effort — flips the forge
+// repository public when a publisher is wired.
+func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	if proj.Owner != principal(r) {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return
+	}
+	var body struct {
+		AttestationVersion string `json:"attestation_version"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if strings.TrimSpace(body.AttestationVersion) == "" {
+		// The sign-off is the whole point — a flip with no recorded attestation
+		// changes nothing.
+		writeError(w, http.StatusBadRequest, "missing_attestation")
+		return
+	}
+
+	// The project must have a published session whose manifest cleared the gate,
+	// and none that did not — a flagged tree bars the project from going public.
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	cleared, repos := rt.clearedForPublish(r.Context(), sessions)
+	if !cleared {
+		writeError(w, http.StatusConflict, "not_clear")
+		return
+	}
+
+	if err := rt.projects.SetPublic(r.Context(), proj.ID, principal(r), body.AttestationVersion); err != nil {
+		writeError(w, http.StatusInternalServerError, "publish_failed")
+		return
+	}
+	// Best-effort forge flip: the project is already public in-app; a repo flip
+	// failure must not fail the request, only be reported.
+	if rt.repoPub != nil {
+		for _, repo := range repos {
+			if err := rt.repoPub.SetPublic(r.Context(), repo); err != nil {
+				log.Printf("public flip: repo %s not flipped: %v", repo, err)
+			}
+		}
+	}
+	updated, _ := rt.projects.Get(r.Context(), proj.ID)
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// clearedForPublish reports whether a project's published sessions may go public:
+// at least one has a manifest, and every one that does cleared 002's gate. It
+// returns the repositories (owner/name) to flip. A session with no repository
+// yet is ignored; a session whose manifest flags third-party data bars the flip.
+func (rt *Router) clearedForPublish(ctx context.Context, sessions []job.Job) (bool, []string) {
+	any := false
+	var repos []string
+	for _, s := range sessions {
+		if s.RepoName == "" {
+			continue
+		}
+		repro, err := rt.repro.Get(ctx, repoName(s.RepoName))
+		if err != nil {
+			return false, nil // cannot confirm clearance → refuse, fail-closed
+		}
+		if !repro.CanPublish {
+			return false, nil
+		}
+		any = true
+		repos = append(repos, repoName(s.RepoName))
+	}
+	return any, repos
+}
+
 // ProjectDetail is one project with its sessions, newest first.
 type ProjectDetail struct {
 	Project  project.Project `json:"project"`
@@ -239,7 +347,9 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	if proj.Owner != principal(r) {
+	// The owner always sees their project; anyone signed in sees a public one
+	// (the public zone). A private project the caller does not own is refused.
+	if proj.Owner != principal(r) && proj.Visibility != project.VisibilityPublic {
 		writeError(w, http.StatusForbidden, "not_owner")
 		return
 	}
