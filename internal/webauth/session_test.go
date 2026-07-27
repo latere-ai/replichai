@@ -27,7 +27,11 @@ func TestCodecRoundTripAndTamper(t *testing.T) {
 	}
 
 	// A tampered value fails authentication rather than yielding a forged one.
-	tampered := sealed[:len(sealed)-1] + flip(sealed[len(sealed)-1])
+	// Flip an interior base64 character, not the last one: the final character
+	// carries non-canonical low bits, so flipping it can decode to identical
+	// ciphertext and open legitimately — the tamper must actually change bytes.
+	mid := len(sealed) / 2
+	tampered := sealed[:mid] + flip(sealed[mid]) + sealed[mid+1:]
 	if err := c.Open(tampered, &Session{}); err == nil {
 		t.Error("a tampered cookie must not open")
 	}
