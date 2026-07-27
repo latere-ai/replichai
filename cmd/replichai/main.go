@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -49,10 +48,6 @@ func main() {
 
 // errExitQuiet signals a non-zero exit whose reason was already reported.
 var errExitQuiet = errors.New("exit")
-
-// identityFile records the resolved paper identity in a published repository, so
-// finish reads it from the repo instead of re-resolving over the paper source.
-const identityFile = ".replichai/paper.json"
 
 func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if len(args) == 0 {
@@ -270,11 +265,8 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 
 	// Record the resolved identity into the repository so finish reads it from
 	// here rather than re-resolving over the (slow, rate-limited) paper source.
-	if raw, mErr := json.MarshalIndent(id, "", "  "); mErr == nil {
-		if _, cErr := gh.CommitFiles(ctx, owner, name, "chore: record paper identity",
-			map[string][]byte{identityFile: append(raw, '\n')}); cErr != nil {
-			fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", cErr)
-		}
+	if err := publish.RecordIdentity(ctx, gh, owner, name, id); err != nil {
+		fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
 	}
 
 	return &publisher{
@@ -290,15 +282,8 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 // or a zero identity when none is present (an older or hand-created repository),
 // so the caller falls back to re-resolving.
 func readRecordedIdentity(ctx context.Context, gh *github.Client, owner, name string) (paper.Identity, error) {
-	raw, ok, err := gh.GetFileContent(ctx, owner, name, identityFile)
-	if err != nil || !ok {
-		return paper.Identity{}, err
-	}
-	var id paper.Identity
-	if json.Unmarshal(raw, &id) != nil {
-		return paper.Identity{}, nil // unreadable — treat as absent
-	}
-	return id, nil
+	id, _, err := publish.RecordedIdentity(ctx, gh, owner, name)
+	return id, err
 }
 
 // shortDigest abbreviates "sha256:1f2e3a…" to "sha256:1f2e" for operator output.
@@ -323,46 +308,48 @@ func (p *publisher) finalize(ctx context.Context, result audit.Result, events []
 // picked up afterwards by finish.
 func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
 	repoFull := owner + "/" + name
-	head, err := gh.HeadCommit(ctx, owner, name)
-	if err != nil {
-		return fmt.Errorf("read head commit: %w", err)
-	}
-	tree, err := gh.TreePaths(ctx, owner, name, head)
-	if err != nil {
-		return fmt.Errorf("read committed tree: %w", err)
-	}
-	leaked := publish.VerifyTree(tree)
 
+	// The instrument check is a CLI-only report (007a), read from the committed
+	// tree — a report, not a gate, so it stays outside the shared finalize.
 	present, iviol, err := verifyInstrument(ctx, gh, owner, name)
 	if err != nil {
 		return err
 	}
 
-	manifest := publish.ManifestFor(id, repoFull, methodDigest, verdict, time.Now(), len(leaked) == 0)
-	committed, err := commitManifestIfChanged(ctx, gh, owner, name, manifest)
+	// The finalize itself — verify the tree, write the manifest, commit the
+	// transcript — is the shared path the server also drives, so the two cannot
+	// drift. The CLI only reports what it produced.
+	rep, err := publish.FinalizeLive(ctx, gh, owner, name, id, methodDigest, verdict, events, time.Now)
 	if err != nil {
 		return err
 	}
 
 	fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", repoFull)
-	fmt.Fprintf(stdout, "commit:    %s\n", head)
-	if !committed {
+	fmt.Fprintf(stdout, "commit:    %s\n", rep.Head)
+	if !rep.ManifestCommitted {
 		fmt.Fprintln(stdout, "manifest:  already current (no new commit)")
 	}
-	if len(leaked) == 0 {
+	if len(rep.Leaked) == 0 {
 		fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
 	} else {
-		fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked — repo kept private:\n", len(leaked))
-		for _, path := range leaked {
+		fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked — repo kept private:\n", len(rep.Leaked))
+		for _, path := range rep.Leaked {
 			fmt.Fprintf(stdout, "  - %s\n", path)
 		}
 	}
 	reportInstrument(stdout, present, iviol)
 
-	// Commit the transcript — the evidence layer — in the same moment.
-	if len(events) > 0 {
-		if err := commitTranscript(ctx, gh, owner, name, events, stdout); err != nil {
-			return err
+	if rep.TranscriptEvents > 0 {
+		if rep.TranscriptCommitted {
+			fmt.Fprintf(stdout, "transcript: %d events across %d file(s) committed\n", rep.TranscriptEvents, rep.TranscriptFiles)
+		} else {
+			fmt.Fprintln(stdout, "transcript: already current (no new commit)")
+		}
+	}
+	if len(rep.TranscriptLeaks) > 0 {
+		fmt.Fprintf(stdout, "transcript: %d event(s) carry a secret — bars the public flip:\n", len(rep.TranscriptLeaks))
+		for _, l := range rep.TranscriptLeaks {
+			fmt.Fprintf(stdout, "  - event %d: %s\n", l.Index, l.Reason)
 		}
 	}
 
@@ -409,53 +396,6 @@ func reportInstrument(stdout *os.File, present bool, violations []instrument.Vio
 			fmt.Fprintf(stdout, "  - %s\n", v)
 		}
 	}
-}
-
-// commitManifestIfChanged writes replication.json only when it is new or
-// materially different from what is already there, so re-finalizing the same
-// reproduction adds no redundant commit. It reports whether it committed.
-func commitManifestIfChanged(ctx context.Context, gh *github.Client, owner, name string, m publish.Manifest) (bool, error) {
-	raw, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return false, err
-	}
-	if existing, ok, err := gh.GetFileContent(ctx, owner, name, publish.ManifestFile); err != nil {
-		return false, err
-	} else if ok {
-		var prev publish.Manifest
-		if json.Unmarshal(existing, &prev) == nil && publish.SameManifest(prev, m) {
-			return false, nil // unchanged — no commit
-		}
-	}
-	if err := gh.PutFile(ctx, owner, name, publish.ManifestFile,
-		"chore: reproduction manifest", append(raw, '\n')); err != nil {
-		return false, fmt.Errorf("commit manifest: %w", err)
-	}
-	return true, nil
-}
-
-// commitTranscript renders the run's events into a chunked, interlinked set of
-// files and commits them in one atomic Git Data API commit — the evidence
-// layer, committed by the system beside the manifest. A transcript carrying a
-// secret is reported and bars the public flip.
-func commitTranscript(ctx context.Context, gh *github.Client, owner, name string, events []provider.Event, stdout *os.File) error {
-	files := publish.RenderTranscriptFiles(events)
-	committed, err := gh.CommitFiles(ctx, owner, name, "chore: reproduction transcript", files)
-	if err != nil {
-		return fmt.Errorf("commit transcript: %w", err)
-	}
-	if committed {
-		fmt.Fprintf(stdout, "transcript: %d events across %d file(s) committed\n", len(events), len(files))
-	} else {
-		fmt.Fprintln(stdout, "transcript: already current (no new commit)")
-	}
-	if leaks := publish.TranscriptLeaks(events); len(leaks) > 0 {
-		fmt.Fprintf(stdout, "transcript: %d event(s) carry a secret — bars the public flip:\n", len(leaks))
-		for _, l := range leaks {
-			fmt.Fprintf(stdout, "  - event %d: %s\n", l.Index, l.Reason)
-		}
-	}
-	return nil
 }
 
 // runFinish reattaches to a still-running or finished audit session, waits for
