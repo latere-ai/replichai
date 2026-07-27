@@ -18,6 +18,7 @@ import {
   listShared,
   makeProjectPublic,
   removeMember,
+  renameProject,
   resolvePaper,
   submitPaper,
   watchJob,
@@ -119,6 +120,7 @@ const Icon = {
   back: 'm15 6-6 6 6 6',
   chev: 'm9 6 6 6-6 6',
   x: 'M6 6l12 12M18 6L6 18',
+  pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
 }
 
 function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }) {
@@ -507,6 +509,66 @@ function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; 
 
 /* ─── Project detail ─── */
 
+// EditableTitle shows a project's title and, for its owner, an inline rename:
+// a pencil turns the title into an input; Enter or the check saves, Escape
+// cancels (006j PATCH /projects/{id}).
+function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: string; canEdit: boolean; onRename: (next: string) => Promise<void> }) {
+  const { t } = i18n
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(title)
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    const next = draft.trim()
+    if (!next || next === title) {
+      setEditing(false)
+      return
+    }
+    setBusy(true)
+    try {
+      await onRename(next)
+      setEditing(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <h1 className="detail-title">{title}</h1>
+        {canEdit && (
+          <button className="icon-btn" aria-label={t('rename')} onClick={() => { setDraft(title); setEditing(true) }}>
+            <Svg d={Icon.pencil} size={13} w={1.7} />
+          </button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <input
+        className="text"
+        style={{ minWidth: 280, fontSize: 15 }}
+        value={draft}
+        autoFocus
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+      />
+      <button className="btn ghost sm" disabled={busy} onClick={save}>
+        {t('save')}
+      </button>
+      <button className="btn ghost sm" disabled={busy} onClick={() => setEditing(false)}>
+        {t('cancel')}
+      </button>
+    </div>
+  )
+}
+
 function ProjectScreen({
   i18n,
   me,
@@ -548,7 +610,7 @@ function ProjectScreen({
         <div className="detail-title-row">
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-              <h1 className="detail-title">{project.title}</h1>
+              <EditableTitle i18n={i18n} title={project.title} canEdit={isOwner} onRename={async (next) => { await renameProject(id, next); refresh() }} />
               <span className={'badge ' + project.visibility}>{t(project.visibility)}</span>
             </div>
             {project.visibility === 'public' && project.signed_off_at && (
