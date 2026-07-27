@@ -38,6 +38,10 @@ export const submitPaper = (url: string, project = '') =>
 
 export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
 
+// listMyJobs returns the caller's own jobs (projects), newest first. The session
+// cookie scopes the result to the signed-in principal server-side.
+export const listMyJobs = () => fetch('/jobs').then(json<Job[]>)
+
 export const listReproductions = () => fetch('/reproductions').then(json<Reproduction[]>)
 
 const terminal = (phase: string) => phase === 'done' || phase === 'failed'

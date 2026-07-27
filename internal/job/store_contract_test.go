@@ -79,6 +79,32 @@ func runStoreContract(t *testing.T, s Store) {
 			t.Errorf("Active returned a terminal job: %s", a.Phase)
 		}
 	}
+
+	// ListByPrincipal is scoped to one owner and newest-first. Enqueue two jobs
+	// for "owner" and one for a stranger, then assert the stranger's job never
+	// appears and the two are ordered newest-first.
+	first, _ := s.Enqueue(ctx, "owner", "ref-a", KindAudit, "")
+	second, _ := s.Enqueue(ctx, "owner", "ref-b", KindAudit, "")
+	_, _ = s.Enqueue(ctx, "stranger", "ref-c", KindAudit, "")
+	mine, err := s.ListByPrincipal(ctx, "owner")
+	if err != nil {
+		t.Fatalf("ListByPrincipal: %v", err)
+	}
+	if len(mine) != 2 {
+		t.Fatalf("owner has %d jobs, want 2 (no stranger leak)", len(mine))
+	}
+	if mine[0].ID != second.ID || mine[1].ID != first.ID {
+		t.Errorf("ListByPrincipal not newest-first: %s,%s want %s,%s", mine[0].ID, mine[1].ID, second.ID, first.ID)
+	}
+	for _, j := range mine {
+		if j.Principal != "owner" {
+			t.Errorf("ListByPrincipal leaked a %q job", j.Principal)
+		}
+	}
+	// An unknown principal lists nothing, without error.
+	if none, err := s.ListByPrincipal(ctx, "nobody"); err != nil || len(none) != 0 {
+		t.Errorf("unknown principal: %d jobs, err %v; want 0, nil", len(none), err)
+	}
 }
 
 // runClaimContention asserts concurrent claims are disjoint — the assertion that

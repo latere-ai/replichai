@@ -55,6 +55,7 @@ func (rt *Router) routes() {
 	// sign-in and /me routes join the open set with 006c.
 	rt.openHandle("GET", "/healthz", rt.health)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
+	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 	rt.gatedHandle("GET", "/reproductions", rt.listReproductions)
@@ -115,6 +116,22 @@ func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID})
+}
+
+// listJobs reports the caller's own jobs, newest first — the projects they
+// submitted. The scope is the authenticated principal alone; a caller never sees
+// another principal's jobs. The gate guarantees the request is authenticated, so
+// an empty principal (which cannot occur past the gate) simply lists nothing.
+func (rt *Router) listJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := rt.jobs.ListByPrincipal(r.Context(), principal(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	if jobs == nil {
+		jobs = []job.Job{}
+	}
+	writeJSON(w, http.StatusOK, jobs)
 }
 
 // getJob reports a job's status and phase.
