@@ -50,3 +50,12 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 func (s *GitHubSource) File(ctx context.Context, repo, path string) ([]byte, bool, error) {
 	return s.client.GetFileRaw(ctx, s.owner, repo, path)
 }
+
+// Tree lists a repository's file paths at its head commit.
+func (s *GitHubSource) Tree(ctx context.Context, repo string) ([]string, error) {
+	head, err := s.client.HeadCommit(ctx, s.owner, repo)
+	if err != nil {
+		return nil, err
+	}
+	return s.client.TreePaths(ctx, s.owner, repo, head)
+}

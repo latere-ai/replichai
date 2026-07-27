@@ -40,6 +40,16 @@ func (f *fakeSource) File(_ context.Context, repo, path string) ([]byte, bool, e
 	return nil, false, nil
 }
 
+func (f *fakeSource) Tree(_ context.Context, repo string) ([]string, error) {
+	var out []string
+	for k := range f.files {
+		if p, ok := strings.CutPrefix(k, repo+"/"); ok {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 func manifestOf(repo, key, slug string, created time.Time) publish.Manifest {
 	return publish.Manifest{
 		Paper: publish.ManifestPaper{Key: key, Scheme: paper.SchemeDOI, Slug: slug},

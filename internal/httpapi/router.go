@@ -107,6 +107,11 @@ type RepoPublisher interface {
 type ReproReader interface {
 	Get(ctx context.Context, id string) (Reproduction, error)
 	Transcript(ctx context.Context, id string) ([]byte, error)
+	// Files lists a repository's committed artifact paths, and Artifact reads one
+	// — the in-app file tree (006f), a forge pass-through that works even when the
+	// repository itself stays private.
+	Files(ctx context.Context, id string) ([]string, error)
+	Artifact(ctx context.Context, id, path string) ([]byte, error)
 }
 
 // ErrReproNotFound is the sentinel a ReproReader returns for a genuine miss.
@@ -115,10 +120,13 @@ var ErrReproNotFound = errors.New("reproduction not found")
 // Reproduction is the presented shape of one published reproduction. Field
 // details settle here; it is a view over 003's manifest, never a stored copy.
 type Reproduction struct {
-	ID      string `json:"id"`
-	Repo    string `json:"repo"`
-	Title   string `json:"title"`
-	Verdict string `json:"verdict"`
+	ID           string `json:"id"`
+	Repo         string `json:"repo"`
+	Title        string `json:"title"`
+	Verdict      string `json:"verdict"`
+	Created      string `json:"created,omitempty"`
+	MethodDigest string `json:"method_digest,omitempty"`
+	Review       string `json:"review,omitempty"` // 002 redistribution review: clear | excluded
 	// CanPublish reports whether the manifest cleared 002's redistribution gate
 	// (`review == "clear"`) — the precondition the public flip enforces (006f).
 	CanPublish bool `json:"can_publish"`

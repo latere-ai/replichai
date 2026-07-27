@@ -61,3 +61,27 @@ func (s *FSSource) File(_ context.Context, repo, path string) ([]byte, bool, err
 	}
 	return raw, true, nil
 }
+
+// Tree walks a repository directory and returns its file paths, forward-slashed.
+func (s *FSSource) Tree(_ context.Context, repo string) ([]string, error) {
+	root := filepath.Join(s.Root, repo)
+	var paths []string
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return paths, err
+}

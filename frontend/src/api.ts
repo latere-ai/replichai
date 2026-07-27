@@ -54,6 +54,19 @@ export type Event = {
 
 export type Transcript = { events: Event[]; usage: Usage | null }
 
+// A session's manifest summary — the reproduction verdict and metadata, read
+// from the committed repository.
+export type Reproduction = {
+  id: string
+  repo: string
+  title: string
+  verdict: string
+  created?: string
+  method_digest?: string
+  review?: string
+  can_publish: boolean
+}
+
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) throw new Error(`${r.status}`)
   return r.json() as Promise<T>
@@ -117,6 +130,17 @@ export const makeProjectPublic = (id: string, flipRepo = true) =>
 // getTranscript returns a session's trajectory and token usage. It rejects with
 // the HTTP status: 409 while the run has not published a transcript yet.
 export const getTranscript = (id: string) => fetch(`/jobs/${id}/transcript`).then(json<Transcript>)
+
+// getReproduction returns a session's manifest verdict; listArtifacts its
+// repository file tree; getArtifact one file's text — the in-app pass-through
+// that works even when the underlying repository stays private.
+export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`).then(json<Reproduction>)
+export const listArtifacts = (id: string) => fetch(`/jobs/${id}/artifacts`).then(json<{ files: string[] }>)
+export const getArtifact = (id: string, path: string) =>
+  fetch(`/jobs/${id}/artifact?path=${encodeURIComponent(path)}`).then((r) => {
+    if (!r.ok) throw new Error(`${r.status}`)
+    return r.text()
+  })
 
 const terminal = (phase: string) => phase === 'done' || phase === 'failed'
 
