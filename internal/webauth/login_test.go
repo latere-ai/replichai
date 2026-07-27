@@ -36,7 +36,7 @@ func newTestLogin(t *testing.T, client OIDCClient, acc access.Access) *Login {
 	if err != nil {
 		t.Fatalf("codec: %v", err)
 	}
-	return NewLogin(client, codec, acc, "https://replichai.latere.ai", false /* http test */)
+	return NewLogin(client, codec, acc, "https://replichai.latere.ai", false /* http test */, nil)
 }
 
 // AC1: only sub and the verified email survive the mapping; roles, name, org,
@@ -119,6 +119,34 @@ func TestCallbackHappyPathSetsSession(t *testing.T) {
 	var s Session
 	if err := l.codec.Open(sealed, &s); err != nil || s.Sub != "u1" || !s.EmailVerified {
 		t.Errorf("session cookie = %+v, err %v", s, err)
+	}
+}
+
+// When the ID token carries no email (latere auth), the callback fetches it
+// from /userinfo so the whitelist can bind — the fix for a signed-in principal
+// stuck at tier none with an empty email.
+func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	// The ID token yields a sub but no email.
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "uuid-1", Raw: map[string]any{}}}
+	userInfo := func(_ context.Context, _ string) (string, bool, error) {
+		return "hi@changkun.de", true, nil
+	}
+	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, userInfo)
+
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
+	w := httptest.NewRecorder()
+	l.HandleCallback(w, r)
+
+	sealed := findCookie(w, cookieName(sessionCookie, false))
+	var s Session
+	if err := l.codec.Open(sealed, &s); err != nil {
+		t.Fatalf("open session: %v", err)
+	}
+	if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" || !s.EmailVerified {
+		t.Errorf("session = %+v, want the userinfo email bound to the sub", s)
 	}
 }
 
