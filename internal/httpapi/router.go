@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/project"
 )
 
 // Route is one registered endpoint, method and pattern, so the gated set is
@@ -50,6 +51,18 @@ type JobStore interface {
 	Enqueue(ctx context.Context, principal, ref string, k job.Kind, project, paperKey string) (job.Job, error)
 	Get(ctx context.Context, id string) (job.Job, error)
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
+	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
+	CountByProject(ctx context.Context, owner string) (map[string]int, error)
+}
+
+// ProjectStore is the slice of the project store the handlers need — open a
+// project, read one back, list an owner's, and the compensating delete when a
+// project's first session fails to enqueue (006g).
+type ProjectStore interface {
+	Create(ctx context.Context, owner, title string) (project.Project, error)
+	Get(ctx context.Context, id string) (project.Project, error)
+	ListByOwner(ctx context.Context, owner string) ([]project.Project, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // ReproReader is the read surface over the derived registry (003) and the
@@ -80,6 +93,7 @@ type Reproduction struct {
 // Deps are what a Router is built from — all interfaces, so tests supply fakes.
 type Deps struct {
 	Jobs          JobStore
+	Projects      ProjectStore
 	Reproductions ReproReader
 	Gate          Gate
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
@@ -100,6 +114,7 @@ type Router struct {
 	open  []Route
 
 	jobs        JobStore
+	projects    ProjectStore
 	repro       ReproReader
 	sseInterval time.Duration
 	spa         http.Handler
@@ -119,7 +134,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, repro: d.Reproductions, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, repro: d.Reproductions, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

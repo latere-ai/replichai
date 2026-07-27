@@ -13,6 +13,7 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/webauth"
@@ -48,8 +49,10 @@ func TestServerEndToEnd(t *testing.T) {
 	if err := acc.SeedAdmin(ctx, devEmail); err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}
+	projects := project.NewMemStore()
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          store,
+		Projects:      projects,
 		Reproductions: &registryReader{source: registry.NewFSSource(t.TempDir())},
 		Gate:          webauth.Gate(acc),
 		SSEInterval:   10 * time.Millisecond,
@@ -57,8 +60,9 @@ func TestServerEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(webauth.DevMiddleware(devSub, devEmail)(router.Handler()))
 	defer srv.Close()
 
-	// Submit a paper (a DOI resolves offline, so the whole run stays free).
-	body := strings.NewReader(`{"url":"10.1145/3544548.3580778","project":"e2e"}`)
+	// Submit a paper with no project (a DOI resolves offline, so the run stays
+	// free): the composition root opens a fresh project and its first session.
+	body := strings.NewReader(`{"url":"10.1145/3544548.3580778"}`)
 	resp, err := http.Post(srv.URL+"/papers", "application/json", body)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
@@ -67,14 +71,19 @@ func TestServerEndToEnd(t *testing.T) {
 		t.Fatalf("submit status = %d, want 202", resp.StatusCode)
 	}
 	var out struct {
-		JobID string `json:"job_id"`
+		JobID     string `json:"job_id"`
+		ProjectID string `json:"project_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode submit: %v", err)
 	}
 	resp.Body.Close()
-	if out.JobID == "" {
-		t.Fatal("no job id returned")
+	if out.JobID == "" || out.ProjectID == "" {
+		t.Fatalf("submit returned %+v, want both ids", out)
+	}
+	// The project was really opened and owns the session.
+	if p, err := projects.Get(ctx, out.ProjectID); err != nil || p.Owner != devSub {
+		t.Fatalf("project = %+v, err %v", p, err)
 	}
 
 	// Poll until the job reaches a terminal phase.
