@@ -1,6 +1,6 @@
 # 006g — Projects and replication sessions
 
-**Status:** draft
+**Status:** implemented
 **Scope:** the entity layer. A **project** is a first-class record a user owns — a research container that holds **one or more replication sessions**, each a durable run that targets a paper. The common case is one project, one replication; a project may also gather several. A child of [006](006-web-application.md), which decided "[the project is the tenant](006-web-application.md)".
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store and worker that a session's run rides on), [006c](006c-identity-and-access.md) (the principal that owns a project). Revises [006e](006e-frontend.md)'s "one project per job" and [007b](007b-experiments-over-instruments.md)'s free-string `ProjectID`.
 
@@ -16,11 +16,11 @@ The vision is a researcher who owns a **project** and, inside it, runs one or mo
 
 **Submitting a paper opens a session in a project — a new one, or one the user chose.** A submit (`POST /papers {url, project?}`) resolves the paper identity (001), then: with no `project`, creates a fresh project (title defaulted from the paper) and opens its first session; with a `project` the caller owns, adds a session to it. So the simple path is one submit → one project, one replication, with no project management; a user who wants to gather several replications passes an existing project. `GET /projects` and `GET /projects/{id}` list and open them; a project is born with its first session, never empty.
 
-**No two *active* sessions for the same paper in a project — the double-trigger guard.** Deliberate re-replication is allowed; an accidental double-fire is not. A partial unique index admits only one non-terminal session per `(project_id, paper_key)` (`WHERE phase NOT IN ('done','failed')`), so a double-submit of the same paper is refused `409` naming the running session, while a submit after the prior finished starts a fresh session, and a *different* paper in the same project is never blocked. A short-lived idempotency key on the submit additionally collapses a double-clicked button into one session. Rejected: one-active-session-per-project — it would wrongly serialise different papers a project deliberately gathers; and relying on the button alone — it does not survive a retry or a second tab.
+**No two *active* sessions for the same paper — the double-trigger guard.** Deliberate re-replication is allowed; an accidental double-fire is not. Two partial unique indexes over non-terminal, keyed sessions (`WHERE phase NOT IN ('done','failed') AND paper_key <> ''`) make it structural: one on `(project_id, paper_key)`, so two people cannot double-run the same paper in a shared project; one on `(principal, paper_key)`, so one person cannot double-run the same paper across their own projects — which is the case that matters, because the default submit opens a *new* project and a per-project index alone would never see the collision. A double-submit is refused `409 active_session`; a submit after the prior finished starts a fresh session; a *different* paper is never blocked; and an experiment (empty key) never guards. The per-principal index survives a retry, a reload, and a second tab — which a client idempotency key would not. Rejected: one-active-session-per-project — it would wrongly serialise different papers a project deliberately gathers; and a per-project index alone — it leaves the bare-submit path, the one that costs a run twice, unguarded.
 
 **Projects and experiments share one project namespace.** [007b](007b-experiments-over-instruments.md)'s `experiment.ProjectID` stops being a free string and becomes the same `projects.id` foreign key. There is exactly one "project" in the system, owned here; audits (sessions) and experiments both reference it. Migrating now — while there are three projects — avoids two divergent project namespaces later.
 
-**The migration turns the CLI backfill into real projects.** The three reproductions produced before the service existed were backfilled ([decision](006b-job-model-and-persistence.md)) as `done` job rows with `project_id` = a slug string. The `projects` migration reads the distinct `(principal, project_id)` pairs already in `jobs`, creates a project row for each with its title recovered from the paper (the session's `ref`/manifest), and repoints the sessions' FK — so the existing data becomes three one-session projects with no re-run, and the migration's own test case is those three rows.
+**The migration turns the CLI backfill into real projects.** The three reproductions produced before the service existed were backfilled ([decision](006b-job-model-and-persistence.md)) as `done` job rows with `project_id` = a slug string. The `projects` migration reads the distinct `(principal, project_id)` pairs already in `jobs` and creates a project for each, *reusing the slug as the project id* so each session's `project_id` already points at its project — no repoint. The title is the slug (SQL only, no network — the migration must not depend on the forge to boot); the real paper titles are a one-off data fix after deploy. The session→project foreign key is added `NOT VALID`, so any pre-existing unkeyed row is grandfathered while every new session must reference a real project. The existing data becomes three one-session projects with no re-run, and the migration's own test case is those three rows.
 
 ## Interface (sketch)
 
@@ -44,10 +44,12 @@ type ProjectStore interface {
     Sessions(ctx, projectID string) ([]job.Job, error) // the project's sessions, newest-first
 }
 
-// A session is enqueued into a project; the paper it targets is on the session
-// (job.Ref -> paper.Identity). The partial unique index on (project_id, paper_key)
-// over non-terminal phases makes the double-trigger guard structural, and Enqueue
-// maps its violation to ErrActiveSession (a 409), not a 500.
+// A session is enqueued into a project; the paper it targets is keyed offline by
+// paper.Key(job.Ref) at submit — no network, so a submit never rides arXiv's
+// availability, and the worker's Resolve phase does the enriching lookup. Two
+// partial unique indexes over non-terminal keyed sessions — (project_id,
+// paper_key) and (principal, paper_key) — make the double-trigger guard
+// structural, and Enqueue maps their violation to ErrActiveSession (a 409).
 ```
 
 Routes (gated, 006a): `GET /projects` (the owner's projects, each with a session count), `GET /projects/{id}` (a project and its sessions). `POST /papers {url, project?}` opens a session — creating a project when `project` is absent, adding to the owned one when present — and answers `409 active_session` when an active session for that paper already exists in the project.
