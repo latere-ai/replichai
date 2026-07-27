@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
@@ -63,6 +64,9 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
+	rt.gatedHandle("GET", "/projects/{id}/members", rt.listMembers)
+	rt.gatedHandle("POST", "/projects/{id}/members", rt.addMember)
+	rt.gatedHandle("DELETE", "/projects/{id}/members/{email}", rt.removeMember)
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
@@ -327,6 +331,97 @@ func (rt *Router) clearedForPublish(ctx context.Context, sessions []job.Job) (bo
 		repos = append(repos, repoName(s.RepoName))
 	}
 	return any, repos
+}
+
+// ownedProject resolves a project and asserts the caller owns it, writing the
+// error and returning ok=false otherwise — the authority behind every member
+// route (006f): membership is owner-driven.
+func (rt *Router) ownedProject(w http.ResponseWriter, r *http.Request) (project.Project, Identity, bool) {
+	id, _ := IdentityFrom(r)
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return project.Project{}, id, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return project.Project{}, id, false
+	}
+	if proj.Owner != id.Sub {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return project.Project{}, id, false
+	}
+	return proj, id, true
+}
+
+// listMembers returns a project's contributors, owner-only.
+func (rt *Router) listMembers(w http.ResponseWriter, r *http.Request) {
+	proj, _, ok := rt.ownedProject(w, r)
+	if !ok {
+		return
+	}
+	members, err := rt.members.List(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	if members == nil {
+		members = []access.Member{}
+	}
+	writeJSON(w, http.StatusOK, members)
+}
+
+// addMember invites a collaborator into a project by email, owner-only. The
+// owner is seeded as the project's lead (idempotent) so the membership store's
+// own lead-check is satisfied — one authority, project ownership. Inviting an
+// email admits nobody to the platform: they still need a platform grant.
+func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
+	proj, id, ok := rt.ownedProject(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	if strings.TrimSpace(body.Email) == "" {
+		writeError(w, http.StatusBadRequest, "missing_email")
+		return
+	}
+	role := access.RoleCollaborator
+	if body.Role == "lead" {
+		role = access.RoleLead
+	}
+	if err := rt.members.SeedLead(r.Context(), proj.ID, id.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "member_add_failed")
+		return
+	}
+	if err := rt.members.Add(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, proj.ID, body.Email, role); err != nil {
+		writeError(w, http.StatusInternalServerError, "member_add_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// removeMember drops a collaborator by email, owner-only.
+func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
+	proj, id, ok := rt.ownedProject(w, r)
+	if !ok {
+		return
+	}
+	if err := rt.members.SeedLead(r.Context(), proj.ID, id.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "member_remove_failed")
+		return
+	}
+	if err := rt.members.Remove(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, proj.ID, r.PathValue("email")); err != nil {
+		writeError(w, http.StatusInternalServerError, "member_remove_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ProjectDetail is one project with its sessions, newest first.

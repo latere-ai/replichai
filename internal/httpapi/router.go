@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/project"
 )
@@ -67,6 +68,17 @@ type ProjectStore interface {
 	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
 }
 
+// MembershipStore is the slice of the project-membership store (006c) the
+// members API needs. The owner drives it: the handler authorises on project
+// ownership and seeds the owner as the project's lead, so the store's own
+// lead-check is satisfied without a second authority model.
+type MembershipStore interface {
+	List(ctx context.Context, project string) ([]access.Member, error)
+	Add(ctx context.Context, byLead access.Principal, project, email string, r access.Role) error
+	Remove(ctx context.Context, byLead access.Principal, project, email string) error
+	SeedLead(ctx context.Context, project, email string) error
+}
+
 // RepoPublisher flips a forge repository public — the optional half of the
 // project public flip (006f). It runs with the server token, never in the
 // sandbox. Nil when no forge is wired (a local run, tests), in which case a
@@ -107,6 +119,7 @@ type Reproduction struct {
 type Deps struct {
 	Jobs          JobStore
 	Projects      ProjectStore
+	Members       MembershipStore
 	Reproductions ReproReader
 	RepoPublisher RepoPublisher
 	Gate          Gate
@@ -129,6 +142,7 @@ type Router struct {
 
 	jobs        JobStore
 	projects    ProjectStore
+	members     MembershipStore
 	repro       ReproReader
 	repoPub     RepoPublisher
 	sseInterval time.Duration
@@ -149,7 +163,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, repro: d.Reproductions, repoPub: d.RepoPublisher, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }
