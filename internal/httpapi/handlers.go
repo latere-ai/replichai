@@ -338,6 +338,9 @@ func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			return nil, err
 		}
+		// Drop the backend's raw event: the viewer renders the neutral fields, and
+		// raw is the bulk of the payload (a full transcript is megabytes of it).
+		e.Raw = nil
 		events = append(events, e)
 	}
 	return events, nil

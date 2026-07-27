@@ -44,7 +44,9 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 	return m, nil
 }
 
-// File reads one file from a repository through the forge.
+// File reads one file from a repository through the forge, via the raw media
+// type so a large artifact (a full transcript.jsonl, over the 1MB inline limit)
+// still comes back.
 func (s *GitHubSource) File(ctx context.Context, repo, path string) ([]byte, bool, error) {
-	return s.client.GetFileContent(ctx, s.owner, repo, path)
+	return s.client.GetFileRaw(ctx, s.owner, repo, path)
 }
