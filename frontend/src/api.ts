@@ -20,8 +20,6 @@ export type Job = {
   error?: string
 }
 
-export type Reproduction = { id: string; repo: string; title: string; verdict: string }
-
 // A project is the container a user owns; it holds one or more replication
 // sessions (each is a Job). The list carries a session count so the projects
 // view needs no per-project read.
@@ -89,6 +87,9 @@ export const getProject = (id: string) => fetch(`/projects/${id}`).then(json<Pro
 // listPublic returns the public zone: every public project, newest first.
 export const listPublic = () => fetch('/public').then(json<ProjectView[]>)
 
+// listShared returns projects the caller is a collaborator on (not their own).
+export const listShared = () => fetch('/shared').then(json<ProjectView[]>)
+
 // Project members (owner-only): list, invite by email, remove by email.
 export const listMembers = (id: string) => fetch(`/projects/${id}/members`).then(json<Member[]>)
 export const addMember = (id: string, email: string) =>
@@ -116,8 +117,6 @@ export const makeProjectPublic = (id: string, flipRepo = true) =>
 // getTranscript returns a session's trajectory and token usage. It rejects with
 // the HTTP status: 409 while the run has not published a transcript yet.
 export const getTranscript = (id: string) => fetch(`/jobs/${id}/transcript`).then(json<Transcript>)
-
-export const listReproductions = () => fetch('/reproductions').then(json<Reproduction[]>)
 
 const terminal = (phase: string) => phase === 'done' || phase === 'failed'
 
