@@ -80,7 +80,33 @@ type ProjectStore interface {
 	ListPublic(ctx context.Context) ([]project.Project, error)
 	Delete(ctx context.Context, id string) error
 	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
+	// SetTitle renames a project — naming it at create and the rename endpoint
+	// (006j). The worker also enriches a placeholder title through this.
+	SetTitle(ctx context.Context, id, title string) error
 }
+
+// PaperResolver previews a paper reference against the source: it resolves the
+// reference to its identity so the New-project screen can show the real title
+// before anything is created (006j). A seam so the handlers stay off
+// internal/paper; the composition root wires it over paper.Resolve + the
+// fetcher. ErrUnresolvable is a bad reference (400); any other error is a source
+// that could not be reached (502), kept distinct for the UI.
+type PaperResolver interface {
+	Resolve(ctx context.Context, ref string) (ResolvedPaper, error)
+}
+
+// ResolvedPaper is a reference's previewed identity — the offline key plus the
+// metadata the lookup found.
+type ResolvedPaper struct {
+	Key    string `json:"key"`
+	Title  string `json:"title"`
+	Scheme string `json:"scheme"`
+	Slug   string `json:"slug"`
+}
+
+// ErrUnresolvable is what a PaperResolver returns for a reference that is not a
+// DOI, arXiv ID, or URL — a 400, distinct from an unreachable source (502).
+var ErrUnresolvable = errors.New("unresolvable paper reference")
 
 // MembershipStore is the slice of the project-membership store (006c) the
 // members API needs. The owner drives it: the handler authorises on project
@@ -155,6 +181,7 @@ type Deps struct {
 	RepoPublisher RepoPublisher
 	Canceler      Canceler
 	Live          LiveTranscript
+	Resolver      PaperResolver
 	Gate          Gate
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
@@ -180,6 +207,7 @@ type Router struct {
 	repoPub     RepoPublisher
 	canceler    Canceler
 	live        LiveTranscript
+	resolver    PaperResolver
 	sseInterval time.Duration
 	spa         http.Handler
 }
@@ -198,7 +226,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

@@ -61,6 +61,9 @@ func (rt *Router) routes() {
 	// sign-in and /me routes join the open set with 006c.
 	rt.openHandle("GET", "/healthz", rt.health)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
+	rt.gatedHandle("POST", "/resolve", rt.resolvePaper)
+	rt.gatedHandle("POST", "/projects", rt.createProject)
+	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
 	rt.gatedHandle("GET", "/shared", rt.listShared)
 	rt.gatedHandle("GET", "/public", rt.listPublic)
@@ -202,6 +205,188 @@ func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 // reference itself. The worker enriches it with the resolved paper title once
 // its Resolve phase has run.
 func defaultTitle(url string) string { return strings.TrimSpace(url) }
+
+// resolvePaper previews a reference against the source (006j): it returns the
+// resolved identity so the New-project screen shows the real title before
+// anything is created. A bad reference is a 400; an unreachable source is a 502,
+// kept distinct so the UI can say "couldn't reach the source."
+func (rt *Router) resolvePaper(w http.ResponseWriter, r *http.Request) {
+	if rt.resolver == nil {
+		writeError(w, http.StatusNotImplemented, "resolve_unavailable")
+		return
+	}
+	var body struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	if strings.TrimSpace(body.URL) == "" {
+		writeError(w, http.StatusBadRequest, "missing_url")
+		return
+	}
+	got, err := rt.resolver.Resolve(r.Context(), body.URL)
+	if errors.Is(err, ErrUnresolvable) {
+		writeError(w, http.StatusBadRequest, "unresolvable_paper")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "resolve_failed") // the source could not be reached
+		return
+	}
+	writeJSON(w, http.StatusOK, got)
+}
+
+// SessionResult reports one paper's fate in a create: a job id when it started,
+// or a machine-readable error when it did not (a bad reference, or the
+// double-trigger guard catching a duplicate).
+type SessionResult struct {
+	URL   string `json:"url"`
+	JobID string `json:"job_id,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// createProject opens a project with a chosen title, one session per paper, and
+// seeded collaborators (006j). Papers are enqueued best-effort: each is reported
+// in sessions[]. The project is kept if at least one session started; if every
+// paper failed it is deleted (never leave an empty project) and the call is 422.
+func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
+	id, ok := IdentityFrom(r)
+	if !ok {
+		writeError(w, http.StatusForbidden, "not_invited")
+		return
+	}
+	var body struct {
+		Title         string   `json:"title"`
+		Papers        []string `json:"papers"`
+		Collaborators []string `json:"collaborators"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	papers := nonEmpty(body.Papers)
+	if len(papers) == 0 {
+		writeError(w, http.StatusBadRequest, "missing_papers")
+		return
+	}
+	title := strings.TrimSpace(body.Title)
+	if title == "" {
+		title = defaultTitle(papers[0]) // the worker enriches this placeholder
+	}
+
+	proj, err := rt.projects.Create(r.Context(), id.Sub, title)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_create_failed")
+		return
+	}
+
+	results := make([]SessionResult, 0, len(papers))
+	started := 0
+	for _, url := range papers {
+		res := SessionResult{URL: url}
+		if key, kErr := paper.Key(url); kErr != nil {
+			res.Error = "unresolvable_paper"
+		} else if j, eErr := rt.jobs.Enqueue(r.Context(), id.Sub, url, job.KindAudit, proj.ID, key); eErr != nil {
+			res.Error = enqueueErrorCode(eErr)
+		} else {
+			res.JobID = j.ID
+			started++
+		}
+		results = append(results, res)
+	}
+
+	// Never leave an empty project: if not one paper started, undo the create.
+	if started == 0 {
+		_ = rt.projects.Delete(r.Context(), proj.ID)
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "no_sessions_started", "sessions": results})
+		return
+	}
+
+	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"project_id": proj.ID,
+		"title":      title,
+		"sessions":   results,
+		"members":    members,
+	})
+}
+
+// seedCollaborators seeds the owner as lead (idempotent) and adds each
+// collaborator email as a member, best-effort. It returns the emails that were
+// added — a failure to seed one collaborator is reported by omission, never
+// fatal to the create.
+func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner Identity, emails []string) []string {
+	if rt.members == nil {
+		return nil
+	}
+	added := []string{}
+	if err := rt.members.SeedLead(ctx, projectID, owner.Email); err != nil {
+		return added
+	}
+	p := access.Principal{Sub: owner.Sub, Email: owner.Email}
+	for _, email := range emails {
+		email = strings.TrimSpace(email)
+		if email == "" || strings.EqualFold(email, owner.Email) {
+			continue // skip blanks and the owner (already the lead)
+		}
+		if err := rt.members.Add(ctx, p, projectID, email, access.RoleCollaborator); err == nil {
+			added = append(added, email)
+		}
+	}
+	return added
+}
+
+// renameProject renames an owned project (006j), owner-only.
+func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
+	proj, _, ok := rt.ownedProject(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	if strings.TrimSpace(body.Title) == "" {
+		writeError(w, http.StatusBadRequest, "missing_title")
+		return
+	}
+	if err := rt.projects.SetTitle(r.Context(), proj.ID, strings.TrimSpace(body.Title)); err != nil {
+		writeError(w, http.StatusInternalServerError, "rename_failed")
+		return
+	}
+	proj.Title = strings.TrimSpace(body.Title)
+	writeJSON(w, http.StatusOK, proj)
+}
+
+// enqueueErrorCode maps an Enqueue failure to the machine-readable code the
+// per-paper session result carries.
+func enqueueErrorCode(err error) string {
+	switch {
+	case errors.Is(err, job.ErrActiveSession):
+		return "active_session"
+	case errors.Is(err, job.ErrEmptyRef):
+		return "missing_url"
+	default:
+		return "enqueue_failed"
+	}
+}
+
+// nonEmpty trims and drops blank entries, preserving order.
+func nonEmpty(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if t := strings.TrimSpace(s); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
 
 // ProjectView is a project in a list, carrying a session summary so the list
 // shows status (how many sessions, how many running, the newest phase) at a
