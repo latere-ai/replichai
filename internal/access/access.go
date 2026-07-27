@@ -149,6 +149,10 @@ type Membership interface {
 	Role(ctx context.Context, p Principal, project string) (Role, bool, error)
 	// List returns a project's members, for the owner's members view.
 	List(ctx context.Context, project string) ([]Member, error)
+	// Projects returns the project ids a bound principal is a member of — the
+	// "shared with me" surface (006f). Only bound memberships count; a seeded-
+	// but-not-yet-logged-in email is not yet this principal's.
+	Projects(ctx context.Context, principalSub string) ([]string, error)
 	// SeedLead creates a project's lead with no lead-check — the bootstrap seed
 	// project creation uses, and the bridge the owner-driven members API (006f)
 	// uses to seed the project owner as its lead before an owner-authorised

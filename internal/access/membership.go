@@ -116,6 +116,20 @@ func (m *MemMembership) List(_ context.Context, project string) ([]Member, error
 	return out, nil
 }
 
+// Projects returns the project ids this principal is a bound member of.
+func (m *MemMembership) Projects(_ context.Context, principalSub string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for project, byPrincipal := range m.bound {
+		if _, ok := byPrincipal[principalSub]; ok {
+			out = append(out, project)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // put writes a member's role while preserving any binding. Caller holds the lock.
 func (m *MemMembership) put(project, email string, r Role) {
 	if m.members[project] == nil {

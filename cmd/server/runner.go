@@ -107,26 +107,11 @@ func (p *forgePublisher) SetPublic(ctx context.Context, repo string) error {
 	return p.client.SetPublic(ctx, p.owner, repo)
 }
 
-// registryReader adapts the derived registry (003) to the HTTP read surface. It
-// presents what the manifests hold and caches nothing of its own.
+// registryReader adapts the derived registry (003) to the read surface's
+// internal checks — the publish gate's manifest-clear read and the session
+// transcript reader. It is no longer a user-facing list: the project is the unit
+// of visibility (006f), so there is no unscoped org-wide reproductions listing.
 type registryReader struct{ source registry.Source }
-
-// List reads every published reproduction's manifest.
-func (r *registryReader) List(ctx context.Context) ([]httpapi.Reproduction, error) {
-	repos, err := r.source.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]httpapi.Reproduction, 0, len(repos))
-	for _, repo := range repos {
-		m, err := r.source.Manifest(ctx, repo)
-		if err != nil {
-			continue // a repository without a readable manifest is not a reproduction
-		}
-		out = append(out, toRepro(repo, m))
-	}
-	return out, nil
-}
 
 // Get reads one reproduction by its repository id.
 func (r *registryReader) Get(ctx context.Context, id string) (httpapi.Reproduction, error) {

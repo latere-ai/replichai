@@ -109,11 +109,13 @@ func TestOperatorRoutesAreGated(t *testing.T) {
 	}
 	for _, must := range []string{
 		"POST /papers",
+		"GET /projects",
+		"GET /shared",
+		"GET /public",
+		"GET /projects/{id}",
 		"GET /jobs/{id}",
 		"GET /jobs/{id}/events",
-		"GET /reproductions",
-		"GET /reproductions/{id}",
-		"GET /reproductions/{id}/transcript",
+		"GET /jobs/{id}/transcript",
 	} {
 		if !gated[must] {
 			t.Errorf("operator route %q is not behind the gate", must)

@@ -29,11 +29,8 @@ func testDeps(gate Gate) Deps {
 	}
 }
 
-type fakeRepro struct{ err, getErr error }
+type fakeRepro struct{ getErr, transcriptErr error }
 
-func (f *fakeRepro) List(context.Context) ([]Reproduction, error) {
-	return []Reproduction{{ID: "r1", Repo: "open-hai/x", Verdict: "passed"}}, f.err
-}
 func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 	if f.getErr != nil {
 		return Reproduction{}, f.getErr
@@ -49,11 +46,13 @@ func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 	}
 }
 func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
+	if f.transcriptErr != nil {
+		return nil, f.transcriptErr // a forge/transport failure — must become a 500, not a 404
+	}
 	switch id {
 	case "r1":
 		// A small valid transcript.jsonl: a message, a tool call, its result, and a
-		// model-request event carrying per-request usage. The `"event":1` marker
-		// keeps the raw /reproductions passthrough test meaningful.
+		// model-request event carrying per-request usage.
 		return []byte(`{"role":"agent","kind":"message","content":"start","event":1}` + "\n" +
 			`{"role":"agent","kind":"tool_use","tool":"bash","content":"ls"}` + "\n" +
 			`{"role":"user","kind":"tool_result","content":"file.txt"}` + "\n" +
@@ -226,9 +225,10 @@ func TestProjectListAndDetail(t *testing.T) {
 		t.Errorf("detail = %+v", detail)
 	}
 
-	// Another owner's private project is refused, not disclosed.
-	if w := do(t, h, "GET", "/projects/"+strangerP.ID, "", "me"); w.Code != http.StatusForbidden {
-		t.Errorf("stranger project detail: status %d, want 403", w.Code)
+	// Another owner's private project is not disclosed — hidden as 404, not a 403
+	// that would confirm it exists.
+	if w := do(t, h, "GET", "/projects/"+strangerP.ID, "", "me"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger project detail: status %d, want 404", w.Code)
 	}
 }
 
@@ -406,6 +406,54 @@ func TestMembersAPI(t *testing.T) {
 	}
 }
 
+// The systematic fix: a private project and every session under it are visible
+// only to the owner and invited collaborators; a stranger sees 404 everywhere,
+// and a collaborator finds the project in "shared with me".
+func TestProjectAndSessionReadsAreScoped(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
+	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Private")
+	sess := publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+
+	view := func(id Identity, path string) int { return doAs(t, h, "GET", path, "", id).Code }
+
+	// Owner: project + session + transcript all visible.
+	if view(owner, "/projects/"+p.ID) != http.StatusOK || view(owner, "/jobs/"+sess.ID) != http.StatusOK {
+		t.Fatal("owner must see their own project and session")
+	}
+
+	// Stranger: everything hidden as 404 — including the session-scoped reads
+	// that used to leak to any invited user.
+	stranger := Identity{Sub: "stranger", Email: "s@x.com"}
+	for _, path := range []string{"/projects/" + p.ID, "/jobs/" + sess.ID, "/jobs/" + sess.ID + "/transcript", "/jobs/" + sess.ID + "/events"} {
+		if code := view(stranger, path); code != http.StatusNotFound {
+			t.Errorf("stranger %s = %d, want 404 (hidden)", path, code)
+		}
+	}
+
+	// Collaborator: invited by the owner, then may view the private project and
+	// its sessions, and finds it under "shared with me".
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"collab@x.com"}`, owner); w.Code != http.StatusNoContent {
+		t.Fatalf("invite: %d", w.Code)
+	}
+	collab := Identity{Sub: "collab-sub", Email: "collab@x.com"}
+	if view(collab, "/projects/"+p.ID) != http.StatusOK || view(collab, "/jobs/"+sess.ID) != http.StatusOK {
+		t.Error("a collaborator must see the private project and its sessions")
+	}
+	var shared []ProjectView
+	_ = json.Unmarshal(doAs(t, h, "GET", "/shared", "", collab).Body.Bytes(), &shared)
+	if len(shared) != 1 || shared[0].ID != p.ID {
+		t.Errorf("collaborator /shared = %+v, want the one project", shared)
+	}
+	// A stranger's "shared with me" is empty.
+	var none []ProjectView
+	_ = json.Unmarshal(doAs(t, h, "GET", "/shared", "", stranger).Body.Bytes(), &none)
+	if len(none) != 0 {
+		t.Errorf("stranger /shared = %+v, want empty", none)
+	}
+}
+
 // publishInto adds a session to a project and points it at a published repo.
 func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job {
 	t.Helper()
@@ -431,27 +479,37 @@ func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job 
 
 func TestGetJob(t *testing.T) {
 	d := testDeps(allowAll)
-	j, _ := d.Jobs.Enqueue(context.Background(), "sub", "ref", job.KindAudit, "", "")
+	p, _ := d.Projects.Create(context.Background(), "sub", "t")
+	j, _ := d.Jobs.Enqueue(context.Background(), "sub", "ref", job.KindAudit, p.ID, "")
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "sub"); w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", w.Code)
+	}
+	// Another user cannot read a session in a private project — hidden as 404.
+	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "stranger"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger job read: status %d, want 404", w.Code)
 	}
 	if w := do(t, h, "GET", "/jobs/missing", "", "sub"); w.Code != http.StatusNotFound {
 		t.Errorf("missing job: status %d, want 404", w.Code)
 	}
 }
 
-// publishedSession drives a job to publishing under a repo, so its transcript
-// resolves through the fake forge.
-func publishedSession(t *testing.T, s JobStore, sub, repo string, usage *provider.Usage) job.Job {
+// publishedSession opens a real project owned by sub and drives a session in it
+// to publishing under a repo, so the session's scoped reads resolve and its
+// transcript comes back through the fake forge.
+func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Usage) job.Job {
 	t.Helper()
 	ctx := context.Background()
-	j, err := s.Enqueue(ctx, sub, "ref", job.KindAudit, "p", "arxiv:1")
+	p, err := d.Projects.Create(ctx, sub, "t")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	j, err := d.Jobs.Enqueue(ctx, sub, "ref", job.KindAudit, p.ID, "arxiv:1")
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
-	adv := s.(*job.MemStore)
+	adv := d.Jobs.(*job.MemStore)
 	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing} {
 		phase := p
 		if err := adv.Advance(ctx, j.ID, phase, func(jb *job.Job) {
@@ -467,7 +525,7 @@ func publishedSession(t *testing.T, s JobStore, sub, repo string, usage *provide
 			t.Fatalf("observe: %v", err)
 		}
 	}
-	got, _ := s.Get(ctx, j.ID)
+	got, _ := d.Jobs.Get(ctx, j.ID)
 	return got
 }
 
@@ -476,7 +534,7 @@ func publishedSession(t *testing.T, s JobStore, sub, repo string, usage *provide
 func TestSessionTranscript(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d.Jobs, "me", "r1", &provider.Usage{InputTokens: 100, OutputTokens: 50})
+	j := publishedSession(t, d, "me", "r1", &provider.Usage{InputTokens: 100, OutputTokens: 50})
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	if w.Code != http.StatusOK {
@@ -504,7 +562,7 @@ func TestSessionTranscript(t *testing.T) {
 func TestSessionTranscriptUsageDerived(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d.Jobs, "me", "r1", nil) // no usage observed
+	j := publishedSession(t, d, "me", "r1", nil) // no usage observed
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	var tr Transcript
@@ -519,7 +577,7 @@ func TestSessionTranscriptUsageDerived(t *testing.T) {
 func TestSessionTranscriptUsageNotRecorded(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d.Jobs, "me", "bare", nil) // no usage anywhere
+	j := publishedSession(t, d, "me", "bare", nil) // no usage anywhere
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	var tr Transcript
@@ -533,8 +591,9 @@ func TestSessionTranscriptUsageNotRecorded(t *testing.T) {
 // a 404 for a session that does not exist — 006h AC4.
 func TestSessionTranscriptNotReadyVsMissing(t *testing.T) {
 	d := testDeps(allowAll)
-	// A submitted session with no repository yet.
-	j, _ := d.Jobs.Enqueue(context.Background(), "me", "ref", job.KindAudit, "p", "arxiv:1")
+	// A submitted session (in a real owned project) with no repository yet.
+	p, _ := d.Projects.Create(context.Background(), "me", "t")
+	j, _ := d.Jobs.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me"); w.Code != http.StatusConflict {
@@ -572,29 +631,16 @@ func TestListMyJobs(t *testing.T) {
 	}
 }
 
-// AC3: read surfaces return what 003/005 hold, through their interfaces.
-func TestReadSurfaces(t *testing.T) {
-	h := NewRouter(testDeps(allowAll)).Handler()
-	if w := do(t, h, "GET", "/reproductions", "", "sub"); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "open-hai/x") {
-		t.Errorf("list: %d %s", w.Code, w.Body.String())
-	}
-	if w := do(t, h, "GET", "/reproductions/r1", "", "sub"); w.Code != http.StatusOK {
-		t.Errorf("get: status %d, want 200", w.Code)
-	}
-	if w := do(t, h, "GET", "/reproductions/r1/transcript", "", "sub"); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"event":1`) {
-		t.Errorf("transcript: %d %s", w.Code, w.Body.String())
-	}
-	if w := do(t, h, "GET", "/reproductions/nope", "", "sub"); w.Code != http.StatusNotFound {
-		t.Errorf("missing repro: status %d, want 404", w.Code)
-	}
+// 006h AC5 / 003 read-error rule: a forge/transport failure on the session
+// transcript is a 500, never disguised as a 404 miss.
+func TestSessionTranscriptForgeFailureIs500(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Reproductions = &fakeRepro{transcriptErr: errors.New("forge timeout")}
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
 
-	// A backend failure (not a miss) is a 500, never disguised as not-found.
-	backendDown := NewRouter(Deps{
-		Jobs: job.NewMemStore(), Gate: allowAll,
-		Reproductions: &fakeRepro{getErr: errors.New("forge timeout")},
-	}).Handler()
-	if w := do(t, backendDown, "GET", "/reproductions/r1", "", "sub"); w.Code != http.StatusInternalServerError {
-		t.Errorf("a backend error should be 500, got %d", w.Code)
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me"); w.Code != http.StatusInternalServerError {
+		t.Errorf("a forge failure should be 500, got %d", w.Code)
 	}
 }
 
