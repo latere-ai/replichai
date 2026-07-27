@@ -74,6 +74,17 @@ func (s *MemStore) ListByOwner(_ context.Context, owner string) ([]Project, erro
 	return out, nil
 }
 
+// SetTitle updates a project's title, ignoring a missing project.
+func (s *MemStore) SetTitle(_ context.Context, id, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.projects[id]; ok {
+		p.Title = title
+		s.projects[id] = p
+	}
+	return nil
+}
+
 // Delete removes a project by id, idempotently.
 func (s *MemStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()

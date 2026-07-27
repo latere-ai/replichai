@@ -52,6 +52,17 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Fatalf("ListByOwner = %+v; want [second, first], no stranger", mine)
 	}
 
+	// SetTitle enriches the placeholder; a missing project is not an error.
+	if err := s.SetTitle(ctx, p.ID, "The Real Paper Title"); err != nil {
+		t.Fatalf("SetTitle: %v", err)
+	}
+	if got, _ := s.Get(ctx, p.ID); got.Title != "The Real Paper Title" {
+		t.Errorf("after SetTitle: title = %q", got.Title)
+	}
+	if err := s.SetTitle(ctx, "nope", "x"); err != nil {
+		t.Errorf("SetTitle on a missing project: %v", err)
+	}
+
 	// Delete removes it, idempotently.
 	if err := s.Delete(ctx, p.ID); err != nil {
 		t.Fatalf("Delete: %v", err)

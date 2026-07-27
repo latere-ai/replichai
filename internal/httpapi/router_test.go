@@ -37,14 +37,21 @@ func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 	return Reproduction{ID: "r1", Repo: "open-hai/x"}, nil
 }
 func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
-	if id != "r1" {
+	switch id {
+	case "r1":
+		// A small valid transcript.jsonl: a message, a tool call, its result, and a
+		// model-request event carrying per-request usage. The `"event":1` marker
+		// keeps the raw /reproductions passthrough test meaningful.
+		return []byte(`{"role":"agent","kind":"message","content":"start","event":1}` + "\n" +
+			`{"role":"agent","kind":"tool_use","tool":"bash","content":"ls"}` + "\n" +
+			`{"role":"user","kind":"tool_result","content":"file.txt"}` + "\n" +
+			`{"role":"system","kind":"model_request_end","raw":{"model_usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10}}}` + "\n"), nil
+	case "bare":
+		// A transcript with no per-request usage anywhere — usage is unknowable.
+		return []byte(`{"role":"agent","kind":"message","content":"hi"}` + "\n"), nil
+	default:
 		return nil, ErrReproNotFound
 	}
-	// A small valid transcript.jsonl: a message, a tool call, its result. The
-	// `"event":1` marker keeps the raw /reproductions passthrough test meaningful.
-	return []byte(`{"role":"agent","kind":"message","content":"start","event":1}` + "\n" +
-		`{"role":"agent","kind":"tool_use","tool":"bash","content":"ls"}` + "\n" +
-		`{"role":"user","kind":"tool_result","content":"file.txt"}` + "\n"), nil
 }
 
 func do(t *testing.T, h http.Handler, method, path, body, principalSub string) *httptest.ResponseRecorder {
@@ -226,9 +233,9 @@ func TestGetJob(t *testing.T) {
 	}
 }
 
-// publishedSession drives a job to publishing under repo "open-hai/r1", so its
-// transcript resolves through the fake forge.
-func publishedSession(t *testing.T, s JobStore, sub string, usage *provider.Usage) job.Job {
+// publishedSession drives a job to publishing under a repo, so its transcript
+// resolves through the fake forge.
+func publishedSession(t *testing.T, s JobStore, sub, repo string, usage *provider.Usage) job.Job {
 	t.Helper()
 	ctx := context.Background()
 	j, err := s.Enqueue(ctx, sub, "ref", job.KindAudit, "p", "arxiv:1")
@@ -240,7 +247,7 @@ func publishedSession(t *testing.T, s JobStore, sub string, usage *provider.Usag
 		phase := p
 		if err := adv.Advance(ctx, j.ID, phase, func(jb *job.Job) {
 			if phase == job.PhasePublishing {
-				jb.RepoName = "open-hai/r1"
+				jb.RepoName = "open-hai/" + repo
 			}
 		}); err != nil {
 			t.Fatalf("advance %s: %v", phase, err)
@@ -256,13 +263,12 @@ func publishedSession(t *testing.T, s JobStore, sub string, usage *provider.Usag
 }
 
 // 006h AC1-4: a session's transcript is served as parsed events plus usage, with
-// not_ready and not_found kept distinct.
+// not_ready and not_found kept distinct. Recorded usage wins over derived.
 func TestSessionTranscript(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d.Jobs, "me", &provider.Usage{InputTokens: 100, OutputTokens: 50})
+	j := publishedSession(t, d.Jobs, "me", "r1", &provider.Usage{InputTokens: 100, OutputTokens: 50})
 
-	// A published session: parsed events, paired tool call/result, and usage.
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
@@ -271,20 +277,40 @@ func TestSessionTranscript(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &tr); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(tr.Events) != 3 || tr.Events[1].Kind != "tool_use" || tr.Events[1].Tool != "bash" || tr.Events[2].Kind != "tool_result" {
+	// Four events served, raw stripped, tool call paired with its result.
+	if len(tr.Events) != 4 || tr.Events[1].Kind != "tool_use" || tr.Events[1].Tool != "bash" || tr.Events[2].Kind != "tool_result" {
 		t.Fatalf("events = %+v", tr.Events)
 	}
+	if len(tr.Events[3].Raw) != 0 {
+		t.Errorf("raw was not stripped from the response")
+	}
+	// Recorded usage is used verbatim, not the transcript-derived total.
 	if tr.Usage == nil || tr.Usage.Total() != 150 {
-		t.Fatalf("usage = %+v, want total 150", tr.Usage)
+		t.Fatalf("usage = %+v, want recorded total 150", tr.Usage)
 	}
 }
 
-// A session whose usage was never recorded shows "not recorded" (nil), never a
-// fabricated zero — 006h AC3.
+// 006h AC3: a backfilled session with no recorded usage derives it from the
+// transcript's per-request usage, so the feature is not blank on real data.
+func TestSessionTranscriptUsageDerived(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d.Jobs, "me", "r1", nil) // no usage observed
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	var tr Transcript
+	_ = json.Unmarshal(w.Body.Bytes(), &tr)
+	if w.Code != http.StatusOK || tr.Usage == nil || tr.Usage.Total() != 160 {
+		t.Fatalf("status %d usage %+v; want derived total 160 (100+50+10)", w.Code, tr.Usage)
+	}
+}
+
+// A session whose usage is neither recorded nor in the transcript shows "not
+// recorded" (nil), never a fabricated zero.
 func TestSessionTranscriptUsageNotRecorded(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d.Jobs, "me", nil) // no usage observed
+	j := publishedSession(t, d.Jobs, "me", "bare", nil) // no usage anywhere
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	var tr Transcript

@@ -78,6 +78,12 @@ func (s *PGStore) ListByOwner(ctx context.Context, owner string) ([]Project, err
 	return out, rows.Err()
 }
 
+// SetTitle updates a project's title, ignoring a missing project.
+func (s *PGStore) SetTitle(ctx context.Context, id, title string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE projects SET title = $2 WHERE id = $1`, id, title)
+	return err
+}
+
 // Delete removes a project by id, idempotently.
 func (s *PGStore) Delete(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)
