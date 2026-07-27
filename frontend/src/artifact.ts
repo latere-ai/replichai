@@ -73,6 +73,28 @@ export function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(raw)
 }
 
+// isExternalHref reports whether a link/src points outside the repository tree:
+// an absolute or protocol-relative URL, a scheme (mailto:, tel:, data:), or a
+// pure in-page anchor. Everything else is a repository-relative path.
+export function isExternalHref(href: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')
+}
+
+// resolveRelative resolves a repository-relative href against the file it was
+// written in, so a link in `docs/guide.md` to `../README.md` lands on
+// `README.md`. Any query or fragment is dropped — it names a file, not a URL.
+export function resolveRelative(fromPath: string, href: string): string {
+  const clean = href.split('#')[0].split('?')[0]
+  const dir = fromPath.includes('/') ? fromPath.slice(0, fromPath.lastIndexOf('/')) : ''
+  const parts = dir ? dir.split('/') : []
+  for (const seg of clean.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') parts.pop()
+    else parts.push(seg)
+  }
+  return parts.join('/')
+}
+
 // highlightIn syntax-highlights every <pre><code> inside a mounted container —
 // the fenced code in markdown, and the single block of a code file.
 export function highlightIn(el: HTMLElement | null) {
