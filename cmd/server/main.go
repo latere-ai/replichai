@@ -167,6 +167,7 @@ func run() error {
 		RepoPublisher: repoPublisher,
 		Canceler:      worker,
 		Live:          liveTranscript{prov: prov},
+		Resolver:      paperResolver{fetch: newHTTPFetcher(30 * time.Second)},
 		Gate:          webauth.Gate(accessStore),
 		SPA:           spaHandler,
 	})

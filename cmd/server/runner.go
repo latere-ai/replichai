@@ -259,6 +259,24 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 	return err
 }
 
+// paperResolver previews a reference for the New-project screen (006j): it
+// resolves the reference to its identity through the same HTTP fetcher the
+// worker uses. An unresolvable reference is mapped to httpapi.ErrUnresolvable (a
+// 400); any other failure is a source that could not be reached (a 502).
+type paperResolver struct{ fetch paper.Fetcher }
+
+// Resolve previews one reference's identity.
+func (p paperResolver) Resolve(ctx context.Context, ref string) (httpapi.ResolvedPaper, error) {
+	id, err := paper.Resolve(ctx, ref, paper.WithFetcher(p.fetch))
+	if errors.Is(err, paper.ErrUnresolvable) {
+		return httpapi.ResolvedPaper{}, httpapi.ErrUnresolvable
+	}
+	if err != nil {
+		return httpapi.ResolvedPaper{}, err
+	}
+	return httpapi.ResolvedPaper{Key: id.String(), Title: id.Title, Scheme: id.Scheme.String(), Slug: id.Slug}, nil
+}
+
 // liveTranscript reads a run's live event stream from the backend by its run id,
 // so a session still in flight is inspectable before it publishes (006h).
 type liveTranscript struct{ prov provider.Provider }
