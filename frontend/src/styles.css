@@ -328,3 +328,35 @@ h3 {
 .tool-result summary {
   cursor: pointer;
 }
+
+/* Public flip: the owner's sign-off panel. */
+.project-head-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.publish-open {
+  margin-top: 12px;
+}
+.publish-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: #f6f9fd;
+}
+.publish-panel strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.affirm {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 10px 0;
+  cursor: pointer;
+}
+.affirm input {
+  margin-top: 3px;
+}

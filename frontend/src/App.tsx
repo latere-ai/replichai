@@ -4,12 +4,15 @@ import {
   getProject,
   getTranscript,
   listProjects,
+  listPublic,
   listReproductions,
+  makeProjectPublic,
   submitPaper,
   watchJob,
   type Event,
   type Job,
   type Me,
+  type Project,
   type ProjectView,
   type Reproduction,
   type Transcript,
@@ -43,7 +46,7 @@ export default function App() {
         ) : (me.tier ?? 'none') === 'none' ? (
           <NotInvited i18n={i18n} email={me.email ?? ''} />
         ) : (
-          <Dashboard i18n={i18n} />
+          <Dashboard i18n={i18n} me={me} />
         )}
       </main>
       <footer className="muted">replichai · latere.ai</footer>
@@ -110,7 +113,7 @@ function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
   )
 }
 
-function Dashboard({ i18n }: { i18n: I18n }) {
+function Dashboard({ i18n, me }: { i18n: I18n; me: Me }) {
   const [view, setView] = useState<View>({ name: 'projects' })
   const [repros, setRepros] = useState<Reproduction[]>([])
 
@@ -121,7 +124,7 @@ function Dashboard({ i18n }: { i18n: I18n }) {
   }, [])
 
   if (view.name === 'project') {
-    return <ProjectPage i18n={i18n} id={view.id} onBack={() => setView({ name: 'projects' })} onOpenSession={(jobId) => setView({ name: 'session', jobId, projectId: view.id })} />
+    return <ProjectPage i18n={i18n} me={me} id={view.id} onBack={() => setView({ name: 'projects' })} onOpenSession={(jobId) => setView({ name: 'session', jobId, projectId: view.id })} />
   }
   if (view.name === 'session') {
     return <SessionPage i18n={i18n} jobId={view.jobId} onBack={() => setView({ name: 'project', id: view.projectId })} />
@@ -130,6 +133,7 @@ function Dashboard({ i18n }: { i18n: I18n }) {
     <>
       <Submit i18n={i18n} onSubmitted={(projectID) => setView({ name: 'project', id: projectID })} />
       <ProjectsList i18n={i18n} onOpen={(id) => setView({ name: 'project', id })} />
+      <PublicZone i18n={i18n} onOpen={(id) => setView({ name: 'project', id })} />
       <Reproductions i18n={i18n} repros={repros} />
     </>
   )
@@ -215,23 +219,25 @@ function ProjectsList({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string) => vo
 
 function ProjectPage({
   i18n,
+  me,
   id,
   onBack,
   onOpenSession,
 }: {
   i18n: I18n
+  me: Me
   id: string
   onBack: () => void
   onOpenSession: (jobId: string) => void
 }) {
   const { t } = i18n
-  const [title, setTitle] = useState('')
+  const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
 
   const refresh = () =>
     getProject(id)
       .then((d) => {
-        setTitle(d.project.title)
+        setProject(d.project)
         setSessions(d.sessions ?? [])
       })
       .catch(() => setSessions([]))
@@ -240,14 +246,25 @@ function ProjectPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  const isOwner = project != null && project.owner === me.principal
+
   return (
     <>
       <div className="card">
         <button className="btn ghost small" onClick={onBack}>
           {t('backToProjects')}
         </button>
-        <h2 className="project-heading">{title}</h2>
-        <ProjectSubmit i18n={i18n} projectID={id} onSubmitted={refresh} />
+        <div className="project-head-row">
+          <h2 className="project-heading">{project?.title ?? '…'}</h2>
+          {project && <span className={`badge ${project.visibility}`}>{t(project.visibility)}</span>}
+        </div>
+        {project && isOwner && project.visibility === 'private' && (
+          <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} />
+        )}
+        {project && project.visibility === 'public' && project.signed_off_at && (
+          <p className="muted small">{t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() })}</p>
+        )}
+        {isOwner && <ProjectSubmit i18n={i18n} projectID={id} onSubmitted={refresh} />}
       </div>
       <section>
         <h3>{t('projectSessions')}</h3>
@@ -262,6 +279,87 @@ function ProjectPage({
         )}
       </section>
     </>
+  )
+}
+
+// PublishPanel is the owner's public flip with its responsibility sign-off: a
+// deliberate affirmation, never a bare toggle. A 409 means the reproduction did
+// not clear the redistribution check and the project can never go public.
+function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
+  const { t } = i18n
+  const [open, setOpen] = useState(false)
+  const [affirmed, setAffirmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const publish = async () => {
+    if (!affirmed || busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await makeProjectPublic(projectID)
+      onPublished()
+    } catch (e) {
+      setErr((e as Error).message === '409' ? t('publishNotClear') : t('publishError'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="btn ghost small publish-open" onClick={() => setOpen(true)}>
+        {t('makePublic')}
+      </button>
+    )
+  }
+  return (
+    <div className="publish-panel">
+      <strong>{t('publishTitle')}</strong>
+      <p className="muted small">{t('publishBody')}</p>
+      <label className="affirm">
+        <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
+        <span>{t('publishAffirm')}</span>
+      </label>
+      <div className="row">
+        <button className="btn" disabled={!affirmed || busy} onClick={publish}>
+          {busy ? t('submitting') : t('publishConfirm')}
+        </button>
+        <button className="btn ghost" onClick={() => setOpen(false)}>
+          {t('publishCancel')}
+        </button>
+      </div>
+      {err && <p className="err small">{err}</p>}
+    </div>
+  )
+}
+
+function PublicZone({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string) => void }) {
+  const { t } = i18n
+  const [projects, setProjects] = useState<ProjectView[]>([])
+
+  useEffect(() => {
+    listPublic().then((p) => setProjects(p ?? [])).catch(() => setProjects([]))
+  }, [])
+
+  return (
+    <section>
+      <h2>{t('publicZone')}</h2>
+      {projects.length === 0 ? (
+        <p className="muted">{t('noPublic')}</p>
+      ) : (
+        <ul className="projects">
+          {projects.map((p) => (
+            <li key={p.id} className="project-card" onClick={() => onOpen(p.id)}>
+              <div className="project-title">{p.title}</div>
+              <div className="project-meta muted small">
+                {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 

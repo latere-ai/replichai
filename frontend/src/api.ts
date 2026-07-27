@@ -31,6 +31,9 @@ export type Project = {
   title: string
   visibility: 'private' | 'public'
   created_at: string
+  signed_off_by?: string
+  signed_off_at?: string
+  attestation_version?: string
 }
 
 export type ProjectView = Project & { session_count: number }
@@ -73,6 +76,20 @@ export const listProjects = () => fetch('/projects').then(json<ProjectView[]>)
 
 // getProject returns one project and its sessions, newest first.
 export const getProject = (id: string) => fetch(`/projects/${id}`).then(json<ProjectDetail>)
+
+// listPublic returns the public zone: every public project, newest first.
+export const listPublic = () => fetch('/public').then(json<ProjectView[]>)
+
+// The current responsibility-attestation text version the sign-off records.
+export const ATTESTATION_VERSION = 'v1'
+
+// makeProjectPublic is the owner's one-way public flip with a recorded sign-off.
+export const makeProjectPublic = (id: string) =>
+  fetch(`/projects/${id}/public`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ attestation_version: ATTESTATION_VERSION }),
+  }).then(json<Project>)
 
 // getTranscript returns a session's trajectory and token usage. It rejects with
 // the HTTP status: 409 while the run has not published a transcript yet.
