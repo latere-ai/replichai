@@ -107,12 +107,29 @@ func run() error {
 		log.Printf("seeded user: %s", email)
 	}
 
+	// The forge (006i): with a token, reproductions are created under the org and
+	// mounted into runs so the agent commits live; the same client reads them back
+	// (003) and flips them public (006f). Without a token this stays nil and the
+	// server runs audits without a repository — transcript-only.
+	var forgeClient *github.Client
+	forgeOwner := envOr("REPLICHAI_GITHUB_OWNER", "open-hai")
+	forgeToken := os.Getenv("REPLICHAI_GITHUB_TOKEN")
+	var runnerForge forge // nil interface when no token — runner runs transcript-only
+	if forgeToken != "" {
+		forgeClient = github.New(forgeToken)
+		runnerForge = githubForge{forgeClient}
+	}
+
 	runner := &engineRunner{
 		provider: prov,
 		method:   m,
 		fetch:    newHTTPFetcher(30 * time.Second),
 		projects: projectStore,
+		jobs:     jobStore,
 		workDir:  filepath.Join(os.TempDir(), "replichai-runs"),
+		gh:       runnerForge,
+		owner:    forgeOwner,
+		token:    forgeToken,
 		delay:    delay,
 	}
 	worker := job.NewWorker(jobStore, runner)
@@ -133,12 +150,10 @@ func run() error {
 	// a filesystem dir for a local run with no forge token.
 	var reproSource registry.Source
 	var repoPublisher httpapi.RepoPublisher
-	if token := os.Getenv("REPLICHAI_GITHUB_TOKEN"); token != "" {
-		owner := envOr("REPLICHAI_GITHUB_OWNER", "open-hai")
-		client := github.New(token)
-		reproSource = registry.NewGitHubSource(client, owner)
-		repoPublisher = &forgePublisher{client: client, owner: owner}
-		log.Printf("reproductions: reading the %s org on GitHub", owner)
+	if forgeClient != nil {
+		reproSource = registry.NewGitHubSource(forgeClient, forgeOwner)
+		repoPublisher = &forgePublisher{client: forgeClient, owner: forgeOwner}
+		log.Printf("reproductions: reading the %s org on GitHub", forgeOwner)
 	} else {
 		reproSource = registry.NewFSSource(*reproDir)
 		log.Printf("reproductions: reading filesystem dir %q (set REPLICHAI_GITHUB_TOKEN to read the forge)", *reproDir)

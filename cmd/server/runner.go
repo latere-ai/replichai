@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,11 +30,88 @@ type engineRunner struct {
 	method   method.Method
 	fetch    paper.Fetcher
 	projects project.Store
+	jobs     jobStatusReader
 	workDir  string
+	// The forge (006i). When gh is nil (a local run with no token) the runner
+	// neither creates a repository nor publishes — the session's transcript stays
+	// readable live-only. owner is the org repositories are created under; token
+	// is the mount credential, handed to the platform egress, never the sandbox.
+	gh    forge
+	owner string
+	token string
 	// delay pauses at the start of each phase. It is a dev affordance: with the
 	// instant memory provider a job finishes in ~1s, so a small delay makes the
 	// phase progression watchable over SSE. Zero in production.
 	delay time.Duration
+}
+
+// jobStatusReader reads a job's latest observed status at publish time. The
+// verdict and the backend run id are set on the Observe path, not carried on the
+// phase transition, so the publishing phase reloads them from the store.
+type jobStatusReader interface {
+	Get(ctx context.Context, id string) (job.Job, error)
+}
+
+// forge is the repository host the runner creates into and finalizes against
+// (006i). Prepare allocates a collision-free name and creates the private repo;
+// the rest is publish.LiveForge, so the shared finalize drives it unchanged.
+// github-backed in production, faked in tests — the runner needs no network to
+// test its phase logic.
+type forge interface {
+	publish.LiveForge
+	// Prepare allocates a collision-free repository name for the paper under the
+	// owner and creates it private, returning the name. Idempotent: an existing
+	// repository of that name is reused, not an error.
+	Prepare(ctx context.Context, owner string, id paper.Identity) (name string, err error)
+}
+
+// githubForge is the production forge: a github client that also allocates names
+// through the derived registry (003). It embeds *github.Client, so it already
+// satisfies publish.LiveForge.
+type githubForge struct{ *github.Client }
+
+// Prepare allocates a collision-free name and creates the private repository.
+func (f githubForge) Prepare(ctx context.Context, owner string, id paper.Identity) (string, error) {
+	name, err := registry.New(registry.NewGitHubSource(f.Client, owner)).AllocateName(ctx, id)
+	if err != nil {
+		return "", fmt.Errorf("allocate repo name: %w", err)
+	}
+	_, err = f.CreateRepo(ctx, owner, name, true)
+	if errors.Is(err, github.ErrRepoExists) {
+		_, err = f.GetRepo(ctx, owner, name)
+	}
+	if err != nil {
+		return "", fmt.Errorf("prepare repository: %w", err)
+	}
+	return name, nil
+}
+
+// mountFor builds the repository mount for a job whose repo was created in the
+// resolving phase. The token authenticates the clone at the platform's egress;
+// per the managed-agents vaults model it is never readable inside the sandbox.
+func (e *engineRunner) mountFor(j *job.Job) provider.RepoMount {
+	return provider.RepoMount{
+		URL:       "https://github.com/" + j.RepoName,
+		Token:     e.token,
+		MountPath: audit.DefaultMountPath,
+	}
+}
+
+// splitRepo splits a stored "owner/name" into its parts.
+func splitRepo(full string) (owner, name string) {
+	if i := lastSlash(full); i >= 0 {
+		return full[:i], full[i+1:]
+	}
+	return "", full
+}
+
+func lastSlash(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '/' {
+			return i
+		}
+	}
+	return -1
 }
 
 // pause waits out the configured per-phase delay, honouring cancellation.
@@ -69,6 +147,21 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 			_ = e.projects.SetTitle(ctx, j.ProjectID, id.Title)
 		}
 	}
+
+	// With a forge configured, create the reproduction's repository up front and
+	// record the resolved identity into it, so the run can mount it and commit
+	// live (006i). The name is allocated collision-free through the registry.
+	// RepoName is set on the job here and persisted at the transition into
+	// running, so it is durable before the mount and survives a restart.
+	if e.gh != nil && j.RepoName == "" {
+		name, err := e.gh.Prepare(ctx, e.owner, id)
+		if err != nil {
+			return err
+		}
+		// Best-effort: publish falls back to re-resolving if this did not land.
+		_ = publish.RecordIdentity(ctx, e.gh, e.owner, name, id)
+		j.RepoName = e.owner + "/" + name
+	}
 	return nil
 }
 
@@ -76,7 +169,14 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 // per job carries that job's observer.
 func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
 	e.pause(ctx)
-	auditor := audit.New(e.provider, e.method, audit.WithObserver(observe))
+	opts := []audit.Option{audit.WithObserver(observe)}
+	// With the repository created in resolving, mount it so the agent commits its
+	// reproduction into it live (006i); the mount is also the redistribution
+	// boundary — only what lands in it is published.
+	if e.gh != nil && j.RepoName != "" {
+		opts = append(opts, audit.WithMount(e.mountFor(j)))
+	}
+	auditor := audit.New(e.provider, e.method, opts...)
 	res, err := auditor.Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
 	if err != nil {
 		return err
@@ -107,13 +207,56 @@ func (e *engineRunner) Close(ctx context.Context, runID string) error {
 	return e.provider.CloseRun(ctx, provider.RunHandle{ID: runID})
 }
 
-// Publish is a pass-through in this build: the GitHub publish (006f) is not yet
-// packaged for the server, so a reproduction runs and is graded but is not
-// pushed to a repository. Wiring the mount publish here is the deployable
-// layer's next step.
-func (e *engineRunner) Publish(ctx context.Context, _ *job.Job) error {
+// Publish finalizes the live-mount reproduction (006i): the agent has already
+// committed its work into the mounted repository, so this verifies the committed
+// tree, writes the manifest, and commits the transcript beside it — the same
+// publish.FinalizeLive the CLI drives. With no forge, or a job that never got a
+// repository, it is a no-op and the session's transcript stays readable live.
+func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 	e.pause(ctx)
-	return nil
+	if e.gh == nil || j.RepoName == "" {
+		return nil
+	}
+	owner, name := splitRepo(j.RepoName)
+
+	// The verdict and the backend run id were observed onto the job during the
+	// run; reload the latest, since the phase transition did not carry them. A
+	// read failure fails the publish (which retries) rather than writing a
+	// manifest that records "unknown" for a run that actually passed — a wrong
+	// manifest would stick, since nothing re-finalizes once it is written.
+	cur, err := e.jobs.Get(ctx, j.ID)
+	if err != nil {
+		return fmt.Errorf("reload job status for publish: %w", err)
+	}
+	verdict := provider.GradeUnknown
+	if cur.Status.Verdict != nil {
+		verdict = cur.Status.Verdict.Grade
+	}
+	runID := cur.Status.RunID
+	if runID == "" {
+		runID = j.Status.RunID
+	}
+
+	// Prefer the identity recorded in the repo (resolving wrote it); fall back to
+	// re-resolving only if it is absent, to avoid the paper source's rate limit.
+	id, ok, _ := publish.RecordedIdentity(ctx, e.gh, owner, name)
+	if !ok {
+		if rid, err := paper.Resolve(ctx, j.Ref, paper.WithFetcher(e.fetch)); err == nil {
+			id = rid
+		}
+	}
+
+	// Commit the transcript alongside the manifest. A momentary transcript
+	// failure must not block the manifest — publish it either way.
+	var events []provider.Event
+	if runID != "" {
+		if evs, err := e.provider.Transcript(ctx, provider.RunHandle{ID: runID}); err == nil {
+			events = evs
+		}
+	}
+
+	_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), verdict, events, time.Now)
+	return err
 }
 
 // liveTranscript reads a run's live event stream from the backend by its run id,

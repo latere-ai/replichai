@@ -12,12 +12,14 @@ import (
 
 // fakeRunner records which phase methods ran and can be made to fail at one.
 type fakeRunner struct {
-	mu       sync.Mutex
-	calls    []string
-	failAt   string
-	repo     string
-	observed provider.RunStatus
-	closed   []string // run ids Close was called with
+	mu          sync.Mutex
+	calls       []string
+	failAt      string
+	repo        string
+	resolveRepo string // when set, Resolve stamps it onto the job (the 006i handoff)
+	publishRepo string // the RepoName Publish observed — proves the handoff survived
+	observed    provider.RunStatus
+	closed      []string // run ids Close was called with
 }
 
 func (f *fakeRunner) record(s string) {
@@ -28,6 +30,9 @@ func (f *fakeRunner) record(s string) {
 
 func (f *fakeRunner) Resolve(_ context.Context, j *Job) error {
 	f.record("resolve")
+	if f.resolveRepo != "" {
+		j.RepoName = f.resolveRepo // set here, must be durable by the time Publish runs
+	}
 	if f.failAt == "resolve" {
 		return errors.New("resolve boom")
 	}
@@ -54,7 +59,12 @@ func (f *fakeRunner) Resume(_ context.Context, j *Job, observe func(provider.Run
 
 func (f *fakeRunner) Publish(_ context.Context, j *Job) error {
 	f.record("publish")
-	j.RepoName = f.repo
+	f.mu.Lock()
+	f.publishRepo = j.RepoName // capture what the phase handoff delivered
+	f.mu.Unlock()
+	if f.repo != "" {
+		j.RepoName = f.repo
+	}
 	if f.failAt == "publish" {
 		return errors.New("publish boom")
 	}
@@ -109,6 +119,27 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 				t.Errorf("work order = %v, want %v", r.calls, want)
 			}
 		})
+	}
+}
+
+// 006i: a RepoName set in Resolve is persisted at the transition into running
+// (apply copies it) and is therefore present by the time Publish runs — the
+// handoff the server's create-repo-in-resolve / finalize-in-publish depends on.
+func TestRepoNameFromResolveReachesPublish(t *testing.T) {
+	s := NewMemStore()
+	r := &fakeRunner{resolveRepo: "open-hai/created-in-resolve"} // repo stays "" so Publish won't clobber
+	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "p", "")
+
+	drained(t, NewWorker(s, r))
+
+	r.mu.Lock()
+	saw := r.publishRepo
+	r.mu.Unlock()
+	if saw != "open-hai/created-in-resolve" {
+		t.Errorf("Publish saw RepoName %q, want the name Resolve set", saw)
+	}
+	if got, _ := s.Get(context.Background(), j.ID); got.RepoName != "open-hai/created-in-resolve" {
+		t.Errorf("stored RepoName = %q, want it durable from Resolve", got.RepoName)
 	}
 }
 
@@ -178,11 +209,11 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
-	_, _, _ = s.Claim(ctx)                                                 // -> resolving
-	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)                            // reached running
-	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})    // id observed before the "crash"
+	_, _, _ = s.Claim(ctx)                                                                  // -> resolving
+	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" }) // running, repo created pre-crash
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})                     // id observed before the "crash"
 
-	r := &fakeRunner{repo: "open-hai/x"}
+	r := &fakeRunner{} // repo stays "" so the pre-crash RepoName survives to Publish
 	resumed, failed, err := NewWorker(s, r).Reconcile(ctx)
 	if err != nil || resumed != 1 || failed != 0 {
 		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 1/0/nil", resumed, failed, err)
@@ -206,6 +237,11 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 	}
 	if len(r.closed) != 0 {
 		t.Errorf("a live run should be rejoined, not closed; closed=%v", r.closed)
+	}
+	// The repository created before the crash reaches Publish on resume, so a
+	// restart finalizes to it rather than silently losing the publish.
+	if r.publishRepo != "open-hai/live" {
+		t.Errorf("resumed Publish saw RepoName %q, want the pre-crash name", r.publishRepo)
 	}
 }
 
