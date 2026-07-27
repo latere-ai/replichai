@@ -48,13 +48,13 @@ func TestSeedBindAndRevoke(t *testing.T) {
 	s := NewMemStore()
 	admin := bootstrapAdmin(t, s)
 
-	if err := s.Grant(ctx, admin, "Seed@Example.com", TierSeed); err != nil {
+	if err := s.Grant(ctx, admin, "Seed@Example.com", TierUser); err != nil {
 		t.Fatalf("Grant: %v", err)
 	}
 
 	// First login binds the grant and admits.
 	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
-	if tier, ok, _ := s.Resolve(ctx, seed); !ok || tier != TierSeed {
+	if tier, ok, _ := s.Resolve(ctx, seed); !ok || tier != TierUser {
 		t.Fatalf("seed should be admitted at first login, got %s/%v", tier, ok)
 	}
 
@@ -78,7 +78,7 @@ func TestSeedBindAndRevoke(t *testing.T) {
 func TestAdminOnlyOperations(t *testing.T) {
 	s := NewMemStore()
 	admin := bootstrapAdmin(t, s)
-	_ = s.Grant(ctx, admin, "seed@example.com", TierSeed)
+	_ = s.Grant(ctx, admin, "seed@example.com", TierUser)
 	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	_, _, _ = s.Resolve(ctx, seed) // bind
 
@@ -86,7 +86,7 @@ func TestAdminOnlyOperations(t *testing.T) {
 		name string
 		call func(Principal) error
 	}{
-		{"grant", func(p Principal) error { return s.Grant(ctx, p, "new@example.com", TierSeed) }},
+		{"grant", func(p Principal) error { return s.Grant(ctx, p, "new@example.com", TierUser) }},
 		{"revoke", func(p Principal) error { return s.Revoke(ctx, p, "seed@example.com") }},
 		{"list", func(p Principal) error { _, err := s.List(ctx, p); return err }},
 	} {
@@ -107,15 +107,15 @@ func TestAdminOnlyOperations(t *testing.T) {
 func TestGrantPromotesAndPreservesBinding(t *testing.T) {
 	s := NewMemStore()
 	admin := bootstrapAdmin(t, s)
-	_ = s.Grant(ctx, admin, "seed@example.com", TierSeed)
+	_ = s.Grant(ctx, admin, "seed@example.com", TierUser)
 	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
 	_, _, _ = s.Resolve(ctx, seed) // bind at seed
 
-	if err := s.Grant(ctx, admin, "seed@example.com", TierTrusted); err != nil {
+	if err := s.Grant(ctx, admin, "seed@example.com", TierAdmin); err != nil {
 		t.Fatalf("promote: %v", err)
 	}
 	// The same principal now resolves at the higher tier — binding preserved.
-	if tier, ok, _ := s.Resolve(ctx, seed); !ok || tier != TierTrusted {
+	if tier, ok, _ := s.Resolve(ctx, seed); !ok || tier != TierAdmin {
 		t.Errorf("promote should keep the binding and raise the tier, got %s/%v", tier, ok)
 	}
 }
@@ -137,12 +137,12 @@ func TestTierGrantedAndString(t *testing.T) {
 	if TierNone.Granted() {
 		t.Error("TierNone must not be granted")
 	}
-	for _, tr := range []Tier{TierSeed, TierTrusted, TierAdmin} {
+	for _, tr := range []Tier{TierUser, TierAdmin} {
 		if !tr.Granted() {
 			t.Errorf("%s should be granted", tr)
 		}
 	}
-	if TierAdmin.String() != "admin" || TierNone.String() != "none" {
+	if TierUser.String() != "user" || TierAdmin.String() != "admin" || TierNone.String() != "none" {
 		t.Error("tier strings are wrong")
 	}
 }

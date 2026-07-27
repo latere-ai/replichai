@@ -39,11 +39,11 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 		t.Fatalf("admin resolve = %s/%v", tier, ok)
 	}
 
-	if err := acc.Grant(ctx, admin, "seed@example.com", TierSeed); err != nil {
+	if err := acc.Grant(ctx, admin, "seed@example.com", TierUser); err != nil {
 		t.Fatalf("Grant: %v", err)
 	}
 	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
-	if tier, ok, _ := acc.Resolve(ctx, seed); !ok || tier != TierSeed {
+	if tier, ok, _ := acc.Resolve(ctx, seed); !ok || tier != TierUser {
 		t.Fatalf("seed bind = %s/%v", tier, ok)
 	}
 	// One-way: a second principal on the bound email is refused.
@@ -51,7 +51,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 		t.Error("a second principal on a bound email must be refused")
 	}
 	// Admin-only.
-	if err := acc.Grant(ctx, seed, "x@example.com", TierSeed); !errors.Is(err, ErrNotAdmin) {
+	if err := acc.Grant(ctx, seed, "x@example.com", TierUser); !errors.Is(err, ErrNotAdmin) {
 		t.Errorf("grant by seed user: want ErrNotAdmin, got %v", err)
 	}
 	// Revoke locks out.

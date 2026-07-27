@@ -17,7 +17,7 @@ func adminSetup(t *testing.T) (*Admin, httpapi.Identity, httpapi.Identity) {
 	_ = store.SeedAdmin(context.Background(), "admin@example.com")
 	admin := httpapi.Identity{Sub: "admin-sub", Email: "admin@example.com"}
 	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email})
-	_ = store.Grant(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email}, "seed@example.com", access.TierSeed)
+	_ = store.Grant(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email}, "seed@example.com", access.TierUser)
 	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com"}
 	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: seed.Sub, Email: seed.Email})
 	return NewAdmin(store), admin, seed
@@ -38,7 +38,7 @@ func TestAdminGrantRevokeList(t *testing.T) {
 
 	// Grant as admin.
 	w := httptest.NewRecorder()
-	admin.Grant(w, as(adminID, "POST", "/admin/access", `{"email":"new@example.com","tier":"trusted"}`))
+	admin.Grant(w, as(adminID, "POST", "/admin/access", `{"email":"new@example.com","tier":"user"}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("grant status = %d, want 200", w.Code)
 	}
@@ -59,12 +59,12 @@ func TestAdminGrantRevokeList(t *testing.T) {
 		t.Errorf("revoke status = %d, want 204", w.Code)
 	}
 
-	// A seed user is refused not_trusted on every admin op, server-side.
+	// A plain user is refused not_admin on every admin op, server-side.
 	for _, op := range []func(http.ResponseWriter, *http.Request){admin.List, admin.Grant, admin.Revoke} {
 		w = httptest.NewRecorder()
-		op(w, as(seedID, "POST", "/admin/access", `{"email":"x@example.com","tier":"seed"}`))
-		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not_trusted") {
-			t.Errorf("seed user admin op = %d %s, want 403 not_trusted", w.Code, w.Body.String())
+		op(w, as(seedID, "POST", "/admin/access", `{"email":"x@example.com","tier":"user"}`))
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not_admin") {
+			t.Errorf("user admin op = %d %s, want 403 not_admin", w.Code, w.Body.String())
 		}
 	}
 }
@@ -85,12 +85,13 @@ func TestAdminBadInput(t *testing.T) {
 }
 
 func TestParseTier(t *testing.T) {
-	for s, want := range map[string]access.Tier{"seed": access.TierSeed, "TRUSTED": access.TierTrusted, "admin": access.TierAdmin} {
+	for s, want := range map[string]access.Tier{"user": access.TierUser, "ADMIN": access.TierAdmin, " Admin ": access.TierAdmin} {
 		if got, ok := ParseTier(s); !ok || got != want {
 			t.Errorf("ParseTier(%q) = %s/%v", s, got, ok)
 		}
 	}
-	for _, bad := range []string{"", "none", "root"} {
+	// The removed tiers and the fail-safe "none" are not grantable.
+	for _, bad := range []string{"", "none", "seed", "trusted", "root"} {
 		if _, ok := ParseTier(bad); ok {
 			t.Errorf("ParseTier(%q) should be rejected", bad)
 		}

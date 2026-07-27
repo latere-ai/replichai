@@ -94,9 +94,9 @@ func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
 
 	// Conversely a granted seed user has no project role they were not given.
 	admin := bootstrapAdmin(t, grants)
-	_ = grants.Grant(ctx, admin, "seed@example.com", TierSeed)
+	_ = grants.Grant(ctx, admin, "seed@example.com", TierUser)
 	seed := Principal{Sub: "seed-sub", Email: "seed@example.com"}
-	if tier, ok, _ := grants.Resolve(ctx, seed); !ok || tier != TierSeed {
+	if tier, ok, _ := grants.Resolve(ctx, seed); !ok || tier != TierUser {
 		t.Fatal("precondition: seed user is granted")
 	}
 	if role, ok, _ := members.Role(ctx, seed, "proj-1"); ok || role != RoleNone {

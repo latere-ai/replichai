@@ -101,10 +101,10 @@ func run() error {
 		log.Printf("seeded platform admin: %s", email)
 	}
 	for _, email := range splitList(os.Getenv("SEED_EMAILS")) {
-		if err := accessStore.SeedGrant(ctx, email, access.TierSeed); err != nil {
+		if err := accessStore.SeedGrant(ctx, email, access.TierUser); err != nil {
 			return err
 		}
-		log.Printf("seeded seed user: %s", email)
+		log.Printf("seeded user: %s", email)
 	}
 
 	runner := &engineRunner{

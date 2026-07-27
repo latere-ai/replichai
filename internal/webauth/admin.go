@@ -66,10 +66,8 @@ func (a *Admin) Revoke(w http.ResponseWriter, r *http.Request) {
 // "none" (which is not a grantable tier).
 func ParseTier(s string) (access.Tier, bool) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "seed":
-		return access.TierSeed, true
-	case "trusted":
-		return access.TierTrusted, true
+	case "user":
+		return access.TierUser, true
 	case "admin":
 		return access.TierAdmin, true
 	default:
@@ -84,11 +82,11 @@ func principalFrom(r *http.Request) access.Principal {
 }
 
 // writeAdminError maps an access error to a status: a non-admin caller is
-// refused not_trusted, a missing email is a bad request, anything else a 500.
+// refused not_admin, a missing email is a bad request, anything else a 500.
 func writeAdminError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, access.ErrNotAdmin):
-		httpapi.WriteError(w, http.StatusForbidden, "not_trusted")
+		httpapi.WriteError(w, http.StatusForbidden, "not_admin")
 	case errors.Is(err, access.ErrNoEmail):
 		httpapi.WriteError(w, http.StatusBadRequest, "missing_email")
 	default:

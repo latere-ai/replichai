@@ -18,23 +18,27 @@ import (
 
 // Tier is what a principal may do on the platform. The zero value is TierNone —
 // not granted — so an unresolved principal is never mistaken for an operator.
+//
+// There are two grantable tiers, User and PlatformAdmin (006c). Values are
+// explicit and stable across this two-tier rework: an invited user stays 1 and
+// an admin stays 3, so no grant row is renumbered. Value 2 was the removed
+// "trusted" tier — publishing is now authorised by project ownership plus a
+// sign-off (006f), not a tier — and a defensive migration folds any stray 2 to
+// User.
 type Tier uint8
 
 // The tiers, in ascending authority.
 const (
-	TierNone    Tier = iota // signed in, not granted
-	TierSeed                // submit, watch, read; claim if a forge account is linked
-	TierTrusted             // all of seed, and flip a reproduction public
-	TierAdmin               // grant, revoke, promote, and all below
+	TierNone  Tier = 0 // signed in, not granted
+	TierUser  Tier = 1 // invited: own projects, submit, watch, read, invite, publish own
+	TierAdmin Tier = 3 // grant, revoke, promote — and all below
 )
 
 // String names the tier for logs and API responses.
 func (t Tier) String() string {
 	switch t {
-	case TierSeed:
-		return "seed"
-	case TierTrusted:
-		return "trusted"
+	case TierUser:
+		return "user"
 	case TierAdmin:
 		return "admin"
 	default:
@@ -43,7 +47,7 @@ func (t Tier) String() string {
 }
 
 // Granted reports whether the tier admits a principal to the operator surface.
-func (t Tier) Granted() bool { return t >= TierSeed }
+func (t Tier) Granted() bool { return t >= TierUser }
 
 // Principal is everything an authorisation decision may consume: the stable
 // subject and, for seeding a not-yet-bound grant, the IdP-authenticated email.
