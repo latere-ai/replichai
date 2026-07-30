@@ -19,8 +19,28 @@ const strings: Record<Lang, Record<string, string>> = {
     navPublic: 'Public registry',
     newProject: 'New project',
     settings: 'Settings',
-    signedInAs: 'Signed in as',
     access: 'Access',
+    loading: 'Loading…',
+    // platform admin (006n)
+    platform: 'Platform',
+    navAdmin: 'Admin',
+    adminIntro:
+      'Who may sign in, at what tier, and how much they may run. Everything here is seeded by email — nobody has to have signed in first, and a grant binds to them when they do.',
+    platformPolicy: 'Platform policy',
+    defaultQuota: 'Default session quota',
+    defaultQuotaHint:
+      'How many replication sessions an invited person may run. Completed and in-flight sessions count; a failed or stopped one is refunded. Platform admins are unlimited.',
+    policyUpdatedBy: 'Last changed by {who}',
+    people: 'People',
+    noGrants: 'Nobody is invited yet.',
+    grant: 'Grant',
+    revoke: 'Revoke',
+    grantHint: 'A granted person may sign in and create projects. Admins can also grant, revoke, and set platform policy.',
+    topup: 'Top up',
+    topupN: '+{n}',
+    topupPrompt: 'Extra sessions for {email}, above the platform default (0 removes the top-up):',
+    adminError: 'That change did not go through.',
+    adminNotAdmin: 'Only a platform admin may change this.',
     signOut: 'Sign out',
     theme: 'Theme',
     themeDark: 'Dark',
@@ -108,7 +128,7 @@ const strings: Record<Lang, Record<string, string>> = {
     remove: 'Remove',
     pending: 'pending',
     inviteError: 'Could not add the collaborator.',
-    // researcher profile (006k)
+    // researcher profile (006n)
     profileTitle: 'Researcher profile',
     profileIntro:
       'Who your published sign-offs are made under. It is not verified — the platform records the claim and binds it to your account — and it is only a starting point: what a published project reports is what you confirmed when you signed it.',
@@ -137,7 +157,7 @@ const strings: Record<Lang, Record<string, string>> = {
     publishNotClear: 'This project cannot be made public: its reproduction did not pass the redistribution check.',
     publishError: 'Could not make the project public.',
     attestationNote: 'Attestation v2 · recorded against your principal',
-    // publish wizard (006k)
+    // publish wizard (006n)
     publishStart: 'Make this project public…',
     publishStepOf: 'Step {n} of 3',
     publishStep1: 'What becomes public',
@@ -151,7 +171,7 @@ const strings: Record<Lang, Record<string, string>> = {
     publishSaveToProfile: 'Also save these details to my profile',
     continueStep: 'Continue',
     backStep: 'Back',
-    // the signed-off card (006k)
+    // the signed-off card (006n)
     signedOffBy: 'Signed off by',
     signedOffOn: 'on {when}',
     signedOffSigner: 'Signer',

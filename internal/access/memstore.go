@@ -89,6 +89,18 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 	return TierNone, false, nil
 }
 
+// EmailOf returns the email a bound principal came in on. It is a read of the
+// grant this principal is bound to — not a directory, and not an
+// authorisation decision: 006l's quota top-ups are keyed by email, and this is
+// how a payer known only by their sub is priced. An unbound principal yields
+// ok=false, never an error.
+func (s *MemStore) EmailOf(_ context.Context, principalSub string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	email, ok := s.principalEmail[principalSub]
+	return email, ok, nil
+}
+
 // Grant seeds or promotes a grant by email. Admin only.
 func (s *MemStore) Grant(ctx context.Context, byAdmin Principal, email string, tier Tier) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {

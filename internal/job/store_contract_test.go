@@ -21,7 +21,7 @@ func runStoreContract(t *testing.T, s Store) {
 	ctx := context.Background()
 
 	// Enqueue and read back.
-	j, err := s.Enqueue(ctx, "sub", "arxiv:2302.03714", KindAudit, "proj", "")
+	j, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "arxiv:2302.03714", Kind: KindAudit, Project: "proj"})
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -55,7 +55,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// Observe records status in place, without a phase change.
-	obs, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
+	obs, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	if err := s.Observe(ctx, obs.ID, provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 7}}); err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -64,7 +64,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// A failure records its cause and lands in failed (submitted -> failed).
-	fj, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
+	fj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_ = s.Advance(ctx, fj.ID, PhaseFailed, func(jb *Job) { jb.Err = "boom" })
 	if got, _ := s.Get(ctx, fj.ID); got.Phase != PhaseFailed || got.Err != "boom" {
 		t.Errorf("failure: phase=%s err=%q", got.Phase, got.Err)
@@ -84,9 +84,9 @@ func runStoreContract(t *testing.T, s Store) {
 	// ListByPrincipal is scoped to one owner and newest-first. Enqueue two jobs
 	// for "owner" and one for a stranger, then assert the stranger's job never
 	// appears and the two are ordered newest-first.
-	first, _ := s.Enqueue(ctx, "owner", "ref-a", KindAudit, "", "")
-	second, _ := s.Enqueue(ctx, "owner", "ref-b", KindAudit, "", "")
-	_, _ = s.Enqueue(ctx, "stranger", "ref-c", KindAudit, "", "")
+	first, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-a", Kind: KindAudit})
+	second, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-b", Kind: KindAudit})
+	_, _ = s.Enqueue(ctx, Submission{Principal: "stranger", Ref: "ref-c", Kind: KindAudit})
 	mine, err := s.ListByPrincipal(ctx, "owner")
 	if err != nil {
 		t.Fatalf("ListByPrincipal: %v", err)
@@ -118,27 +118,27 @@ func runGuardContract(t *testing.T, s Store) {
 	const key = "arxiv:2302.03714"
 
 	// First session for the paper opens.
-	first, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key)
+	first, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projA", PaperKey: key})
 	if err != nil {
 		t.Fatalf("first enqueue: %v", err)
 	}
 
 	// A second, same paper same project, is refused — the accidental double-fire.
-	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key); !errors.Is(err, ErrActiveSession) {
+	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projA", PaperKey: key}); !errors.Is(err, ErrActiveSession) {
 		t.Errorf("same project double-fire: want ErrActiveSession, got %v", err)
 	}
 	// Same paper, a different project the same principal owns, is also refused —
 	// the per-principal guard that closes the bare-submit hole.
-	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projB", key); !errors.Is(err, ErrActiveSession) {
+	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projB", PaperKey: key}); !errors.Is(err, ErrActiveSession) {
 		t.Errorf("cross-project double-fire: want ErrActiveSession, got %v", err)
 	}
 	// A different paper in the same project is never blocked.
-	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", "arxiv:9999.99999"); err != nil {
+	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projA", PaperKey: "arxiv:9999.99999"}); err != nil {
 		t.Errorf("different paper blocked: %v", err)
 	}
 	// An empty key never guards (an experiment, or an unkeyable ref).
 	for i := 0; i < 2; i++ {
-		if _, err := s.Enqueue(ctx, "owner", "exp", KindExperiment, "projA", ""); err != nil {
+		if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "exp", Kind: KindExperiment, Project: "projA"}); err != nil {
 			t.Errorf("empty-key enqueue %d blocked: %v", i, err)
 		}
 	}
@@ -149,7 +149,7 @@ func runGuardContract(t *testing.T, s Store) {
 			t.Fatalf("advance first to %s: %v", p, err)
 		}
 	}
-	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projA", key); err != nil {
+	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projA", PaperKey: key}); err != nil {
 		t.Errorf("re-run after done blocked: %v", err)
 	}
 
@@ -157,15 +157,15 @@ func runGuardContract(t *testing.T, s Store) {
 	// terminal 'failed'), so the same paper can be stopped and resubmitted — the
 	// natural next action. Proven against the partial index, not just the mem check.
 	const key2 = "arxiv:1111.11111"
-	c1, _ := s.Enqueue(ctx, "owner", "ref", KindAudit, "projC", key2)
-	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projC", key2); !errors.Is(err, ErrActiveSession) {
+	c1, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projC", PaperKey: key2})
+	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projC", PaperKey: key2}); !errors.Is(err, ErrActiveSession) {
 		t.Errorf("pre-cancel double-fire: want ErrActiveSession, got %v", err)
 	}
 	got, err := s.Cancel(ctx, c1.ID)
 	if err != nil || got.Phase != PhaseFailed || got.Err != CancelCause {
 		t.Fatalf("Cancel = %+v err=%v; want failed/cancelled", got, err)
 	}
-	if _, err := s.Enqueue(ctx, "owner", "ref", KindAudit, "projC", key2); err != nil {
+	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projC", PaperKey: key2}); err != nil {
 		t.Errorf("resubmit after cancel blocked: %v", err)
 	}
 	// Cancelling an already-terminal session is a no-op, not an error.
@@ -181,10 +181,10 @@ func runProjectJoinContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	_, _ = s.Enqueue(ctx, "owner", "ref-1", KindAudit, "pX", "")
-	_, _ = s.Enqueue(ctx, "stranger", "ref-4", KindAudit, "pX", "")
-	_, _ = s.Enqueue(ctx, "owner", "ref-3", KindAudit, "pY", "")
-	two, _ := s.Enqueue(ctx, "owner", "ref-2", KindAudit, "pX", "") // newest in pX
+	_, _ = s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-1", Kind: KindAudit, Project: "pX"})
+	_, _ = s.Enqueue(ctx, Submission{Principal: "stranger", Ref: "ref-4", Kind: KindAudit, Project: "pX"})
+	_, _ = s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-3", Kind: KindAudit, Project: "pY"})
+	two, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-2", Kind: KindAudit, Project: "pX"}) // newest in pX
 
 	inX, err := s.ListByProject(ctx, "pX")
 	if err != nil {
@@ -228,7 +228,7 @@ func runClaimContention(t *testing.T, s Store) {
 	ctx := context.Background()
 	const n = 30
 	for i := 0; i < n; i++ {
-		if _, err := s.Enqueue(ctx, "sub", "ref", KindAudit, "", ""); err != nil {
+		if _, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}

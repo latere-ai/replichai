@@ -274,6 +274,22 @@ select:focus-visible {
   justify-content: center;
   font: 600 10px/1 var(--font-mono);
   color: var(--fg-2);
+  /* The same box holds an <img> or two initials, so a non-square picture is
+     cropped rather than distorted (006m). */
+  object-fit: cover;
+}
+.user-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-email.sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
 }
 .user-meta {
   display: flex;
@@ -710,6 +726,21 @@ h1.screen-title {
 .role-tag.pending {
   color: var(--warn);
 }
+.role-tag.admin {
+  color: var(--fg-1);
+}
+/* The admin console's policy field: a label, a narrow number, a save (006n). */
+.admin-label {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  align-self: center;
+  flex: 1;
+}
+input.text.quota-input {
+  width: 88px;
+  flex: none;
+  text-align: right;
+}
 .field-row {
   display: flex;
   gap: 8px;
@@ -1116,6 +1147,31 @@ input.submit-input {
   cursor: pointer;
   color: var(--fg-3);
 }
+/* The signed-in person, at the head of Settings (006m). */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.profile-id {
+  min-width: 0;
+}
+.profile-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-email {
+  font-size: 12px;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .usage-rows {
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -1362,7 +1418,7 @@ input.submit-input {
   font-weight: 600;
 }
 
-/* ── Publish wizard (006k) ── */
+/* ── Publish wizard (006n) ── */
 .modal-backdrop {
   position: fixed;
   inset: 0;

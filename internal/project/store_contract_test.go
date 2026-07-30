@@ -64,7 +64,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// SetPublic marks a project public and records the sign-off — including the
-	// signer snapshot (006k), which every implementation must round-trip whole,
+	// signer snapshot (006n), which every implementation must round-trip whole,
 	// since it is what a public page reports. ListPublic returns it (and never a
 	// private one). One-way — no un-publish path.
 	so := SignOff{
@@ -139,7 +139,7 @@ func TestMigrationBackfillsProjectsFromSessions(t *testing.T) {
 	}
 	js := job.NewPGStore(pool)
 	for _, slug := range []string{"paper-a", "paper-b", "paper-c"} {
-		j, err := js.Enqueue(ctx, "cli-owner", "ref-"+slug, job.KindAudit, slug, "")
+		j, err := js.Enqueue(ctx, job.Submission{Principal: "cli-owner", Ref: "ref-" + slug, Kind: job.KindAudit, Project: slug})
 		if err != nil {
 			t.Fatalf("seed %s: %v", slug, err)
 		}

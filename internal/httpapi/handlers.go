@@ -21,9 +21,14 @@ import (
 // it: the stable subject and the IdP-authenticated email. The gate consumes
 // these and nothing else. This package only reads the identity off the request;
 // who a principal *is* and what they may do stays 006c's concern.
+//
+// Name and Picture are display claims (006m), rendered and never consulted by
+// any authorisation decision. Both may be empty.
 type Identity struct {
-	Sub   string
-	Email string
+	Sub     string
+	Email   string
+	Name    string
+	Picture string
 }
 
 // identityKey carries the Identity on the request context.
@@ -72,6 +77,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
+	rt.gatedHandle("POST", "/projects/{id}/sponsor", rt.sponsorProject)
 	rt.gatedHandle("GET", "/projects/{id}/members", rt.listMembers)
 	rt.gatedHandle("POST", "/projects/{id}/members", rt.addMember)
 	rt.gatedHandle("DELETE", "/projects/{id}/members/{email}", rt.removeMember)
@@ -122,6 +128,11 @@ func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL     string `json:"url"`
 		Project string `json:"project"`
+		// ChargeTo picks whose quota this session spends (006l): "me" (the
+		// default) or "project", which draws the owner's and is allowed only in
+		// a project they have chosen to sponsor. The payer itself is always
+		// resolved server-side; a client never names a principal.
+		ChargeTo string `json:"charge_to"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
@@ -145,7 +156,7 @@ func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 		rt.submitToNewProject(w, r, owner, body.URL, paperKey)
 		return
 	}
-	rt.submitToExistingProject(w, r, owner, body.Project, body.URL, paperKey)
+	rt.submitToExistingProject(w, r, owner, body.Project, body.URL, paperKey, body.ChargeTo)
 }
 
 // submitToNewProject opens a fresh project and its first session. If the session
@@ -158,7 +169,7 @@ func (rt *Router) submitToNewProject(w http.ResponseWriter, r *http.Request, own
 		writeError(w, http.StatusInternalServerError, "project_create_failed")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), owner, url, job.KindAudit, proj.ID, paperKey)
+	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey})
 	if err != nil {
 		_ = rt.projects.Delete(r.Context(), proj.ID) // compensate: never leave an empty project
 		rt.writeEnqueueError(w, err)
@@ -167,9 +178,10 @@ func (rt *Router) submitToNewProject(w http.ResponseWriter, r *http.Request, own
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
 }
 
-// submitToExistingProject adds a session to a project the caller owns, refusing
-// a project they do not own and a paper already running in it.
-func (rt *Router) submitToExistingProject(w http.ResponseWriter, r *http.Request, owner, projectID, url, paperKey string) {
+// submitToExistingProject adds a session to a project the caller owns or
+// collaborates on, refusing a project they are neither of and a paper already
+// running in it. The payer is resolved here, never taken from the body.
+func (rt *Router) submitToExistingProject(w http.ResponseWriter, r *http.Request, owner, projectID, url, paperKey, chargeTo string) {
 	proj, err := rt.projects.Get(r.Context(), projectID)
 	if errors.Is(err, project.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "project_not_found")
@@ -179,16 +191,52 @@ func (rt *Router) submitToExistingProject(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	if proj.Owner != owner {
+	if !rt.mayWorkInProject(r, proj, owner) {
 		writeError(w, http.StatusForbidden, "not_owner")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), owner, url, job.KindAudit, proj.ID, paperKey)
+	payer, ok := rt.resolvePayer(w, proj, owner, chargeTo)
+	if !ok {
+		return
+	}
+	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{
+		Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey, ChargedTo: payer,
+	})
 	if err != nil {
 		rt.writeEnqueueError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
+}
+
+// mayWorkInProject reports whether a caller may open a session in a project:
+// its owner, or a collaborator it was shared with. Reading a public project
+// does not confer this — spending someone's quota is not a read.
+func (rt *Router) mayWorkInProject(r *http.Request, p project.Project, sub string) bool {
+	if p.Owner == sub {
+		return true
+	}
+	if rt.members == nil {
+		return false
+	}
+	id, _ := IdentityFrom(r)
+	_, ok, _ := rt.members.Role(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, p.ID)
+	return ok
+}
+
+// resolvePayer turns the submitter's choice into a principal. "project" draws
+// the owner's quota and is allowed only where the owner turned sponsorship on;
+// anything else charges the submitter. The client picks between two options, it
+// never names a payer.
+func (rt *Router) resolvePayer(w http.ResponseWriter, p project.Project, submitter, chargeTo string) (string, bool) {
+	if strings.TrimSpace(chargeTo) != "project" {
+		return submitter, true
+	}
+	if !p.Sponsored {
+		writeError(w, http.StatusForbidden, "not_sponsored")
+		return "", false
+	}
+	return p.Owner, true
 }
 
 // writeEnqueueError maps an Enqueue failure to a status: the double-trigger
@@ -197,6 +245,8 @@ func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, job.ErrActiveSession):
 		writeError(w, http.StatusConflict, "active_session")
+	case errors.Is(err, job.ErrQuotaExceeded):
+		writeError(w, http.StatusPaymentRequired, "quota_exceeded")
 	case errors.Is(err, job.ErrEmptyRef):
 		writeError(w, http.StatusBadRequest, "missing_url")
 	default:
@@ -291,7 +341,7 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		res := SessionResult{URL: url}
 		if key, kErr := paper.Key(url); kErr != nil {
 			res.Error = "unresolvable_paper"
-		} else if j, eErr := rt.jobs.Enqueue(r.Context(), id.Sub, url, job.KindAudit, proj.ID, key); eErr != nil {
+		} else if j, eErr := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: id.Sub, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: key}); eErr != nil {
 			res.Error = enqueueErrorCode(eErr)
 		} else {
 			res.JobID = j.ID
@@ -367,12 +417,37 @@ func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, proj)
 }
 
+// sponsorProject records or withdraws the owner's standing consent to cover
+// their collaborators' sessions (006l). Owner-only: a collaborator can never
+// turn on an allowance that is not theirs to give.
+func (rt *Router) sponsorProject(w http.ResponseWriter, r *http.Request) {
+	proj, _, ok := rt.ownedProject(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		On bool `json:"on"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	if err := rt.projects.SetSponsored(r.Context(), proj.ID, body.On); err != nil {
+		writeError(w, http.StatusInternalServerError, "sponsor_failed")
+		return
+	}
+	proj.Sponsored = body.On
+	writeJSON(w, http.StatusOK, proj)
+}
+
 // enqueueErrorCode maps an Enqueue failure to the machine-readable code the
 // per-paper session result carries.
 func enqueueErrorCode(err error) string {
 	switch {
 	case errors.Is(err, job.ErrActiveSession):
 		return "active_session"
+	case errors.Is(err, job.ErrQuotaExceeded):
+		return "quota_exceeded"
 	case errors.Is(err, job.ErrEmptyRef):
 		return "missing_url"
 	default:
@@ -459,7 +534,7 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// getProfile returns the caller's researcher profile (006k) — the zero profile
+// getProfile returns the caller's researcher profile (006n) — the zero profile
 // before they have ever saved one, so the settings screen and the publish wizard
 // render the same way on first use as on every other.
 func (rt *Router) getProfile(w http.ResponseWriter, r *http.Request) {
@@ -512,7 +587,7 @@ func profileErrorCode(err error) (string, bool) {
 // makeProjectPublic is the owner's one-way public flip, gated by a responsibility
 // sign-off (006f). It refuses a non-owner (403), refuses a project none of whose
 // published sessions cleared 002's redistribution gate (409 not_clear), records
-// the sign-off with its signer snapshot (006k), marks the project public, and —
+// the sign-off with its signer snapshot (006n), marks the project public, and —
 // best-effort — flips the forge repository public when a publisher is wired.
 func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
@@ -530,7 +605,7 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		AttestationVersion string `json:"attestation_version"`
-		// The signer, as the wizard confirmed them (006k). Prefilled from the
+		// The signer, as the wizard confirmed them (006n). Prefilled from the
 		// owner's profile in the UI, but recorded from this body: what is published
 		// is what they signed, not what their profile says later.
 		Name        string `json:"signed_off_name"`

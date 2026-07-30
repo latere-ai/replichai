@@ -30,7 +30,7 @@ No IDP-issued role, scope, org membership, or admin flag reaches an authorisatio
 
 - A row is `(email PK, principal, tier, granted_by, granted_at)`. An admin seeds by email someone who has never signed in.
 - On that person's first login, the row binds to their `sub` — matched on the IdP-authenticated email, and only until bound. **Binding is one-way:** once `principal` is set, email is never consulted for that row again, and a second principal presenting the same email is refused, not admitted onto someone else's grant.
-- The table is an ACL, not a user table: principal, a seed email, a tier. No name, no avatar — display data comes from `/userinfo` per request and is never stored. Rejected: an env-var email list — every grant would cost a redeploy and leave no record of who admitted whom.
+- The table is an ACL, not a user table: principal, a seed email, a tier. No name, no avatar — display data is read from `/userinfo` at the callback (the only moment an access token exists) and carried in the client-held sealed session cookie, never in a server table; it goes stale until the next sign-in and confers nothing ([006m](006m-the-signed-in-person.md)). Rejected: an env-var email list — every grant would cost a redeploy and leave no record of who admitted whom.
 
 **Two tiers gate the platform; publishing is not one of them.**
 

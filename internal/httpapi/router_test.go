@@ -247,7 +247,7 @@ func TestProjectListAndDetail(t *testing.T) {
 }
 
 // signOff is a well-formed sign-off body: an attestation version and the signer
-// snapshot 006k requires (a contact; the rest optional). signOffNoRepo is the
+// snapshot 006n requires (a contact; the rest optional). signOffNoRepo is the
 // same, opting the forge repository out of the flip.
 const (
 	signOff       = `{"attestation_version":"v2","signed_off_name":"Ada Lovelace","signed_off_institution":"LMU Munich","signed_off_contact":"ada@example.org"}`
@@ -381,7 +381,7 @@ func doAs(t *testing.T, h http.Handler, method, path, body string, id Identity) 
 	return w
 }
 
-// 006k AC1/AC2: the profile is the caller's own — read before it exists, saved
+// 006n AC1/AC2: the profile is the caller's own — read before it exists, saved
 // against the session's principal and never one named in the body, and refused
 // field by field when an identifier is malformed.
 func TestProfileAPI(t *testing.T) {
@@ -430,7 +430,7 @@ func TestProfileAPI(t *testing.T) {
 	}
 }
 
-// 006k AC3/AC4: the flip requires a contact, validates the signer snapshot with
+// 006n AC3/AC4: the flip requires a contact, validates the signer snapshot with
 // the profile's own rules, records what was signed, and derives the signer's
 // identity from the session — a body cannot name somebody else as the signer.
 func TestPublicFlipRecordsTheSigner(t *testing.T) {
@@ -485,7 +485,7 @@ func TestPublicFlipRecordsTheSigner(t *testing.T) {
 	}
 }
 
-// 006k AC5: the sign-off is a snapshot, not a view. Editing the profile after
+// 006n AC5: the sign-off is a snapshot, not a view. Editing the profile after
 // publishing must not change what the published project reports — the property
 // the whole design rests on.
 func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
@@ -513,12 +513,12 @@ func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
 	}
 }
 
-// 006k AC6: a project published before this spec (v1, no snapshot) reads back
+// 006n AC6: a project published before this spec (v1, no snapshot) reads back
 // with empty signer fields rather than failing — the read path must tolerate it.
 func TestV1SignOffHasNoSnapshot(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	p, _ := d.Projects.Create(context.Background(), "owner", "Signed before 006k")
+	p, _ := d.Projects.Create(context.Background(), "owner", "Signed before 006n")
 	if err := d.Projects.SetPublic(context.Background(), p.ID, project.SignOff{By: "owner", AttestationVersion: "v1"}); err != nil {
 		t.Fatalf("seed a v1 sign-off: %v", err)
 	}
@@ -644,7 +644,7 @@ func TestCancelSession(t *testing.T) {
 	d.Canceler = storeCanceler{jobs}
 	ctx := context.Background()
 	p, _ := d.Projects.Create(ctx, "me", "P")
-	j, _ := jobs.Enqueue(ctx, "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := jobs.Enqueue(ctx, job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	_, _, _ = jobs.Claim(ctx) // -> resolving (non-terminal)
 	h := NewRouter(d).Handler()
 
@@ -665,7 +665,7 @@ func TestCancelSession(t *testing.T) {
 func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job {
 	t.Helper()
 	ctx := context.Background()
-	j, err := s.Enqueue(ctx, sub, "ref", job.KindAudit, projectID, "arxiv:"+repo)
+	j, err := s.Enqueue(ctx, job.Submission{Principal: sub, Ref: "ref", Kind: job.KindAudit, Project: projectID, PaperKey: "arxiv:" + repo})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -687,7 +687,7 @@ func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job 
 func TestGetJob(t *testing.T) {
 	d := testDeps(allowAll)
 	p, _ := d.Projects.Create(context.Background(), "sub", "t")
-	j, _ := d.Jobs.Enqueue(context.Background(), "sub", "ref", job.KindAudit, p.ID, "")
+	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "sub", Ref: "ref", Kind: job.KindAudit, Project: p.ID})
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "sub"); w.Code != http.StatusOK {
@@ -712,7 +712,7 @@ func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Us
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	j, err := d.Jobs.Enqueue(ctx, sub, "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, err := d.Jobs.Enqueue(ctx, job.Submission{Principal: sub, Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -846,7 +846,7 @@ func TestSessionTranscriptNotReadyVsMissing(t *testing.T) {
 	d := testDeps(allowAll)
 	// A submitted session (in a real owned project) with no repository yet.
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
-	j, _ := d.Jobs.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me"); w.Code != http.StatusConflict {
@@ -876,7 +876,7 @@ func TestSessionTranscriptLive(t *testing.T) {
 	d.Jobs = store
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "thinking"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
-	j, _ := store.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	// Reach running with an observed backend run id — the in-flight state.
 	_, _, _ = store.Claim(context.Background())
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
@@ -911,7 +911,7 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 	d.Reproductions = &fakeRepro{}
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "live-not-committed"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
-	j, _ := store.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	_, _, _ = store.Claim(context.Background())
 	// Running, with a repo created in resolve AND a run id observed — the 006i state.
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, func(jb *job.Job) { jb.RepoName = "open-hai/r1" })
@@ -933,8 +933,8 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 // Another principal's jobs never appear, even through the same handler.
 func TestListMyJobs(t *testing.T) {
 	d := testDeps(allowAll)
-	mine, _ := d.Jobs.Enqueue(context.Background(), "me", "ref-mine", job.KindAudit, "", "")
-	_, _ = d.Jobs.Enqueue(context.Background(), "other", "ref-other", job.KindAudit, "", "")
+	mine, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref-mine", Kind: job.KindAudit})
+	_, _ = d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "other", Ref: "ref-other", Kind: job.KindAudit})
 	h := NewRouter(d).Handler()
 
 	w := do(t, h, "GET", "/jobs", "", "me")

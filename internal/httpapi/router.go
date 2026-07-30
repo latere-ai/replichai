@@ -51,7 +51,7 @@ var DenyAll Gate = GateFunc(func(*http.Request) (bool, string) { return false, "
 // store keeps engine construction in the composition root and out of the
 // handlers, which is what the no-engine-logic dependency test enforces.
 type JobStore interface {
-	Enqueue(ctx context.Context, principal, ref string, k job.Kind, project, paperKey string) (job.Job, error)
+	Enqueue(ctx context.Context, s job.Submission) (job.Job, error)
 	Get(ctx context.Context, id string) (job.Job, error)
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
@@ -81,12 +81,15 @@ type ProjectStore interface {
 	ListPublic(ctx context.Context) ([]project.Project, error)
 	Delete(ctx context.Context, id string) error
 	SetPublic(ctx context.Context, id string, s project.SignOff) error
+	// SetSponsored records the owner's standing consent to cover their
+	// collaborators' sessions (006l).
+	SetSponsored(ctx context.Context, id string, on bool) error
 	// SetTitle renames a project — naming it at create and the rename endpoint
 	// (006j). The worker also enriches a placeholder title through this.
 	SetTitle(ctx context.Context, id, title string) error
 }
 
-// ProfileStore is the researcher profile (006k): the identity a sign-off is
+// ProfileStore is the researcher profile (006n): the identity a sign-off is
 // prefilled from. It is only ever the caller's own — every handler passes the
 // principal off the session, never one out of a body — so this seam needs no
 // authorisation of its own.

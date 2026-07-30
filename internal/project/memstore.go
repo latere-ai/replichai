@@ -85,6 +85,19 @@ func (s *MemStore) SetTitle(_ context.Context, id, title string) error {
 	return nil
 }
 
+// SetSponsored records or withdraws the owner's standing consent.
+func (s *MemStore) SetSponsored(_ context.Context, id string, on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	p.Sponsored = on
+	s.projects[id] = p
+	return nil
+}
+
 // SetPublic marks a project public and records the sign-off. One-way.
 func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	s.mu.Lock()

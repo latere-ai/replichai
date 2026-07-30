@@ -50,7 +50,12 @@ ALTER TABLE projects ADD COLUMN signed_off_at       TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN attestation_version TEXT NOT NULL DEFAULT '';
 `},
 	{3, `
--- The signer snapshot (006k): who the owner said they were when they signed,
+-- The owner's standing consent to cover their members' sessions (006l). Off by
+-- default: sponsorship is always something the owner turned on.
+ALTER TABLE projects ADD COLUMN sponsored BOOLEAN NOT NULL DEFAULT false;
+`},
+	{4, `
+-- The signer snapshot (006n): who the owner said they were when they signed,
 -- copied onto the project rather than read from their profile, so a later
 -- profile edit never rewrites a published attestation. Every column defaults to
 -- empty, which is exactly what a v1 sign-off (signed before this spec) holds —

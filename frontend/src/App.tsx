@@ -10,9 +10,12 @@ import {
   getMe,
   getProfile,
   getProject,
+  getPlatformSettings,
   getReproduction,
   getTranscript,
+  grantAccess,
   listArtifacts,
+  listGrants,
   listMembers,
   listProjects,
   listPublic,
@@ -21,14 +24,19 @@ import {
   removeMember,
   renameProject,
   resolvePaper,
+  revokeAccess,
   saveProfile,
+  setPlatformSettings,
+  setTopup,
   submitPaper,
   watchJob,
   type ResolvedPaper,
   type Event,
+  type GrantView,
   type Job,
   type Me,
   type Member,
+  type PlatformSettings,
   type Profile,
   type Project,
   type ProjectView,
@@ -43,7 +51,7 @@ type I18n = ReturnType<typeof useI18n>
 
 // signerOf names the person who published a project. `owner` is an opaque OIDC
 // subject and means nothing to a reader, so the signer's recorded name is used
-// whenever the sign-off carries one (006k); a v1 sign-off has none and falls
+// whenever the sign-off carries one (006n); a v1 sign-off has none and falls
 // back to the principal, as it did before.
 const signerOf = (p: Project) => p.signed_off_name || p.owner
 
@@ -53,6 +61,7 @@ type View =
   | { name: 'public' }
   | { name: 'submit' }
   | { name: 'settings' }
+  | { name: 'admin' }
   | { name: 'project'; id: string; title?: string }
   | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string }
 
@@ -131,6 +140,7 @@ const Icon = {
   chev: 'm9 6 6 6-6 6',
   x: 'M6 6l12 12M18 6L6 18',
   pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
+  shield: 'M12 3l7 3v6c0 4-3 6.7-7 9-4-2.3-7-5-7-9V6Z',
 }
 
 function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }) {
@@ -173,12 +183,21 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
               <Svg d="globe" /> {t('navPublic')}
             </button>
           </div>
+          {isAdmin(me) && (
+            <div className="rail-group">
+              <div className="eyebrow">{t('platform')}</div>
+              <button className={'nav-btn' + (view.name === 'admin' ? ' active' : '')} onClick={() => setView({ name: 'admin' })}>
+                <Svg d={Icon.shield} /> {t('navAdmin')}
+              </button>
+            </div>
+          )}
         </div>
         <div className="rail-foot">
           <button className="user-btn" onClick={() => setView({ name: 'settings' })}>
-            <span className="user-avatar">{initials(me.email)}</span>
+            <Avatar me={me} size={26} />
             <span className="user-meta">
-              <span className="user-email">{me.email}</span>
+              {me.name && <span className="user-name">{me.name}</span>}
+              <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
               <span className="user-tier">{tierLabel(t, me.tier)}</span>
             </span>
           </button>
@@ -202,6 +221,7 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
         {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
         {view.name === 'submit' && <SubmitScreen i18n={i18n} onSubmitted={(id) => openProject(id)} />}
         {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />}
+        {view.name === 'admin' && <AdminScreen i18n={i18n} />}
         {view.name === 'project' && <ProjectScreen i18n={i18n} me={me} id={view.id} onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)} />}
         {view.name === 'session' && (
           <SessionScreen i18n={i18n} jobId={view.jobId} onBack={() => openProject(view.projectId, view.projectTitle)} />
@@ -214,7 +234,15 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
 function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: (v: View) => void }) {
   const { t } = i18n
   const root = () =>
-    view.name === 'public' ? t('navPublic') : view.name === 'submit' ? t('newProject') : view.name === 'settings' ? t('settings') : t('navProjects')
+    view.name === 'public'
+      ? t('navPublic')
+      : view.name === 'submit'
+        ? t('newProject')
+        : view.name === 'settings'
+          ? t('settings')
+          : view.name === 'admin'
+            ? t('navAdmin')
+            : t('navProjects')
   const rootView: View = view.name === 'public' ? { name: 'public' } : { name: 'projects' }
   return (
     <div className="crumb">
@@ -491,11 +519,14 @@ function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; 
         <h1 className="screen-title">{t('settings')}</h1>
       </div>
       <div className="card card-pad stack" style={{ maxWidth: 520 }}>
-        <div className="usage-rows">
-          <div className="usage-line">
-            {t('signedInAs')}
-            <span className="v">{me.email}</span>
+        <div className="profile-head">
+          <Avatar me={me} size={44} />
+          <div className="profile-id">
+            <div className="profile-name">{me.name ?? me.email}</div>
+            {me.name && <div className="profile-email">{me.email}</div>}
           </div>
+        </div>
+        <div className="usage-rows">
           <div className="usage-line">
             {t('access')}
             <span className="v">{tierLabel(t, me.tier)}</span>
@@ -528,7 +559,7 @@ function profileErrorText(t: I18n['t'], code: string) {
 }
 
 // ProfileCard edits the researcher identity a sign-off is published under
-// (006k). It is a default, not the record: what a published project reports is
+// (006n). It is a default, not the record: what a published project reports is
 // the snapshot taken when it was signed, so editing here changes nothing that is
 // already public.
 function ProfileCard({ i18n }: { i18n: I18n }) {
@@ -618,6 +649,185 @@ function ProfileFields({
           />
         </label>
       ))}
+    </div>
+  )
+}
+
+/* ─── Platform admin (006n) ─── */
+
+// isAdmin decides whether the Platform group renders. It decides nothing else:
+// every admin route is refused server-side by the tier guard and again by the
+// store, so hiding the tab is a courtesy, not the guard.
+export function isAdmin(me: Me): boolean {
+  return me.tier === 'admin'
+}
+
+// AdminScreen is the console: who may sign in, at what tier, with how much
+// headroom, and the platform-wide default they draw from.
+function AdminScreen({ i18n }: { i18n: I18n }) {
+  const { t } = i18n
+  const [people, setPeople] = useState<GrantView[] | null>(null)
+  const [settings, setSettings] = useState<PlatformSettings | null>(null)
+  const [err, setErr] = useState('')
+
+  const refresh = useCallback(() => {
+    listGrants()
+      .then((g) => setPeople(g ?? []))
+      .catch(() => setPeople([]))
+    getPlatformSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null))
+  }, [])
+  useEffect(refresh, [refresh])
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setErr('')
+    try {
+      await fn()
+      refresh()
+    } catch (e) {
+      setErr((e as Error).message === '403' ? t('adminNotAdmin') : t('adminError'))
+    }
+  }
+
+  return (
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('navAdmin')}</h1>
+        <p className="screen-desc">{t('adminIntro')}</p>
+      </div>
+      {err && <p className="err small">{err}</p>}
+      <div className="stack" style={{ maxWidth: 720 }}>
+        <PlatformPolicy i18n={i18n} settings={settings} onSave={(n) => run(() => setPlatformSettings({ default_session_quota: n }))} />
+        <PeopleCard
+          i18n={i18n}
+          people={people}
+          onGrant={(email, tier) => run(() => grantAccess(email, tier))}
+          onRevoke={(email) => run(() => revokeAccess(email))}
+          onTopup={(email, extra) => run(() => setTopup(email, extra))}
+        />
+      </div>
+    </div>
+  )
+}
+
+// PlatformPolicy edits the one platform-wide number: how many replication
+// sessions an invited person may run before an admin tops them up.
+function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: PlatformSettings | null; onSave: (n: number) => void }) {
+  const { t } = i18n
+  const [draft, setDraft] = useState('')
+  useEffect(() => {
+    if (settings) setDraft(String(settings.default_session_quota))
+  }, [settings])
+  const parsed = Number.parseInt(draft, 10)
+  const valid = Number.isInteger(parsed) && parsed >= 0
+  const dirty = !!settings && valid && parsed !== settings.default_session_quota
+
+  return (
+    <div className="card card-pad stack">
+      <span className="eyebrow">{t('platformPolicy')}</span>
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {t('defaultQuotaHint')}
+      </p>
+      <div className="field-row">
+        <label className="admin-label" htmlFor="default-quota">
+          {t('defaultQuota')}
+        </label>
+        <input
+          id="default-quota"
+          className="text quota-input"
+          type="number"
+          min={0}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button className="btn ghost" disabled={!dirty} onClick={() => onSave(parsed)}>
+          {t('save')}
+        </button>
+      </div>
+      {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
+    </div>
+  )
+}
+
+// PeopleCard is the whitelist: who may sign in, at what tier, with what
+// headroom. Everything here is seeded by email — nobody needs to have signed in
+// first, and a grant binds to them when they do.
+function PeopleCard({
+  i18n,
+  people,
+  onGrant,
+  onRevoke,
+  onTopup,
+}: {
+  i18n: I18n
+  people: GrantView[] | null
+  onGrant: (email: string, tier: 'user' | 'admin') => void
+  onRevoke: (email: string) => void
+  onTopup: (email: string, extra: number) => void
+}) {
+  const { t } = i18n
+  const [email, setEmail] = useState('')
+  const [tier, setTier] = useState<'user' | 'admin'>('user')
+
+  const invite = (e: React.FormEvent) => {
+    e.preventDefault()
+    const target = email.trim()
+    if (!target) return
+    onGrant(target, tier)
+    setEmail('')
+  }
+  const topup = (row: GrantView) => {
+    const next = window.prompt(t('topupPrompt', { email: row.email }), String(row.topup ?? 0))
+    if (next === null) return
+    const n = Number.parseInt(next, 10)
+    if (Number.isInteger(n) && n >= 0) onTopup(row.email, n)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <span className="eyebrow">{t('people')}</span>
+      </div>
+      {people === null ? (
+        <div className="empty">{t('loading')}</div>
+      ) : people.length === 0 ? (
+        <div className="empty">{t('noGrants')}</div>
+      ) : (
+        people.map((p) => (
+          <div key={p.email} className="member-row">
+            <span className="user-avatar">{initials(p.email)}</span>
+            <span className="member-email">{p.email}</span>
+            <span className={'role-tag' + (p.tier === 'admin' ? ' admin' : '')}>{tierLabel(t, p.tier)}</span>
+            {!p.bound && <span className="role-tag pending">{t('pending')}</span>}
+            <button className="btn ghost sm" onClick={() => topup(p)}>
+              {p.topup ? t('topupN', { n: String(p.topup) }) : t('topup')}
+            </button>
+            <button className="btn ghost sm" onClick={() => onRevoke(p.email)}>
+              {t('revoke')}
+            </button>
+          </div>
+        ))
+      )}
+      <form className="field-row" onSubmit={invite}>
+        <input
+          className="text"
+          style={{ flex: 1 }}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t('inviteEmail')}
+          spellCheck={false}
+        />
+        <select className="text" value={tier} onChange={(e) => setTier(e.target.value as 'user' | 'admin')}>
+          <option value="user">{t('tierUser')}</option>
+          <option value="admin">{t('tierAdmin')}</option>
+        </select>
+        <button className="btn ghost">{t('grant')}</button>
+      </form>
+      <div style={{ padding: '0 14px 12px' }}>
+        <span className="muted small">{t('grantHint')}</span>
+      </div>
     </div>
   )
 }
@@ -1160,7 +1370,7 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
 // PublishPanel is the entry to the public flip: a short summary and the button
 // that opens the wizard. The decision itself is never one click from a sidebar —
 // it is one-way, it opens the transcript and artifacts to everyone, and it puts
-// the signer's name behind the result (006k).
+// the signer's name behind the result (006n).
 function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
   const { t } = i18n
   const [open, setOpen] = useState(false)
@@ -1322,7 +1532,7 @@ function PublishWizard({
 
 // PublishedCard reports the recorded sign-off: who signed, where they were, and
 // how to reach them. A v1 sign-off carries no snapshot and shows the date line
-// alone, exactly as it did before 006k.
+// alone, exactly as it did before 006n.
 function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
   const { t } = i18n
   const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
@@ -1638,6 +1848,39 @@ function toggle(s: Set<string>, k: string) {
 function initials(email?: string) {
   if (!email) return '·'
   return email.slice(0, 2).toUpperCase()
+}
+
+// showsPicture decides between the IdP's picture and the initials fallback. It
+// is the whole rule of 006m AC4, kept pure so it is testable: no picture, a
+// picture that is not absolute https (the server already filters those, and the
+// client does not trust that it did), or one that failed to load, all fall back.
+export function showsPicture(picture: string | undefined, broken: boolean): boolean {
+  return !broken && !!picture && picture.startsWith('https://')
+}
+
+// Avatar renders the IdP's picture when there is one, and falls back to
+// initials — for an absent URL, and for one that fails to load (006m AC4). A
+// broken-image glyph would be worse than the two letters we had before.
+function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
+  const [broken, setBroken] = useState(false)
+  const style = { width: size, height: size, borderRadius: Math.round(size / 3.5) }
+  if (showsPicture(me.picture, broken)) {
+    return (
+      <img
+        className="user-avatar"
+        style={style}
+        src={me.picture}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    )
+  }
+  return (
+    <span className="user-avatar" style={{ ...style, fontSize: Math.round(size * 0.42) }}>
+      {initials(me.email)}
+    </span>
+  )
 }
 function tierLabel(t: I18n['t'], tier?: string) {
   return t('tier' + (tier ? tier[0].toUpperCase() + tier.slice(1) : 'None'))

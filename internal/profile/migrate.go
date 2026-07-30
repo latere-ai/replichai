@@ -15,7 +15,7 @@ var migrations = []struct {
 	sql     string
 }{
 	{1, `
--- One self-asserted researcher identity per principal (006k). Every field is
+-- One self-asserted researcher identity per principal (006n). Every field is
 -- optional at rest; the publish wizard is where a contact becomes required. No
 -- foreign key to access_grants: a profile is display data and grants nothing, so
 -- it must not depend on the ACL's shape.

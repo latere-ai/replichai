@@ -35,7 +35,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006j](006j-the-new-project-flow.md) makes "New project" a deliberate act — name it, preview each paper link (`POST /resolve`), start several papers at once, and invite collaborators, through a dedicated `POST /projects` (plus `PATCH /projects/{id}` rename).
 
-**Built:** [006k](006k-who-signed-off.md) gives the public sign-off a person — a researcher profile (name, institution, public contact, ORCID, Scholar) kept in settings, prefilled into a step-by-step publish wizard, and **snapshotted onto the project** so a later profile edit never rewrites a published attestation. The signer's own email is derived from the session and stored redacted; attestation v2.
+**Designed, not built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person top-ups) instead of `curl` and a redeploy; [006l](006l-the-session-quota.md) spends against the number it stores — one check inside `Enqueue`, in the inserting transaction, with standing-consent sponsorship for shared projects; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has.
+
+**Built:** [006n](006n-who-signed-off.md) gives the public sign-off a person — a researcher profile (name, institution, public contact, ORCID, Scholar) kept in settings, prefilled into a step-by-step publish wizard, and **snapshotted onto the project** so a later profile edit never rewrites a published attestation. The signer's own email is derived from the session and stored redacted; attestation v2.
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 

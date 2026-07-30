@@ -1,7 +1,7 @@
 // Package profile is who a principal says they are: the researcher identity a
 // public sign-off is published under — display name, institution, the contact
 // address the public may write to, and the scholarly identifiers that make an
-// attestation read as an endorsement rather than a username (006k).
+// attestation read as an endorsement rather than a username (006n).
 //
 // It is deliberately not part of internal/access. A grant is an authorisation
 // record and stores no display data; this is display data and grants nothing.
@@ -11,7 +11,7 @@
 // principal, never one named in a request body.
 //
 // A profile is only ever a *default*. What a published sign-off reports is the
-// snapshot copied onto the project when it was signed (006k), so editing a
+// snapshot copied onto the project when it was signed (006n), so editing a
 // profile never rewrites an attestation that is already public.
 package profile
 
@@ -41,7 +41,7 @@ var (
 
 // Profile is one principal's self-asserted researcher identity. Every field is
 // optional at rest — the publish wizard, not the store, is where a contact
-// becomes required (006k), because that requirement belongs to the act of
+// becomes required (006n), because that requirement belongs to the act of
 // publishing rather than to having a profile.
 type Profile struct {
 	Principal   string    `json:"-"` // the owning principal; never read from a body

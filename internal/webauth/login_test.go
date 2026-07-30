@@ -110,8 +110,8 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	// The ID token yields a sub but no email.
 	client := fakeOIDC{identity: oidclogin.Identity{Subject: "uuid-1", Raw: map[string]any{}}}
-	userInfo := func(_ context.Context, _ string) (string, error) {
-		return "hi@changkun.de", nil
+	userInfo := func(_ context.Context, _ string) (Profile, error) {
+		return Profile{Email: "hi@changkun.de"}, nil
 	}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, userInfo)
 
@@ -188,7 +188,7 @@ func TestMiddlewareSetsIdentityFromSession(t *testing.T) {
 func TestMeReportsTier(t *testing.T) {
 	store := access.NewMemStore()
 	_ = store.SeedAdmin(context.Background(), "admin@example.com")
-	me := Me(store)
+	me := Me(store, nil)
 
 	call := func(id *httpapi.Identity) map[string]any {
 		r := httptest.NewRequest("GET", "/me", nil)
