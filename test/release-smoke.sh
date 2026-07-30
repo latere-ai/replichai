@@ -52,11 +52,20 @@ pass "app shell served ($code)"
 
 # The gate must be fail-closed: an unauthenticated operator route is refused,
 # not served. This proves the production build is not running the dev bypass.
-code=$(curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/repro" -w '%{http_code}' "${BASE_URL}/reproductions") || fail "gate: curl failed"
+#
+# The probe must be a route that still EXISTS. It used to be /reproductions,
+# which 006f removed — and because the SPA catch-all serves the app shell for any
+# unmatched GET, the check then read 200 and reported an open gate on a release
+# whose gate was fine. So probe /projects (a live operator route) and require the
+# JSON refusal, not merely a status: an HTML shell with a 403 would be a
+# different bug, and a future removal must fail loudly rather than pass quietly.
+code=$(curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/gated" -w '%{http_code}' "${BASE_URL}/projects") || fail "gate: curl failed"
 case "$code" in
-  401|403) pass "gate is fail-closed on /reproductions ($code)" ;;
-  *) fail "gate: /reproductions returned $code, expected 401/403 — the dev bypass may be enabled in prod" ;;
+  401|403) : ;;
+  *) fail "gate: /projects returned $code, expected 401/403 — the dev bypass may be enabled in prod" ;;
 esac
+grep -q '"error"' "$tmp/gated" || fail "gate: /projects refused with $code but did not return the JSON error — is the route still registered?"
+pass "gate is fail-closed on /projects ($code)"
 
 if [ -n "$OUTPUT_MD" ]; then
   {
@@ -65,7 +74,7 @@ if [ -n "$OUTPUT_MD" ]; then
     echo "- commit: \`${COMMIT}\`"
     [ -n "$DEPLOY_URL" ] && echo "- deploy: ${DEPLOY_URL}"
     echo "- \`GET ${BASE_URL}/healthz\` → 200 \`$(cat "$tmp/health")\`"
-    echo "- \`GET ${BASE_URL}/reproductions\` → ${code} (fail-closed gate, no dev bypass)"
+    echo "- \`GET ${BASE_URL}/projects\` → ${code} (fail-closed gate, no dev bypass)"
   } > "$OUTPUT_MD"
 fi
 
