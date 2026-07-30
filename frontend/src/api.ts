@@ -6,6 +6,10 @@ export type Me = {
   principal?: string
   email?: string
   tier?: string
+  // Display claims from the IdP (006m): both optional, both purely cosmetic —
+  // the email stays the identifier everything binds on.
+  name?: string
+  picture?: string
 }
 
 export type Usage = { InputTokens: number; OutputTokens: number; CachedInputTokens: number }

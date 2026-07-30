@@ -20,9 +20,14 @@ import (
 // it: the stable subject and the IdP-authenticated email. The gate consumes
 // these and nothing else. This package only reads the identity off the request;
 // who a principal *is* and what they may do stays 006c's concern.
+//
+// Name and Picture are display claims (006m), rendered and never consulted by
+// any authorisation decision. Both may be empty.
 type Identity struct {
-	Sub   string
-	Email string
+	Sub     string
+	Email   string
+	Name    string
+	Picture string
 }
 
 // identityKey carries the Identity on the request context.

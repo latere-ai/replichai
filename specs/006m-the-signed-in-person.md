@@ -1,6 +1,6 @@
 # 006m — The signed-in person
 
-**Status:** designed.
+**Status:** built. `HTTPUserInfo` decodes `name`/`preferred_username`/`picture` beside the email; the callback seals them into the session and `safePicture` drops anything but an absolute `https` URL; `/me` reports them (omitted when absent, present for an ungranted principal); the rail footer and Settings render an `Avatar` that falls back to initials on an absent, non-https, or failed-to-load picture. 006c's text is amended to match. Covered by `internal/webauth/profile_test.go` and `frontend/src/profile.test.ts`.
 **Scope:** showing a researcher their own name and avatar instead of an email and two letters. It amends one sentence of [006c](006c-identity-and-access.md) and touches four files. A child of [006e](006e-frontend.md).
 **Depends on:** [006c](006c-identity-and-access.md) (the OIDC callback, the sealed session cookie, `/me`).
 

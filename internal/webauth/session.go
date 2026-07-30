@@ -15,13 +15,22 @@ import (
 )
 
 // Session is what the login writes into the session cookie: the identity claims
-// the gate needs, and nothing else. It deliberately carries NO tier — the gate
-// re-resolves the grant on every request, so a revoked grant locks its holder
-// out immediately and no session caches authority (006c AC3). A structural test
-// enforces the absence of a tier field.
+// the gate needs, the display claims the shell renders, and nothing else. It
+// deliberately carries NO tier — the gate re-resolves the grant on every
+// request, so a revoked grant locks its holder out immediately and no session
+// caches authority (006c AC3). A structural test enforces the absence of a tier
+// field.
+//
+// Name and Picture are display data only (006m). They are kept here, in a
+// client-held sealed cookie, rather than in a server table: access_grants is an
+// ACL, not a user table. They confer nothing — no display claim reaches an
+// authorisation decision — and they go stale until the next sign-in, bounded by
+// sessionTTL.
 type Session struct {
-	Sub   string `json:"sub"`
-	Email string `json:"email"`
+	Sub     string `json:"sub"`
+	Email   string `json:"email"`
+	Name    string `json:"name,omitempty"`
+	Picture string `json:"picture,omitempty"`
 }
 
 // Cookie names. The __Host- prefix binds a cookie to Secure + Path=/ + no

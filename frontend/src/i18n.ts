@@ -19,7 +19,6 @@ const strings: Record<Lang, Record<string, string>> = {
     navPublic: 'Public registry',
     newProject: 'New project',
     settings: 'Settings',
-    signedInAs: 'Signed in as',
     access: 'Access',
     signOut: 'Sign out',
     theme: 'Theme',
