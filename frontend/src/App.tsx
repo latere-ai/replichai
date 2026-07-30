@@ -1339,15 +1339,24 @@ function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
         </a>
       ),
     })
-  if (project.signed_off_scholar)
+  if (project.signed_off_scholar) {
+    // The link text is the host, not the label again — a row reading
+    // "Scholar · Scholar" tells a reader nothing.
+    let host = project.signed_off_scholar
+    try {
+      host = new URL(project.signed_off_scholar).hostname
+    } catch {
+      /* keep the raw value if it will not parse */
+    }
     rows.push({
       label: t('signedOffScholar'),
       node: (
         <a href={project.signed_off_scholar} target="_blank" rel="noreferrer noopener">
-          {t('signedOffScholar')}
+          {host}
         </a>
       ),
     })
+  }
 
   return (
     <div className="card publish-panel">
