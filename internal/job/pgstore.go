@@ -24,17 +24,31 @@ const uniqueViolation = "23505"
 // CanTransition, and Claim uses SELECT … FOR UPDATE SKIP LOCKED so two workers
 // never take the same job.
 type PGStore struct {
-	pool  *pgxpool.Pool
-	clock func() time.Time
+	pool      *pgxpool.Pool
+	clock     func() time.Time
+	allowance Allowance // nil means unlimited
+}
+
+// PGOption configures a PGStore.
+type PGOption func(*PGStore)
+
+// WithPGAllowance meters submissions against a per-payer session quota (006l).
+// Without it the store is unlimited.
+func WithPGAllowance(a Allowance) PGOption {
+	return func(s *PGStore) { s.allowance = a }
 }
 
 // NewPGStore builds a store over a pgx pool.
-func NewPGStore(pool *pgxpool.Pool) *PGStore {
-	return &PGStore{pool: pool, clock: time.Now}
+func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
+	s := &PGStore{pool: pool, clock: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, charged_to, phase, status, repo_name, error, created_at, updated_at, phase_at`
 
 // scanJob reads one row in jobColumns order.
 func scanJob(row pgx.Row) (Job, error) {
@@ -43,7 +57,7 @@ func scanJob(row pgx.Row) (Job, error) {
 		statusRaw  []byte
 		phaseAtRaw []byte
 	)
-	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
+	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.ChargedTo, &j.Phase,
 		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
@@ -67,30 +81,75 @@ func scanJob(row pgx.Row) (Job, error) {
 // Enqueue inserts a new submitted job. A unique_violation on either partial
 // guard index (a non-terminal session for the same paper in this project, or
 // anywhere this principal owns) surfaces as ErrActiveSession — a 409, not a 500.
-func (s *PGStore) Enqueue(ctx context.Context, principal, ref string, k Kind, project, paperKey string) (Job, error) {
-	if strings.TrimSpace(ref) == "" {
+//
+// The quota check runs inside the same transaction as the insert, serialised
+// per payer by an advisory lock. Counting outside the transaction would be
+// racy: under READ COMMITTED two concurrent submits at the boundary each read
+// the other's uncommitted row as absent, and both would be admitted (006l AC2).
+func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
+	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
 	id, err := newID()
 	if err != nil {
 		return Job{}, err
 	}
+	payer := sub.Payer()
 	now := s.clock()
 	status, _ := json.Marshal(provider.RunStatus{})
 	phaseAt, _ := json.Marshal(map[Phase]time.Time{PhaseSubmitted: now})
 
-	row := s.pool.QueryRow(ctx, `
-		INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10)
-		RETURNING `+jobColumns,
-		id, k, principal, project, ref, paperKey, PhaseSubmitted, status, now, phaseAt)
-	j, err := scanJob(row)
+	var j Job
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := s.checkQuotaTx(ctx, tx, payer); err != nil {
+			return err
+		}
+		row := tx.QueryRow(ctx, `
+			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, charged_to, phase, status, repo_name, error, created_at, updated_at, phase_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'','',$10,$10,$11)
+			RETURNING `+jobColumns,
+			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, payer, PhaseSubmitted, status, now, phaseAt)
+		var err error
+		j, err = scanJob(row)
+		return err
+	})
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation &&
 		(pgErr.ConstraintName == "jobs_active_paper_project" || pgErr.ConstraintName == "jobs_active_paper_principal") {
 		return Job{}, ErrActiveSession
 	}
-	return j, err
+	if err != nil {
+		return Job{}, err
+	}
+	return j, nil
+}
+
+// checkQuotaTx refuses a submission past the payer's allowance, holding an
+// advisory lock on the payer for the rest of the transaction so a concurrent
+// submit for the same payer waits rather than double-counting.
+func (s *PGStore) checkQuotaTx(ctx context.Context, tx pgx.Tx, payer string) error {
+	if s.allowance == nil {
+		return nil
+	}
+	limit, unlimited, err := s.allowance(ctx, payer)
+	if err != nil {
+		return err
+	}
+	if unlimited {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, payer); err != nil {
+		return err
+	}
+	var used int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM jobs WHERE charged_to = $1 AND phase <> $2`, payer, PhaseFailed).Scan(&used); err != nil {
+		return err
+	}
+	if used >= limit {
+		return ErrQuotaExceeded
+	}
+	return nil
 }
 
 // Get returns one job by id.

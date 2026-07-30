@@ -50,7 +50,7 @@ var DenyAll Gate = GateFunc(func(*http.Request) (bool, string) { return false, "
 // store keeps engine construction in the composition root and out of the
 // handlers, which is what the no-engine-logic dependency test enforces.
 type JobStore interface {
-	Enqueue(ctx context.Context, principal, ref string, k job.Kind, project, paperKey string) (job.Job, error)
+	Enqueue(ctx context.Context, s job.Submission) (job.Job, error)
 	Get(ctx context.Context, id string) (job.Job, error)
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)

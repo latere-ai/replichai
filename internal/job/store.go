@@ -12,13 +12,44 @@ import (
 //
 // The queue is the table: a worker claims a submitted job and drives it through
 // the phases, writing each transition back. There is no external broker.
+// Submission is one request to open a session. It is a struct rather than a
+// widening positional signature: Project, PaperKey, and ChargedTo are all bare
+// strings, and getting two of them the wrong way round would be silent.
+type Submission struct {
+	// Principal is who submitted — the session's owner.
+	Principal string
+	// Ref is the paper reference or experiment reference being run.
+	Ref string
+	// Kind is what the job runs (an audit or an experiment).
+	Kind Kind
+	// Project is the project the session belongs to.
+	Project string
+	// PaperKey is the offline paper identity (006g). When non-empty it keys the
+	// double-trigger guard.
+	PaperKey string
+	// ChargedTo is the principal whose session quota this spends (006l). Empty
+	// means the submitter. It is always resolved server-side — a project's
+	// sponsor, or the submitter — and never taken from a client's request body.
+	ChargedTo string
+}
+
+// Payer is whose quota a submission spends: its explicit charge, or its
+// submitter when unset.
+func (s Submission) Payer() string {
+	if s.ChargedTo != "" {
+		return s.ChargedTo
+	}
+	return s.Principal
+}
+
 type Store interface {
 	// Enqueue records a new submission as a submitted job — a session in a
-	// project. paperKey is the offline paper identity (006g); when non-empty it
-	// keys the double-trigger guard, and a submit for a paper already running
-	// (in the project, or anywhere the principal owns) is refused with
-	// ErrActiveSession rather than opening a second concurrent run.
-	Enqueue(ctx context.Context, principal, ref string, k Kind, project, paperKey string) (Job, error)
+	// project. A submit for a paper already running (in the project, or anywhere
+	// the principal owns) is refused with ErrActiveSession rather than opening a
+	// second concurrent run; a submit past the payer's session quota is refused
+	// with ErrQuotaExceeded (006l). Both checks happen in the writing
+	// transaction, so neither is racy and neither can be skipped by a new caller.
+	Enqueue(ctx context.Context, s Submission) (Job, error)
 	// Get returns one job by id, or ErrNotFound.
 	Get(ctx context.Context, id string) (Job, error)
 	// ListByPrincipal returns a principal's own jobs, newest first, so a signed-in

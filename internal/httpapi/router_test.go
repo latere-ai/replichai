@@ -482,7 +482,7 @@ func TestCancelSession(t *testing.T) {
 	d.Canceler = storeCanceler{jobs}
 	ctx := context.Background()
 	p, _ := d.Projects.Create(ctx, "me", "P")
-	j, _ := jobs.Enqueue(ctx, "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := jobs.Enqueue(ctx, job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	_, _, _ = jobs.Claim(ctx) // -> resolving (non-terminal)
 	h := NewRouter(d).Handler()
 
@@ -503,7 +503,7 @@ func TestCancelSession(t *testing.T) {
 func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job {
 	t.Helper()
 	ctx := context.Background()
-	j, err := s.Enqueue(ctx, sub, "ref", job.KindAudit, projectID, "arxiv:"+repo)
+	j, err := s.Enqueue(ctx, job.Submission{Principal: sub, Ref: "ref", Kind: job.KindAudit, Project: projectID, PaperKey: "arxiv:" + repo})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -525,7 +525,7 @@ func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job 
 func TestGetJob(t *testing.T) {
 	d := testDeps(allowAll)
 	p, _ := d.Projects.Create(context.Background(), "sub", "t")
-	j, _ := d.Jobs.Enqueue(context.Background(), "sub", "ref", job.KindAudit, p.ID, "")
+	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "sub", Ref: "ref", Kind: job.KindAudit, Project: p.ID})
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "sub"); w.Code != http.StatusOK {
@@ -550,7 +550,7 @@ func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Us
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	j, err := d.Jobs.Enqueue(ctx, sub, "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, err := d.Jobs.Enqueue(ctx, job.Submission{Principal: sub, Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -684,7 +684,7 @@ func TestSessionTranscriptNotReadyVsMissing(t *testing.T) {
 	d := testDeps(allowAll)
 	// A submitted session (in a real owned project) with no repository yet.
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
-	j, _ := d.Jobs.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me"); w.Code != http.StatusConflict {
@@ -714,7 +714,7 @@ func TestSessionTranscriptLive(t *testing.T) {
 	d.Jobs = store
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "thinking"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
-	j, _ := store.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	// Reach running with an observed backend run id — the in-flight state.
 	_, _, _ = store.Claim(context.Background())
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
@@ -749,7 +749,7 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 	d.Reproductions = &fakeRepro{}
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "live-not-committed"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
-	j, _ := store.Enqueue(context.Background(), "me", "ref", job.KindAudit, p.ID, "arxiv:1")
+	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	_, _, _ = store.Claim(context.Background())
 	// Running, with a repo created in resolve AND a run id observed — the 006i state.
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, func(jb *job.Job) { jb.RepoName = "open-hai/r1" })
@@ -771,8 +771,8 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 // Another principal's jobs never appear, even through the same handler.
 func TestListMyJobs(t *testing.T) {
 	d := testDeps(allowAll)
-	mine, _ := d.Jobs.Enqueue(context.Background(), "me", "ref-mine", job.KindAudit, "", "")
-	_, _ = d.Jobs.Enqueue(context.Background(), "other", "ref-other", job.KindAudit, "", "")
+	mine, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref-mine", Kind: job.KindAudit})
+	_, _ = d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "other", Ref: "ref-other", Kind: job.KindAudit})
 	h := NewRouter(d).Handler()
 
 	w := do(t, h, "GET", "/jobs", "", "me")

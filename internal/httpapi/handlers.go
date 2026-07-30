@@ -160,7 +160,7 @@ func (rt *Router) submitToNewProject(w http.ResponseWriter, r *http.Request, own
 		writeError(w, http.StatusInternalServerError, "project_create_failed")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), owner, url, job.KindAudit, proj.ID, paperKey)
+	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey})
 	if err != nil {
 		_ = rt.projects.Delete(r.Context(), proj.ID) // compensate: never leave an empty project
 		rt.writeEnqueueError(w, err)
@@ -185,7 +185,7 @@ func (rt *Router) submitToExistingProject(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusForbidden, "not_owner")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), owner, url, job.KindAudit, proj.ID, paperKey)
+	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey})
 	if err != nil {
 		rt.writeEnqueueError(w, err)
 		return
@@ -293,7 +293,7 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		res := SessionResult{URL: url}
 		if key, kErr := paper.Key(url); kErr != nil {
 			res.Error = "unresolvable_paper"
-		} else if j, eErr := rt.jobs.Enqueue(r.Context(), id.Sub, url, job.KindAudit, proj.ID, key); eErr != nil {
+		} else if j, eErr := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: id.Sub, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: key}); eErr != nil {
 			res.Error = enqueueErrorCode(eErr)
 		} else {
 			res.JobID = j.ID
