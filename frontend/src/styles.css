@@ -726,6 +726,21 @@ h1.screen-title {
 .role-tag.pending {
   color: var(--warn);
 }
+.role-tag.admin {
+  color: var(--fg-1);
+}
+/* The admin console's policy field: a label, a narrow number, a save (006k). */
+.admin-label {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  align-self: center;
+  flex: 1;
+}
+input.text.quota-input {
+  width: 88px;
+  flex: none;
+  text-align: right;
+}
 .field-row {
   display: flex;
   gap: 8px;
