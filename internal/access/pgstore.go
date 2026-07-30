@@ -78,6 +78,21 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 	return tier, granted, err
 }
 
+// EmailOf returns the email a bound principal came in on — how a payer known
+// only by their sub is priced against email-keyed quota top-ups (006l). An
+// unbound principal yields ok=false, never an error.
+func (s *PGAccess) EmailOf(ctx context.Context, principalSub string) (string, bool, error) {
+	var email string
+	err := s.pool.QueryRow(ctx, `SELECT email FROM access_grants WHERE principal = $1`, principalSub).Scan(&email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return email, true, nil
+}
+
 // Grant seeds or promotes a grant by email. Admin only.
 func (s *PGAccess) Grant(ctx context.Context, byAdmin Principal, email string, tier Tier) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {

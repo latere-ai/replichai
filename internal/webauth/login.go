@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -178,10 +179,24 @@ func (l *Login) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// Quota is what a principal has spent and may spend, as /me reports it (006l).
+// The remaining allowance is rendered beside the "New project" button, so a
+// researcher sees the cost of the thing they are about to start.
+type Quota struct {
+	Used      int  `json:"used"`
+	Limit     int  `json:"limit"`
+	Unlimited bool `json:"unlimited"`
+}
+
+// QuotaFunc reports one principal's quota. Injected so this package does not
+// import the job or platform stores; nil leaves the field off /me entirely,
+// which is what an offline run with no quota wants.
+type QuotaFunc func(ctx context.Context, principalSub, email string) (Quota, error)
+
 // Me reports the current identity and its resolved tier. It sits OUTSIDE the
 // gate and always answers 200: an ungranted principal gets tier "none", which is
 // how the frontend learns to render the not-invited screen.
-func Me(acc access.Access) http.HandlerFunc {
+func Me(acc access.Access, quota QuotaFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := httpapi.IdentityFrom(r)
 		if !ok || id.Sub == "" {
@@ -203,6 +218,15 @@ func Me(acc access.Access) http.HandlerFunc {
 		}
 		if id.Picture != "" {
 			body["picture"] = id.Picture
+		}
+		// The quota is reported only for a granted principal: an ungranted one
+		// has nothing to spend, and the not-invited screen has nothing to show.
+		if quota != nil && tier.Granted() {
+			if q, err := quota(r.Context(), id.Sub, id.Email); err == nil {
+				body["quota"] = q
+			} else {
+				log.Printf("me: reading quota for %s: %v", id.Sub, err)
+			}
 		}
 		writeJSON(w, http.StatusOK, body)
 	}
