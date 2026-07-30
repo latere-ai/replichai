@@ -1,6 +1,6 @@
 # 006k — The platform admin console
 
-**Status:** designed.
+**Status:** built. `internal/platform` owns the single-row `platform_settings` (pinned by a check constraint, fail-closed to a compiled-in default) and the email-keyed `quota_topups`, with mem and Postgres stores against one contract test. `webauth.MountAdmin` registers every admin route behind `RequireTier(admin)` and returns the set, so a route added without the guard fails the test. The frontend Admin tab (rail group "Platform", admin-only) drives grant, promote, revoke, top-up, the policy row, and shows each person's used/limit. Verified against a real Postgres and by hand through the running app.
 **Scope:** the admin's own screen. A `platform_settings` row this deployment owns, per-person quota top-ups, and the frontend Admin tab that drives them together with the grant endpoints [006c](006c-identity-and-access.md) already built. It adds no authority model: admin tier is 006c's, and every route here is the same `RequireTier(admin)` shape. A child of [006](006-web-application.md).
 **Depends on:** [006c](006c-identity-and-access.md) (the tier, the grant endpoints, the store-level `requireAdmin` re-check), [006b](006b-job-model-and-persistence.md) (Postgres and the per-package migration idiom).
 **Consumed by:** [006l](006l-the-session-quota.md), which enforces the number this spec stores.
@@ -57,10 +57,11 @@ type Store interface {
     Settings(ctx context.Context) (Settings, error)              // fail-closed; no caller tier needed
     SetSettings(ctx context.Context, by access.Principal, s Settings) error
     SetTopup(ctx context.Context, by access.Principal, email string, extra int) error
-    Topups(ctx context.Context, by access.Principal) (map[string]int, error)
-    // Allowance is the effective cap for one email: default + topup, and the
-    // one place the two compose. Unlimited reports an admin (006l charges none).
-    Allowance(ctx context.Context, email string) (n int, unlimited bool, err error)
+    Topups(ctx context.Context, by access.Principal) ([]Topup, error)
+    // Allowance is the effective cap for one person: default + topup, and the
+    // one place the two compose. It takes a Principal, not a bare email,
+    // because the tier is half the answer — an admin is unlimited.
+    Allowance(ctx context.Context, p access.Principal) (n int, unlimited bool, err error)
 }
 ```
 
@@ -92,7 +93,7 @@ type Store interface {
 ## Out of scope
 
 - **Enforcing the number.** Counting sessions, holding a session against an allowance, sponsorship, and the remaining-quota display are [006l](006l-the-session-quota.md). This spec stores the policy; that one spends against it.
-- **The used/limit column in the grant table.** It needs 006l's counter; the table gains it there.
+- **The used/limit column in the grant table.** It needs 006l's counter, and landed with it: the column is composed here from the settings row and the top-up rather than read through `platform.Allowance`, because resolving an unbound grant by email would *bind* it — a read must never write.
 - **Retiring `ADMIN_EMAILS`/`SEED_EMAILS`.** The bootstrap stays: an empty database must still yield a first admin without a console to admit them.
 - **An audit log of admin actions.** `updated_by`/`granted_by` record the last writer, not a history. A real log is its own spec.
 - **Any second platform setting** (concurrency, model choice, feature flags). The table is shaped to take them; this spec adds one column.
