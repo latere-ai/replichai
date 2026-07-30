@@ -64,7 +64,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
-| `frontend/` | the researcher UI — bun + React, i18n en/zh (006e) |
+| `frontend/` | the researcher UI — bun + React, i18n scaffolding (English only today) (006e) |
 | `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers` |
 | `cmd/server` | the web app composition root: wires the engine + stores + gate, runs the worker + HTTP server (006a/b) |
 | `deploy/` + `.github/` | k8s kustomize (prod/staging) and the CI/release pipeline (010) |
