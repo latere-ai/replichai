@@ -175,7 +175,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.platform, sessionQuota(st), *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.platform, sessionQuota(st), st.jobs.Consumed, *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -199,14 +199,14 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, plat platform.Store, quota webauth.QuotaFunc, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, plat platform.Store, quota webauth.QuotaFunc, consumed webauth.ConsumedFunc, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	mux.HandleFunc("GET /me", webauth.Me(acc, quota))
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, consumed))
 
 	if dev {
 		// No OIDC locally: /login just returns to the app, already authenticated.

@@ -34,7 +34,7 @@ func mountedAdmin(t *testing.T) (*http.ServeMux, []httpapi.Route, access.Princip
 	}
 
 	mux := http.NewServeMux()
-	routes := MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc)))
+	routes := MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), nil))
 	return mux, routes, admin, user
 }
 

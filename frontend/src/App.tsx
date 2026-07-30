@@ -23,12 +23,14 @@ import {
   removeMember,
   renameProject,
   resolvePaper,
+  sponsorProject,
   revokeAccess,
   setPlatformSettings,
   setTopup,
   submitPaper,
   watchJob,
   type ResolvedPaper,
+  type ChargeTo,
   type Event,
   type GrantView,
   type Job,
@@ -37,6 +39,7 @@ import {
   type PlatformSettings,
   type Project,
   type ProjectView,
+  type Quota,
   type Reproduction,
   type Transcript,
   type Usage,
@@ -75,6 +78,12 @@ export default function App() {
   const [theme, toggleTheme] = useTheme()
   const [me, setMe] = useState<Me | null>(null)
 
+  // refreshMe re-reads the identity, and with it the remaining quota — called
+  // after anything that spends allowance, so the header never shows a stale
+  // surplus (006l).
+  const refreshMe = useCallback(() => {
+    getMe().then(setMe).catch(() => {})
+  }, [])
   useEffect(() => {
     getMe().then(setMe).catch(() => setMe({ authenticated: false }))
   }, [])
@@ -82,7 +91,7 @@ export default function App() {
   if (me === null) return <div className="center-load">…</div>
   if (!me.authenticated) return <SignIn i18n={i18n} />
   if ((me.tier ?? 'none') === 'none') return <NotInvited i18n={i18n} email={me.email ?? ''} />
-  return <Shell i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />
+  return <Shell i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} refreshMe={refreshMe} />
 }
 
 /* ─── Auth screens ─── */
@@ -148,7 +157,7 @@ function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }
   )
 }
 
-function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: string; toggleTheme: () => void }) {
+function Shell({ i18n, me, theme, toggleTheme, refreshMe }: { i18n: I18n; me: Me; theme: string; toggleTheme: () => void; refreshMe: () => void }) {
   const { t } = i18n
   const [view, setView] = useState<View>({ name: 'projects' })
   const openProject = (id: string, title?: string) => setView({ name: 'project', id, title })
@@ -201,6 +210,7 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
             <button className="icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light' : 'Dark'} aria-label="theme">
               <Svg d={Icon.moon} />
             </button>
+            <QuotaPill i18n={i18n} quota={me.quota} />
             <button className="btn" onClick={() => setView({ name: 'submit' })}>
               <Svg d={Icon.plus} size={13} w={2.1} /> {t('newProject')}
             </button>
@@ -209,10 +219,26 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
 
         {view.name === 'projects' && <ProjectsScreen i18n={i18n} onOpen={openProject} />}
         {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
-        {view.name === 'submit' && <SubmitScreen i18n={i18n} onSubmitted={(id) => openProject(id)} />}
+        {view.name === 'submit' && (
+          <SubmitScreen
+            i18n={i18n}
+            onSubmitted={(id) => {
+              refreshMe()
+              openProject(id)
+            }}
+          />
+        )}
         {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />}
         {view.name === 'admin' && <AdminScreen i18n={i18n} />}
-        {view.name === 'project' && <ProjectScreen i18n={i18n} me={me} id={view.id} onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)} />}
+        {view.name === 'project' && (
+          <ProjectScreen
+            i18n={i18n}
+            me={me}
+            id={view.id}
+            onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)}
+            onQuotaSpent={refreshMe}
+          />
+        )}
         {view.name === 'session' && (
           <SessionScreen i18n={i18n} jobId={view.jobId} onBack={() => openProject(view.projectId, view.projectTitle)} />
         )}
@@ -685,6 +711,7 @@ function PeopleCard({
             <span className="member-email">{p.email}</span>
             <span className={'role-tag' + (p.tier === 'admin' ? ' admin' : '')}>{tierLabel(t, p.tier)}</span>
             {!p.bound && <span className="role-tag pending">{t('pending')}</span>}
+            <span className="muted small mono">{p.unlimited ? '∞' : `${p.used}/${p.limit}`}</span>
             <button className="btn ghost sm" onClick={() => topup(p)}>
               {p.topup ? t('topupN', { n: String(p.topup) }) : t('topup')}
             </button>
@@ -784,11 +811,13 @@ function ProjectScreen({
   me,
   id,
   onOpenSession,
+  onQuotaSpent,
 }: {
   i18n: I18n
   me: Me
   id: string
   onOpenSession: (jobId: string, ref: string, projectTitle: string) => void
+  onQuotaSpent: () => void
 }) {
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
@@ -806,6 +835,12 @@ function ProjectScreen({
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // A submit spends allowance, so the header pill is re-read after one.
+  const onSpent = useCallback(() => {
+    refresh()
+    onQuotaSpent()
+  }, [refresh, onQuotaSpent])
 
   const isOwner = project != null && project.owner === me.principal
   // The latest published session (with a repository) backs the verdict and
@@ -856,7 +891,7 @@ function ProjectScreen({
       <div className="screen" style={{ animation: 'none' }}>
         {tab === 'sessions' && (
           <div className="stack">
-            {isOwner && <ProjectSubmit i18n={i18n} projectID={id} onSubmitted={refresh} />}
+            <ProjectSubmit i18n={i18n} me={me} project={project} onSubmitted={onSpent} />
             <div className="card">
               <div className="card-head">
                 <span className="eyebrow">{t('projectSessions')}</span>
@@ -877,7 +912,10 @@ function ProjectScreen({
         {tab === 'artifacts' && <ArtifactsTab i18n={i18n} session={published} />}
         {tab === 'people' && isOwner && (
           <div className="detail-grid">
-            <Members i18n={i18n} projectID={id} />
+            <div className="stack">
+              <Members i18n={i18n} projectID={id} />
+              <SponsorPanel i18n={i18n} project={project} onChanged={refresh} />
+            </div>
             {project.visibility === 'private' ? <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} /> : <PublishedCard i18n={i18n} project={project} />}
           </div>
         )}
@@ -1087,34 +1125,111 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
   )
 }
 
-function ProjectSubmit({ i18n, projectID, onSubmitted }: { i18n: I18n; projectID: string; onSubmitted: () => void }) {
+// QuotaPill shows what is left to spend, next to the button that spends it. An
+// admin (unlimited) gets no pill: there is no number to watch.
+function QuotaPill({ i18n, quota }: { i18n: I18n; quota?: Quota }) {
+  const { t } = i18n
+  if (!quota || quota.unlimited) return null
+  const left = Math.max(0, quota.limit - quota.used)
+  return (
+    <span className={'quota-pill' + (left === 0 ? ' out' : '')} title={t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}>
+      {t('quotaLeft', { n: String(left) })}
+    </span>
+  )
+}
+
+// submitErrLabel names why a submit was refused, so "you are out of sessions"
+// never reads as "something went wrong".
+function submitErrLabel(t: I18n['t'], status: string): string {
+  if (status === '409') return t('activeSession')
+  if (status === '402') return t('quotaExhausted')
+  if (status === '403') return t('notSponsored')
+  return t('submitError')
+}
+
+// ProjectSubmit adds a session to a project the caller owns or collaborates on.
+// In a sponsored project a collaborator chooses whose quota it spends; the
+// server resolves the payer either way.
+function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me; project: Project; onSubmitted: () => void }) {
   const { t } = i18n
   const [url, setUrl] = useState('')
+  const [chargeTo, setChargeTo] = useState<ChargeTo>('me')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const isOwner = project.owner === me.principal
+  // The choice exists only where it is real: someone else's project, which its
+  // owner has chosen to sponsor.
+  const mayCharge = !isOwner && !!project.sponsored
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!url.trim() || busy) return
     setBusy(true)
     setErr('')
     try {
-      await submitPaper(url.trim(), projectID)
+      await submitPaper(url.trim(), project.id, mayCharge ? chargeTo : 'me')
       setUrl('')
       onSubmitted()
     } catch (e) {
-      setErr((e as Error).message === '409' ? t('activeSession') : t('submitError'))
+      setErr(submitErrLabel(t, (e as Error).message))
     } finally {
       setBusy(false)
     }
   }
   return (
-    <form className="card card-pad" onSubmit={submit} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <input className="text" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t('addReplicationHint')} spellCheck={false} />
-      <button className="btn ghost" disabled={busy}>
-        {busy ? t('submitting') : t('addReplication')}
-      </button>
+    <form className="card card-pad stack" onSubmit={submit}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input className="text" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t('addReplicationHint')} spellCheck={false} />
+        <button className="btn ghost" disabled={busy}>
+          {busy ? t('submitting') : t('addReplication')}
+        </button>
+      </div>
+      {mayCharge && (
+        <div className="charge-row">
+          <span className="muted small">{t('chargeTo')}</span>
+          <label className="charge-opt">
+            <input type="radio" name="charge" checked={chargeTo === 'me'} onChange={() => setChargeTo('me')} />
+            <span>{t('chargeMine')}</span>
+          </label>
+          <label className="charge-opt">
+            <input type="radio" name="charge" checked={chargeTo === 'project'} onChange={() => setChargeTo('project')} />
+            <span>{t('chargeOwner')}</span>
+          </label>
+        </div>
+      )}
       {err && <span className="err small">{err}</span>}
     </form>
+  )
+}
+
+// SponsorPanel is the owner's standing consent to cover their collaborators'
+// sessions (006l). Off by default, and revocable at any time.
+function SponsorPanel({ i18n, project, onChanged }: { i18n: I18n; project: Project; onChanged: () => void }) {
+  const { t } = i18n
+  const [busy, setBusy] = useState(false)
+  const toggle = async (on: boolean) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await sponsorProject(project.id, on)
+      onChanged()
+    } catch {
+      /* the checkbox simply does not move */
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="card card-pad stack">
+      <span className="eyebrow">{t('sponsorTitle')}</span>
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {t('sponsorBody')}
+      </p>
+      <label className="affirm">
+        <input type="checkbox" checked={!!project.sponsored} disabled={busy} onChange={(e) => toggle(e.target.checked)} />
+        <span>{t('sponsorLabel')}</span>
+      </label>
+    </div>
   )
 }
 
