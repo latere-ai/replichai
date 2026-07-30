@@ -35,6 +35,27 @@ export type Project = {
   signed_off_by?: string
   signed_off_at?: string
   attestation_version?: string
+  // The signer, as they were when they signed (006k): a snapshot recorded at the
+  // flip, not a view of their profile — so these never change afterwards. Empty
+  // on a v1 sign-off, which predates them.
+  signed_off_name?: string
+  signed_off_institution?: string
+  signed_off_contact?: string
+  signed_off_orcid?: string
+  signed_off_scholar?: string
+  // Already redacted server-side; the signer's full address never reaches here.
+  signed_off_email?: string
+}
+
+// A researcher profile: who a sign-off is published under. Self-asserted and
+// unverified, always the caller's own, and only ever a default — the publish
+// wizard prefills from it and records what the owner confirms.
+export type Profile = {
+  display_name?: string
+  institution?: string
+  contact_email?: string
+  orcid?: string
+  scholar_url?: string
 }
 
 export type ProjectView = Project & { session_count: number; running: number; latest_phase?: string }
@@ -167,17 +188,42 @@ export const addMember = (id: string, email: string) =>
 export const removeMember = (id: string, email: string) =>
   fetch(`/projects/${id}/members/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
 
-// The current responsibility-attestation text version the sign-off records.
-export const ATTESTATION_VERSION = 'v1'
+// The caller's own researcher profile. getProfile answers an empty profile
+// before one is ever saved, so the settings screen renders the same on first use.
+export const getProfile = () => fetch('/me/profile').then(json<Profile>)
+export const saveProfile = (p: Profile) =>
+  fetch('/me/profile', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(p),
+  }).then(json<Profile>)
+
+// The current responsibility-attestation text version the sign-off records. v2
+// added the signer snapshot and the published contact, so the text a signer
+// affirms changed with it (006k).
+export const ATTESTATION_VERSION = 'v2'
+
+// The signer as the publish wizard confirmed them. The contact is required; the
+// rest are optional. The signer's own identity is not here — the server derives
+// it from the session, so it cannot be typed in.
+export type SignOff = {
+  signed_off_name?: string
+  signed_off_institution?: string
+  signed_off_contact: string
+  signed_off_orcid?: string
+  signed_off_scholar?: string
+}
 
 // makeProjectPublic is the owner's one-way public flip with a recorded sign-off.
 // flipRepo opts the GitHub repository into the flip (default); false keeps the
-// repo private while the in-app artifacts still go public.
-export const makeProjectPublic = (id: string, flipRepo = true) =>
+// repo private while the in-app artifacts still go public. It rejects with the
+// HTTP status, so the caller can tell a validation refusal (400) from a project
+// whose tree never cleared the gate (409).
+export const makeProjectPublic = (id: string, signOff: SignOff, flipRepo = true) =>
   fetch(`/projects/${id}/public`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ attestation_version: ATTESTATION_VERSION, flip_repo: flipRepo }),
+    body: JSON.stringify({ ...signOff, attestation_version: ATTESTATION_VERSION, flip_repo: flipRepo }),
   }).then(json<Project>)
 
 // getTranscript returns a session's trajectory and token usage. It rejects with

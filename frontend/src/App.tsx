@@ -8,6 +8,7 @@ import {
   getArtifact,
   getJob,
   getMe,
+  getProfile,
   getProject,
   getReproduction,
   getTranscript,
@@ -20,6 +21,7 @@ import {
   removeMember,
   renameProject,
   resolvePaper,
+  saveProfile,
   submitPaper,
   watchJob,
   type ResolvedPaper,
@@ -27,15 +29,23 @@ import {
   type Job,
   type Me,
   type Member,
+  type Profile,
   type Project,
   type ProjectView,
   type Reproduction,
+  type SignOff,
   type Transcript,
   type Usage,
 } from './api'
 import { useI18n } from './i18n'
 
 type I18n = ReturnType<typeof useI18n>
+
+// signerOf names the person who published a project. `owner` is an opaque OIDC
+// subject and means nothing to a reader, so the signer's recorded name is used
+// whenever the sign-off carries one (006k); a v1 sign-off has none and falls
+// back to the principal, as it did before.
+const signerOf = (p: Project) => p.signed_off_name || p.owner
 
 // A view is where the operator is. Navigation is state, not a router.
 type View =
@@ -283,7 +293,7 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row-title">{p.title}</div>
                   <div className="row-sub">
-                    {tab === 'shared' ? `${t('initiator')}: ${p.owner} · ` : ''}
+                    {tab === 'shared' ? `${t('initiator')}: ${signerOf(p)} · ` : ''}
                     {t('sessionCount', { n: String(p.session_count) })}
                   </div>
                 </div>
@@ -325,7 +335,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row-title">{p.title}</div>
                   <div className="row-sub">
-                    {t('initiator')}: {p.owner} · {t('sessionCount', { n: String(p.session_count) })}
+                    {t('initiator')}: {signerOf(p)} · {t('sessionCount', { n: String(p.session_count) })}
                   </div>
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
@@ -503,6 +513,111 @@ function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; 
           {t('signOut')}
         </a>
       </div>
+      <ProfileCard i18n={i18n} />
+    </div>
+  )
+}
+
+// profileErrorText maps a server validation code to the message for the field
+// that is wrong, so a refusal points somewhere rather than saying "invalid".
+function profileErrorText(t: I18n['t'], code: string) {
+  if (code.includes('invalid_contact')) return t('errInvalidContact')
+  if (code.includes('invalid_orcid')) return t('errInvalidOrcid')
+  if (code.includes('invalid_scholar')) return t('errInvalidScholar')
+  return t('profileSaveError')
+}
+
+// ProfileCard edits the researcher identity a sign-off is published under
+// (006k). It is a default, not the record: what a published project reports is
+// the snapshot taken when it was signed, so editing here changes nothing that is
+// already public.
+function ProfileCard({ i18n }: { i18n: I18n }) {
+  const { t } = i18n
+  const [p, setP] = useState<Profile | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    getProfile()
+      .then((got) => setP(got ?? {}))
+      .catch(() => setP({}))
+  }, [])
+
+  const set = (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setP((cur) => ({ ...(cur ?? {}), [k]: e.target.value }))
+    setSaved(false)
+    setErr('')
+  }
+
+  const save = async () => {
+    if (!p || busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      setP(await saveProfile(p))
+      setSaved(true)
+    } catch (e) {
+      setErr(profileErrorText(t, (e as Error).message))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!p) return null
+  return (
+    <div className="card card-pad stack" style={{ maxWidth: 520 }}>
+      <div>
+        <span className="eyebrow">{t('profileTitle')}</span>
+        <p className="muted small" style={{ lineHeight: 1.6, margin: '8px 0 0' }}>
+          {t('profileIntro')}
+        </p>
+      </div>
+      <ProfileFields i18n={i18n} p={p} set={set} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button className="btn" disabled={busy} onClick={save}>
+          {busy ? t('saving') : t('save')}
+        </button>
+        {saved && <span className="attestation">{t('profileSaved')}</span>}
+      </div>
+      {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
+    </div>
+  )
+}
+
+// ProfileFields is the one set of inputs shared by the settings form and the
+// publish wizard's step 2, so the two cannot drift in labels or order.
+function ProfileFields({
+  i18n,
+  p,
+  set,
+}: {
+  i18n: I18n
+  p: Profile
+  set: (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement>) => void
+}) {
+  const { t } = i18n
+  const fields: { k: keyof Profile; label: string; placeholder?: string; type?: string }[] = [
+    { k: 'display_name', label: t('profileName'), placeholder: t('profileNamePlaceholder') },
+    { k: 'institution', label: t('profileInstitution'), placeholder: t('profileInstitutionPlaceholder') },
+    { k: 'contact_email', label: t('profileContact'), placeholder: t('profileContactPlaceholder'), type: 'email' },
+    { k: 'orcid', label: t('profileOrcid'), placeholder: '0000-0002-1825-0097' },
+    { k: 'scholar_url', label: t('profileScholar'), placeholder: t('profileScholarPlaceholder') },
+  ]
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      {fields.map((f) => (
+        <label key={f.k} className="field">
+          {f.label}
+          <input
+            className="text"
+            type={f.type ?? 'text'}
+            value={p[f.k] ?? ''}
+            placeholder={f.placeholder}
+            onChange={set(f.k)}
+          />
+        </label>
+      ))}
     </div>
   )
 }
@@ -1042,50 +1157,198 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
   )
 }
 
+// PublishPanel is the entry to the public flip: a short summary and the button
+// that opens the wizard. The decision itself is never one click from a sidebar —
+// it is one-way, it opens the transcript and artifacts to everyone, and it puts
+// the signer's name behind the result (006k).
 function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
   const { t } = i18n
-  const [affirmed, setAffirmed] = useState(false)
-  const [flipRepo, setFlipRepo] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const publish = async () => {
-    if (!affirmed || busy) return
-    setBusy(true)
-    setErr('')
-    try {
-      await makeProjectPublic(projectID, flipRepo)
-      onPublished()
-    } catch (e) {
-      setErr((e as Error).message === '409' ? t('publishNotClear') : t('publishError'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const [open, setOpen] = useState(false)
   return (
     <div className="card publish-panel">
       <span className="eyebrow">{t('publishTitle')}</span>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
         {t('publishBody')}
       </p>
-      <label className="affirm">
-        <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
-        <span>{t('publishAffirm')}</span>
-      </label>
-      <label className="affirm">
-        <input type="checkbox" checked={flipRepo} onChange={(e) => setFlipRepo(e.target.checked)} />
-        <span>{t('flipRepoLabel')}</span>
-      </label>
-      <button className="btn" disabled={!affirmed || busy} onClick={publish}>
-        {busy ? t('submitting') : t('publishConfirm')}
+      <button className="btn" onClick={() => setOpen(true)}>
+        {t('publishStart')}
       </button>
       <span className="attestation">{t('attestationNote')}</span>
-      {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
+      {open && (
+        <PublishWizard
+          i18n={i18n}
+          projectID={projectID}
+          onClose={() => setOpen(false)}
+          onPublished={() => {
+            setOpen(false)
+            onPublished()
+          }}
+        />
+      )}
     </div>
   )
 }
 
+// PublishWizard walks the three commitments of going public: what becomes
+// public, who stands behind it, and the responsibility for it. Step 2 is
+// prefilled from the owner's profile but recorded from what they confirm here —
+// the sign-off is a snapshot, so a later profile edit cannot rewrite it.
+function PublishWizard({
+  i18n,
+  projectID,
+  onClose,
+  onPublished,
+}: {
+  i18n: I18n
+  projectID: string
+  onClose: () => void
+  onPublished: () => void
+}) {
+  const { t } = i18n
+  const [step, setStep] = useState(1)
+  const [p, setP] = useState<Profile>({})
+  const [toProfile, setToProfile] = useState(true)
+  const [affirmed, setAffirmed] = useState(false)
+  const [flipRepo, setFlipRepo] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    getProfile()
+      .then((got) => setP(got ?? {}))
+      .catch(() => setP({}))
+  }, [])
+
+  const set = (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setP((cur) => ({ ...cur, [k]: e.target.value }))
+    setErr('')
+  }
+
+  const hasContact = (p.contact_email ?? '').trim() !== ''
+
+  const publish = async () => {
+    if (!affirmed || busy) return
+    setBusy(true)
+    setErr('')
+    const signOff: SignOff = {
+      signed_off_name: p.display_name,
+      signed_off_institution: p.institution,
+      signed_off_contact: (p.contact_email ?? '').trim(),
+      signed_off_orcid: p.orcid,
+      signed_off_scholar: p.scholar_url,
+    }
+    try {
+      // Saving to the profile is a convenience for the next publish and must not
+      // decide this one, so its failure is swallowed rather than surfaced.
+      if (toProfile) await saveProfile(p).catch(() => undefined)
+      await makeProjectPublic(projectID, signOff, flipRepo)
+      onPublished()
+    } catch (e) {
+      const code = (e as Error).message
+      setErr(code === '409' ? t('publishNotClear') : code === '400' ? profileErrorText(t, code) : t('publishError'))
+      setStep(2)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="attestation">{t('publishStepOf', { n: String(step) })}</span>
+          <h2 className="modal-title">{step === 1 ? t('publishStep1') : step === 2 ? t('publishStep2') : t('publishStep3')}</h2>
+        </div>
+
+        <div className="modal-body">
+          {step === 1 && (
+            <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+              {t('publishBody')}
+            </p>
+          )}
+
+          {step === 2 && (
+            <>
+              <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+                {t('publishStep2Body')}
+              </p>
+              <ProfileFields i18n={i18n} p={p} set={set} />
+              <label className="affirm">
+                <input type="checkbox" checked={toProfile} onChange={(e) => setToProfile(e.target.checked)} />
+                <span>{t('publishSaveToProfile')}</span>
+              </label>
+              {!hasContact && <p className="muted small" style={{ margin: 0 }}>{t('publishContactRequired')}</p>}
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+                {t('publishAttestation')}
+              </p>
+              <label className="affirm">
+                <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
+                <span>{t('publishAffirm')}</span>
+              </label>
+              <label className="affirm">
+                <input type="checkbox" checked={flipRepo} onChange={(e) => setFlipRepo(e.target.checked)} />
+                <span>{t('flipRepoLabel')}</span>
+              </label>
+              <span className="attestation">{t('attestationNote')}</span>
+            </>
+          )}
+
+          {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
+        </div>
+
+        <div className="modal-foot">
+          <button className="btn ghost" onClick={step === 1 ? onClose : () => setStep(step - 1)}>
+            {step === 1 ? t('cancel') : t('backStep')}
+          </button>
+          {step < 3 ? (
+            <button className="btn" disabled={step === 2 && !hasContact} onClick={() => setStep(step + 1)}>
+              {t('continueStep')}
+            </button>
+          ) : (
+            <button className="btn" disabled={!affirmed || busy} onClick={publish}>
+              {busy ? t('submitting') : t('publishConfirm')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// PublishedCard reports the recorded sign-off: who signed, where they were, and
+// how to reach them. A v1 sign-off carries no snapshot and shows the date line
+// alone, exactly as it did before 006k.
 function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
   const { t } = i18n
+  const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
+  const rows: { label: string; node: React.ReactNode }[] = []
+  if (project.signed_off_email) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{project.signed_off_email}</span> })
+  if (project.signed_off_contact)
+    rows.push({ label: t('signedOffContact'), node: <a href={`mailto:${project.signed_off_contact}`}>{project.signed_off_contact}</a> })
+  if (project.signed_off_orcid)
+    rows.push({
+      label: t('signedOffOrcid'),
+      node: (
+        <a href={`https://orcid.org/${project.signed_off_orcid}`} target="_blank" rel="noreferrer noopener">
+          {project.signed_off_orcid}
+        </a>
+      ),
+    })
+  if (project.signed_off_scholar)
+    rows.push({
+      label: t('signedOffScholar'),
+      node: (
+        <a href={project.signed_off_scholar} target="_blank" rel="noreferrer noopener">
+          {t('signedOffScholar')}
+        </a>
+      ),
+    })
+
   return (
     <div className="card publish-panel">
       <span className="eyebrow">{t('publishTitle')}</span>
@@ -1093,8 +1356,26 @@ function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
         <span style={{ color: 'var(--ok)' }} className="mono">
           ✓
         </span>
-        {project.signed_off_at ? t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() }) : t('public')}
+        {when ? t('publishedNote', { when }) : t('public')}
       </div>
+      {project.signed_off_name && (
+        <div className="signer">
+          <div className="signer-name">
+            {t('signedOffBy')} <strong>{project.signed_off_name}</strong>
+          </div>
+          {project.signed_off_institution && <div className="signer-affil">{project.signed_off_institution}</div>}
+        </div>
+      )}
+      {rows.length > 0 && (
+        <div className="usage-rows">
+          {rows.map((r) => (
+            <div key={r.label} className="usage-line">
+              {r.label}
+              <span className="v">{r.node}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
