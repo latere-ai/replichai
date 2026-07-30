@@ -41,30 +41,39 @@ func DiscoverUserInfo(ctx context.Context, issuer string) (string, error) {
 }
 
 // HTTPUserInfo builds a UserInfoFunc that GETs the OIDC userinfo endpoint with
-// the access token and returns the email.
+// the access token and returns the profile: the email, and the two display
+// claims (006m). Roles, scopes, and org claims are not decoded at all — the
+// struct is the filter.
 func HTTPUserInfo(endpoint string) UserInfoFunc {
-	return func(ctx context.Context, accessToken string) (string, error) {
+	return func(ctx context.Context, accessToken string) (Profile, error) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
-			return "", err
+			return Profile{}, err
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return "", err
+			return Profile{}, err
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("userinfo: status %d", resp.StatusCode)
+			return Profile{}, fmt.Errorf("userinfo: status %d", resp.StatusCode)
 		}
 		var claims struct {
-			Email string `json:"email"`
+			Email             string `json:"email"`
+			Name              string `json:"name"`
+			PreferredUsername string `json:"preferred_username"`
+			Picture           string `json:"picture"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&claims); err != nil {
-			return "", err
+			return Profile{}, err
 		}
-		return claims.Email, nil
+		name := strings.TrimSpace(claims.Name)
+		if name == "" {
+			name = strings.TrimSpace(claims.PreferredUsername)
+		}
+		return Profile{Email: claims.Email, Name: name, Picture: claims.Picture}, nil
 	}
 }

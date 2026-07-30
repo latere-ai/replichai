@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -29,11 +30,21 @@ type OIDCClient interface {
 	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidclogin.Identity, error)
 }
 
-// UserInfoFunc fetches the email from the OIDC userinfo endpoint with an access
-// token. latere auth carries the sub in the ID token but the email (PII) only at
-// /userinfo, so the login fetches it there when the ID token has none. Behind a
-// function so it tests offline.
-type UserInfoFunc func(ctx context.Context, accessToken string) (email string, err error)
+// Profile is what /userinfo yields: the email the gate binds a grant on, and
+// the two display claims the shell renders (006m). Nothing else is decoded.
+type Profile struct {
+	Email   string
+	Name    string
+	Picture string
+}
+
+// UserInfoFunc fetches the profile from the OIDC userinfo endpoint with an
+// access token. latere auth carries the sub in the ID token but the email (PII)
+// only at /userinfo, so the login fetches it there when the ID token has none.
+// The access token is discarded with the rest of the callback, so this is the
+// one moment the profile can be read at all. Behind a function so it tests
+// offline.
+type UserInfoFunc func(ctx context.Context, accessToken string) (Profile, error)
 
 // Login is the OIDC login front door: a standard public PKCE flow, sealed
 // session and flow cookies, and the middleware that turns a session into an
@@ -119,10 +130,16 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess := sessionFromIdentity(id)
 	// The sub comes from the ID token; the email may live only at /userinfo
-	// (latere auth keeps PII out of the token). Fetch it when the token had none.
-	if sess.Email == "" && l.userInfo != nil {
-		if email, err := l.userInfo(r.Context(), tok.AccessToken); err == nil && email != "" {
-			sess.Email = email
+	// (latere auth keeps PII out of the token), and the display claims live only
+	// there. This is the only moment an access token exists, so the profile is
+	// read once here and carried in the session (006m) — a failure costs the name
+	// and avatar, never the sign-in.
+	if l.userInfo != nil {
+		if p, err := l.userInfo(r.Context(), tok.AccessToken); err == nil {
+			if sess.Email == "" && p.Email != "" {
+				sess.Email = p.Email
+			}
+			sess.Name, sess.Picture = p.Name, safePicture(p.Picture)
 		}
 	}
 
@@ -150,8 +167,10 @@ func (l *Login) Middleware(next http.Handler) http.Handler {
 			var s Session
 			if err := l.codec.Open(raw, &s); err == nil && s.Sub != "" {
 				r = r.WithContext(httpapi.WithIdentity(r.Context(), httpapi.Identity{
-					Sub:   s.Sub,
-					Email: s.Email,
+					Sub:     s.Sub,
+					Email:   s.Email,
+					Name:    s.Name,
+					Picture: s.Picture,
 				}))
 			}
 		}
@@ -170,21 +189,42 @@ func Me(acc access.Access) http.HandlerFunc {
 			return
 		}
 		tier, _, _ := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
-		writeJSON(w, http.StatusOK, map[string]any{
+		body := map[string]any{
 			"authenticated":   true,
 			"principal":       id.Sub,
 			"email":           id.Email,
 			"tier":            tier.String(),
 			"linked_accounts": map[string]string{}, // the forge link is 006f
-		})
+		}
+		// Display claims are reported for every authenticated caller, ungranted
+		// ones included, so the not-invited screen can greet a person (006m).
+		if id.Name != "" {
+			body["name"] = id.Name
+		}
+		if id.Picture != "" {
+			body["picture"] = id.Picture
+		}
+		writeJSON(w, http.StatusOK, body)
 	}
 }
 
 // sessionFromIdentity maps the verified ID token to the session, keeping only
-// sub and email. Roles, name, and every other claim are dropped — no IdP-issued
-// authority may reach a grant decision (006c AC1).
+// sub and email. Roles and every other claim are dropped — no IdP-issued
+// authority may reach a grant decision (006c AC1). The display claims are added
+// afterwards, from /userinfo, and confer nothing.
 func sessionFromIdentity(id oidclogin.Identity) Session {
 	return Session{Sub: id.Subject, Email: id.Email}
+}
+
+// safePicture keeps an avatar URL only when it is an absolute https URL. A
+// javascript: or data: value from the issuer must never reach an <img src>, and
+// an unusable value degrades to initials rather than a broken image (006m).
+func safePicture(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return ""
+	}
+	return u.String()
 }
 
 // safeNext allows only a same-site relative path, so ?next= cannot become an

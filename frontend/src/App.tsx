@@ -166,9 +166,10 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
         </div>
         <div className="rail-foot">
           <button className="user-btn" onClick={() => setView({ name: 'settings' })}>
-            <span className="user-avatar">{initials(me.email)}</span>
+            <Avatar me={me} size={26} />
             <span className="user-meta">
-              <span className="user-email">{me.email}</span>
+              {me.name && <span className="user-name">{me.name}</span>}
+              <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
               <span className="user-tier">{tierLabel(t, me.tier)}</span>
             </span>
           </button>
@@ -481,11 +482,14 @@ function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; 
         <h1 className="screen-title">{t('settings')}</h1>
       </div>
       <div className="card card-pad stack" style={{ maxWidth: 520 }}>
-        <div className="usage-rows">
-          <div className="usage-line">
-            {t('signedInAs')}
-            <span className="v">{me.email}</span>
+        <div className="profile-head">
+          <Avatar me={me} size={44} />
+          <div className="profile-id">
+            <div className="profile-name">{me.name ?? me.email}</div>
+            {me.name && <div className="profile-email">{me.email}</div>}
           </div>
+        </div>
+        <div className="usage-rows">
           <div className="usage-line">
             {t('access')}
             <span className="v">{tierLabel(t, me.tier)}</span>
@@ -1348,6 +1352,39 @@ function toggle(s: Set<string>, k: string) {
 function initials(email?: string) {
   if (!email) return '·'
   return email.slice(0, 2).toUpperCase()
+}
+
+// showsPicture decides between the IdP's picture and the initials fallback. It
+// is the whole rule of 006m AC4, kept pure so it is testable: no picture, a
+// picture that is not absolute https (the server already filters those, and the
+// client does not trust that it did), or one that failed to load, all fall back.
+export function showsPicture(picture: string | undefined, broken: boolean): boolean {
+  return !broken && !!picture && picture.startsWith('https://')
+}
+
+// Avatar renders the IdP's picture when there is one, and falls back to
+// initials — for an absent URL, and for one that fails to load (006m AC4). A
+// broken-image glyph would be worse than the two letters we had before.
+function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
+  const [broken, setBroken] = useState(false)
+  const style = { width: size, height: size, borderRadius: Math.round(size / 3.5) }
+  if (showsPicture(me.picture, broken)) {
+    return (
+      <img
+        className="user-avatar"
+        style={style}
+        src={me.picture}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    )
+  }
+  return (
+    <span className="user-avatar" style={{ ...style, fontSize: Math.round(size * 0.42) }}>
+      {initials(me.email)}
+    </span>
+  )
 }
 function tierLabel(t: I18n['t'], tier?: string) {
   return t('tier' + (tier ? tier[0].toUpperCase() + tier.slice(1) : 'None'))
