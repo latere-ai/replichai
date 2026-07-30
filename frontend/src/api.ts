@@ -200,6 +200,56 @@ export const getArtifact = (id: string, path: string) =>
     return r.text()
   })
 
+/* ─── Platform admin (006k) ─── */
+
+// GrantView is one row of the people table: the ACL row, whether it has bound
+// to a principal yet, and any quota headroom above the platform default.
+export type GrantView = {
+  email: string
+  tier: string
+  bound: boolean
+  granted_by?: string
+  granted_at?: string
+  topup?: number
+}
+
+export type PlatformSettings = {
+  default_session_quota: number
+  updated_by?: string
+  updated_at?: string
+}
+
+export const listGrants = () => fetch('/admin/access').then(json<GrantView[]>)
+
+// grantAccess seeds or promotes by email. The person need not have signed in:
+// the grant binds to them on first login.
+export const grantAccess = (email: string, tier: 'user' | 'admin') =>
+  fetch('/admin/access', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, tier }),
+  }).then(json<{ email: string; tier: string }>)
+
+export const revokeAccess = (email: string) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
+
+// setTopup gives one person headroom above the platform default; 0 removes it.
+export const setTopup = (email: string, extra: number) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}/quota`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ extra }),
+  }).then(json<{ email: string; extra: number }>)
+
+export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
+
+export const setPlatformSettings = (s: Pick<PlatformSettings, 'default_session_quota'>) =>
+  fetch('/admin/settings', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(s),
+  }).then(json<PlatformSettings>)
+
 const terminal = (phase: string) => phase === 'done' || phase === 'failed'
 
 // watchJob streams a job's progress over SSE, calling onJob on each update, and

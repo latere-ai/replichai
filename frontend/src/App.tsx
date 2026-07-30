@@ -9,9 +9,12 @@ import {
   getJob,
   getMe,
   getProject,
+  getPlatformSettings,
   getReproduction,
   getTranscript,
+  grantAccess,
   listArtifacts,
+  listGrants,
   listMembers,
   listProjects,
   listPublic,
@@ -20,13 +23,18 @@ import {
   removeMember,
   renameProject,
   resolvePaper,
+  revokeAccess,
+  setPlatformSettings,
+  setTopup,
   submitPaper,
   watchJob,
   type ResolvedPaper,
   type Event,
+  type GrantView,
   type Job,
   type Me,
   type Member,
+  type PlatformSettings,
   type Project,
   type ProjectView,
   type Reproduction,
@@ -43,6 +51,7 @@ type View =
   | { name: 'public' }
   | { name: 'submit' }
   | { name: 'settings' }
+  | { name: 'admin' }
   | { name: 'project'; id: string; title?: string }
   | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string }
 
@@ -121,6 +130,7 @@ const Icon = {
   chev: 'm9 6 6 6-6 6',
   x: 'M6 6l12 12M18 6L6 18',
   pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
+  shield: 'M12 3l7 3v6c0 4-3 6.7-7 9-4-2.3-7-5-7-9V6Z',
 }
 
 function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }) {
@@ -163,6 +173,14 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
               <Svg d="globe" /> {t('navPublic')}
             </button>
           </div>
+          {isAdmin(me) && (
+            <div className="rail-group">
+              <div className="eyebrow">{t('platform')}</div>
+              <button className={'nav-btn' + (view.name === 'admin' ? ' active' : '')} onClick={() => setView({ name: 'admin' })}>
+                <Svg d={Icon.shield} /> {t('navAdmin')}
+              </button>
+            </div>
+          )}
         </div>
         <div className="rail-foot">
           <button className="user-btn" onClick={() => setView({ name: 'settings' })}>
@@ -193,6 +211,7 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
         {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
         {view.name === 'submit' && <SubmitScreen i18n={i18n} onSubmitted={(id) => openProject(id)} />}
         {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />}
+        {view.name === 'admin' && <AdminScreen i18n={i18n} />}
         {view.name === 'project' && <ProjectScreen i18n={i18n} me={me} id={view.id} onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)} />}
         {view.name === 'session' && (
           <SessionScreen i18n={i18n} jobId={view.jobId} onBack={() => openProject(view.projectId, view.projectTitle)} />
@@ -205,7 +224,15 @@ function Shell({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: st
 function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: (v: View) => void }) {
   const { t } = i18n
   const root = () =>
-    view.name === 'public' ? t('navPublic') : view.name === 'submit' ? t('newProject') : view.name === 'settings' ? t('settings') : t('navProjects')
+    view.name === 'public'
+      ? t('navPublic')
+      : view.name === 'submit'
+        ? t('newProject')
+        : view.name === 'settings'
+          ? t('settings')
+          : view.name === 'admin'
+            ? t('navAdmin')
+            : t('navProjects')
   const rootView: View = view.name === 'public' ? { name: 'public' } : { name: 'projects' }
   return (
     <div className="crumb">
@@ -506,6 +533,185 @@ function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; 
         <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
           {t('signOut')}
         </a>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Platform admin (006k) ─── */
+
+// isAdmin decides whether the Platform group renders. It decides nothing else:
+// every admin route is refused server-side by the tier guard and again by the
+// store, so hiding the tab is a courtesy, not the guard.
+export function isAdmin(me: Me): boolean {
+  return me.tier === 'admin'
+}
+
+// AdminScreen is the console: who may sign in, at what tier, with how much
+// headroom, and the platform-wide default they draw from.
+function AdminScreen({ i18n }: { i18n: I18n }) {
+  const { t } = i18n
+  const [people, setPeople] = useState<GrantView[] | null>(null)
+  const [settings, setSettings] = useState<PlatformSettings | null>(null)
+  const [err, setErr] = useState('')
+
+  const refresh = useCallback(() => {
+    listGrants()
+      .then((g) => setPeople(g ?? []))
+      .catch(() => setPeople([]))
+    getPlatformSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null))
+  }, [])
+  useEffect(refresh, [refresh])
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setErr('')
+    try {
+      await fn()
+      refresh()
+    } catch (e) {
+      setErr((e as Error).message === '403' ? t('adminNotAdmin') : t('adminError'))
+    }
+  }
+
+  return (
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('navAdmin')}</h1>
+        <p className="screen-desc">{t('adminIntro')}</p>
+      </div>
+      {err && <p className="err small">{err}</p>}
+      <div className="stack" style={{ maxWidth: 720 }}>
+        <PlatformPolicy i18n={i18n} settings={settings} onSave={(n) => run(() => setPlatformSettings({ default_session_quota: n }))} />
+        <PeopleCard
+          i18n={i18n}
+          people={people}
+          onGrant={(email, tier) => run(() => grantAccess(email, tier))}
+          onRevoke={(email) => run(() => revokeAccess(email))}
+          onTopup={(email, extra) => run(() => setTopup(email, extra))}
+        />
+      </div>
+    </div>
+  )
+}
+
+// PlatformPolicy edits the one platform-wide number: how many replication
+// sessions an invited person may run before an admin tops them up.
+function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: PlatformSettings | null; onSave: (n: number) => void }) {
+  const { t } = i18n
+  const [draft, setDraft] = useState('')
+  useEffect(() => {
+    if (settings) setDraft(String(settings.default_session_quota))
+  }, [settings])
+  const parsed = Number.parseInt(draft, 10)
+  const valid = Number.isInteger(parsed) && parsed >= 0
+  const dirty = !!settings && valid && parsed !== settings.default_session_quota
+
+  return (
+    <div className="card card-pad stack">
+      <span className="eyebrow">{t('platformPolicy')}</span>
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {t('defaultQuotaHint')}
+      </p>
+      <div className="field-row">
+        <label className="admin-label" htmlFor="default-quota">
+          {t('defaultQuota')}
+        </label>
+        <input
+          id="default-quota"
+          className="text quota-input"
+          type="number"
+          min={0}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button className="btn ghost" disabled={!dirty} onClick={() => onSave(parsed)}>
+          {t('save')}
+        </button>
+      </div>
+      {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
+    </div>
+  )
+}
+
+// PeopleCard is the whitelist: who may sign in, at what tier, with what
+// headroom. Everything here is seeded by email — nobody needs to have signed in
+// first, and a grant binds to them when they do.
+function PeopleCard({
+  i18n,
+  people,
+  onGrant,
+  onRevoke,
+  onTopup,
+}: {
+  i18n: I18n
+  people: GrantView[] | null
+  onGrant: (email: string, tier: 'user' | 'admin') => void
+  onRevoke: (email: string) => void
+  onTopup: (email: string, extra: number) => void
+}) {
+  const { t } = i18n
+  const [email, setEmail] = useState('')
+  const [tier, setTier] = useState<'user' | 'admin'>('user')
+
+  const invite = (e: React.FormEvent) => {
+    e.preventDefault()
+    const target = email.trim()
+    if (!target) return
+    onGrant(target, tier)
+    setEmail('')
+  }
+  const topup = (row: GrantView) => {
+    const next = window.prompt(t('topupPrompt', { email: row.email }), String(row.topup ?? 0))
+    if (next === null) return
+    const n = Number.parseInt(next, 10)
+    if (Number.isInteger(n) && n >= 0) onTopup(row.email, n)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <span className="eyebrow">{t('people')}</span>
+      </div>
+      {people === null ? (
+        <div className="empty">{t('loading')}</div>
+      ) : people.length === 0 ? (
+        <div className="empty">{t('noGrants')}</div>
+      ) : (
+        people.map((p) => (
+          <div key={p.email} className="member-row">
+            <span className="user-avatar">{initials(p.email)}</span>
+            <span className="member-email">{p.email}</span>
+            <span className={'role-tag' + (p.tier === 'admin' ? ' admin' : '')}>{tierLabel(t, p.tier)}</span>
+            {!p.bound && <span className="role-tag pending">{t('pending')}</span>}
+            <button className="btn ghost sm" onClick={() => topup(p)}>
+              {p.topup ? t('topupN', { n: String(p.topup) }) : t('topup')}
+            </button>
+            <button className="btn ghost sm" onClick={() => onRevoke(p.email)}>
+              {t('revoke')}
+            </button>
+          </div>
+        ))
+      )}
+      <form className="field-row" onSubmit={invite}>
+        <input
+          className="text"
+          style={{ flex: 1 }}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t('inviteEmail')}
+          spellCheck={false}
+        />
+        <select className="text" value={tier} onChange={(e) => setTier(e.target.value as 'user' | 'admin')}>
+          <option value="user">{t('tierUser')}</option>
+          <option value="admin">{t('tierAdmin')}</option>
+        </select>
+        <button className="btn ghost">{t('grant')}</button>
+      </form>
+      <div style={{ padding: '0 14px 12px' }}>
+        <span className="muted small">{t('grantHint')}</span>
       </div>
     </div>
   )
