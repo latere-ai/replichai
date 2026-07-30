@@ -57,10 +57,11 @@ type Store interface {
     Settings(ctx context.Context) (Settings, error)              // fail-closed; no caller tier needed
     SetSettings(ctx context.Context, by access.Principal, s Settings) error
     SetTopup(ctx context.Context, by access.Principal, email string, extra int) error
-    Topups(ctx context.Context, by access.Principal) (map[string]int, error)
-    // Allowance is the effective cap for one email: default + topup, and the
-    // one place the two compose. Unlimited reports an admin (006l charges none).
-    Allowance(ctx context.Context, email string) (n int, unlimited bool, err error)
+    Topups(ctx context.Context, by access.Principal) ([]Topup, error)
+    // Allowance is the effective cap for one person: default + topup, and the
+    // one place the two compose. It takes a Principal, not a bare email,
+    // because the tier is half the answer — an admin is unlimited.
+    Allowance(ctx context.Context, p access.Principal) (n int, unlimited bool, err error)
 }
 ```
 
