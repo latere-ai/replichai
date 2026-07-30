@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -30,6 +31,7 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/registry"
@@ -88,11 +90,12 @@ func run() error {
 	}
 	log.Printf("provider: %s", prov.Name())
 
-	jobStore, projectStore, accessStore, memberStore, closeStores, err := openStores(ctx, *dbURL)
+	st, err := openStores(ctx, *dbURL)
 	if err != nil {
 		return err
 	}
-	defer closeStores()
+	defer st.close()
+	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
 
 	for _, email := range splitList(os.Getenv("ADMIN_EMAILS")) {
 		if err := accessStore.SeedGrant(ctx, email, access.TierAdmin); err != nil {
@@ -172,7 +175,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.platform, *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -196,16 +199,14 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, plat platform.Store, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	mux.HandleFunc("GET /me", webauth.Me(acc))
 
-	admin := webauth.NewAdmin(acc)
-	requireAdmin := webauth.RequireTier(acc, access.TierAdmin)
-	mux.Handle("GET /admin/access", requireAdmin(http.HandlerFunc(admin.List)))
-	mux.Handle("POST /admin/access", requireAdmin(http.HandlerFunc(admin.Grant)))
-	mux.Handle("DELETE /admin/access/{email}", requireAdmin(http.HandlerFunc(admin.Revoke)))
+	// Every admin route is mounted from one place and enumerated, so a route
+	// added without the tier guard fails 006k AC1 rather than shipping open.
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat))
 
 	if dev {
 		// No OIDC locally: /login just returns to the app, already authenticated.
@@ -267,22 +268,41 @@ type accessStore interface {
 	SeedGrant(ctx context.Context, email string, tier access.Tier) error
 }
 
-// openStores returns the job, project, and access stores over one Postgres pool
-// (or their in-memory equivalents), migrating each, with a matching close
-// function. The project migration runs after the job migration: its backfill
-// reads the jobs table.
-func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, accessStore, access.Membership, func(), error) {
+// stores is every persistence seam the server composes, so adding one is a
+// field rather than another return value on a six-value signature.
+type stores struct {
+	jobs     job.Store
+	projects project.Store
+	access   accessStore
+	members  access.Membership
+	platform platform.Store
+	close    func()
+}
+
+// openStores opens every store over one Postgres pool (or their in-memory
+// equivalents), migrating each. The project migration runs after the job
+// migration: its backfill reads the jobs table. The platform store is built
+// last because it re-checks admin tier through the access store.
+func openStores(ctx context.Context, dbURL string) (stores, error) {
 	if dbURL == "" {
 		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
-		return job.NewMemStore(), project.NewMemStore(), access.NewMemStore(), access.NewMemMembership(), func() {}, nil
+		acc := access.NewMemStore()
+		return stores{
+			jobs:     job.NewMemStore(),
+			projects: project.NewMemStore(),
+			access:   acc,
+			members:  access.NewMemMembership(),
+			platform: platform.NewMemStore(acc),
+			close:    func() {},
+		}, nil
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return stores{}, err
 	}
 	if err := waitForDB(ctx, pool); err != nil {
 		pool.Close()
-		return nil, nil, nil, nil, nil, err
+		return stores{}, err
 	}
 	for _, m := range []struct {
 		name string
@@ -291,14 +311,23 @@ func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, ac
 		{"job", job.Migrate},
 		{"access", access.Migrate},
 		{"project", project.Migrate}, // after job: its backfill reads jobs
+		{"platform", platform.Migrate},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			pool.Close()
-			return nil, nil, nil, nil, nil, err
+			return stores{}, fmt.Errorf("%s migrate: %w", m.name, err)
 		}
 	}
 	log.Printf("connected to Postgres and applied migrations")
-	return job.NewPGStore(pool), project.NewPGStore(pool), access.NewPGAccess(pool), access.NewPGMembership(pool), pool.Close, nil
+	acc := access.NewPGAccess(pool)
+	return stores{
+		jobs:     job.NewPGStore(pool),
+		projects: project.NewPGStore(pool),
+		access:   acc,
+		members:  access.NewPGMembership(pool),
+		platform: platform.NewPGStore(pool, acc),
+		close:    pool.Close,
+	}, nil
 }
 
 // waitForDB retries until Postgres accepts a connection, so the app can start
