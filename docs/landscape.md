@@ -99,18 +99,30 @@ spent **~$52.5k–75k per paper over 8 years**, and cut scope from 53 papers to 
 authors would not cooperate ([Nature](https://www.nature.com/articles/d41586-021-03691-0),
 [IFP cost analysis](https://ifp.org/how-much-should-we-spend-on-replication/)). DARPA SCORE
 closed in April 2026: 3,900 papers sampled, ~50% replication success, and data available for
-only 24%. No other programme published a per-paper cost, which is itself the finding — the
-field has no unit-economics discipline, and that is a gap a platform can supply.
+only 24%. We could not find a published per-paper cost for any other programme — not
+Psychology, not Many Labs, not SCORE — which is itself close to a finding: the field appears
+to have no unit-economics discipline, and that is a gap a platform can supply.
 
 ## The closest three
 
-**[VERITAS](https://arxiv.org/abs/2607.02931)** (U. Chicago, 3 Jul 2026). Extracts a paper's
-claims, runs the methodology, judges each claim against evidence, and emits an
-importance-weighted **"Replication Score"** plus a severity-rated fix log and a patched
-codebase, evaluated on 65 papers. Architecturally this is our loop. *How we differ:* it is a
-CLI research artifact with no ownership model, no publication surface, and no transcript as
-evidence — and it has no inner/outer boundary, so it has nothing to say about a paper whose
-claim rests on people.
+**[VERITAS](https://arxiv.org/abs/2607.02931)** (Liu, Tjiaranata & Tan, U. Chicago,
+3 Jul 2026). Abstract read directly. "Given a paper, a code repository, or both, VERITAS
+extracts the paper's claims, runs the methodology while resolving issues as they arise, and
+judges each claim against the evidence from experiment runs", returning "an
+importance-weighted Replication Score, a severity-rated log of every fix applied, and the
+patched codebase", evaluated on 65 papers "spanning computer science, social science,
+medicine, and astrophysics". It states its own gap plainly: "no general-purpose replication
+tool exists."
+
+Architecturally this is our loop, and it is the sharpest comparison we have. *How we differ:*
+it is a CLI research artifact with no ownership model and no publication surface; its fix log
+is a record of repairs, not the agent's full transcript published as the evidence behind a
+verdict; it is domain-agnostic where we are deliberately not; and it takes "a paper, a code
+repository, or both", which presumes released code — the assumption that fails for roughly
+99% of CHI papers. The abstract makes no mention of a human-versus-machine boundary or of
+sensitivity to how a paper is decomposed into claims. Both are absences from the abstract
+rather than confirmed absences from the paper; read the full text before relying on either
+in a pitch.
 
 **[I4R's AI Replication Engine](https://i4replication.org/the-ai-replication-engine-first-experiments-and-whats-next/)**
 (Institute for Replication, ongoing, NeurIPS 2026 target). Three agents — reproducibility,
@@ -134,7 +146,13 @@ papers](https://arxiv.org/abs/2607.02134)** (Jul 2026, per-claim evidence tracki
 **[AutoReproduce](https://github.com/AI9Stars/AutoReproduce)** (ACL 2026, mines cited
 references for implicit implementation detail — a technique worth stealing for step 4),
 and the live **[ICML 2026 Agent Reproduction Challenge](https://huggingface.co/spaces/ICML-2026-agent-repro/challenge)**
-(15 Jul – 2 Aug 2026, ~6,800 papers, 20,594 claim verdicts logged in 11 days). The benchmark
+(15 Jul – 2 Aug 2026, $4,000 in GPU credits, bring your own coding agent, claims from every
+ICML 2026 paper, logbooks reviewed by organisers rather than scored automatically, and
+coverage acknowledged upfront as "uneven" depending on code and data availability). One
+sweep reported ~6,800 papers and 20,594 logged verdicts; neither number survived a direct
+check of the writeup, so treat them as unconfirmed. The window closes 2 Aug 2026 and the
+logbooks are the field's only public record of what agents actually achieve on real papers
+at scale — worth capturing before it is archived. The benchmark
 set proper — PaperBench, CORE-Bench, SUPER, REPRO-Bench, SciReplicate-Bench, PRBench,
 ReplicatorBench, LMR-Bench, ResearchCodeBench, AutoExperiment — measures agents. It does not
 produce an artifact for a paper anyone owns. They are measurement competitors, not product
@@ -180,6 +198,16 @@ same paper decomposes into five components or seven across two runs, swinging th
 paper shows, that caveat. Our treatment of the rate as a footnote to the table is more
 defensible and less marketable, and that trade should be made deliberately rather than
 discovered later.
+
+**Publishing a negative verdict against named work is an open question we have not asked.**
+This research is the first evidence that better-funded players consider it a real risk: the
+frontier labs' avoidance of audit products turns on exactly this, and the incumbents' edge
+was described as mandate rather than technology — the standing to be the entity whose
+verdict counts. Our public zone ([006](../specs/006-web-application.md),
+[007](../specs/007-from-reproduction-to-replication.md)) assumes an owner may publish "this
+paper's inner loop is 40% reproduced" with the authors' names attached, and nothing in the
+design yet addresses author right-of-reply, correction, or the standing of a verdict nobody
+is obliged to accept. That is a spec-level question, not a paragraph, and it is unresolved.
 
 **The buyer is not yet a funding line.** No 2025–26 funder targets "AI agent audits
 reproducibility" as a category. The nearest fits are COS (infrastructure, NSF POSE-eligible),
