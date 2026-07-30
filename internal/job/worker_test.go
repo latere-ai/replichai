@@ -98,7 +98,7 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 		t.Run(string(k), func(t *testing.T) {
 			s := NewMemStore()
 			r := &fakeRunner{repo: "open-hai/x"}
-			j, _ := s.Enqueue(context.Background(), "sub", "ref", k, "proj", "")
+			j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: k, Project: "proj"})
 
 			drained(t, NewWorker(s, r))
 
@@ -128,7 +128,7 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 func TestRepoNameFromResolveReachesPublish(t *testing.T) {
 	s := NewMemStore()
 	r := &fakeRunner{resolveRepo: "open-hai/created-in-resolve"} // repo stays "" so Publish won't clobber
-	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "p", "")
+	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p"})
 
 	drained(t, NewWorker(s, r))
 
@@ -149,7 +149,7 @@ func TestRepoNameFromResolveReachesPublish(t *testing.T) {
 func TestProgressIsObservedOntoTheJob(t *testing.T) {
 	s := NewMemStore()
 	r := &fakeRunner{observed: provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 42}}}
-	j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "", "")
+	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	drained(t, NewWorker(s, r))
 
@@ -164,7 +164,7 @@ func TestWorkerFailurePhases(t *testing.T) {
 	for _, at := range []string{"resolve", "execute", "publish"} {
 		t.Run(at, func(t *testing.T) {
 			s := NewMemStore()
-			j, _ := s.Enqueue(context.Background(), "sub", "ref", KindAudit, "", "")
+			j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 			drained(t, NewWorker(s, &fakeRunner{failAt: at}))
 
 			got, _ := s.Get(context.Background(), j.ID)
@@ -184,11 +184,11 @@ func TestWorkerFailurePhases(t *testing.T) {
 func TestReconcileFailsUnrecoverable(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	stranded, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
+	stranded, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	if _, ok, _ := s.Claim(ctx); !ok { // -> resolving, no run id
 		t.Fatal("claim should have taken the job")
 	}
-	fresh, _ := s.Enqueue(ctx, "sub", "ref2", KindAudit, "", "")
+	fresh, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref2", Kind: KindAudit})
 
 	resumed, failed, err := NewWorker(s, &fakeRunner{}).Reconcile(ctx)
 	if err != nil || resumed != 0 || failed != 1 {
@@ -208,7 +208,7 @@ func TestReconcileFailsUnrecoverable(t *testing.T) {
 func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx)                                                                  // -> resolving
 	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" }) // running, repo created pre-crash
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})                     // id observed before the "crash"
@@ -250,7 +250,7 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 func TestCancelClosesAnOrphanRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, "sub", "ref", KindAudit, "p", "arxiv:1")
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p", PaperKey: "arxiv:1"})
 	_, _, _ = s.Claim(ctx)
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_02"})
 
@@ -271,7 +271,7 @@ func TestStartProcessesThePool(t *testing.T) {
 	s := NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	for i := 0; i < 5; i++ {
-		_, _ = s.Enqueue(ctx, "sub", "ref", KindAudit, "", "")
+		_, _ = s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	}
 
 	w := NewWorker(s, &fakeRunner{}, WithPoll(time.Millisecond),

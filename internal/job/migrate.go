@@ -47,6 +47,15 @@ CREATE UNIQUE INDEX jobs_active_paper_project ON jobs (project_id, paper_key)
 CREATE UNIQUE INDEX jobs_active_paper_principal ON jobs (principal, paper_key)
 	WHERE phase NOT IN ('done','failed') AND paper_key <> '';
 `},
+	{3, `
+-- Whose session quota a run spends (006l). Backfilled to the submitter: before
+-- sponsorship, every session was paid for by whoever opened it. NOT NULL,
+-- because a null here would silently drop that row from its payer's count.
+ALTER TABLE jobs ADD COLUMN charged_to TEXT NOT NULL DEFAULT '';
+UPDATE jobs SET charged_to = principal WHERE charged_to = '';
+-- The quota counts rows per payer by phase; this is the index it reads.
+CREATE INDEX jobs_charged_to_phase ON jobs (charged_to, phase);
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

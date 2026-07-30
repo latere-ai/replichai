@@ -6,6 +6,10 @@ export type Me = {
   principal?: string
   email?: string
   tier?: string
+  // Display claims from the IdP (006m): both optional, both purely cosmetic —
+  // the email stays the identifier everything binds on.
+  name?: string
+  picture?: string
 }
 
 export type Usage = { InputTokens: number; OutputTokens: number; CachedInputTokens: number }
@@ -35,7 +39,7 @@ export type Project = {
   signed_off_by?: string
   signed_off_at?: string
   attestation_version?: string
-  // The signer, as they were when they signed (006k): a snapshot recorded at the
+  // The signer, as they were when they signed (006n): a snapshot recorded at the
   // flip, not a view of their profile — so these never change afterwards. Empty
   // on a v1 sign-off, which predates them.
   signed_off_name?: string
@@ -200,7 +204,7 @@ export const saveProfile = (p: Profile) =>
 
 // The current responsibility-attestation text version the sign-off records. v2
 // added the signer snapshot and the published contact, so the text a signer
-// affirms changed with it (006k).
+// affirms changed with it (006n).
 export const ATTESTATION_VERSION = 'v2'
 
 // The signer as the publish wizard confirmed them. The contact is required; the
@@ -241,6 +245,56 @@ export const getArtifact = (id: string, path: string) =>
     if (!r.ok) throw new Error(`${r.status}`)
     return r.text()
   })
+
+/* ─── Platform admin (006n) ─── */
+
+// GrantView is one row of the people table: the ACL row, whether it has bound
+// to a principal yet, and any quota headroom above the platform default.
+export type GrantView = {
+  email: string
+  tier: string
+  bound: boolean
+  granted_by?: string
+  granted_at?: string
+  topup?: number
+}
+
+export type PlatformSettings = {
+  default_session_quota: number
+  updated_by?: string
+  updated_at?: string
+}
+
+export const listGrants = () => fetch('/admin/access').then(json<GrantView[]>)
+
+// grantAccess seeds or promotes by email. The person need not have signed in:
+// the grant binds to them on first login.
+export const grantAccess = (email: string, tier: 'user' | 'admin') =>
+  fetch('/admin/access', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, tier }),
+  }).then(json<{ email: string; tier: string }>)
+
+export const revokeAccess = (email: string) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
+
+// setTopup gives one person headroom above the platform default; 0 removes it.
+export const setTopup = (email: string, extra: number) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}/quota`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ extra }),
+  }).then(json<{ email: string; extra: number }>)
+
+export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
+
+export const setPlatformSettings = (s: Pick<PlatformSettings, 'default_session_quota'>) =>
+  fetch('/admin/settings', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(s),
+  }).then(json<PlatformSettings>)
 
 const terminal = (phase: string) => phase === 'done' || phase === 'failed'
 

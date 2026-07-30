@@ -9,6 +9,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
+	"github.com/latere-ai/replichai/internal/platform"
 )
 
 func adminSetup(t *testing.T) (*Admin, httpapi.Identity, httpapi.Identity) {
@@ -20,7 +21,7 @@ func adminSetup(t *testing.T) (*Admin, httpapi.Identity, httpapi.Identity) {
 	_ = store.Grant(context.Background(), access.Principal{Sub: admin.Sub, Email: admin.Email}, "seed@example.com", access.TierUser)
 	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com"}
 	_, _, _ = store.Resolve(context.Background(), access.Principal{Sub: seed.Sub, Email: seed.Email})
-	return NewAdmin(store), admin, seed
+	return NewAdmin(store, platform.NewMemStore(store)), admin, seed
 }
 
 func as(id httpapi.Identity, method, path, body string) *http.Request {

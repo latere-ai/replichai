@@ -44,14 +44,20 @@ type Project struct {
 	Owner      string     `json:"owner"`      // the owning principal (006c)
 	Title      string     `json:"title"`      // defaults from the first session's paper
 	Visibility Visibility `json:"visibility"` // private by default; the public flip is 006f
-	CreatedAt  time.Time  `json:"created_at"`
+	// Sponsored is the owner's standing consent to cover their members'
+	// sessions (006l): with it on, a collaborator submitting here may charge the
+	// owner's quota instead of their own. Off by default, revocable, and set by
+	// the owner alone — a collaborator can never drain an allowance nobody
+	// offered.
+	Sponsored bool      `json:"sponsored"`
+	CreatedAt time.Time `json:"created_at"`
 	// The public-flip provenance (006f): who signed the responsibility
 	// attestation, when, and which attestation text version. Zero until the
 	// owner makes the project public.
 	SignedOffBy        string     `json:"signed_off_by,omitempty"`
 	SignedOffAt        *time.Time `json:"signed_off_at,omitempty"`
 	AttestationVersion string     `json:"attestation_version,omitempty"`
-	// The signer, as they were when they signed (006k). A snapshot, not a view of
+	// The signer, as they were when they signed (006n). A snapshot, not a view of
 	// their profile: editing a profile later must never rewrite what an already
 	// published attestation claimed. Empty on a v1 sign-off, which predates it.
 	SignedOffName        string `json:"signed_off_name,omitempty"`
@@ -98,10 +104,14 @@ type Store interface {
 	// A missing project is not an error — the enrichment is best-effort.
 	SetTitle(ctx context.Context, id, title string) error
 	// SetPublic marks a project public and records the responsibility sign-off
-	// (006f, 006k): who signed, the attestation text version, the signer snapshot,
+	// (006f, 006n): who signed, the attestation text version, the signer snapshot,
 	// and the time. One-way — there is no un-publish. The caller (the HTTP owner
 	// check and the manifest-clear gate) authorises; this store only records.
 	SetPublic(ctx context.Context, id string, s SignOff) error
+	// SetSponsored records the owner's standing consent to cover their members'
+	// sessions, or withdraws it (006l). The caller authorises (owner-only);
+	// this store only records.
+	SetSponsored(ctx context.Context, id string, on bool) error
 	// ListPublic returns every public project, newest first — the public zone's
 	// read surface, across all owners.
 	ListPublic(ctx context.Context) ([]Project, error)

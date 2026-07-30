@@ -13,10 +13,11 @@ import (
 // against with no database. It copies on every boundary, so a caller cannot
 // mutate stored state through a value it holds.
 type MemStore struct {
-	mu    sync.Mutex
-	jobs  map[string]Job
-	order []string // submission order, so Claim is FIFO
-	clock func() time.Time
+	mu        sync.Mutex
+	jobs      map[string]Job
+	order     []string // submission order, so Claim is FIFO
+	clock     func() time.Time
+	allowance Allowance // nil means unlimited
 }
 
 // MemOption configures a MemStore.
@@ -25,6 +26,38 @@ type MemOption func(*MemStore)
 // WithClock sets the time source, so tests get deterministic timestamps.
 func WithClock(f func() time.Time) MemOption {
 	return func(s *MemStore) { s.clock = f }
+}
+
+// WithAllowance meters submissions against a per-payer session quota (006l).
+// Without it the store is unlimited.
+func WithAllowance(a Allowance) MemOption {
+	return func(s *MemStore) { s.allowance = a }
+}
+
+// checkQuotaLocked refuses a submission past the payer's allowance. It runs
+// under the store lock, alongside the insert, so a burst of concurrent submits
+// cannot all read the same remaining count.
+func (s *MemStore) checkQuotaLocked(ctx context.Context, payer string) error {
+	if s.allowance == nil {
+		return nil
+	}
+	limit, unlimited, err := s.allowance(ctx, payer)
+	if err != nil {
+		return err
+	}
+	if unlimited {
+		return nil
+	}
+	used := 0
+	for _, j := range s.jobs {
+		if j.ChargedTo == payer && j.Phase.Spends() {
+			used++
+		}
+	}
+	if used >= limit {
+		return ErrQuotaExceeded
+	}
+	return nil
 }
 
 // NewMemStore builds an empty in-memory store.
@@ -37,18 +70,20 @@ func NewMemStore(opts ...MemOption) *MemStore {
 }
 
 // Enqueue records a new submitted job, refusing a paper already running under
-// the double-trigger guard.
-func (s *MemStore) Enqueue(_ context.Context, principal, ref string, k Kind, project, paperKey string) (Job, error) {
-	if strings.TrimSpace(ref) == "" {
+// the double-trigger guard and a submit past the payer's quota.
+func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
+	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
 	id, err := newID()
 	if err != nil {
 		return Job{}, err
 	}
+	payer := sub.Payer()
 	now := s.clock()
 	j := Job{
-		ID: id, Kind: k, Principal: principal, ProjectID: project, Ref: ref, PaperKey: paperKey,
+		ID: id, Kind: sub.Kind, Principal: sub.Principal, ProjectID: sub.Project, Ref: sub.Ref,
+		PaperKey: sub.PaperKey, ChargedTo: payer,
 		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
@@ -58,15 +93,20 @@ func (s *MemStore) Enqueue(_ context.Context, principal, ref string, k Kind, pro
 	// principal. An empty key (an experiment, or a paper that could not be keyed)
 	// never guards. This mirrors the two partial unique indexes Postgres enforces,
 	// so the in-memory and database stores refuse the same double-fire.
-	if paperKey != "" {
+	if sub.PaperKey != "" {
 		for _, other := range s.jobs {
-			if other.PaperKey != paperKey || other.Phase.Terminal() {
+			if other.PaperKey != sub.PaperKey || other.Phase.Terminal() {
 				continue
 			}
-			if other.ProjectID == project || other.Principal == principal {
+			if other.ProjectID == sub.Project || other.Principal == sub.Principal {
 				return Job{}, ErrActiveSession
 			}
 		}
+	}
+	// The quota (006l), counted under the same lock that inserts, so a burst of
+	// concurrent submits cannot all read "one left".
+	if err := s.checkQuotaLocked(ctx, payer); err != nil {
+		return Job{}, err
 	}
 	s.jobs[id] = j
 	s.order = append(s.order, id)
@@ -207,6 +247,19 @@ func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStat
 	j.UpdatedAt = s.clock()
 	s.jobs[id] = j
 	return nil
+}
+
+// Consumed counts the sessions charged to a payer that spend allowance.
+func (s *MemStore) Consumed(_ context.Context, payerSub string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, j := range s.jobs {
+		if j.ChargedTo == payerSub && j.Phase.Spends() {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // Active returns copies of every non-terminal job, in submission order.
