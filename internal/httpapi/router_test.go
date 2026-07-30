@@ -12,6 +12,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -24,6 +25,7 @@ func testDeps(gate Gate) Deps {
 		Jobs:          job.NewMemStore(),
 		Projects:      project.NewMemStore(),
 		Members:       access.NewMemMembership(),
+		Profiles:      profile.NewMemStore(),
 		Reproductions: &fakeRepro{},
 		Gate:          gate,
 	}
@@ -244,6 +246,14 @@ func TestProjectListAndDetail(t *testing.T) {
 	}
 }
 
+// signOff is a well-formed sign-off body: an attestation version and the signer
+// snapshot 006k requires (a contact; the rest optional). signOffNoRepo is the
+// same, opting the forge repository out of the flip.
+const (
+	signOff       = `{"attestation_version":"v2","signed_off_name":"Ada Lovelace","signed_off_institution":"LMU Munich","signed_off_contact":"ada@example.org"}`
+	signOffNoRepo = `{"attestation_version":"v2","signed_off_contact":"ada@example.org","flip_repo":false}`
+)
+
 // 006f AC6: the public flip is owner-only, needs a recorded sign-off, refuses a
 // non-clear project (409), and is one-way.
 func TestMakeProjectPublic(t *testing.T) {
@@ -254,7 +264,7 @@ func TestMakeProjectPublic(t *testing.T) {
 	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
 
 	// A non-owner is refused, and nothing changes.
-	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v1"}`, "stranger"); w.Code != http.StatusForbidden {
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "stranger"); w.Code != http.StatusForbidden {
 		t.Fatalf("non-owner flip: status %d, want 403", w.Code)
 	}
 	// An un-signed flip changes nothing.
@@ -266,12 +276,12 @@ func TestMakeProjectPublic(t *testing.T) {
 	}
 
 	// The owner, with a sign-off, flips it public and the attestation is recorded.
-	w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v1"}`, "me")
+	w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me")
 	if w.Code != http.StatusOK {
 		t.Fatalf("owner flip: status %d, want 200", w.Code)
 	}
 	got, _ := d.Projects.Get(context.Background(), p.ID)
-	if got.Visibility != project.VisibilityPublic || got.SignedOffBy != "me" || got.AttestationVersion != "v1" || got.SignedOffAt == nil {
+	if got.Visibility != project.VisibilityPublic || got.SignedOffBy != "me" || got.AttestationVersion != "v2" || got.SignedOffAt == nil {
 		t.Fatalf("after flip: %+v", got)
 	}
 }
@@ -283,7 +293,7 @@ func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
 	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish == false
 
-	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v1"}`, "me"); w.Code != http.StatusConflict {
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusConflict {
 		t.Fatalf("not-clear flip: status %d, want 409", w.Code)
 	}
 	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPrivate {
@@ -310,7 +320,7 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 	// Default (flip_repo omitted): the repository is flipped.
 	p1, _ := d.Projects.Create(context.Background(), "me", "One")
 	_ = publishInto(t, d.Jobs, "me", p1.ID, "r1")
-	if w := do(t, h, "POST", "/projects/"+p1.ID+"/public", `{"attestation_version":"v1"}`, "me"); w.Code != http.StatusOK {
+	if w := do(t, h, "POST", "/projects/"+p1.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
 		t.Fatalf("default flip: status %d", w.Code)
 	}
 	if len(pub.flipped) != 1 || pub.flipped[0] != "r1" {
@@ -320,7 +330,7 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 	// Opt-out (flip_repo:false): the project goes public but the repo is not flipped.
 	p2, _ := d.Projects.Create(context.Background(), "me", "Two")
 	_ = publishInto(t, d.Jobs, "me", p2.ID, "r1")
-	if w := do(t, h, "POST", "/projects/"+p2.ID+"/public", `{"attestation_version":"v1","flip_repo":false}`, "me"); w.Code != http.StatusOK {
+	if w := do(t, h, "POST", "/projects/"+p2.ID+"/public", signOffNoRepo, "me"); w.Code != http.StatusOK {
 		t.Fatalf("opt-out flip: status %d", w.Code)
 	}
 	if len(pub.flipped) != 1 {
@@ -338,7 +348,7 @@ func TestPublicZone(t *testing.T) {
 	h := NewRouter(d).Handler()
 	pub, _ := d.Projects.Create(context.Background(), "owner", "Public one")
 	_ = publishInto(t, d.Jobs, "owner", pub.ID, "r1")
-	_ = do(t, h, "POST", "/projects/"+pub.ID+"/public", `{"attestation_version":"v1"}`, "owner")
+	_ = do(t, h, "POST", "/projects/"+pub.ID+"/public", signOff, "owner")
 	_, _ = d.Projects.Create(context.Background(), "owner", "Private one")
 
 	// The public zone lists only the public project, to a different user.
@@ -369,6 +379,158 @@ func doAs(t *testing.T, h http.Handler, method, path, body string, id Identity) 
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	return w
+}
+
+// 006k AC1/AC2: the profile is the caller's own — read before it exists, saved
+// against the session's principal and never one named in the body, and refused
+// field by field when an identifier is malformed.
+func TestProfileAPI(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+
+	// Before any save: the zero profile, not a 404.
+	w := do(t, h, "GET", "/me/profile", "", "me")
+	var got profile.Profile
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if w.Code != http.StatusOK || got.DisplayName != "" || got.Contact != "" {
+		t.Fatalf("profile before any save = %+v (status %d)", got, w.Code)
+	}
+
+	// A save is normalized and read back.
+	body := `{"display_name":" Ada Lovelace ","institution":"LMU Munich","contact_email":"Ada@Example.ORG","orcid":"0000-0002-1825-0097","scholar_url":"https://scholar.google.com/citations?user=abc"}`
+	if w := do(t, h, "PATCH", "/me/profile", body, "me"); w.Code != http.StatusOK {
+		t.Fatalf("save: status %d (%s)", w.Code, w.Body.String())
+	}
+	w = do(t, h, "GET", "/me/profile", "", "me")
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got.DisplayName != "Ada Lovelace" || got.Contact != "ada@example.org" || got.Institution != "LMU Munich" {
+		t.Fatalf("saved profile = %+v", got)
+	}
+
+	// It is the caller's own profile: another principal sees their own, empty one.
+	// (A fresh value, since every field is omitempty: unmarshalling `{}` over a
+	// populated struct would leave the previous profile standing.)
+	got = profile.Profile{}
+	w = do(t, h, "GET", "/me/profile", "", "someone-else")
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got.DisplayName != "" {
+		t.Errorf("another principal read this one's profile: %+v", got)
+	}
+
+	// Each malformed identifier is refused with its own code.
+	for _, tc := range []struct{ body, code string }{
+		{`{"contact_email":"not-an-email"}`, "invalid_contact"},
+		{`{"orcid":"1234"}`, "invalid_orcid"},
+		{`{"scholar_url":"https://example.com/me"}`, "invalid_scholar"},
+	} {
+		w := do(t, h, "PATCH", "/me/profile", tc.body, "me")
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), tc.code) {
+			t.Errorf("save %s: status %d body %s; want 400 %s", tc.body, w.Code, w.Body.String(), tc.code)
+		}
+	}
+}
+
+// 006k AC3/AC4: the flip requires a contact, validates the signer snapshot with
+// the profile's own rules, records what was signed, and derives the signer's
+// identity from the session — a body cannot name somebody else as the signer.
+func TestPublicFlipRecordsTheSigner(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	owner := Identity{Sub: "owner-sub", Email: "ada.lovelace@example.org"}
+	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Owned")
+	_ = publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+
+	// No contact: refused. Publishing a result with no way to ask about it is
+	// what this requirement exists to stop.
+	w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v2"}`, owner)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "missing_contact") {
+		t.Fatalf("flip with no contact: status %d body %s; want 400 missing_contact", w.Code, w.Body.String())
+	}
+	// A malformed identifier is refused on this path too, so the publish route is
+	// not a way around the settings route's validation.
+	for _, tc := range []struct{ body, code string }{
+		{`{"attestation_version":"v2","signed_off_contact":"nope"}`, "invalid_contact"},
+		{`{"attestation_version":"v2","signed_off_contact":"a@x.org","signed_off_orcid":"1234"}`, "invalid_orcid"},
+		{`{"attestation_version":"v2","signed_off_contact":"a@x.org","signed_off_scholar":"https://evil.test"}`, "invalid_scholar"},
+	} {
+		w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", tc.body, owner)
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), tc.code) {
+			t.Errorf("flip %s: status %d body %s; want 400 %s", tc.body, w.Code, w.Body.String(), tc.code)
+		}
+	}
+	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPrivate {
+		t.Fatalf("a refused flip made the project public: %+v", got)
+	}
+
+	// A good sign-off records the snapshot — and the signer's email is the
+	// session's, redacted, whatever the body tried to say.
+	good := `{"attestation_version":"v2","signed_off_name":"Ada Lovelace","signed_off_institution":"LMU Munich",
+		"signed_off_contact":"Inquiries@Example.ORG","signed_off_orcid":"0000-0002-1825-0097",
+		"signed_off_scholar":"https://scholar.google.com/citations?user=abc",
+		"signed_off_email":"impostor@evil.test","signed_off_by":"somebody-else"}`
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", good, owner); w.Code != http.StatusOK {
+		t.Fatalf("owner flip: status %d (%s)", w.Code, w.Body.String())
+	}
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if got.SignedOffName != "Ada Lovelace" || got.SignedOffInstitution != "LMU Munich" ||
+		got.SignedOffContact != "inquiries@example.org" || got.SignedOffORCID != "0000-0002-1825-0097" ||
+		got.SignedOffScholar != "https://scholar.google.com/citations?user=abc" {
+		t.Fatalf("signer snapshot = %+v", got)
+	}
+	if got.SignedOffEmail != "a**********e@example.org" {
+		t.Errorf("signed_off_email = %q; want the session's email, redacted", got.SignedOffEmail)
+	}
+	if got.SignedOffBy != owner.Sub {
+		t.Errorf("signed_off_by = %q; want the session's principal, not the body's", got.SignedOffBy)
+	}
+}
+
+// 006k AC5: the sign-off is a snapshot, not a view. Editing the profile after
+// publishing must not change what the published project reports — the property
+// the whole design rests on.
+func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
+	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Owned")
+	_ = publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+
+	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada Lovelace","institution":"LMU Munich","contact_email":"ada@example.org"}`, owner); w.Code != http.StatusOK {
+		t.Fatalf("save profile: %d", w.Code)
+	}
+	flip := `{"attestation_version":"v2","signed_off_name":"Ada Lovelace","signed_off_institution":"LMU Munich","signed_off_contact":"ada@example.org"}`
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", flip, owner); w.Code != http.StatusOK {
+		t.Fatalf("flip: %d (%s)", w.Code, w.Body.String())
+	}
+
+	// A year later, a new job and a new address.
+	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada L.","institution":"Somewhere Else","contact_email":"ada@elsewhere.org"}`, owner); w.Code != http.StatusOK {
+		t.Fatalf("second save: %d", w.Code)
+	}
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if got.SignedOffInstitution != "LMU Munich" || got.SignedOffContact != "ada@example.org" || got.SignedOffName != "Ada Lovelace" {
+		t.Fatalf("a profile edit rewrote a published attestation: %+v", got)
+	}
+}
+
+// 006k AC6: a project published before this spec (v1, no snapshot) reads back
+// with empty signer fields rather than failing — the read path must tolerate it.
+func TestV1SignOffHasNoSnapshot(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "owner", "Signed before 006k")
+	if err := d.Projects.SetPublic(context.Background(), p.ID, project.SignOff{By: "owner", AttestationVersion: "v1"}); err != nil {
+		t.Fatalf("seed a v1 sign-off: %v", err)
+	}
+	w := do(t, h, "GET", "/projects/"+p.ID, "", "someone-else")
+	var view ProjectDetail
+	_ = json.Unmarshal(w.Body.Bytes(), &view)
+	if w.Code != http.StatusOK || view.Project.Visibility != project.VisibilityPublic {
+		t.Fatalf("v1 public project: status %d, %+v", w.Code, view)
+	}
+	if view.Project.SignedOffName != "" || view.Project.SignedOffContact != "" || view.Project.SignedOffEmail != "" {
+		t.Errorf("a v1 sign-off invented a snapshot: %+v", view)
+	}
 }
 
 // 006f AC7: the members API is owner-only — the owner invites and removes by

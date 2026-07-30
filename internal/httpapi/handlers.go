@@ -12,6 +12,7 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -60,6 +61,8 @@ func (rt *Router) routes() {
 	// A health check sits outside the gate so a load balancer can reach it; the
 	// sign-in and /me routes join the open set with 006c.
 	rt.openHandle("GET", "/healthz", rt.health)
+	rt.gatedHandle("GET", "/me/profile", rt.getProfile)
+	rt.gatedHandle("PATCH", "/me/profile", rt.saveProfile)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
 	rt.gatedHandle("POST", "/resolve", rt.resolvePaper)
 	rt.gatedHandle("POST", "/projects", rt.createProject)
@@ -456,11 +459,61 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// getProfile returns the caller's researcher profile (006k) — the zero profile
+// before they have ever saved one, so the settings screen and the publish wizard
+// render the same way on first use as on every other.
+func (rt *Router) getProfile(w http.ResponseWriter, r *http.Request) {
+	p, err := rt.profiles.Get(r.Context(), principal(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "profile_read_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+// saveProfile writes the caller's researcher profile. The principal comes off
+// the session, never the body, so a profile is always its owner's; a malformed
+// identifier is refused by its own code, so the UI can point at the field.
+func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
+	var body profile.Profile
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	body.Principal = principal(r)
+	saved, err := rt.profiles.Save(r.Context(), body)
+	if code, ok := profileErrorCode(err); ok {
+		writeError(w, http.StatusBadRequest, code)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "profile_save_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
+}
+
+// profileErrorCode maps a profile validation error to its wire code, reporting
+// false for anything that is not one — so a storage failure is never disguised
+// as a bad field.
+func profileErrorCode(err error) (string, bool) {
+	switch {
+	case errors.Is(err, profile.ErrInvalidContact):
+		return "invalid_contact", true
+	case errors.Is(err, profile.ErrInvalidORCID):
+		return "invalid_orcid", true
+	case errors.Is(err, profile.ErrInvalidScholar):
+		return "invalid_scholar", true
+	default:
+		return "", false
+	}
+}
+
 // makeProjectPublic is the owner's one-way public flip, gated by a responsibility
 // sign-off (006f). It refuses a non-owner (403), refuses a project none of whose
 // published sessions cleared 002's redistribution gate (409 not_clear), records
-// the sign-off, marks the project public, and — best-effort — flips the forge
-// repository public when a publisher is wired.
+// the sign-off with its signer snapshot (006k), marks the project public, and —
+// best-effort — flips the forge repository public when a publisher is wired.
 func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, project.ErrNotFound) {
@@ -477,6 +530,14 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		AttestationVersion string `json:"attestation_version"`
+		// The signer, as the wizard confirmed them (006k). Prefilled from the
+		// owner's profile in the UI, but recorded from this body: what is published
+		// is what they signed, not what their profile says later.
+		Name        string `json:"signed_off_name"`
+		Institution string `json:"signed_off_institution"`
+		Contact     string `json:"signed_off_contact"`
+		ORCID       string `json:"signed_off_orcid"`
+		Scholar     string `json:"signed_off_scholar"`
 		// FlipRepo opts the forge repository into the public flip. Absent means
 		// yes (the common intent — publish the reproduction), so a GitHub-connected
 		// owner opts out by sending false: the in-app artifacts still go public,
@@ -488,6 +549,26 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		// The sign-off is the whole point — a flip with no recorded attestation
 		// changes nothing.
 		writeError(w, http.StatusBadRequest, "missing_attestation")
+		return
+	}
+	// The signer snapshot is validated with the same rules the profile is, so a
+	// malformed identifier cannot reach a public page by taking the publish path
+	// instead of the settings one. Contact is required here and only here: a
+	// result published with no way to ask about it is the case this spec exists
+	// to close.
+	signer := profile.Profile{
+		DisplayName: body.Name,
+		Institution: body.Institution,
+		Contact:     body.Contact,
+		ORCID:       body.ORCID,
+		Scholar:     body.Scholar,
+	}.Normalize()
+	if signer.Contact == "" {
+		writeError(w, http.StatusBadRequest, "missing_contact")
+		return
+	}
+	if code, ok := profileErrorCode(signer.Validate()); ok {
+		writeError(w, http.StatusBadRequest, code)
 		return
 	}
 
@@ -504,7 +585,21 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := rt.projects.SetPublic(r.Context(), proj.ID, principal(r), body.AttestationVersion); err != nil {
+	// The signer's identity is derived from the session, never from the body: the
+	// email the identity provider verified, redacted before it is stored, so a
+	// published attestation cannot be attributed to somebody who did not sign it
+	// and the full address is never put on the wire.
+	id, _ := IdentityFrom(r)
+	if err := rt.projects.SetPublic(r.Context(), proj.ID, project.SignOff{
+		By:                 principal(r),
+		AttestationVersion: body.AttestationVersion,
+		Name:               signer.DisplayName,
+		Institution:        signer.Institution,
+		Contact:            signer.Contact,
+		ORCID:              signer.ORCID,
+		Scholar:            signer.Scholar,
+		Email:              profile.RedactEmail(id.Email),
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "publish_failed")
 		return
 	}

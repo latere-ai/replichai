@@ -49,6 +49,20 @@ ALTER TABLE projects ADD COLUMN signed_off_by       TEXT NOT NULL DEFAULT '';
 ALTER TABLE projects ADD COLUMN signed_off_at       TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN attestation_version TEXT NOT NULL DEFAULT '';
 `},
+	{3, `
+-- The signer snapshot (006k): who the owner said they were when they signed,
+-- copied onto the project rather than read from their profile, so a later
+-- profile edit never rewrites a published attestation. Every column defaults to
+-- empty, which is exactly what a v1 sign-off (signed before this spec) holds —
+-- the read path renders that as the date-only line it shows today.
+ALTER TABLE projects ADD COLUMN signed_off_name        TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN signed_off_institution TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN signed_off_contact     TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN signed_off_orcid       TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN signed_off_scholar     TEXT NOT NULL DEFAULT '';
+-- Already redacted when written; the full address is never stored.
+ALTER TABLE projects ADD COLUMN signed_off_email       TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies the project schema and the one-time backfill. Safe to run on

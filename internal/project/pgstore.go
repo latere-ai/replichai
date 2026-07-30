@@ -23,13 +23,16 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 }
 
 // projectColumns is the column list every read selects, in scan order.
-const projectColumns = `id, owner, title, visibility, created_at, signed_off_by, signed_off_at, attestation_version`
+const projectColumns = `id, owner, title, visibility, created_at, signed_off_by, signed_off_at, attestation_version,
+	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
 	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.CreatedAt,
-		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion)
+		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion,
+		&p.SignedOffName, &p.SignedOffInstitution, &p.SignedOffContact,
+		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -86,11 +89,14 @@ func (s *PGStore) SetTitle(ctx context.Context, id, title string) error {
 }
 
 // SetPublic marks a project public and records the sign-off. One-way.
-func (s *PGStore) SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error {
+func (s *PGStore) SetPublic(ctx context.Context, id string, so SignOff) error {
 	tag, err := s.pool.Exec(ctx, `
-		UPDATE projects SET visibility='public', signed_off_by=$2, signed_off_at=$3, attestation_version=$4
+		UPDATE projects SET visibility='public', signed_off_by=$2, signed_off_at=$3, attestation_version=$4,
+			signed_off_name=$5, signed_off_institution=$6, signed_off_contact=$7,
+			signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10
 		WHERE id=$1`,
-		id, signedOffBy, s.clock(), attestationVersion)
+		id, so.By, s.clock(), so.AttestationVersion,
+		so.Name, so.Institution, so.Contact, so.ORCID, so.Scholar, so.Email)
 	if err != nil {
 		return err
 	}
