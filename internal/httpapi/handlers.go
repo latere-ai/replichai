@@ -742,6 +742,11 @@ func (rt *Router) listShared(w http.ResponseWriter, r *http.Request) {
 type ProjectDetail struct {
 	Project  project.Project `json:"project"`
 	Sessions []job.Job       `json:"sessions"`
+	// MaySubmit reports whether this caller may open a session here — its owner
+	// or a collaborator, never a stranger who reached it through the public zone
+	// (006l). The client cannot work this out: it does not know membership, and a
+	// public project is readable by everyone.
+	MaySubmit bool `json:"may_submit"`
 }
 
 // getProject returns a project and its sessions, refusing a project the caller
@@ -805,7 +810,11 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	if sessions == nil {
 		sessions = []job.Job{}
 	}
-	writeJSON(w, http.StatusOK, ProjectDetail{Project: proj, Sessions: sessions})
+	writeJSON(w, http.StatusOK, ProjectDetail{
+		Project:   proj,
+		Sessions:  sessions,
+		MaySubmit: rt.mayWorkInProject(r, proj, principal(r)),
+	})
 }
 
 // listJobs reports the caller's own jobs, newest first — the projects they

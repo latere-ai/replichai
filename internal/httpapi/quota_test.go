@@ -196,3 +196,58 @@ func TestPayerIsNeverTakenFromTheBody(t *testing.T) {
 		t.Errorf("charged_to = %q, want the submitter — a client may not name a payer", jobs[0].ChargedTo)
 	}
 }
+
+// 006l: may_submit is the server's answer, because the client cannot work it
+// out — a public project is readable by everyone, and only the server knows
+// membership. Without it the "Replicate again" form renders for a stranger
+// browsing the public zone and every submit is refused.
+func TestMaySubmitDistinguishesWhoMayOpenASession(t *testing.T) {
+	d, rt := quotaDeps(t, 5)
+	ctx := context.Background()
+
+	owner := Identity{Sub: "owner-sub", Email: "owner@example.com"}
+	collab := Identity{Sub: "collab-sub", Email: "collab@example.com"}
+	stranger := Identity{Sub: "stranger-sub", Email: "stranger@example.com"}
+
+	proj, err := d.Projects.Create(ctx, owner.Sub, "open work")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := d.Members.SeedLead(ctx, proj.ID, owner.Email); err != nil {
+		t.Fatalf("seed lead: %v", err)
+	}
+	if err := d.Members.Add(ctx, access.Principal{Sub: owner.Sub, Email: owner.Email}, proj.ID, collab.Email, access.RoleCollaborator); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	// Public, so a stranger may *read* it — which must not imply may submit.
+	if err := d.Projects.SetPublic(ctx, proj.ID, owner.Sub, "v1"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	read := func(id Identity) ProjectDetail {
+		t.Helper()
+		w := httptest.NewRecorder()
+		rt.Handler().ServeHTTP(w, asPrincipal("GET", "/projects/"+proj.ID, "", id.Sub, id.Email))
+		if w.Code != http.StatusOK {
+			t.Fatalf("read as %s = %d %s", id.Email, w.Code, w.Body.String())
+		}
+		var out ProjectDetail
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return out
+	}
+
+	for _, tc := range []struct {
+		id   Identity
+		want bool
+	}{
+		{owner, true},
+		{collab, true},
+		{stranger, false},
+	} {
+		if got := read(tc.id).MaySubmit; got != tc.want {
+			t.Errorf("may_submit for %s = %v, want %v", tc.id.Email, got, tc.want)
+		}
+	}
+}
