@@ -108,6 +108,25 @@ const strings: Record<Lang, Record<string, string>> = {
     remove: 'Remove',
     pending: 'pending',
     inviteError: 'Could not add the collaborator.',
+    // researcher profile (006k)
+    profileTitle: 'Researcher profile',
+    profileIntro:
+      'Who your published sign-offs are made under. It is not verified — the platform records the claim and binds it to your account — and it is only a starting point: what a published project reports is what you confirmed when you signed it.',
+    profileName: 'Display name',
+    profileNamePlaceholder: 'Ada Lovelace',
+    profileInstitution: 'Institution',
+    profileInstitutionPlaceholder: 'Optional — university, lab, or company',
+    profileContact: 'Public contact email',
+    profileContactPlaceholder: 'Published with anything you sign off',
+    profileOrcid: 'ORCID',
+    profileScholar: 'Google Scholar',
+    profileScholarPlaceholder: 'https://scholar.google.com/citations?user=…',
+    saving: 'Saving…',
+    profileSaved: 'Saved.',
+    profileSaveError: 'Could not save your profile.',
+    errInvalidContact: 'That is not a valid email address.',
+    errInvalidOrcid: 'An ORCID iD looks like 0000-0002-1825-0097.',
+    errInvalidScholar: 'That is not a Google Scholar profile URL.',
     // publish
     publishTitle: 'Publish · sign-off',
     publishBody:
@@ -117,7 +136,28 @@ const strings: Record<Lang, Record<string, string>> = {
     publishConfirm: 'Sign off & make public',
     publishNotClear: 'This project cannot be made public: its reproduction did not pass the redistribution check.',
     publishError: 'Could not make the project public.',
-    attestationNote: 'Attestation v1 · recorded against your principal',
+    attestationNote: 'Attestation v2 · recorded against your principal',
+    // publish wizard (006k)
+    publishStart: 'Make this project public…',
+    publishStepOf: 'Step {n} of 3',
+    publishStep1: 'What becomes public',
+    publishStep2: 'Who stands behind it',
+    publishStep2Body:
+      'Recorded with the project exactly as it reads now. Editing your profile later will not change what this project reports.',
+    publishStep3: 'Responsibility',
+    publishAttestation:
+      'I confirm that I am responsible for these reproduction results, that I have reviewed what is about to be published, and that the contact address above may be published so anyone can ask about them.',
+    publishContactRequired: 'A contact email is required — a published result needs someone to ask.',
+    publishSaveToProfile: 'Also save these details to my profile',
+    continueStep: 'Continue',
+    backStep: 'Back',
+    // the signed-off card (006k)
+    signedOffBy: 'Signed off by',
+    signedOffOn: 'on {when}',
+    signedOffSigner: 'Signer',
+    signedOffContact: 'Contact',
+    signedOffOrcid: 'ORCID',
+    signedOffScholar: 'Scholar',
     // transcript
     transcript: 'Transcript',
     transcriptNotReady: 'The transcript will appear once this session has published.',
