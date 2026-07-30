@@ -35,7 +35,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006j](006j-the-new-project-flow.md) makes "New project" a deliberate act — name it, preview each paper link (`POST /resolve`), start several papers at once, and invite collaborators, through a dedicated `POST /projects` (plus `PATCH /projects/{id}` rename).
 
-**Designed, not built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person top-ups) instead of `curl` and a redeploy; [006l](006l-the-session-quota.md) spends against the number it stores — one check inside `Enqueue`, in the inserting transaction, with standing-consent sponsorship for shared projects; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has.
+**Built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person top-ups) instead of `curl` and a redeploy; [006l](006l-the-session-quota.md) spends against the number it stores — one check inside `Enqueue`, in the inserting transaction, with standing-consent sponsorship for shared projects; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has.
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
@@ -60,6 +60,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/registry` | the derived registry: relate reproductions of one paper (003) |
 | `internal/job` | the job lifecycle: the state machine, the store seam, the worker (006b) |
 | `internal/access` | the authorisation model: grants, tiers, project membership, seed-and-bind (006c) |
+| `internal/platform` | the policy an admin tunes at runtime: the settings row and quota top-ups (006k) |
 | `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
