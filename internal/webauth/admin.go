@@ -1,6 +1,7 @@
 package webauth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -21,13 +22,19 @@ import (
 type Admin struct {
 	access   access.Access
 	platform platform.Store
+	consumed ConsumedFunc
 }
+
+// ConsumedFunc counts the sessions charged to one principal that spend
+// allowance (006l). Injected so this package does not import the job store; nil
+// leaves the usage column at zero.
+type ConsumedFunc func(ctx context.Context, principalSub string) (int, error)
 
 // NewAdmin builds the admin handlers. A nil platform store disables the
 // settings and top-up endpoints (they answer 503), for a deployment or a test
 // that wires only the access half.
-func NewAdmin(acc access.Access, plat platform.Store) *Admin {
-	return &Admin{access: acc, platform: plat}
+func NewAdmin(acc access.Access, plat platform.Store, consumed ConsumedFunc) *Admin {
+	return &Admin{access: acc, platform: plat, consumed: consumed}
 }
 
 // MountAdmin registers every admin route behind the tier guard and returns the
@@ -65,6 +72,12 @@ type GrantView struct {
 	GrantedBy string    `json:"granted_by,omitempty"`
 	GrantedAt time.Time `json:"granted_at,omitzero"`
 	Topup     int       `json:"topup,omitempty"`
+	// Used and Limit are this person's session quota (006l) — what an admin
+	// reads before deciding who needs a top-up. Unlimited reports an admin, who
+	// owns the platform budget and is never metered.
+	Used      int  `json:"used"`
+	Limit     int  `json:"limit"`
+	Unlimited bool `json:"unlimited"`
 }
 
 // List returns every grant, with its quota top-up merged in.
@@ -76,6 +89,7 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	topups := map[string]int{}
+	settings := platform.Settings{DefaultSessionQuota: platform.DefaultSessionQuota}
 	if a.platform != nil {
 		list, err := a.platform.Topups(r.Context(), caller)
 		if err != nil {
@@ -85,17 +99,36 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 		for _, t := range list {
 			topups[t.Email] = t.Extra
 		}
+		if s, err := a.platform.Settings(r.Context()); err == nil {
+			settings = s
+		} else {
+			log.Printf("admin: read platform settings: %v", err)
+		}
 	}
 	out := make([]GrantView, 0, len(grants))
 	for _, g := range grants {
-		out = append(out, GrantView{
+		v := GrantView{
 			Email:     g.Email,
 			Tier:      g.Tier.String(),
 			Bound:     g.Principal != "",
 			GrantedBy: g.GrantedBy,
 			GrantedAt: g.GrantedAt,
 			Topup:     topups[g.Email],
-		})
+			Limit:     settings.DefaultSessionQuota + topups[g.Email],
+			Unlimited: g.Tier == access.TierAdmin,
+		}
+		// The limit is composed here rather than read through
+		// platform.Allowance: resolving an unbound grant by email would *bind*
+		// it to the caller's empty principal, and reading a table must never
+		// write to it.
+		if g.Principal != "" && a.consumed != nil {
+			if used, err := a.consumed(r.Context(), g.Principal); err == nil {
+				v.Used = used
+			} else {
+				log.Printf("admin: counting sessions for %s: %v", g.Email, err)
+			}
+		}
+		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

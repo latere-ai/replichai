@@ -1,6 +1,8 @@
 # 006l — The session quota
 
-**Status:** designed.
+**Status:** built. The check runs inside `Enqueue`, in the transaction that inserts, serialised per payer by `pg_advisory_xact_lock` — the concurrency test was confirmed to fail without it. `jobs.charged_to` records the payer; consumed is `phase <> 'failed'`, so a cancel refunds. `projects.sponsored` is the owner's standing consent, and `POST /papers {charge_to}` picks between "me" and the sponsor. `/me` reports `{used, limit, unlimited}`; the header pill, the payer picker, and the sponsorship toggle render it. Verified against a real Postgres and by hand: submit → 1/1 → 402 → cancel → 0/1 → submit accepted.
+
+**Built beyond the original scope, and deliberately:** submitting into a project was owner-only before this, which left sponsorship with no consumer. A project's collaborators may now open sessions in it (`mayWorkInProject`); a stranger still cannot, and viewing a public project confers nothing.
 **Scope:** how many replication sessions an invited person may run, who pays for a session started in someone else's project, and where the remaining allowance is shown. One structural check inside `Enqueue`, in the transaction that inserts the row. A child of [006](006-web-application.md).
 **Depends on:** [006k](006k-the-platform-admin-console.md) (the allowance an admin sets), [006b](006b-job-model-and-persistence.md) (the job store and its enqueue guard), [006g](006g-projects-and-replication-sessions.md) (projects own sessions), [006c](006c-identity-and-access.md) (the tier, project membership).
 
@@ -64,6 +66,7 @@ Rejected: **per-request approval** — a session that stalls until a sponsor wak
 
 ## Out of scope
 
+- **The append path's payer default.** `POST /papers` defaults `charge_to` to `"me"`, and `POST /projects` (create) always charges the creator, who is the owner. The picker appears only where the choice is real: a sponsored project someone else owns.
 - **The CLI.** `replichai audit --publish` runs outside the HTTP surface with the operator's own credentials; it is not metered here. Stated so the gap is a decision rather than a bug.
 - **Token or cost budgets.** Usage tokens are recorded per session (006h) and displayed; charging against them is a different and much harder policy than counting sessions.
 - **Rolling windows and resets.** The cap is lifetime for the seed phase. A monthly plan is a time-bucketed count over the same column, and can arrive without changing the model.

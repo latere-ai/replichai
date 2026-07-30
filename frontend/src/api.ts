@@ -1,11 +1,17 @@
 // The API client. Every call is same-origin, so the session cookie (or the dev
 // bypass) rides along automatically.
 
+// Quota is what this person has spent and may spend on replication sessions
+// (006l). Completed and in-flight sessions count; a failed or stopped one is
+// refunded. Absent for an ungranted principal.
+export type Quota = { used: number; limit: number; unlimited: boolean }
+
 export type Me = {
   authenticated: boolean
   principal?: string
   email?: string
   tier?: string
+  quota?: Quota
   // Display claims from the IdP (006m): both optional, both purely cosmetic —
   // the email stays the identifier everything binds on.
   name?: string
@@ -39,6 +45,10 @@ export type Project = {
   signed_off_by?: string
   signed_off_at?: string
   attestation_version?: string
+  // sponsored is the owner's standing consent to cover their collaborators'
+  // sessions (006l): with it on, a collaborator may charge the owner instead of
+  // themselves.
+  sponsored?: boolean
   // The signer, as they were when they signed (006n): a snapshot recorded at the
   // flip, not a view of their profile — so these never change afterwards. Empty
   // on a v1 sign-off, which predates them.
@@ -109,14 +119,29 @@ async function ok(r: Response): Promise<void> {
 
 export const getMe = () => fetch('/me').then(json<Me>)
 
+// chargeTo picks whose quota a session spends: the submitter, or the owner of a
+// project they have chosen to sponsor. The server resolves the actual payer —
+// this only names which of the two.
+export type ChargeTo = 'me' | 'project'
+
 // submitPaper opens a replication session: with no project it creates a fresh
-// one; with a project the caller owns it adds a session. It returns both ids.
-export const submitPaper = (url: string, project = '') =>
+// one; with a project the caller owns or collaborates on, it adds a session. It
+// returns both ids.
+export const submitPaper = (url: string, project = '', chargeTo: ChargeTo = 'me') =>
   fetch('/papers', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url, project }),
+    body: JSON.stringify({ url, project, charge_to: chargeTo }),
   }).then(json<{ job_id: string; project_id: string }>)
+
+// sponsorProject records or withdraws the owner's standing consent to cover
+// their collaborators' sessions (006l). Owner-only.
+export const sponsorProject = (id: string, on: boolean) =>
+  fetch(`/projects/${id}/sponsor`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ on }),
+  }).then(json<Project>)
 
 export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
 
@@ -246,7 +271,7 @@ export const getArtifact = (id: string, path: string) =>
     return r.text()
   })
 
-/* ─── Platform admin (006n) ─── */
+/* ─── Platform admin (006k) ─── */
 
 // GrantView is one row of the people table: the ACL row, whether it has bound
 // to a principal yet, and any quota headroom above the platform default.
@@ -257,6 +282,9 @@ export type GrantView = {
   granted_by?: string
   granted_at?: string
   topup?: number
+  used: number
+  limit: number
+  unlimited: boolean
 }
 
 export type PlatformSettings = {
