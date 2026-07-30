@@ -10,6 +10,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/project"
 )
 
 // quotaDeps wires a router whose job store meters every payer at n.
@@ -220,7 +221,7 @@ func TestMaySubmitDistinguishesWhoMayOpenASession(t *testing.T) {
 		t.Fatalf("add member: %v", err)
 	}
 	// Public, so a stranger may *read* it — which must not imply may submit.
-	if err := d.Projects.SetPublic(ctx, proj.ID, owner.Sub, "v1"); err != nil {
+	if err := d.Projects.SetPublic(ctx, proj.ID, project.SignOff{By: owner.Sub, AttestationVersion: "v1"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
