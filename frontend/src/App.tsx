@@ -711,9 +711,12 @@ function PeopleCard({
             <span className="member-email">{p.email}</span>
             <span className={'role-tag' + (p.tier === 'admin' ? ' admin' : '')}>{tierLabel(t, p.tier)}</span>
             {!p.bound && <span className="role-tag pending">{t('pending')}</span>}
-            <span className="muted small mono">{p.unlimited ? '∞' : `${p.used}/${p.limit}`}</span>
+            {!!p.topup && <span className="role-tag">{t('topupN', { n: String(p.topup) })}</span>}
+            <span className="muted small mono" title={t('quotaTitle', { used: String(p.used), limit: String(p.limit) })}>
+              {p.unlimited ? '∞' : `${p.used}/${p.limit}`}
+            </span>
             <button className="btn ghost sm" onClick={() => topup(p)}>
-              {p.topup ? t('topupN', { n: String(p.topup) }) : t('topup')}
+              {t('topup')}
             </button>
             <button className="btn ghost sm" onClick={() => onRevoke(p.email)}>
               {t('revoke')}
