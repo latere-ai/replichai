@@ -53,7 +53,10 @@ export type Project = {
 
 export type ProjectView = Project & { session_count: number; running: number; latest_phase?: string }
 
-export type ProjectDetail = { project: Project; sessions: Job[] }
+// may_submit is the server's answer to "may this caller open a session here" —
+// owner or collaborator. A public project is readable by everyone, so the
+// client cannot infer it (006l).
+export type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean }
 
 // A project member: the seeded email, the role (1 = collaborator, 2 = lead), and
 // whether they have signed in yet (bound).

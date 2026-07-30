@@ -405,6 +405,9 @@ type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolvin
 function sessionErrLabel(t: I18n['t'], code?: string): string {
   if (code === 'active_session') return t('errActiveSession')
   if (code === 'unresolvable_paper') return t('errUnresolvable')
+  // A batch that outran the quota reports this per paper (006l AC8); without
+  // the case it would read as "could not start", which is not what happened.
+  if (code === 'quota_exceeded') return t('errQuota')
   return t('errEnqueue')
 }
 
@@ -825,6 +828,7 @@ function ProjectScreen({
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
+  const [maySubmit, setMaySubmit] = useState(false)
   const [tab, setTab] = useState<'sessions' | 'verdict' | 'artifacts' | 'people'>('sessions')
 
   const refresh = useCallback(() => {
@@ -832,6 +836,7 @@ function ProjectScreen({
       .then((d) => {
         setProject(d.project)
         setSessions(d.sessions ?? [])
+        setMaySubmit(d.may_submit)
       })
       .catch(() => setSessions([]))
   }, [id])
@@ -894,7 +899,7 @@ function ProjectScreen({
       <div className="screen" style={{ animation: 'none' }}>
         {tab === 'sessions' && (
           <div className="stack">
-            <ProjectSubmit i18n={i18n} me={me} project={project} onSubmitted={onSpent} />
+            {maySubmit && <ProjectSubmit i18n={i18n} me={me} project={project} onSubmitted={onSpent} />}
             <div className="card">
               <div className="card-head">
                 <span className="eyebrow">{t('projectSessions')}</span>

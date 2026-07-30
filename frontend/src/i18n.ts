@@ -106,6 +106,7 @@ const strings: Record<Lang, Record<string, string>> = {
     errActiveSession: 'Already running.',
     errUnresolvable: 'Unresolvable reference.',
     errEnqueue: 'Could not start.',
+    errQuota: 'No sessions left.',
     allPapersFailed: 'No paper could be started — check the references.',
     partialStarted: '{n} session(s) started; some papers were skipped.',
     rename: 'Rename',
