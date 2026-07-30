@@ -63,20 +63,36 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("SetTitle on a missing project: %v", err)
 	}
 
-	// SetPublic marks a project public and records the sign-off; ListPublic
-	// returns it (and never a private one). One-way — no un-publish path.
-	if err := s.SetPublic(ctx, second.ID, "owner", "v1"); err != nil {
+	// SetPublic marks a project public and records the sign-off — including the
+	// signer snapshot (006k), which every implementation must round-trip whole,
+	// since it is what a public page reports. ListPublic returns it (and never a
+	// private one). One-way — no un-publish path.
+	so := SignOff{
+		By: "owner", AttestationVersion: "v2",
+		Name: "Ada Lovelace", Institution: "LMU Munich", Contact: "ada@example.org",
+		ORCID: "0000-0002-1825-0097", Scholar: "https://scholar.google.com/citations?user=abc",
+		Email: "a**a@example.org",
+	}
+	if err := s.SetPublic(ctx, second.ID, so); err != nil {
 		t.Fatalf("SetPublic: %v", err)
 	}
 	pub, err := s.Get(ctx, second.ID)
-	if err != nil || pub.Visibility != VisibilityPublic || pub.SignedOffBy != "owner" || pub.AttestationVersion != "v1" || pub.SignedOffAt == nil {
+	if err != nil || pub.Visibility != VisibilityPublic || pub.SignedOffBy != "owner" || pub.AttestationVersion != "v2" || pub.SignedOffAt == nil {
 		t.Fatalf("after SetPublic: %+v err=%v", pub, err)
+	}
+	if pub.SignedOffName != so.Name || pub.SignedOffInstitution != so.Institution ||
+		pub.SignedOffContact != so.Contact || pub.SignedOffORCID != so.ORCID ||
+		pub.SignedOffScholar != so.Scholar || pub.SignedOffEmail != so.Email {
+		t.Fatalf("signer snapshot not round-tripped: %+v", pub)
 	}
 	list, err := s.ListPublic(ctx)
 	if err != nil || len(list) != 1 || list[0].ID != second.ID {
 		t.Fatalf("ListPublic = %+v err=%v; want only the public project", list, err)
 	}
-	if err := s.SetPublic(ctx, "nope", "owner", "v1"); !errors.Is(err, ErrNotFound) {
+	if list[0].SignedOffName != so.Name || list[0].SignedOffContact != so.Contact {
+		t.Errorf("ListPublic drops the signer snapshot: %+v", list[0])
+	}
+	if err := s.SetPublic(ctx, "nope", SignOff{By: "owner", AttestationVersion: "v2"}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("SetPublic on a missing project: want ErrNotFound, got %v", err)
 	}
 

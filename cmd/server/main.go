@@ -30,6 +30,7 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/registry"
@@ -88,11 +89,12 @@ func run() error {
 	}
 	log.Printf("provider: %s", prov.Name())
 
-	jobStore, projectStore, accessStore, memberStore, closeStores, err := openStores(ctx, *dbURL)
+	st, err := openStores(ctx, *dbURL)
 	if err != nil {
 		return err
 	}
-	defer closeStores()
+	defer st.close()
+	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
 
 	for _, email := range splitList(os.Getenv("ADMIN_EMAILS")) {
 		if err := accessStore.SeedGrant(ctx, email, access.TierAdmin); err != nil {
@@ -163,6 +165,7 @@ func run() error {
 		Jobs:          jobStore,
 		Projects:      projectStore,
 		Members:       memberStore,
+		Profiles:      st.profiles,
 		Reproductions: &registryReader{source: reproSource},
 		RepoPublisher: repoPublisher,
 		Canceler:      worker,
@@ -267,22 +270,37 @@ type accessStore interface {
 	SeedGrant(ctx context.Context, email string, tier access.Tier) error
 }
 
-// openStores returns the job, project, and access stores over one Postgres pool
-// (or their in-memory equivalents), migrating each, with a matching close
-// function. The project migration runs after the job migration: its backfill
-// reads the jobs table.
-func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, accessStore, access.Membership, func(), error) {
+// stores are the persistence seams the server is built from, opened together
+// over one pool. They travel as a struct rather than a widening return tuple, so
+// adding a store cannot silently reorder a caller's arguments.
+type stores struct {
+	jobs     job.Store
+	projects project.Store
+	access   accessStore
+	members  access.Membership
+	profiles profile.Store
+	close    func()
+}
+
+// openStores opens every store over one Postgres pool (or their in-memory
+// equivalents), migrating each. The project migration runs after the job
+// migration: its backfill reads the jobs table.
+func openStores(ctx context.Context, dbURL string) (stores, error) {
 	if dbURL == "" {
 		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
-		return job.NewMemStore(), project.NewMemStore(), access.NewMemStore(), access.NewMemMembership(), func() {}, nil
+		return stores{
+			jobs: job.NewMemStore(), projects: project.NewMemStore(),
+			access: access.NewMemStore(), members: access.NewMemMembership(),
+			profiles: profile.NewMemStore(), close: func() {},
+		}, nil
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return stores{}, err
 	}
 	if err := waitForDB(ctx, pool); err != nil {
 		pool.Close()
-		return nil, nil, nil, nil, nil, err
+		return stores{}, err
 	}
 	for _, m := range []struct {
 		name string
@@ -291,14 +309,19 @@ func openStores(ctx context.Context, dbURL string) (job.Store, project.Store, ac
 		{"job", job.Migrate},
 		{"access", access.Migrate},
 		{"project", project.Migrate}, // after job: its backfill reads jobs
+		{"profile", profile.Migrate},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			pool.Close()
-			return nil, nil, nil, nil, nil, err
+			return stores{}, err
 		}
 	}
 	log.Printf("connected to Postgres and applied migrations")
-	return job.NewPGStore(pool), project.NewPGStore(pool), access.NewPGAccess(pool), access.NewPGMembership(pool), pool.Close, nil
+	return stores{
+		jobs: job.NewPGStore(pool), projects: project.NewPGStore(pool),
+		access: access.NewPGAccess(pool), members: access.NewPGMembership(pool),
+		profiles: profile.NewPGStore(pool), close: pool.Close,
+	}, nil
 }
 
 // waitForDB retries until Postgres accepts a connection, so the app can start

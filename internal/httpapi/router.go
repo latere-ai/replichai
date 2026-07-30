@@ -15,6 +15,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -79,10 +80,19 @@ type ProjectStore interface {
 	ListByOwner(ctx context.Context, owner string) ([]project.Project, error)
 	ListPublic(ctx context.Context) ([]project.Project, error)
 	Delete(ctx context.Context, id string) error
-	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
+	SetPublic(ctx context.Context, id string, s project.SignOff) error
 	// SetTitle renames a project — naming it at create and the rename endpoint
 	// (006j). The worker also enriches a placeholder title through this.
 	SetTitle(ctx context.Context, id, title string) error
+}
+
+// ProfileStore is the researcher profile (006k): the identity a sign-off is
+// prefilled from. It is only ever the caller's own — every handler passes the
+// principal off the session, never one out of a body — so this seam needs no
+// authorisation of its own.
+type ProfileStore interface {
+	Get(ctx context.Context, principal string) (profile.Profile, error)
+	Save(ctx context.Context, p profile.Profile) (profile.Profile, error)
 }
 
 // PaperResolver previews a paper reference against the source: it resolves the
@@ -177,6 +187,7 @@ type Deps struct {
 	Jobs          JobStore
 	Projects      ProjectStore
 	Members       MembershipStore
+	Profiles      ProfileStore
 	Reproductions ReproReader
 	RepoPublisher RepoPublisher
 	Canceler      Canceler
@@ -203,6 +214,7 @@ type Router struct {
 	jobs        JobStore
 	projects    ProjectStore
 	members     MembershipStore
+	profiles    ProfileStore
 	repro       ReproReader
 	repoPub     RepoPublisher
 	canceler    Canceler
@@ -226,7 +238,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

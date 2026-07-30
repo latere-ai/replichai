@@ -86,7 +86,7 @@ func (s *MemStore) SetTitle(_ context.Context, id, title string) error {
 }
 
 // SetPublic marks a project public and records the sign-off. One-way.
-func (s *MemStore) SetPublic(_ context.Context, id, signedOffBy, attestationVersion string) error {
+func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
@@ -95,9 +95,15 @@ func (s *MemStore) SetPublic(_ context.Context, id, signedOffBy, attestationVers
 	}
 	now := s.clock()
 	p.Visibility = VisibilityPublic
-	p.SignedOffBy = signedOffBy
+	p.SignedOffBy = so.By
 	p.SignedOffAt = &now
-	p.AttestationVersion = attestationVersion
+	p.AttestationVersion = so.AttestationVersion
+	p.SignedOffName = so.Name
+	p.SignedOffInstitution = so.Institution
+	p.SignedOffContact = so.Contact
+	p.SignedOffORCID = so.ORCID
+	p.SignedOffScholar = so.Scholar
+	p.SignedOffEmail = so.Email
 	s.projects[id] = p
 	return nil
 }

@@ -51,6 +51,35 @@ type Project struct {
 	SignedOffBy        string     `json:"signed_off_by,omitempty"`
 	SignedOffAt        *time.Time `json:"signed_off_at,omitempty"`
 	AttestationVersion string     `json:"attestation_version,omitempty"`
+	// The signer, as they were when they signed (006k). A snapshot, not a view of
+	// their profile: editing a profile later must never rewrite what an already
+	// published attestation claimed. Empty on a v1 sign-off, which predates it.
+	SignedOffName        string `json:"signed_off_name,omitempty"`
+	SignedOffInstitution string `json:"signed_off_institution,omitempty"`
+	SignedOffContact     string `json:"signed_off_contact,omitempty"` // published for inquiries
+	SignedOffORCID       string `json:"signed_off_orcid,omitempty"`
+	SignedOffScholar     string `json:"signed_off_scholar,omitempty"`
+	// SignedOffEmail identifies the signer, stored already redacted
+	// (h***n@example.org). It is derived server-side from the session's verified
+	// email, never taken from a request body — so a published identity cannot be
+	// typed in — and redacted before storage rather than at render, so the full
+	// address is never put on the wire.
+	SignedOffEmail string `json:"signed_off_email,omitempty"`
+}
+
+// SignOff is one recorded responsibility attestation: the deciding principal,
+// the version of the text they signed, and the snapshot of who they said they
+// were. It travels as a struct because a positional SetPublic with seven
+// strings invites a caller to swap two of them.
+type SignOff struct {
+	By                 string // the deciding principal (006c)
+	AttestationVersion string
+	Name               string
+	Institution        string
+	Contact            string
+	ORCID              string
+	Scholar            string
+	Email              string // already redacted; see Project.SignedOffEmail
 }
 
 // Store is where projects live. Sessions are not stored here — they are jobs in
@@ -69,10 +98,10 @@ type Store interface {
 	// A missing project is not an error — the enrichment is best-effort.
 	SetTitle(ctx context.Context, id, title string) error
 	// SetPublic marks a project public and records the responsibility sign-off
-	// (006f): who signed, the attestation text version, and the time. One-way —
-	// there is no un-publish. The caller (the HTTP owner check and the
-	// manifest-clear gate) authorises; this store only records.
-	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
+	// (006f, 006k): who signed, the attestation text version, the signer snapshot,
+	// and the time. One-way — there is no un-publish. The caller (the HTTP owner
+	// check and the manifest-clear gate) authorises; this store only records.
+	SetPublic(ctx context.Context, id string, s SignOff) error
 	// ListPublic returns every public project, newest first — the public zone's
 	// read surface, across all owners.
 	ListPublic(ctx context.Context) ([]Project, error)
