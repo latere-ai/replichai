@@ -249,6 +249,19 @@ func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStat
 	return nil
 }
 
+// Consumed counts the sessions charged to a payer that spend allowance.
+func (s *MemStore) Consumed(_ context.Context, payerSub string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, j := range s.jobs {
+		if j.ChargedTo == payerSub && j.Phase.Spends() {
+			n++
+		}
+	}
+	return n, nil
+}
+
 // Active returns copies of every non-terminal job, in submission order.
 func (s *MemStore) Active(_ context.Context) ([]Job, error) {
 	s.mu.Lock()

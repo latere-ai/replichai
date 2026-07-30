@@ -152,6 +152,16 @@ func (s *PGStore) checkQuotaTx(ctx context.Context, tx pgx.Tx, payer string) err
 	return nil
 }
 
+// Consumed counts the sessions charged to a payer that spend allowance — the
+// same predicate the enqueue check applies, so the number the UI shows and the
+// number that refuses a submit cannot disagree.
+func (s *PGStore) Consumed(ctx context.Context, payerSub string) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM jobs WHERE charged_to = $1 AND phase <> $2`, payerSub, PhaseFailed).Scan(&n)
+	return n, err
+}
+
 // Get returns one job by id.
 func (s *PGStore) Get(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.pool.QueryRow(ctx, `SELECT `+jobColumns+` FROM jobs WHERE id = $1`, id))

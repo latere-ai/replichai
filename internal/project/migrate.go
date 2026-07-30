@@ -49,6 +49,11 @@ ALTER TABLE projects ADD COLUMN signed_off_by       TEXT NOT NULL DEFAULT '';
 ALTER TABLE projects ADD COLUMN signed_off_at       TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN attestation_version TEXT NOT NULL DEFAULT '';
 `},
+	{3, `
+-- The owner's standing consent to cover their members' sessions (006l). Off by
+-- default: sponsorship is always something the owner turned on.
+ALTER TABLE projects ADD COLUMN sponsored BOOLEAN NOT NULL DEFAULT false;
+`},
 }
 
 // Migrate applies the project schema and the one-time backfill. Safe to run on

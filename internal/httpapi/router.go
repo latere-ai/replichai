@@ -80,6 +80,9 @@ type ProjectStore interface {
 	ListPublic(ctx context.Context) ([]project.Project, error)
 	Delete(ctx context.Context, id string) error
 	SetPublic(ctx context.Context, id, signedOffBy, attestationVersion string) error
+	// SetSponsored records the owner's standing consent to cover their
+	// collaborators' sessions (006l).
+	SetSponsored(ctx context.Context, id string, on bool) error
 	// SetTitle renames a project — naming it at create and the rename endpoint
 	// (006j). The worker also enriches a placeholder title through this.
 	SetTitle(ctx context.Context, id, title string) error

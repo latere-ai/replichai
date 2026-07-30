@@ -6,12 +6,6 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// Store is where jobs live. It is an interface so the HTTP layer (006a) and the
-// worker test against an in-memory fake with no database; the Postgres
-// implementation lands against this same contract (006b's build sequence).
-//
-// The queue is the table: a worker claims a submitted job and drives it through
-// the phases, writing each transition back. There is no external broker.
 // Submission is one request to open a session. It is a struct rather than a
 // widening positional signature: Project, PaperKey, and ChargedTo are all bare
 // strings, and getting two of them the wrong way round would be silent.
@@ -42,6 +36,12 @@ func (s Submission) Payer() string {
 	return s.Principal
 }
 
+// Store is where jobs live. It is an interface so the HTTP layer (006a) and the
+// worker test against an in-memory fake with no database; the Postgres
+// implementation lands against this same contract (006b's build sequence).
+//
+// The queue is the table: a worker claims a submitted job and drives it through
+// the phases, writing each transition back. There is no external broker.
 type Store interface {
 	// Enqueue records a new submission as a submitted job — a session in a
 	// project. A submit for a paper already running (in the project, or anywhere
@@ -85,4 +85,9 @@ type Store interface {
 	// Active returns the jobs that are not terminal, so a restart can find work
 	// a crash left mid-flight and reap it.
 	Active(ctx context.Context) ([]Job, error)
+	// Consumed counts the sessions charged to a payer that spend allowance —
+	// completed and in flight, never failed or cancelled (006l). It is derived
+	// from the rows every time rather than kept as a balance, so it cannot drift
+	// from the sessions it counts.
+	Consumed(ctx context.Context, payerSub string) (int, error)
 }

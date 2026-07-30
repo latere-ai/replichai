@@ -175,7 +175,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.platform, *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.platform, sessionQuota(st), *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -199,10 +199,10 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, plat platform.Store, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, plat platform.Store, quota webauth.QuotaFunc, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
-	mux.HandleFunc("GET /me", webauth.Me(acc))
+	mux.HandleFunc("GET /me", webauth.Me(acc, quota))
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
@@ -266,6 +266,46 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 type accessStore interface {
 	access.Access
 	SeedGrant(ctx context.Context, email string, tier access.Tier) error
+	// EmailOf prices a payer known only by their sub against the email-keyed
+	// quota top-ups (006l). Widened here rather than on access.Access, which
+	// stays the authorisation contract.
+	EmailOf(ctx context.Context, principalSub string) (string, bool, error)
+}
+
+// sessionQuota answers what /me reports: how much of the payer's allowance is
+// spent, and what the allowance is. Both halves read the same predicate the
+// enqueue check applies, so the number shown and the number that refuses a
+// submit cannot disagree.
+func sessionQuota(st stores) webauth.QuotaFunc {
+	return func(ctx context.Context, principalSub, email string) (webauth.Quota, error) {
+		limit, unlimited, err := st.platform.Allowance(ctx, access.Principal{Sub: principalSub, Email: email})
+		if err != nil {
+			return webauth.Quota{}, err
+		}
+		used, err := st.jobs.Consumed(ctx, principalSub)
+		if err != nil {
+			return webauth.Quota{}, err
+		}
+		return webauth.Quota{Used: used, Limit: limit, Unlimited: unlimited}, nil
+	}
+}
+
+// sessionAllowance is how the job store learns what a payer may spend: the
+// platform default plus that person's top-up, or unlimited for an admin. It is
+// the one adapter between the policy store and the enforcement point, so
+// internal/job never imports internal/platform.
+//
+// A payer whose email cannot be read is priced at the plain default rather than
+// refused or waved through — fail-closed, and a top-up they may have is simply
+// not applied.
+func sessionAllowance(acc accessStore, plat platform.Store) job.Allowance {
+	return func(ctx context.Context, payerSub string) (int, bool, error) {
+		email, _, err := acc.EmailOf(ctx, payerSub)
+		if err != nil {
+			log.Printf("quota: reading the payer's email for %s: %v", payerSub, err)
+		}
+		return plat.Allowance(ctx, access.Principal{Sub: payerSub, Email: email})
+	}
 }
 
 // stores is every persistence seam the server composes, so adding one is a
@@ -287,12 +327,13 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	if dbURL == "" {
 		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
 		acc := access.NewMemStore()
+		plat := platform.NewMemStore(acc)
 		return stores{
-			jobs:     job.NewMemStore(),
+			jobs:     job.NewMemStore(job.WithAllowance(sessionAllowance(acc, plat))),
 			projects: project.NewMemStore(),
 			access:   acc,
 			members:  access.NewMemMembership(),
-			platform: platform.NewMemStore(acc),
+			platform: plat,
 			close:    func() {},
 		}, nil
 	}
@@ -320,12 +361,13 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	}
 	log.Printf("connected to Postgres and applied migrations")
 	acc := access.NewPGAccess(pool)
+	plat := platform.NewPGStore(pool, acc)
 	return stores{
-		jobs:     job.NewPGStore(pool),
+		jobs:     job.NewPGStore(pool, job.WithPGAllowance(sessionAllowance(acc, plat))),
 		projects: project.NewPGStore(pool),
 		access:   acc,
 		members:  access.NewPGMembership(pool),
-		platform: platform.NewPGStore(pool, acc),
+		platform: plat,
 		close:    pool.Close,
 	}, nil
 }
