@@ -55,7 +55,12 @@ const strings: Record<Lang, Record<string, string>> = {
       'Collaborators spend their own session quota here by default. Turn this on to let them charge sessions in this project to you instead — they choose, each time, and you can withdraw it at any point.',
     sponsorLabel: "Cover my collaborators' sessions in this project",
     signOut: 'Sign out',
-    theme: 'Theme',
+    back: 'Back',
+    // appearance: three choices, not a toggle — "auto" follows the operating
+    // system, and the other two pin it regardless of what the machine does.
+    theme: 'Appearance',
+    themeAuto: 'Auto',
+    themeAutoHint: 'Auto · follow the system',
     themeDark: 'Dark',
     themeLight: 'Light',
     // projects
@@ -213,7 +218,9 @@ const strings: Record<Lang, Record<string, string>> = {
     showEvents: 'Show events',
     toolsUsed: 'Tools the agent used',
     hideLifecycle: 'Hide lifecycle events',
+    // The sentence is the card's body; the label is what fits a filter row.
     thinking: 'thought for a moment (content not exposed by the backend)',
+    thinkingLabel: 'thinking',
     toolCall: 'tool call',
     toolResult: 'tool result',
     grade: 'Grade',

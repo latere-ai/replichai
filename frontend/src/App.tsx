@@ -50,6 +50,9 @@ import {
   type Usage,
 } from './api'
 import { useI18n } from './i18n'
+import { Ico, type IconName } from './icons'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Radio, RadioGroup, Segmented, Select, Tip, Toggle, type Tone } from './ui'
+import { useTheme, type ThemeMode } from './theme'
 
 type I18n = ReturnType<typeof useI18n>
 
@@ -69,24 +72,31 @@ type View =
   | { name: 'project'; id: string; title?: string }
   | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string }
 
-// useTheme persists the light/dark choice and stamps it on <html>. Dark is the
-// default, matching the operator console.
-function useTheme(): [string, () => void] {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem('theme', theme)
-  }, [theme])
-  return [theme, () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))]
-}
-
 const terminal = (p: string) => p === 'done' || p === 'failed'
 // phaseClass tones a phase badge: any non-terminal phase reads as "running".
 const phaseClass = (p: string) => (terminal(p) ? p : 'running')
 
+// phaseTone maps a session phase onto the semantic ramp, so a phase is the same
+// colour wherever it appears — a row badge, a timeline dot, a pill.
+function phaseTone(phase: string): Tone {
+  if (phase === 'done') return 'ok'
+  if (phase === 'failed') return 'err'
+  return 'run'
+}
+
+// phaseIcon gives each phase a glyph, so the lifecycle is legible before the
+// label is read.
+function phaseIcon(phase: string): IconName {
+  if (phase === 'done') return 'check'
+  if (phase === 'failed') return 'alert'
+  if (phase === 'publishing') return 'package'
+  if (phase === 'resolving') return 'search'
+  return 'clock'
+}
+
 export default function App() {
   const i18n = useI18n()
-  const [theme, toggleTheme] = useTheme()
+  const theme = useTheme()
   const [me, setMe] = useState<Me | null>(null)
 
   // refreshMe re-reads the identity, and with it the remaining quota — called
@@ -102,7 +112,20 @@ export default function App() {
   if (me === null) return <div className="center-load">…</div>
   if (!me.authenticated) return <SignIn i18n={i18n} />
   if ((me.tier ?? 'none') === 'none') return <NotInvited i18n={i18n} email={me.email ?? ''} />
-  return <Shell i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} refreshMe={refreshMe} />
+  return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} />
+}
+
+// ThemeSwitcher offers the three appearances directly rather than cycling
+// through them: "auto" is a real choice, not the absence of one, and a person
+// who has pinned light should be able to see that they have.
+function ThemeSwitcher({ i18n, theme, compact }: { i18n: I18n; theme: ReturnType<typeof useTheme>; compact?: boolean }) {
+  const { t } = i18n
+  const options: { value: ThemeMode; label: string; icon: IconName; hint: string }[] = [
+    { value: 'auto', label: t('themeAuto'), icon: 'monitor', hint: t('themeAutoHint') },
+    { value: 'light', label: t('themeLight'), icon: 'sun', hint: t('themeLight') },
+    { value: 'dark', label: t('themeDark'), icon: 'moon', hint: t('themeDark') },
+  ]
+  return <Segmented value={theme.mode} options={options} onChange={theme.setMode} label={t('theme')} compact={compact} />
 }
 
 /* ─── Auth screens ─── */
@@ -140,35 +163,20 @@ function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
 
 /* ─── Shell ─── */
 
-const Icon = {
-  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z',
-  globe: 'M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18',
-  gear: '', // rendered as circle below
-  plus: 'M12 5v14M5 12h14',
-  moon: 'M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z',
-  back: 'm15 6-6 6 6 6',
-  chev: 'm9 6 6 6-6 6',
-  x: 'M6 6l12 12M18 6L6 18',
-  pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
-  shield: 'M12 3l7 3v6c0 4-3 6.7-7 9-4-2.3-7-5-7-9V6Z',
-}
-
-function Svg({ d, size = 14, w = 1.7 }: { d: string; size?: number; w?: number }) {
+// NavItem is one destination in the rail. Each keeps a fixed hue on its icon so
+// the rail is scannable by colour; the label only takes the brand when current.
+function NavItem({ label, icon, tone, on, onClick }: { label: string; icon: IconName; tone: string; on: boolean; onClick: () => void }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
-      {d === 'globe' ? (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d={Icon.globe} />
-        </>
-      ) : (
-        <path d={d} />
-      )}
-    </svg>
+    <button className={'nav-btn' + (on ? ' active' : '')} onClick={onClick}>
+      <span className="nav-ico" style={{ color: tone }}>
+        <Ico name={icon} size={13} />
+      </span>
+      {label}
+    </button>
   )
 }
 
-function Shell({ i18n, me, theme, toggleTheme, refreshMe }: { i18n: I18n; me: Me; theme: string; toggleTheme: () => void; refreshMe: () => void }) {
+function Shell({ i18n, me, theme, refreshMe }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme>; refreshMe: () => void }) {
   const { t } = i18n
   const [view, setView] = useState<View>({ name: 'projects' })
   const openProject = (id: string, title?: string) => setView({ name: 'project', id, title })
@@ -186,19 +194,19 @@ function Shell({ i18n, me, theme, toggleTheme, refreshMe }: { i18n: I18n; me: Me
         <div className="rail-nav">
           <div className="rail-group">
             <div className="eyebrow">{t('workspace')}</div>
-            <button className={'nav-btn' + (view.name === 'projects' || view.name === 'project' || view.name === 'session' ? ' active' : '')} onClick={() => setView({ name: 'projects' })}>
-              <Svg d={Icon.folder} /> {t('navProjects')}
-            </button>
-            <button className={'nav-btn' + (view.name === 'public' ? ' active' : '')} onClick={() => setView({ name: 'public' })}>
-              <Svg d="globe" /> {t('navPublic')}
-            </button>
+            <NavItem
+              label={t('navProjects')}
+              icon="folder"
+              tone="var(--brand)"
+              on={view.name === 'projects' || view.name === 'project' || view.name === 'session'}
+              onClick={() => setView({ name: 'projects' })}
+            />
+            <NavItem label={t('navPublic')} icon="globe" tone="var(--pub)" on={view.name === 'public'} onClick={() => setView({ name: 'public' })} />
           </div>
           {isAdmin(me) && (
             <div className="rail-group">
               <div className="eyebrow">{t('platform')}</div>
-              <button className={'nav-btn' + (view.name === 'admin' ? ' active' : '')} onClick={() => setView({ name: 'admin' })}>
-                <Svg d={Icon.shield} /> {t('navAdmin')}
-              </button>
+              <NavItem label={t('navAdmin')} icon="shieldCheck" tone="var(--warn)" on={view.name === 'admin'} onClick={() => setView({ name: 'admin' })} />
             </div>
           )}
         </div>
@@ -208,7 +216,7 @@ function Shell({ i18n, me, theme, toggleTheme, refreshMe }: { i18n: I18n; me: Me
             <span className="user-meta">
               {me.name && <span className="user-name">{me.name}</span>}
               <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
-              <span className="user-tier">{tierLabel(t, me.tier)}</span>
+              <TierPill i18n={i18n} tier={me.tier} />
             </span>
           </button>
         </div>
@@ -218,12 +226,10 @@ function Shell({ i18n, me, theme, toggleTheme, refreshMe }: { i18n: I18n; me: Me
         <header className="topbar">
           <Breadcrumb i18n={i18n} view={view} setView={setView} />
           <div className="topbar-actions">
-            <button className="icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light' : 'Dark'} aria-label="theme">
-              <Svg d={Icon.moon} />
-            </button>
+            <ThemeSwitcher i18n={i18n} theme={theme} compact />
             <QuotaPill i18n={i18n} quota={me.quota} />
             <button className="btn" onClick={() => setView({ name: 'submit' })}>
-              <Svg d={Icon.plus} size={13} w={2.1} /> {t('newProject')}
+              <Ico name="plus" size={13} w={2.2} /> {t('newProject')}
             </button>
           </div>
         </header>
@@ -239,7 +245,7 @@ function Shell({ i18n, me, theme, toggleTheme, refreshMe }: { i18n: I18n; me: Me
             }}
           />
         )}
-        {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} toggleTheme={toggleTheme} />}
+        {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} />}
         {view.name === 'admin' && <AdminScreen i18n={i18n} />}
         {view.name === 'project' && (
           <ProjectScreen
@@ -292,6 +298,72 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
   )
 }
 
+/* ─── Presentation helpers ─── */
+
+// Stat is one headline number: its own icon, its own tone, and a hairline of
+// that tone along the card's top edge.
+function Stat({ label, value, icon, tone }: { label: string; value: React.ReactNode; icon: IconName; tone: string }) {
+  return (
+    <div className="stat" style={{ color: tone }}>
+      <span className="stat-ico">
+        <Ico name={icon} size={17} />
+      </span>
+      <span className="stat-body">
+        <span className="eyebrow">{label}</span>
+        <span className="stat-value">{value}</span>
+      </span>
+    </div>
+  )
+}
+
+// Empty states get a glyph, so "nothing yet" never reads as "failed to load".
+function Empty({ icon, text }: { icon: IconName; text: string }) {
+  return (
+    <div className="empty">
+      <span className="empty-ico">
+        <Ico name={icon} size={17} />
+      </span>
+      {text}
+    </div>
+  )
+}
+
+// CardHead is an eyebrow with its section's glyph and tone.
+function CardHead({ label, icon, tone = 'var(--fg-3)', children }: { label: string; icon: IconName; tone?: string; children?: React.ReactNode }) {
+  return (
+    <div className="card-head">
+      <span className="head-ico" style={{ color: tone }}>
+        <Ico name={icon} size={12} />
+      </span>
+      <span className="eyebrow">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+// VisibilityBadge: private is a closed lock in ink, public is the published
+// tone — the one state that means anyone can read this.
+function VisibilityBadge({ i18n, visibility }: { i18n: I18n; visibility: 'private' | 'public' }) {
+  return (
+    <span className={'badge ' + visibility}>
+      <Ico name={visibility === 'public' ? 'globe' : 'lock'} size={11} w={2} />
+      {i18n.t(visibility)}
+    </span>
+  )
+}
+
+// TierPill is the rounded mark of what someone may do on the platform. An admin
+// carries the brand and a shield; an ordinary member stays neutral, because
+// "user" is the unremarkable case and should not shout.
+function TierPill({ i18n, tier }: { i18n: I18n; tier?: string }) {
+  const admin = tier === 'admin'
+  return (
+    <Pill tone={admin ? 'brand' : 'neutral'} icon={admin ? 'shieldCheck' : undefined}>
+      {tierLabel(i18n.t, tier)}
+    </Pill>
+  )
+}
+
 /* ─── Projects ─── */
 
 function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title?: string) => void }) {
@@ -316,31 +388,26 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
       </div>
 
       <div className="stat-grid">
-        <div className="stat">
-          <span className="eyebrow">{t('statProjects')}</span>
-          <span className="stat-value">{mine === null ? '—' : mine.length}</span>
-        </div>
-        <div className="stat">
-          <span className="eyebrow">{t('statSessions')}</span>
-          <span className="stat-value">{mine === null ? '—' : sessionTotal}</span>
-        </div>
+        <Stat label={t('statProjects')} value={mine === null ? '—' : mine.length} icon="folder" tone="var(--brand)" />
+        <Stat label={t('statSessions')} value={mine === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
       </div>
 
       <div className="card">
         <div className="card-head">
-          <div className="segmented">
-            <button className={'seg-btn' + (tab === 'mine' ? ' on' : '')} onClick={() => setTab('mine')}>
-              {t('myProjects')}
-            </button>
-            <button className={'seg-btn' + (tab === 'shared' ? ' on' : '')} onClick={() => setTab('shared')}>
-              {t('sharedWithMe')}
-            </button>
-          </div>
+          <Segmented
+            value={tab}
+            onChange={setTab}
+            label={t('navProjects')}
+            options={[
+              { value: 'mine', label: t('myProjects'), icon: 'folder' },
+              { value: 'shared', label: t('sharedWithMe'), icon: 'users' },
+            ]}
+          />
         </div>
         {mine === null ? (
           <div className="empty">…</div>
         ) : list.length === 0 ? (
-          <div className="empty">{tab === 'mine' ? t('noProjects') : t('noShared')}</div>
+          <Empty icon={tab === 'mine' ? 'folder' : 'users'} text={tab === 'mine' ? t('noProjects') : t('noShared')} />
         ) : (
           <div className="rows">
             {list.map((p) => (
@@ -353,8 +420,8 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
                   </div>
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
-                <span className={'badge ' + p.visibility}>{t(p.visibility)}</span>
-                <Svg d={Icon.chev} size={14} />
+                <VisibilityBadge i18n={i18n} visibility={p.visibility} />
+                <Ico name="chevronRight" size={15} className="chev" />
               </div>
             ))}
           </div>
@@ -382,7 +449,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
         {list === null ? (
           <div className="empty">…</div>
         ) : list.length === 0 ? (
-          <div className="empty">{t('noPublic')}</div>
+          <Empty icon="globe" text={t('noPublic')} />
         ) : (
           <div className="rows">
             {list.map((p) => (
@@ -394,8 +461,8 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
                   </div>
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
-                <span className="badge public">{t('public')}</span>
-                <Svg d={Icon.chev} size={14} />
+                <VisibilityBadge i18n={i18n} visibility="public" />
+                <Ico name="chevronRight" size={15} className="chev" />
               </div>
             ))}
           </div>
@@ -503,21 +570,32 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
                     onKeyDown={(e) => e.key === 'Enter' && resolveRow(i)}
                   />
                   <button className="btn ghost sm" disabled={!row.url.trim() || row.resolving} onClick={() => resolveRow(i)}>
+                    <Ico name="search" size={12} w={2} />
                     {row.resolving ? t('resolvingPaper') : t('resolve')}
                   </button>
                   {rows.length > 1 && (
-                    <button className="icon-btn" aria-label={t('removePaper')} onClick={() => removeRow(i)}>
-                      <Svg d={Icon.x} size={13} w={1.8} />
-                    </button>
+                    <Tip text={t('removePaper')}>
+                      <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => removeRow(i)}>
+                        <Ico name="x" size={13} w={1.9} />
+                      </button>
+                    </Tip>
                   )}
                 </div>
-                {row.preview && <div className="paper-preview">{row.preview.title || row.preview.key}</div>}
-                {row.error && <div className="paper-preview err">{row.error}</div>}
+                {row.preview && (
+                  <div className="paper-preview">
+                    <Ico name="check" size={12} w={2.2} style={{ color: 'var(--ok)' }} /> {row.preview.title || row.preview.key}
+                  </div>
+                )}
+                {row.error && (
+                  <div className="paper-preview err">
+                    <Ico name="alert" size={12} /> {row.error}
+                  </div>
+                )}
               </div>
             ))}
           </div>
           <button className="btn ghost sm" onClick={addRow} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
-            <Svg d={Icon.plus} size={12} w={2} /> {t('addPaper')}
+            <Ico name="plus" size={12} w={2.2} /> {t('addPaper')}
           </button>
         </div>
 
@@ -529,7 +607,7 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
 
         <div className="submit-input-row">
           <button className="btn lg" disabled={busy} onClick={submit}>
-            {busy ? t('creatingProject') : t('createProjectBtn')}
+            <Ico name="sparkles" size={14} /> {busy ? t('creatingProject') : t('createProjectBtn')}
           </button>
           <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>
         </div>
@@ -541,7 +619,7 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
 
 /* ─── Settings ─── */
 
-function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; theme: string; toggleTheme: () => void }) {
+function SettingsScreen({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme> }) {
   const { t } = i18n
   return (
     <div className="screen">
@@ -558,20 +636,31 @@ function SettingsScreen({ i18n, me, theme, toggleTheme }: { i18n: I18n; me: Me; 
         </div>
         <div className="usage-rows">
           <div className="usage-line">
+            <Ico name="key" size={13} style={{ color: 'var(--brand)' }} />
             {t('access')}
-            <span className="v">{tierLabel(t, me.tier)}</span>
+            <span className="v">
+              <TierPill i18n={i18n} tier={me.tier} />
+            </span>
           </div>
+          {me.quota && !me.quota.unlimited && (
+            <div className="usage-line">
+              <Ico name="wallet" size={13} style={{ color: 'var(--ok)' }} />
+              {t('statSessions')}
+              <span className="v">
+                {me.quota.used} / {me.quota.limit}
+              </span>
+            </div>
+          )}
           <div className="usage-line">
+            <Ico name={theme.theme === 'dark' ? 'moon' : 'sun'} size={13} style={{ color: 'var(--warn)' }} />
             {t('theme')}
             <span className="v">
-              <button className="btn ghost sm" onClick={toggleTheme}>
-                {theme === 'dark' ? t('themeDark') : t('themeLight')}
-              </button>
+              <ThemeSwitcher i18n={i18n} theme={theme} />
             </span>
           </div>
         </div>
         <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
-          {t('signOut')}
+          <Ico name="logOut" size={13} /> {t('signOut')}
         </a>
       </div>
       <ProfileCard i18n={i18n} />
@@ -629,7 +718,9 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
   return (
     <div className="card card-pad stack" style={{ maxWidth: 520 }}>
       <div>
-        <span className="eyebrow">{t('profileTitle')}</span>
+        <span className="eyebrow eyebrow-ico">
+          <Ico name="user" size={12} /> {t('profileTitle')}
+        </span>
         <p className="muted small" style={{ lineHeight: 1.6, margin: '8px 0 0' }}>
           {t('profileIntro')}
         </p>
@@ -637,9 +728,13 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
       <ProfileFields i18n={i18n} p={p} set={set} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button className="btn" disabled={busy} onClick={save}>
-          {busy ? t('saving') : t('save')}
+          <Ico name="check" size={13} w={2.2} /> {busy ? t('saving') : t('save')}
         </button>
-        {saved && <span className="attestation">{t('profileSaved')}</span>}
+        {saved && (
+          <span className="attestation" style={{ color: 'var(--ok)' }}>
+            {t('profileSaved')}
+          </span>
+        )}
       </div>
       {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
     </div>
@@ -755,7 +850,9 @@ function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: Plat
 
   return (
     <div className="card card-pad stack">
-      <span className="eyebrow">{t('platformPolicy')}</span>
+      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--warn)' }}>
+        <Ico name="wallet" size={12} /> {t('platformPolicy')}
+      </span>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
         {t('defaultQuotaHint')}
       </p>
@@ -763,16 +860,9 @@ function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: Plat
         <label className="admin-label" htmlFor="default-quota">
           {t('defaultQuota')}
         </label>
-        <input
-          id="default-quota"
-          className="text quota-input"
-          type="number"
-          min={0}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button className="btn ghost" disabled={!dirty} onClick={() => onSave(parsed)}>
-          {t('save')}
+        <NumberField id="default-quota" value={draft} onChange={setDraft} min={0} ariaLabel={t('defaultQuota')} />
+        <button className="btn" disabled={!dirty} onClick={() => onSave(parsed)}>
+          <Ico name="check" size={13} w={2.2} /> {t('save')}
         </button>
       </div>
       {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
@@ -799,6 +889,9 @@ function PeopleCard({
   const { t } = i18n
   const [email, setEmail] = useState('')
   const [tier, setTier] = useState<'user' | 'admin'>('user')
+  // Which row's top-up is being edited. window.prompt would have drawn a
+  // browser-owned box over the app; this is the app's own dialog.
+  const [topping, setTopping] = useState<GrantView | null>(null)
 
   const invite = (e: React.FormEvent) => {
     e.preventDefault()
@@ -807,38 +900,34 @@ function PeopleCard({
     onGrant(target, tier)
     setEmail('')
   }
-  const topup = (row: GrantView) => {
-    const next = window.prompt(t('topupPrompt', { email: row.email }), String(row.topup ?? 0))
-    if (next === null) return
-    const n = Number.parseInt(next, 10)
-    if (Number.isInteger(n) && n >= 0) onTopup(row.email, n)
-  }
 
   return (
     <div className="card">
-      <div className="card-head">
-        <span className="eyebrow">{t('people')}</span>
-      </div>
+      <CardHead label={t('people')} icon="users" tone="var(--brand)" />
       {people === null ? (
         <div className="empty">{t('loading')}</div>
       ) : people.length === 0 ? (
-        <div className="empty">{t('noGrants')}</div>
+        <Empty icon="userPlus" text={t('noGrants')} />
       ) : (
         people.map((p) => (
           <div key={p.email} className="member-row">
-            <span className="user-avatar">{initials(p.email)}</span>
+            <Initials email={p.email} />
             <span className="member-email">{p.email}</span>
-            <span className={'role-tag' + (p.tier === 'admin' ? ' admin' : '')}>{tierLabel(t, p.tier)}</span>
-            {!p.bound && <span className="role-tag pending">{t('pending')}</span>}
-            {!!p.topup && <span className="role-tag">{t('topupN', { n: String(p.topup) })}</span>}
-            <span className="muted small mono" title={t('quotaTitle', { used: String(p.used), limit: String(p.limit) })}>
-              {p.unlimited ? '∞' : `${p.used}/${p.limit}`}
-            </span>
-            <button className="btn ghost sm" onClick={() => topup(p)}>
-              {t('topup')}
+            <TierPill i18n={i18n} tier={p.tier} />
+            {!p.bound && (
+              <Pill tone="warn" icon="clock">
+                {t('pending')}
+              </Pill>
+            )}
+            {!!p.topup && <Pill tone="ok">{t('topupN', { n: String(p.topup) })}</Pill>}
+            <Tip text={t('quotaTitle', { used: String(p.used), limit: String(p.limit) })}>
+              <span className="muted small mono tabular">{p.unlimited ? '∞' : `${p.used}/${p.limit}`}</span>
+            </Tip>
+            <button className="btn ghost sm" onClick={() => setTopping(p)}>
+              <Ico name="wallet" size={12} /> {t('topup')}
             </button>
-            <button className="btn ghost sm" onClick={() => onRevoke(p.email)}>
-              {t('revoke')}
+            <button className="btn ghost sm danger" onClick={() => onRevoke(p.email)}>
+              <Ico name="x" size={12} w={2} /> {t('revoke')}
             </button>
           </div>
         ))
@@ -853,20 +942,52 @@ function PeopleCard({
           placeholder={t('inviteEmail')}
           spellCheck={false}
         />
-        <select className="text" value={tier} onChange={(e) => setTier(e.target.value as 'user' | 'admin')}>
-          <option value="user">{t('tierUser')}</option>
-          <option value="admin">{t('tierAdmin')}</option>
-        </select>
-        <button className="btn ghost">{t('grant')}</button>
+        <Select
+          value={tier}
+          onChange={setTier}
+          label={t('access')}
+          width={132}
+          options={[
+            { value: 'user', label: t('tierUser'), icon: 'user' },
+            { value: 'admin', label: t('tierAdmin'), icon: 'shieldCheck' },
+          ]}
+        />
+        <button className="btn">
+          <Ico name="userPlus" size={13} /> {t('grant')}
+        </button>
       </form>
       <div style={{ padding: '0 14px 12px' }}>
         <span className="muted small">{t('grantHint')}</span>
       </div>
+      {topping && (
+        <PromptDialog
+          title={t('topup')}
+          body={t('topupPrompt', { email: topping.email })}
+          initial={String(topping.topup ?? 0)}
+          confirmLabel={t('save')}
+          cancelLabel={t('cancel')}
+          onCancel={() => setTopping(null)}
+          onConfirm={(n) => {
+            onTopup(topping.email, n)
+            setTopping(null)
+          }}
+        />
+      )}
     </div>
   )
 }
 
 /* ─── Project detail ─── */
+
+// Tab is one view of a project. The glyph does the work at a glance; the
+// underline and the brand tint say which one is open.
+function Tab({ on, onClick, icon, label }: { on: boolean; onClick: () => void; icon: IconName; label: string }) {
+  return (
+    <button className={'tab' + (on ? ' on' : '')} onClick={onClick}>
+      <Ico name={icon} size={13} /> {label}
+    </button>
+  )
+}
 
 // EditableTitle shows a project's title and, for its owner, an inline rename:
 // a pencil turns the title into an input; Enter or the check saves, Escape
@@ -897,9 +1018,11 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
         <h1 className="detail-title">{title}</h1>
         {canEdit && (
-          <button className="icon-btn" aria-label={t('rename')} onClick={() => { setDraft(title); setEditing(true) }}>
-            <Svg d={Icon.pencil} size={13} w={1.7} />
-          </button>
+          <Tip text={t('rename')}>
+            <button className="icon-btn" aria-label={t('rename')} onClick={() => { setDraft(title); setEditing(true) }}>
+              <Ico name="pencil" size={13} />
+            </button>
+          </Tip>
         )}
       </div>
     )
@@ -918,8 +1041,8 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
           if (e.key === 'Escape') setEditing(false)
         }}
       />
-      <button className="btn ghost sm" disabled={busy} onClick={save}>
-        {t('save')}
+      <button className="btn sm" disabled={busy} onClick={save}>
+        <Ico name="check" size={12} w={2.2} /> {t('save')}
       </button>
       <button className="btn ghost sm" disabled={busy} onClick={() => setEditing(false)}>
         {t('cancel')}
@@ -980,35 +1103,28 @@ function ProjectScreen({
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
               <EditableTitle i18n={i18n} title={project.title} canEdit={isOwner} onRename={async (next) => { await renameProject(id, next); refresh() }} />
-              <span className={'badge ' + project.visibility}>{t(project.visibility)}</span>
+              <VisibilityBadge i18n={i18n} visibility={project.visibility} />
             </div>
             {project.visibility === 'public' && project.signed_off_at && (
-              <div className="detail-meta">{t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() })}</div>
+              <div className="detail-meta">
+                <Ico name="check" size={12} w={2.2} style={{ color: 'var(--ok)' }} />
+                {t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() })}
+              </div>
             )}
           </div>
           {isOwner && (
             <div className="detail-actions">
               <button className="btn ghost" onClick={() => setTab('sessions')}>
-                {t('addReplication')}
+                <Ico name="repeat" size={13} /> {t('addReplication')}
               </button>
             </div>
           )}
         </div>
         <div className="detail-tabs">
-          <button className={'tab' + (tab === 'sessions' ? ' on' : '')} onClick={() => setTab('sessions')}>
-            {t('projectSessions')}
-          </button>
-          <button className={'tab' + (tab === 'verdict' ? ' on' : '')} onClick={() => setTab('verdict')}>
-            {t('verdict')}
-          </button>
-          <button className={'tab' + (tab === 'artifacts' ? ' on' : '')} onClick={() => setTab('artifacts')}>
-            {t('artifacts')}
-          </button>
-          {isOwner && (
-            <button className={'tab' + (tab === 'people' ? ' on' : '')} onClick={() => setTab('people')}>
-              {t('members')}
-            </button>
-          )}
+          <Tab on={tab === 'sessions'} onClick={() => setTab('sessions')} icon="layers" label={t('projectSessions')} />
+          <Tab on={tab === 'verdict'} onClick={() => setTab('verdict')} icon="gauge" label={t('verdict')} />
+          <Tab on={tab === 'artifacts'} onClick={() => setTab('artifacts')} icon="package" label={t('artifacts')} />
+          {isOwner && <Tab on={tab === 'people'} onClick={() => setTab('people')} icon="users" label={t('members')} />}
         </div>
       </div>
 
@@ -1017,11 +1133,9 @@ function ProjectScreen({
           <div className="stack">
             {maySubmit && <ProjectSubmit i18n={i18n} me={me} project={project} onSubmitted={onSpent} />}
             <div className="card">
-              <div className="card-head">
-                <span className="eyebrow">{t('projectSessions')}</span>
-              </div>
+              <CardHead label={t('projectSessions')} icon="layers" tone="var(--run)" />
               {sessions === null || sessions.length === 0 ? (
-                <div className="empty">{t('noSessions')}</div>
+                <Empty icon="beaker" text={t('noSessions')} />
               ) : (
                 <div className="rows">
                   {sessions.map((s) => (
@@ -1052,12 +1166,20 @@ function ProjectScreen({
   )
 }
 
-// verdictTone maps a manifest verdict to a semantic colour.
+// verdictTone maps a manifest verdict to a semantic colour, and verdictIcon to
+// the matching glyph — a passed reproduction and a failed one should not need
+// the word read to be told apart.
 function verdictTone(v: string) {
   const s = v.toLowerCase()
   if (s.includes('pass')) return 'var(--ok)'
   if (s.includes('fail') || s.includes('not')) return 'var(--err)'
   return 'var(--warn)'
+}
+function verdictIcon(v: string): IconName {
+  const s = v.toLowerCase()
+  if (s.includes('pass')) return 'check'
+  if (s.includes('fail') || s.includes('not')) return 'alert'
+  return 'info'
 }
 
 // VerdictTab shows the latest published session's manifest verdict and metadata —
@@ -1080,42 +1202,67 @@ function VerdictTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
       .catch(() => setState('none'))
   }, [session])
 
-  if (state === 'none') return <div className="card"><div className="empty">{t('noVerdict')}</div></div>
+  if (state === 'none')
+    return (
+      <div className="card">
+        <Empty icon="gauge" text={t('noVerdict')} />
+      </div>
+    )
   if (state === 'loading' || !repro) return <div className="center-load">…</div>
+  const tone = verdictTone(repro.verdict)
   return (
     <div className="card card-pad stack" style={{ maxWidth: 720 }}>
-      <span className="eyebrow">{t('verdict')}</span>
-      <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: verdictTone(repro.verdict) }}>
+      <span className="eyebrow eyebrow-ico" style={{ color: tone }}>
+        <Ico name="gauge" size={12} /> {t('verdict')}
+      </span>
+      <div className="verdict-line" style={{ color: tone }}>
+        <span className="verdict-ico">
+          <Ico name={verdictIcon(repro.verdict)} size={20} w={2.4} />
+        </span>
         {repro.verdict ? repro.verdict[0].toUpperCase() + repro.verdict.slice(1) : t('noVerdict')}
       </div>
       <div className="usage-rows">
         {repro.created && (
           <div className="usage-line">
+            <Ico name="clock" size={13} style={{ color: 'var(--fg-3)' }} />
             {t('graded')}
             <span className="v">{new Date(repro.created).toLocaleDateString()}</span>
           </div>
         )}
         <div className="usage-line">
+          <Ico name="shieldCheck" size={13} style={{ color: repro.review === 'clear' ? 'var(--ok)' : 'var(--warn)' }} />
           {t('redistribution')}
-          <span className="v" style={{ color: repro.review === 'clear' ? 'var(--ok)' : 'var(--warn)' }}>
-            {repro.review || '—'}
+          <span className="v">
+            <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review || '—'}</Pill>
           </span>
         </div>
         {repro.method_digest && (
           <div className="usage-line">
+            <Ico name="key" size={13} style={{ color: 'var(--fg-3)' }} />
             {t('methodDigest')}
             <span className="v mono small">{repro.method_digest.replace('sha256:', '').slice(0, 12)}</span>
           </div>
         )}
         <div className="usage-line">
+          <Ico name="github" size={13} style={{ color: 'var(--fg-3)' }} />
           {t('repository')}
-          <a className="v mono small" href={`https://github.com/${repro.repo}`} target="_blank" rel="noreferrer">
-            ↗ {repro.repo}
+          <a className="v mono small link" href={`https://github.com/${repro.repo}`} target="_blank" rel="noreferrer">
+            {repro.repo}
+            <Ico name="externalLink" size={11} />
           </a>
         </div>
       </div>
     </div>
   )
+}
+
+// fileIcon names a repository file by what it is, reusing the same kinds the
+// viewer renders by — so the list and the pane never disagree.
+function fileIcon(path: string): IconName {
+  const kind = fileKind(path)
+  if (kind === 'image') return 'image'
+  if (kind === 'code') return 'terminal'
+  return 'fileText'
 }
 
 // ArtifactsTab is the in-app file browser over the reproduction repository — a
@@ -1141,18 +1288,22 @@ function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
   }, [session])
 
   if (files === null) return <div className="center-load">…</div>
-  if (files.length === 0 || !session) return <div className="card"><div className="empty">{session ? t('noArtifacts') : t('noVerdict')}</div></div>
+  if (files.length === 0 || !session)
+    return (
+      <div className="card">
+        <Empty icon="package" text={session ? t('noArtifacts') : t('noVerdict')} />
+      </div>
+    )
 
   return (
     <div className="detail-grid" style={{ gridTemplateColumns: '260px 1fr' }}>
       <div className="card" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
-        <div className="card-head">
-          <span className="eyebrow">{t('artifacts')}</span>
-        </div>
+        <CardHead label={t('artifacts')} icon="package" tone="var(--warn)" />
         <div className="rows">
           {files.map((f) => (
-            <div key={f} className="row" style={{ padding: '8px 14px' }} onClick={() => setSel(f)}>
-              <span className="row-mono row-title" style={{ fontSize: 12, color: sel === f ? 'var(--fg-1)' : 'var(--fg-2)' }}>
+            <div key={f} className={'row file-row' + (sel === f ? ' on' : '')} style={{ padding: '7px 14px' }} onClick={() => setSel(f)}>
+              <Ico name={fileIcon(f)} size={13} className="file-ico" />
+              <span className="row-mono row-title" style={{ fontSize: 12 }}>
                 {f}
               </span>
             </div>
@@ -1171,7 +1322,9 @@ function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
           }}
         />
       ) : (
-        <div className="card card-pad"><div className="empty">{t('selectArtifact')}</div></div>
+        <div className="card card-pad">
+          <Empty icon="fileText" text={t('selectArtifact')} />
+        </div>
       )}
     </div>
   )
@@ -1227,13 +1380,15 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
 
   return (
     <div className="card card-pad" style={{ minWidth: 0 }}>
-      <div className="eyebrow mono" style={{ marginBottom: 12 }}>
-        {path}
+      <div className="eyebrow eyebrow-ico mono" style={{ marginBottom: 12 }}>
+        <Ico name={fileIcon(path)} size={12} /> {path}
       </div>
       {kind === 'image' ? (
         <img src={artifactUrl(jobId, path)} alt={path} style={{ maxWidth: '100%', borderRadius: 8, background: 'var(--bg-raised)' }} />
       ) : err ? (
-        <div className="err small">{t('artifactError')}</div>
+        <div className="err small">
+          <Ico name="alert" size={13} /> {t('artifactError')}
+        </div>
       ) : text === null ? (
         <div className="center-load">…</div>
       ) : kind === 'markdown' ? (
@@ -1259,10 +1414,15 @@ function QuotaPill({ i18n, quota }: { i18n: I18n; quota?: Quota }) {
   const { t } = i18n
   if (!quota || quota.unlimited) return null
   const left = Math.max(0, quota.limit - quota.used)
+  // Empty is an error, the last one is a warning, the rest is just a number.
+  const state = left === 0 ? ' out' : left <= 1 ? ' low' : ''
   return (
-    <span className={'quota-pill' + (left === 0 ? ' out' : '')} title={t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}>
-      {t('quotaLeft', { n: String(left) })}
-    </span>
+    <Tip text={t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}>
+      <span className={'quota-pill' + state}>
+        <Ico name={left === 0 ? 'alert' : 'wallet'} size={12} />
+        {t('quotaLeft', { n: String(left) })}
+      </span>
+    </Tip>
   )
 }
 
@@ -1308,24 +1468,28 @@ function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me;
     <form className="card card-pad stack" onSubmit={submit}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input className="text" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t('addReplicationHint')} spellCheck={false} />
-        <button className="btn ghost" disabled={busy}>
-          {busy ? t('submitting') : t('addReplication')}
+        <button className="btn" disabled={busy}>
+          <Ico name="repeat" size={13} /> {busy ? t('submitting') : t('addReplication')}
         </button>
       </div>
       {mayCharge && (
         <div className="charge-row">
           <span className="muted small">{t('chargeTo')}</span>
-          <label className="charge-opt">
-            <input type="radio" name="charge" checked={chargeTo === 'me'} onChange={() => setChargeTo('me')} />
-            <span>{t('chargeMine')}</span>
-          </label>
-          <label className="charge-opt">
-            <input type="radio" name="charge" checked={chargeTo === 'project'} onChange={() => setChargeTo('project')} />
-            <span>{t('chargeOwner')}</span>
-          </label>
+          <RadioGroup label={t('chargeTo')}>
+            <Radio on={chargeTo === 'me'} onChange={() => setChargeTo('me')}>
+              {t('chargeMine')}
+            </Radio>
+            <Radio on={chargeTo === 'project'} onChange={() => setChargeTo('project')}>
+              {t('chargeOwner')}
+            </Radio>
+          </RadioGroup>
         </div>
       )}
-      {err && <span className="err small">{err}</span>}
+      {err && (
+        <span className="err small">
+          <Ico name="alert" size={13} /> {err}
+        </span>
+      )}
     </form>
   )
 }
@@ -1349,14 +1513,15 @@ function SponsorPanel({ i18n, project, onChanged }: { i18n: I18n; project: Proje
   }
   return (
     <div className="card card-pad stack">
-      <span className="eyebrow">{t('sponsorTitle')}</span>
+      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--ok)' }}>
+        <Ico name="wallet" size={12} /> {t('sponsorTitle')}
+      </span>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
         {t('sponsorBody')}
       </p>
-      <label className="affirm">
-        <input type="checkbox" checked={!!project.sponsored} disabled={busy} onChange={(e) => toggle(e.target.checked)} />
-        <span>{t('sponsorLabel')}</span>
-      </label>
+      <Toggle on={!!project.sponsored} disabled={busy} onChange={toggle}>
+        {t('sponsorLabel')}
+      </Toggle>
     </div>
   )
 }
@@ -1367,13 +1532,22 @@ function StatusBadge({ i18n, p }: { i18n: I18n; p: ProjectView }) {
   const { t } = i18n
   if (p.running > 0)
     return (
-      <span className="badge running">
-        <span className="dot" />
+      <Pill tone="run" dot pulse>
         {t('runningN', { n: String(p.running) })}
-      </span>
+      </Pill>
     )
-  if (p.latest_phase === 'done') return <span className="badge done">{phaseLabel(t, 'done')}</span>
-  if (p.latest_phase === 'failed') return <span className="badge failed">{phaseLabel(t, 'failed')}</span>
+  if (p.latest_phase === 'done')
+    return (
+      <Pill tone="ok" icon="check">
+        {phaseLabel(t, 'done')}
+      </Pill>
+    )
+  if (p.latest_phase === 'failed')
+    return (
+      <Pill tone="err" icon="alert">
+        {phaseLabel(t, 'failed')}
+      </Pill>
+    )
   return null
 }
 
@@ -1405,27 +1579,44 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
     }
   }
 
-  const phaseTxt = isStopped(j) ? t('stopped') : phaseLabel(t, j.phase)
+  // A stopped run is neither a success nor a fault of the paper: it reads in the
+  // neutral tone rather than borrowing the failure red.
+  const stopped = isStopped(j)
+  const phaseTxt = stopped ? t('stopped') : phaseLabel(t, j.phase)
   return (
     <div className="row" onClick={onOpen}>
-      <span className={'badge ' + phaseClass(j.phase) + ' ' + j.phase} style={{ minWidth: 96, justifyContent: 'center' }}>
-        <span className="dot" />
-        {phaseTxt}
+      <span className="phase-slot">
+        <Pill
+          tone={stopped ? 'neutral' : phaseTone(j.phase)}
+          icon={stopped ? 'stop' : phaseIcon(j.phase)}
+          dot={!terminal(j.phase) && !stopped}
+          pulse={!terminal(j.phase)}
+        >
+          {phaseTxt}
+        </Pill>
       </span>
       <span className="row-mono row-title">{j.ref}</span>
       {!terminal(j.phase) && (
-        <button className="btn ghost sm" onClick={stop} disabled={stopping}>
-          {stopping ? t('stopping') : t('stop')}
+        <button className="btn ghost sm danger" onClick={stop} disabled={stopping}>
+          <Ico name="stop" size={11} /> {stopping ? t('stopping') : t('stop')}
         </button>
       )}
       {j.repo_name && (
-        <a className="muted small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-          ↗ GitHub
-        </a>
+        <Tip text={j.repo_name}>
+          <a className="link small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+            <Ico name="github" size={13} /> GitHub
+          </a>
+        </Tip>
       )}
-      {j.error && !isStopped(j) && <span className="err small">{j.error}</span>}
-      <span className="muted small">{i18n.t('viewTranscript')}</span>
-      <Svg d={Icon.chev} size={14} />
+      {j.error && !stopped && (
+        <span className="err small">
+          <Ico name="alert" size={13} /> {j.error}
+        </span>
+      )}
+      <span className="muted small row-cta">
+        <Ico name="message" size={12} /> {i18n.t('viewTranscript')}
+      </span>
+      <Ico name="chevronRight" size={15} className="chev" />
     </div>
   )
 }
@@ -1464,27 +1655,31 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
   }
   return (
     <div className="card">
-      <div className="card-head">
-        <span className="eyebrow">{t('members')}</span>
-      </div>
+      <CardHead label={t('members')} icon="users" tone="var(--brand)" />
       {members.length === 0 ? (
-        <div className="empty">{t('noMembers')}</div>
+        <Empty icon="userPlus" text={t('noMembers')} />
       ) : (
         members.map((m) => (
           <div key={m.email} className="member-row">
-            <span className="user-avatar">{initials(m.email)}</span>
+            <Initials email={m.email} />
             <span className="member-email">{m.email}</span>
-            {!m.bound && <span className="role-tag pending">{t('pending')}</span>}
-            <button className="btn ghost sm" onClick={() => drop(m.email)}>
-              {t('remove')}
-            </button>
+            {!m.bound && (
+              <Pill tone="warn" icon="clock">
+                {t('pending')}
+              </Pill>
+            )}
+            <Tip text={t('remove')}>
+              <button className="icon-btn danger" aria-label={t('remove')} onClick={() => drop(m.email)}>
+                <Ico name="trash" size={13} />
+              </button>
+            </Tip>
           </div>
         ))
       )}
       <form className="field-row" onSubmit={invite}>
         <input className="text" style={{ flex: 1 }} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('inviteEmail')} spellCheck={false} />
-        <button className="btn ghost" disabled={busy}>
-          {busy ? t('submitting') : t('invite')}
+        <button className="btn" disabled={busy}>
+          <Ico name="mail" size={13} /> {busy ? t('submitting') : t('invite')}
         </button>
       </form>
       <div style={{ padding: '0 14px 12px' }}>
@@ -1505,12 +1700,14 @@ function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID:
   const [open, setOpen] = useState(false)
   return (
     <div className="card publish-panel">
-      <span className="eyebrow">{t('publishTitle')}</span>
+      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
+        <Ico name="globe" size={12} /> {t('publishTitle')}
+      </span>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
         {t('publishBody')}
       </p>
       <button className="btn" onClick={() => setOpen(true)}>
-        {t('publishStart')}
+        <Ico name="globe" size={13} /> {t('publishStart')}
       </button>
       <span className="attestation">{t('attestationNote')}</span>
       {open && (
@@ -1591,71 +1788,84 @@ function PublishWizard({
     }
   }
 
+  const stepIcon: IconName = step === 1 ? 'globe' : step === 2 ? 'user' : 'shieldCheck'
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <span className="attestation">{t('publishStepOf', { n: String(step) })}</span>
-          <h2 className="modal-title">{step === 1 ? t('publishStep1') : step === 2 ? t('publishStep2') : t('publishStep3')}</h2>
-        </div>
-
-        <div className="modal-body">
-          {step === 1 && (
-            <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-              {t('publishBody')}
-            </p>
-          )}
-
-          {step === 2 && (
-            <>
-              <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-                {t('publishStep2Body')}
-              </p>
-              <ProfileFields i18n={i18n} p={p} set={set} />
-              <label className="affirm">
-                <input type="checkbox" checked={toProfile} onChange={(e) => setToProfile(e.target.checked)} />
-                <span>{t('publishSaveToProfile')}</span>
-              </label>
-              {!hasContact && <p className="muted small" style={{ margin: 0 }}>{t('publishContactRequired')}</p>}
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-                {t('publishAttestation')}
-              </p>
-              <label className="affirm">
-                <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
-                <span>{t('publishAffirm')}</span>
-              </label>
-              <label className="affirm">
-                <input type="checkbox" checked={flipRepo} onChange={(e) => setFlipRepo(e.target.checked)} />
-                <span>{t('flipRepoLabel')}</span>
-              </label>
-              <span className="attestation">{t('attestationNote')}</span>
-            </>
-          )}
-
-          {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
-        </div>
-
-        <div className="modal-foot">
+    <Modal
+      title={step === 1 ? t('publishStep1') : step === 2 ? t('publishStep2') : t('publishStep3')}
+      icon={stepIcon}
+      eyebrow={
+        <span className="step-dots">
+          {t('publishStepOf', { n: String(step) })}
+          <span className="step-track">
+            {[1, 2, 3].map((n) => (
+              <span key={n} className={'step-dot' + (n <= step ? ' on' : '')} />
+            ))}
+          </span>
+        </span>
+      }
+      onClose={onClose}
+      foot={
+        <>
           <button className="btn ghost" onClick={step === 1 ? onClose : () => setStep(step - 1)}>
+            {step > 1 && <Ico name="chevronLeft" size={12} w={2.2} />}
             {step === 1 ? t('cancel') : t('backStep')}
           </button>
           {step < 3 ? (
             <button className="btn" disabled={step === 2 && !hasContact} onClick={() => setStep(step + 1)}>
-              {t('continueStep')}
+              {t('continueStep')} <Ico name="chevronRight" size={12} w={2.2} />
             </button>
           ) : (
             <button className="btn" disabled={!affirmed || busy} onClick={publish}>
-              {busy ? t('submitting') : t('publishConfirm')}
+              <Ico name="globe" size={13} /> {busy ? t('submitting') : t('publishConfirm')}
             </button>
           )}
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      {step === 1 && (
+        <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+          {t('publishBody')}
+        </p>
+      )}
+
+      {step === 2 && (
+        <>
+          <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+            {t('publishStep2Body')}
+          </p>
+          <ProfileFields i18n={i18n} p={p} set={set} />
+          <Check on={toProfile} onChange={setToProfile}>
+            {t('publishSaveToProfile')}
+          </Check>
+          {!hasContact && (
+            <p className="muted small" style={{ margin: 0 }}>
+              <Ico name="info" size={12} /> {t('publishContactRequired')}
+            </p>
+          )}
+        </>
+      )}
+
+      {step === 3 && (
+        <>
+          <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+            {t('publishAttestation')}
+          </p>
+          <Check on={affirmed} onChange={setAffirmed}>
+            {t('publishAffirm')}
+          </Check>
+          <Check on={flipRepo} onChange={setFlipRepo}>
+            {t('flipRepoLabel')}
+          </Check>
+          <span className="attestation">{t('attestationNote')}</span>
+        </>
+      )}
+
+      {err && (
+        <p className="err small" style={{ margin: 0 }}>
+          <Ico name="alert" size={13} /> {err}
+        </p>
+      )}
+    </Modal>
   )
 }
 
@@ -1701,11 +1911,11 @@ function PublishedCard({ i18n, project, onWithdrawn }: { i18n: I18n; project: Pr
 
   return (
     <div className="card publish-panel">
-      <span className="eyebrow">{t('publishTitle')}</span>
+      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
+        <Ico name="globe" size={12} /> {t('publishTitle')}
+      </span>
       <div className="publish-note">
-        <span style={{ color: 'var(--ok)' }} className="mono">
-          ✓
-        </span>
+        <Ico name="check" size={14} w={2.4} />
         {when ? t('publishedNote', { when }) : t('public')}
       </div>
       {project.signed_off_name && (
@@ -1881,9 +2091,11 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   }, [jobId])
 
   const backBtn = (
-    <button className="icon-btn" onClick={onBack} aria-label="back">
-      <Svg d={Icon.back} size={14} w={1.8} />
-    </button>
+    <Tip text={t('back')}>
+      <button className="icon-btn" onClick={onBack} aria-label={t('back')}>
+        <Ico name="chevronLeft" size={14} w={2} />
+      </button>
+    </Tip>
   )
 
   if (state !== 'ready' || !tr) {
@@ -1931,12 +2143,16 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
         <div className="tx-stats">
           {usage && (
             <div className="tx-stat">
-              <span className="tx-stat-label">{t('usageTotal')}</span>
+              <span className="tx-stat-label">
+                <Ico name="bolt" size={11} /> {t('usageTotal')}
+              </span>
               <span className="tx-stat-value">{total(usage).toLocaleString()}</span>
             </div>
           )}
           <div className="tx-stat">
-            <span className="tx-stat-label">{t('events')}</span>
+            <span className="tx-stat-label">
+              <Ico name="layers" size={11} /> {t('events')}
+            </span>
             <span className="tx-stat-value">{tr.events.length.toLocaleString()}</span>
           </div>
         </div>
@@ -1947,34 +2163,38 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
       <div className="tx-body">
         <aside className="tx-side">
           <div>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>
-              {t('showEvents')}
+            <div className="eyebrow eyebrow-ico" style={{ marginBottom: 8 }}>
+              <Ico name="filter" size={11} /> {t('showEvents')}
             </div>
             {[...kindCounts.entries()].map(([kind, n]) => (
-              <button key={kind} className={'kind-btn' + (off.has(kind) ? ' off' : '')} onClick={() => setOff((s) => toggle(s, kind))}>
-                <span className="sq" style={{ background: kindColor(kind) }} />
+              <button
+                key={kind}
+                className={'kind-btn' + (off.has(kind) ? ' off' : '')}
+                aria-pressed={!off.has(kind)}
+                onClick={() => setOff((s) => toggle(s, kind))}
+              >
+                <span className="sq" style={{ color: kindColor(kind) }} />
                 <span>{kindLabel(t, kind)}</span>
-                <span className="n">{n}</span>
+                <span className="n tabular">{n}</span>
               </button>
             ))}
           </div>
           {toolCounts.size > 0 && (
             <div>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>
-                {t('toolsUsed')}
+              <div className="eyebrow eyebrow-ico" style={{ marginBottom: 8, color: 'var(--warn)' }}>
+                <Ico name="wrench" size={11} /> {t('toolsUsed')}
               </div>
               {[...toolCounts.entries()].sort((a, b) => b[1] - a[1]).map(([name, n]) => (
                 <div key={name} className="kind-btn" style={{ cursor: 'default' }}>
                   <span className="mono small">{name}</span>
-                  <span className="n">{n}</span>
+                  <span className="n tabular">{n}</span>
                 </div>
               ))}
             </div>
           )}
-          <label className="kind-btn" style={{ cursor: 'pointer' }}>
-            <input type="checkbox" checked={hidePlumbing} onChange={(e) => setHidePlumbing(e.target.checked)} style={{ accentColor: 'var(--fg-1)' }} />
-            <span>{t('hideLifecycle')}</span>
-          </label>
+          <Toggle on={hidePlumbing} onChange={setHidePlumbing}>
+            {t('hideLifecycle')}
+          </Toggle>
         </aside>
 
         <main className="tx-stream">
@@ -1985,15 +2205,15 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
 
         <aside className="tx-side tx-inspector">
           <div>
-            <div className="eyebrow" style={{ marginBottom: 10 }}>
-              {t('usage')}
+            <div className="eyebrow eyebrow-ico" style={{ marginBottom: 10, color: 'var(--brand)' }}>
+              <Ico name="bolt" size={11} /> {t('usage')}
             </div>
             {usage ? (
               <div className="usage-rows">
-                <UsageLine label={t('usageInput')} v={usage.InputTokens} />
-                <UsageLine label={t('usageOutput')} v={usage.OutputTokens} />
-                <UsageLine label={t('usageCached')} v={usage.CachedInputTokens} />
-                <UsageLine label={t('usageTotal')} v={total(usage)} strong />
+                <UsageLine label={t('usageInput')} v={usage.InputTokens} tone="var(--run)" />
+                <UsageLine label={t('usageOutput')} v={usage.OutputTokens} tone="var(--pub)" />
+                <UsageLine label={t('usageCached')} v={usage.CachedInputTokens} tone="var(--ok)" />
+                <UsageLine label={t('usageTotal')} v={total(usage)} tone="var(--brand)" strong />
               </div>
             ) : (
               <p className="muted small" style={{ margin: 0 }}>
@@ -2007,9 +2227,10 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   )
 }
 
-function UsageLine({ label, v, strong }: { label: string; v: number; strong?: boolean }) {
+function UsageLine({ label, v, strong, tone }: { label: string; v: number; strong?: boolean; tone?: string }) {
   return (
     <div className="usage-line">
+      <span className="usage-dot" style={{ background: tone }} />
       {label}
       <span className="v" style={strong ? { color: 'var(--fg-1)', fontWeight: 600 } : undefined}>
         {v.toLocaleString()}
@@ -2023,12 +2244,15 @@ function EventCard({ i18n, e }: { i18n: I18n; e: Event }) {
   const dk = displayKind(e.kind)
   const isTool = e.kind === 'tool_use' || e.kind === 'tool_result'
   const isGrade = gradeKinds.has(e.kind)
-  const cls = 'event' + (e.kind === 'thinking' ? ' thinking' : isGrade ? ' grade' : isTool ? ' tool' : '')
+  const cls = 'event ' + (e.kind === 'thinking' ? 'thinking' : isGrade ? 'grade' : isTool ? 'tool' : 'message')
   return (
     <div className={cls}>
       <div className="event-gutter">
         <span className="event-role">{e.role}</span>
-        <span className="event-kind">{kindLabel(t, dk)}</span>
+        <span className="event-kind">
+          <Ico name={kindIcon(dk)} size={10} w={2.2} />
+          {kindLabel(t, dk)}
+        </span>
       </div>
       <div className="event-main">
         {e.kind === 'thinking' ? (
@@ -2043,10 +2267,9 @@ function EventCard({ i18n, e }: { i18n: I18n; e: Event }) {
             {e.content && <pre className="event-io">{e.content}</pre>}
           </>
         ) : e.kind === 'tool_result' ? (
-          <details className="event-io" open={false}>
-            <summary>{t('toolResult')}</summary>
-            <pre style={{ margin: '6px 0 0' }}>{e.content || t('noContent')}</pre>
-          </details>
+          <Disclosure summary={t('toolResult')}>
+            <pre>{e.content || t('noContent')}</pre>
+          </Disclosure>
         ) : (
           <div className="event-body">{e.content || t('noContent')}</div>
         )}
@@ -2070,6 +2293,29 @@ function initials(email?: string) {
   return email.slice(0, 2).toUpperCase()
 }
 
+// hueOf turns an address into a stable hue. It is only decoration, but a stable
+// one: the same person is the same colour in every list they appear in, which
+// is what makes a members table scannable.
+export function hueOf(email?: string): number {
+  if (!email) return 240
+  let h = 0
+  for (const ch of email.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360
+  return h
+}
+
+// Initials is the avatar for someone we know only by address — a seeded member,
+// a granted email — where there is no profile picture to fall back from.
+function Initials({ email, size = 22 }: { email: string; size?: number }) {
+  return (
+    <span
+      className="user-avatar"
+      style={{ width: size, height: size, borderRadius: Math.round(size / 3.2), fontSize: Math.round(size * 0.42), ['--av-h' as string]: hueOf(email) }}
+    >
+      {initials(email)}
+    </span>
+  )
+}
+
 // showsPicture decides between the IdP's picture and the initials fallback. It
 // is the whole rule of 006m AC4, kept pure so it is testable: no picture, a
 // picture that is not absolute https (the server already filters those, and the
@@ -2083,12 +2329,11 @@ export function showsPicture(picture: string | undefined, broken: boolean): bool
 // broken-image glyph would be worse than the two letters we had before.
 function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
   const [broken, setBroken] = useState(false)
-  const style = { width: size, height: size, borderRadius: Math.round(size / 3.5) }
   if (showsPicture(me.picture, broken)) {
     return (
       <img
         className="user-avatar"
-        style={style}
+        style={{ width: size, height: size, borderRadius: Math.round(size / 3.2) }}
         src={me.picture}
         alt=""
         referrerPolicy="no-referrer"
@@ -2096,11 +2341,7 @@ function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
       />
     )
   }
-  return (
-    <span className="user-avatar" style={{ ...style, fontSize: Math.round(size * 0.42) }}>
-      {initials(me.email)}
-    </span>
-  )
+  return <Initials email={me.email ?? ''} size={size} />
 }
 function tierLabel(t: I18n['t'], tier?: string) {
   return t('tier' + (tier ? tier[0].toUpperCase() + tier.slice(1) : 'None'))
@@ -2158,10 +2399,14 @@ function displayKind(kind: string) {
   if (gradeKinds.has(kind)) return 'grade'
   return kind
 }
+// kindLabel names an event kind in the two places a name is all that fits: the
+// filter list and the card's gutter. `thinking` has a separate short label
+// because its body copy is a whole sentence, which wrapped the gutter into a
+// column of single words.
 function kindLabel(t: I18n['t'], kind: string) {
   const map: Record<string, string> = {
     message: 'message',
-    thinking: 'thinking',
+    thinking: 'thinkingLabel',
     tool_use: 'toolCall',
     tool_result: 'toolResult',
     grade: 'grade',
@@ -2171,6 +2416,17 @@ function kindLabel(t: I18n['t'], kind: string) {
 function kindColor(kind: string) {
   if (kind === 'grade') return 'var(--run)'
   if (kind === 'tool_use' || kind === 'tool_result') return 'var(--warn)'
-  if (kind === 'thinking') return 'var(--fg-3)'
+  if (kind === 'thinking') return 'var(--pub)'
+  if (kind === 'message') return 'var(--brand)'
   return 'var(--fg-2)'
+}
+// kindIcon pairs each event kind with a glyph, so a filter row and the event it
+// filters are recognisable as the same thing.
+function kindIcon(kind: string): IconName {
+  if (kind === 'grade') return 'gauge'
+  if (kind === 'tool_use') return 'wrench'
+  if (kind === 'tool_result') return 'terminal'
+  if (kind === 'thinking') return 'sparkles'
+  if (kind === 'message') return 'message'
+  return 'dot'
 }
