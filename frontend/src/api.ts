@@ -252,7 +252,8 @@ export type SignOff = {
   signed_off_scholar?: string
 }
 
-// makeProjectPublic is the owner's one-way public flip with a recorded sign-off.
+// makeProjectPublic is the owner's public flip with a recorded sign-off. See
+// withdrawProject for the way back out (006o).
 // flipRepo opts the GitHub repository into the flip (default); false keeps the
 // repo private while the in-app artifacts still go public. It rejects with the
 // HTTP status, so the caller can tell a validation refusal (400) from a project

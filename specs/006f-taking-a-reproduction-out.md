@@ -1,6 +1,7 @@
 # 006f — Taking a reproduction out
 
 **Status:** the mount publish, verifier, and forge invite; the **owner public flip with its recorded sign-off, the optional forge repo flip (with a per-project opt-out), the public zone, and the per-project members API** (built and deployed); and the **two-tier model** in code and data (the trusted tier removed). The members API reconciles the membership store's authority to 006g's *owner* by seeding the owner as the project's lead (idempotent bridge), so ownership is the single authority. The mount carries the server token (`REPLICHAI_GITHUB_TOKEN`), as the CLI publish has always done. The **two-token mount split** below (a repo-scoped GitHub App token in the sandbox) is the intended hardening for when submissions open to untrusted papers — a blast-radius reduction, not a functional gap — and is not implemented. The server-side backend mount-publish is not wired; the live server publishes via the CLI-produced repos.
+**Superseded in part:** the one-way rule below (Decisions §"Public is an owner action…", acceptance criterion 6) is ended by [006o](006o-withdrawing-a-publication.md): an owner may withdraw a publication back to private, and the forge repository follows. Everything else here stands — the gate, the sign-off, the owner-only check, and the record, which a withdrawal retracts rather than erases.
 **Scope:** publishing a project's reproduction as a real GitHub repository with agent-authored commit history, inviting collaborators to the project, and — for the owner, with a signed responsibility attestation — making the project (and optionally its repository) public. A child of [006](006-web-application.md).
 **Depends on:** [002](002-publishing-reproductions.md) (the redistribution gate, reused as a verifier; the manifest), [004](004-go-port.md) (the provider seam it extends), [006g](006g-projects-and-replication-sessions.md) (the project that owns visibility and the membership it invites into). Consumes [006c](006-web-application.md) (the linked GitHub login, the membership store).
 
@@ -101,6 +102,9 @@ SetPublic(ctx, owner Principal, projectID, attestationVersion string) error
 // And the public flip:
 //   POST   /projects/{id}/public {attestation_version}   owner + sign-off; 403 if not owner,
 //                                                          409 if manifest not clear
+// And the way back out (006o):
+//   POST   /projects/{id}/private {reason}   owner; withdraws the publication and
+//                                              closes the repositories. Keeps the sign-off.
 ```
 
 **The public zone shows the initiator.** A project made public joins a **public zone** — a read surface every signed-in user can browse — that lists public projects with their owner (the initiator who triggered the replication), the paper, and the verdict, and opens the full public project: its sessions, transcripts (006h), datasets, and artifacts. There is no org, so the public zone *is* the shared visibility — individuals and their public replications, nothing between.

@@ -1497,8 +1497,9 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
 
 // PublishPanel is the entry to the public flip: a short summary and the button
 // that opens the wizard. The decision itself is never one click from a sidebar —
-// it is one-way, it opens the transcript and artifacts to everyone, and it puts
-// the signer's name behind the result (006n).
+// it opens the transcript and artifacts to everyone, and it puts the signer's
+// name behind the result (006n). Withdrawable since 006o, but not undoable:
+// copies taken while it was public stay taken.
 function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
   const { t } = i18n
   const [open, setOpen] = useState(false)
