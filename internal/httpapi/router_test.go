@@ -468,6 +468,29 @@ func TestWithdrawSurvivesForgeFailure(t *testing.T) {
 	}
 }
 
+// 006o: the reason is the owner's own record, not a published notice, so the
+// cap only has to keep a runaway body out of the column — it truncates rather
+// than refusing the withdrawal, which must never be blocked by its annotation.
+func TestWithdrawReasonIsCapped(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	_ = do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me")
+
+	long := strings.Repeat("x", maxWithdrawReason+500)
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/private", `{"reason":"`+long+`"}`, "me"); w.Code != http.StatusOK {
+		t.Fatalf("withdrawal with an overlong reason: status %d, want 200", w.Code)
+	}
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if len(got.WithdrawnReason) != maxWithdrawReason {
+		t.Errorf("reason length = %d, want it capped at %d", len(got.WithdrawnReason), maxWithdrawReason)
+	}
+	if got.Visibility != project.VisibilityPrivate {
+		t.Errorf("an overlong reason must not block the withdrawal")
+	}
+}
+
 // 006o: the repository is closed even when the project's tree is no longer
 // clear — which is often exactly why it is being withdrawn. Sourcing the
 // repositories from clearedForPublish would leave that repository open.
