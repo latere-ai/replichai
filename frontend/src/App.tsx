@@ -1939,7 +1939,7 @@ function PublishedCard({ i18n, project, onWithdrawn }: { i18n: I18n; project: Pr
         </div>
       )}
       <button className="btn ghost" onClick={() => setWithdrawing(true)}>
-        {t('withdrawStart')}
+        <Ico name="lock" size={13} /> {t('withdrawStart')}
       </button>
       {withdrawing && (
         <WithdrawDialog
@@ -1991,43 +1991,48 @@ function WithdrawDialog({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2 className="modal-title">{t('withdrawTitle')}</h2>
-        </div>
-        <div className="modal-body">
-          <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-            {t('withdrawBody')}
-          </p>
-          <p className="muted small" style={{ lineHeight: 1.65, margin: '12px 0 0' }}>
-            {t('withdrawNotARecall')}
-          </p>
-          <label className="field" style={{ marginTop: 16 }}>
-            {t('withdrawReason')}
-            <input
-              className="text"
-              value={reason}
-              onChange={(e) => {
-                setReason(e.target.value)
-                setErr('')
-              }}
-              placeholder={t('withdrawReasonHint')}
-              maxLength={2000}
-            />
-          </label>
-          {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
-        </div>
-        <div className="modal-foot">
+    <Modal
+      title={t('withdrawTitle')}
+      icon="lock"
+      onClose={onClose}
+      foot={
+        <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
           </button>
-          <button className="btn" onClick={withdraw} disabled={busy}>
-            {busy ? t('withdrawBusy') : t('withdrawConfirm')}
+          {/* Withdrawing is the destructive direction, so the confirm carries
+              the warning tone rather than the brand's "go ahead". */}
+          <button className="btn ghost danger" onClick={withdraw} disabled={busy}>
+            <Ico name="lock" size={13} /> {busy ? t('withdrawBusy') : t('withdrawConfirm')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+        {t('withdrawBody')}
+      </p>
+      <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+        <Ico name="alert" size={12} style={{ color: 'var(--warn)' }} /> {t('withdrawNotARecall')}
+      </p>
+      <label className="field">
+        {t('withdrawReason')}
+        <input
+          className="text"
+          value={reason}
+          onChange={(e) => {
+            setReason(e.target.value)
+            setErr('')
+          }}
+          placeholder={t('withdrawReasonHint')}
+          maxLength={2000}
+        />
+      </label>
+      {err && (
+        <p className="err small" style={{ margin: 0 }}>
+          <Ico name="alert" size={13} /> {err}
+        </p>
+      )}
+    </Modal>
   )
 }
 
