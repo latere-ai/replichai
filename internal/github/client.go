@@ -324,8 +324,7 @@ func (c *Client) fileSHA(ctx context.Context, owner, name, path string) (string,
 	return file.SHA, true, nil
 }
 
-// SetPublic makes a repository public. It is deliberately one-way: this package
-// offers no SetPrivate.
+// SetPublic makes a repository public.
 func (c *Client) SetPublic(ctx context.Context, owner, name string) error {
 	status, err := c.do(ctx, http.MethodPatch, "/repos/"+owner+"/"+name,
 		map[string]any{"private": false, "visibility": "public"}, nil)
@@ -334,6 +333,25 @@ func (c *Client) SetPublic(ctx context.Context, owner, name string) error {
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("make %s/%s public: unexpected status %d", owner, name, status)
+	}
+	return nil
+}
+
+// SetPrivate makes a repository private again, the forge half of withdrawing a
+// publication (006o). It closes the door; it does not retrieve what already went
+// through it — forks, clones, and GitHub's own public event history survive, and
+// GitHub refuses the change outright on some repositories that have forks. On an
+// already-private repository it is a no-op that still answers 200, which is what
+// lets the withdrawal path set every project repository private without knowing
+// which ones the publish actually flipped.
+func (c *Client) SetPrivate(ctx context.Context, owner, name string) error {
+	status, err := c.do(ctx, http.MethodPatch, "/repos/"+owner+"/"+name,
+		map[string]any{"private": true, "visibility": "private"}, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("make %s/%s private: unexpected status %d", owner, name, status)
 	}
 	return nil
 }
