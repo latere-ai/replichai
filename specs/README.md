@@ -39,7 +39,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006n](006n-who-signed-off.md) gives the public sign-off a person — a researcher profile (name, institution, public contact, ORCID, Scholar) kept in settings, prefilled into a step-by-step publish wizard, and **snapshotted onto the project** so a later profile edit never rewrites a published attestation. The signer's own email is derived from the session and stored redacted; attestation v2.
 
-**Draft:** [006o](006o-withdrawing-a-publication.md) gives the one-way public flip an end — an owner may withdraw a publication back to private, the forge repository follows, and the retraction is recorded *beside* the sign-off rather than erasing it. Withdrawal is not deletion (which cascades and stays an admin action), which is why an owner can be trusted with it.
+**Built:** [006o](006o-withdrawing-a-publication.md) gives the one-way public flip an end — an owner may withdraw a publication back to private, the forge repository follows, and the retraction is recorded *beside* the sign-off rather than erasing it. Withdrawal is not deletion (which cascades and stays an admin action), which is why an owner can be trusted with it.
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
