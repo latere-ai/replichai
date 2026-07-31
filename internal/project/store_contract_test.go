@@ -66,7 +66,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// SetPublic marks a project public and records the sign-off — including the
 	// signer snapshot (006n), which every implementation must round-trip whole,
 	// since it is what a public page reports. ListPublic returns it (and never a
-	// private one). One-way — no un-publish path.
+	// private one).
 	so := SignOff{
 		By: "owner", AttestationVersion: "v2",
 		Name: "Ada Lovelace", Institution: "LMU Munich", Contact: "ada@example.org",
@@ -94,6 +94,64 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 	if err := s.SetPublic(ctx, "nope", SignOff{By: "owner", AttestationVersion: "v2"}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("SetPublic on a missing project: want ErrNotFound, got %v", err)
+	}
+
+	// SetPrivate withdraws the publication (006o). It is a retraction, not an
+	// erasure: visibility returns to private and the project leaves the public
+	// zone, but every signed_off_* field must survive intact — a store that
+	// cleared them would let a project be published, withdrawn, and republished
+	// under a different signer with no evidence of any of it.
+	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "owner", Reason: "unreleased figure"}); err != nil {
+		t.Fatalf("SetPrivate: %v", err)
+	}
+	gone, err := s.Get(ctx, second.ID)
+	if err != nil || gone.Visibility != VisibilityPrivate {
+		t.Fatalf("after SetPrivate: %+v err=%v", gone, err)
+	}
+	if gone.WithdrawnAt == nil || gone.WithdrawnBy != "owner" || gone.WithdrawnReason != "unreleased figure" {
+		t.Errorf("withdrawal not recorded: %+v", gone)
+	}
+	if gone.SignedOffBy != so.By || gone.AttestationVersion != so.AttestationVersion ||
+		gone.SignedOffAt == nil || gone.SignedOffName != so.Name ||
+		gone.SignedOffInstitution != so.Institution || gone.SignedOffContact != so.Contact ||
+		gone.SignedOffORCID != so.ORCID || gone.SignedOffScholar != so.Scholar ||
+		gone.SignedOffEmail != so.Email {
+		t.Errorf("withdrawal erased the sign-off it retracts: %+v", gone)
+	}
+	if list, err := s.ListPublic(ctx); err != nil || len(list) != 0 {
+		t.Errorf("ListPublic after withdrawal = %+v err=%v; want empty", list, err)
+	}
+
+	// Withdrawing again succeeds and changes nothing — the timestamp keeps
+	// pointing at the moment the publication actually ended, not at the last time
+	// somebody asked.
+	first := *gone.WithdrawnAt
+	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "someone-else", Reason: "again"}); err != nil {
+		t.Fatalf("repeated SetPrivate: %v", err)
+	}
+	again, _ := s.Get(ctx, second.ID)
+	if !again.WithdrawnAt.Equal(first) || again.WithdrawnBy != "owner" || again.WithdrawnReason != "unreleased figure" {
+		t.Errorf("repeated SetPrivate overwrote the first withdrawal: %+v", again)
+	}
+	if err := s.SetPrivate(ctx, "nope", Withdrawal{By: "owner"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SetPrivate on a missing project: want ErrNotFound, got %v", err)
+	}
+
+	// Republishing supersedes the retraction: a fresh sign-off, and no withdrawal
+	// left on the row, so it never claims to be both live and withdrawn.
+	if err := s.SetPublic(ctx, second.ID, SignOff{By: "owner", AttestationVersion: "v2", Name: "Ada Again", Contact: "ada@example.org"}); err != nil {
+		t.Fatalf("republish: %v", err)
+	}
+	back, _ := s.Get(ctx, second.ID)
+	if back.Visibility != VisibilityPublic || back.WithdrawnAt != nil || back.WithdrawnBy != "" || back.WithdrawnReason != "" {
+		t.Errorf("republish did not clear the withdrawal: %+v", back)
+	}
+	if back.SignedOffName != "Ada Again" {
+		t.Errorf("republish did not overwrite the snapshot: %+v", back)
+	}
+	// Leave it private again so the rest of the contract sees a clean slate.
+	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "owner", Reason: "tidy"}); err != nil {
+		t.Fatalf("SetPrivate (tidy): %v", err)
 	}
 
 	// Delete removes it, idempotently.

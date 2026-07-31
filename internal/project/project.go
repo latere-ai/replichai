@@ -21,7 +21,10 @@ import (
 )
 
 // Visibility is whether a project is private to its owner and members or open in
-// the public zone. Private by default; the one-way public flip is 006f's.
+// the public zone. Private by default; the public flip is 006f's, and 006o gives
+// it an end — an owner may withdraw a publication back to private. Visibility is
+// the only question a read path may ask about openness: a withdrawn project still
+// carries the sign-off it retracted, so the presence of one proves nothing.
 type Visibility string
 
 // The visibilities a project may hold.
@@ -71,6 +74,22 @@ type Project struct {
 	// typed in — and redacted before storage rather than at render, so the full
 	// address is never put on the wire.
 	SignedOffEmail string `json:"signed_off_email,omitempty"`
+	// The retraction (006o), zero until the owner withdraws a publication. It sits
+	// beside the sign-off rather than clearing it: withdrawing ends a publication,
+	// it does not un-say the attestation, and a project published, withdrawn, and
+	// published again under a different signer must leave evidence of all three.
+	// Cleared by a later SetPublic, which supersedes it with a fresh sign-off.
+	WithdrawnAt     *time.Time `json:"withdrawn_at,omitempty"`
+	WithdrawnBy     string     `json:"withdrawn_by,omitempty"`
+	WithdrawnReason string     `json:"withdrawn_reason,omitempty"`
+}
+
+// Withdrawal is one recorded retraction: who ended the publication and why. A
+// struct for the same reason SignOff is one — two adjacent strings are two
+// strings a caller can swap.
+type Withdrawal struct {
+	By     string // the deciding principal (006c)
+	Reason string // the owner's own words; the store does not interpret it
 }
 
 // SignOff is one recorded responsibility attestation: the deciding principal,
@@ -105,9 +124,17 @@ type Store interface {
 	SetTitle(ctx context.Context, id, title string) error
 	// SetPublic marks a project public and records the responsibility sign-off
 	// (006f, 006n): who signed, the attestation text version, the signer snapshot,
-	// and the time. One-way — there is no un-publish. The caller (the HTTP owner
+	// and the time. Repeatable: publishing a withdrawn project overwrites the
+	// snapshot with the new attestation and clears the retraction (006o), so the
+	// row never claims to be both live and withdrawn. The caller (the HTTP owner
 	// check and the manifest-clear gate) authorises; this store only records.
 	SetPublic(ctx context.Context, id string, s SignOff) error
+	// SetPrivate withdraws a publication (006o): visibility returns to private and
+	// the retraction is recorded, leaving every sign-off field untouched. On a
+	// project that is already private it is a success that changes nothing — the
+	// timestamp must keep pointing at the moment the publication actually ended,
+	// not at the last time somebody asked. The caller authorises (owner-only).
+	SetPrivate(ctx context.Context, id string, w Withdrawal) error
 	// SetSponsored records the owner's standing consent to cover their members'
 	// sessions, or withdraws it (006l). The caller authorises (owner-only);
 	// this store only records.

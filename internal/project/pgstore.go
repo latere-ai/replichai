@@ -24,7 +24,8 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 
 // projectColumns is the column list every read selects, in scan order.
 const projectColumns = `id, owner, title, visibility, sponsored, created_at, signed_off_by, signed_off_at, attestation_version,
-	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email`
+	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email,
+	withdrawn_at, withdrawn_by, withdrawn_reason`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
@@ -32,7 +33,8 @@ func scanProject(row pgx.Row) (Project, error) {
 	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.Sponsored, &p.CreatedAt,
 		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion,
 		&p.SignedOffName, &p.SignedOffInstitution, &p.SignedOffContact,
-		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail)
+		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail,
+		&p.WithdrawnAt, &p.WithdrawnBy, &p.WithdrawnReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -100,12 +102,14 @@ func (s *PGStore) SetSponsored(ctx context.Context, id string, on bool) error {
 	return nil
 }
 
-// SetPublic marks a project public and records the sign-off. One-way.
+// SetPublic marks a project public and records the sign-off, superseding any
+// earlier withdrawal.
 func (s *PGStore) SetPublic(ctx context.Context, id string, so SignOff) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE projects SET visibility='public', signed_off_by=$2, signed_off_at=$3, attestation_version=$4,
 			signed_off_name=$5, signed_off_institution=$6, signed_off_contact=$7,
-			signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10
+			signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10,
+			withdrawn_at=NULL, withdrawn_by='', withdrawn_reason=''
 		WHERE id=$1`,
 		id, so.By, s.clock(), so.AttestationVersion,
 		so.Name, so.Institution, so.Contact, so.ORCID, so.Scholar, so.Email)
@@ -114,6 +118,29 @@ func (s *PGStore) SetPublic(ctx context.Context, id string, so SignOff) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// SetPrivate withdraws a publication, recording the retraction beside the
+// sign-off it ends. The visibility predicate makes it a no-op on a project that
+// is already private, so a repeated call cannot overwrite the moment the
+// publication actually ended — which costs one extra read to tell that apart
+// from a missing project.
+func (s *PGStore) SetPrivate(ctx context.Context, id string, w Withdrawal) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE projects SET visibility='private', withdrawn_at=$2, withdrawn_by=$3, withdrawn_reason=$4
+		WHERE id=$1 AND visibility='public'`,
+		id, s.clock(), w.By, w.Reason)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		// Either the project is missing or it was already private. Only the first
+		// is an error.
+		if _, err := s.Get(ctx, id); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -68,6 +68,15 @@ ALTER TABLE projects ADD COLUMN signed_off_scholar     TEXT NOT NULL DEFAULT '';
 -- Already redacted when written; the full address is never stored.
 ALTER TABLE projects ADD COLUMN signed_off_email       TEXT NOT NULL DEFAULT '';
 `},
+	{5, `
+-- The retraction (006o). A withdrawal ends a publication without erasing the
+-- sign-off it retracts, so these columns sit beside the signed_off_* ones rather
+-- than replacing them. NULL withdrawn_at means never withdrawn — the state every
+-- project predating this spec is in, and the state SetPublic restores.
+ALTER TABLE projects ADD COLUMN withdrawn_at     TIMESTAMPTZ;
+ALTER TABLE projects ADD COLUMN withdrawn_by     TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN withdrawn_reason TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies the project schema and the one-time backfill. Safe to run on
