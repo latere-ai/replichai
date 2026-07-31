@@ -1,30 +1,43 @@
-/* Latere v2 design system — ported from the Replichai Operator composition.
-   Ink-on-paper: the accent IS the ink. Light is the default; dark is a variant. */
+/* Latere v2 design system.
+
+   Ink carries the text; colour carries the meaning. One brand hue marks what
+   the operator can act on — the primary button, the current page, a focus
+   ring — and a five-tone semantic ramp marks what the system is telling them:
+   running, passed, needs attention, failed, published. Everything else stays
+   ink on paper, so the colour that is there always means something.
+
+   Retinting the product is a two-line change: --brand and its dark twin. */
 
 :root {
-  --bg: #fafafa;
+  --bg: #fafaf9;
   --bg-deep: #f0f0ee;
   --bg-surface: #ffffff;
-  --bg-raised: #f5f5f5;
-  --bg-code: rgba(0, 0, 0, 0.05);
+  --bg-raised: #f4f4f3;
+  --bg-code: rgba(0, 0, 0, 0.045);
 
-  --accent: #0a0a0a;
-  --accent-hover: #404040;
-  --accent-subtle: rgba(0, 0, 0, 0.04);
-  --accent-glow: rgba(0, 0, 0, 0.08);
+  /* The brand hue: indigo, one step warmer than the running blue so the two
+     never read as the same signal. */
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-fg: #ffffff;
+  --brand-soft: rgba(79, 70, 229, 0.1);
+  --brand-line: rgba(79, 70, 229, 0.28);
+  --brand-ring: rgba(79, 70, 229, 0.3);
 
-  --fg-1: #0a0a0a;
-  --fg-2: #666666;
-  --fg-3: #a0a0a0;
+  --fg-1: #0c0a09;
+  --fg-2: #5c5b58;
+  --fg-3: #9a9895;
 
   --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.13);
 
-  /* Semantic tones (from the brand ramp) */
-  --ok: #6b9e7c;
-  --warn: #b87333;
-  --run: #4a5ed6;
-  --err: #c4623f;
+  /* Semantic ramp. These also drive syntax highlighting, so they stay legible
+     as body-sized text, not just as badge fills. */
+  --ok: #1d8a5b;
+  --warn: #b45309;
+  --run: #2563eb;
+  --err: #c2410c;
+  --pub: #7c3aed;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
   --font-serif: 'Instrument Serif', Georgia, serif;
@@ -33,34 +46,42 @@
   --radius-sm: 7px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  --shadow-pop: 0 10px 30px rgba(12, 10, 9, 0.13), 0 1px 2px rgba(12, 10, 9, 0.06);
 
   --ease-fluid: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-hover: 0.16s;
 }
 
 :root[data-theme='dark'] {
-  --bg: #09090b;
+  --bg: #0a0a0c;
   --bg-deep: #050506;
-  --bg-surface: #111113;
-  --bg-raised: #18181b;
-  --bg-code: rgba(255, 255, 255, 0.06);
+  --bg-surface: #131316;
+  --bg-raised: #1c1c21;
+  --bg-code: rgba(255, 255, 255, 0.055);
 
-  --accent: #e4e4e7;
-  --accent-hover: #a1a1aa;
-  --accent-subtle: rgba(255, 255, 255, 0.04);
-  --accent-glow: rgba(255, 255, 255, 0.06);
+  --brand: #8b83f8;
+  --brand-hover: #a79ffb;
+  --brand-fg: #0b0a16;
+  --brand-soft: rgba(139, 131, 248, 0.16);
+  --brand-line: rgba(139, 131, 248, 0.4);
+  --brand-ring: rgba(139, 131, 248, 0.42);
 
   --fg-1: #fafafa;
-  --fg-2: #b6b6bf;
-  --fg-3: #82828c;
+  --fg-2: #b4b4bd;
+  --fg-3: #80808b;
 
-  --border: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
 
-  --ok: #8fb894;
-  --warn: #e0bb8c;
-  --run: #96a5ec;
-  --err: #e0716f;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --run: #7aa2f7;
+  --err: #fb7185;
+  --pub: #c4a2fc;
+
+  --shadow-pop: 0 14px 38px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -89,14 +110,19 @@ a {
 }
 input,
 button,
-select {
+select,
+textarea {
   font-family: inherit;
 }
-input:focus-visible,
-button:focus-visible,
-select:focus-visible {
-  outline: 1px solid var(--fg-2);
-  outline-offset: 1px;
+/* One focus ring for every control, brand-coloured, so keyboard travel is
+   traceable across the app instead of each widget inventing its own. */
+:where(input, button, select, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+::selection {
+  background: var(--brand-soft);
 }
 @keyframes om-pulse {
   0%,
@@ -107,6 +133,14 @@ select:focus-visible {
   50% {
     opacity: 0.3;
     transform: scale(0.7);
+  }
+}
+@keyframes om-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 @keyframes om-fade-up {
@@ -141,6 +175,41 @@ select:focus-visible {
   color: var(--fg-3);
   text-transform: uppercase;
 }
+/* An eyebrow that carries its section's glyph. The colour is set where it is
+   used, so one rule serves every tinted section head. */
+.eyebrow-ico {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.eyebrow-ico svg {
+  flex: none;
+}
+/* A link that reads as one: brand-toned, with room for a trailing glyph. */
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--brand);
+  text-decoration: none;
+}
+.link:hover {
+  text-decoration: underline;
+}
+/* An inline message and its glyph stay on one baseline. */
+.err,
+.paper-preview,
+.muted {
+  --icon-gap: 6px;
+}
+.err svg,
+.paper-preview svg,
+.publish-note svg,
+.detail-meta svg,
+.muted svg {
+  vertical-align: -2px;
+  flex: none;
+}
 
 /* ── Shell ── */
 .shell {
@@ -165,18 +234,19 @@ select:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 .rail-logo {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  background: var(--fg-1);
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(150deg, var(--brand), var(--pub));
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-serif);
   font-style: italic;
-  font-size: 13px;
-  color: var(--bg-surface);
+  font-size: 14px;
+  color: #fff;
   line-height: 1;
+  box-shadow: 0 1px 6px var(--brand-line);
 }
 .rail-name {
   font-weight: 600;
@@ -184,12 +254,12 @@ select:focus-visible {
 }
 .rail-beta {
   margin-left: auto;
-  font: 500 10px/1 var(--font-mono);
+  font: 600 9.5px/1 var(--font-mono);
   letter-spacing: 0.1em;
-  color: var(--fg-3);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  padding: 3px 5px;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: var(--radius-pill);
+  padding: 4px 8px;
 }
 .rail-nav {
   flex: 1;
@@ -209,14 +279,15 @@ select:focus-visible {
   padding: 0 8px 8px;
 }
 .nav-btn {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 7px 8px;
+  padding: 7px 9px;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -227,13 +298,31 @@ select:focus-visible {
 .nav-btn svg {
   flex: none;
 }
+/* Each destination keeps its own hue on the icon, so the rail is scannable by
+   colour before the label is read. The tint is the icon's alone — the label
+   stays ink until the row is current. */
+.nav-ico {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  transition: background var(--dur-hover);
+}
 .nav-btn:hover {
   background: var(--bg-raised);
   color: var(--fg-1);
 }
 .nav-btn.active {
-  background: var(--bg-raised);
-  color: var(--fg-1);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+.nav-btn.active .nav-ico {
+  background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .nav-btn .count {
   margin-left: auto;
@@ -262,21 +351,28 @@ select:focus-visible {
 .user-btn:hover {
   background: var(--bg-raised);
 }
+/* An avatar with no picture is not blank: the address seeds a hue, so the same
+   person is the same colour in every list they appear in. */
 .user-avatar {
   width: 22px;
   height: 22px;
   flex: none;
-  border-radius: 6px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: hsl(var(--av-h, 240) 62% 92%);
+  color: hsl(var(--av-h, 240) 55% 34%);
+  border: 1px solid hsl(var(--av-h, 240) 45% 82%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 600 10px/1 var(--font-mono);
-  color: var(--fg-2);
+  font: 700 10px/1 var(--font-mono);
   /* The same box holds an <img> or two initials, so a non-square picture is
      cropped rather than distorted (006m). */
   object-fit: cover;
+}
+:root[data-theme='dark'] .user-avatar {
+  background: hsl(var(--av-h, 240) 40% 22%);
+  color: hsl(var(--av-h, 240) 75% 82%);
+  border-color: hsl(var(--av-h, 240) 35% 32%);
 }
 .user-name {
   font-size: 12px;
@@ -305,11 +401,9 @@ select:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.user-tier {
-  font: 500 10px/1 var(--font-mono);
-  letter-spacing: 0.08em;
-  color: var(--fg-3);
-  text-transform: uppercase;
+.user-meta .pill {
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 .main {
@@ -364,30 +458,10 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
 }
-.lang {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--bg-raised);
-  border-radius: 7px;
-}
-.lang button {
-  padding: 4px 8px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--fg-3);
-  font: 500 11px/1 var(--font-mono);
-  cursor: pointer;
-}
-.lang button.on {
-  background: var(--bg-surface);
-  color: var(--fg-1);
-  font-weight: 600;
-}
 .icon-btn {
   width: 30px;
   height: 30px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -396,40 +470,50 @@ select:focus-visible {
   background: var(--bg-raised);
   color: var(--fg-2);
   cursor: pointer;
-  transition: color var(--dur-hover), border-color var(--dur-hover);
+  transition: color var(--dur-hover), border-color var(--dur-hover), background var(--dur-hover);
 }
 .icon-btn:hover {
-  color: var(--fg-1);
-  border-color: var(--border-strong);
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+}
+/* A destructive icon button warms on hover rather than announcing itself in red
+   while it is only sitting there. */
+.icon-btn.danger:hover {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  border-color: color-mix(in srgb, var(--err) 35%, transparent);
 }
 
 /* ── Buttons ── */
 .btn {
   height: 30px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 0 12px;
-  border: 1px solid var(--fg-1);
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: var(--fg-1);
-  color: var(--bg-surface);
+  background: var(--brand);
+  color: var(--brand-fg);
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.14s var(--ease-fluid), opacity 0.14s;
+  transition: transform 0.14s var(--ease-fluid), background var(--dur-hover), opacity 0.14s;
 }
 .btn:hover {
-  opacity: 0.88;
+  background: var(--brand-hover);
 }
 .btn:active {
   transform: scale(0.96);
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
+  background: var(--brand);
 }
 .btn.ghost {
   background: var(--bg-raised);
@@ -438,8 +522,19 @@ select:focus-visible {
   font-weight: 500;
 }
 .btn.ghost:hover {
-  opacity: 1;
-  border-color: var(--fg-3);
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: var(--brand-line);
+}
+/* Removing a collaborator, revoking a grant, stopping a run: named in the tone
+   of what they do, but only once the pointer is on them. */
+.btn.danger:hover {
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, transparent);
+}
+.btn svg {
+  flex: none;
 }
 .btn.lg {
   height: 38px;
@@ -499,19 +594,49 @@ h1.screen-title {
   margin-bottom: 20px;
 }
 .stat {
+  position: relative;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 11px;
   padding: 13px 14px;
   display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+/* A hairline of the card's own tone along the top edge — enough to tell two
+   stat cards apart at a glance without painting the whole card. */
+.stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.75;
+}
+.stat-ico {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+}
+.stat-body {
+  display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg-1);
 }
 .stat-value {
   font-size: 22px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 .stat-value .sub {
   font-size: 12px;
@@ -535,6 +660,17 @@ h1.screen-title {
   gap: 8px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--border);
+}
+/* The eyebrow's icon, tinted to the section it heads. */
+.head-ico {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 13%, transparent);
 }
 .rows {
   display: flex;
@@ -574,6 +710,11 @@ h1.screen-title {
 .chev {
   flex: none;
   color: var(--fg-3);
+  transition: color var(--dur-hover), transform var(--dur-hover) var(--ease-fluid);
+}
+.row:hover .chev {
+  color: var(--brand);
+  transform: translateX(2px);
 }
 
 /* ── Segmented control / tabs ── */
@@ -582,22 +723,38 @@ h1.screen-title {
   gap: 2px;
   padding: 2px;
   background: var(--bg-raised);
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
 }
 .seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 11px;
   border: none;
-  border-radius: 5px;
+  border-radius: 7px;
   background: transparent;
   color: var(--fg-3);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  transition: background var(--dur-hover), color var(--dur-hover);
+}
+.seg-btn:hover {
+  color: var(--fg-1);
 }
 .seg-btn.on {
   background: var(--bg-surface);
-  color: var(--fg-1);
+  color: var(--brand);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+}
+/* The icon-only form (the appearance switcher) wants square hit targets. */
+.segmented.compact .seg-btn {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
 }
 
 /* ── Badges ── */
@@ -607,9 +764,10 @@ h1.screen-title {
   gap: 5px;
   font: 600 10px/1 var(--font-mono);
   letter-spacing: 0.09em;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: var(--bg-raised);
   color: var(--fg-2);
   text-transform: uppercase;
   white-space: nowrap;
@@ -620,26 +778,27 @@ h1.screen-title {
   border-radius: 50%;
   background: currentColor;
 }
+.badge.private {
+  border-color: var(--border-strong);
+  background: transparent;
+  color: var(--fg-3);
+}
 .badge.public {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--ok) 14%, transparent);
-  color: var(--ok);
+  background: color-mix(in srgb, var(--pub) 15%, transparent);
+  color: var(--pub);
 }
 .badge.running,
 .badge.resolving,
 .badge.publishing {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--run) 14%, transparent);
+  background: color-mix(in srgb, var(--run) 15%, transparent);
   color: var(--run);
 }
 .badge.done {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
   color: var(--ok);
 }
 .badge.failed {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--err) 14%, transparent);
+  background: color-mix(in srgb, var(--err) 15%, transparent);
   color: var(--err);
 }
 .badge.running .dot,
@@ -647,6 +806,57 @@ h1.screen-title {
 .badge.publishing .dot,
 .badge.submitted .dot {
   animation: om-pulse 1.6s ease-in-out infinite;
+}
+
+/* ── Pill: the rounded status mark (a tier, a role, a count) ── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font: 600 10px/1.5 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pill svg {
+  margin-left: -1px;
+}
+.pill-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.pill.pulse .pill-dot {
+  animation: om-pulse 1.6s ease-in-out infinite;
+}
+.pill-neutral {
+  background: var(--bg-raised);
+  border-color: var(--border-strong);
+  color: var(--fg-2);
+}
+.pill-brand {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.pill-ok {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok);
+}
+.pill-warn {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.pill-err {
+  background: color-mix(in srgb, var(--err) 15%, transparent);
+  color: var(--err);
+}
+.pill-run {
+  background: color-mix(in srgb, var(--run) 15%, transparent);
+  color: var(--run);
 }
 
 /* ── Project detail ── */
@@ -670,7 +880,7 @@ h1.screen-title {
 .detail-meta {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 7px;
   flex-wrap: wrap;
   font: 400 11.5px/1 var(--font-mono);
   color: var(--fg-3);
@@ -688,6 +898,9 @@ h1.screen-title {
   margin-top: 14px;
 }
 .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 8px 12px;
   border: none;
   background: none;
@@ -696,19 +909,28 @@ h1.screen-title {
   font-weight: 500;
   color: var(--fg-3);
   box-shadow: none;
+  transition: color var(--dur-hover);
+}
+.tab:hover {
+  color: var(--fg-1);
 }
 .tab.on {
-  color: var(--fg-1);
-  box-shadow: inset 0 -2px 0 var(--fg-1);
+  color: var(--brand);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--brand);
 }
 
 /* ── Members + publish ── */
 .member-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 11px 14px;
   border-top: 1px solid var(--border);
+  transition: background var(--dur-hover);
+}
+.member-row:hover {
+  background: var(--bg-raised);
 }
 .member-email {
   flex: 1;
@@ -717,30 +939,29 @@ h1.screen-title {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.role-tag {
-  font: 600 10px/1 var(--font-mono);
-  letter-spacing: 0.09em;
-  color: var(--fg-3);
-  text-transform: uppercase;
-}
-.role-tag.pending {
-  color: var(--warn);
-}
-.role-tag.admin {
-  color: var(--fg-1);
-}
 /* What is left to spend, beside the button that spends it (006l). */
 .quota-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: 500 11px/1 var(--font-mono);
-  color: var(--fg-3);
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  color: var(--fg-2);
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.quota-pill.out {
+/* Running low is a warning; empty is an error — the pill says which without a
+   sentence. */
+.quota-pill.low {
   color: var(--warn);
-  border-color: var(--warn);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+}
+.quota-pill.out {
+  color: var(--err);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--err) 15%, transparent);
 }
 /* The payer picker, shown only in a project its owner sponsors (006l). */
 .charge-row {
@@ -749,13 +970,327 @@ h1.screen-title {
   gap: 14px;
   flex-wrap: wrap;
 }
-.charge-opt {
+/* ── The control set: checkbox, switch, radio, select, stepper, disclosure ──
+   Each one is drawn here rather than by the browser, so it carries the same
+   tokens as everything around it and looks identical on every platform. */
+
+.ck,
+.rd,
+.tg {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.ck:disabled,
+.rd:disabled,
+.tg:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ck-label {
+  min-width: 0;
+}
+.ck-box {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--brand-fg);
+  transition: background var(--dur-hover), border-color var(--dur-hover);
+}
+.ck:hover .ck-box {
+  border-color: var(--brand);
+}
+.ck.on .ck-box {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.rd-box {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  transition: border-color var(--dur-hover);
+}
+.rd:hover .rd-box {
+  border-color: var(--brand);
+}
+.rd.on .rd-box {
+  border-color: var(--brand);
+}
+.rd-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+.radio-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.tg {
+  align-items: center;
+}
+.tg-track {
+  width: 34px;
+  height: 20px;
+  flex: none;
+  padding: 2px;
+  display: flex;
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  transition: background var(--dur-hover), border-color var(--dur-hover);
+}
+.tg-knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fg-3);
+  transition: transform 0.18s var(--ease-fluid), background var(--dur-hover);
+}
+.tg.on .tg-track {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.tg.on .tg-knob {
+  background: #fff;
+  transform: translateX(14px);
+}
+
+.sel {
+  position: relative;
+  display: inline-block;
+}
+.sel-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--fg-1);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--dur-hover);
+}
+.sel-btn:hover,
+.sel-btn.open {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.sel-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.sel-caret {
+  flex: none;
+  color: var(--fg-3);
+  transition: transform 0.18s var(--ease-fluid);
+}
+.sel-btn.open .sel-caret {
+  transform: rotate(180deg);
+  color: inherit;
+}
+.sel-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 5px);
+  left: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+  animation: om-fade-up 0.14s var(--ease-fluid) both;
+}
+.sel-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sel-opt.cursor {
+  background: var(--bg-raised);
+  color: var(--fg-1);
+}
+.sel-opt.on {
+  color: var(--brand);
+  font-weight: 600;
+}
+.sel-tick {
+  flex: none;
+  margin-left: 8px;
+}
+
+.numf {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  overflow: hidden;
+  transition: border-color var(--dur-hover);
+}
+.numf:focus-within {
+  border-color: var(--brand);
+}
+.numf-step {
+  width: 28px;
+  height: 100%;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color var(--dur-hover), background var(--dur-hover);
+}
+.numf-step:hover:not(:disabled) {
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+.numf-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.numf-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-1);
+  font-size: 13px;
+  text-align: center;
+}
+.numf-input:focus-visible {
+  outline: none;
+}
+
+.disc {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-code);
+  overflow: hidden;
+}
+.disc-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
-  color: var(--fg-2);
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--fg-3);
+  font: 500 11.5px/1 var(--font-mono);
   cursor: pointer;
+  text-align: left;
+}
+.disc-head:hover {
+  color: var(--brand);
+}
+.disc-caret {
+  flex: none;
+  transition: transform 0.18s var(--ease-fluid);
+}
+.disc.open .disc-caret {
+  transform: rotate(90deg);
+}
+.disc-body {
+  padding: 0 10px 9px;
+}
+.disc-body pre {
+  margin: 0;
+  font: 400 11.5px/1.55 var(--font-mono);
+  color: var(--fg-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+}
+
+/* The app's own tooltip: no delay the browser decides, no chrome we cannot
+   theme. Hidden from the accessibility tree — the trigger carries its own label. */
+.tip {
+  position: relative;
+  display: inline-flex;
+}
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  z-index: 40;
+  transform: translateX(-50%) translateY(2px);
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--fg-1);
+  color: var(--bg-surface);
+  font: 500 11px/1.4 var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s, transform 0.12s var(--ease-fluid);
+  box-shadow: var(--shadow-pop);
+}
+.tip-bottom::after {
+  top: calc(100% + 6px);
+}
+.tip-top::after {
+  bottom: calc(100% + 6px);
+}
+.tip:hover::after,
+.tip:focus-within::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* The admin console's policy field: a label, a narrow number, a save (006k). */
@@ -776,8 +1311,7 @@ input.text.quota-input {
   padding: 12px 14px;
   border-top: 1px solid var(--border);
 }
-input.text,
-select.text {
+input.text {
   height: 32px;
   padding: 0 11px;
   border: 1px solid var(--border-strong);
@@ -785,11 +1319,17 @@ select.text {
   background: var(--bg-raised);
   color: var(--fg-1);
   font-size: 13px;
-  transition: border-color var(--dur-hover);
+  transition: border-color var(--dur-hover), background var(--dur-hover);
 }
-input.text:hover,
-select.text:hover {
+input.text:hover {
   border-color: var(--fg-3);
+}
+input.text:focus {
+  border-color: var(--brand);
+  background: var(--bg-surface);
+}
+input::placeholder {
+  color: var(--fg-3);
 }
 .publish-panel {
   display: flex;
@@ -800,26 +1340,17 @@ select.text:hover {
 .publish-note {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 11px;
-  border-radius: 8px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 26%, transparent);
   font-size: 12px;
   color: var(--fg-2);
 }
-.affirm {
-  display: flex;
-  gap: 9px;
-  align-items: flex-start;
-  cursor: pointer;
-  font-size: 12.5px;
-  color: var(--fg-1);
-  line-height: 1.5;
-}
-.affirm input {
-  margin-top: 2px;
-  accent-color: var(--fg-1);
+.publish-note svg {
+  flex: none;
+  color: var(--ok);
 }
 .attestation {
   font: 400 10.5px/1.5 var(--font-mono);
@@ -884,6 +1415,9 @@ input.submit-input {
   flex: 1;
 }
 .paper-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font: 500 12px/1.35 var(--font-sans, inherit);
   color: var(--fg-2);
   padding: 2px 2px 0 2px;
@@ -935,6 +1469,10 @@ input.submit-input {
   text-align: right;
 }
 .tx-stat-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
   font: 600 9.5px/1 var(--font-mono);
   letter-spacing: 0.12em;
   color: var(--fg-3);
@@ -949,10 +1487,10 @@ input.submit-input {
   align-items: center;
   gap: 5px;
   margin-left: 8px;
-  padding: 2px 7px 2px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ok, #3fb950) 16%, transparent);
-  color: var(--ok, #3fb950);
+  padding: 3px 9px 3px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
   font: 600 9.5px/1 var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1009,13 +1547,16 @@ input.submit-input {
   background: var(--fg-3);
 }
 .tl-dot.done {
-  background: var(--ok, #3fb950);
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent);
 }
 .tl-dot.failed {
-  background: var(--err, #f85149);
+  background: var(--err);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 20%, transparent);
 }
 .tl-dot.running {
-  background: var(--accent, #4493f8);
+  background: var(--run);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--run) 22%, transparent);
 }
 .tl-step.active .tl-dot {
   animation: livepulse 1.4s ease-in-out infinite;
@@ -1074,10 +1615,17 @@ input.submit-input {
   opacity: 0.4;
 }
 .kind-btn .sq {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
   flex: none;
+  background: currentColor;
+}
+/* A filtered-out kind keeps its swatch as an outline, so the colour still tells
+   you which row you switched off. */
+.kind-btn.off .sq {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
 }
 .kind-btn .n {
   margin-left: auto;
@@ -1093,20 +1641,32 @@ input.submit-input {
   flex-direction: column;
   gap: 8px;
 }
+/* Every event carries its kind's tone on the left edge — the stream is read by
+   scrolling, and a colour band is what makes a tool call findable in it. */
 .event {
+  position: relative;
   display: grid;
-  grid-template-columns: 62px 1fr;
+  grid-template-columns: 74px 1fr;
   gap: 12px;
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 10px 12px 10px 15px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
+  overflow: hidden;
   animation: om-fade-up 0.34s var(--ease-fluid) both;
+}
+.event::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--fg-3);
+  opacity: 0.5;
 }
 .event-gutter {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   align-items: flex-start;
 }
 .event-role {
@@ -1114,6 +1674,9 @@ input.submit-input {
   color: var(--fg-3);
 }
 .event-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font: 600 9px/1 var(--font-mono);
   letter-spacing: 0.09em;
   color: var(--fg-3);
@@ -1123,11 +1686,29 @@ input.submit-input {
   border-style: dashed;
   background: transparent;
 }
+.event.thinking::before {
+  background: var(--pub);
+}
+.event.thinking .event-kind {
+  color: var(--pub);
+}
+.event.message::before {
+  background: var(--brand);
+}
 .event.grade {
-  border-color: var(--run);
+  border-color: color-mix(in srgb, var(--run) 40%, transparent);
+  background: color-mix(in srgb, var(--run) 5%, var(--bg-surface));
+}
+.event.grade::before {
+  background: var(--run);
+  opacity: 1;
 }
 .event.grade .event-kind {
   color: var(--run);
+}
+.event.tool::before {
+  background: var(--warn);
+  opacity: 1;
 }
 .event.tool .event-kind {
   color: var(--warn);
@@ -1172,10 +1753,6 @@ input.submit-input {
   max-height: 220px;
   overflow: auto;
 }
-.event-io summary {
-  cursor: pointer;
-  color: var(--fg-3);
-}
 /* The signed-in person, at the head of Settings (006m). */
 .profile-head {
   display: flex;
@@ -1184,6 +1761,7 @@ input.submit-input {
 }
 .profile-id {
   min-width: 0;
+  flex: 1;
 }
 .profile-name {
   font-size: 15px;
@@ -1220,9 +1798,96 @@ input.submit-input {
 }
 .usage-line .v {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: 500 12px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
+}
+.usage-line svg {
+  flex: none;
+}
+/* The token-usage rows are a breakdown, so each gets the swatch of the slice it
+   names — the same colours the totals are read against. */
+.usage-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--fg-3);
+}
+
+/* The verdict, said twice: a glyph and the word, both in the verdict's tone. */
+.verdict-line {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.verdict-ico {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+}
+
+/* The artifact list: the file's kind as a glyph, and the open file marked. */
+.file-row {
+  gap: 9px;
+}
+.file-ico {
+  flex: none;
+  color: var(--fg-3);
+}
+.file-row .row-title {
+  color: var(--fg-2);
+}
+.file-row.on {
+  background: var(--brand-soft);
+}
+.file-row.on .file-ico,
+.file-row.on .row-title {
+  color: var(--brand);
+}
+
+/* The phase pill keeps a fixed column so a list of sessions lines up. */
+.phase-slot {
+  display: flex;
+  justify-content: flex-start;
+  min-width: 108px;
+  flex: none;
+}
+.row-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The publish wizard's progress: which of the three commitments you are on. */
+.step-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.step-track {
+  display: inline-flex;
+  gap: 4px;
+}
+.step-dot {
+  width: 14px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+}
+.step-dot.on {
+  background: var(--brand);
 }
 
 /* ── Auth ── */
@@ -1246,18 +1911,19 @@ input.submit-input {
   text-align: center;
 }
 .auth-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 11px;
-  background: var(--fg-1);
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(150deg, var(--brand), var(--pub));
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-serif);
   font-style: italic;
-  font-size: 22px;
-  color: var(--bg-surface);
+  font-size: 25px;
+  color: #fff;
   margin: 0 auto;
+  box-shadow: 0 6px 22px var(--brand-line);
 }
 .auth-card h2 {
   margin: 0;
@@ -1278,11 +1944,27 @@ input.submit-input {
 .small {
   font-size: 12px;
 }
+/* An empty list is a state, not a failure: a muted glyph and a sentence, so the
+   card reads as "nothing here yet" rather than "something did not load". */
 .empty {
-  padding: 24px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 30px 14px;
   text-align: center;
   color: var(--fg-3);
   font-size: 13px;
+}
+.empty-ico {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  color: var(--fg-3);
 }
 .stack {
   display: flex;
@@ -1334,7 +2016,7 @@ input.submit-input {
   margin: 0.7em 0;
 }
 .markdown-body a {
-  color: var(--run);
+  color: var(--brand);
   text-decoration: none;
 }
 .markdown-body a:hover {
@@ -1456,12 +2138,16 @@ input.submit-input {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--bg-base) 70%, transparent);
-  backdrop-filter: blur(2px);
+  /* --bg-base was never a token: the whole declaration was invalid, so the
+     backdrop rendered fully transparent and the page behind it stayed live to
+     the eye. It is --bg. */
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+  backdrop-filter: blur(3px);
+  animation: om-fade-in 0.16s ease both;
 }
 .modal {
   width: 100%;
-  max-width: 460px;
+  max-width: 480px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   display: flex;
@@ -1471,7 +2157,8 @@ input.submit-input {
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   background: var(--bg-surface);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 22%);
+  box-shadow: var(--shadow-pop);
+  animation: om-fade-up 0.2s var(--ease-fluid) both;
 }
 .modal-head {
   display: flex;
@@ -1479,10 +2166,24 @@ input.submit-input {
   gap: 5px;
 }
 .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--fg-1);
+}
+.modal-icon {
+  display: flex;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 .modal-body {
   display: flex;
