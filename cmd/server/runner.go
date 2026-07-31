@@ -286,9 +286,10 @@ func (l liveTranscript) Events(ctx context.Context, runID string) ([]provider.Ev
 	return l.prov.Transcript(ctx, provider.RunHandle{ID: runID})
 }
 
-// forgePublisher flips a repository public with the server token (006f) — the
-// optional half of the project public flip, never inside the sandbox. The
-// owner is fixed to the org the reproductions live under.
+// forgePublisher flips a repository's visibility with the server token — the
+// optional half of the project public flip (006f) and of withdrawing it (006o),
+// never inside the sandbox. The owner is fixed to the org the reproductions live
+// under.
 type forgePublisher struct {
 	client *github.Client
 	owner  string
@@ -297,6 +298,11 @@ type forgePublisher struct {
 // SetPublic flips one repository public.
 func (p *forgePublisher) SetPublic(ctx context.Context, repo string) error {
 	return p.client.SetPublic(ctx, p.owner, repo)
+}
+
+// SetPrivate closes one repository again.
+func (p *forgePublisher) SetPrivate(ctx context.Context, repo string) error {
+	return p.client.SetPrivate(ctx, p.owner, repo)
 }
 
 // registryReader adapts the derived registry (003) to the read surface's

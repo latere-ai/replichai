@@ -77,6 +77,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
+	rt.gatedHandle("POST", "/projects/{id}/private", rt.withdrawProject)
 	rt.gatedHandle("POST", "/projects/{id}/sponsor", rt.sponsorProject)
 	rt.gatedHandle("GET", "/projects/{id}/members", rt.listMembers)
 	rt.gatedHandle("POST", "/projects/{id}/members", rt.addMember)
@@ -584,7 +585,63 @@ func profileErrorCode(err error) (string, bool) {
 	}
 }
 
-// makeProjectPublic is the owner's one-way public flip, gated by a responsibility
+// maxWithdrawReason caps the owner's stated reason. It is their own record, not
+// a published notice, so the limit only has to keep a runaway body out of the
+// column.
+const maxWithdrawReason = 2000
+
+// withdrawProject ends a publication (006o): the project returns to private, the
+// retraction is recorded beside the sign-off it retracts rather than erasing it,
+// and — best-effort — every repository the project owns is set private on the
+// forge. Owner-only. Withdrawing an already-private project is a success that
+// changes nothing, so a double-click cannot rewrite when the publication ended.
+func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
+	proj, _, ok := rt.ownedProject(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	reason := strings.TrimSpace(body.Reason)
+	if len(reason) > maxWithdrawReason {
+		reason = reason[:maxWithdrawReason]
+	}
+	if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{
+		By:     principal(r),
+		Reason: reason,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "withdraw_failed")
+		return
+	}
+	// The forge follows, best-effort: the project is already private in-app, and a
+	// forge outage must not strand an owner mid-withdrawal. Every repository the
+	// project owns is closed, not only those the publish flipped — nothing records
+	// which those were, and closing an already-closed repository costs nothing.
+	// The repositories come from the sessions directly rather than from
+	// clearedForPublish, because a project is often withdrawn precisely because
+	// its tree stopped being clear, and that must not be what keeps the repository
+	// open.
+	if rt.repoPub != nil {
+		sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+		if err != nil {
+			log.Printf("withdraw: project %s sessions unreadable, repositories left as they are: %v", proj.ID, err)
+		}
+		for _, s := range sessions {
+			if s.RepoName == "" {
+				continue
+			}
+			if err := rt.repoPub.SetPrivate(r.Context(), repoName(s.RepoName)); err != nil {
+				log.Printf("withdraw: repo %s not closed: %v", s.RepoName, err)
+			}
+		}
+	}
+	updated, _ := rt.projects.Get(r.Context(), proj.ID)
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// makeProjectPublic is the owner's public flip, gated by a responsibility
 // sign-off (006f). It refuses a non-owner (403), refuses a project none of whose
 // published sessions cleared 002's redistribution gate (409 not_clear), records
 // the sign-off with its signer snapshot (006n), marks the project public, and —
