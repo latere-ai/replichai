@@ -173,6 +173,36 @@ func TestSetPublicSendsPrivateFalse(t *testing.T) {
 	}
 }
 
+func TestSetPrivateSendsPrivateTrue(t *testing.T) {
+	var got map[string]any
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/repos/open-hai/x" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusOK)
+	})
+	if err := c.SetPrivate(context.Background(), "open-hai", "x"); err != nil {
+		t.Fatalf("SetPrivate: %v", err)
+	}
+	if got["private"] != true {
+		t.Errorf("SetPrivate must send private:true, got %v", got)
+	}
+}
+
+// GitHub refuses the flip on some repositories (a fork network, an organisation
+// policy). The client must surface that rather than report a withdrawal it did
+// not perform — the caller decides that a forge failure is non-fatal, and it can
+// only decide that if it hears about it.
+func TestSetPrivateRefusedSurfaces(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "cannot change visibility", http.StatusUnprocessableEntity)
+	})
+	if err := c.SetPrivate(context.Background(), "open-hai", "x"); err == nil {
+		t.Error("a refused visibility change should error")
+	}
+}
+
 func TestTreePathsReturnsBlobsOnly(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.RawQuery, "recursive=1") {
