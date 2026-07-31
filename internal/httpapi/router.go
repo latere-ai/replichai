@@ -81,6 +81,9 @@ type ProjectStore interface {
 	ListPublic(ctx context.Context) ([]project.Project, error)
 	Delete(ctx context.Context, id string) error
 	SetPublic(ctx context.Context, id string, s project.SignOff) error
+	// SetPrivate withdraws a publication (006o), recording the retraction without
+	// erasing the sign-off it ends.
+	SetPrivate(ctx context.Context, id string, w project.Withdrawal) error
 	// SetSponsored records the owner's standing consent to cover their
 	// collaborators' sessions (006l).
 	SetSponsored(ctx context.Context, id string, on bool) error
@@ -138,12 +141,14 @@ type MembershipStore interface {
 	Projects(ctx context.Context, principalSub string) ([]string, error)
 }
 
-// RepoPublisher flips a forge repository public — the optional half of the
-// project public flip (006f). It runs with the server token, never in the
-// sandbox. Nil when no forge is wired (a local run, tests), in which case a
-// project still goes public in-app without touching a repository.
+// RepoPublisher flips a forge repository's visibility — the optional half of the
+// project public flip (006f) and of withdrawing it again (006o). It runs with the
+// server token, never in the sandbox. Nil when no forge is wired (a local run,
+// tests), in which case a project changes visibility in-app without touching a
+// repository.
 type RepoPublisher interface {
 	SetPublic(ctx context.Context, repo string) error
+	SetPrivate(ctx context.Context, repo string) error
 }
 
 // ReproReader is the read surface over the derived registry (003) and the

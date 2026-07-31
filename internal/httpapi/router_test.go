@@ -301,11 +301,25 @@ func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 	}
 }
 
-// fakeRepoPub records which repositories were flipped public.
-type fakeRepoPub struct{ flipped []string }
+// fakeRepoPub records which repositories were flipped public and which were
+// closed again. errOn names a repository whose flip fails, so a test can assert
+// that a forge failure does not fail the request.
+type fakeRepoPub struct {
+	flipped []string
+	closed  []string
+	errOn   string
+}
 
 func (f *fakeRepoPub) SetPublic(_ context.Context, repo string) error {
 	f.flipped = append(f.flipped, repo)
+	return nil
+}
+
+func (f *fakeRepoPub) SetPrivate(_ context.Context, repo string) error {
+	f.closed = append(f.closed, repo)
+	if repo == f.errOn {
+		return errors.New("github refused the visibility change")
+	}
 	return nil
 }
 
@@ -338,6 +352,138 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 	}
 	if got, _ := d.Projects.Get(context.Background(), p2.ID); got.Visibility != project.VisibilityPublic {
 		t.Errorf("opt-out project should still be public in-app")
+	}
+}
+
+// 006o AC1/AC2/AC3: the owner withdraws a publication. The project leaves the
+// public zone and closes to strangers, the retraction is recorded, and the
+// sign-off it retracts survives untouched.
+func TestWithdrawProject(t *testing.T) {
+	pub := &fakeRepoPub{}
+	d := testDeps(allowAll)
+	d.RepoPublisher = pub
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
+		t.Fatalf("publish: status %d", w.Code)
+	}
+
+	// A non-owner cannot withdraw, and nothing changes.
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/private", `{}`, "stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner withdrawal: status %d, want 403", w.Code)
+	}
+	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPublic {
+		t.Fatalf("a stranger withdrew someone else's publication")
+	}
+	if w := do(t, h, "POST", "/projects/nope/private", `{}`, "me"); w.Code != http.StatusNotFound {
+		t.Errorf("withdrawing a missing project: status %d, want 404", w.Code)
+	}
+
+	// The owner withdraws it.
+	w := do(t, h, "POST", "/projects/"+p.ID+"/private", `{"reason":"an unreleased figure"}`, "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("owner withdrawal: status %d, want 200", w.Code)
+	}
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if got.Visibility != project.VisibilityPrivate {
+		t.Fatalf("after withdrawal: %+v", got)
+	}
+	if got.WithdrawnAt == nil || got.WithdrawnBy != "me" || got.WithdrawnReason != "an unreleased figure" {
+		t.Errorf("retraction not recorded: %+v", got)
+	}
+	// The retraction ends the publication; it does not un-say the attestation.
+	if got.SignedOffBy != "me" || got.AttestationVersion != "v2" || got.SignedOffAt == nil ||
+		got.SignedOffName != "Ada Lovelace" || got.SignedOffContact != "ada@example.org" {
+		t.Errorf("withdrawal erased the sign-off: %+v", got)
+	}
+	// The forge follows.
+	if len(pub.closed) != 1 || pub.closed[0] != "r1" {
+		t.Errorf("the repository should be closed, closed=%v", pub.closed)
+	}
+
+	// The public zone drops it, and the stranger who could read it while public
+	// can no longer open it.
+	zw := do(t, h, "GET", "/public", "", "someone-else")
+	var zone []ProjectView
+	_ = json.Unmarshal(zw.Body.Bytes(), &zone)
+	if len(zone) != 0 {
+		t.Errorf("public zone still lists a withdrawn project: %+v", zone)
+	}
+	if w := do(t, h, "GET", "/projects/"+p.ID, "", "someone-else"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger opening a withdrawn project: status %d, want 404", w.Code)
+	}
+}
+
+// 006o AC5: a withdrawn project can be published again — a fresh sign-off that
+// clears the retraction — and the manifest gate is re-run rather than carried
+// over, so a tree that stopped being clear stays private.
+func TestRepublishAfterWithdrawal(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	_ = do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me")
+	_ = do(t, h, "POST", "/projects/"+p.ID+"/private", `{"reason":"second thoughts"}`, "me")
+
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
+		t.Fatalf("republish: status %d, want 200", w.Code)
+	}
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if got.Visibility != project.VisibilityPublic {
+		t.Fatalf("republish did not take: %+v", got)
+	}
+	if got.WithdrawnAt != nil || got.WithdrawnBy != "" || got.WithdrawnReason != "" {
+		t.Errorf("republish left the retraction in place: %+v", got)
+	}
+
+	// A project whose tree never cleared is still barred after a withdrawal — the
+	// gate is re-run, not inherited.
+	q, _ := d.Projects.Create(context.Background(), "me", "Flagged")
+	_ = publishInto(t, d.Jobs, "me", q.ID, "flagged")
+	_ = do(t, h, "POST", "/projects/"+q.ID+"/private", `{}`, "me")
+	if w := do(t, h, "POST", "/projects/"+q.ID+"/public", signOff, "me"); w.Code != http.StatusConflict {
+		t.Errorf("republishing a non-clear project: status %d, want 409", w.Code)
+	}
+}
+
+// 006o AC6: the forge is best-effort. A repository GitHub refuses to close (a
+// fork network, an org policy) must not fail the withdrawal — the project is
+// already private in-app, and stranding the owner mid-withdrawal would be worse
+// than a repository left open.
+func TestWithdrawSurvivesForgeFailure(t *testing.T) {
+	pub := &fakeRepoPub{errOn: "r1"}
+	d := testDeps(allowAll)
+	d.RepoPublisher = pub
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	_ = do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me")
+
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/private", `{}`, "me"); w.Code != http.StatusOK {
+		t.Fatalf("withdrawal with a failing forge: status %d, want 200", w.Code)
+	}
+	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPrivate {
+		t.Errorf("the project must be private in-app even when the forge refuses")
+	}
+}
+
+// 006o: the repository is closed even when the project's tree is no longer
+// clear — which is often exactly why it is being withdrawn. Sourcing the
+// repositories from clearedForPublish would leave that repository open.
+func TestWithdrawClosesRepoOfAnUnclearProject(t *testing.T) {
+	pub := &fakeRepoPub{}
+	d := testDeps(allowAll)
+	d.RepoPublisher = pub
+	h := NewRouter(d).Handler()
+	p, _ := d.Projects.Create(context.Background(), "me", "Flagged")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish == false
+
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/private", `{}`, "me"); w.Code != http.StatusOK {
+		t.Fatalf("withdrawal: status %d, want 200", w.Code)
+	}
+	if len(pub.closed) != 1 || pub.closed[0] != "flagged" {
+		t.Errorf("an unclear project's repository must still be closed, closed=%v", pub.closed)
 	}
 }
 
