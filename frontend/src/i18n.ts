@@ -164,7 +164,7 @@ const strings: Record<Lang, Record<string, string>> = {
     // publish
     publishTitle: 'Publish · sign-off',
     publishBody:
-      'Going public opens this project — its sessions, transcripts, and artifacts — to everyone on the platform, and cannot be undone. Only a project that passed the redistribution check can go public.',
+      'Going public opens this project — its sessions, transcripts, and artifacts — to everyone on the platform. Only a project that passed the redistribution check can go public. You can withdraw it later, but copies made while it was public stay made.',
     publishAffirm: 'I take responsibility for publishing these reproduction results.',
     flipRepoLabel: 'Also make the GitHub repository public',
     publishConfirm: 'Sign off & make public',
@@ -192,6 +192,18 @@ const strings: Record<Lang, Record<string, string>> = {
     signedOffContact: 'Contact',
     signedOffOrcid: 'ORCID',
     signedOffScholar: 'Scholar',
+    // withdrawing a publication (006o)
+    withdrawStart: 'Withdraw this publication…',
+    withdrawTitle: 'Withdraw this publication',
+    withdrawBody:
+      'The project returns to private: it leaves the public zone, and its sessions, transcripts, and artifacts close to everyone but you and your collaborators. The GitHub repository is made private again. Your sign-off is kept on record, and you can publish again at any time.',
+    withdrawNotARecall:
+      'This stops new access. It does not retrieve copies already taken — forks, clones, and caches made while the project was public stay where they are.',
+    withdrawReason: 'Why are you withdrawing it? (optional, for your own record)',
+    withdrawReasonHint: 'e.g. an unreleased figure slipped into the artifacts',
+    withdrawConfirm: 'Withdraw & make private',
+    withdrawBusy: 'Withdrawing…',
+    withdrawError: 'Could not withdraw the publication.',
     // transcript
     transcript: 'Transcript',
     transcriptNotReady: 'The transcript will appear once this session has published.',
