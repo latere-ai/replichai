@@ -26,6 +26,8 @@ New columns on `projects`, all empty for a project that was never withdrawn:
 | `withdrawn_by` | the deciding principal (006c) |
 | `withdrawn_reason` | free text the owner types, capped; the *why*, for the owner's own record |
 
+**Nothing new gates the artifacts.** Session reads already resolve visibility through the project on every request (`viewableSession` → `mayViewProject`), so a withdrawal closes the transcript, the artifacts, and the reproduction with the project, and no read path caches a decision taken at publish time. This spec adds no second gate; it verifies the existing one holds in the closing direction.
+
 **Withdrawal clears nothing but visibility.** In particular it does not clear the sign-off, so `signed_off_at` alone no longer means "this is public". Every read path that asks *is this public* must ask `visibility == "public"`, never "does it have a sign-off" — the frontend's signed-off card is rendered on that condition today and must not start showing a withdrawn attestation to a private-project viewer as though it were live.
 
 **Re-publishing is a fresh sign-off, and re-runs the gate.** A withdrawn project may be published again: `SetPublic` overwrites the snapshot with a new attestation and clears the withdrawal fields, and the route runs `clearedForPublish` from scratch. A withdrawal never carries a stale clearance forward — if the manifest that flagged the tree is why it was withdrawn, the re-publish is refused `409` like any other unclear project. Withdraw and re-publish are both repeatable; neither is a one-shot.
@@ -46,7 +48,7 @@ Rejected: **a public tombstone.** A withdrawn project could leave a "this reprod
 
 1. `POST /projects/{id}/private` flips a public project to `private`, records `withdrawn_at`/`withdrawn_by`/`withdrawn_reason`, and returns the updated project. Non-owner is refused `403`; a missing project `404`.
 2. The withdrawal leaves every `signed_off_*` field unchanged — asserted directly on the returned project, for both store implementations via the contract test.
-3. A withdrawn project no longer appears in `ListPublic`, and a signed-in stranger who could read it while public is refused afterwards.
+3. A withdrawn project no longer appears in `ListPublic`, and a signed-in stranger who could read it while public is refused afterwards — the project page *and* every session-scoped read under it (the session, its transcript, its reproduction, its artifacts). Closing the project page while an artifact stayed readable by URL would defeat the feature. The owner keeps all of it.
 4. Withdrawing an already-private project is accepted and idempotent (no error, no second withdrawal timestamp overwriting a first — or an explicit decision that it does, asserted either way).
 5. `SetPublic` on a withdrawn project clears the withdrawal fields and writes a fresh sign-off; the publish route re-runs `clearedForPublish` and still refuses `409` when the manifest is not clear.
 6. `github.Client.SetPrivate` sends `private:true` (mirroring `TestSetPublicSendsPrivateFalse`), and a non-200 is an error; a repo flip failure during withdrawal is logged and the request still succeeds.
