@@ -306,7 +306,7 @@ func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 // that a forge failure does not fail the request.
 type fakeRepoPub struct {
 	flipped []string
-	closed  []string
+	closed  []string // attempted, not confirmed: errOn is recorded here too
 	errOn   string
 }
 
@@ -364,9 +364,17 @@ func TestWithdrawProject(t *testing.T) {
 	d.RepoPublisher = pub
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
-	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	sess := publishInto(t, d.Jobs, "me", p.ID, "r1")
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
 		t.Fatalf("publish: status %d", w.Code)
+	}
+	// While public, a stranger can read the session under it — the surface the
+	// withdrawal has to close.
+	sessionReads := []string{"/jobs/" + sess.ID, "/jobs/" + sess.ID + "/transcript", "/jobs/" + sess.ID + "/reproduction", "/jobs/" + sess.ID + "/artifacts"}
+	for _, path := range sessionReads {
+		if w := do(t, h, "GET", path, "", "someone-else"); w.Code != http.StatusOK {
+			t.Fatalf("while public, %s: status %d, want 200", path, w.Code)
+		}
 	}
 
 	// A non-owner cannot withdraw, and nothing changes.
@@ -412,6 +420,21 @@ func TestWithdrawProject(t *testing.T) {
 	}
 	if w := do(t, h, "GET", "/projects/"+p.ID, "", "someone-else"); w.Code != http.StatusNotFound {
 		t.Errorf("stranger opening a withdrawn project: status %d, want 404", w.Code)
+	}
+	// And the artifacts close with it. Closing the project page while a transcript
+	// or an artifact stayed readable by URL would defeat the whole feature, so
+	// every session-scoped read is asserted, not just the project one.
+	for _, path := range sessionReads {
+		if w := do(t, h, "GET", path, "", "someone-else"); w.Code != http.StatusNotFound {
+			t.Errorf("after withdrawal, %s: status %d, want 404", path, w.Code)
+		}
+	}
+	// The owner still reads everything — a withdrawal takes the work out of
+	// public view, it does not take it away from the person who did it.
+	for _, path := range sessionReads {
+		if w := do(t, h, "GET", path, "", "me"); w.Code != http.StatusOK {
+			t.Errorf("after withdrawal, the owner's own %s: status %d, want 200", path, w.Code)
+		}
 	}
 }
 
