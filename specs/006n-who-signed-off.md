@@ -69,5 +69,5 @@ Rejected: rendering the signer's *current* profile on the public card (a setting
 
 - **Verifying affiliation** — no institutional email challenge, no ORCID OAuth handshake. The claim is self-asserted and bound to a principal; a later spec can add proof.
 - **Co-signers.** One project, one signing owner. Collaborators are listed as members, not as endorsers of the result.
-- **Editing a published sign-off.** It is a record. A correction would be a new attestation, and there is no un-publish to attach one to (006f's one-way rule).
+- **Editing a published sign-off.** It is a record. A correction would be a new attestation, and there is no un-publish to attach one to (006f's one-way rule). *(Since [006o](006o-withdrawing-a-publication.md) there is: withdraw and publish again writes a fresh attestation. Editing one in place is still out of scope — a corrected record is a new sign-off, not an edited one.)*
 - **Profile display anywhere else** — no author page, no per-user public index. The profile surfaces through a sign-off, nowhere else.

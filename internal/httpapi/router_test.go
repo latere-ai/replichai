@@ -255,7 +255,7 @@ const (
 )
 
 // 006f AC6: the public flip is owner-only, needs a recorded sign-off, refuses a
-// non-clear project (409), and is one-way.
+// non-clear project (409). (Its one-way rule is superseded by 006o.)
 func TestMakeProjectPublic(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
