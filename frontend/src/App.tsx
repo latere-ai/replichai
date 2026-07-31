@@ -1416,8 +1416,10 @@ function QuotaPill({ i18n, quota }: { i18n: I18n; quota?: Quota }) {
   const left = Math.max(0, quota.limit - quota.used)
   // Empty is an error, the last one is a warning, the rest is just a number.
   const state = left === 0 ? ' out' : left <= 1 ? ' low' : ''
+  // Pinned to its own right edge: the pill sits near the viewport's, where a
+  // centred bubble would hang off the screen.
   return (
-    <Tip text={t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}>
+    <Tip align="end" text={t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}>
       <span className={'quota-pill' + state}>
         <Ico name={left === 0 ? 'alert' : 'wallet'} size={12} />
         {t('quotaLeft', { n: String(left) })}

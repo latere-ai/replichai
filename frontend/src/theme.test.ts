@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { nextMode, readMode, resolveTheme, THEME_MODES } from './theme'
+import { readMode, resolveTheme, THEME_MODES } from './theme'
 import { hueOf } from './App'
 
 // The mode is what persists; the resolved theme is what the stylesheet reads.
@@ -28,11 +28,15 @@ test('a first visit, or a corrupted value, defaults to auto', () => {
   expect(readMode('sepia')).toBe('auto')
 })
 
-test('cycling walks all three and returns', () => {
-  expect(nextMode('auto')).toBe('light')
-  expect(nextMode('light')).toBe('dark')
-  expect(nextMode('dark')).toBe('auto')
-  expect(THEME_MODES.reduce<ReturnType<typeof nextMode>>((m) => nextMode(m), 'auto')).toBe('auto')
+// The switcher renders one control per mode, so a mode missing from this list
+// would be unreachable in the UI even though resolveTheme still handles it.
+test('every mode is offered by the switcher, and each resolves', () => {
+  expect(THEME_MODES).toEqual(['auto', 'light', 'dark'])
+  for (const mode of THEME_MODES) {
+    expect(readMode(mode)).toBe(mode)
+    expect(['light', 'dark']).toContain(resolveTheme(mode, true))
+    expect(['light', 'dark']).toContain(resolveTheme(mode, false))
+  }
 })
 
 // The avatar hue is decoration, but a stable one: the same address is the same

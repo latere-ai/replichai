@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Ico, type IconName } from './icons'
 
 // The control set. Nothing here delegates to a browser-drawn widget: no native
@@ -82,7 +83,9 @@ export function Select<T extends string>({
 }) {
   const [open, setOpen] = useState(false)
   const [cursor, setCursor] = useState(() => Math.max(0, options.findIndex((o) => o.value === value)))
+  const [at, setAt] = useState({ left: 0, top: 0, width: 0 })
   const box = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLUListElement>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const current = options.find((o) => o.value === value) ?? options[0]
 
@@ -91,10 +94,32 @@ export function Select<T extends string>({
     if (refocus) btn.current?.focus()
   }, [])
 
+  // The list is portalled to <body>: every card in this app clips its corners
+  // with overflow:hidden, which would slice an absolutely-positioned dropdown
+  // off at the card's edge. Fixed coordinates come from the button, and the
+  // list flips above it when there is no room below.
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const b = btn.current?.getBoundingClientRect()
+      if (!b) return
+      const height = list.current?.offsetHeight ?? options.length * 34 + 8
+      const below = window.innerHeight - b.bottom
+      const top = below < height + 12 && b.top > height + 12 ? b.top - height - 5 : b.bottom + 5
+      setAt({ left: b.left, top, width: b.width })
+    }
+    place()
+    window.addEventListener('resize', place)
+    // A scroll moves the anchor out from under a fixed list, so it dismisses.
+    window.addEventListener('scroll', () => close(false), { capture: true, once: true })
+    return () => window.removeEventListener('resize', place)
+  }, [open, options.length, close])
+
   useEffect(() => {
     if (!open) return
     const away = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) close(false)
+      const target = e.target as Node
+      if (!box.current?.contains(target) && !list.current?.contains(target)) close(false)
     }
     document.addEventListener('mousedown', away)
     return () => document.removeEventListener('mousedown', away)
@@ -138,26 +163,35 @@ export function Select<T extends string>({
         <span className="sel-value">{current?.label}</span>
         <Ico name="chevronDown" size={13} className="sel-caret" />
       </button>
-      {open && (
-        <ul className="sel-list" role="listbox" aria-label={label} tabIndex={-1}>
-          {options.map((o, i) => (
-            <li key={o.value}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={o.value === value}
-                className={'sel-opt' + (i === cursor ? ' cursor' : '') + (o.value === value ? ' on' : '')}
-                onMouseEnter={() => setCursor(i)}
-                onClick={() => pick(i)}
-              >
-                {o.icon && <Ico name={o.icon} size={13} />}
-                <span className="sel-value">{o.label}</span>
-                {o.value === value && <Ico name="check" size={13} w={2.2} className="sel-tick" />}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {open &&
+        createPortal(
+          <ul
+            ref={list}
+            className="sel-list"
+            role="listbox"
+            aria-label={label}
+            tabIndex={-1}
+            style={{ left: at.left, top: at.top, minWidth: at.width }}
+          >
+            {options.map((o, i) => (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={o.value === value}
+                  className={'sel-opt' + (i === cursor ? ' cursor' : '') + (o.value === value ? ' on' : '')}
+                  onMouseEnter={() => setCursor(i)}
+                  onClick={() => pick(i)}
+                >
+                  {o.icon && <Ico name={o.icon} size={13} />}
+                  <span className="sel-value">{o.label}</span>
+                  {o.value === value && <Ico name="check" size={13} w={2.2} className="sel-tick" />}
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </div>
   )
 }
@@ -182,19 +216,22 @@ export function Segmented<T extends string>({
   return (
     <div className={'segmented' + (compact ? ' compact' : '')} role="radiogroup" aria-label={label}>
       {options.map((o) => (
-        <Tip key={o.value} text={compact ? o.hint ?? o.label : undefined}>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={value === o.value}
-            aria-label={compact ? o.label : undefined}
-            className={'seg-btn' + (value === o.value ? ' on' : '')}
-            onClick={() => onChange(o.value)}
-          >
-            {o.icon && <Ico name={o.icon} size={13} />}
-            {!compact && <span>{o.label}</span>}
-          </button>
-        </Tip>
+        // The tooltip is styled onto the button rather than wrapped around it:
+        // a radiogroup owns its radios directly, and a wrapper span between
+        // them breaks that relationship for a screen reader.
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          aria-label={compact ? o.label : undefined}
+          {...(compact ? tipAttrs(o.hint ?? o.label) : {})}
+          className={'seg-btn' + (value === o.value ? ' on' : '') + (compact ? ' tip tip-bottom' : '')}
+          onClick={() => onChange(o.value)}
+        >
+          {o.icon && <Ico name={o.icon} size={13} />}
+          {!compact && <span>{o.label}</span>}
+        </button>
       ))}
     </div>
   )
@@ -213,6 +250,7 @@ export function NumberField({
   id,
   width = 104,
   ariaLabel,
+  autoFocus,
 }: {
   value: string
   onChange: (next: string) => void
@@ -221,6 +259,7 @@ export function NumberField({
   id?: string
   width?: number
   ariaLabel?: string
+  autoFocus?: boolean
 }) {
   const n = Number.parseInt(value, 10)
   const step = (by: number) => {
@@ -236,6 +275,7 @@ export function NumberField({
       <input
         id={id}
         aria-label={ariaLabel}
+        autoFocus={autoFocus}
         className="numf-input tabular"
         inputMode="numeric"
         value={value}
@@ -275,7 +315,12 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
       document.body.style.overflow = prior
     }
   }, [onClose])
-  return (
+  // Portalled to <body>. A fixed backdrop is contained by any promoted
+  // ancestor, and both screens that open a dialog run a fade-up animation whose
+  // filled transform promotes them — which confined the backdrop to the content
+  // column, left the rail live behind a "modal", and centred the dialog on the
+  // wrong box.
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -288,7 +333,8 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
         <div className="modal-body">{children}</div>
         {foot && <div className="modal-foot">{foot}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -334,7 +380,8 @@ export function PromptDialog({
       <p className="muted small" style={{ margin: 0, lineHeight: 1.6 }}>
         {body}
       </p>
-      <NumberField value={draft} onChange={setDraft} ariaLabel={title} width={132} />
+      {/* window.prompt let you type at once; the field takes focus so this does too. */}
+      <NumberField value={draft} onChange={setDraft} ariaLabel={title} width={132} autoFocus />
     </Modal>
   )
 }
@@ -360,10 +407,22 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 
 // Tip is the app's own tooltip. The `title` attribute is drawn by the browser,
 // appears after a delay nobody controls, and cannot be themed.
-export function Tip({ text, children, side = 'bottom' }: { text?: string; children: ReactNode; side?: 'top' | 'bottom' }) {
+//
+// `align` pins the bubble to one edge instead of centring it, for a trigger
+// close enough to the viewport edge that a centred bubble would run off it.
+export type TipSide = 'top' | 'bottom'
+export type TipAlign = 'center' | 'end'
+
+// tipAttrs applies the tooltip to an element directly, for the cases where a
+// wrapper element would break an ARIA relationship.
+export function tipAttrs(text: string, side: TipSide = 'bottom', align: TipAlign = 'center') {
+  return { 'data-tip': text, 'data-tip-align': align === 'end' ? 'end' : undefined, className: `tip tip-${side}` }
+}
+
+export function Tip({ text, children, side = 'bottom', align = 'center' }: { text?: string; children: ReactNode; side?: TipSide; align?: TipAlign }) {
   if (!text) return <>{children}</>
   return (
-    <span className={'tip tip-' + side} data-tip={text}>
+    <span className={'tip tip-' + side} data-tip={text} data-tip-align={align === 'end' ? 'end' : undefined}>
       {children}
     </span>
   )
