@@ -1122,12 +1122,11 @@ h1.screen-title {
   transform: rotate(180deg);
   color: inherit;
 }
+/* Portalled to <body> and positioned from the button's rect: every card clips
+   its corners with overflow:hidden, which would slice the list off. */
 .sel-list {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 5px);
-  left: 0;
-  min-width: 100%;
+  position: fixed;
+  z-index: 60;
   margin: 0;
   padding: 4px;
   list-style: none;
@@ -1268,18 +1267,29 @@ h1.screen-title {
   left: 50%;
   z-index: 40;
   transform: translateX(-50%) translateY(2px);
-  padding: 5px 9px;
+  padding: 6px 9px;
   border-radius: 7px;
   background: var(--fg-1);
   color: var(--bg-surface);
-  font: 500 11px/1.4 var(--font-sans);
+  font: 500 11px/1.45 var(--font-sans);
   letter-spacing: 0;
   text-transform: none;
-  white-space: nowrap;
+  /* A sentence-long tip wraps rather than growing into a 450px strip that
+     overruns the viewport or gets clipped by the card it sits in. */
+  width: max-content;
+  max-width: 240px;
+  white-space: normal;
+  text-align: left;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.12s, transform 0.12s var(--ease-fluid);
   box-shadow: var(--shadow-pop);
+}
+/* Pinned to the trigger's right edge, for a trigger near the viewport's. */
+.tip[data-tip-align='end']::after {
+  left: auto;
+  right: 0;
+  transform: translateY(2px);
 }
 .tip-bottom::after {
   top: calc(100% + 6px);
@@ -1291,6 +1301,10 @@ h1.screen-title {
 .tip:focus-within::after {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+.tip[data-tip-align='end']:hover::after,
+.tip[data-tip-align='end']:focus-within::after {
+  transform: translateY(0);
 }
 
 /* The admin console's policy field: a label, a narrow number, a save (006k). */

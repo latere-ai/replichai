@@ -29,13 +29,6 @@ export function resolveTheme(mode: ThemeMode, prefersDark: boolean): Theme {
   return mode
 }
 
-// nextMode cycles auto → light → dark → auto, for a keyboard or single-button
-// path to the same three choices the switcher shows.
-export function nextMode(mode: ThemeMode): ThemeMode {
-  const i = THEME_MODES.indexOf(mode)
-  return THEME_MODES[(i + 1) % THEME_MODES.length]
-}
-
 // useTheme persists the mode, resolves it against the system preference, and
 // stamps the result on <html>. While the mode is "auto" it stays subscribed to
 // the media query, so the appearance follows the OS without a reload.
