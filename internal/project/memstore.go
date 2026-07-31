@@ -98,7 +98,8 @@ func (s *MemStore) SetSponsored(_ context.Context, id string, on bool) error {
 	return nil
 }
 
-// SetPublic marks a project public and records the sign-off. One-way.
+// SetPublic marks a project public and records the sign-off, superseding any
+// earlier withdrawal.
 func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,6 +118,30 @@ func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	p.SignedOffORCID = so.ORCID
 	p.SignedOffScholar = so.Scholar
 	p.SignedOffEmail = so.Email
+	p.WithdrawnAt = nil
+	p.WithdrawnBy = ""
+	p.WithdrawnReason = ""
+	s.projects[id] = p
+	return nil
+}
+
+// SetPrivate withdraws a publication, recording the retraction beside the
+// sign-off it ends. A project that is already private is left exactly as it is.
+func (s *MemStore) SetPrivate(_ context.Context, id string, w Withdrawal) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if p.Visibility != VisibilityPublic {
+		return nil
+	}
+	now := s.clock()
+	p.Visibility = VisibilityPrivate
+	p.WithdrawnAt = &now
+	p.WithdrawnBy = w.By
+	p.WithdrawnReason = w.Reason
 	s.projects[id] = p
 	return nil
 }
