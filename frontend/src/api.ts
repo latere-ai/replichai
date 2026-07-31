@@ -59,6 +59,12 @@ export type Project = {
   signed_off_scholar?: string
   // Already redacted server-side; the signer's full address never reaches here.
   signed_off_email?: string
+  // The retraction (006o), absent until a publication is withdrawn. It sits
+  // beside the sign-off rather than replacing it, so a project can carry both —
+  // read `visibility` to ask whether it is open, never `signed_off_at`.
+  withdrawn_at?: string
+  withdrawn_by?: string
+  withdrawn_reason?: string
 }
 
 // A researcher profile: who a sign-off is published under. Self-asserted and
@@ -256,6 +262,17 @@ export const makeProjectPublic = (id: string, signOff: SignOff, flipRepo = true)
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ ...signOff, attestation_version: ATTESTATION_VERSION, flip_repo: flipRepo }),
+  }).then(json<Project>)
+
+// withdrawProject ends a publication (006o): the project returns to private and
+// every repository it owns is closed on the forge. The sign-off is kept — a
+// withdrawal retracts a publication, it does not erase the attestation — so the
+// returned project still carries its signed_off_* fields.
+export const withdrawProject = (id: string, reason: string) =>
+  fetch(`/projects/${id}/private`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ reason }),
   }).then(json<Project>)
 
 // getTranscript returns a session's trajectory and token usage. It rejects with

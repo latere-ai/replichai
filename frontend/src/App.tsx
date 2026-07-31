@@ -21,6 +21,7 @@ import {
   listPublic,
   listShared,
   makeProjectPublic,
+  withdrawProject,
   removeMember,
   renameProject,
   resolvePaper,
@@ -1039,7 +1040,11 @@ function ProjectScreen({
               <Members i18n={i18n} projectID={id} />
               <SponsorPanel i18n={i18n} project={project} onChanged={refresh} />
             </div>
-            {project.visibility === 'private' ? <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} /> : <PublishedCard i18n={i18n} project={project} />}
+            {project.visibility === 'private' ? (
+              <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} />
+            ) : (
+              <PublishedCard i18n={i18n} project={project} onWithdrawn={refresh} />
+            )}
           </div>
         )}
       </div>
@@ -1655,9 +1660,11 @@ function PublishWizard({
 
 // PublishedCard reports the recorded sign-off: who signed, where they were, and
 // how to reach them. A v1 sign-off carries no snapshot and shows the date line
-// alone, exactly as it did before 006n.
-function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
+// alone, exactly as it did before 006n. It also carries the way back out — the
+// owner may withdraw the publication (006o).
+function PublishedCard({ i18n, project, onWithdrawn }: { i18n: I18n; project: Project; onWithdrawn: () => void }) {
   const { t } = i18n
+  const [withdrawing, setWithdrawing] = useState(false)
   const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
   const rows: { label: string; node: React.ReactNode }[] = []
   if (project.signed_off_email) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{project.signed_off_email}</span> })
@@ -1718,6 +1725,95 @@ function PublishedCard({ i18n, project }: { i18n: I18n; project: Project }) {
           ))}
         </div>
       )}
+      <button className="btn ghost" onClick={() => setWithdrawing(true)}>
+        {t('withdrawStart')}
+      </button>
+      {withdrawing && (
+        <WithdrawDialog
+          i18n={i18n}
+          projectID={project.id}
+          onClose={() => setWithdrawing(false)}
+          onWithdrawn={() => {
+            setWithdrawing(false)
+            onWithdrawn()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// WithdrawDialog confirms ending a publication. One step, not the publish
+// wizard's three: withdrawing is the conservative direction. What it must not do
+// is imply erasure — going private stops new access and does not retrieve copies
+// already taken, and the dialog says so rather than letting the owner assume it.
+function WithdrawDialog({
+  i18n,
+  projectID,
+  onClose,
+  onWithdrawn,
+}: {
+  i18n: I18n
+  projectID: string
+  onClose: () => void
+  onWithdrawn: () => void
+}) {
+  const { t } = i18n
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const withdraw = async () => {
+    if (busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await withdrawProject(projectID, reason.trim())
+      onWithdrawn()
+    } catch {
+      setErr(t('withdrawError'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 className="modal-title">{t('withdrawTitle')}</h2>
+        </div>
+        <div className="modal-body">
+          <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
+            {t('withdrawBody')}
+          </p>
+          <p className="muted small" style={{ lineHeight: 1.65, margin: '12px 0 0' }}>
+            {t('withdrawNotARecall')}
+          </p>
+          <label className="field" style={{ marginTop: 16 }}>
+            {t('withdrawReason')}
+            <input
+              className="text"
+              value={reason}
+              onChange={(e) => {
+                setReason(e.target.value)
+                setErr('')
+              }}
+              placeholder={t('withdrawReasonHint')}
+              maxLength={2000}
+            />
+          </label>
+          {err && <p className="err small" style={{ margin: 0 }}>{err}</p>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn ghost" onClick={onClose} disabled={busy}>
+            {t('cancel')}
+          </button>
+          <button className="btn" onClick={withdraw} disabled={busy}>
+            {busy ? t('withdrawBusy') : t('withdrawConfirm')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
