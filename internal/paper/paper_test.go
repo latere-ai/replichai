@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -176,19 +177,54 @@ func TestSlugTracksTitleWhenDifferenceIsInWindow(t *testing.T) {
 }
 
 // AC6: a publisher URL whose fetch is blocked degrades to the identifier parsed
-// from the URL — here the DOI in the path — rather than failing. Resolution
-// never even calls the fetcher, since a DOI in the reference is terminal.
+// from the URL — here the DOI in the path — rather than failing. The DOI is
+// terminal for the identity, so a blocked fetch yields the byte-identical
+// identity a no-fetcher resolution would: same key, same key-derived slug, empty
+// title. The fetch is only ever an attempt to enrich the human title.
 func TestResolvePublisherURLDegradesToURLDOI(t *testing.T) {
-	blocked := &fakeFetcher{err: errors.New("403 forbidden")}
-	id, err := Resolve(context.Background(), "https://dl.acm.org/doi/"+theDOI, WithFetcher(blocked))
+	const ref = "https://dl.acm.org/doi/" + theDOI
+
+	offline, err := Resolve(context.Background(), ref)
 	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+		t.Fatalf("Resolve (no fetcher): %v", err)
+	}
+
+	blocked := &fakeFetcher{err: errors.New("403 forbidden")}
+	id, err := Resolve(context.Background(), ref, WithFetcher(blocked))
+	if err != nil {
+		t.Fatalf("Resolve (blocked): %v", err)
 	}
 	if id.Scheme != SchemeDOI || id.Key != theDOI {
 		t.Errorf("got %s, want doi:%s", id, theDOI)
 	}
-	if blocked.calls != 0 {
-		t.Errorf("a DOI in the reference must resolve without a fetch; fetched %d times", blocked.calls)
+	if !reflect.DeepEqual(id, offline) {
+		t.Errorf("a blocked fetch must degrade to the offline identity: got %+v, want %+v", id, offline)
+	}
+}
+
+// A publisher URL carrying a DOI, with a reachable page that declares its title,
+// keeps the DOI as its terminal key AND slug (naming never rides the fetch), and
+// enriches only the human title — so the published manifest carries a readable
+// title instead of an empty one.
+func TestResolvePublisherURLEnrichesTitleNotSlug(t *testing.T) {
+	const ref = "https://dl.acm.org/doi/" + theDOI
+	page := &fakeFetcher{responses: map[string][]byte{
+		"dl.acm.org": []byte(`<meta name="citation_title" content="` + pleasQLarifyTitle + `">`),
+	}}
+	id, err := Resolve(context.Background(), ref, WithFetcher(page))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if id.Scheme != SchemeDOI || id.Key != theDOI {
+		t.Errorf("key drifted: got %s, want doi:%s", id, theDOI)
+	}
+	if id.Title != pleasQLarifyTitle {
+		t.Errorf("title = %q, want the page's declared title", id.Title)
+	}
+	// The slug must stay derived from the key, not the freshly-read title, so the
+	// same paper never allocates two repository names depending on the fetch.
+	if want := Slug(theDOI); id.Slug != want {
+		t.Errorf("slug = %q, want key-derived %q (a title-derived slug would flicker with the network)", id.Slug, want)
 	}
 }
 
