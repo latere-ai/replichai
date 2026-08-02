@@ -93,7 +93,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 - **Never simulate the outer loop** — outer-loop execution is a downstream engine, `verdict`/`rate` stay audit-only, a synthetic cohort is labelled indelibly. Regression-tested in `evals/case-01`. (007)
 - **Closed beta, fail-closed access** — anyone signs in with a latere account; only invited users a platform admin grants reach the operator UI. (006c)
 
-**Still open in 006f:** the two-token split (a fine-grained mount token distinct from the org token — one token for now), the per-project collaboration API, and the owner's public flip gated by a recorded responsibility sign-off (joining the public zone). The flip has a prerequisite: **009**, secret containment. Because the agent commits live, nothing filters before the push, and a secret can reach the tree, the history, or the transcript. `VerifyTree` covers the head tree and reaches the manifest; `TranscriptLeaks` only warns, which diverges from 005. Deferred for the MVP and safe to defer only because nothing makes a repository public today.
+**006f is built and deployed:** the per-project collaboration API, the owner's public flip gated by a recorded responsibility sign-off, the public zone, and withdrawal (006o) all shipped, and 006i wired the server-side mount-and-publish 006f had left open. What remains of 006f is the **two-token split** — a fine-grained, per-repo mount token distinct from the org credential — which is now **009**, active. Because the flip is live, secret containment is no longer safe to defer: the agent commits live, nothing filters before the push, and a secret can reach the tree, the history, or the transcript. `VerifyTree` covers the head tree and bars the flip; `TranscriptLeaks` still only warns (a divergence from 005 that 009's first commit closes), and the mount still carries the org token (009's second and third commits mint a scoped, revocable one and scrub it).
 
 ## The spec map
 
@@ -119,7 +119,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | engine built | 007b |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
-| 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | deferred | 002, 005, 006f |
+| 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | active | 002, 005, 006f, 006i |
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
 
 ## The three tracks
