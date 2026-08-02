@@ -36,7 +36,18 @@ down:
 
 # Run the job-store contract against the running compose Postgres — this is
 # where SELECT ... FOR UPDATE SKIP LOCKED gets a real disjointness assertion.
+#
+# It runs against a scratch database, never the dev one: these contracts
+# migrate and truncate whatever database they are pointed at, so aiming them at
+# `replichai` destroys the local rows you were working with. The recipe creates
+# the scratch database on first use, so a fresh `make up` needs no extra step.
+TEST_DB ?= replichai_test
+TEST_DATABASE_URL ?= postgres://replichai:replichai@localhost:5432/$(TEST_DB)?sslmode=disable
+
 .PHONY: db-contract
 db-contract:
-	TEST_DATABASE_URL='postgres://replichai:replichai@localhost:5432/replichai?sslmode=disable' \
+	@$(COMPOSE) exec -T postgres psql -U replichai -d postgres -tAc \
+		"SELECT 1 FROM pg_database WHERE datname='$(TEST_DB)'" | grep -q 1 || \
+		$(COMPOSE) exec -T postgres createdb -U replichai $(TEST_DB)
+	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' \
 		go test ./internal/job/ -run TestPGStore -v
