@@ -29,6 +29,19 @@ Open questions:
 
 So a change making the audit *credulous* about servability shows up immediately in both, but a change making it *uselessly conservative* — marking a genuinely hostable study unservable — shows up in neither. Until a third case is added, chosen for a fully hostable screen-based study (single session, browser measures, page-administrable manipulation, apparatus recovered), the conservative direction is unguarded. This is the honest state of the regression set, recorded rather than patched over by asserting a `true` the current papers do not support.
 
+## 4. A published verdict names people who never agreed to it
+
+The public zone (006, 007) assumes an owner may publish *"this paper's inner loop is 40% reproduced"* with the authors' names attached and the transcript as evidence. The system-authored verdict ([`docs/procedure.md`](../docs/procedure.md) §8) makes that record **honest**. Honesty is not standing, and nothing in the design gives the subject of a verdict anything to do about it.
+
+Open questions:
+- **Right of reply.** Can an author attach a response to a published run, visible on the same page? Does that make them a participant in a project they do not own, and what does that do to the access model (006c, 006n)?
+- **Correction and supersession.** We ran the wrong commit, or missed a data file the authors would have pointed us to. Who can trigger a re-run — only the owner? Does a corrected verdict *replace* the wrong one, or supersede it with the original still reachable? 006o withdraws a publication; it does not revise one.
+- **What the artifact claims for itself.** A verdict nobody is obliged to accept still needs to state its own status precisely: what was run, on what, and what it does *not* assert. Closer to a lab notebook than a ruling, and the wording is load-bearing.
+
+This is not hypothetical caution. [`docs/landscape.md`](../docs/landscape.md) found it twice from independent directions: the frontier labs avoid audit products because being a researcher's co-pilot and their auditor are incompatible postures, and the incumbents' real edge was **mandate** — the standing to be the entity whose verdict counts — rather than technology.
+
+Backlog rather than roadmap because nothing is public yet, so nothing is currently wrong. It becomes blocking the first time a run naming a third party leaves the owner's project.
+
 ## Why these are backlog, not roadmap
 
-They are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). Recorded here to be picked up as a deliberate later-stage investigation, each likely its own spec, once the single-study loop is solid.
+1–3 are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, just not yet live, and it turns from a design question into an incident the day it is skipped. Recorded here to be picked up as deliberate later-stage investigations, each likely its own spec, once the single-study loop is solid.
