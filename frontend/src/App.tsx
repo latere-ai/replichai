@@ -1112,13 +1112,6 @@ function ProjectScreen({
               </div>
             )}
           </div>
-          {isOwner && (
-            <div className="detail-actions">
-              <button className="btn ghost" onClick={() => setTab('sessions')}>
-                <Ico name="repeat" size={13} /> {t('addReplication')}
-              </button>
-            </div>
-          )}
         </div>
         <div className="detail-tabs">
           <Tab on={tab === 'sessions'} onClick={() => setTab('sessions')} icon="layers" label={t('projectSessions')} />
