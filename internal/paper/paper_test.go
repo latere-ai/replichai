@@ -30,15 +30,6 @@ func (f *fakeFetcher) Fetch(_ context.Context, url string) ([]byte, error) {
 	return nil, fmt.Errorf("fakeFetcher: no canned response for %s", url)
 }
 
-// noFetch fails the test if resolution touches the network at all.
-type noFetch struct{ t *testing.T }
-
-func (n noFetch) Fetch(_ context.Context, url string) ([]byte, error) {
-	n.t.Helper()
-	n.t.Fatalf("resolution touched the network: fetched %s", url)
-	return nil, nil
-}
-
 const theDOI = "10.1145/3772318.3791265"
 
 func arxivFeedWithDOI(title, doi string) []byte {
@@ -49,6 +40,16 @@ func arxivFeedWithDOI(title, doi string) []byte {
     <arxiv:doi>` + doi + `</arxiv:doi>
   </entry>
 </feed>`)
+}
+
+// crossrefWork is a minimal Crossref /works response; an empty title yields an
+// empty title array so the no-title fallback can be exercised.
+func crossrefWork(title string) []byte {
+	titles := "[]"
+	if title != "" {
+		titles = `["` + title + `"]`
+	}
+	return []byte(`{"message":{"title":` + titles + `}}`)
 }
 
 func arxivFeedNoDOI(title string) []byte {
@@ -202,16 +203,14 @@ func TestResolvePublisherURLDegradesToURLDOI(t *testing.T) {
 	}
 }
 
-// A publisher URL carrying a DOI, with a reachable page that declares its title,
-// keeps the DOI as its terminal key AND slug (naming never rides the fetch), and
-// enriches only the human title — so the published manifest carries a readable
-// title instead of an empty one.
-func TestResolvePublisherURLEnrichesTitleNotSlug(t *testing.T) {
-	const ref = "https://dl.acm.org/doi/" + theDOI
-	page := &fakeFetcher{responses: map[string][]byte{
-		"dl.acm.org": []byte(`<meta name="citation_title" content="` + pleasQLarifyTitle + `">`),
+// A DOI resolves its human title from Crossref — the canonical, unblocked
+// metadata service — and that title drives both the key-unchanged identity and a
+// readable, title-derived slug (the repository name).
+func TestResolveDOIEnrichesViaCrossref(t *testing.T) {
+	crossref := &fakeFetcher{responses: map[string][]byte{
+		"api.crossref.org": crossrefWork(pleasQLarifyTitle),
 	}}
-	id, err := Resolve(context.Background(), ref, WithFetcher(page))
+	id, err := Resolve(context.Background(), "doi:"+theDOI, WithFetcher(crossref))
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -219,24 +218,52 @@ func TestResolvePublisherURLEnrichesTitleNotSlug(t *testing.T) {
 		t.Errorf("key drifted: got %s, want doi:%s", id, theDOI)
 	}
 	if id.Title != pleasQLarifyTitle {
-		t.Errorf("title = %q, want the page's declared title", id.Title)
+		t.Errorf("title = %q, want the Crossref title", id.Title)
 	}
-	// The slug must stay derived from the key, not the freshly-read title, so the
-	// same paper never allocates two repository names depending on the fetch.
-	if want := Slug(theDOI); id.Slug != want {
-		t.Errorf("slug = %q, want key-derived %q (a title-derived slug would flicker with the network)", id.Slug, want)
+	// The slug now follows the title — a readable repository name — which is safe
+	// because Crossref is deterministic, unlike a publisher scrape.
+	if want := Slug(pleasQLarifyTitle); id.Slug != want {
+		t.Errorf("slug = %q, want title-derived %q", id.Slug, want)
 	}
 }
 
-// AC7: resolution never touches the network when the reference already carries
-// a DOI — the terminal identifier.
-func TestResolveDOINeverFetches(t *testing.T) {
-	id, err := Resolve(context.Background(), "doi:"+theDOI, WithFetcher(noFetch{t}))
+// When Crossref has no title, resolution falls back to the publisher page's
+// declared citation_title (for a URL reference); the title still drives the slug.
+func TestResolveDOIFallsBackToPublisherPage(t *testing.T) {
+	const ref = "https://dl.acm.org/doi/" + theDOI
+	// Crossref returns an empty title set; the page declares one.
+	fetch := &fakeFetcher{responses: map[string][]byte{
+		"api.crossref.org": crossrefWork(""),
+		"dl.acm.org":       []byte(`<meta name="citation_title" content="` + pleasQLarifyTitle + `">`),
+	}}
+	id, err := Resolve(context.Background(), ref, WithFetcher(fetch))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if id.Title != pleasQLarifyTitle {
+		t.Errorf("title = %q, want the page's declared title (Crossref fallback)", id.Title)
+	}
+	if want := Slug(pleasQLarifyTitle); id.Slug != want {
+		t.Errorf("slug = %q, want title-derived %q", id.Slug, want)
+	}
+}
+
+// The identity KEY never rides the network: with no fetcher, a DOI resolves
+// offline to its key and a key-derived slug, with no title. (Key() is likewise
+// always offline — this is the Resolve-side of that guarantee.)
+func TestResolveDOIWithoutFetcherIsOffline(t *testing.T) {
+	id, err := Resolve(context.Background(), "doi:"+theDOI) // no fetcher
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if id.Scheme != SchemeDOI || id.Key != theDOI {
 		t.Errorf("got %s, want doi:%s", id, theDOI)
+	}
+	if id.Title != "" {
+		t.Errorf("no fetcher must yield no title, got %q", id.Title)
+	}
+	if want := Slug(theDOI); id.Slug != want {
+		t.Errorf("no-fetcher slug = %q, want key-derived %q", id.Slug, want)
 	}
 }
 
