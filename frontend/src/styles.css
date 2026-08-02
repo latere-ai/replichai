@@ -886,12 +886,6 @@ h1.screen-title {
   color: var(--fg-3);
   margin-top: 7px;
 }
-.detail-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-  flex: none;
-}
 .detail-tabs {
   display: flex;
   gap: 2px;
