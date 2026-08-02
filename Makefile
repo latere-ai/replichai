@@ -48,8 +48,14 @@ down:
 # -p 1 is load-bearing. Packages otherwise build and run in parallel, and both
 # the access and platform contracts truncate access_grants — sharing one
 # database, they would race each other into spurious failures.
-TEST_DB ?= replichai_test
-TEST_DATABASE_URL ?= postgres://replichai:replichai@localhost:5432/$(TEST_DB)?sslmode=disable
+#
+# These are `:=`, not `?=`, on purpose. Make treats an exported variable as
+# already set, so `?=` would inherit a TEST_DATABASE_URL pointing at the dev
+# database from your shell — and the guard above would dutifully create the
+# scratch database while the tests truncated `replichai` anyway. A command-line
+# override (`make db-contract TEST_DB=foo`) still wins over both.
+TEST_DB := replichai_test
+TEST_DATABASE_URL := postgres://replichai:replichai@localhost:5432/$(TEST_DB)?sslmode=disable
 DB_CONTRACT_PKGS ?= ./internal/job/ ./internal/access/ ./internal/platform/
 
 .PHONY: db-contract
