@@ -104,6 +104,48 @@ func TestFinalizeLiveLeakedTreeBarsPublic(t *testing.T) {
 	}
 }
 
+// 009 commit 1: a secret in the transcript, on an otherwise-clean tree, writes
+// the manifest with its own review reason (secret_in_transcript, not
+// third-party data) — barring the public flip — and still commits the
+// transcript intact so the owner keeps the evidence.
+func TestFinalizeLiveSecretInTranscriptBarsPublic(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", "src/run.py"})
+	events := []provider.Event{
+		{Kind: "message", Content: "starting the run"},
+		{Kind: "tool_result", Content: "export TOKEN=AKIAIOSFODNN7EXAMPLE"},
+	}
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "leaky-transcript",
+		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if len(rep.Leaked) != 0 {
+		t.Fatalf("the tree is clean; VerifyTree flagged %v", rep.Leaked)
+	}
+	if len(rep.TranscriptLeaks) != 1 {
+		t.Fatalf("transcript leaks = %v, want exactly one", rep.TranscriptLeaks)
+	}
+	var m Manifest
+	if err := json.Unmarshal(forge.files[ManifestFile], &m); err != nil {
+		t.Fatalf("manifest not committed: %v", err)
+	}
+	if m.Redistribution.Review != ReviewSecretInTranscript {
+		t.Errorf("review = %q, want %q", m.Redistribution.Review, ReviewSecretInTranscript)
+	}
+	if m.Redistribution.ThirdPartyData {
+		t.Error("a transcript secret must not be reported as third-party data")
+	}
+	if ok, _ := EligibleForPublic(m); ok {
+		t.Error("a reproduction whose transcript leaked must be ineligible for the public flip")
+	}
+	// The transcript is still committed — the reproduction stays readable to the
+	// owner; only the public flip is refused.
+	if !rep.TranscriptCommitted || rep.TranscriptFiles == 0 {
+		t.Errorf("a flagged transcript must still be committed; report = %+v", rep)
+	}
+}
+
 // Re-finalizing an unchanged reproduction rewrites no manifest — idempotent.
 func TestFinalizeLiveIdempotentManifest(t *testing.T) {
 	forge := newFakeForge([]string{"README.md"})

@@ -45,7 +45,7 @@ func TestManifestForReflectsCleanliness(t *testing.T) {
 	id := paper.Identity{Key: "arxiv:2302.03714", Scheme: paper.SchemeArXiv, Title: "A Paper", Slug: "a-paper"}
 	when := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
 
-	clean := ManifestFor(id, "open-hai/a-paper-a3f9", "sha256:x", provider.GradePassed, when, true)
+	clean := ManifestFor(id, "open-hai/a-paper-a3f9", "sha256:x", provider.GradePassed, when, RedistributionFrom(true, true))
 	if clean.Redistribution.ThirdPartyData || clean.Redistribution.Review != ReviewClear {
 		t.Errorf("clean manifest = %+v", clean.Redistribution)
 	}
@@ -56,23 +56,52 @@ func TestManifestForReflectsCleanliness(t *testing.T) {
 		t.Errorf("paper scheme = %v", clean.Paper.Scheme)
 	}
 
-	dirty := ManifestFor(id, "open-hai/a-paper-a3f9", "sha256:x", provider.GradePassed, when, false)
+	dirty := ManifestFor(id, "open-hai/a-paper-a3f9", "sha256:x", provider.GradePassed, when, RedistributionFrom(false, true))
 	if !dirty.Redistribution.ThirdPartyData || dirty.Redistribution.Review != ReviewExcluded {
 		t.Errorf("dirty manifest = %+v", dirty.Redistribution)
+	}
+}
+
+// A secret in the transcript, on an otherwise-clean tree, is barred under its own
+// review reason — never misreported as third-party data — and is not eligible
+// for the public flip. A tree leak still takes precedence over a transcript one.
+func TestRedistributionFromClassifiesEachBar(t *testing.T) {
+	cases := []struct {
+		treeClean, transcriptClean bool
+		wantData                   bool
+		wantReview                 string
+	}{
+		{true, true, false, ReviewClear},
+		{false, true, true, ReviewExcluded},
+		{true, false, false, ReviewSecretInTranscript},
+		{false, false, true, ReviewExcluded}, // tree leak wins
+	}
+	for _, c := range cases {
+		got := RedistributionFrom(c.treeClean, c.transcriptClean)
+		if got.ThirdPartyData != c.wantData || got.Review != c.wantReview {
+			t.Errorf("RedistributionFrom(%v,%v) = %+v, want data=%v review=%q",
+				c.treeClean, c.transcriptClean, got, c.wantData, c.wantReview)
+		}
+		id := paper.Identity{Key: "k", Scheme: paper.SchemeArXiv, Slug: "s"}
+		m := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed, time.Now(), got)
+		eligible, _ := EligibleForPublic(m)
+		if want := c.wantReview == ReviewClear; eligible != want {
+			t.Errorf("EligibleForPublic for review %q = %v, want %v", c.wantReview, eligible, want)
+		}
 	}
 }
 
 func TestSameManifestIgnoresCreated(t *testing.T) {
 	id := paper.Identity{Key: "arxiv:2302.03714", Scheme: paper.SchemeArXiv, Slug: "s"}
 	a := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed,
-		time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC), true)
+		time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC), RedistributionFrom(true, true))
 	b := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed,
-		time.Date(2026, 7, 25, 11, 30, 0, 0, time.UTC), true) // different time only
+		time.Date(2026, 7, 25, 11, 30, 0, 0, time.UTC), RedistributionFrom(true, true)) // different time only
 	if !SameManifest(a, b) {
 		t.Error("manifests differing only in created should be the same")
 	}
 
-	c := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed, a.Reproduction.Created, false)
+	c := ManifestFor(id, "open-hai/s-a3f9", "sha256:x", provider.GradePassed, a.Reproduction.Created, RedistributionFrom(false, true))
 	if SameManifest(a, c) {
 		t.Error("a different redistribution review must not be the same")
 	}

@@ -57,15 +57,29 @@ func isThirdPartyData(p string) bool {
 	return thirdPartyExts[strings.ToLower(p[dot:])]
 }
 
+// RedistributionFrom classifies the post-run verifier's two findings — over the
+// committed tree and over the transcript — into the manifest's redistribution
+// result. A tree leak is third-party *data* and takes precedence; a secret in
+// the transcript on an otherwise-clean tree is a distinct reason, so the
+// manifest states which bar applies rather than misreporting a leaked credential
+// as bulk data. Only a clean tree and a clean transcript are `clear` — the sole
+// state eligible for the public flip (EligibleForPublic).
+func RedistributionFrom(treeClean, transcriptClean bool) Redistribution {
+	switch {
+	case !treeClean:
+		return Redistribution{ThirdPartyData: true, Review: ReviewExcluded}
+	case !transcriptClean:
+		return Redistribution{ThirdPartyData: false, Review: ReviewSecretInTranscript}
+	default:
+		return Redistribution{ThirdPartyData: false, Review: ReviewClear}
+	}
+}
+
 // ManifestFor builds the manifest for a reproduction the worker committed into
 // a mounted repository. Unlike PlanPublication, there is no file set to filter —
-// the agent already committed — so the redistribution status comes from the
-// verifier's result over the committed tree: clean iff nothing leaked.
-func ManifestFor(id paper.Identity, repo, methodDigest string, verdict provider.Grade, created time.Time, clean bool) Manifest {
-	review := ReviewClear
-	if !clean {
-		review = ReviewExcluded
-	}
+// the agent already committed — so the redistribution status is the verifier's
+// classified result (RedistributionFrom) over the committed tree and transcript.
+func ManifestFor(id paper.Identity, repo, methodDigest string, verdict provider.Grade, created time.Time, redist Redistribution) Manifest {
 	return Manifest{
 		Schema: SchemaVersion,
 		Paper: ManifestPaper{
@@ -80,7 +94,7 @@ func ManifestFor(id paper.Identity, repo, methodDigest string, verdict provider.
 			MethodDigest: methodDigest,
 			Verdict:      verdict,
 		},
-		Redistribution: Redistribution{ThirdPartyData: !clean, Review: review},
+		Redistribution: redist,
 	}
 }
 
