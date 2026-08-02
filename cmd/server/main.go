@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -115,12 +116,14 @@ func run() error {
 	// mounted into runs so the agent commits live; the same client reads them back
 	// (003) and flips them public (006f). Without a token this stays nil and the
 	// server runs audits without a repository — transcript-only.
-	var forgeClient *github.Client
 	forgeOwner := envOr("REPLICHAI_GITHUB_OWNER", "open-hai")
 	forgeToken := os.Getenv("REPLICHAI_GITHUB_TOKEN")
-	var runnerForge forge // nil interface when no token — runner runs transcript-only
-	if forgeToken != "" {
-		forgeClient = github.New(forgeToken)
+	forgeClient, err := newForgeClient(forgeOwner, forgeToken)
+	if err != nil {
+		return err
+	}
+	var runnerForge forge // nil interface when no forge — runner runs transcript-only
+	if forgeClient != nil {
 		runnerForge = githubForge{forgeClient}
 	}
 
@@ -398,6 +401,52 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// newForgeClient builds the GitHub client the server publishes and reads with.
+// It prefers a GitHub App (REPLICHAI_GITHUB_APP_ID + REPLICHAI_GITHUB_APP_KEY),
+// which alone can mint the scoped, revocable mount token (009); the key value is
+// the PEM text itself or a path to a .pem file. It falls back to the personal
+// access token (REPLICHAI_GITHUB_TOKEN), and to nil when neither is set — the
+// transcript-only mode. A configured-but-invalid App is a fatal misconfiguration,
+// never a silent fallback to the PAT, so a broken App is noticed at boot.
+func newForgeClient(owner, pat string) (*github.Client, error) {
+	appID := strings.TrimSpace(os.Getenv("REPLICHAI_GITHUB_APP_ID"))
+	appKey := os.Getenv("REPLICHAI_GITHUB_APP_KEY")
+	if appID != "" && appKey != "" {
+		id, err := strconv.ParseInt(appID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("REPLICHAI_GITHUB_APP_ID %q is not a number: %w", appID, err)
+		}
+		key, err := loadAppKey(appKey)
+		if err != nil {
+			return nil, err
+		}
+		c, err := github.NewApp(id, key, owner)
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("forge: authenticating as GitHub App %d on %s", id, owner)
+		return c, nil
+	}
+	if pat != "" {
+		log.Printf("forge: authenticating with a personal access token (set REPLICHAI_GITHUB_APP_ID/KEY to use the App)")
+		return github.New(pat), nil
+	}
+	return nil, nil
+}
+
+// loadAppKey returns the App private key bytes from the env value, which is
+// either the PEM text itself or a path to a .pem file.
+func loadAppKey(v string) ([]byte, error) {
+	if strings.Contains(v, "-----BEGIN") {
+		return []byte(v), nil
+	}
+	b, err := os.ReadFile(strings.TrimSpace(v))
+	if err != nil {
+		return nil, fmt.Errorf("reading REPLICHAI_GITHUB_APP_KEY file %q: %w", v, err)
+	}
+	return b, nil
 }
 
 func envBool(key string) bool {
