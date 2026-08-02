@@ -66,8 +66,9 @@ type Redistribution struct {
 
 // Review states for Redistribution.Review.
 const (
-	ReviewClear    = "clear"    // nothing was withheld
-	ReviewExcluded = "excluded" // third-party files were quarantined
+	ReviewClear              = "clear"                // nothing was withheld
+	ReviewExcluded           = "excluded"             // third-party files were quarantined from the tree
+	ReviewSecretInTranscript = "secret_in_transcript" // a secret in the transcript bars the flip (005/009)
 )
 
 // SameManifest reports whether two manifests are materially equal, ignoring the

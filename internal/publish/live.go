@@ -101,13 +101,23 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	}
 	rep.Leaked = VerifyTree(tree)
 
-	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), len(rep.Leaked) == 0)
+	// The transcript is a published surface too (005): a secret in it bars the
+	// public flip. Scan before the manifest and fold the result into the
+	// redistribution classification, so the manifest records — with its own
+	// review reason — that a foreign credential in the evidence layer, not just a
+	// leaked file in the tree, keeps the reproduction private (009 commit 1).
+	rep.TranscriptLeaks = TranscriptLeaks(events)
+	redist := RedistributionFrom(len(rep.Leaked) == 0, len(rep.TranscriptLeaks) == 0)
+
+	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), redist)
 	committed, err := commitManifestIfChanged(ctx, forge, owner, name, manifest)
 	if err != nil {
 		return rep, err
 	}
 	rep.ManifestCommitted = committed
 
+	// A flagged transcript is still committed intact — the reproduction stays
+	// readable to the owner and collaborators; only the public flip is refused.
 	if len(events) > 0 {
 		files := RenderTranscriptFiles(events)
 		changed, err := forge.CommitFiles(ctx, owner, name, "chore: reproduction transcript", files)
@@ -117,7 +127,6 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 		rep.TranscriptCommitted = changed
 		rep.TranscriptFiles = len(files)
 		rep.TranscriptEvents = len(events)
-		rep.TranscriptLeaks = TranscriptLeaks(events)
 	}
 	return rep, nil
 }
