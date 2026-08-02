@@ -34,15 +34,23 @@ up:
 down:
 	$(COMPOSE) down -v
 
-# Run the job-store contract against the running compose Postgres — this is
-# where SELECT ... FOR UPDATE SKIP LOCKED gets a real disjointness assertion.
+# Run the store contracts that need a real Postgres against the running compose
+# database — job (where SELECT ... FOR UPDATE SKIP LOCKED gets a real
+# disjointness assertion, and the quota a real concurrency one), access, and
+# platform. The project and profile contracts are absent on purpose: they cut
+# themselves a scratch database from this URL and are already self-contained.
 #
 # It runs against a scratch database, never the dev one: these contracts
 # migrate and truncate whatever database they are pointed at, so aiming them at
 # `replichai` destroys the local rows you were working with. The recipe creates
 # the scratch database on first use, so a fresh `make up` needs no extra step.
+#
+# -p 1 is load-bearing. Packages otherwise build and run in parallel, and both
+# the access and platform contracts truncate access_grants — sharing one
+# database, they would race each other into spurious failures.
 TEST_DB ?= replichai_test
 TEST_DATABASE_URL ?= postgres://replichai:replichai@localhost:5432/$(TEST_DB)?sslmode=disable
+DB_CONTRACT_PKGS ?= ./internal/job/ ./internal/access/ ./internal/platform/
 
 .PHONY: db-contract
 db-contract:
@@ -50,4 +58,4 @@ db-contract:
 		"SELECT 1 FROM pg_database WHERE datname='$(TEST_DB)'" | grep -q 1 || \
 		$(COMPOSE) exec -T postgres createdb -U replichai $(TEST_DB)
 	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' \
-		go test ./internal/job/ -run TestPGStore -v
+		go test -p 1 $(DB_CONTRACT_PKGS) -run TestPGStore -v
