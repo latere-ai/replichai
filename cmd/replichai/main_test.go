@@ -294,8 +294,10 @@ func TestUnknownCommandAndHelp(t *testing.T) {
 }
 
 func TestResolveReportsAnIdentity(t *testing.T) {
-	// A DOI reference resolves offline — no fetch — so this exercises the
-	// command's wiring and output without touching the network.
+	// A DOI's identity (key, scheme) is derived offline; its title and slug are
+	// enriched from Crossref when the network is reachable and degrade to the
+	// key-based slug when it is not. So this asserts only the network-independent
+	// identity — the command's wiring and stable output.
 	stdout, _, err := capture(t, "resolve", "10.1145/3772318.3791265")
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -303,7 +305,7 @@ func TestResolveReportsAnIdentity(t *testing.T) {
 	for _, want := range []string{
 		"identity:  doi:10.1145/3772318.3791265",
 		"scheme:    doi",
-		"slug:      10-1145-3772318-3791265",
+		"key:       10.1145/3772318.3791265",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("output missing %q:\n%s", want, stdout)

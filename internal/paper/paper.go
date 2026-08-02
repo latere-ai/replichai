@@ -7,18 +7,22 @@
 // camera-ready and across indexes. The slug answers "what should the repository
 // be called?" and is presentation only; it never determines identity.
 //
-// A DOI is terminal and resolves with no network. An arXiv reference is
-// upgraded: its published DOI is looked up so the preprint and the published
-// version collapse to one identity, and a lookup that cannot complete errors
-// rather than guessing arxiv-scheme, so identity never drifts with
-// connectivity. The network is reached through the Fetcher seam alone, which a
-// test injects to run without one.
+// A DOI is terminal for the *identity key*, which is derived offline. Its human
+// title — and therefore its slug — is enriched from Crossref (the canonical DOI
+// metadata service, reliable where publisher pages bot-block) when a fetcher is
+// present; without one, or on a failed lookup, the slug degrades to the key. An
+// arXiv reference is upgraded: its published DOI is looked up so the preprint and
+// the published version collapse to one identity, and a lookup that cannot
+// complete errors rather than guessing arxiv-scheme, so identity never drifts
+// with connectivity. The network is reached through the Fetcher seam alone, which
+// a test injects to run without one.
 package paper
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -40,6 +44,9 @@ var (
 
 // arxivAPI is the metadata endpoint an arXiv ID is looked up against.
 const arxivAPI = "http://export.arxiv.org/api/query?id_list="
+
+// crossrefAPI is the canonical DOI metadata endpoint a DOI's title is read from.
+const crossrefAPI = "https://api.crossref.org/works/"
 
 // Identity is a paper's stable identity together with its presentation slug.
 //
@@ -92,20 +99,24 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 		return Identity{}, fmt.Errorf("%w: empty reference", ErrUnresolvable)
 	}
 
-	// A DOI anywhere in the reference is terminal for the identity: it fixes both
-	// the key and — with an empty title — the slug, offline, so a bare DOI
-	// resolves with no network (AC7) and the slug that names a repository never
-	// rides a fetch. When the reference is the publisher URL that carries the DOI,
-	// the page is fetchable and declares a human title; read it best-effort and
-	// fill only Title, leaving the key-derived slug untouched — so a blocked fetch
-	// degrades to the identical identity (AC6) and the manifest still gains a
-	// readable title when the fetch succeeds.
+	// A DOI anywhere in the reference is the terminal identity key, derived
+	// offline: Key() never fetches, and a resolution with no fetcher stays offline
+	// with a key-based slug, so identity never rides connectivity. With a fetcher,
+	// enrich the human title from Crossref — the canonical DOI metadata service,
+	// reliable where publisher pages bot-block — falling back to the publisher page
+	// when the reference is a URL. A resolved title drives the slug (a readable
+	// repository name) and the project title; a failed lookup degrades to the
+	// key-based slug, so a blocked network yields the same identity a no-fetcher
+	// resolution would.
 	if doi, ok := extractDOI(ref); ok {
-		id := r.finish(SchemeDOI, doi, "", ref)
-		if r.fetch != nil && looksLikeURL(ref) {
-			id.Title = r.titleFromPage(ctx, ref)
+		title := ""
+		if r.fetch != nil {
+			title = r.titleFromCrossref(ctx, doi)
+			if title == "" && looksLikeURL(ref) {
+				title = r.titleFromPage(ctx, ref)
+			}
 		}
-		return id, nil
+		return r.finish(SchemeDOI, doi, title, ref), nil
 	}
 
 	// An arXiv ID is not terminal: look it up to discover a possible DOI.
@@ -297,6 +308,27 @@ func metaContent(body []byte, re *regexp.Regexp) string {
 		return collapseWS(string(m[1]))
 	}
 	return ""
+}
+
+// titleFromCrossref asks Crossref — the canonical DOI metadata service — for a
+// DOI's title. It is the primary title source for a DOI because it is reliable
+// and unblocked where publisher pages often bot-block. Returns "" on any failure
+// (unreachable, not found, malformed): enriching the title is best-effort and
+// must never fail a resolution that already has its key.
+func (r *resolver) titleFromCrossref(ctx context.Context, doi string) string {
+	body, err := r.fetch.Fetch(ctx, crossrefAPI+doi)
+	if err != nil {
+		return ""
+	}
+	var out struct {
+		Message struct {
+			Title []string `json:"title"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(body, &out) != nil || len(out.Message.Title) == 0 {
+		return ""
+	}
+	return collapseWS(out.Message.Title[0])
 }
 
 // titleFromBody reads a page's declared paper title — the Highwire
