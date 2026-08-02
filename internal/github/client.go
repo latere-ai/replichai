@@ -39,9 +39,13 @@ type Repo struct {
 	Private bool   `json:"private"`
 }
 
-// Client talks to the GitHub REST API with one token.
+// Client talks to the GitHub REST API. It authenticates either with a static
+// personal access token (New) or as a GitHub App whose installation token it
+// mints and refreshes (NewApp); the app field, when set, takes precedence over
+// token. Callers are identical in both modes.
 type Client struct {
-	token string
+	token string   // static PAT; used when app is nil
+	app   *appAuth // GitHub App auth; when set, mints/refreshes the bearer
 	base  string
 	http  *http.Client
 }
@@ -264,7 +268,11 @@ func (c *Client) GetFileRaw(ctx context.Context, owner, name, path string) ([]by
 	if err != nil {
 		return nil, false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	bearer, err := c.bearer(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
 	req.Header.Set("Accept", "application/vnd.github.raw")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := c.http.Do(req)
@@ -371,7 +379,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	bearer, err := c.bearer(ctx)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {
