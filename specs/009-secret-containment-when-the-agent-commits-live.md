@@ -1,6 +1,6 @@
 # 009 — Secret containment when the agent commits live
 
-**Status:** active — the visibility flip is wired (006f), so the structural containment that let this sit in the backlog is gone; this is now a prerequisite of a safe publish, not a follow-up to it. Built in three independently-shippable commits (below).
+**Status:** commits 1–2 shipped and deployed; **commit 3 (mint + revoke + scrub) deferred** on a hard external constraint — see "The mount-token lifetime constraint" below. The visibility flip is wired (006f), so the structural containment that let this sit in the backlog is gone; the leak gate (commit 1) is the prerequisite of a safe publish and it is live. The App auth (commit 2) moves every *server-side* operation off the org PAT; the *mount* still carries the PAT, deliberately, until the constraint is resolved.
 **Scope:** what happens when a secret reaches a place we publish — the committed tree, the git history, or the transcript — given that the agent commits and pushes while it works. And the credential we ourselves put in the sandbox: make it worthless the moment the run ends.
 **Depends on:** [002](002-publishing-reproductions.md) (the gate), [005](005-transcript.md) (the transcript), [006f](006f-taking-a-reproduction-out.md) (the mount and the public flip), [006i](006i-server-side-mount-and-publish.md) (the server-side finalize this hardens).
 
@@ -56,9 +56,12 @@ func (c *Client) MintMountToken(ctx context.Context, owner, name string) (token 
 func (c *Client) RevokeToken(ctx context.Context, token string) error
 ```
 
+The `MintMountToken`/`RevokeToken`/`NewApp`-minting seam above is the design of record; `NewApp` and the refreshing installation-token client shipped in commit 2, but `MintMountToken`/`RevokeToken` are **deferred with commit 3** and not yet in the code. Likewise the `FinalizeLive` `mountToken` parameter below is the deferred shape — commit 1's `FinalizeLive` keeps its current signature and grows the scrub parameter only when minting lands.
+
 ```go
 // internal/publish: the leak scan folds into the redistribution result, with a
-// distinct review reason, and the minted token is scrubbed before scan+render.
+// distinct review reason (shipped, commit 1), and — deferred with commit 3 — the
+// minted token is scrubbed before scan+render.
 const ReviewSecretInTranscript = "secret_in_transcript"
 
 // ManifestFor takes the classified redistribution result rather than a lone
@@ -77,7 +80,18 @@ Ordered so production is never broken, and the PAT keeps working until the App i
 
 **Commit 2 — the App client with token refresh.** `internal/github` gains `NewApp`, JWT (RS256, hand-rolled to match the package's net/http ethos — no JWT dependency is in the tree), installation-token mint+cache+refresh, all behind the current `Client` surface. `cmd/server` constructs the App when `REPLICHAI_GITHUB_APP_ID`/`REPLICHAI_GITHUB_APP_KEY` are set and falls back to the PAT otherwise, so the deploy is safe before the App credentials exist. `ListRepos` (the registry's org enumeration) is verified against the App before cutover.
 
-**Commit 3 — mint, mount, revoke, scrub.** `MintMountToken`/`RevokeToken`; `runner.go:mountFor` carries the minted token (falling back to the PAT only when no App is configured); the server revokes at finalize and passes the minted value to `FinalizeLive` to scrub. A leak of our own token is now spent *and* absent.
+**Commit 3 — mint, mount, revoke, scrub. DEFERRED.** `MintMountToken`/`RevokeToken`; `runner.go:mountFor` would carry the minted token; the server would revoke at finalize and pass the minted value to `FinalizeLive` to scrub. Blocked by the constraint below, and correct only as a unit: the scrub is safe *only* on a token that is already spent (revoked). Scrubbing the current mount credential — a live, org-scoped PAT — out of the transcript would hide a real, still-working leak that commit 1's gate exists to catch. So this commit is not partially shippable as "scrub only"; it waits for the mint+revoke it depends on.
+
+## The mount-token lifetime constraint
+
+The mount sets its credential *once*, at session creation: the anthropic adapter maps `RepoMount.Token` to a `github_repository` resource's `AuthorizationToken` (`internal/provider/anthropic/anthropic.go`), and the agent pushes with that one token for the whole session. There is no refresh path in the mount. A GitHub App installation token lives **at most one hour** and cannot be extended. Audits run close to and sometimes past that: the first real 006i run took 53 minutes. So a minted mount token would silently lose push access mid-run for any audit exceeding its life — the agent's later commits would fail, and the reproduction would be truncated with no clear signal.
+
+The org PAT does not expire, which is exactly why the mount still carries it. Minting a per-repo token is the right hardening, but only once one of these is true:
+
+- audits are bounded well under an hour (a run deadline shorter than the token life, so a run can never outlive its credential), or
+- the mount can refresh its token mid-session (a backend capability that does not exist today).
+
+Until then the mount keeps the non-expiring PAT. The blast radius is real (a hostile paper could exfiltrate an org-scoped token) but bounded by the closed beta: only invited users submit, and repositories start private. This is the same structural containment 006f relied on, narrowed now to the mount alone — commits 1 and 2 removed it everywhere else.
 
 ## Acceptance criteria
 
@@ -85,9 +99,9 @@ Ordered so production is never broken, and the PAT keeps working until the App i
 2. A tree leak still yields `review == "excluded"` and `third_party_data == true`; the two reasons never collide. (Commit 1)
 3. The App client mints, caches, and refreshes an installation token: a unit test against a fake GitHub App server asserts a second call after the token's expiry re-mints rather than reusing the stale token, and that `CreateRepo`/`Invite`/`HeadCommit`/`ListRepos` carry the installation token, never the App JWT. (Commit 2)
 4. With no App configured, the client falls back to the PAT and every server operation behaves exactly as before — asserted, so the deploy is safe pre-App. (Commit 2)
-5. `MintMountToken` returns a token scoped to the one repository with `contents: write` and nothing else — asserted against the fake App server's recorded request body (`repositories`, `permissions`). (Commit 3)
-6. The mount carries the minted token, never the App's broad token and never the PAT — a test asserts the value placed in `RepoMount.Token` is the mint result and differs from the server credential. (Commit 3)
-7. `RevokeToken` is called at finalize and is idempotent on an already-expired token; the minted value is scrubbed from the committed transcript and from the leak scan, so a run that echoes its own mount token still verifies clean. On the resume path (minted value absent) the scan conservatively flags and the finalize logs it. (Commit 3)
+5. *(Deferred with commit 3.)* `MintMountToken` returns a token scoped to the one repository with `contents: write` and nothing else — asserted against the fake App server's recorded request body (`repositories`, `permissions`).
+6. *(Deferred with commit 3.)* The mount carries the minted token, never the App's broad token and never the PAT — a test asserts the value placed in `RepoMount.Token` is the mint result and differs from the server credential.
+7. *(Deferred with commit 3.)* `RevokeToken` is called at finalize and is idempotent on an already-expired token; the minted value is scrubbed from the committed transcript and from the leak scan, so a run that echoes its own mount token still verifies clean. On the resume path (minted value absent) the scan conservatively flags and the finalize logs it.
 
 ## Out of scope
 
