@@ -19,6 +19,45 @@ Tests need no network and no credential: the backend adapter runs against a
 local HTTP server, and an in-process provider stands in for the backend
 everywhere else. A test that needs either is in the wrong place.
 
+## The Postgres contracts
+
+A few store contracts assert things only a real database can show — that
+`SELECT ... FOR UPDATE SKIP LOCKED` hands disjoint work to competing claimants,
+that the session quota stays exact under concurrent submits. They read
+`TEST_DATABASE_URL` and skip when it is unset, so plain `go test ./...` stays
+offline and green.
+
+To run them, start the database and use the target:
+
+```bash
+docker compose up -d postgres   # podman compose works too; `make up` runs the
+                                # whole stack in the foreground instead
+make db-contract
+```
+
+**Point `TEST_DATABASE_URL` at `replichai_test`, never at `replichai`.** The
+`job`, `access`, and `platform` contracts migrate and truncate whatever database
+they are handed, so aiming them at the dev database silently destroys the rows
+you were working with. `make db-contract` pins the scratch database and creates
+it on first use; the hazard is real only when you set the variable by hand:
+
+```bash
+# Wrong. Truncates your local access grants and project memberships;
+# the job contract does the same to your sessions.
+TEST_DATABASE_URL=postgres://replichai:replichai@localhost:5432/replichai \
+    go test ./internal/access/
+```
+
+Two details worth knowing if you run them yourself rather than through the
+target:
+
+- `-p 1` is required. Go runs packages in parallel, and the `access` and
+  `platform` contracts both truncate `access_grants`; sharing one database they
+  race into failures that look like real bugs.
+- The `project` and `profile` contracts are exempt from all of this. They cut
+  their own scratch database from whatever URL you give them, which is why
+  `make db-contract` leaves them out.
+
 ## What the linter is configured for
 
 `.golangci.yml` turns on correctness and clarity checks beyond the defaults.
