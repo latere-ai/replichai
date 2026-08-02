@@ -92,10 +92,20 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 		return Identity{}, fmt.Errorf("%w: empty reference", ErrUnresolvable)
 	}
 
-	// A DOI anywhere in the reference is terminal: highest priority, and
-	// nothing can enrich it, so it resolves with no network (spec AC7).
+	// A DOI anywhere in the reference is terminal for the identity: it fixes both
+	// the key and — with an empty title — the slug, offline, so a bare DOI
+	// resolves with no network (AC7) and the slug that names a repository never
+	// rides a fetch. When the reference is the publisher URL that carries the DOI,
+	// the page is fetchable and declares a human title; read it best-effort and
+	// fill only Title, leaving the key-derived slug untouched — so a blocked fetch
+	// degrades to the identical identity (AC6) and the manifest still gains a
+	// readable title when the fetch succeeds.
 	if doi, ok := extractDOI(ref); ok {
-		return r.finish(SchemeDOI, doi, "", ref), nil
+		id := r.finish(SchemeDOI, doi, "", ref)
+		if r.fetch != nil && looksLikeURL(ref) {
+			id.Title = r.titleFromPage(ctx, ref)
+		}
+		return id, nil
 	}
 
 	// An arXiv ID is not terminal: look it up to discover a possible DOI.
@@ -201,7 +211,7 @@ func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error)
 	if err != nil {
 		return Identity{}, fmt.Errorf("%w: fetching %q: %w", ErrUnresolvable, ref, err)
 	}
-	title := firstNonEmpty(metaContent(body, citationTitleRe), htmlTitle(body))
+	title := titleFromBody(body)
 
 	if doi := metaContent(body, citationDOIRe); doi != "" {
 		if normalised, ok := extractDOI(doi); ok {
@@ -287,6 +297,25 @@ func metaContent(body []byte, re *regexp.Regexp) string {
 		return collapseWS(string(m[1]))
 	}
 	return ""
+}
+
+// titleFromBody reads a page's declared paper title — the Highwire
+// citation_title meta tag academic publishers emit, else the HTML <title> — or
+// "" when it declares neither.
+func titleFromBody(body []byte) string {
+	return firstNonEmpty(metaContent(body, citationTitleRe), htmlTitle(body))
+}
+
+// titleFromPage fetches a publisher URL and returns its declared title, or ""
+// when the page cannot be fetched or declares none. It never errors: enriching
+// the title is best-effort and must not disturb a resolution that already has
+// its key and slug from the DOI in the reference.
+func (r *resolver) titleFromPage(ctx context.Context, ref string) string {
+	body, err := r.fetch.Fetch(ctx, ref)
+	if err != nil {
+		return ""
+	}
+	return titleFromBody(body)
 }
 
 func firstNonEmpty(a, b string) string {
