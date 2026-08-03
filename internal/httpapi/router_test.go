@@ -90,6 +90,12 @@ func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 	case "bare":
 		// A transcript with no per-request usage anywhere — usage is unknowable.
 		return []byte(`{"role":"agent","kind":"message","content":"hi"}` + "\n"), nil
+	case "multi":
+		// Two charged requests either side of an uncharged event, so a per-event
+		// figure can be told apart from the session total (006s).
+		return []byte(`{"role":"system","kind":"model_request_end","raw":{"model_usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10}}}` + "\n" +
+			`{"role":"agent","kind":"message","content":"between"}` + "\n" +
+			`{"role":"system","kind":"model_request_end","raw":{"model_usage":{"input_tokens":7,"output_tokens":3,"cache_read_input_tokens":1}}}` + "\n"), nil
 	default:
 		return nil, ErrReproNotFound
 	}
@@ -996,6 +1002,87 @@ func TestSessionTranscriptUsageDerived(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &tr)
 	if w.Code != http.StatusOK || tr.Usage == nil || tr.Usage.Total() != 160 {
 		t.Fatalf("status %d usage %+v; want derived total 160 (100+50+10)", w.Code, tr.Usage)
+	}
+}
+
+// 006s AC1-2: every event carries the usage the backend charged against it, an
+// event that was charged nothing carries none, and the per-event figures sum to
+// exactly the session total the same response reports — the two are derived in
+// one pass so they cannot drift apart.
+func TestSessionTranscriptPerEventUsage(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "multi", nil) // nothing recorded: the total is derived
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var tr Transcript
+	if err := json.Unmarshal(w.Body.Bytes(), &tr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(tr.Events) != 3 {
+		t.Fatalf("events = %d, want 3", len(tr.Events))
+	}
+	// The charged events carry their own figures, not the session's.
+	if u := tr.Events[0].Usage; u == nil || u.InputTokens != 100 || u.OutputTokens != 50 || u.CachedInputTokens != 10 {
+		t.Errorf("event 0 usage = %+v, want 100/50/10", u)
+	}
+	if u := tr.Events[2].Usage; u == nil || u.InputTokens != 7 || u.OutputTokens != 3 || u.CachedInputTokens != 1 {
+		t.Errorf("event 2 usage = %+v, want 7/3/1", u)
+	}
+	// An uncharged event shows nothing, never a zero — an absent number is a fact
+	// about the run.
+	if tr.Events[1].Usage != nil {
+		t.Errorf("uncharged event carries usage %+v, want none", tr.Events[1].Usage)
+	}
+	// And the parts add up to the whole the same response reports.
+	var sum int64
+	for _, e := range tr.Events {
+		if e.Usage != nil {
+			sum += e.Usage.Total()
+		}
+	}
+	if tr.Usage == nil || sum != tr.Usage.Total() {
+		t.Fatalf("per-event sum %d != session total %+v", sum, tr.Usage)
+	}
+	if sum != 171 {
+		t.Errorf("sum = %d, want 171 (110 + 11)", sum)
+	}
+}
+
+// 006s AC1: per-event usage is not a property of the committed path — an
+// in-flight session's live events carry it too, since both paths are built by
+// the same provider translation.
+func TestSessionTranscriptPerEventUsageLive(t *testing.T) {
+	d := testDeps(allowAll)
+	store := job.NewMemStore()
+	d.Jobs = store
+	d.Live = &fakeLive{events: []provider.Event{
+		{Kind: "message", Content: "no charge"},
+		{Kind: "model_request_end", Raw: json.RawMessage(`{"model_usage":{"input_tokens":4,"output_tokens":2,"cache_read_input_tokens":0}}`)},
+	}}
+	p, _ := d.Projects.Create(context.Background(), "me", "t")
+	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
+	_, _, _ = store.Claim(context.Background())
+	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
+	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
+
+	w := do(t, NewRouter(d).Handler(), "GET", "/jobs/"+j.ID+"/transcript", "", "me")
+	var tr Transcript
+	if err := json.Unmarshal(w.Body.Bytes(), &tr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(tr.Events) != 2 || tr.Events[0].Usage != nil {
+		t.Fatalf("events = %+v", tr.Events)
+	}
+	if u := tr.Events[1].Usage; u == nil || u.Total() != 6 {
+		t.Fatalf("live event usage = %+v, want total 6", u)
+	}
+	// Raw is still dropped on the way out — it is the bulk of a transcript.
+	if len(tr.Events[1].Raw) != 0 {
+		t.Error("raw was not dropped from a live event")
 	}
 }
 
