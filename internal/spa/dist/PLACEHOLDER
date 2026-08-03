@@ -1,0 +1,4 @@
+This file exists so `//go:embed all:dist` in spa.go has something to match in a
+clean checkout, where the real frontend build output (index.html, assets/) is
+gitignored. The release image replaces this directory with the actual
+`bun run build` output before compiling, so the placeholder never ships.
