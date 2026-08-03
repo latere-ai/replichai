@@ -54,6 +54,14 @@ func (s *MemStore) SeedGrant(_ context.Context, email string, tier Tier) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A revoked address stays revoked. This list is replayed on every startup
+	// from configuration, so un-revoking here would turn a ban into something
+	// that lasts until the next deploy — the same failure 006q's recorded
+	// revocation exists to prevent, one restart further out. Re-admitting is an
+	// admin's deliberate act, and it goes through Grant.
+	if g, ok := s.grants[email]; ok && g.Revoked() {
+		return nil
+	}
 	s.upsert(email, tier, "bootstrap")
 	return nil
 }
@@ -105,11 +113,10 @@ func (s *MemStore) SelfGrant(ctx context.Context, p Principal) (Tier, bool, erro
 		return TierNone, false, nil
 	}
 	s.mu.Lock()
-	if g, exists := s.grants[email]; exists {
+	if _, exists := s.grants[email]; exists {
 		// Revoked, or bound to somebody else. Either way this is not a new
 		// arrival and self-granting would undo a decision somebody made.
 		s.mu.Unlock()
-		_ = g
 		return TierNone, false, nil
 	}
 	s.upsert(email, TierUser, "self")

@@ -29,7 +29,17 @@ func (s *PGAccess) SeedGrant(ctx context.Context, email string, tier Tier) error
 	if email == "" {
 		return ErrNoEmail
 	}
-	return s.upsert(ctx, email, tier, "bootstrap")
+	// A revoked address stays revoked. This list is replayed on every startup
+	// from configuration (ADMIN_EMAILS, SEED_EMAILS), so clearing the revocation
+	// here would make a ban last only until the next deploy. Re-admitting is an
+	// admin's deliberate act and goes through Grant.
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO access_grants (email, tier, granted_by, granted_at) VALUES ($1,$2,$3,$4)
+		ON CONFLICT (email) DO UPDATE SET
+			tier=EXCLUDED.tier, granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at
+		WHERE access_grants.revoked_at IS NULL`,
+		email, int16(tier), "bootstrap", s.clock())
+	return err
 }
 
 // SeedAdmin bootstraps an admin grant.

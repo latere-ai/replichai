@@ -143,14 +143,50 @@ export type Reproduction = {
   can_publish: boolean
 }
 
+// ApiError carries both halves of a refusal: the status, and the machine-
+// readable code the server put in the body.
+//
+// The message stays the bare status, because that is what every existing caller
+// compares against. The code is what a caller needs when one status means more
+// than one thing — a 409 on the public flip is either an unclear tree or a
+// profile that is not public, and those want different remedies.
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code = '',
+  ) {
+    super(String(status))
+  }
+}
+
+// errCode reads the server's error code off a rejection, empty when there was
+// none (a network failure, or a response with no body).
+export function errCode(e: unknown): string {
+  return e instanceof ApiError ? e.code : ''
+}
+
+// refusal builds an ApiError, reading the body's `error` field when there is
+// one. The body is consumed either way, so a failed response never leaks a
+// stream.
+async function refusal(r: Response): Promise<ApiError> {
+  let code = ''
+  try {
+    const body = (await r.json()) as { error?: string }
+    code = body?.error ?? ''
+  } catch {
+    /* no body, or not JSON: the status is all we have */
+  }
+  return new ApiError(r.status, code)
+}
+
 async function json<T>(r: Response): Promise<T> {
-  if (!r.ok) throw new Error(`${r.status}`)
+  if (!r.ok) throw await refusal(r)
   return r.json() as Promise<T>
 }
 
 // ok resolves for a 2xx response with no body (204), rejecting with the status.
 async function ok(r: Response): Promise<void> {
-  if (!r.ok) throw new Error(`${r.status}`)
+  if (!r.ok) throw await refusal(r)
 }
 
 export const getMe = () => fetch('/me').then(json<Me>)
