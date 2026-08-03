@@ -1,6 +1,6 @@
 # 011 — What a session costs
 
-**Status:** draft.
+**Status:** steps 1–3 built. `provider.Usage` carries cache writes split by lifetime; `internal/credit` is the ledger (both stores against one contract, the advisory lock confirmed load-bearing by removing it); the gate lives inside `Enqueue` and the session counter, sponsorship and `jobs.charged_to` are gone. Settlement, the backstop and the remaining surfaces are steps 4–7.
 **Scope:** replace the session counter with money. An append-only credit ledger at two levels — a person's wallet and a project's pot — priced in micro-USD, metered against the tokens a session actually burned, held at start and settled at the end. The counter, its top-ups, its sponsorship and its payer picker are removed rather than deprecated. A rework of [006l](006l-the-session-quota.md), and the promotion of `BACKLOG.md` item 5 onto the roadmap.
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store, the enqueue transaction, the worker's poll loop), [006k](006k-the-platform-admin-console.md) (where an admin sets policy and grants), [006g](006g-projects-and-replication-sessions.md) (projects own sessions), [006c](006c-identity-and-access.md) (project membership and `RoleLead`), [006h](006h-session-transcript-viewer.md) / [006s](006s-reading-a-session-in-time.md) (the usage a session records).
 **Supersedes:** 006l entirely; 006q's zero-quota default (its open sign-in stands).
@@ -144,9 +144,9 @@ Payment is not in this spec. The top-up surface is admin-only and shaped so that
 
 Clean removal, no deprecation phase, per the standing rule on this codebase.
 
-**Go** — `platform.DefaultSessionQuota`, `Settings.DefaultSessionQuota` and its column, `quota_topups` with `Topup`/`SetTopup`/`Topups`, `platform.Store.Allowance`, `job.Allowance`, `job.ErrQuotaExceeded`, `job.Store.Consumed`, `checkQuotaTx`, `WithPGAllowance`, `Phase.Spends()`, `Submission.ChargedTo`/`Payer()`, `jobs.charged_to`, `projects.sponsored`, `SetSponsored`, `POST /projects/{id}/sponsor`, `webauth.Quota`/`QuotaFunc`/`ConsumedFunc`, wire codes `quota_exceeded` and `not_sponsored`.
+**Go** — `platform.DefaultSessionQuota`, `Settings.DefaultSessionQuota` and its column, `quota_topups` with `Topup`/`SetTopup`/`Topups`, `platform.Store.Allowance`, `job.Allowance`, `job.ErrQuotaExceeded`, `job.Store.Consumed`, `checkQuotaTx`, `WithPGAllowance`, `Phase.Spends()`, `Submission.ChargedTo`/`Payer()`, `jobs.charged_to`, `projects.sponsored`, `SetSponsored`, `POST /projects/{id}/sponsor`, `webauth.Quota`/`QuotaFunc`/`ConsumedFunc`, wire codes `quota_exceeded` and `not_sponsored`, and `access.EmailOf` — which existed only to price a payer known by their subject against email-keyed top-ups, and has nothing left to answer now that a wallet is read by the address `/me` already holds.
 
-**Frontend** — the `Quota` type, `budget.ts` and its tests, the quota pill, the payer picker, the sponsorship toggle, the admin used/limit column, and every `quota*`/`charge*` i18n string (the frontend is single-locale today; if a `zh` catalogue exists when this lands, it changes in the same commit).
+**Frontend** — the `Quota` type, `budget.ts` and its tests, the quota pill, the payer picker, the sponsorship toggle, the admin used/limit column, and every `quota*`/`charge*` i18n string (the frontend is single-locale today; if a `zh` catalogue exists when this lands, it changes in the same commit). The payer picker was the `Radio`/`RadioGroup` primitive's only consumer, so it goes too, with its CSS — a control nothing renders is dead code, not a design system.
 
 **Tests to replace** — `internal/job/quota_test.go`, `internal/httpapi/quota_test.go`, `internal/httpapi/no_budget_test.go`, `internal/platform/platform_test.go`, `internal/webauth/adminmount_test.go`, `internal/webauth/coverage_test.go`.
 
@@ -172,10 +172,14 @@ Each step is one small diff, in order, and the system is coherent after each.
 
 1. **Widen `provider.Usage`** with cache-creation by lifetime; thread it through the anthropic adapter, the transcript derivation (006s), and the viewer.
 2. **`internal/credit`**: entries, migrations, balances, the rate card and its pure pricing function, top-up / allocate / reclaim with the role rules. Both stores against one contract test.
-3. **The gate**, which is where the old one dies: the start reserve in platform settings, the check-and-hold inside `Enqueue` under the project advisory lock, `ErrNoCredits` → `402 no_credits`, the project-create allocation — **and the removal of `checkQuotaTx`, `Allowance`, `ErrQuotaExceeded` and `Consumed` in the same commit**. The quota check cannot wait for step 6: `DefaultSessionQuota` is `0`, so it refuses every non-admin enqueue that has no top-up row, and landing the credit gate beside it would leave a fully funded project still refused `402 quota_exceeded` by a permanently closed second gate. Two gates in one transaction, one of them shut, is not a coherent intermediate state.
+3. **The gate**, which is where the old meter dies whole: the start reserve in platform settings, the check-and-hold inside `Enqueue` under the project advisory lock, `ErrNoCredits` → `402 no_credits`, the project-create allocation, and the removal of the counter **and of sponsorship** in the same commit.
+
+   The quota check cannot wait: `DefaultSessionQuota` is `0`, so it refuses every non-admin enqueue that has no top-up row, and landing the credit gate beside it would leave a fully funded project still refused `402 quota_exceeded` by a permanently closed second gate. Two gates in one transaction, one of them shut, is not a coherent intermediate state.
+
+   Sponsorship is folded in here rather than left to step 6 for a different reason: it exists to answer *whose count does a collaborator's session draw down*, and the moment the project pays, that question has no referent. Keeping the toggle and the payer picker alive for another commit would mean writing tests for a control that no longer decides anything. So `projects.sponsored`, `charge_to`, `not_sponsored` and `jobs.charged_to` go with the counter.
 4. **Settlement**: the rate snapshot on the job row, the final poll before terminal, release-and-charge inside the terminal write, the `charge` uniqueness constraint.
 5. **The backstop**: the overdraft floor in settings with its per-project override, the watchdog on the observe path, the generic cause, the admin-only truth.
-6. **Removal**: everything else in "What is removed" — sponsorship, `charged_to`, `Phase.Spends()`, the dropped columns and tables, the frontend, the specs and `BACKLOG.md`.
+6. **Removal**: what is left after step 3 absorbed the rest — `BACKLOG.md` item 5 and the sentence naming it, 006l's status, and 006q where it describes the zero quota as live.
 7. **Surfaces**: `/me` wallet balance, project balance and available, the top-up modal, allocate/reclaim UI, the admin console's rate card, reserve, cap and top-up grants.
 
 ## Acceptance criteria
@@ -192,9 +196,10 @@ Each step is one small diff, in order, and the system is coherent after each.
 10. A run crossing the project overdraft floor is killed and settled, and the cap leaks nowhere — asserted by a test that greps the `/me`, project, job, and SSE payloads and the i18n catalogue for the number and for any cap-named code, and that the job's `error` is the generic cause while the admin console reports the true one.
 11. The floor holds against **concurrent** sessions: N sessions running in one project, each individually under the cap but jointly over it, produce a kill — the projection subtracts every in-flight session's accrued spend, not just the observing session's. Confirmed to fail against a per-session projection.
 12. Both policy numbers fail closed in their own direction: with the settings read failing, the reserve resolves high (an enqueue is refused) and the floor resolves tight (a run is killed no later than it would have been), and the seeded value and the fallback are one constant each.
-13. `POST /projects` allocates from the creator's wallet in the create transaction; a creator with an empty wallet is refused `no_credits` and no half-made project survives (006j's compensating delete).
-14. Every item in "What is removed" is gone from the build, the schema, the wire, and the frontend — asserted by the compiler, by a schema assertion that the dropped columns and tables do not exist, and by a grep test over the removed wire codes.
-15. A platform admin tops up a wallet, and that person can then allocate and run exactly what the credits pay for; the ledger explains each step by actor and cause.
+13. `POST /projects` allocates from the creator's wallet in the create transaction, one start reserve per paper unless the request names an amount; a creator with an empty wallet is refused `no_credits` and no half-made project survives (006j's compensating delete).
+14. A create that opens **no** session returns its credits: the compensating delete unwinds the allocation as well as the project, so a create refused by the double-trigger guard leaves the wallet where it started. Asserted on both create paths, and confirmed to fail without the unwind — the ledger has no foreign key on a project, and a reclaim needs a role in one that no longer exists. Membership is seeded only once a session has started, for the same reason: nothing cascades a membership row away.
+15. Every item in "What is removed" is gone from the build, the schema, the wire, and the frontend — asserted by the compiler, by a schema assertion that the dropped columns and tables do not exist, and by a grep test over the removed wire codes.
+16. A platform admin tops up a wallet, and that person can then allocate and run exactly what the credits pay for; the ledger explains each step by actor and cause.
 
 ## Out of scope
 

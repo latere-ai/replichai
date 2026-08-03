@@ -187,3 +187,33 @@ func requireRole(ctx context.Context, members Members, p access.Principal, proje
 	}
 	return nil
 }
+
+// Fund moves credits from an email's wallet into a project's pot, with no
+// membership check — see creationOps for why the create path cannot ask that
+// question.
+func (s *MemStore) Fund(_ context.Context, email, project string, amount int64) error {
+	if err := checkMove(email, project, amount); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sum(Wallet(email), true) < amount {
+		return ErrInsufficient
+	}
+	return s.transfer(Wallet(email), Pot(project), amount, KindAllocate, email)
+}
+
+// Unwind returns everything a project's pot can still commit to an email's
+// wallet, as the system.
+func (s *MemStore) Unwind(_ context.Context, project, email string) error {
+	if err := checkMove(email, project, 1); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	amount := s.sum(Pot(project), true)
+	if amount <= 0 {
+		return nil
+	}
+	return s.transfer(Pot(project), Wallet(email), amount, KindReclaim, ActorSystem)
+}

@@ -294,3 +294,134 @@ func TestMaySubmitDistinguishesWhoMayOpenASession(t *testing.T) {
 		}
 	}
 }
+
+// A create that opens no session gives the credits back.
+//
+// The pot is funded before any paper is enqueued, and the compensating delete
+// (006j) then removes the project — so without an unwind the allocation sits in
+// a project that no longer exists, unreachable: the ledger has no foreign key
+// to clean up after it, and a reclaim needs a role in a project that is gone.
+//
+// The double-trigger guard makes this easy to hit rather than exotic: submit a
+// paper that is already running and the second create is refused after its pot
+// was funded.
+func TestARefusedCreateGivesTheCreditsBack(t *testing.T) {
+	_, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+	const funded = 10 * credit.Dollar
+	topUp(t, ledger, payer, funded)
+
+	// The first submit opens a project and starts a session for this paper.
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("first submit = %d %s", w.Code, w.Body.String())
+	}
+	after, _ := ledger.Balance(ctx, credit.Wallet(payer.Email))
+
+	// The second is refused by the double-trigger guard, *after* its new
+	// project has been funded.
+	w = httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("second submit = %d %s, want 409", w.Code, w.Body.String())
+	}
+	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != after {
+		t.Errorf("wallet = %d after a refused create, want %d — the reserve is stranded in a deleted project", n, after)
+	}
+
+	// The same on the batch path, where every paper fails.
+	w = httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"title":"doomed","credits":`+itoa(3*credit.Dollar)+`,"papers":["not-a-paper"]}`, payer.Sub, payer.Email))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("doomed create = %d %s, want 422", w.Code, w.Body.String())
+	}
+	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != after {
+		t.Errorf("wallet = %d after a batch that started nothing, want %d", n, after)
+	}
+}
+
+// A refused create leaves no membership rows behind either. They are seeded
+// only once a session has actually started, because nothing cascades them away
+// when the project is deleted — an invited collaborator would otherwise carry a
+// row naming a project that is gone, and read it in "shared with me".
+func TestARefusedCreateLeavesNoMembership(t *testing.T) {
+	d, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+	topUp(t, ledger, payer, 10*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"title":"doomed","papers":["not-a-paper"],"collaborators":["friend@example.com"]}`, payer.Sub, payer.Email))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("doomed create = %d %s, want 422", w.Code, w.Body.String())
+	}
+	friend := access.Principal{Sub: "friend-sub", Email: "friend@example.com"}
+	if _, err := d.Members.(access.Membership).BindAll(ctx, friend); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	projects, err := d.Members.(access.Membership).Projects(ctx, friend.Sub)
+	if err != nil {
+		t.Fatalf("projects: %v", err)
+	}
+	if len(projects) != 0 {
+		t.Errorf("collaborator holds %v, want nothing — those projects were deleted", projects)
+	}
+}
+
+// A batch is funded for the sessions it asks for. Funding one reserve for four
+// papers would refuse three of them by default, which reads as a bug rather
+// than a budget — and a request naming its own amount still gets exactly that.
+func TestABatchIsFundedPerPaper(t *testing.T) {
+	_, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+	topUp(t, ledger, payer, 100*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"title":"four","papers":["https://arxiv.org/abs/2301.03711","https://arxiv.org/abs/2302.03712",`+
+			`"https://arxiv.org/abs/2303.03713","https://arxiv.org/abs/2304.03714"]}`, payer.Sub, payer.Email))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", w.Code, w.Body.String())
+	}
+	var out struct {
+		ProjectID string          `json:"project_id"`
+		Sessions  []SessionResult `json:"sessions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, s := range out.Sessions {
+		if s.JobID == "" {
+			t.Errorf("paper %s did not start (%s); a default-funded batch must cover its own papers", s.URL, s.Error)
+		}
+	}
+	if n, _ := ledger.Balance(ctx, credit.Pot(out.ProjectID)); n != 4*reserve {
+		t.Errorf("pot = %d, want one reserve per paper (%d)", n, 4*reserve)
+	}
+}
+
+// "Shared with me" means somebody else's. An owner is their own project's lead,
+// so it comes back from the membership store like any other membership — and
+// every project now seeds one, including those opened by a bare submit.
+func TestSharedWithMeExcludesYourOwn(t *testing.T) {
+	_, rt, ledger := creditDeps(t)
+	topUp(t, ledger, payer, 10*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("submit = %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/shared", "", payer.Sub, payer.Email))
+	var shared []ProjectView
+	if err := json.Unmarshal(w.Body.Bytes(), &shared); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(shared) != 0 {
+		t.Errorf("shared = %+v, want nothing — those are the owner's own projects", shared)
+	}
+}

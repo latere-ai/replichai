@@ -51,10 +51,10 @@ override any same-named key in `.env`, so the two cannot drift.
 
 Since [006q](../specs/006q-sign-in-is-open-budget-is-not.md), anyone who
 completes the OIDC login is granted `user` — the deployment no longer keeps a
-guest list. What limits them is **budget**: the platform's default session quota
-is `0`, so a new account can sign in, create a project, and read what it may,
-and cannot run a replication session until an admin tops it up or a project
-owner sponsors sessions.
+guest list. What limits them is **money** ([011](../specs/011-what-a-session-costs.md)):
+a new account arrives with no credits, so it can sign in and read what it may,
+and cannot run a replication session until an admin adds credits to its wallet
+or it is invited into a project somebody else has funded.
 
 `ADMIN_EMAILS` is how a platform admin exists before there is anyone to promote
 them: it seeds the grant before their first login, and a self-grant never
@@ -66,10 +66,14 @@ visible in the admin console to be re-granted. `ADMIN_EMAILS` is replayed
 through the bootstrap seeder on every start and deliberately skips a revoked
 address, so a restart does not undo a ban either.
 
-The quota migration lowers the platform default to `0` on the deployment that
-already holds a higher one, so no manual step follows the deploy. An admin who
-wants a different number sets it in **Admin → Platform** afterwards; the
-migration is version-gated and never runs again.
+Credits are the meter. A session charges the **project** it belongs to, out of
+credits somebody allocated to that project from their own wallet; a project must
+hold the **start reserve** before a session may begin there, and that reserve is
+held for the run and returned when it settles. The reserve is seeded at a
+deliberately non-zero default and set in **Admin → Platform**; credits are added
+per person in **Admin → People**. The migration drops the old session counter
+and its top-up table outright — a count and a balance are different quantities,
+so nothing is carried across and everyone starts at zero.
 
 ### Outbound mail
 

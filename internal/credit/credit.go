@@ -184,6 +184,8 @@ type Store interface {
 	// refund of one's own. An invitation to collaborate is not the ability to
 	// empty the funding.
 	Reclaim(ctx context.Context, by access.Principal, project string, amount int64) error
+
+	creationOps
 }
 
 // defaultEntryLimit caps a statement view that asked for no limit.
@@ -217,4 +219,39 @@ func checkMove(email, project string, amount int64) error {
 		return ErrNotPositive
 	}
 	return nil
+}
+
+// creationOps are the moves the *creation of a project* needs, and they are
+// separate from Allocate and Reclaim because the authority behind them is
+// different in kind.
+//
+// Allocate asks "is this caller a member of this project?" — the right question
+// for funding a project that already exists. It is the wrong question in the
+// request that creates one: the server has just created the project for this
+// caller, in this transaction, and re-deriving their authority from a
+// membership row it would have to write first is circular. Worse, writing that
+// row first leaves it orphaned when the create is refused and the project is
+// deleted again.
+//
+// So the create path funds with Fund, seeds membership only once the create has
+// actually succeeded, and unwinds with Unwind when it has not. Neither is a way
+// to move somebody else's money: the caller of Fund is the person whose wallet
+// it debits, and Unwind only ever moves a pot back to the wallet that filled it
+// on a project that is being deleted in the same request.
+type creationOps interface {
+	// Fund moves credits from an email's wallet into a project's pot in the
+	// request that creates that project. Insufficient funds is ErrInsufficient,
+	// exactly as for Allocate.
+	Fund(ctx context.Context, email, project string, amount int64) error
+	// Unwind returns everything a project's pot can still commit to an email's
+	// wallet, as the system — the compensating move for a create that was
+	// refused after its pot was funded. Without it the allocation would sit in
+	// a deleted project forever: the ledger has no foreign key to clean up
+	// after, and Reclaim needs a role in a project that no longer exists.
+	//
+	// It moves the *available* balance, so credits held by a session that did
+	// start are never pulled out from under it. A pot with nothing free is a
+	// no-op rather than an error, which is what makes it safe to call on every
+	// failure path.
+	Unwind(ctx context.Context, project, email string) error
 }
