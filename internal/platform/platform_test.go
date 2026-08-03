@@ -300,13 +300,29 @@ func TestMigrationLowersAnAlreadyDeployedDefault(t *testing.T) {
 		}
 	})
 
-	t.Run("an admin's own number is left alone", func(t *testing.T) {
+	t.Run("a row an admin had already changed is lowered too", func(t *testing.T) {
+		// One rule for everyone. Sparing a console-set row would make "everyone
+		// starts at zero" true of some deployments and false of others, and the
+		// only way to know which would be to query the database.
 		rewind(t, 5, "admin-sub")
 		if err := Migrate(ctx, pool); err != nil {
 			t.Fatalf("migrate: %v", err)
 		}
-		if got := quota(t); got != 5 {
-			t.Errorf("default_session_quota = %d; a migration overruled a decision an admin made", got)
+		if got := quota(t); got != 0 {
+			t.Errorf("default_session_quota = %d, want 0 whatever the row held before", got)
+		}
+	})
+
+	t.Run("it runs once, and an admin's later number sticks", func(t *testing.T) {
+		if _, err := pool.Exec(ctx,
+			`UPDATE platform_settings SET default_session_quota=9, updated_by='admin-sub' WHERE id=1`); err != nil {
+			t.Fatalf("admin sets a number: %v", err)
+		}
+		if err := Migrate(ctx, pool); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if got := quota(t); got != 9 {
+			t.Errorf("default_session_quota = %d; the migration re-ran and overwrote a later decision", got)
 		}
 	})
 

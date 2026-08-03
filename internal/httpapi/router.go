@@ -32,7 +32,7 @@ type Route struct {
 // passes). The default is fail-closed — an unconfigured server admits nobody.
 type Gate interface {
 	// Allow reports whether the request may proceed, and a machine-readable
-	// reason to return when it may not (e.g. "not_invited").
+	// reason to return when it may not (e.g. "not_granted").
 	Allow(r *http.Request) (ok bool, reason string)
 }
 
@@ -44,7 +44,7 @@ func (f GateFunc) Allow(r *http.Request) (bool, string) { return f(r) }
 
 // DenyAll is the fail-closed default gate: it admits nobody, so a server wired
 // without a real gate cannot accidentally ship its operator routes open.
-var DenyAll Gate = GateFunc(func(*http.Request) (bool, string) { return false, "not_invited" })
+var DenyAll Gate = GateFunc(func(*http.Request) (bool, string) { return false, "not_granted" })
 
 // JobStore is the slice of the job store the handlers need — enqueue a
 // submission, read one back. Depending on this interface rather than a concrete
@@ -277,7 +277,7 @@ func NewRouter(d Deps) *Router {
 func (rt *Router) Handler() http.Handler { return rt.mux }
 
 // GatedRoutes enumerates every operator route from the router itself, so 006c's
-// test can assert each answers not_invited for an ungranted principal and that
+// test can assert each answers not_granted for an ungranted principal and that
 // no route was registered outside the gate.
 func (rt *Router) GatedRoutes() []Route { return append([]Route(nil), rt.gated...) }
 

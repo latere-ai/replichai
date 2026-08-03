@@ -7,7 +7,7 @@
 // Local runs use the in-process "memory" provider and the loopback-only dev
 // bypass (`DEV=true`), so `docker compose up` brings the whole system up with no
 // IDP and no API key. Production sets `PROVIDER=anthropic`, the `AUTH_*` OIDC
-// config, and `ADMIN_EMAILS`, and admits only granted principals.
+// config, and `ADMIN_EMAILS`. Anyone may sign in; budget is what limits them.
 package main
 
 import (
@@ -108,12 +108,6 @@ func run() error {
 			return err
 		}
 		log.Printf("seeded platform admin: %s", email)
-	}
-	for _, email := range splitList(os.Getenv("SEED_EMAILS")) {
-		if err := accessStore.SeedGrant(ctx, email, access.TierUser); err != nil {
-			return err
-		}
-		log.Printf("seeded user: %s", email)
 	}
 
 	// The forge (006i): with a token, reproductions are created under the org and

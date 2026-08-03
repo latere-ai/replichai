@@ -17,7 +17,7 @@ import (
 // grant locks its holder out on the very next request.
 //
 // The reasons are machine-readable: not_authenticated when there is no verified
-// identity, not_invited when there is one but no grant.
+// identity, not_granted when there is one but no grant.
 func Gate(a access.Access) httpapi.Gate {
 	return httpapi.GateFunc(func(r *http.Request) (bool, string) {
 		id, ok := httpapi.IdentityFrom(r)
@@ -29,7 +29,7 @@ func Gate(a access.Access) httpapi.Gate {
 			Email: id.Email,
 		})
 		if err != nil || !granted {
-			return false, "not_invited"
+			return false, "not_granted"
 		}
 		return true, ""
 	})
@@ -52,7 +52,7 @@ func RequireTier(a access.Access, min access.Tier) func(http.Handler) http.Handl
 				Email: id.Email,
 			})
 			if err != nil || !granted {
-				httpapi.WriteError(w, http.StatusForbidden, "not_invited")
+				httpapi.WriteError(w, http.StatusForbidden, "not_granted")
 				return
 			}
 			if tier < min {

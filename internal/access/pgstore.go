@@ -30,7 +30,7 @@ func (s *PGAccess) SeedGrant(ctx context.Context, email string, tier Tier) error
 		return ErrNoEmail
 	}
 	// A revoked address stays revoked. This list is replayed on every startup
-	// from configuration (ADMIN_EMAILS, SEED_EMAILS), so clearing the revocation
+	// from configuration (ADMIN_EMAILS), so clearing the revocation
 	// here would make a ban last only until the next deploy. Re-admitting is an
 	// admin's deliberate act and goes through Grant.
 	_, err := s.pool.Exec(ctx, `

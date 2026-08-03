@@ -113,8 +113,8 @@ func storeContract(t *testing.T, s interface {
 		t.Errorf("revoked_by = %q, want the deciding admin", g.RevokedBy)
 	}
 
-	// A ban must also survive a restart. ADMIN_EMAILS and SEED_EMAILS are
-	// replayed through SeedGrant on every boot, so un-revoking there would make
+	// A ban must also survive a restart. ADMIN_EMAILS is replayed through
+	// SeedGrant on every boot, so un-revoking there would make
 	// a ban last until the next deploy — the same failure a recorded revocation
 	// exists to prevent, one restart further out.
 	if err := s.SeedGrant(ctx, userEmail, TierUser); err != nil {

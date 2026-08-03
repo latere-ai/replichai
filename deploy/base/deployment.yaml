@@ -66,15 +66,12 @@ spec:
             # manifest (version-controlled and reviewable), not the .env secret.
             # Runtime changes go through an admin via /admin/access.
             #
-            # Since 006q this is no longer a whitelist: anyone who signs in is
-            # granted `user`, and budget (the platform's default session quota,
-            # zero) is what limits them. ADMIN_EMAILS still bootstraps platform
-            # admins before their first login; SEED_EMAILS only pre-sets a tier
-            # and is no longer needed for plain access.
+            # Anyone who signs in is granted `user`; budget — the platform's
+            # default session quota, zero — is what limits them. This list is
+            # only how the first platform admin exists before anyone has an
+            # account to promote them from.
             - name: ADMIN_EMAILS
               value: hi@changkun.de
-            - name: SEED_EMAILS
-              value: changkun@latere.ai
             # Outbound mail (006p): the project invitation. The sending domain
             # and region are policy and live here; MAILGUN_API_KEY is a
             # credential and comes from the replichai-config secret. With no key

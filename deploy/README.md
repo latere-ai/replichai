@@ -41,7 +41,6 @@ AUTH_CLIENT_ID=replichai
 AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
 ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
-SEED_EMAILS=colleague@x.com    # optional since 006q: sign-in is open, so this only pre-sets a tier
 MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
 ```
 
@@ -57,32 +56,20 @@ is `0`, so a new account can sign in, create a project, and read what it may,
 and cannot run a replication session until an admin tops it up or a project
 owner sponsors sessions.
 
-`ADMIN_EMAILS` is unchanged and still the way a platform admin is bootstrapped
-before their first login; a self-grant never promotes or demotes an existing
-grant, so a seeded admin stays one. `SEED_EMAILS` is now optional — it pre-sets
-a tier for somebody who has not signed in yet, which nobody needs for plain
-access.
+`ADMIN_EMAILS` is how a platform admin exists before there is anyone to promote
+them: it seeds the grant before their first login, and a self-grant never
+promotes or demotes an existing one, so a seeded admin stays one.
 
 Revoking is a **ban**, not an un-invite: the grant row is kept and marked
 revoked, so the next sign-in cannot silently re-create it, and the account stays
-visible in the admin console to be re-granted. `ADMIN_EMAILS`/`SEED_EMAILS` are
-replayed through the bootstrap seeder on every start and deliberately skip a
-revoked address, so a restart does not undo a ban either.
+visible in the admin console to be re-granted. `ADMIN_EMAILS` is replayed
+through the bootstrap seeder on every start and deliberately skips a revoked
+address, so a restart does not undo a ban either.
 
-**One thing to check after deploying 006q.** The quota migration lowers the
-platform default to `0`, but only where the settings row is still the
-bootstrapped one (`updated_by = 'bootstrap'`). If anyone has ever changed the
-default through the admin console, that row carries their address instead and
-the migration deliberately leaves it alone — a migration should not overrule a
-decision an admin made. Confirm which case this deployment is in:
-
-```sql
-SELECT default_session_quota, updated_by FROM platform_settings WHERE id = 1;
-```
-
-If `updated_by` is not `bootstrap` and the quota is not `0`, set it to `0` in
-**Admin → Platform**; otherwise every account keeps the old allowance and the
-open sign-in hands out free sessions.
+The quota migration lowers the platform default to `0` on the deployment that
+already holds a higher one, so no manual step follows the deploy. An admin who
+wants a different number sets it in **Admin → Platform** afterwards; the
+migration is version-gated and never runs again.
 
 ### Outbound mail
 

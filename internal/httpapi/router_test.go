@@ -1186,7 +1186,7 @@ func TestSessionTranscriptForgeFailureIs500(t *testing.T) {
 	}
 }
 
-// AC4: with the fail-closed gate, every gated route answers not_invited; the
+// AC4: with the fail-closed gate, every gated route answers not_granted; the
 // health check outside the gate does not. The gated set is enumerated from the
 // router itself.
 func TestGateIsFailClosedAndEnumerable(t *testing.T) {
@@ -1201,8 +1201,8 @@ func TestGateIsFailClosedAndEnumerable(t *testing.T) {
 		// A path with the {id} wildcard filled in.
 		path := strings.ReplaceAll(route.Pattern, "{id}", "x")
 		w := do(t, h, route.Method, path, `{"url":"u"}`, "authed-but-ungranted")
-		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not_invited") {
-			t.Errorf("%s %s: status %d body %s, want 403 not_invited", route.Method, path, w.Code, w.Body.String())
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not_granted") {
+			t.Errorf("%s %s: status %d body %s, want 403 not_granted", route.Method, path, w.Code, w.Body.String())
 		}
 	}
 	// The open health check is reachable without a grant.
