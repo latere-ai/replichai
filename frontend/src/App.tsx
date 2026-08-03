@@ -239,6 +239,7 @@ function Shell({ i18n, me, theme, refreshMe }: { i18n: I18n; me: Me; theme: Retu
         {view.name === 'submit' && (
           <SubmitScreen
             i18n={i18n}
+            me={me}
             onSubmitted={(id) => {
               refreshMe()
               openProject(id)
@@ -479,17 +480,25 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
 type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
 
 // sessionErrLabel turns a per-paper error code from POST /projects into a short
-// human label.
-function sessionErrLabel(t: I18n['t'], code?: string): string {
+// human label. quota distinguishes an account that has spent its budget from
+// one that never had any (006q) — the same refusal, two different problems, and
+// only one of them is the person's own doing.
+export function sessionErrLabel(t: I18n['t'], code?: string, quota?: Quota): string {
   if (code === 'active_session') return t('errActiveSession')
   if (code === 'unresolvable_paper') return t('errUnresolvable')
   // A batch that outran the quota reports this per paper (006l AC8); without
   // the case it would read as "could not start", which is not what happened.
-  if (code === 'quota_exceeded') return t('errQuota')
+  if (code === 'quota_exceeded') return noBudgetYet(quota) ? t('errQuotaNone') : t('errQuota')
   return t('errEnqueue')
 }
 
-function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (projectId: string) => void }) {
+// noBudgetYet reports the state a new account arrives in since 006q: nothing
+// spent, and nothing to spend. It is not the same as running out.
+export function noBudgetYet(quota?: Quota): boolean {
+  return !!quota && !quota.unlimited && quota.limit === 0 && quota.used === 0
+}
+
+function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitted: (projectId: string) => void }) {
   const { t } = i18n
   const [title, setTitle] = useState('')
   const [rows, setRows] = useState<PaperRow[]>([{ url: '' }])
@@ -533,7 +542,7 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
       }
       // 422: every paper failed — surface the per-paper reasons on their rows.
       const byURL = new Map((data.sessions ?? []).map((s) => [s.url, s.error]))
-      setRows((rs) => rs.map((r) => (byURL.has(r.url.trim()) ? { ...r, error: sessionErrLabel(t, byURL.get(r.url.trim())) } : r)))
+      setRows((rs) => rs.map((r) => (byURL.has(r.url.trim()) ? { ...r, error: sessionErrLabel(t, byURL.get(r.url.trim()), me.quota) } : r)))
       setErr(t('allPapersFailed'))
     } catch {
       setErr(t('submitError'))
@@ -1403,19 +1412,28 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
 
 // QuotaPill shows what is left to spend, next to the button that spends it. An
 // admin (unlimited) gets no pill: there is no number to watch.
+//
+// A brand-new account and an exhausted one are different states and read
+// differently (006q). With sign-in open, most people's first sight of this pill
+// is at 0/0, and "0 sessions left" tells somebody who never had any that they
+// lost something. It says they have none yet, and how to get some.
 function QuotaPill({ i18n, quota }: { i18n: I18n; quota?: Quota }) {
   const { t } = i18n
   if (!quota || quota.unlimited) return null
   const left = Math.max(0, quota.limit - quota.used)
+  const none = quota.limit === 0 && quota.used === 0
   // Empty is an error, the last one is a warning, the rest is just a number.
   const state = left === 0 ? ' out' : left <= 1 ? ' low' : ''
   // Pinned to its own right edge: the pill sits near the viewport's, where a
   // centred bubble would hang off the screen.
   return (
-    <Tip align="end" text={t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}>
+    <Tip
+      align="end"
+      text={none ? t('quotaNoneTitle') : t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}
+    >
       <span className={'quota-pill' + state}>
         <Ico name={left === 0 ? 'alert' : 'wallet'} size={12} />
-        {t('quotaLeft', { n: String(left) })}
+        {none ? t('quotaNone') : t('quotaLeft', { n: String(left) })}
       </span>
     </Tip>
   )
@@ -1423,9 +1441,9 @@ function QuotaPill({ i18n, quota }: { i18n: I18n; quota?: Quota }) {
 
 // submitErrLabel names why a submit was refused, so "you are out of sessions"
 // never reads as "something went wrong".
-function submitErrLabel(t: I18n['t'], status: string): string {
+export function submitErrLabel(t: I18n['t'], status: string, quota?: Quota): string {
   if (status === '409') return t('activeSession')
-  if (status === '402') return t('quotaExhausted')
+  if (status === '402') return noBudgetYet(quota) ? t('errQuotaNone') : t('quotaExhausted')
   if (status === '403') return t('notSponsored')
   return t('submitError')
 }
@@ -1454,7 +1472,7 @@ function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me;
       setUrl('')
       onSubmitted()
     } catch (e) {
-      setErr(submitErrLabel(t, (e as Error).message))
+      setErr(submitErrLabel(t, (e as Error).message, me.quota))
     } finally {
       setBusy(false)
     }

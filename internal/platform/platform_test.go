@@ -133,9 +133,15 @@ func TestMemStoreSatisfiesTheContract(t *testing.T) {
 // AC3: the compiled-in default is conservative and finite — it is both the
 // value a fresh store starts at and the value a missing Postgres row falls back
 // to, so the two cannot drift into "unlimited by accident".
+//
+// Since 006q it is zero. Sign-in is open, so this number is no longer a second
+// lock behind an admin's guest list; it is the only one, and a stranger who
+// signs in must arrive with nothing to spend. A negative value would be worse
+// than useless (it would read as "owes sessions"), and any positive value would
+// hand every arrival free runs on the platform's credential.
 func TestFreshStoreStartsAtTheConservativeDefault(t *testing.T) {
-	if DefaultSessionQuota <= 0 {
-		t.Fatalf("DefaultSessionQuota = %d; the fallback must admit some work but never be unlimited", DefaultSessionQuota)
+	if DefaultSessionQuota != 0 {
+		t.Fatalf("DefaultSessionQuota = %d; with sign-in open a new arrival starts at 0", DefaultSessionQuota)
 	}
 	got, err := NewMemStore(nil).Settings(ctx)
 	if err != nil {

@@ -42,10 +42,17 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 	var tier Tier
 	var granted bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		// Already bound: resolve by principal.
+		// Already bound: resolve by principal. A revoked row resolves to nobody,
+		// exactly as a missing one does — the gate must not be able to tell the
+		// difference, and neither must a banned person.
 		var t int16
-		err := tx.QueryRow(ctx, `SELECT tier FROM access_grants WHERE principal=$1`, p.Sub).Scan(&t)
+		var revoked bool
+		err := tx.QueryRow(ctx,
+			`SELECT tier, revoked_at IS NOT NULL FROM access_grants WHERE principal=$1`, p.Sub).Scan(&t, &revoked)
 		if err == nil {
+			if revoked {
+				return nil
+			}
 			tier, granted = Tier(t), true
 			return nil
 		}
@@ -59,7 +66,8 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 		email := normalizeEmail(p.Email)
 		var principal *string
 		err = tx.QueryRow(ctx,
-			`SELECT tier, principal FROM access_grants WHERE email=$1 FOR UPDATE`, email).Scan(&t, &principal)
+			`SELECT tier, principal, revoked_at IS NOT NULL FROM access_grants WHERE email=$1 FOR UPDATE`,
+			email).Scan(&t, &principal, &revoked)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -67,6 +75,9 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 			return err
 		}
 		if principal != nil { // bound to someone else already
+			return nil
+		}
+		if revoked { // a ban is not an invitation to bind
 			return nil
 		}
 		if _, err := tx.Exec(ctx, `UPDATE access_grants SET principal=$1 WHERE email=$2`, p.Sub, email); err != nil {
@@ -105,13 +116,44 @@ func (s *PGAccess) Grant(ctx context.Context, byAdmin Principal, email string, t
 	return s.upsert(ctx, email, tier, byAdmin.Sub)
 }
 
-// Revoke removes a grant by email. Admin only; idempotent.
+// Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
+// records rather than deletes.
+//
+// The WHERE clause is what makes a second revocation a no-op rather than a
+// rewrite of when the first happened. The binding is deliberately left in
+// place: it is what keeps a re-login by the same person landing on this row
+// instead of creating a fresh, unrevoked one.
 func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
 	}
-	_, err := s.pool.Exec(ctx, `DELETE FROM access_grants WHERE email=$1`, normalizeEmail(email))
+	_, err := s.pool.Exec(ctx, `
+		UPDATE access_grants SET revoked_at=$1, revoked_by=$2, tier=$3
+		WHERE email=$4 AND revoked_at IS NULL`,
+		s.clock(), byAdmin.Sub, int16(TierNone), normalizeEmail(email))
 	return err
+}
+
+// SelfGrant admits a principal who has just proven their identity (006q).
+//
+// One statement, so two concurrent sign-ins cannot both insert: the conflict
+// clause updates nothing, which leaves a seeded admin at their tier and a
+// revoked address revoked. The follow-up Resolve is what binds and reports.
+func (s *PGAccess) SelfGrant(ctx context.Context, p Principal) (Tier, bool, error) {
+	if tier, ok, err := s.Resolve(ctx, p); err != nil || ok {
+		return tier, ok, err
+	}
+	email := normalizeEmail(p.Email)
+	if p.Sub == "" || email == "" {
+		return TierNone, false, nil
+	}
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO access_grants (email, tier, granted_by, granted_at) VALUES ($1,$2,$3,$4)
+		ON CONFLICT (email) DO NOTHING`,
+		email, int16(TierUser), "self", s.clock()); err != nil {
+		return TierNone, false, err
+	}
+	return s.Resolve(ctx, p)
 }
 
 // List returns every grant, sorted by email. Admin only.
@@ -120,7 +162,8 @@ func (s *PGAccess) List(ctx context.Context, byAdmin Principal) ([]Grant, error)
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT email, COALESCE(principal,''), tier, granted_by, granted_at FROM access_grants ORDER BY email`)
+		`SELECT email, COALESCE(principal,''), tier, granted_by, granted_at, revoked_at, revoked_by
+		 FROM access_grants ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +172,7 @@ func (s *PGAccess) List(ctx context.Context, byAdmin Principal) ([]Grant, error)
 	for rows.Next() {
 		var g Grant
 		var t int16
-		if err := rows.Scan(&g.Email, &g.Principal, &t, &g.GrantedBy, &g.GrantedAt); err != nil {
+		if err := rows.Scan(&g.Email, &g.Principal, &t, &g.GrantedBy, &g.GrantedAt, &g.RevokedAt, &g.RevokedBy); err != nil {
 			return nil, err
 		}
 		g.Tier = Tier(t)
@@ -161,11 +204,15 @@ func (s *PGAccess) LinkAccount(ctx context.Context, principalSub, forge, login s
 	return err
 }
 
-// upsert writes a grant's tier while preserving any binding.
+// upsert writes a grant's tier while preserving any binding, and clears any
+// revocation: granting is how an admin re-admits somebody, so the two cannot be
+// true of one row at once.
 func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO access_grants (email, tier, granted_by, granted_at) VALUES ($1,$2,$3,$4)
-		ON CONFLICT (email) DO UPDATE SET tier=EXCLUDED.tier, granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at`,
+		ON CONFLICT (email) DO UPDATE SET
+			tier=EXCLUDED.tier, granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at,
+			revoked_at=NULL, revoked_by=''`,
 		email, int16(tier), by, s.clock())
 	return err
 }

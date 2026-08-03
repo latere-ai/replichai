@@ -26,7 +26,13 @@ import (
 // seeded with, and the value a failed or missing read resolves to. The two are
 // the same constant so they cannot drift, and neither is "unlimited" — a quota
 // that disappears when Postgres hiccups is not a quota.
-const DefaultSessionQuota = 3
+//
+// It is zero since 006q. Sign-in is open, so this number is no longer a second
+// lock behind an admin's guest list — it is the only lock, and a new arrival
+// must start with nothing to spend. Budget arrives by an admin top-up or a
+// project owner's sponsorship, and an admin can raise the platform-wide default
+// at runtime if that is ever the right policy.
+const DefaultSessionQuota = 0
 
 // Errors this package returns.
 var (

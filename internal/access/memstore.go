@@ -70,7 +70,11 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 
 	// Already bound: resolve by principal, never by email again (one-way).
 	if email, ok := s.principalEmail[p.Sub]; ok {
-		return s.grants[email].Tier, true, nil
+		g := s.grants[email]
+		if g.Revoked() {
+			return TierNone, false, nil
+		}
+		return g.Tier, true, nil
 	}
 	// Seed by the IdP-authenticated email, and only if the grant is not already
 	// bound to someone else — a second principal is refused, not admitted onto
@@ -87,6 +91,30 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 		}
 	}
 	return TierNone, false, nil
+}
+
+// SelfGrant admits a principal who has just proven their identity (006q).
+func (s *MemStore) SelfGrant(ctx context.Context, p Principal) (Tier, bool, error) {
+	// An existing grant — seeded, granted, or already self-granted — is resolved
+	// and left exactly as it is. Only an address nobody has a row for is new.
+	if tier, ok, err := s.Resolve(ctx, p); err != nil || ok {
+		return tier, ok, err
+	}
+	email := normalizeEmail(p.Email)
+	if p.Sub == "" || email == "" {
+		return TierNone, false, nil
+	}
+	s.mu.Lock()
+	if g, exists := s.grants[email]; exists {
+		// Revoked, or bound to somebody else. Either way this is not a new
+		// arrival and self-granting would undo a decision somebody made.
+		s.mu.Unlock()
+		_ = g
+		return TierNone, false, nil
+	}
+	s.upsert(email, TierUser, "self")
+	s.mu.Unlock()
+	return s.Resolve(ctx, p)
 }
 
 // EmailOf returns the email a bound principal came in on. It is a read of the
@@ -116,7 +144,8 @@ func (s *MemStore) Grant(ctx context.Context, byAdmin Principal, email string, t
 	return nil
 }
 
-// Revoke removes a grant by email. Admin only; idempotent.
+// Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
+// records rather than deletes.
 func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
@@ -124,12 +153,17 @@ func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) 
 	email = normalizeEmail(email)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if g, ok := s.grants[email]; ok {
-		if g.Principal != "" {
-			delete(s.principalEmail, g.Principal)
-		}
-		delete(s.grants, email)
+	g, ok := s.grants[email]
+	if !ok || g.Revoked() {
+		// Nothing to ban, or already banned: the first revocation is the one
+		// that counts, and a second must not rewrite when it happened.
+		return nil
 	}
+	at := s.clock()
+	g.RevokedAt, g.RevokedBy, g.Tier = &at, byAdmin.Sub, TierNone
+	s.grants[email] = g
+	// The binding stays. It is what keeps a re-login by the same person landing
+	// on the revoked row instead of creating a fresh one.
 	return nil
 }
 
@@ -167,14 +201,16 @@ func (s *MemStore) LinkAccount(_ context.Context, principalSub, forge, login str
 	return nil
 }
 
-// upsert writes a grant's tier while preserving any existing binding. Caller
-// holds the lock.
+// upsert writes a grant's tier while preserving any existing binding, and
+// clears any revocation: granting is how an admin re-admits somebody, so the
+// two cannot be true at once. Caller holds the lock.
 func (s *MemStore) upsert(email string, tier Tier, by string) {
 	g := s.grants[email] // zero value when new
 	g.Email = email
 	g.Tier = tier
 	g.GrantedBy = by
 	g.GrantedAt = s.clock()
+	g.RevokedAt, g.RevokedBy = nil, ""
 	s.grants[email] = g
 }
 

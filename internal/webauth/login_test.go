@@ -174,6 +174,117 @@ func TestCallbackBindsProjectMemberships(t *testing.T) {
 	}
 }
 
+// 006q: signing in admits you. Before this, a stranger who proved their
+// identity was refused by the gate until an admin added them by hand, which
+// made every evaluation of the product a support ticket — and made a project
+// invitation a promise the platform could not keep.
+func TestCallbackAdmitsAnyoneWhoSignsIn(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	acc := access.NewMemStore()
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "newcomer", Email: "new@example.com"}}
+	l := NewLogin(client, codec, acc, "https://replichai.latere.ai", false, nil)
+
+	p := access.Principal{Sub: "newcomer", Email: "new@example.com"}
+	if _, ok, _ := acc.Resolve(ctx, p); ok {
+		t.Fatal("precondition: nobody has granted this person anything")
+	}
+
+	callback(t, l)
+
+	tier, ok, err := acc.Resolve(ctx, p)
+	if err != nil || !ok || tier != access.TierUser {
+		t.Fatalf("after signing in: %s/%v/%v, want user", tier, ok, err)
+	}
+	// The gate is untouched and still resolves per request — the sign-in only
+	// created the row it now finds.
+	if allowed, reason := Gate(acc).Allow(requestAs(&httpapi.Identity{Sub: p.Sub, Email: p.Email})); !allowed {
+		t.Errorf("the gate refused a signed-in principal: %q", reason)
+	}
+}
+
+// A seeded admin must not be demoted by their own first login.
+func TestCallbackDoesNotDemoteASeededAdmin(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	acc := access.NewMemStore()
+	if err := acc.SeedGrant(ctx, "boss@example.com", access.TierAdmin); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "boss", Email: "boss@example.com"}}
+	l := NewLogin(client, codec, acc, "https://replichai.latere.ai", false, nil)
+
+	callback(t, l)
+
+	tier, ok, _ := acc.Resolve(ctx, access.Principal{Sub: "boss", Email: "boss@example.com"})
+	if !ok || tier != access.TierAdmin {
+		t.Fatalf("admin after signing in = %s/%v, want admin", tier, ok)
+	}
+}
+
+// A ban has to survive a re-login, or it is a logout.
+func TestCallbackDoesNotReadmitARevokedPrincipal(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	acc := access.NewMemStore()
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if err := acc.SeedGrant(ctx, admin.Email, access.TierAdmin); err != nil {
+		t.Fatalf("seed admin: %v", err)
+	}
+	if _, _, err := acc.Resolve(ctx, admin); err != nil {
+		t.Fatalf("bind admin: %v", err)
+	}
+	if err := acc.Grant(ctx, admin, "banned@example.com", access.TierUser); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	if err := acc.Revoke(ctx, admin, "banned@example.com"); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "banned-sub", Email: "banned@example.com"}}
+	l := NewLogin(client, codec, acc, "https://replichai.latere.ai", false, nil)
+	callback(t, l)
+
+	p := access.Principal{Sub: "banned-sub", Email: "banned@example.com"}
+	if tier, ok, _ := acc.Resolve(ctx, p); ok || tier != access.TierNone {
+		t.Fatalf("a revoked address signed itself back in: %s/%v", tier, ok)
+	}
+	if allowed, _ := Gate(acc).Allow(requestAs(&httpapi.Identity{Sub: p.Sub, Email: p.Email})); allowed {
+		t.Error("the gate admitted a revoked principal")
+	}
+}
+
+// An access store that is down costs the admission, never the sign-in: the
+// session is still established and the next request retries the grant.
+func TestCallbackSurvivesAnAdmissionFailure(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "u1", Email: "u@example.com"}}
+	l := NewLogin(client, codec, failingAccess{Access: access.NewMemStore()}, "https://replichai.latere.ai", false, nil)
+
+	w := callback(t, l)
+	if findCookie(w, cookieName(sessionCookie, false)) == "" {
+		t.Error("the session cookie must still be set when the grant store is down")
+	}
+}
+
+// failingAccess fails only the admission.
+type failingAccess struct{ access.Access }
+
+func (failingAccess) SelfGrant(context.Context, access.Principal) (access.Tier, bool, error) {
+	return access.TierNone, false, errors.New("grant store is down")
+}
+
+// callback drives one complete OIDC callback and asserts it redirected.
+func callback(t *testing.T, l *Login) *httptest.ResponseRecorder {
+	t.Helper()
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
+	w := httptest.NewRecorder()
+	l.HandleCallback(w, r)
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want a redirect", w.Code)
+	}
+	return w
+}
+
 // A membership store that is down costs a collaborator one sign-in, never the
 // sign-in itself.
 func TestCallbackSurvivesABindFailure(t *testing.T) {
