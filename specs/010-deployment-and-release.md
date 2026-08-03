@@ -20,7 +20,7 @@
 
 **Migrations run at startup, so a deploy is the whole install.** The server applies the job and access schemas on boot (`job.Migrate`, `access.Migrate`), each in its own version namespace on the shared database. There is no separate migration job or step — `docker compose up` locally and a pod roll in production both migrate before serving, which is what lets the release pipeline be a plain image roll.
 
-**The ingress is tuned for streaming and long runs.** SSE and audits that run for up to an hour need the proxy to not buffer and not time out: the ingress disables response buffering and sets a one-hour read/send timeout, so `/jobs/{id}/events` streams live and a run's progress is never cut mid-flight.
+**The ingress is tuned for streaming and long runs.** SSE needs the proxy to not buffer and not time out: the ingress disables response buffering and sets a one-hour read/send timeout, so `/jobs/{id}/events` streams live rather than arriving in one lump at the end. The run itself is not bounded by that hour — a session outlives its watchers by design (006b), and the browser's `EventSource` reconnects when the proxy drops an idle stream, so the viewer picks the run back up where it is.
 
 **A modest connection budget.** The shared cluster has ~25 Postgres slots across every service, so the `replichai-db` DSN pins `pool_max_conns=5` (pgx honours it), keeping replichai a good citizen without a per-service pool cluster.
 
