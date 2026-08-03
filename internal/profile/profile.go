@@ -37,6 +37,18 @@ var (
 	ErrInvalidORCID = errors.New("orcid must look like 0000-0002-1825-0097")
 	// ErrInvalidScholar reports a URL that is not a Google Scholar profile.
 	ErrInvalidScholar = errors.New("scholar must be a scholar.google URL")
+	// ErrInvalidHandle reports a handle that is not a usable public name.
+	ErrInvalidHandle = errors.New("handle must be 3-39 characters of a-z, 0-9 and -")
+	// ErrHandleReserved reports a handle that would shadow one of the app's own
+	// paths.
+	ErrHandleReserved = errors.New("that handle is reserved")
+	// ErrHandleTaken reports a handle somebody else already holds. It is
+	// returned by the store, which is the only place that can know.
+	ErrHandleTaken = errors.New("that handle is already taken")
+	// ErrNotFound reports a public profile that does not exist, is private, or
+	// has no handle — deliberately one error for all three, so the public
+	// endpoint cannot be used to enumerate handles.
+	ErrNotFound = errors.New("no such public profile")
 )
 
 // Profile is one principal's self-asserted researcher identity. Every field is
@@ -51,6 +63,20 @@ type Profile struct {
 	ORCID       string    `json:"orcid,omitempty"`
 	Scholar     string    `json:"scholar_url,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitzero"`
+
+	// Handle is this researcher's public name — the /u/{handle} their published
+	// sign-offs link to (006r). Unique across the platform, chosen and editable
+	// by its owner, and empty until they pick one.
+	//
+	// It exists because a profile is keyed by an OIDC subject, which cannot go
+	// in a URL: it is unreadable, and it is the identity provider's internal
+	// identifier. A handle is the one identifier somebody can put in a CV.
+	Handle string `json:"handle,omitempty"`
+	// Public is whether this profile has a page at all. False by default: what
+	// becomes visible when it is turned on is not new information — every field
+	// is already published on any sign-off — it is the *aggregation*, and that
+	// is a decision its owner makes rather than one the platform makes for them.
+	Public bool `json:"public"`
 }
 
 // Store holds one profile per principal.
@@ -60,8 +86,35 @@ type Store interface {
 	// publish wizard have something to render on first use.
 	Get(ctx context.Context, principal string) (Profile, error)
 	// Save writes a principal's profile, replacing any previous one. It validates
-	// first, so an invalid identifier never reaches the table.
+	// first, so an invalid identifier never reaches the table, and returns
+	// ErrHandleTaken when the handle belongs to somebody else.
 	Save(ctx context.Context, p Profile) (Profile, error)
+	// ByHandle resolves a *public* profile by its handle, for the page anyone
+	// may read (006r). It returns ErrNotFound for an unknown handle and for a
+	// private one alike: distinguishing them would turn this into a way to
+	// enumerate who holds which handle.
+	ByHandle(ctx context.Context, handle string) (Profile, error)
+	// PrincipalHandle returns the public handle of a principal, if they have one
+	// and their profile is public. It is how a sign-off links to its signer
+	// without snapshotting a handle onto the project — the link resolves through
+	// the profile as it is now, which is what makes it a live link rather than a
+	// second, staler copy of the same person (006n).
+	PrincipalHandle(ctx context.Context, principal string) (string, bool, error)
+}
+
+// handlePattern is what may appear in a public URL: lowercase, digits, and
+// hyphens, long enough to be a name and short enough to be one line.
+var handlePattern = regexp.MustCompile(`^[a-z0-9-]{3,39}$`)
+
+// reservedHandles are the app's own first path segments. A profile at /u/ can
+// never shadow a route today, but the list is kept because these are also the
+// names most likely to be squatted by somebody impersonating the platform.
+var reservedHandles = map[string]bool{
+	"admin": true, "api": true, "public": true, "settings": true, "projects": true,
+	"u": true, "me": true, "login": true, "logout": true, "callback": true,
+	"healthz": true, "shared": true, "jobs": true, "papers": true, "resolve": true,
+	"profiles": true, "new": true, "about": true, "support": true, "replichai": true,
+	"latere": true,
 }
 
 // orcidPattern is the ORCID iD form: four groups of four, the last character a
@@ -81,6 +134,7 @@ func (p Profile) Normalize() Profile {
 	p.Contact = strings.ToLower(strings.TrimSpace(p.Contact))
 	p.ORCID = strings.ToUpper(strings.TrimSpace(p.ORCID))
 	p.Scholar = strings.TrimSpace(p.Scholar)
+	p.Handle = strings.ToLower(strings.TrimSpace(p.Handle))
 	return p
 }
 
@@ -101,7 +155,48 @@ func (p Profile) Validate() error {
 			return err
 		}
 	}
+	if p.Handle != "" {
+		if err := ValidateHandle(p.Handle); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// ValidateHandle reports whether a handle may appear in a public URL. Shape
+// first, then the reserved list, so the more specific message wins.
+func ValidateHandle(handle string) error {
+	if !handlePattern.MatchString(handle) {
+		return ErrInvalidHandle
+	}
+	if reservedHandles[handle] {
+		return ErrHandleReserved
+	}
+	return nil
+}
+
+// PublicProfile is what a stranger sees at /u/{handle}: the self-asserted
+// identity, and the public work signed under it.
+//
+// The contact is rendered in full, exactly as a sign-off card renders it — it
+// was published for inquiries. The account email never appears: that is what
+// the redacted signer email on an attestation is for, and it stays there, where
+// it identifies a signature rather than naming a person.
+type PublicProfile struct {
+	Handle      string         `json:"handle"`
+	DisplayName string         `json:"display_name,omitempty"`
+	Institution string         `json:"institution,omitempty"`
+	Contact     string         `json:"contact_email,omitempty"`
+	ORCID       string         `json:"orcid,omitempty"`
+	Scholar     string         `json:"scholar_url,omitempty"`
+	Projects    []PublicSigned `json:"projects"`
+}
+
+// PublicSigned is one public project this researcher signed.
+type PublicSigned struct {
+	ID          string     `json:"id"`
+	Title       string     `json:"title"`
+	SignedOffAt *time.Time `json:"signed_off_at,omitempty"`
 }
 
 // ValidateContact reports whether an address is a single, plain email — the

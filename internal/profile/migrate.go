@@ -29,6 +29,18 @@ CREATE TABLE profiles (
 	updated_at    TIMESTAMPTZ NOT NULL
 );
 `},
+	{2, `
+-- The public profile (006r): a handle that can go in a URL, and the decision to
+-- have a page at all.
+--
+-- handle is NULL rather than '' when unset, so the unique index constrains only
+-- the people who chose one — many empty strings would collide, many NULLs do
+-- not. public defaults to false: a profile that was private yesterday must not
+-- become a page because a migration ran.
+ALTER TABLE profiles ADD COLUMN handle TEXT;
+ALTER TABLE profiles ADD COLUMN public BOOLEAN NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX profiles_handle_key ON profiles (handle);
+`},
 }
 
 // Migrate applies the profile schema. Safe to run on every startup.

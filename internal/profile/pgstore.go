@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -23,16 +24,31 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 }
 
 // profileColumns is the column list every read selects, in scan order.
-const profileColumns = `principal, display_name, institution, contact_email, orcid, scholar_url, updated_at`
+const profileColumns = `principal, display_name, institution, contact_email, orcid, scholar_url, updated_at, handle, public`
 
 // scanProfile reads one row in profileColumns order.
 func scanProfile(row pgx.Row) (Profile, error) {
 	var p Profile
-	err := row.Scan(&p.Principal, &p.DisplayName, &p.Institution, &p.Contact, &p.ORCID, &p.Scholar, &p.UpdatedAt)
+	// handle is NULL when unset, so the unique index constrains only the people
+	// who chose one; it reads back as the empty string.
+	var handle *string
+	err := row.Scan(&p.Principal, &p.DisplayName, &p.Institution, &p.Contact, &p.ORCID, &p.Scholar,
+		&p.UpdatedAt, &handle, &p.Public)
 	if err != nil {
 		return Profile{}, err
 	}
+	if handle != nil {
+		p.Handle = *handle
+	}
 	return p, nil
+}
+
+// nullableHandle maps the empty handle to NULL on the way in.
+func nullableHandle(handle string) *string {
+	if handle == "" {
+		return nil
+	}
+	return &handle
 }
 
 // Get returns a principal's profile, or the zero profile if they have none —
@@ -58,16 +74,67 @@ func (s *PGStore) Save(ctx context.Context, p Profile) (Profile, error) {
 		return Profile{}, err
 	}
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO profiles (principal, display_name, institution, contact_email, orcid, scholar_url, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO profiles (principal, display_name, institution, contact_email, orcid, scholar_url, updated_at, handle, public)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (principal) DO UPDATE SET
 			display_name  = EXCLUDED.display_name,
 			institution   = EXCLUDED.institution,
 			contact_email = EXCLUDED.contact_email,
 			orcid         = EXCLUDED.orcid,
 			scholar_url   = EXCLUDED.scholar_url,
-			updated_at    = EXCLUDED.updated_at
+			updated_at    = EXCLUDED.updated_at,
+			handle        = EXCLUDED.handle,
+			public        = EXCLUDED.public
 		RETURNING `+profileColumns,
-		p.Principal, p.DisplayName, p.Institution, p.Contact, p.ORCID, p.Scholar, s.clock())
-	return scanProfile(row)
+		p.Principal, p.DisplayName, p.Institution, p.Contact, p.ORCID, p.Scholar, s.clock(),
+		nullableHandle(p.Handle), p.Public)
+	saved, err := scanProfile(row)
+	if err != nil && isUniqueViolation(err) {
+		// The unique index is the authority on who holds a handle, not a
+		// read-then-write in this function: two people claiming one name in the
+		// same instant must not both succeed.
+		return Profile{}, ErrHandleTaken
+	}
+	return saved, err
+}
+
+// isUniqueViolation reports whether an error is Postgres' unique-constraint code.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// ByHandle resolves a public profile by handle. A private profile and an
+// unknown handle are one error on purpose.
+func (s *PGStore) ByHandle(ctx context.Context, handle string) (Profile, error) {
+	handle = strings.ToLower(strings.TrimSpace(handle))
+	if handle == "" {
+		return Profile{}, ErrNotFound
+	}
+	p, err := scanProfile(s.pool.QueryRow(ctx,
+		`SELECT `+profileColumns+` FROM profiles WHERE handle = $1 AND public`, handle))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
+	return p, nil
+}
+
+// PrincipalHandle returns a principal's handle when their profile is public.
+func (s *PGStore) PrincipalHandle(ctx context.Context, principal string) (string, bool, error) {
+	var handle *string
+	err := s.pool.QueryRow(ctx,
+		`SELECT handle FROM profiles WHERE principal = $1 AND public`, principal).Scan(&handle)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if handle == nil || *handle == "" {
+		return "", false, nil
+	}
+	return *handle, true, nil
 }

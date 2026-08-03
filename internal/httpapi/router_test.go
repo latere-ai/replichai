@@ -31,6 +31,22 @@ func testDeps(gate Gate) Deps {
 	}
 }
 
+// publishable gives a principal the public profile 006r requires before they
+// may sign a project public. Every publish test needs it, so it is one helper
+// rather than five copies of the same three lines.
+func publishable(t *testing.T, d Deps, principal, handle string) {
+	t.Helper()
+	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
+		Principal:   principal,
+		DisplayName: "Ada Lovelace",
+		Contact:     "ada@example.org",
+		Handle:      handle,
+		Public:      true,
+	}); err != nil {
+		t.Fatalf("save publishable profile: %v", err)
+	}
+}
+
 type fakeRepro struct{ getErr, transcriptErr error }
 
 func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
@@ -262,6 +278,7 @@ func TestMakeProjectPublic(t *testing.T) {
 	// A project whose one session cleared the gate (fake repro r1, CanPublish).
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
 	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	publishable(t, d, "me", "ada")
 
 	// A non-owner is refused, and nothing changes.
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "stranger"); w.Code != http.StatusForbidden {
@@ -331,6 +348,8 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 	d.RepoPublisher = pub
 	h := NewRouter(d).Handler()
 
+	publishable(t, d, "me", "ada")
+
 	// Default (flip_repo omitted): the repository is flipped.
 	p1, _ := d.Projects.Create(context.Background(), "me", "One")
 	_ = publishInto(t, d.Jobs, "me", p1.ID, "r1")
@@ -365,6 +384,7 @@ func TestWithdrawProject(t *testing.T) {
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
 	sess := publishInto(t, d.Jobs, "me", p.ID, "r1")
+	publishable(t, d, "me", "ada")
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
 		t.Fatalf("publish: status %d", w.Code)
 	}
@@ -446,6 +466,7 @@ func TestRepublishAfterWithdrawal(t *testing.T) {
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
 	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	publishable(t, d, "me", "ada")
 	_ = do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me")
 	_ = do(t, h, "POST", "/projects/"+p.ID+"/private", `{"reason":"second thoughts"}`, "me")
 
@@ -499,6 +520,7 @@ func TestWithdrawReasonIsCapped(t *testing.T) {
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
 	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+	publishable(t, d, "me", "ada")
 	_ = do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me")
 
 	long := strings.Repeat("x", maxWithdrawReason+500)
@@ -540,6 +562,7 @@ func TestPublicZone(t *testing.T) {
 	h := NewRouter(d).Handler()
 	pub, _ := d.Projects.Create(context.Background(), "owner", "Public one")
 	_ = publishInto(t, d.Jobs, "owner", pub.ID, "r1")
+	publishable(t, d, "owner", "ada")
 	_ = do(t, h, "POST", "/projects/"+pub.ID+"/public", signOff, "owner")
 	_, _ = d.Projects.Create(context.Background(), "owner", "Private one")
 
@@ -631,6 +654,7 @@ func TestPublicFlipRecordsTheSigner(t *testing.T) {
 	owner := Identity{Sub: "owner-sub", Email: "ada.lovelace@example.org"}
 	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Owned")
 	_ = publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	publishable(t, d, owner.Sub, "ada")
 
 	// No contact: refused. Publishing a result with no way to ask about it is
 	// what this requirement exists to stop.
@@ -686,6 +710,7 @@ func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
 	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
 	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Owned")
 	_ = publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	publishable(t, d, owner.Sub, "ada")
 
 	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada Lovelace","institution":"LMU Munich","contact_email":"ada@example.org"}`, owner); w.Code != http.StatusOK {
 		t.Fatalf("save profile: %d", w.Code)
