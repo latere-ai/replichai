@@ -76,14 +76,41 @@ export type Profile = {
   contact_email?: string
   orcid?: string
   scholar_url?: string
+  // The public page (006r): a handle that can go in a URL, and whether there is
+  // a page at all. A profile is private until its owner says otherwise.
+  handle?: string
+  public?: boolean
 }
 
-export type ProjectView = Project & { session_count: number; running: number; latest_phase?: string }
+// PublicProfile is what a stranger reads at /u/{handle}: the self-asserted
+// identity, and the public work signed under it. The account email is never
+// here — that is what the redacted signer email on an attestation is for.
+export type PublicProfile = {
+  handle: string
+  display_name?: string
+  institution?: string
+  contact_email?: string
+  orcid?: string
+  scholar_url?: string
+  projects: PublicSigned[]
+}
+
+export type PublicSigned = { id: string; title: string; signed_off_at?: string }
+
+// signer_handle is where the signer's name links (006r). It is resolved on
+// every read from the signer's current profile and never snapshotted — so a
+// profile going private removes the link and changes nothing on the record.
+export type ProjectView = Project & {
+  session_count: number
+  running: number
+  latest_phase?: string
+  signer_handle?: string
+}
 
 // may_submit is the server's answer to "may this caller open a session here" —
 // owner or collaborator. A public project is readable by everyone, so the
 // client cannot infer it (006l).
-export type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean }
+export type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean; signer_handle?: string }
 
 // A project member: the seeded email, the role (1 = collaborator, 2 = lead), and
 // whether they have signed in yet (bound).
@@ -235,6 +262,12 @@ export const saveProfile = (p: Profile) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(p),
   }).then(json<Profile>)
+
+// A researcher's public page. Open — no sign-in — so a reader who followed a
+// link from a published reproduction can look up who signed it. An unknown
+// handle and a private profile are the same 404 on purpose.
+export const getPublicProfile = (handle: string) =>
+  fetch(`/profiles/${encodeURIComponent(handle)}`).then(json<PublicProfile>)
 
 // The current responsibility-attestation text version the sign-off records. v2
 // added the signer snapshot and the published contact, so the text a signer

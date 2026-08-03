@@ -9,6 +9,7 @@ import {
   getJob,
   getMe,
   getProfile,
+  getPublicProfile,
   getProject,
   getPlatformSettings,
   getReproduction,
@@ -28,6 +29,7 @@ import {
   sponsorProject,
   revokeAccess,
   saveProfile,
+  type PublicProfile,
   setPlatformSettings,
   setTopup,
   submitPaper,
@@ -94,10 +96,22 @@ function phaseIcon(phase: string): IconName {
   return 'clock'
 }
 
+// publicHandleFromPath reads a researcher's handle out of the address bar.
+//
+// Navigation inside the app is state rather than a router, but a profile page
+// is not internal navigation: it is a link on a published attestation that a
+// stranger follows from somewhere else, so it has to be a real URL that works
+// on a cold load and without signing in.
+export function publicHandleFromPath(pathname: string): string {
+  const m = /^\/u\/([^/?#]+)\/?$/.exec(pathname)
+  return m ? decodeURIComponent(m[1]).toLowerCase() : ''
+}
+
 export default function App() {
   const i18n = useI18n()
   const theme = useTheme()
   const [me, setMe] = useState<Me | null>(null)
+  const handle = publicHandleFromPath(window.location.pathname)
 
   // refreshMe re-reads the identity, and with it the remaining quota — called
   // after anything that spends allowance, so the header never shows a stale
@@ -108,6 +122,10 @@ export default function App() {
   useEffect(() => {
     getMe().then(setMe).catch(() => setMe({ authenticated: false }))
   }, [])
+
+  // A researcher's page renders before every auth gate: it is public, and a
+  // reader who followed a link from a paper has no account to sign in to.
+  if (handle) return <PublicProfileScreen i18n={i18n} handle={handle} />
 
   if (me === null) return <div className="center-load">…</div>
   if (!me.authenticated) return <SignIn i18n={i18n} />
@@ -126,6 +144,125 @@ function ThemeSwitcher({ i18n, theme, compact }: { i18n: I18n; theme: ReturnType
     { value: 'dark', label: t('themeDark'), icon: 'moon', hint: t('themeDark') },
   ]
   return <Segmented value={theme.mode} options={options} onChange={theme.setMode} label={t('theme')} compact={compact} />
+}
+
+/* ─── The public profile (006r) ─── */
+
+// PublicProfileScreen is a researcher's page: who they say they are, and the
+// public work signed under that name. It renders for a signed-out reader, so it
+// carries its own frame rather than the app shell's.
+//
+// Nothing here is verified — the platform does not check that somebody works
+// where they say they work, exactly as a preprint server does not. What it does
+// guarantee is that the work listed is public and was signed by this person.
+function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
+  const { t } = i18n
+  const [p, setP] = useState<PublicProfile | null>(null)
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    getPublicProfile(handle)
+      .then(setP)
+      .catch(() => setMissing(true))
+  }, [handle])
+
+  if (missing) {
+    return (
+      <div className="auth-center">
+        <div className="auth-card">
+          <Logo big />
+          <h2>{t('profileNotFound')}</h2>
+          <p>{t('profileNotFoundBody')}</p>
+          <a className="btn ghost" href="/" style={{ justifyContent: 'center' }}>
+            {t('profileBackHome')}
+          </a>
+        </div>
+      </div>
+    )
+  }
+  if (!p) return <div className="center-load">…</div>
+
+  const rows: { label: string; node: React.ReactNode }[] = []
+  if (p.contact_email)
+    rows.push({ label: t('signedOffContact'), node: <a href={`mailto:${p.contact_email}`}>{p.contact_email}</a> })
+  if (p.orcid)
+    rows.push({
+      label: t('signedOffOrcid'),
+      node: (
+        <a href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer noopener">
+          {p.orcid}
+        </a>
+      ),
+    })
+  if (p.scholar_url) {
+    let host = p.scholar_url
+    try {
+      host = new URL(p.scholar_url).hostname
+    } catch {
+      /* keep the raw value if it will not parse */
+    }
+    rows.push({
+      label: t('signedOffScholar'),
+      node: (
+        <a href={p.scholar_url} target="_blank" rel="noreferrer noopener">
+          {host}
+        </a>
+      ),
+    })
+  }
+
+  return (
+    <div className="screen" style={{ maxWidth: 720, margin: '0 auto' }}>
+      <div className="screen-head">
+        <a className="btn ghost" href="/">
+          <Ico name="globe" size={13} /> replichai
+        </a>
+      </div>
+      <div className="card card-pad stack" style={{ gap: 14 }}>
+        <div className="profile-head">
+          <Initials email={p.display_name || p.handle} />
+          <div className="profile-id">
+            <div className="profile-name">{p.display_name || p.handle}</div>
+            {p.institution && <div className="profile-email">{p.institution}</div>}
+            <div className="profile-email mono">@{p.handle}</div>
+          </div>
+        </div>
+        {rows.length > 0 && (
+          <div className="usage-rows">
+            {rows.map((r) => (
+              <div key={r.label} className="usage-line">
+                {r.label}
+                <span className="v">{r.node}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <span className="muted small" style={{ lineHeight: 1.6 }}>
+          {t('profileUnverified')}
+        </span>
+      </div>
+
+      <div className="card card-pad stack">
+        <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
+          <Ico name="globe" size={12} /> {t('profileSignedWork')}
+        </span>
+        {p.projects.length === 0 ? (
+          <Empty icon="globe" text={t('profileNoSignedWork')} />
+        ) : (
+          <div className="stack" style={{ gap: 8 }}>
+            {p.projects.map((proj) => (
+              <a key={proj.id} className="member-row" href={`/?project=${encodeURIComponent(proj.id)}`}>
+                <span className="member-email">{proj.title}</span>
+                {proj.signed_off_at && (
+                  <span className="muted small">{new Date(proj.signed_off_at).toLocaleDateString()}</span>
+                )}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 /* ─── Auth screens ─── */
@@ -458,7 +595,18 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row-title">{p.title}</div>
                   <div className="row-sub">
-                    {t('initiator')}: {signerOf(p)} · {t('sessionCount', { n: String(p.session_count) })}
+                    {t('initiator')}:{' '}
+                    {p.signer_handle ? (
+                      // The link opens the signer's page rather than the
+                      // project, so the click is stopped from bubbling into the
+                      // row's own handler.
+                      <a href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
+                        {signerOf(p)}
+                      </a>
+                    ) : (
+                      signerOf(p)
+                    )}{' '}
+                    · {t('sessionCount', { n: String(p.session_count) })}
                   </div>
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
@@ -683,6 +831,9 @@ function profileErrorText(t: I18n['t'], code: string) {
   if (code.includes('invalid_contact')) return t('errInvalidContact')
   if (code.includes('invalid_orcid')) return t('errInvalidOrcid')
   if (code.includes('invalid_scholar')) return t('errInvalidScholar')
+  if (code.includes('handle_taken')) return t('errHandleTaken')
+  if (code.includes('handle_reserved')) return t('errHandleReserved')
+  if (code.includes('invalid_handle')) return t('errInvalidHandle')
   return t('profileSaveError')
 }
 
@@ -703,8 +854,13 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
       .catch(() => setP({}))
   }, [])
 
-  const set = (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const set = (k: TextField) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setP((cur) => ({ ...(cur ?? {}), [k]: e.target.value }))
+    setSaved(false)
+    setErr('')
+  }
+  const setPublic = (on: boolean) => {
+    setP((cur) => ({ ...(cur ?? {}), public: on }))
     setSaved(false)
     setErr('')
   }
@@ -735,6 +891,24 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
         </p>
       </div>
       <ProfileFields i18n={i18n} p={p} set={set} />
+
+      {/* The page is a decision, not a field. What turning it on publishes is
+          not new — every one of these fields already appears on any sign-off —
+          it is the aggregation, and that is its owner's call to make. */}
+      <div className="stack" style={{ gap: 8 }}>
+        <Toggle on={!!p.public} onChange={setPublic}>
+          {t('profilePublicLabel')}
+        </Toggle>
+        <span className="muted small" style={{ lineHeight: 1.6 }}>
+          {t('profilePublicHint')}
+        </span>
+        {p.public && p.handle && (
+          <a className="mono small" href={`/u/${p.handle}`}>
+            /u/{p.handle}
+          </a>
+        )}
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button className="btn" disabled={busy} onClick={save}>
           <Ico name="check" size={13} w={2.2} /> {busy ? t('saving') : t('save')}
@@ -752,6 +926,8 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
 
 // ProfileFields is the one set of inputs shared by the settings form and the
 // publish wizard's step 2, so the two cannot drift in labels or order.
+type TextField = 'display_name' | 'institution' | 'contact_email' | 'orcid' | 'scholar_url' | 'handle'
+
 function ProfileFields({
   i18n,
   p,
@@ -759,15 +935,19 @@ function ProfileFields({
 }: {
   i18n: I18n
   p: Profile
-  set: (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement>) => void
+  set: (k: TextField) => (e: React.ChangeEvent<HTMLInputElement>) => void
 }) {
   const { t } = i18n
-  const fields: { k: keyof Profile; label: string; placeholder?: string; type?: string }[] = [
+  // Only the text fields are rendered here. `public` is a decision, not a
+  // field, and it lives with the handle in the settings card where the
+  // consequence can be spelled out (006r).
+  const fields: { k: TextField; label: string; placeholder?: string; type?: string }[] = [
     { k: 'display_name', label: t('profileName'), placeholder: t('profileNamePlaceholder') },
     { k: 'institution', label: t('profileInstitution'), placeholder: t('profileInstitutionPlaceholder') },
     { k: 'contact_email', label: t('profileContact'), placeholder: t('profileContactPlaceholder'), type: 'email' },
     { k: 'orcid', label: t('profileOrcid'), placeholder: '0000-0002-1825-0097' },
     { k: 'scholar_url', label: t('profileScholar'), placeholder: t('profileScholarPlaceholder') },
+    { k: 'handle', label: t('profileHandle'), placeholder: t('profileHandlePlaceholder') },
   ]
   return (
     <div className="stack" style={{ gap: 10 }}>
@@ -1077,6 +1257,7 @@ function ProjectScreen({
   const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
   const [maySubmit, setMaySubmit] = useState(false)
+  const [signerHandle, setSignerHandle] = useState('')
   const [tab, setTab] = useState<'sessions' | 'verdict' | 'artifacts' | 'people'>('sessions')
 
   const refresh = useCallback(() => {
@@ -1085,6 +1266,7 @@ function ProjectScreen({
         setProject(d.project)
         setSessions(d.sessions ?? [])
         setMaySubmit(d.may_submit)
+        setSignerHandle(d.signer_handle ?? '')
       })
       .catch(() => setSessions([]))
   }, [id])
@@ -1159,7 +1341,7 @@ function ProjectScreen({
             {project.visibility === 'private' ? (
               <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} />
             ) : (
-              <PublishedCard i18n={i18n} project={project} onWithdrawn={refresh} />
+              <PublishedCard i18n={i18n} project={project} signerHandle={signerHandle} onWithdrawn={refresh} />
             )}
           </div>
         )}
@@ -1768,12 +1950,18 @@ function PublishWizard({
       .catch(() => setP({}))
   }, [])
 
-  const set = (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const set = (k: TextField) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setP((cur) => ({ ...cur, [k]: e.target.value }))
     setErr('')
   }
 
   const hasContact = (p.contact_email ?? '').trim() !== ''
+  // 006r: publishing puts a name on a result, and the name has to resolve to
+  // somewhere. The wizard sets it here rather than sending the signer off to
+  // settings and back — they are mid-decision, and the requirement is part of
+  // the decision.
+  const hasPage = !!p.public && (p.handle ?? '').trim() !== ''
+  const canContinueFromStep2 = hasContact && hasPage
 
   const publish = async () => {
     if (!affirmed || busy) return
@@ -1787,14 +1975,26 @@ function PublishWizard({
       signed_off_scholar: p.scholar_url,
     }
     try {
-      // Saving to the profile is a convenience for the next publish and must not
-      // decide this one, so its failure is swallowed rather than surfaced.
-      if (toProfile) await saveProfile(p).catch(() => undefined)
+      // The handle and the public flag are not a convenience: the flip is
+      // refused without them, so this save has to succeed and its failure has
+      // to be reported. The rest of the profile stays a convenience for the
+      // next publish, which is why one save carries both.
+      await saveProfile(toProfile ? p : { handle: p.handle, public: p.public })
       await makeProjectPublic(projectID, signOff, flipRepo)
       onPublished()
     } catch (e) {
       const code = (e as Error).message
-      setErr(code === '409' ? t('publishNotClear') : code === '400' ? profileErrorText(t, code) : t('publishError'))
+      // A 409 is either an unclear tree or a profile that is not public; the
+      // body says which, and they need different remedies.
+      setErr(
+        code.includes('profile_not_public')
+          ? t('publishProfileRequired')
+          : code.includes('handle_taken') || code.includes('handle') || code === '400'
+            ? profileErrorText(t, code)
+            : code === '409'
+              ? t('publishNotClear')
+              : t('publishError'),
+      )
       setStep(2)
     } finally {
       setBusy(false)
@@ -1824,7 +2024,7 @@ function PublishWizard({
             {step === 1 ? t('cancel') : t('backStep')}
           </button>
           {step < 3 ? (
-            <button className="btn" disabled={step === 2 && !hasContact} onClick={() => setStep(step + 1)}>
+            <button className="btn" disabled={step === 2 && !canContinueFromStep2} onClick={() => setStep(step + 1)}>
               {t('continueStep')} <Ico name="chevronRight" size={12} w={2.2} />
             </button>
           ) : (
@@ -1847,12 +2047,20 @@ function PublishWizard({
             {t('publishStep2Body')}
           </p>
           <ProfileFields i18n={i18n} p={p} set={set} />
+          <Check on={!!p.public} onChange={(on) => setP((cur) => ({ ...cur, public: on }))}>
+            {t('publishPublicProfile')}
+          </Check>
           <Check on={toProfile} onChange={setToProfile}>
             {t('publishSaveToProfile')}
           </Check>
           {!hasContact && (
             <p className="muted small" style={{ margin: 0 }}>
               <Ico name="info" size={12} /> {t('publishContactRequired')}
+            </p>
+          )}
+          {hasContact && !hasPage && (
+            <p className="muted small" style={{ margin: 0 }}>
+              <Ico name="info" size={12} /> {t('publishProfileRequired')}
             </p>
           )}
         </>
@@ -1886,7 +2094,17 @@ function PublishWizard({
 // how to reach them. A v1 sign-off carries no snapshot and shows the date line
 // alone, exactly as it did before 006n. It also carries the way back out — the
 // owner may withdraw the publication (006o).
-function PublishedCard({ i18n, project, onWithdrawn }: { i18n: I18n; project: Project; onWithdrawn: () => void }) {
+function PublishedCard({
+  i18n,
+  project,
+  signerHandle,
+  onWithdrawn,
+}: {
+  i18n: I18n
+  project: Project
+  signerHandle?: string
+  onWithdrawn: () => void
+}) {
   const { t } = i18n
   const [withdrawing, setWithdrawing] = useState(false)
   const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
@@ -1934,7 +2152,18 @@ function PublishedCard({ i18n, project, onWithdrawn }: { i18n: I18n; project: Pr
       {project.signed_off_name && (
         <div className="signer">
           <div className="signer-name">
-            {t('signedOffBy')} <strong>{project.signed_off_name}</strong>
+            {/* The name links to the signer's page when they have one, and is
+                plain text when they do not. The snapshot below is what the
+                attestation reports; this is a convenience that may come and go
+                as its owner turns their profile on and off (006r). */}
+            {t('signedOffBy')}{' '}
+            {signerHandle ? (
+              <a href={`/u/${signerHandle}`}>
+                <strong>{project.signed_off_name}</strong>
+              </a>
+            ) : (
+              <strong>{project.signed_off_name}</strong>
+            )}
           </div>
           {project.signed_off_institution && <div className="signer-affil">{project.signed_off_institution}</div>}
         </div>
