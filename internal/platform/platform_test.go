@@ -228,3 +228,91 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 		t.Errorf("allowance with no row = %d/%v, want %d and capped — never unlimited", n, unlimited, DefaultSessionQuota)
 	}
 }
+
+// 006q's cutover has to reach the database that is already deployed.
+//
+// Migration 1 interpolates DefaultSessionQuota *at migration time*, so a
+// deployment that ran it when the constant was 3 holds 3 — and Settings()
+// returns that row, never the fallback. Lowering the Go constant alone would
+// have made "the default is zero, and nobody is grandfathered" true of a fresh
+// database and false of production, which is the only one that matters.
+//
+// This test fails without migration 2: it puts a database into exactly the
+// state production is in, re-runs the migrator, and asserts what an existing
+// deployment lands on.
+func TestMigrationLowersAnAlreadyDeployedDefault(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set TEST_DATABASE_URL to run the Postgres platform migration test")
+	}
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	if err := access.Migrate(ctx, pool); err != nil {
+		t.Fatalf("access migrate: %v", err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	// Rewind to the pre-006q world: the bootstrap row at the old default, and
+	// migration 2 not yet applied.
+	rewind := func(t *testing.T, quota int, updatedBy string) {
+		t.Helper()
+		// Upsert rather than update: this test constructs the state a deployment
+		// is in, and it must not depend on what an earlier test left in the
+		// shared scratch database.
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO platform_settings (id, default_session_quota, updated_by, updated_at)
+			VALUES (1, $1, $2, now())
+			ON CONFLICT (id) DO UPDATE SET default_session_quota = EXCLUDED.default_session_quota,
+			                               updated_by = EXCLUDED.updated_by, updated_at = now()`,
+			quota, updatedBy); err != nil {
+			t.Fatalf("rewind settings: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM platform_migrations WHERE version=2`); err != nil {
+			t.Fatalf("rewind migration: %v", err)
+		}
+	}
+	quota := func(t *testing.T) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT default_session_quota FROM platform_settings WHERE id=1`).Scan(&n); err != nil {
+			t.Fatalf("read settings: %v", err)
+		}
+		return n
+	}
+
+	t.Run("a bootstrap row is lowered", func(t *testing.T) {
+		rewind(t, 3, "bootstrap")
+		if err := Migrate(ctx, pool); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if got := quota(t); got != 0 {
+			t.Errorf("default_session_quota = %d, want 0 — an existing deployment kept its old allowance", got)
+		}
+		// And the store reports it, which is what Enqueue meters against.
+		s, err := NewPGStore(pool, newAuthority(t)).Settings(ctx)
+		if err != nil || s.DefaultSessionQuota != 0 {
+			t.Errorf("Settings = %+v, %v", s, err)
+		}
+	})
+
+	t.Run("an admin's own number is left alone", func(t *testing.T) {
+		rewind(t, 5, "admin-sub")
+		if err := Migrate(ctx, pool); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if got := quota(t); got != 5 {
+			t.Errorf("default_session_quota = %d; a migration overruled a decision an admin made", got)
+		}
+	})
+
+	// Leave the row as the contract test expects to find it.
+	rewind(t, DefaultSessionQuota, "bootstrap")
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+}

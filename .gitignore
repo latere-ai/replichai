@@ -19,3 +19,4 @@
 # Python reference caches
 __pycache__/
 /replichai
+coverage.out

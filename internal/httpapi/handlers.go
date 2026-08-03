@@ -1081,6 +1081,11 @@ func (rt *Router) listShared(w http.ResponseWriter, r *http.Request) {
 			v = summarize(sessions)
 			v.Project = p
 		}
+		// Same rule as the public zone: a project named by its signer links to
+		// them when they have a page. Usually empty here — a shared project is
+		// typically private and unsigned — but the two lists must not answer the
+		// same question differently.
+		v.SignerHandle = rt.signerHandle(r.Context(), p)
 		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
