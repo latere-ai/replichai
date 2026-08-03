@@ -34,15 +34,31 @@ func NewMemMembership() *MemMembership {
 
 // SeedLead creates the first lead of a project with no lead check — the
 // bootstrap path project creation (007) uses, mirroring SeedAdmin. It seeds by
-// email like every other membership, and matches the Postgres signature.
-func (m *MemMembership) SeedLead(_ context.Context, project, email string) error {
-	email = normalizeEmail(email)
+// email like every other membership and binds the lead's principal at once, so
+// an owner is never listed as a pending invitation to their own project.
+func (m *MemMembership) SeedLead(_ context.Context, project string, lead Principal) error {
+	email := normalizeEmail(lead.Email)
 	if project == "" || email == "" {
 		return ErrNoEmail
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.put(project, email, RoleLead)
+	if lead.Sub == "" {
+		return nil
+	}
+	// Bind, unless this project already holds a row for someone else on this
+	// email or another row for this principal — the rules Role and BindAll obey.
+	row := m.members[project][email]
+	if _, held := m.bound[project][lead.Sub]; held || row.Principal != "" {
+		return nil
+	}
+	row.Principal = lead.Sub
+	m.members[project][email] = row
+	if m.bound[project] == nil {
+		m.bound[project] = map[string]string{}
+	}
+	m.bound[project][lead.Sub] = email
 	return nil
 }
 
@@ -114,6 +130,37 @@ func (m *MemMembership) List(_ context.Context, project string) ([]Member, error
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
 	return out, nil
+}
+
+// BindAll binds every unbound membership seeded against this principal's
+// verified email. See Membership.BindAll for why it is a login-time operation.
+func (m *MemMembership) BindAll(_ context.Context, p Principal) (int, error) {
+	email := normalizeEmail(p.Email)
+	if p.Sub == "" || email == "" {
+		return 0, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bound := 0
+	for project, rows := range m.members {
+		row, ok := rows[email]
+		if !ok || row.Principal != "" {
+			continue
+		}
+		// Never a second row for this principal in one project: an email change
+		// at the IdP must not make somebody a member twice over.
+		if _, held := m.bound[project][p.Sub]; held {
+			continue
+		}
+		row.Principal = p.Sub
+		rows[email] = row
+		if m.bound[project] == nil {
+			m.bound[project] = map[string]string{}
+		}
+		m.bound[project][p.Sub] = email
+		bound++
+	}
+	return bound, nil
 }
 
 // Projects returns the project ids this principal is a bound member of.

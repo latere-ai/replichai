@@ -132,7 +132,7 @@ type MembershipStore interface {
 	List(ctx context.Context, project string) ([]access.Member, error)
 	Add(ctx context.Context, byLead access.Principal, project, email string, r access.Role) error
 	Remove(ctx context.Context, byLead access.Principal, project, email string) error
-	SeedLead(ctx context.Context, project, email string) error
+	SeedLead(ctx context.Context, project string, lead access.Principal) error
 	// Role resolves a caller's role in a project (binding on first login) — the
 	// collaborator half of the view predicate.
 	Role(ctx context.Context, p access.Principal, project string) (access.Role, bool, error)

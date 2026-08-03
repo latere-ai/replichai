@@ -100,7 +100,7 @@ func TestSponsorshipGovernsWhoPays(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	if err := d.Members.SeedLead(ctx, proj.ID, owner.Email); err != nil {
+	if err := d.Members.SeedLead(ctx, proj.ID, access.Principal{Sub: owner.Sub, Email: owner.Email}); err != nil {
 		t.Fatalf("seed lead: %v", err)
 	}
 	if err := d.Members.Add(ctx, access.Principal{Sub: owner.Sub, Email: owner.Email}, proj.ID, collab.Email, access.RoleCollaborator); err != nil {
@@ -214,7 +214,7 @@ func TestMaySubmitDistinguishesWhoMayOpenASession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := d.Members.SeedLead(ctx, proj.ID, owner.Email); err != nil {
+	if err := d.Members.SeedLead(ctx, proj.ID, access.Principal{Sub: owner.Sub, Email: owner.Email}); err != nil {
 		t.Fatalf("seed lead: %v", err)
 	}
 	if err := d.Members.Add(ctx, access.Principal{Sub: owner.Sub, Email: owner.Email}, proj.ID, collab.Email, access.RoleCollaborator); err != nil {
