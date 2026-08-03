@@ -7,8 +7,8 @@ import (
 )
 
 // Submission is one request to open a session. It is a struct rather than a
-// widening positional signature: Project, PaperKey, and ChargedTo are all bare
-// strings, and getting two of them the wrong way round would be silent.
+// widening positional signature: Principal, Ref, Project and PaperKey are all
+// bare strings, and getting two of them the wrong way round would be silent.
 type Submission struct {
 	// Principal is who submitted — the session's owner.
 	Principal string
@@ -21,19 +21,6 @@ type Submission struct {
 	// PaperKey is the offline paper identity (006g). When non-empty it keys the
 	// double-trigger guard.
 	PaperKey string
-	// ChargedTo is the principal whose session quota this spends (006l). Empty
-	// means the submitter. It is always resolved server-side — a project's
-	// sponsor, or the submitter — and never taken from a client's request body.
-	ChargedTo string
-}
-
-// Payer is whose quota a submission spends: its explicit charge, or its
-// submitter when unset.
-func (s Submission) Payer() string {
-	if s.ChargedTo != "" {
-		return s.ChargedTo
-	}
-	return s.Principal
 }
 
 // Store is where jobs live. It is an interface so the HTTP layer (006a) and the
@@ -46,9 +33,10 @@ type Store interface {
 	// Enqueue records a new submission as a submitted job — a session in a
 	// project. A submit for a paper already running (in the project, or anywhere
 	// the principal owns) is refused with ErrActiveSession rather than opening a
-	// second concurrent run; a submit past the payer's session quota is refused
-	// with ErrQuotaExceeded (006l). Both checks happen in the writing
-	// transaction, so neither is racy and neither can be skipped by a new caller.
+	// second concurrent run; a submit the project cannot afford to start is
+	// refused with ErrNoCredits, and one it can afford holds the start reserve
+	// against its pot (011). Both checks happen in the writing transaction, so
+	// neither is racy and neither can be skipped by a new caller.
 	Enqueue(ctx context.Context, s Submission) (Job, error)
 	// Get returns one job by id, or ErrNotFound.
 	Get(ctx context.Context, id string) (Job, error)
@@ -85,9 +73,4 @@ type Store interface {
 	// Active returns the jobs that are not terminal, so a restart can find work
 	// a crash left mid-flight and reap it.
 	Active(ctx context.Context) ([]Job, error)
-	// Consumed counts the sessions charged to a payer that spend allowance —
-	// completed and in flight, never failed or cancelled (006l). It is derived
-	// from the rows every time rather than kept as a balance, so it cannot drift
-	// from the sessions it counts.
-	Consumed(ctx context.Context, payerSub string) (int, error)
 }

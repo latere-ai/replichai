@@ -10,16 +10,15 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 )
 
-// 006q AC6: the wall is at spending, and only there.
+// 006q AC6, in 011's terms: the wall is at spending, and only there.
 //
-// With sign-in open, everyone arrives with zero budget, so this is what the
-// product *is* for a new account until somebody tops it up. Asserted per route
-// rather than in prose, so a route added later cannot quietly join the wrong
-// side of the line.
-func TestZeroBudgetStillLetsSomebodyUseTheApp(t *testing.T) {
+// Everyone arrives with no credits, so this is what the product *is* for a new
+// account until somebody tops it up. Asserted per route rather than in prose,
+// so a route added later cannot quietly join the wrong side of the line.
+func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 	d := testDeps(allowAll)
-	// A store that refuses every enqueue for want of quota — what Enqueue does
-	// for a principal with no allowance (006l).
+	// A store that refuses every enqueue for want of credits — what Enqueue
+	// does for a project that cannot commit the start reserve (011).
 	d.Jobs = brokeJobs{Store: d.Jobs.(job.Store)}
 	h := NewRouter(d).Handler()
 
@@ -35,17 +34,17 @@ func TestZeroBudgetStillLetsSomebodyUseTheApp(t *testing.T) {
 	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada"}`, newcomer); w.Code != http.StatusOK {
 		t.Errorf("save profile = %d, want 200 with no budget", w.Code)
 	}
-	// Creating a project is *not* on this side of the line, and the spec was
-	// wrong to say it was: a project is opened by submitting a paper (006j), so
-	// creating one is starting a session, which is spending. It is refused, the
-	// half-made project is undone, and each paper reports why — which is what
-	// lets the client say "no budget yet" rather than "could not start".
+	// Creating a project is *not* on this side of the line: a project is opened
+	// by submitting a paper (006j), so creating one is starting a session, which
+	// is spending. It is refused, the half-made project is undone, and each
+	// paper reports why — which is what lets the client offer a top-up rather
+	// than say "could not start".
 	w := doAs(t, h, "POST", "/projects", `{"title":"Mine","papers":["https://arxiv.org/abs/2401.00003"]}`, newcomer)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("create project = %d, want 422 with no budget", w.Code)
 	}
-	if code := firstSessionError(t, w.Body.Bytes()); code != "quota_exceeded" {
-		t.Errorf("per-paper error = %q, want quota_exceeded", code)
+	if code := firstSessionError(t, w.Body.Bytes()); code != "no_credits" {
+		t.Errorf("per-paper error = %q, want no_credits", code)
 	}
 
 	// A project they already own — renaming it, inviting somebody, reading its
@@ -88,8 +87,8 @@ func TestZeroBudgetStillLetsSomebodyUseTheApp(t *testing.T) {
 		t.Errorf("submit into a project = %d, want 402 with no budget", w.Code)
 	}
 	// The project half-made for a paper that could not be enqueued is not left
-	// behind — the compensating delete still runs on the quota path, so a broke
-	// account does not accumulate empty projects by retrying.
+	// behind — the compensating delete still runs on the credit path, so a
+	// broke account does not accumulate empty projects by retrying.
 	list := doAs(t, h, "GET", "/projects", "", newcomer)
 	if n := countProjects(t, list.Body.Bytes()); n != 1 {
 		t.Errorf("owner holds %d project(s), want only the one they already had", n)
@@ -124,10 +123,10 @@ func countProjects(t *testing.T, body []byte) int {
 	return len(list)
 }
 
-// brokeJobs is a job store with no allowance: every enqueue is refused for
-// quota, the way 006l's check inside Enqueue refuses one.
+// brokeJobs is a job store whose projects can never afford a session: every
+// enqueue is refused, the way 011's gate inside Enqueue refuses one.
 type brokeJobs struct{ job.Store }
 
 func (brokeJobs) Enqueue(context.Context, job.Submission) (job.Job, error) {
-	return job.Job{}, job.ErrQuotaExceeded
+	return job.Job{}, job.ErrNoCredits
 }

@@ -15,7 +15,6 @@ import (
 func storeContract(t *testing.T, s interface {
 	Access
 	SeedGrant(ctx context.Context, email string, tier Tier) error
-	EmailOf(ctx context.Context, principalSub string) (string, bool, error)
 }, ns string) {
 	t.Helper()
 	adminEmail := ns + "-admin@example.com"
@@ -26,15 +25,6 @@ func storeContract(t *testing.T, s interface {
 	}
 	if tier, ok, err := s.Resolve(ctx, admin); err != nil || !ok || tier != TierAdmin {
 		t.Fatalf("admin resolve = %s/%v/%v", tier, ok, err)
-	}
-
-	// EmailOf prices a payer known only by their subject (006l). Before binding
-	// there is nothing to price.
-	if email, ok, err := s.EmailOf(ctx, admin.Sub); err != nil || !ok || email != adminEmail {
-		t.Errorf("EmailOf(bound) = %q/%v/%v, want the seeded address", email, ok, err)
-	}
-	if _, ok, err := s.EmailOf(ctx, ns+"-nobody"); err != nil || ok {
-		t.Errorf("EmailOf(unknown) = %v/%v, want not-found and no error", ok, err)
 	}
 
 	// An admin grants; the grantee resolves and appears in the list.

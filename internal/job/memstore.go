@@ -2,10 +2,12 @@ package job
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -13,11 +15,14 @@ import (
 // against with no database. It copies on every boundary, so a caller cannot
 // mutate stored state through a value it holds.
 type MemStore struct {
-	mu        sync.Mutex
-	jobs      map[string]Job
-	order     []string // submission order, so Claim is FIFO
-	clock     func() time.Time
-	allowance Allowance // nil means unlimited
+	mu    sync.Mutex
+	jobs  map[string]Job
+	order []string // submission order, so Claim is FIFO
+	clock func() time.Time
+	// credits and reserve are the enqueue gate (011). Both nil means unmetered,
+	// which is what an offline run and every test that is not about money want.
+	credits *credit.MemStore
+	reserve credit.Reserve
 }
 
 // MemOption configures a MemStore.
@@ -28,34 +33,31 @@ func WithClock(f func() time.Time) MemOption {
 	return func(s *MemStore) { s.clock = f }
 }
 
-// WithAllowance meters submissions against a per-payer session quota (006l).
-// Without it the store is unlimited.
-func WithAllowance(a Allowance) MemOption {
-	return func(s *MemStore) { s.allowance = a }
+// WithCredits meters submissions against the project's credits (011). Without
+// it the store is unmetered.
+func WithCredits(c *credit.MemStore, r credit.Reserve) MemOption {
+	return func(s *MemStore) { s.credits, s.reserve = c, r }
 }
 
-// checkQuotaLocked refuses a submission past the payer's allowance. It runs
-// under the store lock, alongside the insert, so a burst of concurrent submits
-// cannot all read the same remaining count.
-func (s *MemStore) checkQuotaLocked(ctx context.Context, payer string) error {
-	if s.allowance == nil {
+// takeReserve refuses a submission the project cannot afford to start, and
+// holds the reserve against its pot when it can. The hold is what stops a burst
+// of concurrent submits each being admitted against the same credits.
+func (s *MemStore) takeReserve(ctx context.Context, project, jobID string) error {
+	if s.credits == nil || s.reserve == nil {
 		return nil
 	}
-	limit, unlimited, err := s.allowance(ctx, payer)
+	amount, err := s.reserve(ctx)
 	if err != nil {
 		return err
 	}
-	if unlimited {
+	if amount <= 0 {
 		return nil
 	}
-	used := 0
-	for _, j := range s.jobs {
-		if j.ChargedTo == payer && j.Phase.Spends() {
-			used++
+	if err := s.credits.Hold(ctx, credit.Pot(project), jobID, amount); err != nil {
+		if errors.Is(err, credit.ErrInsufficient) {
+			return ErrNoCredits
 		}
-	}
-	if used >= limit {
-		return ErrQuotaExceeded
+		return err
 	}
 	return nil
 }
@@ -79,11 +81,10 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	payer := sub.Payer()
 	now := s.clock()
 	j := Job{
 		ID: id, Kind: sub.Kind, Principal: sub.Principal, ProjectID: sub.Project, Ref: sub.Ref,
-		PaperKey: sub.PaperKey, ChargedTo: payer,
+		PaperKey: sub.PaperKey,
 		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
@@ -103,9 +104,10 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 			}
 		}
 	}
-	// The quota (006l), counted under the same lock that inserts, so a burst of
-	// concurrent submits cannot all read "one left".
-	if err := s.checkQuotaLocked(ctx, payer); err != nil {
+	// The gate (011): the project must be able to commit the start reserve, and
+	// committing it is what stops a burst of submits all reading the same
+	// balance.
+	if err := s.takeReserve(ctx, sub.Project, id); err != nil {
 		return Job{}, err
 	}
 	s.jobs[id] = j
@@ -247,19 +249,6 @@ func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStat
 	j.UpdatedAt = s.clock()
 	s.jobs[id] = j
 	return nil
-}
-
-// Consumed counts the sessions charged to a payer that spend allowance.
-func (s *MemStore) Consumed(_ context.Context, payerSub string) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n := 0
-	for _, j := range s.jobs {
-		if j.ChargedTo == payerSub && j.Phase.Spends() {
-			n++
-		}
-	}
-	return n, nil
 }
 
 // Active returns copies of every non-terminal job, in submission order.

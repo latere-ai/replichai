@@ -26,7 +26,7 @@ var errStore = errors.New("store is unavailable")
 // being wrong is most expensive.
 type failingProjects struct {
 	project.Store
-	getErr, listErr, publicErr, setErr, titleErr, sponsorErr error
+	getErr, listErr, publicErr, setErr, titleErr error
 }
 
 func (f failingProjects) Get(ctx context.Context, id string) (project.Project, error) {
@@ -69,13 +69,6 @@ func (f failingProjects) SetTitle(ctx context.Context, id, title string) error {
 		return f.titleErr
 	}
 	return f.Store.SetTitle(ctx, id, title)
-}
-
-func (f failingProjects) SetSponsored(ctx context.Context, id string, on bool) error {
-	if f.sponsorErr != nil {
-		return f.sponsorErr
-	}
-	return f.Store.SetSponsored(ctx, id, on)
 }
 
 type failingJobs struct {
@@ -212,10 +205,6 @@ func TestReadsReportAStoreFailureAsFiveHundred(t *testing.T) {
 		}},
 		{"rename a project", "PATCH", "/projects/{id}", `{"title":"New"}`, func(d Deps, _ string) Deps {
 			d.Projects = failingProjects{Store: d.Projects.(project.Store), titleErr: errStore}
-			return d
-		}},
-		{"sponsor a project", "POST", "/projects/{id}/sponsor", `{"sponsored":true}`, func(d Deps, _ string) Deps {
-			d.Projects = failingProjects{Store: d.Projects.(project.Store), sponsorErr: errStore}
 			return d
 		}},
 		{"add a member", "POST", "/projects/{id}/members", `{"email":"c@x.com"}`, func(d Deps, _ string) Deps {

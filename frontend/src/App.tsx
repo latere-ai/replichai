@@ -27,16 +27,14 @@ import {
   removeMember,
   renameProject,
   resolvePaper,
-  sponsorProject,
   revokeAccess,
   saveProfile,
   type PublicProfile,
   setPlatformSettings,
-  setTopup,
+  topUp,
   submitPaper,
   watchJob,
   type ResolvedPaper,
-  type ChargeTo,
   type Event,
   type GrantView,
   type Job,
@@ -46,13 +44,14 @@ import {
   type Profile,
   type Project,
   type ProjectView,
-  type Quota,
+  type Credits,
   type Reproduction,
   type SignOff,
   type Transcript,
   type Usage,
 } from './api'
 import { useI18n } from './i18n'
+import { formatUSD, parseUSD, toDollars } from './money'
 import {
   clockOf,
   compactTokens,
@@ -70,7 +69,7 @@ import {
   type Span,
 } from './transcript'
 import { Ico, type IconName } from './icons'
-import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Radio, RadioGroup, Segmented, Select, Tip, Toggle, type Tone } from './ui'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
 
 type I18n = ReturnType<typeof useI18n>
@@ -141,7 +140,7 @@ export default function App() {
   const handle = publicHandleFromPath(window.location.pathname)
   const deepProject = projectFromPath(window.location.pathname)
 
-  // refreshMe re-reads the identity, and with it the remaining quota — called
+  // refreshMe re-reads the identity, and with it the wallet — called
   // after anything that spends allowance, so the header never shows a stale
   // surplus (006l).
   const refreshMe = useCallback(() => {
@@ -420,7 +419,7 @@ function Shell({
           <Breadcrumb i18n={i18n} view={view} setView={setView} />
           <div className="topbar-actions">
             <ThemeSwitcher i18n={i18n} theme={theme} compact />
-            <QuotaPill i18n={i18n} quota={me.quota} />
+            <WalletPill i18n={i18n} credits={me.credits} />
             <button className="btn" onClick={() => setView({ name: 'submit' })}>
               <Ico name="plus" size={13} w={2.2} /> {t('newProject')}
             </button>
@@ -447,7 +446,7 @@ function Shell({
             me={me}
             id={view.id}
             onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)}
-            onQuotaSpent={refreshMe}
+            onCreditsSpent={refreshMe}
           />
         )}
         {view.name === 'session' && (
@@ -583,7 +582,7 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
 
       <div className="stat-grid">
         <Stat label={t('statProjects')} value={mine === null ? '—' : mine.length} icon="folder" tone="var(--brand)" />
-        <Stat label={t('statSessions')} value={mine === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
+        <Stat label={t('statSessionsRun')} value={mine === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
       </div>
 
       <div className="card">
@@ -696,22 +695,23 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
 type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
 
 // sessionErrLabel turns a per-paper error code from POST /projects into a short
-// human label. quota distinguishes an account that has spent its budget from
-// one that never had any (006q) — the same refusal, two different problems, and
-// only one of them is the person's own doing.
-export function sessionErrLabel(t: I18n['t'], code?: string, quota?: Quota): string {
+// human label. credits distinguishes an account that has never had any from a
+// project that has run out — the same refusal, two different problems, and only
+// one of them the person can fix by moving money they already hold.
+export function sessionErrLabel(t: I18n['t'], code?: string, credits?: Credits): string {
   if (code === 'active_session') return t('errActiveSession')
   if (code === 'unresolvable_paper') return t('errUnresolvable')
-  // A batch that outran the quota reports this per paper (006l AC8); without
+  // A batch that outran the project's credits reports this per paper; without
   // the case it would read as "could not start", which is not what happened.
-  if (code === 'quota_exceeded') return noBudgetYet(quota) ? t('errQuotaNone') : t('errQuota')
+  if (code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
   return t('errEnqueue')
 }
 
-// noBudgetYet reports the state a new account arrives in since 006q: nothing
-// spent, and nothing to spend. It is not the same as running out.
-export function noBudgetYet(quota?: Quota): boolean {
-  return !!quota && !quota.unlimited && quota.limit === 0 && quota.used === 0
+// emptyWallet reports the state a new account arrives in: nothing to spend and
+// nothing ever spent. It is not the same as a project having run out, and the
+// remedy is different — an admin top-up rather than moving your own credits.
+export function emptyWallet(credits?: Credits): boolean {
+  return !!credits && credits.wallet <= 0
 }
 
 function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitted: (projectId: string) => void }) {
@@ -758,7 +758,7 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
       }
       // 422: every paper failed — surface the per-paper reasons on their rows.
       const byURL = new Map((data.sessions ?? []).map((s) => [s.url, s.error]))
-      setRows((rs) => rs.map((r) => (byURL.has(r.url.trim()) ? { ...r, error: sessionErrLabel(t, byURL.get(r.url.trim()), me.quota) } : r)))
+      setRows((rs) => rs.map((r) => (byURL.has(r.url.trim()) ? { ...r, error: sessionErrLabel(t, byURL.get(r.url.trim()), me.credits) } : r)))
       setErr(t('allPapersFailed'))
     } catch {
       setErr(t('submitError'))
@@ -867,13 +867,11 @@ function SettingsScreen({ i18n, me, theme }: { i18n: I18n; me: Me; theme: Return
               <TierPill i18n={i18n} tier={me.tier} />
             </span>
           </div>
-          {me.quota && !me.quota.unlimited && (
+          {me.credits && (
             <div className="usage-line">
               <Ico name="wallet" size={13} style={{ color: 'var(--ok)' }} />
-              {t('statSessions')}
-              <span className="v">
-                {me.quota.used} / {me.quota.limit}
-              </span>
+              {t('statWallet')}
+              <span className="v tabular">{formatUSD(me.credits.wallet)}</span>
             </div>
           )}
           <div className="usage-line">
@@ -1093,30 +1091,31 @@ function AdminScreen({ i18n }: { i18n: I18n }) {
       </div>
       {err && <p className="err small">{err}</p>}
       <div className="stack" style={{ maxWidth: 720 }}>
-        <PlatformPolicy i18n={i18n} settings={settings} onSave={(n) => run(() => setPlatformSettings({ default_session_quota: n }))} />
+        <PlatformPolicy i18n={i18n} settings={settings} onSave={(n) => run(() => setPlatformSettings({ start_reserve: n }))} />
         <PeopleCard
           i18n={i18n}
           people={people}
           onGrant={(email, tier) => run(() => grantAccess(email, tier))}
           onRevoke={(email) => run(() => revokeAccess(email))}
-          onTopup={(email, extra) => run(() => setTopup(email, extra))}
+          onTopup={(email, amount) => run(() => topUp(email, amount))}
         />
       </div>
     </div>
   )
 }
 
-// PlatformPolicy edits the one platform-wide number: how many replication
-// sessions an invited person may run before an admin tops them up.
+// PlatformPolicy edits the one platform-wide number: how much a project must
+// have available before a session may start there. It is typed in dollars and
+// held in micro-USD, because that is the unit money travels in.
 function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: PlatformSettings | null; onSave: (n: number) => void }) {
   const { t } = i18n
   const [draft, setDraft] = useState('')
   useEffect(() => {
-    if (settings) setDraft(String(settings.default_session_quota))
+    if (settings) setDraft(toDollars(settings.start_reserve))
   }, [settings])
-  const parsed = Number.parseInt(draft, 10)
-  const valid = Number.isInteger(parsed) && parsed >= 0
-  const dirty = !!settings && valid && parsed !== settings.default_session_quota
+  const parsed = parseUSD(draft)
+  const valid = parsed !== null && parsed >= 0
+  const dirty = !!settings && valid && parsed !== settings.start_reserve
 
   return (
     <div className="card card-pad stack">
@@ -1124,14 +1123,14 @@ function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: Plat
         <Ico name="wallet" size={12} /> {t('platformPolicy')}
       </span>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('defaultQuotaHint')}
+        {t('startReserveHint')}
       </p>
       <div className="field-row">
-        <label className="admin-label" htmlFor="default-quota">
-          {t('defaultQuota')}
+        <label className="admin-label" htmlFor="start-reserve">
+          {t('startReserve')}
         </label>
-        <NumberField id="default-quota" value={draft} onChange={setDraft} min={0} ariaLabel={t('defaultQuota')} />
-        <button className="btn" disabled={!dirty} onClick={() => onSave(parsed)}>
+        <NumberField id="start-reserve" value={draft} onChange={setDraft} min={0} ariaLabel={t('startReserve')} />
+        <button className="btn" disabled={!dirty} onClick={() => onSave(parsed ?? 0)}>
           <Ico name="check" size={13} w={2.2} /> {t('save')}
         </button>
       </div>
@@ -1154,7 +1153,7 @@ function PeopleCard({
   people: GrantView[] | null
   onGrant: (email: string, tier: 'user' | 'admin') => void
   onRevoke: (email: string) => void
-  onTopup: (email: string, extra: number) => void
+  onTopup: (email: string, amount: number) => void
 }) {
   const { t } = i18n
   const [email, setEmail] = useState('')
@@ -1189,9 +1188,8 @@ function PeopleCard({
                 {t('pending')}
               </Pill>
             )}
-            {!!p.topup && <Pill tone="ok">{t('topupN', { n: String(p.topup) })}</Pill>}
-            <Tip text={t('quotaTitle', { used: String(p.used), limit: String(p.limit) })}>
-              <span className="muted small mono tabular">{p.unlimited ? '∞' : `${p.used}/${p.limit}`}</span>
+            <Tip text={t('walletOf', { email: p.email })}>
+              <span className="muted small mono tabular">{formatUSD(p.wallet)}</span>
             </Tip>
             <button className="btn ghost sm" onClick={() => setTopping(p)}>
               <Ico name="wallet" size={12} /> {t('topup')}
@@ -1233,7 +1231,8 @@ function PeopleCard({
         <PromptDialog
           title={t('topup')}
           body={t('topupPrompt', { email: topping.email })}
-          initial={String(topping.topup ?? 0)}
+          initial="10"
+          parse={parseUSD}
           confirmLabel={t('save')}
           cancelLabel={t('cancel')}
           onCancel={() => setTopping(null)}
@@ -1326,13 +1325,13 @@ function ProjectScreen({
   me,
   id,
   onOpenSession,
-  onQuotaSpent,
+  onCreditsSpent,
 }: {
   i18n: I18n
   me: Me
   id: string
   onOpenSession: (jobId: string, ref: string, projectTitle: string) => void
-  onQuotaSpent: () => void
+  onCreditsSpent: () => void
 }) {
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
@@ -1358,8 +1357,8 @@ function ProjectScreen({
   // A submit spends allowance, so the header pill is re-read after one.
   const onSpent = useCallback(() => {
     refresh()
-    onQuotaSpent()
-  }, [refresh, onQuotaSpent])
+    onCreditsSpent()
+  }, [refresh, onCreditsSpent])
 
   const isOwner = project != null && project.owner === me.principal
   // The latest published session (with a repository) backs the verdict and
@@ -1417,7 +1416,6 @@ function ProjectScreen({
           <div className="detail-grid">
             <div className="stack">
               <Members i18n={i18n} projectID={id} />
-              <SponsorPanel i18n={i18n} project={project} onChanged={refresh} />
             </div>
             {project.visibility === 'private' ? (
               <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} />
@@ -1673,57 +1671,50 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
   )
 }
 
-// QuotaPill shows what is left to spend, next to the button that spends it. An
-// admin (unlimited) gets no pill: there is no number to watch.
+// WalletPill shows what this person has to spend, next to the button that
+// starts spending it.
 //
-// A brand-new account and an exhausted one are different states and read
-// differently (006q). With sign-in open, most people's first sight of this pill
-// is at 0/0, and "0 sessions left" tells somebody who never had any that they
-// lost something. It says they have none yet, and how to get some.
-function QuotaPill({ i18n, quota }: { i18n: I18n; quota?: Quota }) {
+// A brand-new account and one that has spent down read differently. Most
+// people's first sight of this pill is at zero, and it has to say they have
+// none *yet* and how to get some, rather than implying they lost something.
+function WalletPill({ i18n, credits }: { i18n: I18n; credits?: Credits }) {
   const { t } = i18n
-  if (!quota || quota.unlimited) return null
-  const left = Math.max(0, quota.limit - quota.used)
-  const none = quota.limit === 0 && quota.used === 0
-  // Empty is an error, the last one is a warning, the rest is just a number.
-  const state = left === 0 ? ' out' : left <= 1 ? ' low' : ''
+  if (!credits) return null
+  const empty = credits.wallet <= 0
+  // Not enough left to open one more session is a warning; nothing at all is an
+  // error; the rest is just a number.
+  const state = empty ? ' out' : credits.wallet < credits.start_reserve ? ' low' : ''
   // Pinned to its own right edge: the pill sits near the viewport's, where a
   // centred bubble would hang off the screen.
   return (
     <Tip
       align="end"
-      text={none ? t('quotaNoneTitle') : t('quotaTitle', { used: String(quota.used), limit: String(quota.limit) })}
+      text={empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(credits.start_reserve) })}
     >
       <span className={'quota-pill' + state}>
-        <Ico name={left === 0 ? 'alert' : 'wallet'} size={12} />
-        {none ? t('quotaNone') : t('quotaLeft', { n: String(left) })}
+        <Ico name={empty ? 'alert' : 'wallet'} size={12} />
+        {empty ? t('walletEmpty') : formatUSD(credits.wallet)}
       </span>
     </Tip>
   )
 }
 
-// submitErrLabel names why a submit was refused, so "you are out of sessions"
-// never reads as "something went wrong".
-export function submitErrLabel(t: I18n['t'], status: string, quota?: Quota): string {
+// submitErrLabel names why a submit was refused, so "this project is out of
+// credits" never reads as "something went wrong".
+export function submitErrLabel(t: I18n['t'], status: string, credits?: Credits): string {
   if (status === '409') return t('activeSession')
-  if (status === '402') return noBudgetYet(quota) ? t('errQuotaNone') : t('quotaExhausted')
-  if (status === '403') return t('notSponsored')
+  if (status === '402') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
   return t('submitError')
 }
 
 // ProjectSubmit adds a session to a project the caller owns or collaborates on.
-// In a sponsored project a collaborator chooses whose quota it spends; the
-// server resolves the payer either way.
+// What pays is the project's own credits, whoever submits — so there is no
+// choice to offer here.
 function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me; project: Project; onSubmitted: () => void }) {
   const { t } = i18n
   const [url, setUrl] = useState('')
-  const [chargeTo, setChargeTo] = useState<ChargeTo>('me')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const isOwner = project.owner === me.principal
-  // The choice exists only where it is real: someone else's project, which its
-  // owner has chosen to sponsor.
-  const mayCharge = !isOwner && !!project.sponsored
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1731,11 +1722,11 @@ function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me;
     setBusy(true)
     setErr('')
     try {
-      await submitPaper(url.trim(), project.id, mayCharge ? chargeTo : 'me')
+      await submitPaper(url.trim(), project.id)
       setUrl('')
       onSubmitted()
     } catch (e) {
-      setErr(submitErrLabel(t, (e as Error).message, me.quota))
+      setErr(submitErrLabel(t, (e as Error).message, me.credits))
     } finally {
       setBusy(false)
     }
@@ -1748,57 +1739,12 @@ function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me;
           <Ico name="repeat" size={13} /> {busy ? t('submitting') : t('addReplication')}
         </button>
       </div>
-      {mayCharge && (
-        <div className="charge-row">
-          <span className="muted small">{t('chargeTo')}</span>
-          <RadioGroup label={t('chargeTo')}>
-            <Radio on={chargeTo === 'me'} onChange={() => setChargeTo('me')}>
-              {t('chargeMine')}
-            </Radio>
-            <Radio on={chargeTo === 'project'} onChange={() => setChargeTo('project')}>
-              {t('chargeOwner')}
-            </Radio>
-          </RadioGroup>
-        </div>
-      )}
       {err && (
         <span className="err small">
           <Ico name="alert" size={13} /> {err}
         </span>
       )}
     </form>
-  )
-}
-
-// SponsorPanel is the owner's standing consent to cover their collaborators'
-// sessions (006l). Off by default, and revocable at any time.
-function SponsorPanel({ i18n, project, onChanged }: { i18n: I18n; project: Project; onChanged: () => void }) {
-  const { t } = i18n
-  const [busy, setBusy] = useState(false)
-  const toggle = async (on: boolean) => {
-    if (busy) return
-    setBusy(true)
-    try {
-      await sponsorProject(project.id, on)
-      onChanged()
-    } catch {
-      /* the checkbox simply does not move */
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div className="card card-pad stack">
-      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--ok)' }}>
-        <Ico name="wallet" size={12} /> {t('sponsorTitle')}
-      </span>
-      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('sponsorBody')}
-      </p>
-      <Toggle on={!!project.sponsored} disabled={busy} onChange={toggle}>
-        {t('sponsorLabel')}
-      </Toggle>
-    </div>
   )
 }
 

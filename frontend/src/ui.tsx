@@ -42,25 +42,6 @@ export function Toggle({ on, onChange, disabled, children }: { on: boolean; onCh
   )
 }
 
-// Radio renders one exclusive choice. The group wrapper carries the role so
-// arrow-key navigation lands on the right set.
-export function RadioGroup({ label, children }: { label?: string; children: ReactNode }) {
-  return (
-    <div className="radio-group" role="radiogroup" aria-label={label}>
-      {children}
-    </div>
-  )
-}
-
-export function Radio({ on, onChange, children }: { on: boolean; onChange: () => void; children: ReactNode }) {
-  return (
-    <button type="button" role="radio" aria-checked={on} className={'rd' + (on ? ' on' : '')} onClick={onChange}>
-      <span className="rd-box">{on && <span className="rd-dot" />}</span>
-      <span className="ck-label">{children}</span>
-    </button>
-  )
-}
-
 /* ── Select ── */
 
 export type Option<T extends string> = { value: T; label: string; icon?: IconName }
@@ -349,6 +330,7 @@ export function PromptDialog({
   cancelLabel,
   onCancel,
   onConfirm,
+  parse,
 }: {
   title: string
   body: string
@@ -357,10 +339,16 @@ export function PromptDialog({
   cancelLabel: string
   onCancel: () => void
   onConfirm: (value: number) => void
+  // parse reads the field into the number the caller wants. It exists because
+  // what somebody types and what the caller stores are not always the same
+  // unit — dollars typed, micro-USD stored. Null means "not a number yet", and
+  // the confirm button stays disabled. Defaults to a non-negative integer.
+  parse?: (text: string) => number | null
 }) {
   const [draft, setDraft] = useState(initial)
-  const parsed = Number.parseInt(draft, 10)
-  const valid = Number.isInteger(parsed) && parsed >= 0
+  const read = parse ?? ((text: string) => (Number.isInteger(Number.parseInt(text, 10)) ? Number.parseInt(text, 10) : null))
+  const parsed = read(draft)
+  const valid = parsed !== null && parsed >= 0
   return (
     <Modal
       title={title}
@@ -371,7 +359,7 @@ export function PromptDialog({
           <button className="btn ghost" onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button className="btn" disabled={!valid} onClick={() => valid && onConfirm(parsed)}>
+          <button className="btn" disabled={!valid} onClick={() => valid && parsed !== null && onConfirm(parsed)}>
             {confirmLabel}
           </button>
         </>

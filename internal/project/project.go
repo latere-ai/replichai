@@ -47,13 +47,7 @@ type Project struct {
 	Owner      string     `json:"owner"`      // the owning principal (006c)
 	Title      string     `json:"title"`      // defaults from the first session's paper
 	Visibility Visibility `json:"visibility"` // private by default; the public flip is 006f
-	// Sponsored is the owner's standing consent to cover their members'
-	// sessions (006l): with it on, a collaborator submitting here may charge the
-	// owner's quota instead of their own. Off by default, revocable, and set by
-	// the owner alone — a collaborator can never drain an allowance nobody
-	// offered.
-	Sponsored bool      `json:"sponsored"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt  time.Time  `json:"created_at"`
 	// The public-flip provenance (006f): who signed the responsibility
 	// attestation, when, and which attestation text version. Zero until the
 	// owner makes the project public.
@@ -135,10 +129,6 @@ type Store interface {
 	// timestamp must keep pointing at the moment the publication actually ended,
 	// not at the last time somebody asked. The caller authorises (owner-only).
 	SetPrivate(ctx context.Context, id string, w Withdrawal) error
-	// SetSponsored records the owner's standing consent to cover their members'
-	// sessions, or withdraws it (006l). The caller authorises (owner-only);
-	// this store only records.
-	SetSponsored(ctx context.Context, id string, on bool) error
 	// ListPublic returns every public project, newest first — the public zone's
 	// read surface, across all owners.
 	ListPublic(ctx context.Context) ([]Project, error)

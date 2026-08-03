@@ -1,7 +1,6 @@
 package webauth
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -10,31 +9,28 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/platform"
 )
 
 // Admin serves the platform-admin endpoints: the access list, grant, and
-// revoke (006c), plus the platform settings row and per-person quota top-ups
-// (006k). Each resolves the caller's own grant through the store, which refuses
-// anyone below admin tier — so the enforcement is server-side even if the route
-// were reached without the tier guard.
+// revoke (006c), the platform settings row (006k), and the credit top-up that
+// is how money enters the platform at all (011). Each resolves the caller's own
+// grant through the store, which refuses anyone below admin tier — so the
+// enforcement is server-side even if the route were reached without the tier
+// guard.
 type Admin struct {
 	access   access.Access
 	platform platform.Store
-	consumed ConsumedFunc
+	credits  credit.Store
 }
 
-// ConsumedFunc counts the sessions charged to one principal that spend
-// allowance (006l). Injected so this package does not import the job store; nil
-// leaves the usage column at zero.
-type ConsumedFunc func(ctx context.Context, principalSub string) (int, error)
-
 // NewAdmin builds the admin handlers. A nil platform store disables the
-// settings and top-up endpoints (they answer 503), for a deployment or a test
-// that wires only the access half.
-func NewAdmin(acc access.Access, plat platform.Store, consumed ConsumedFunc) *Admin {
-	return &Admin{access: acc, platform: plat, consumed: consumed}
+// settings endpoints and a nil ledger the top-up (they answer 503), for a
+// deployment or a test that wires only the access half.
+func NewAdmin(acc access.Access, plat platform.Store, credits credit.Store) *Admin {
+	return &Admin{access: acc, platform: plat, credits: credits}
 }
 
 // MountAdmin registers every admin route behind the tier guard and returns the
@@ -50,7 +46,7 @@ func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Ad
 		{httpapi.Route{Method: "GET", Pattern: "/admin/access"}, a.List},
 		{httpapi.Route{Method: "POST", Pattern: "/admin/access"}, a.Grant},
 		{httpapi.Route{Method: "DELETE", Pattern: "/admin/access/{email}"}, a.Revoke},
-		{httpapi.Route{Method: "PUT", Pattern: "/admin/access/{email}/quota"}, a.SetTopup},
+		{httpapi.Route{Method: "POST", Pattern: "/admin/access/{email}/credits"}, a.Topup},
 		{httpapi.Route{Method: "GET", Pattern: "/admin/settings"}, a.Settings},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/settings"}, a.SetSettings},
 	}
@@ -63,47 +59,27 @@ func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Ad
 }
 
 // GrantView is one row of the admin's people table: the ACL row, plus whether
-// it has bound to a principal yet and any quota headroom granted on top of the
-// platform default (006k). It is a view, never a stored shape.
+// it has bound to a principal yet and what their wallet holds (011). It is a
+// view, never a stored shape.
 type GrantView struct {
 	Email     string    `json:"email"`
 	Tier      string    `json:"tier"`
 	Bound     bool      `json:"bound"`
 	GrantedBy string    `json:"granted_by,omitempty"`
 	GrantedAt time.Time `json:"granted_at,omitzero"`
-	Topup     int       `json:"topup,omitempty"`
-	// Used and Limit are this person's session quota (006l) — what an admin
-	// reads before deciding who needs a top-up. Unlimited reports an admin, who
-	// owns the platform budget and is never metered.
-	Used      int  `json:"used"`
-	Limit     int  `json:"limit"`
-	Unlimited bool `json:"unlimited"`
+	// Wallet is this person's credit balance in micro-USD — what an admin reads
+	// before deciding who needs a top-up. It is keyed by email, so it is
+	// readable for somebody who has never signed in.
+	Wallet int64 `json:"wallet"`
 }
 
-// List returns every grant, with its quota top-up merged in.
+// List returns every grant, with its wallet balance merged in.
 func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 	caller := principalFrom(r)
 	grants, err := a.access.List(r.Context(), caller)
 	if err != nil {
 		writeAdminError(w, err)
 		return
-	}
-	topups := map[string]int{}
-	settings := platform.Settings{DefaultSessionQuota: platform.DefaultSessionQuota}
-	if a.platform != nil {
-		list, err := a.platform.Topups(r.Context(), caller)
-		if err != nil {
-			writeAdminError(w, err)
-			return
-		}
-		for _, t := range list {
-			topups[t.Email] = t.Extra
-		}
-		if s, err := a.platform.Settings(r.Context()); err == nil {
-			settings = s
-		} else {
-			log.Printf("admin: read platform settings: %v", err)
-		}
 	}
 	out := make([]GrantView, 0, len(grants))
 	for _, g := range grants {
@@ -113,19 +89,16 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 			Bound:     g.Principal != "",
 			GrantedBy: g.GrantedBy,
 			GrantedAt: g.GrantedAt,
-			Topup:     topups[g.Email],
-			Limit:     settings.DefaultSessionQuota + topups[g.Email],
-			Unlimited: g.Tier == access.TierAdmin,
 		}
-		// The limit is composed here rather than read through
-		// platform.Allowance: resolving an unbound grant by email would *bind*
-		// it to the caller's empty principal, and reading a table must never
-		// write to it.
-		if g.Principal != "" && a.consumed != nil {
-			if used, err := a.consumed(r.Context(), g.Principal); err == nil {
-				v.Used = used
+		// The wallet is read by email, which is also how it is funded — so an
+		// admin can see and top up somebody who has not signed in yet, and
+		// reading the table never binds a grant to the caller's principal the
+		// way resolving one would.
+		if a.credits != nil {
+			if n, err := a.credits.Balance(r.Context(), credit.Wallet(g.Email)); err == nil {
+				v.Wallet = n
 			} else {
-				log.Printf("admin: counting sessions for %s: %v", g.Email, err)
+				log.Printf("admin: reading the wallet for %s: %v", g.Email, err)
 			}
 		}
 		out = append(out, v)
@@ -156,13 +129,13 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		DefaultSessionQuota int `json:"default_session_quota"`
+		StartReserve int64 `json:"start_reserve"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	next := platform.Settings{DefaultSessionQuota: body.DefaultSessionQuota}
+	next := platform.Settings{StartReserve: body.StartReserve}
 	if err := a.platform.SetSettings(r.Context(), principalFrom(r), next); err != nil {
 		writeAdminError(w, err)
 		return
@@ -171,26 +144,34 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s)
 }
 
-// SetTopup sets one person's quota headroom above the platform default. Zero
-// removes it; the email need not have signed in yet.
-func (a *Admin) SetTopup(w http.ResponseWriter, r *http.Request) {
-	if a.platform == nil {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_platform_store")
+// Topup adds credits to one person's wallet — the only way money enters the
+// platform until a payment provider posts the same ledger entry. The email need
+// not have signed in yet, which is what lets an admin fund somebody before
+// inviting them.
+func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
+	if a.credits == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_credit_store")
 		return
 	}
 	var body struct {
-		Extra int `json:"extra"`
+		// Amount is micro-USD, positive. A negative top-up is not a withdrawal
+		// with the sign flipped: taking credits back is a different act with a
+		// different record, and it does not exist yet.
+		Amount int64 `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
 	email := r.PathValue("email")
-	if err := a.platform.SetTopup(r.Context(), principalFrom(r), email, body.Extra); err != nil {
+	if err := a.credits.Topup(r.Context(), principalFrom(r), email, body.Amount); err != nil {
 		writeAdminError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"email": strings.ToLower(strings.TrimSpace(email)), "extra": body.Extra})
+	balance, _ := a.credits.Balance(r.Context(), credit.Wallet(email))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"email": strings.ToLower(strings.TrimSpace(email)), "wallet": balance,
+	})
 }
 
 // Grant seeds or promotes a grant by email.
@@ -249,12 +230,12 @@ func principalFrom(r *http.Request) access.Principal {
 // so neither has to import the other's errors.
 func writeAdminError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, access.ErrNotAdmin), errors.Is(err, platform.ErrNotAdmin):
+	case errors.Is(err, access.ErrNotAdmin), errors.Is(err, platform.ErrNotAdmin), errors.Is(err, credit.ErrNotAdmin):
 		httpapi.WriteError(w, http.StatusForbidden, "not_admin")
-	case errors.Is(err, access.ErrNoEmail), errors.Is(err, platform.ErrNoEmail):
+	case errors.Is(err, access.ErrNoEmail), errors.Is(err, credit.ErrNoEmail):
 		httpapi.WriteError(w, http.StatusBadRequest, "missing_email")
-	case errors.Is(err, platform.ErrNegative):
-		httpapi.WriteError(w, http.StatusBadRequest, "negative_quota")
+	case errors.Is(err, platform.ErrNegative), errors.Is(err, credit.ErrNotPositive):
+		httpapi.WriteError(w, http.StatusBadRequest, "bad_amount")
 	default:
 		httpapi.WriteError(w, http.StatusInternalServerError, "grant_failed")
 	}

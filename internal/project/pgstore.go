@@ -23,14 +23,14 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 }
 
 // projectColumns is the column list every read selects, in scan order.
-const projectColumns = `id, owner, title, visibility, sponsored, created_at, signed_off_by, signed_off_at, attestation_version,
+const projectColumns = `id, owner, title, visibility, created_at, signed_off_by, signed_off_at, attestation_version,
 	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email,
 	withdrawn_at, withdrawn_by, withdrawn_reason`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
-	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.Sponsored, &p.CreatedAt,
+	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.CreatedAt,
 		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion,
 		&p.SignedOffName, &p.SignedOffInstitution, &p.SignedOffContact,
 		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail,
@@ -88,18 +88,6 @@ func (s *PGStore) ListByOwner(ctx context.Context, owner string) ([]Project, err
 func (s *PGStore) SetTitle(ctx context.Context, id, title string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE projects SET title = $2 WHERE id = $1`, id, title)
 	return err
-}
-
-// SetSponsored records or withdraws the owner's standing consent.
-func (s *PGStore) SetSponsored(ctx context.Context, id string, on bool) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE projects SET sponsored=$2 WHERE id=$1`, id, on)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 // SetPublic marks a project public and records the sign-off, superseding any

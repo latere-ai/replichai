@@ -3,12 +3,14 @@ package platform
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 )
 
 var ctx = context.Background()
@@ -42,87 +44,45 @@ func newAuthority(t *testing.T) *access.MemStore {
 func contract(t *testing.T, s Store) {
 	t.Helper()
 
-	// AC3: the seeded value is the compiled-in conservative default, and it is
-	// not unlimited.
+	// The seeded value is the compiled-in default, and it is one number rather
+	// than two that could drift.
 	got, err := s.Settings(ctx)
 	if err != nil {
 		t.Fatalf("Settings: %v", err)
 	}
-	if got.DefaultSessionQuota != DefaultSessionQuota {
-		t.Errorf("seeded default = %d, want %d", got.DefaultSessionQuota, DefaultSessionQuota)
+	if got.StartReserve != DefaultStartReserve {
+		t.Errorf("seeded reserve = %d, want %d", got.StartReserve, DefaultStartReserve)
 	}
 
-	// AC1: writes are admin-only, refused in the store itself.
-	if err := s.SetSettings(ctx, user, Settings{DefaultSessionQuota: 999}); !errors.Is(err, ErrNotAdmin) {
+	// Policy is admin-only, re-checked in the store rather than trusted to the
+	// route guard.
+	if err := s.SetSettings(ctx, user, Settings{StartReserve: 999}); !errors.Is(err, ErrNotAdmin) {
 		t.Errorf("SetSettings by a user: want ErrNotAdmin, got %v", err)
 	}
-	if err := s.SetTopup(ctx, user, "x@example.com", 5); !errors.Is(err, ErrNotAdmin) {
-		t.Errorf("SetTopup by a user: want ErrNotAdmin, got %v", err)
-	}
-	if _, err := s.Topups(ctx, user); !errors.Is(err, ErrNotAdmin) {
-		t.Errorf("Topups by a user: want ErrNotAdmin, got %v", err)
-	}
 
-	// AC2: an admin's write persists, recording who made it.
-	if err := s.SetSettings(ctx, admin, Settings{DefaultSessionQuota: 7}); err != nil {
+	// An admin's number sticks, and is recorded against them.
+	if err := s.SetSettings(ctx, admin, Settings{StartReserve: 7 * credit.Dollar}); err != nil {
 		t.Fatalf("SetSettings: %v", err)
 	}
 	got, err = s.Settings(ctx)
 	if err != nil {
 		t.Fatalf("Settings: %v", err)
 	}
-	if got.DefaultSessionQuota != 7 {
-		t.Errorf("default = %d, want 7", got.DefaultSessionQuota)
+	if got.StartReserve != 7*credit.Dollar {
+		t.Errorf("reserve = %d, want %d", got.StartReserve, 7*credit.Dollar)
 	}
-	if got.UpdatedBy != admin.Email {
-		t.Errorf("updated_by = %q, want %q", got.UpdatedBy, admin.Email)
-	}
-	if got.UpdatedAt.IsZero() {
-		t.Error("updated_at should be stamped")
+	if got.UpdatedBy != admin.Email || got.UpdatedAt.IsZero() {
+		t.Errorf("settings = %+v, want the admin and a time recorded", got)
 	}
 
-	// A negative quota means "owes sessions" and is refused.
-	if err := s.SetSettings(ctx, admin, Settings{DefaultSessionQuota: -1}); !errors.Is(err, ErrNegative) {
-		t.Errorf("negative default: want ErrNegative, got %v", err)
-	}
-	if err := s.SetTopup(ctx, admin, "x@example.com", -1); !errors.Is(err, ErrNegative) {
-		t.Errorf("negative topup: want ErrNegative, got %v", err)
-	}
-	if err := s.SetTopup(ctx, admin, "  ", 5); !errors.Is(err, ErrNoEmail) {
-		t.Errorf("topup with no email: want ErrNoEmail, got %v", err)
+	// A negative reserve cannot mean anything.
+	if err := s.SetSettings(ctx, admin, Settings{StartReserve: -1}); !errors.Is(err, ErrNegative) {
+		t.Errorf("negative reserve: want ErrNegative, got %v", err)
 	}
 
-	// AC5/AC6: a top-up composes with the default, is keyed by (normalized)
-	// email so it can be set before that person has ever signed in, and clears
-	// at zero.
-	if err := s.SetTopup(ctx, admin, "  Newcomer@Example.com ", 4); err != nil {
-		t.Fatalf("SetTopup: %v", err)
-	}
-	newcomer := access.Principal{Sub: "newcomer-sub", Email: "newcomer@example.com"}
-	if n, unlimited, err := s.Allowance(ctx, newcomer); err != nil || unlimited || n != 11 {
-		t.Errorf("allowance = %d/%v (err %v), want 11 (7 default + 4 top-up), capped", n, unlimited, err)
-	}
-	tops, err := s.Topups(ctx, admin)
-	if err != nil {
-		t.Fatalf("Topups: %v", err)
-	}
-	if len(tops) != 1 || tops[0].Email != "newcomer@example.com" || tops[0].Extra != 4 || tops[0].GrantedBy != admin.Email {
-		t.Errorf("topups = %+v", tops)
-	}
-	if err := s.SetTopup(ctx, admin, "newcomer@example.com", 0); err != nil {
-		t.Fatalf("clear topup: %v", err)
-	}
-	if tops, _ := s.Topups(ctx, admin); len(tops) != 0 {
-		t.Errorf("topups after clear = %+v, want empty", tops)
-	}
-
-	// AC6: someone with no top-up gets the plain default; an admin is unlimited
-	// and owns the whole platform budget.
-	if n, unlimited, err := s.Allowance(ctx, user); err != nil || unlimited || n != 7 {
-		t.Errorf("user allowance = %d/%v (err %v), want 7, capped", n, unlimited, err)
-	}
-	if _, unlimited, err := s.Allowance(ctx, admin); err != nil || !unlimited {
-		t.Errorf("admin allowance unlimited = %v (err %v), want true", unlimited, err)
+	// Restore, so a shared database is left as the next test expects it.
+	if err := s.SetSettings(ctx, admin, Settings{StartReserve: DefaultStartReserve}); err != nil {
+		t.Fatalf("restore: %v", err)
 	}
 }
 
@@ -130,205 +90,148 @@ func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	contract(t, NewMemStore(newAuthority(t)))
 }
 
-// AC3: the compiled-in default is conservative and finite — it is both the
-// value a fresh store starts at and the value a missing Postgres row falls back
-// to, so the two cannot drift into "unlimited by accident".
-//
-// Since 006q it is zero. Sign-in is open, so this number is no longer a second
-// lock behind an admin's guest list; it is the only one, and a stranger who
-// signs in must arrive with nothing to spend. A negative value would be worse
-// than useless (it would read as "owes sessions"), and any positive value would
-// hand every arrival free runs on the platform's credential.
-func TestFreshStoreStartsAtTheConservativeDefault(t *testing.T) {
-	if DefaultSessionQuota != 0 {
-		t.Fatalf("DefaultSessionQuota = %d; with sign-in open a new arrival starts at 0", DefaultSessionQuota)
+// The reserve fails **high**, and this is the direction that matters. A reserve
+// resolving to zero when the settings read fails would let any project start a
+// session on an empty pot — the unbounded spend 011 exists to prevent — so the
+// seeded value and the fallback are one constant, and neither is zero.
+func TestTheReserveFailsHigh(t *testing.T) {
+	if DefaultStartReserve <= 0 {
+		t.Fatalf("DefaultStartReserve = %d; a zero reserve admits a session on an empty pot", DefaultStartReserve)
 	}
 	got, err := NewMemStore(nil).Settings(ctx)
 	if err != nil {
 		t.Fatalf("Settings: %v", err)
 	}
-	if got.DefaultSessionQuota != DefaultSessionQuota {
-		t.Errorf("fresh store default = %d, want the compiled-in %d", got.DefaultSessionQuota, DefaultSessionQuota)
+	if got.StartReserve != DefaultStartReserve {
+		t.Errorf("fresh store reserve = %d, want the compiled-in %d", got.StartReserve, DefaultStartReserve)
 	}
-	// The seeded migration writes that same constant, so a fresh database and a
-	// fresh in-memory store agree.
-	if n, _, err := NewMemStore(nil).Allowance(ctx, user); err != nil || n != DefaultSessionQuota {
-		t.Errorf("allowance on a fresh store = %d (err %v), want %d", n, err, DefaultSessionQuota)
+	// And the adapter the enqueue gate reads through resolves the same way when
+	// the store itself is broken: the gate never sees "no reserve".
+	n, err := StartReserve(brokenStore{})(ctx)
+	if err != nil {
+		t.Fatalf("StartReserve on a failing store returned an error the gate would have to interpret: %v", err)
+	}
+	if n != DefaultStartReserve {
+		t.Errorf("reserve on a failing store = %d, want %d", n, DefaultStartReserve)
 	}
 }
 
-// AC1-AC6 against a real Postgres, including AC4's single-row constraint.
+// brokenStore stands in for a database that is not answering.
+type brokenStore struct{}
+
+func (brokenStore) Settings(context.Context) (Settings, error) {
+	return Settings{}, errors.New("postgres is not answering")
+}
+func (brokenStore) SetSettings(context.Context, access.Principal, Settings) error {
+	return errors.New("postgres is not answering")
+}
+
+// The contract against a real Postgres, including the single-row constraint.
 func TestPGStoreSatisfiesTheContract(t *testing.T) {
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("set TEST_DATABASE_URL to run the Postgres platform contract")
-	}
-	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
+	pool := testPool(t)
 	defer pool.Close()
-	if err := access.Migrate(ctx, pool); err != nil {
-		t.Fatalf("access migrate: %v", err)
-	}
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	for _, tbl := range []string{"quota_topups", "access_grants"} {
-		if _, err := pool.Exec(ctx, "TRUNCATE "+tbl); err != nil {
-			t.Fatalf("truncate %s: %v", tbl, err)
-		}
-	}
-	// The settings row is restored to the seeded default rather than truncated,
-	// so the contract starts where a fresh migration leaves it.
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO platform_settings (id, default_session_quota, updated_by, updated_at)
-		VALUES (1, $1, 'bootstrap', now())
-		ON CONFLICT (id) DO UPDATE SET default_session_quota = EXCLUDED.default_session_quota,
-		                               updated_by = 'bootstrap', updated_at = now()`,
-		DefaultSessionQuota); err != nil {
-		t.Fatalf("reset settings: %v", err)
-	}
+	contract(t, NewPGStore(pool, newAuthority(t)))
 
-	acc := access.NewPGAccess(pool)
-	if err := acc.SeedAdmin(ctx, admin.Email); err != nil {
-		t.Fatalf("SeedAdmin: %v", err)
-	}
-	if err := acc.SeedGrant(ctx, user.Email, access.TierUser); err != nil {
-		t.Fatalf("SeedGrant: %v", err)
-	}
-	for _, p := range []access.Principal{admin, user} {
-		if _, ok, _ := acc.Resolve(ctx, p); !ok {
-			t.Fatalf("%s should resolve granted", p.Email)
-		}
-	}
-
-	contract(t, NewPGStore(pool, acc))
-
-	// AC4: a second policy row cannot exist.
+	// A second settings row is a constraint violation rather than an ambiguity
+	// about which row is the policy.
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO platform_settings (id, default_session_quota, updated_by, updated_at) VALUES (2, 1, 'x', now())`,
+		`INSERT INTO platform_settings (id, start_reserve, updated_by, updated_at) VALUES (2, 1, 'x', now())`,
 	); err == nil {
-		t.Error("a second platform_settings row must violate the check constraint")
-	}
-
-	// AC3: the fallback holds when the row is gone.
-	if _, err := pool.Exec(ctx, `DELETE FROM platform_settings`); err != nil {
-		t.Fatalf("delete settings: %v", err)
-	}
-	s := NewPGStore(pool, acc)
-	got, err := s.Settings(ctx)
-	if err != nil {
-		t.Fatalf("Settings with no row: %v", err)
-	}
-	if got.DefaultSessionQuota != DefaultSessionQuota {
-		t.Errorf("missing row = %d, want the conservative default %d", got.DefaultSessionQuota, DefaultSessionQuota)
-	}
-	if n, unlimited, _ := s.Allowance(ctx, user); unlimited || n != DefaultSessionQuota {
-		t.Errorf("allowance with no row = %d/%v, want %d and capped — never unlimited", n, unlimited, DefaultSessionQuota)
+		t.Error("a second platform_settings row was accepted; the policy must be one row")
 	}
 }
 
-// 006q's cutover has to reach the database that is already deployed.
-//
-// Migration 1 interpolates DefaultSessionQuota *at migration time*, so a
-// deployment that ran it when the constant was 3 holds 3 — and Settings()
-// returns that row, never the fallback. Lowering the Go constant alone would
-// have made "the default is zero, and nobody is grandfathered" true of a fresh
-// database and false of production, which is the only one that matters.
-//
-// This test fails without migration 2: it puts a database into exactly the
-// state production is in, re-runs the migrator, and asserts what an existing
-// deployment lands on.
-func TestMigrationLowersAnAlreadyDeployedDefault(t *testing.T) {
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("set TEST_DATABASE_URL to run the Postgres platform migration test")
+// The read is fail-closed at the store, not just at the constant: a missing row
+// yields the conservative default rather than nothing.
+func TestAMissingRowStillYieldsAReserve(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, `DELETE FROM platform_settings`); err != nil {
+		t.Fatalf("delete row: %v", err)
 	}
-	pool, err := pgxpool.New(ctx, url)
+	got, err := NewPGStore(pool, newAuthority(t)).Settings(ctx)
+	if err != nil {
+		t.Fatalf("Settings: %v", err)
+	}
+	if got.StartReserve != DefaultStartReserve {
+		t.Errorf("missing row = %d, want the conservative default %d", got.StartReserve, DefaultStartReserve)
+	}
+}
+
+// The cutover to money is a schema change, not a conversion. 011 keeps no
+// session counter and no quota top-up table: the two hold counts, and what
+// replaces them holds money, so there is nothing to carry across — the rule
+// 006q set when it refused to grandfather anybody.
+func TestTheMigrationLeavesNoCounterBehind(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+
+	for _, tc := range []struct{ query, name string }{
+		{`SELECT 1 FROM information_schema.columns WHERE table_name='platform_settings' AND column_name='default_session_quota'`, "platform_settings.default_session_quota"},
+		{`SELECT 1 FROM information_schema.tables WHERE table_name='quota_topups'`, "quota_topups"},
+	} {
+		var found int
+		if err := pool.QueryRow(ctx, tc.query).Scan(&found); err == nil {
+			t.Errorf("%s still exists; 011 removes the counter rather than deprecating it", tc.name)
+		}
+	}
+
+	var reserve int64
+	if err := pool.QueryRow(ctx, `SELECT start_reserve FROM platform_settings WHERE id=1`).Scan(&reserve); err != nil {
+		t.Fatalf("read start_reserve: %v", err)
+	}
+	if reserve != DefaultStartReserve {
+		t.Errorf("migrated reserve = %d, want the compiled-in %d", reserve, DefaultStartReserve)
+	}
+}
+
+// platformTestDB is this package's own database: its tests delete and rewrite
+// the single settings row, which cannot be shared with a package running in
+// parallel against the same server.
+const platformTestDB = "replichai_platform_test"
+
+func testPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	base := os.Getenv("TEST_DATABASE_URL")
+	if base == "" {
+		t.Skip("set TEST_DATABASE_URL to run the Postgres platform tests")
+	}
+	adminPool, err := pgxpool.New(ctx, base)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer pool.Close()
+	_, _ = adminPool.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()`, platformTestDB)
+	if _, err := adminPool.Exec(ctx, `DROP DATABASE IF EXISTS `+platformTestDB); err != nil {
+		adminPool.Close()
+		t.Fatalf("drop db: %v", err)
+	}
+	if _, err := adminPool.Exec(ctx, `CREATE DATABASE `+platformTestDB); err != nil {
+		adminPool.Close()
+		t.Fatalf("create db: %v", err)
+	}
+	adminPool.Close()
+
+	pool, err := pgxpool.New(ctx, swapDBName(t, base, platformTestDB))
+	if err != nil {
+		t.Fatalf("connect to %s: %v", platformTestDB, err)
+	}
 	if err := access.Migrate(ctx, pool); err != nil {
+		pool.Close()
 		t.Fatalf("access migrate: %v", err)
 	}
 	if err := Migrate(ctx, pool); err != nil {
-		t.Fatalf("migrate: %v", err)
+		pool.Close()
+		t.Fatalf("platform migrate: %v", err)
 	}
+	return pool
+}
 
-	// Rewind to the pre-006q world: the bootstrap row at the old default, and
-	// migration 2 not yet applied.
-	rewind := func(t *testing.T, quota int, updatedBy string) {
-		t.Helper()
-		// Upsert rather than update: this test constructs the state a deployment
-		// is in, and it must not depend on what an earlier test left in the
-		// shared scratch database.
-		if _, err := pool.Exec(ctx, `
-			INSERT INTO platform_settings (id, default_session_quota, updated_by, updated_at)
-			VALUES (1, $1, $2, now())
-			ON CONFLICT (id) DO UPDATE SET default_session_quota = EXCLUDED.default_session_quota,
-			                               updated_by = EXCLUDED.updated_by, updated_at = now()`,
-			quota, updatedBy); err != nil {
-			t.Fatalf("rewind settings: %v", err)
-		}
-		if _, err := pool.Exec(ctx, `DELETE FROM platform_migrations WHERE version=2`); err != nil {
-			t.Fatalf("rewind migration: %v", err)
-		}
+func swapDBName(t *testing.T, raw, name string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse TEST_DATABASE_URL: %v", err)
 	}
-	quota := func(t *testing.T) int {
-		t.Helper()
-		var n int
-		if err := pool.QueryRow(ctx, `SELECT default_session_quota FROM platform_settings WHERE id=1`).Scan(&n); err != nil {
-			t.Fatalf("read settings: %v", err)
-		}
-		return n
-	}
-
-	t.Run("a bootstrap row is lowered", func(t *testing.T) {
-		rewind(t, 3, "bootstrap")
-		if err := Migrate(ctx, pool); err != nil {
-			t.Fatalf("migrate: %v", err)
-		}
-		if got := quota(t); got != 0 {
-			t.Errorf("default_session_quota = %d, want 0 — an existing deployment kept its old allowance", got)
-		}
-		// And the store reports it, which is what Enqueue meters against.
-		s, err := NewPGStore(pool, newAuthority(t)).Settings(ctx)
-		if err != nil || s.DefaultSessionQuota != 0 {
-			t.Errorf("Settings = %+v, %v", s, err)
-		}
-	})
-
-	t.Run("a row an admin had already changed is lowered too", func(t *testing.T) {
-		// One rule for everyone. Sparing a console-set row would make "everyone
-		// starts at zero" true of some deployments and false of others, and the
-		// only way to know which would be to query the database.
-		rewind(t, 5, "admin-sub")
-		if err := Migrate(ctx, pool); err != nil {
-			t.Fatalf("migrate: %v", err)
-		}
-		if got := quota(t); got != 0 {
-			t.Errorf("default_session_quota = %d, want 0 whatever the row held before", got)
-		}
-	})
-
-	t.Run("it runs once, and an admin's later number sticks", func(t *testing.T) {
-		if _, err := pool.Exec(ctx,
-			`UPDATE platform_settings SET default_session_quota=9, updated_by='admin-sub' WHERE id=1`); err != nil {
-			t.Fatalf("admin sets a number: %v", err)
-		}
-		if err := Migrate(ctx, pool); err != nil {
-			t.Fatalf("migrate: %v", err)
-		}
-		if got := quota(t); got != 9 {
-			t.Errorf("default_session_quota = %d; the migration re-ran and overwrote a later decision", got)
-		}
-	})
-
-	// Leave the row as the contract test expects to find it.
-	rewind(t, DefaultSessionQuota, "bootstrap")
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
+	u.Path = "/" + name
+	return u.String()
 }

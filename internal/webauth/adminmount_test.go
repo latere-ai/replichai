@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/platform"
 )
@@ -34,7 +35,7 @@ func mountedAdmin(t *testing.T) (*http.ServeMux, []httpapi.Route, access.Princip
 	}
 
 	mux := http.NewServeMux()
-	routes := MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), nil))
+	routes := MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), credit.NewMemStore(acc, nil)))
 	return mux, routes, admin, user
 }
 
@@ -82,8 +83,9 @@ func TestEveryAdminRouteRefusesTheUnauthenticated(t *testing.T) {
 	}
 }
 
-// 006k AC2/AC5/AC7: an admin drives the whole console — read the policy, write
-// it, top someone up, and see the top-up in the people table.
+// 006k AC2/AC5/AC7, in 011's terms: an admin drives the whole console — read
+// the policy, write it, put credits in somebody's wallet, and see the balance
+// in the people table.
 func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	mux, _, admin, _ := mountedAdmin(t)
 
@@ -101,34 +103,39 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatalf("decode settings: %v", err)
 	}
-	if w.Code != http.StatusOK || got.DefaultSessionQuota != platform.DefaultSessionQuota {
+	if w.Code != http.StatusOK || got.StartReserve != platform.DefaultStartReserve {
 		t.Fatalf("settings = %d %+v, want the seeded default", w.Code, got)
 	}
 
 	// Writing it records the admin who did it.
-	w = do("PUT", "/admin/settings", `{"default_session_quota":9}`, admin)
+	w = do("PUT", "/admin/settings", `{"start_reserve":9000000}`, admin)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put settings = %d %s", w.Code, w.Body.String())
 	}
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.DefaultSessionQuota != 9 || got.UpdatedBy != admin.Email {
+	if got.StartReserve != 9*credit.Dollar || got.UpdatedBy != admin.Email {
 		t.Errorf("settings after write = %+v", got)
 	}
 
 	// A negative policy is a bad request, not a 500.
-	if w := do("PUT", "/admin/settings", `{"default_session_quota":-1}`, admin); w.Code != http.StatusBadRequest {
-		t.Errorf("negative quota = %d, want 400", w.Code)
+	if w := do("PUT", "/admin/settings", `{"start_reserve":-1}`, admin); w.Code != http.StatusBadRequest {
+		t.Errorf("negative reserve = %d, want 400", w.Code)
 	}
 
-	// A top-up for someone who has never signed in shows up in the people table
-	// next to their grant.
+	// Credits for someone who has never signed in show up in the people table
+	// next to their grant — the wallet is keyed by email, which is exactly what
+	// lets an admin fund somebody before inviting them.
 	if w := do("POST", "/admin/access", `{"email":"newcomer@example.com","tier":"user"}`, admin); w.Code != http.StatusOK {
 		t.Fatalf("grant = %d %s", w.Code, w.Body.String())
 	}
-	if w := do("PUT", "/admin/access/newcomer@example.com/quota", `{"extra":5}`, admin); w.Code != http.StatusOK {
+	if w := do("POST", "/admin/access/newcomer@example.com/credits", `{"amount":5000000}`, admin); w.Code != http.StatusOK {
 		t.Fatalf("topup = %d %s", w.Code, w.Body.String())
+	}
+	// A top-up of nothing is a bad request rather than a silent no-op.
+	if w := do("POST", "/admin/access/newcomer@example.com/credits", `{"amount":0}`, admin); w.Code != http.StatusBadRequest {
+		t.Errorf("zero top-up = %d, want 400", w.Code)
 	}
 	w = do("GET", "/admin/access", "", admin)
 	var people []GrantView
@@ -144,7 +151,7 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	if found == nil {
 		t.Fatalf("people = %+v, want the newcomer", people)
 	}
-	if found.Topup != 5 || found.Tier != "user" || found.Bound {
-		t.Errorf("newcomer = %+v, want a 5-session top-up on an unbound user grant", *found)
+	if found.Wallet != 5*credit.Dollar || found.Tier != "user" || found.Bound {
+		t.Errorf("newcomer = %+v, want a five-dollar wallet on an unbound user grant", *found)
 	}
 }

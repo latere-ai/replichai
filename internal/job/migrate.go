@@ -56,6 +56,14 @@ UPDATE jobs SET charged_to = principal WHERE charged_to = '';
 -- The quota counts rows per payer by phase; this is the index it reads.
 CREATE INDEX jobs_charged_to_phase ON jobs (charged_to, phase);
 `},
+	{4, `
+-- 011 charges a session to the project it belongs to, out of the project's own
+-- credits. Who pays is therefore project_id, and a second column recording a
+-- payer is a second answer to a question that now has one — the shape 006l
+-- needed only because a quota was keyed on a person.
+DROP INDEX IF EXISTS jobs_charged_to_phase;
+ALTER TABLE jobs DROP COLUMN charged_to;
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own
