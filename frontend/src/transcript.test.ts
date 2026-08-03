@@ -1,19 +1,19 @@
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
-import { clockOf, compactTokens, firstAtOrAfter, histogram, matches, offsetOf, phaseBands, runSpan, spanOf, splitTitle } from './transcript'
+import { clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, splitTitle, totalOf } from './transcript'
 
 const at = (iso: string, over: Partial<Event> = {}): Event => ({ role: 'agent', kind: 'message', time: iso, ...over })
 
 test('a run with no timestamps anywhere has no span to draw', () => {
-  expect(spanOf([{ role: 'agent', kind: 'message' }])).toBeNull()
-  expect(spanOf([])).toBeNull()
+  expect(runSpan([{ role: 'agent', kind: 'message' }], undefined)).toBeNull()
+  expect(runSpan([], undefined)).toBeNull()
 })
 
-test('a span covers the events and is never zero-width', () => {
-  const s = spanOf([at('2026-07-14T09:12:00Z'), at('2026-07-14T10:59:00Z')])!
+test('with no phases recorded the span covers the events, and is never zero-width', () => {
+  const s = runSpan([at('2026-07-14T09:12:00Z'), at('2026-07-14T10:59:00Z')], undefined)!
   expect(s.to - s.from).toBe(107 * 60 * 1000)
   // One event, or many in the same instant, still leaves something to divide by.
-  const point = spanOf([at('2026-07-14T09:12:00Z')])!
+  const point = runSpan([at('2026-07-14T09:12:00Z')], undefined)!
   expect(point.to).toBeGreaterThan(point.from)
 })
 
@@ -67,6 +67,24 @@ test('a session that never recorded a phase gets no bands rather than invented o
   const span = { from: 0, to: 1000 }
   expect(phaseBands(undefined, span)).toEqual([])
   expect(phaseBands({}, span)).toEqual([])
+})
+
+test('the histogram measures work, not conversation length — cache reads do not move the bars', () => {
+  // The shape of a real session: cache reads dwarf everything and grow with the
+  // conversation, so weighting by the total would draw a monotonic ramp and call
+  // it spend. Here the second step does a tenth of the work of the first while
+  // its cache read is ten times larger.
+  const span = { from: Date.parse('2026-07-14T09:00:00Z'), to: Date.parse('2026-07-14T09:04:00Z') }
+  const h = histogram(
+    [
+      at('2026-07-14T09:00:30Z', { usage: { InputTokens: 500, OutputTokens: 500, CachedInputTokens: 1_000_000 } }),
+      at('2026-07-14T09:03:30Z', { usage: { InputTokens: 50, OutputTokens: 50, CachedInputTokens: 10_000_000 } }),
+    ],
+    span,
+    4,
+  )
+  expect(h.weighted).toBe(true)
+  expect(h.bars).toEqual([1, 0, 0, 0.1])
 })
 
 test('the histogram is token-weighted when any event was charged, and counts events when none was', () => {
@@ -124,6 +142,12 @@ test('a title is the event’s own first line, verbatim, and never a summary', (
 test('a first line too long to be a title stays the body', () => {
   const rambling = 'x'.repeat(200)
   expect(splitTitle(rambling)).toEqual({ title: '', body: rambling })
+})
+
+test('the figure beside an event is its work, and the total is still the total', () => {
+  const u = { InputTokens: 1807, OutputTokens: 240, CachedInputTokens: 62_040 }
+  expect(freshOf(u)).toBe(2047)
+  expect(totalOf(u)).toBe(64_087)
 })
 
 test('token counts stay scannable in a column', () => {

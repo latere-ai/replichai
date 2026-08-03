@@ -1699,7 +1699,7 @@ input.submit-input {
 }
 .scrub-legend {
   flex: none;
-  max-width: 200px;
+  max-width: 250px;
   font: 500 10px/1.35 var(--font-mono);
   color: var(--fg-3);
 }

@@ -60,7 +60,10 @@ function events() {
     { role: 'agent', kind: 'tool_use', tool: 'bash', content: 'ls -la /work/repo\ncat method/README.md' },
     { role: 'agent', kind: 'tool_result', content: 'total 48\ndrwxr-xr-x 8 root root 4096 .\n' },
     { role: 'agent', kind: 'thinking', content: '' },
-    { role: 'agent', kind: 'grade', content: 'partial' },
+    // A kind the client has no name of its own for. It must never reach the
+    // filter rail as a raw identifier (006s AC7) — this is the exact family that
+    // showed up on screen as `outcome_evaluation_ongoing`.
+    { role: 'agent', kind: 'outcome_evaluation_ongoing', content: 'scoring 8 of 13 sub-claims' },
   ]
   const out = [{ role: 'user', kind: 'message', content: 'Reproduce this paper.', time: at(RUNNING_AT) }]
   for (let i = 0; i < EVENTS; i++) {
@@ -145,19 +148,21 @@ try {
 
   const m = await page.evaluate(() => {
     const cards = [...document.querySelectorAll('.event')]
-    const clipped = cards.filter((c) => c.scrollHeight > c.clientHeight + 0.5).length
+    const clipped = cards.filter((c) => c.scrollHeight > c.clientHeight + 0.5)
+    // Name the shapes that clip, so a failure points at a card kind.
+    const sample = [...new Set(clipped.map((c) => c.className))].slice(0, 4)
     let overlapping = 0
     for (let i = 0; i + 1 < cards.length; i++) {
       if (cards[i + 1].getBoundingClientRect().top < cards[i].getBoundingClientRect().bottom - 0.5) overlapping++
     }
     const stream = document.querySelector('.tx-stream')
-    return { n: cards.length, clipped, overlapping, overflows: stream.scrollHeight > stream.clientHeight }
+    return { n: cards.length, clipped: clipped.length, sample, overlapping, overflows: stream.scrollHeight > stream.clientHeight }
   })
 
   if (m.n !== EVENTS + 1) fail(`rendered ${m.n} cards, want ${EVENTS + 1}`)
   // Without overflow there is nothing to shrink, and the test proves nothing.
   if (!m.overflows) fail('the stream does not overflow its box — raise EVENTS')
-  if (m.clipped) fail(`${m.clipped}/${m.n} event cards clip their own content`)
+  if (m.clipped) fail(`${m.clipped}/${m.n} event cards clip their own content (${m.sample.join(' | ')})`)
   if (m.overlapping) fail(`${m.overlapping} event cards overlap the next one`)
 
   // 006s AC3: the phase bands are proportional to elapsed time. `running` is
@@ -206,8 +211,46 @@ try {
   if (scrub.moved <= 0) fail(`scrubbing moved the stream by ${scrub.moved}px, want a forward scroll`)
   if (scrub.restyled) fail(`scrubbing rewrote the inline style of ${scrub.restyled} cards — that is the per-card work this design avoids`)
 
+  // 006s AC7: every kind in the rail has a human label. An underscore in a
+  // filter row means a backend identifier reached the screen.
+  const rawLabels = await page.evaluate(() =>
+    [...document.querySelectorAll('button.kind-btn span:not(.sq):not(.n)')].map((s) => s.textContent.trim()).filter((s) => /_/.test(s)),
+  )
+  if (rawLabels.length) fail(`raw identifiers in the filter rail: ${rawLabels.join(', ')}`)
+
+  // 006s AC5: search narrows the stream and the counts with it, and clearing it
+  // restores the run. `web_fetch` is not in this fixture, so search for a string
+  // that is: the tool call bodies.
+  const search = await page.evaluate(async () => {
+    const input = document.querySelector('.tx-search')
+    // React tracks the node's value, so assigning it directly is swallowed. Go
+    // through the native setter the way a real keystroke does.
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    const type = async (v) => {
+      set.call(input, v)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 500)) // the query is deferred
+    }
+    await type('method/README.md')
+    const narrowed = {
+      cards: document.querySelectorAll('.event').length,
+      counts: [...document.querySelectorAll('button.kind-btn .n')].map((n) => +n.textContent),
+    }
+    await type('')
+    return { narrowed, restored: document.querySelectorAll('.event').length }
+  })
+  if (search.narrowed.cards === 0) fail('search for a string that is in the transcript matched nothing')
+  if (search.narrowed.cards >= EVENTS + 1) fail(`search did not narrow the stream: ${search.narrowed.cards} cards`)
+  // The rail must describe what the stream is showing, not the whole run.
+  const railTotal = search.narrowed.counts.reduce((a, b) => a + b, 0)
+  if (railTotal !== search.narrowed.cards) fail(`rail counts sum to ${railTotal} but ${search.narrowed.cards} cards are shown`)
+  if (search.restored !== EVENTS + 1) fail(`clearing the search left ${search.restored} cards, want ${EVENTS + 1}`)
+
   if (!process.exitCode) {
-    console.log(`ok: ${m.n} event cards, none clipped, none overlapping; scrub moved ${Math.round(scrub.moved)}px, restyled 0 cards`)
+    console.log(
+      `ok: ${m.n} cards, none clipped or overlapping; scrub moved ${Math.round(scrub.moved)}px restyling 0 cards; ` +
+        `search narrowed ${EVENTS + 1}→${search.narrowed.cards} and restored; every kind labelled`,
+    )
   }
 } catch (e) {
   fail(e.message)

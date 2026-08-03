@@ -57,6 +57,7 @@ import {
   clockOf,
   compactTokens,
   firstAtOrAfter,
+  freshOf,
   histogram,
   matches,
   offsetOf,
@@ -2855,12 +2856,17 @@ function EventCard({
   )
 }
 
-// EventCost is what the backend charged for this one request. An event that was
-// charged nothing renders nothing — a zero here would claim a free request
-// happened, which is not what an absent figure means (006s).
+// EventCost is what this one request pushed through the model — see freshOf for
+// why it is not the total. An event that was charged nothing renders nothing: a
+// zero here would claim a free request happened, which is not what an absent
+// figure means (006s).
+// What the figure means is said once, in the scrubber's legend above the
+// stream, rather than in a tooltip on each card: a card clips its own overflow,
+// so an overlay anchored inside one is cut off (the reason overlays portal to
+// the body elsewhere in this app).
 function EventCost({ u }: { u?: Usage }) {
   if (!u) return null
-  return <span className="event-cost tabular">{compactTokens(totalOf(u))}</span>
+  return <span className="event-cost tabular">{compactTokens(freshOf(u))}</span>
 }
 
 /* ─── helpers ─── */
