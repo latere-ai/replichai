@@ -10,10 +10,13 @@
 package spa
 
 import (
+	"compress/gzip"
 	"embed"
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 //go:embed all:dist
@@ -38,16 +41,65 @@ func Handler() (http.Handler, error) {
 		index = []byte(notBuilt) // no frontend build in this binary
 	}
 	files := http.FileServer(http.FS(dist))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return compressed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		if p != "" && exists(dist, p) {
+			// Hashed filenames, so the bytes at a given name never change: the
+			// only correct cache lifetime is a long one, and without it every
+			// visit re-downloads the whole bundle.
+			if strings.HasPrefix(p, "assets/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
 			files.ServeHTTP(w, r)
 			return
 		}
+		// index.html names the hashed assets, so it must never be the stale one.
+		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(index)
-	}), nil
+	})), nil
 }
+
+// gzipPool reuses writers: the bundle is compressed on every uncached load, and
+// a fresh gzip.Writer per request is a megabyte of allocation each time.
+var gzipPool = sync.Pool{New: func() any { return gzip.NewWriter(io.Discard) }}
+
+// compressed gzips text responses for clients that accept it.
+//
+// The bundle is ~350 KB of JavaScript and ~33 KB of CSS, and it was going out
+// uncompressed: nothing in front of this server compresses, and net/http does
+// not do it on its own. Over a slow link that is the difference between a page
+// that loads and a page somebody gives up on. Roughly 3.5x here.
+func compressed(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Vary is not optional: a cache that stores the gzipped body under a key
+		// shared with a client that cannot read it serves that client garbage.
+		w.Header().Set("Vary", "Accept-Encoding")
+		w.Header().Set("Content-Encoding", "gzip")
+		// The length is the uncompressed one and would be a lie on the wire;
+		// the response is chunked instead.
+		w.Header().Del("Content-Length")
+
+		zw := gzipPool.Get().(*gzip.Writer)
+		defer gzipPool.Put(zw)
+		zw.Reset(w)
+		defer zw.Close() //nolint:errcheck
+		next.ServeHTTP(gzipResponse{ResponseWriter: w, w: zw}, r)
+	})
+}
+
+// gzipResponse sends the body through the compressor while headers and status
+// keep going to the real writer.
+type gzipResponse struct {
+	http.ResponseWriter
+	w *gzip.Writer
+}
+
+func (g gzipResponse) Write(b []byte) (int, error) { return g.w.Write(b) }
 
 func exists(dir fs.FS, name string) bool {
 	f, err := dir.Open(name)

@@ -25,6 +25,10 @@ func (c *capture) Send(_ context.Context, to, subject, htmlBody string) error {
 	return nil
 }
 
+// The link must be one a browser can open. /projects/{id} is the gated JSON
+// API, so an invitation pointing there hands the reader {"error":...} — which
+// is what shipped in v0.4.1 and is why this asserts the path, not just that
+// some URL is present.
 func TestProjectInvitationNamesEverybodyAndLinksToTheProject(t *testing.T) {
 	tx := &capture{}
 	n := New(tx, "https://replichai.latere.ai")
@@ -38,10 +42,14 @@ func TestProjectInvitationNamesEverybodyAndLinksToTheProject(t *testing.T) {
 	if !strings.Contains(tx.subject, "Reproducing Study 1") {
 		t.Errorf("subject = %q, want the project named", tx.subject)
 	}
-	for _, want := range []string{"Ada Lovelace", "Reproducing Study 1", "https://replichai.latere.ai/projects/p-1"} {
+	for _, want := range []string{"Ada Lovelace", "Reproducing Study 1", "https://replichai.latere.ai/p/p-1"} {
 		if !strings.Contains(tx.body, want) {
 			t.Errorf("body is missing %q: %s", want, tx.body)
 		}
+	}
+	// Never the API path: that one answers JSON to a browser.
+	if strings.Contains(tx.body, "/projects/p-1") {
+		t.Errorf("the invitation links at the gated API: %s", tx.body)
 	}
 }
 
@@ -54,7 +62,7 @@ func TestProjectURLHasNoDoubleSlash(t *testing.T) {
 	if strings.Contains(tx.body, "latere.ai//projects") {
 		t.Errorf("link is malformed: %s", tx.body)
 	}
-	if !strings.Contains(tx.body, "https://replichai.latere.ai/projects/p-1") {
+	if !strings.Contains(tx.body, "https://replichai.latere.ai/p/p-1") {
 		t.Errorf("link missing from body: %s", tx.body)
 	}
 }

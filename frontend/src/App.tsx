@@ -97,6 +97,16 @@ function phaseIcon(phase: string): IconName {
   return 'clock'
 }
 
+// projectFromPath reads a project id out of a deep link.
+//
+// The path is /p/{id}, not /projects/{id}: the API owns /projects/{id}, so a
+// browser sent there gets JSON rather than the app. That is exactly what the
+// first invitation emails did — the link in them could never load anything.
+export function projectFromPath(pathname: string): string {
+  const m = /^\/p\/([A-Za-z0-9_-]+)\/?$/.exec(pathname)
+  return m ? m[1] : ''
+}
+
 // publicHandleFromPath reads a researcher's handle out of the address bar.
 //
 // Navigation inside the app is state rather than a router, but a profile page
@@ -113,6 +123,7 @@ export default function App() {
   const theme = useTheme()
   const [me, setMe] = useState<Me | null>(null)
   const handle = publicHandleFromPath(window.location.pathname)
+  const deepProject = projectFromPath(window.location.pathname)
 
   // refreshMe re-reads the identity, and with it the remaining quota — called
   // after anything that spends allowance, so the header never shows a stale
@@ -129,9 +140,12 @@ export default function App() {
   if (handle) return <PublicProfileScreen i18n={i18n} handle={handle} />
 
   if (me === null) return <div className="center-load">…</div>
-  if (!me.authenticated) return <SignIn i18n={i18n} />
+  // A project is private, so a deep link into one is gated: sign in first, and
+  // come back to the project rather than to the dashboard. Anything else would
+  // make an invitation mail end at a login screen and stop there.
+  if (!me.authenticated) return <SignIn i18n={i18n} next={deepProject ? window.location.pathname : ''} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
-  return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} />
+  return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} openAtProject={deepProject} />
 }
 
 // ThemeSwitcher offers the three appearances directly rather than cycling
@@ -252,7 +266,7 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
         ) : (
           <div className="stack" style={{ gap: 8 }}>
             {p.projects.map((proj) => (
-              <a key={proj.id} className="member-row" href={`/?project=${encodeURIComponent(proj.id)}`}>
+              <a key={proj.id} className="member-row" href={`/p/${proj.id}`}>
                 <span className="member-email">{proj.title}</span>
                 {proj.signed_off_at && (
                   <span className="muted small">{new Date(proj.signed_off_at).toLocaleDateString()}</span>
@@ -272,14 +286,15 @@ function Logo({ big }: { big?: boolean }) {
   return <div className={big ? 'auth-logo' : 'rail-logo'}>r</div>
 }
 
-function SignIn({ i18n }: { i18n: I18n }) {
+function SignIn({ i18n, next }: { i18n: I18n; next?: string }) {
+  const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
   return (
     <div className="auth-center">
       <div className="auth-card">
         <Logo big />
         <h2>replichai</h2>
         <p>{i18n.t('tagline')}</p>
-        <a className="btn lg" href="/login" style={{ justifyContent: 'center' }}>
+        <a className="btn lg" href={href} style={{ justifyContent: 'center' }}>
           {i18n.t('signInWith')}
         </a>
       </div>
@@ -320,9 +335,27 @@ function NavItem({ label, icon, tone, on, onClick }: { label: string; icon: Icon
   )
 }
 
-function Shell({ i18n, me, theme, refreshMe }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme>; refreshMe: () => void }) {
+function Shell({
+  i18n,
+  me,
+  theme,
+  refreshMe,
+  openAtProject,
+}: {
+  i18n: I18n
+  me: Me
+  theme: ReturnType<typeof useTheme>
+  refreshMe: () => void
+  openAtProject?: string
+}) {
   const { t } = i18n
-  const [view, setView] = useState<View>({ name: 'projects' })
+  const [view, setView] = useState<View>(openAtProject ? { name: 'project', id: openAtProject } : { name: 'projects' })
+  // Navigation inside the app is state, not a router, so the deep-link path is
+  // retired once it has been consumed — otherwise a reload after navigating
+  // away would drop the reader back into the project they had left.
+  useEffect(() => {
+    if (openAtProject) window.history.replaceState(null, '', '/')
+  }, [openAtProject])
   const openProject = (id: string, title?: string) => setView({ name: 'project', id, title })
   const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string) =>
     setView({ name: 'session', jobId, projectId, ref, projectTitle })

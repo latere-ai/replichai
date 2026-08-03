@@ -60,9 +60,15 @@ func (n *Notifier) ProjectInvitation(ctx context.Context, to, projectID, project
 	return n.tx.Send(ctx, to, subject, body)
 }
 
-// projectURL is where a project lives for a reader of a message.
+// projectURL is where a project lives *for a reader of a message* — the app's
+// deep link, not the API's.
+//
+// /projects/{id} is a gated JSON endpoint, so the first invitations linked
+// somewhere a browser could only ever receive an error from. The app owns /p/,
+// where a signed-out reader is sent through sign-in and returned to the project
+// they were invited to.
 func (n *Notifier) projectURL(projectID string) string {
-	return n.baseURL + "/projects/" + projectID
+	return n.baseURL + "/p/" + projectID
 }
 
 // renderProjectInvitation builds the subject and body. Everything interpolated
