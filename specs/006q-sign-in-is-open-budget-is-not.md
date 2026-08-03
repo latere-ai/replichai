@@ -39,18 +39,29 @@ This is a deliberate, visible cost: people who could run three sessions this mor
 
 Everything a person with no budget *can* do stays available: sign in, create a project, be invited into one, read a public project, read a project shared with them, edit their profile. The wall is at spending, and only there.
 
-**Revocation must actually lock out.** With sign-in self-granting, a revoked person's next sign-in would silently re-grant them — turning a ban into a logout. The grant store therefore records revocation rather than deleting the row, and the self-grant refuses a revoked email. This is the one new piece of state the spec adds, and it is the difference between a ban and a nuisance.
+**Revocation must actually lock out, and that is where the implementation starts.** `access.Access` documents `Revoke` as *"removes a grant by email"*, idempotent — a delete. With sign-in self-granting, a deleted row is re-created by the revoked person's next sign-in, turning a ban into a logout. So revocation stops being a delete and becomes a recorded state, and this is a migration and a contract change before it is a feature: begin here, not with the self-grant.
+
+| what changes | to what |
+|---|---|
+| `access_grants` | gains `revoked_at` (`NULL` while never revoked) and `revoked_by` |
+| `Revoke` | sets those columns and drops the tier to `TierNone`, keeping the row; still idempotent, and its doc comment says so |
+| `Resolve` | answers not-granted for a revoked row, exactly as it does for a missing one |
+| the self-grant | refuses an email whose row is revoked — the whole point |
+| `Grant` | on a revoked row clears the revocation; an admin re-admitting someone is a first-class act, not a reason to hand-edit a column |
+| the admin People list | shows a revoked person as revoked rather than dropping them, so a ban is visible and reversible |
+
+The alternative — a separate deny list — keeps `Revoke` a delete at the cost of two tables answering one question about one email, which is the shape 006c rejected for grants in the first place.
 
 ## Acceptance criteria
 
 1. A principal with no grant who completes the OIDC callback holds `TierUser` afterwards, and reaches the operator surface on the next request.
 2. A principal seeded `TierAdmin` (via `ADMIN_EMAILS`) who signs in stays `TierAdmin` — the self-grant never downgrades an existing grant.
-3. A revoked email that signs in again is *not* re-granted, and the gate still answers `not_invited`.
+3. `Revoke` records `revoked_at`/`revoked_by` and keeps the row; `Resolve` answers not-granted for it; a revoked email that signs in again is *not* re-granted and the gate still answers `not_invited`; `Grant` on that row re-admits and clears the revocation. Covered by the access store contract for both implementations.
 4. `platform.DefaultSessionQuota` is `0`; a brand-new principal's `/me` reports `limit: 0`, `used: 0`, and `POST` of a session is refused `402 quota_exceeded` — from inside `Enqueue`, in the inserting transaction, unchanged from 006l.
 5. An admin top-up of *n* lets that person run exactly *n* sessions; sponsorship by a project owner still charges the owner (006l), unchanged.
 6. A person with zero budget can sign in, create a project, accept being invited to one, read what they may read, and edit their profile — asserted per route, so a future route cannot quietly join the wrong side of the line.
 7. The frontend renders the no-budget-yet state distinctly from the budget-spent state, and the "not invited" screen is reachable only for a revoked or admin-refused account.
-8. `deploy/README.md` and `example.env` describe `SEED_EMAILS` as optional, and the admin console's copy describes the People list as who has signed in.
+8. `deploy/README.md` and `example.env` describe `SEED_EMAILS` as optional, the admin console's copy describes the People list as who has signed in, and the project invite hint no longer tells the owner their invitee needs a platform invitation ([006p](006p-the-invitation-that-arrives.md) AC9).
 9. The dev bypass is unchanged: it authenticates and does not grant, so a local run still needs `ADMIN_EMAILS` to operate.
 
 ## Out of scope

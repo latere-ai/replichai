@@ -156,6 +156,38 @@ func bindingContract(t *testing.T, m Membership, project string) {
 	if n, _ := m.BindAll(ctx, Principal{Sub: project + "-nobody"}); n != 0 {
 		t.Error("an unverified sign-in must never bind")
 	}
+
+	// Removing a *bound* member releases the binding, so a re-invitation binds
+	// again on the next sign-in. Binding a row at seed time made this the common
+	// case rather than the rare one: before, a removed member was usually still
+	// pending and there was no binding to release.
+	if err := m.Remove(ctx, lead, project, collabEmail); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if ids, _ := m.Projects(ctx, collab.Sub); len(ids) != 0 {
+		t.Errorf("a removed member must hold nothing, got %v", ids)
+	}
+	for _, mem := range mustList(t, m, project) {
+		if mem.Email == collabEmail {
+			t.Error("a removed member must not still be listed")
+		}
+	}
+	if err := m.Add(ctx, lead, project, collabEmail, RoleCollaborator); err != nil {
+		t.Fatalf("re-invite: %v", err)
+	}
+	if n, _ := m.BindAll(ctx, collab); n != 1 {
+		t.Errorf("a re-invited member must bind again on their next sign-in, bound %d", n)
+	}
+}
+
+// mustList reads a project's members or fails the test.
+func mustList(t *testing.T, m Membership, project string) []Member {
+	t.Helper()
+	members, err := m.List(ctx, project)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	return members
 }
 
 // The in-memory store satisfies the login-time binding contract.
