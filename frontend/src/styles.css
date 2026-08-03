@@ -1649,6 +1649,18 @@ input.submit-input {
   flex-direction: column;
   gap: 8px;
 }
+/* A scrolling flex column must not shrink what it scrolls. The moment the
+   content is taller than the box, flex-shrink squeezes every child toward its
+   minimum size — and a child whose own overflow is not `visible` has a minimum
+   of zero. A 771-event transcript hit exactly that: every card collapsed to its
+   padding and clipped the text inside it. Scrolling is the answer to overflow
+   here; shrinking never is. */
+.tx-stream > *,
+.tx-side > *,
+.rail-nav > *,
+.modal > * {
+  flex: none;
+}
 /* Every event carries its kind's tone on the left edge — the stream is read by
    scrolling, and a colour band is what makes a tool call findable in it. */
 .event {

@@ -35,6 +35,14 @@ cover:
 e2e:
 	go test ./cmd/server/ -run TestServerEndToEnd -v
 
+# The browser layout regression: renders the transcript viewer in headless
+# Chrome against a mocked API and measures the event cards. Layout bugs need a
+# layout engine, so this is the only test that can catch them. Skips cleanly
+# when no Chrome is installed.
+.PHONY: web-e2e
+web-e2e:
+	cd frontend && npm run test:browser
+
 # The compose smoke test: the real Postgres-backed stack, memory provider.
 .PHONY: smoke
 smoke:
