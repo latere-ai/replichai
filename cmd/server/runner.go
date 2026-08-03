@@ -165,11 +165,23 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 	return nil
 }
 
+// auditOptions is how the server waits on every run, fresh or resumed: with the
+// job's observer, and without a wall-clock deadline.
+//
+// The backend session is the source of truth for the outcome. A deadline is a
+// second, weaker opinion about it — one that reports a session still grading, or
+// one that settled a minute late, as a failure, while the agent's finished work
+// sits committed in the mounted repository. Only a failed session, an operator
+// cancelling it, or a backend that stops answering altogether ends the wait.
+func auditOptions(observe func(provider.RunStatus)) []audit.Option {
+	return []audit.Option{audit.WithObserver(observe), audit.WithoutTimeout()}
+}
+
 // Execute runs the audit, reporting progress through observe. A fresh Auditor
 // per job carries that job's observer.
 func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
 	e.pause(ctx)
-	opts := []audit.Option{audit.WithObserver(observe)}
+	opts := auditOptions(observe)
 	// With the repository created in resolving, mount it so the agent commits its
 	// reproduction into it live (006i); the mount is also the redistribution
 	// boundary — only what lands in it is published.
@@ -189,7 +201,7 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 // observed onto the job) and drives it to completion, so the job's state tracks
 // the real backend session rather than being guessed as failed.
 func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
-	auditor := audit.New(e.provider, e.method, audit.WithObserver(observe))
+	auditor := audit.New(e.provider, e.method, auditOptions(observe)...)
 	res, err := auditor.Resume(ctx, provider.RunHandle{ID: j.Status.RunID}, j.Ref, filepath.Join(e.workDir, j.ID))
 	if err != nil {
 		return err

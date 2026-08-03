@@ -3,9 +3,22 @@ package main
 import (
 	"testing"
 
+	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/publish"
 )
+
+// A server-side run waits on the backend session, not on a clock: an audit that
+// takes longer than any wall-clock bound is still a live session, and cutting it
+// marks a session failed while its agent goes on committing the reproduction.
+func TestServerRunsWaitWithoutADeadline(t *testing.T) {
+	a := audit.New(memory.New(), method.Method{}, auditOptions(func(provider.RunStatus) {})...)
+	if !a.Unbounded() {
+		t.Error("the server must wait on the session, not on a deadline")
+	}
+}
 
 // toRepro must render the verdict as its name ("passed"), not the uint8 code
 // point string(Grade) produces — the bug that showed a control character in the

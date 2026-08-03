@@ -104,7 +104,9 @@ func translateState(status string, verdict *provider.Verdict) provider.RunState 
 
 	default:
 		// An unfamiliar status is treated as still working: the run may yet
-		// reach a state this adapter recognizes, and the deadline bounds it.
+		// reach a state this adapter recognizes. Nothing here declares it dead,
+		// because the caller may be waiting without a deadline — a session that
+		// really is finished reaches "terminated", which is handled above.
 		return provider.StateRunning
 	}
 }

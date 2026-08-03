@@ -35,6 +35,11 @@ const (
 	DefaultMaxRevisions    = 3
 	DefaultPollInterval    = 20 * time.Second
 	DefaultTimeout         = time.Hour
+	// DefaultPollFailures is how many *consecutive* failed observations are
+	// tolerated before the wait gives up. A single 5xx from the backend is not a
+	// failed session, and an unbounded wait makes hundreds of observations, so
+	// one transient error must not fail a healthy run.
+	DefaultPollFailures = 5
 	// DefaultMountPath is where a mounted repository lands when the caller does
 	// not choose a path.
 	DefaultMountPath = "/workspace/repro"
@@ -108,6 +113,8 @@ type Auditor struct {
 	maxRevisions int
 	pollInterval time.Duration
 	timeout      time.Duration
+	unbounded    bool
+	pollFailures int
 	mount        provider.RepoMount
 	observe      func(provider.RunStatus)
 	sleep        func(context.Context, time.Duration) error
@@ -142,7 +149,31 @@ func WithPollInterval(d time.Duration) Option {
 
 // WithTimeout overrides how long a run may take before it is abandoned.
 func WithTimeout(d time.Duration) Option {
-	return func(a *Auditor) { a.timeout = d }
+	return func(a *Auditor) { a.timeout = d; a.unbounded = false }
+}
+
+// WithoutTimeout removes the wall-clock deadline: the wait ends when the backend
+// session ends, and nothing else.
+//
+// The backend session is the source of truth for whether the work succeeded, and
+// a deadline is a second, weaker opinion about it — one that reports a session
+// still grading, or one that finished a minute late, as a failure while the
+// agent's work sits complete in the mounted repository. A run that genuinely
+// hangs is bounded by the backend's own session lifetime, by the operator
+// cancelling the session, and by the consecutive-failure budget below; none of
+// those need a clock here.
+func WithoutTimeout() Option {
+	return func(a *Auditor) { a.unbounded = true }
+}
+
+// WithPollFailures overrides how many consecutive failed observations are
+// tolerated before the wait gives up.
+func WithPollFailures(n int) Option {
+	return func(a *Auditor) {
+		if n > 0 {
+			a.pollFailures = n
+		}
+	}
 }
 
 // WithObserver installs a callback invoked on every status observation.
@@ -162,6 +193,10 @@ func withSleep(f func(context.Context, time.Duration) error) Option {
 	return func(a *Auditor) { a.sleep = f }
 }
 
+// Unbounded reports whether this auditor waits without a wall-clock deadline —
+// letting the composition root assert how it wired the wait.
+func (a *Auditor) Unbounded() bool { return a.unbounded }
+
 // New builds an Auditor.
 func New(p provider.Provider, m method.Method, opts ...Option) *Auditor {
 	a := &Auditor{
@@ -173,6 +208,7 @@ func New(p provider.Provider, m method.Method, opts ...Option) *Auditor {
 		maxRevisions: DefaultMaxRevisions,
 		pollInterval: DefaultPollInterval,
 		timeout:      DefaultTimeout,
+		pollFailures: DefaultPollFailures,
 		sleep:        sleepCtx,
 	}
 	for _, opt := range opts {
@@ -237,14 +273,33 @@ func (a *Auditor) Start(ctx context.Context, paper string) (provider.RunHandle, 
 
 // Wait polls until the run reaches a terminal state, the deadline passes, or
 // the context is canceled. It always returns the last status it observed.
+//
+// Under WithoutTimeout there is no deadline: only the backend session settling,
+// the caller cancelling, or the backend refusing to answer for pollFailures
+// observations in a row ends the wait.
 func (a *Auditor) Wait(ctx context.Context, h provider.RunHandle) (provider.RunStatus, error) {
-	deadline := time.Now().Add(a.timeout)
+	var deadline time.Time
+	if !a.unbounded {
+		deadline = time.Now().Add(a.timeout)
+	}
 	var last provider.RunStatus
+	var failures int
 	for {
 		status, err := a.provider.Poll(ctx, h)
 		if err != nil {
-			return last, fmt.Errorf("poll run %s: %w", h.ID, err)
+			// A backend that will not answer is not a session that failed. Retry
+			// until the budget runs out, so one bad response does not fail a run
+			// whose agent is working away on the other side.
+			failures++
+			if failures >= a.pollFailures || ctx.Err() != nil {
+				return last, fmt.Errorf("poll run %s (%d consecutive failures): %w", h.ID, failures, err)
+			}
+			if err := a.sleep(ctx, a.pollInterval); err != nil {
+				return last, err
+			}
+			continue
 		}
+		failures = 0
 		last = status
 		if a.observe != nil {
 			a.observe(status)
@@ -252,7 +307,7 @@ func (a *Auditor) Wait(ctx context.Context, h provider.RunHandle) (provider.RunS
 		if status.State.Terminal() {
 			return status, nil
 		}
-		if !time.Now().Before(deadline) {
+		if !deadline.IsZero() && !time.Now().Before(deadline) {
 			return status, fmt.Errorf("%w: run %s after %s (last state: %s)",
 				ErrTimedOut, h.ID, a.timeout, status.State)
 		}
