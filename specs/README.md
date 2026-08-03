@@ -43,7 +43,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006p](006p-the-invitation-that-arrives.md) sends the project invitation 006f never sent. auth's mail transport moved to a shared `latere.ai/x/pkg/email` — transports only, so each service keeps its own copy and escaping — and `internal/notify` owns what replichai says to somebody who is not looking at it. The message is an announcement, not an offer: the membership already exists, so there is no token and nothing to accept. Sending is best-effort, because the membership is the durable thing.
 
-**Designed, not built — opening the front door:** two specs that finish letting an invited person in. [006q](006q-sign-in-is-open-budget-is-not.md) splits *may sign in* from *may spend*: sign-in self-grants `TierUser`, the default quota becomes zero, and 006l's meter — not an admin's guest list — is what protects the credential. [006r](006r-the-public-profile.md) gives a researcher a handle and a public page, links every sign-off to it, and requires one before a project may be published. They compose: with all three, an invited collaborator receives mail, follows it, signs in, and sees the project — which no one could do before.
+**Built:** [006q](006q-sign-in-is-open-budget-is-not.md) splits *may sign in* from *may spend*. Signing in self-grants `TierUser`, the default session quota drops to zero, and 006l's meter — not an admin's guest list — is what protects the credential. Revocation becomes recorded state rather than a delete, because a self-granting sign-in would re-create a deleted row and turn a ban into a logout. With 006p, an invited collaborator now receives mail, follows it, signs in, and sees the project — which nobody could do before.
+
+**Designed, not built:** [006r](006r-the-public-profile.md) gives a researcher a handle and a public page, links every sign-off to it, and requires one before a project may be published.
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
