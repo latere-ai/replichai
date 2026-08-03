@@ -141,6 +141,99 @@ func TestWaitTimesOut(t *testing.T) {
 	}
 }
 
+// flakyProvider fails its first n Poll calls, then defers to the real one. It
+// stands in for a backend that momentarily will not answer while the session
+// behind it keeps working.
+type flakyProvider struct {
+	*memory.Provider
+	failures int
+	seen     int
+}
+
+func (f *flakyProvider) Poll(ctx context.Context, h provider.RunHandle) (provider.RunStatus, error) {
+	f.seen++
+	if f.seen <= f.failures {
+		return provider.RunStatus{}, errors.New("backend unavailable")
+	}
+	return f.Provider.Poll(ctx, h)
+}
+
+func TestWaitWithoutTimeoutOutlivesTheDeadline(t *testing.T) {
+	// The backend session is the source of truth: a run that takes longer than
+	// any wall clock still finishes when the session does.
+	p := memory.New()
+	p.PollsBeforeDone = 50
+	a := newTestAuditor(t, p, WithTimeout(-time.Second), WithoutTimeout())
+
+	h, err := a.Start(context.Background(), "paper")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	status, err := a.Wait(context.Background(), h)
+	if err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	if status.State != provider.StateDone {
+		t.Errorf("State = %s, want done", status.State)
+	}
+}
+
+func TestWaitWithoutTimeoutStillFailsOnAFailedSession(t *testing.T) {
+	// Removing the clock removes only the clock: a session the backend reports
+	// as failed still ends the wait, with that state reported.
+	p := memory.New()
+	p.Grade = provider.GradeFailed
+	a := newTestAuditor(t, p, WithoutTimeout())
+
+	h, err := a.Start(context.Background(), "paper")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	status, err := a.Wait(context.Background(), h)
+	if err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	if status.State != provider.StateFailed {
+		t.Errorf("State = %s, want failed", status.State)
+	}
+}
+
+func TestWaitToleratesTransientPollFailures(t *testing.T) {
+	p := memory.New()
+	p.PollsBeforeDone = 1
+	f := &flakyProvider{Provider: p, failures: DefaultPollFailures - 1}
+	a := newTestAuditor(t, f, WithoutTimeout())
+
+	h, err := a.Start(context.Background(), "paper")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	status, err := a.Wait(context.Background(), h)
+	if err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	if status.State != provider.StateDone {
+		t.Errorf("State = %s, want done", status.State)
+	}
+}
+
+func TestWaitGivesUpOnPersistentPollFailures(t *testing.T) {
+	p := memory.New()
+	f := &flakyProvider{Provider: p, failures: 99}
+	a := newTestAuditor(t, f, WithoutTimeout(), WithPollFailures(3))
+
+	h, err := a.Start(context.Background(), "paper")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := a.Wait(context.Background(), h); err == nil {
+		t.Fatal("a backend that never answers must end the wait")
+	}
+	if f.seen != 3 {
+		t.Errorf("polled %d times, want 3", f.seen)
+	}
+}
+
 func TestWaitHonorsContextCancellation(t *testing.T) {
 	p := memory.New()
 	p.PollsBeforeDone = 99
