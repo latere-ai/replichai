@@ -1,0 +1,268 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/latere-ai/replichai/internal/profile"
+)
+
+// getOpen drives a route with no identity at all — what a stranger who followed
+// a link from a paper gets.
+func getOpen(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+	return w
+}
+
+// A public profile is readable by anyone, signed in or not — the same openness
+// the public zone has, for the person behind it. An attestation whose signer
+// cannot be looked up is worth less than one whose can.
+func TestPublicProfileIsReadableBySignedOutStrangers(t *testing.T) {
+	d := testDeps(allowAll)
+	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
+	publishable(t, d, owner.Sub, "ada")
+	h := NewRouter(d).Handler()
+
+	w := getOpen(t, h, "/profiles/ada")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for a signed-out reader", w.Code)
+	}
+	var got profile.PublicProfile
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Handle != "ada" || got.DisplayName != "Ada Lovelace" {
+		t.Errorf("profile = %+v", got)
+	}
+	// The contact is published for inquiries, so it is rendered in full.
+	if got.Contact != "ada@example.org" {
+		t.Errorf("contact = %q, want the published address", got.Contact)
+	}
+	// The account email never appears here. That is what the redacted signer
+	// email on an attestation is for, and it stays there.
+	if body := w.Body.String(); containsAccountEmail(body) {
+		t.Errorf("the page leaks an account address: %s", body)
+	}
+	// Projects is always an array, never null, so the client renders an empty
+	// list rather than crashing on it.
+	if got.Projects == nil {
+		t.Error("projects = null, want an empty array")
+	}
+}
+
+// containsAccountEmail reports whether a response carries the redacted or full
+// signer address, neither of which belongs on a profile page.
+func containsAccountEmail(body string) bool {
+	for _, s := range []string{"signed_off_email", "**@", "***@"} {
+		if strings.Contains(body, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// The page lists the public work signed under that name, and a withdrawn
+// project leaves it — the public zone is the one source of truth for what is
+// public, and the profile reads from it rather than keeping its own list.
+func TestPublicProfileListsSignedPublicProjects(t *testing.T) {
+	d := testDeps(allowAll)
+	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
+	publishable(t, d, owner.Sub, "ada")
+	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Reproducing Study 1")
+	publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	h := NewRouter(d).Handler()
+
+	// Private: nothing on the page yet.
+	if got := publicProfileOf(t, h, "ada"); len(got.Projects) != 0 {
+		t.Fatalf("a private project is listed: %+v", got.Projects)
+	}
+
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
+		t.Fatalf("publish: %d (%s)", w.Code, w.Body.String())
+	}
+	got := publicProfileOf(t, h, "ada")
+	if len(got.Projects) != 1 || got.Projects[0].ID != p.ID || got.Projects[0].Title != "Reproducing Study 1" {
+		t.Fatalf("projects = %+v, want the published one", got.Projects)
+	}
+	if got.Projects[0].SignedOffAt == nil {
+		t.Error("a listed project carries no sign-off date")
+	}
+
+	// Withdrawing takes it off the page, because it takes it out of the zone.
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/private", `{"reason":"oops"}`, owner); w.Code != http.StatusOK {
+		t.Fatalf("withdraw: %d", w.Code)
+	}
+	if got := publicProfileOf(t, h, "ada"); len(got.Projects) != 0 {
+		t.Errorf("a withdrawn project is still listed: %+v", got.Projects)
+	}
+}
+
+// Somebody else's public project is not this person's work.
+func TestPublicProfileListsOnlyWhatThisPersonSigned(t *testing.T) {
+	d := testDeps(allowAll)
+	ada := Identity{Sub: "ada-sub", Email: "ada@example.org"}
+	bob := Identity{Sub: "bob-sub", Email: "bob@example.org"}
+	publishable(t, d, ada.Sub, "ada")
+	publishable(t, d, bob.Sub, "bob")
+	theirs, _ := d.Projects.Create(context.Background(), bob.Sub, "Bob's work")
+	publishInto(t, d.Jobs, bob.Sub, theirs.ID, "r1")
+	h := NewRouter(d).Handler()
+	if w := doAs(t, h, "POST", "/projects/"+theirs.ID+"/public", signOff, bob); w.Code != http.StatusOK {
+		t.Fatalf("publish: %d", w.Code)
+	}
+
+	if got := publicProfileOf(t, h, "ada"); len(got.Projects) != 0 {
+		t.Errorf("ada's page lists bob's project: %+v", got.Projects)
+	}
+	if got := publicProfileOf(t, h, "bob"); len(got.Projects) != 1 {
+		t.Errorf("bob's page = %+v", got.Projects)
+	}
+}
+
+// An unknown handle, a private profile, and a profile with no handle are one
+// 404. Distinguishing them would turn the endpoint into a way to enumerate who
+// holds which name.
+func TestPublicProfileHidesPrivateAndUnknownAlike(t *testing.T) {
+	d := testDeps(allowAll)
+	// Has a handle, has not made a page of it.
+	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
+		Principal: "shy-sub", DisplayName: "Shy", Handle: "shy",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	// Public, but never chose a handle: unreachable by construction.
+	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
+		Principal: "nameless-sub", DisplayName: "Nameless", Public: true,
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	h := NewRouter(d).Handler()
+
+	for _, handle := range []string{"shy", "nobody", "nameless"} {
+		w := getOpen(t, h, "/profiles/"+handle)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("/profiles/%s = %d, want 404", handle, w.Code)
+		}
+		if body := w.Body.String(); strings.Contains(body, "Shy") || strings.Contains(body, "Nameless") {
+			t.Errorf("/profiles/%s leaked a private profile: %s", handle, body)
+		}
+	}
+}
+
+// 006r: publishing puts a name on a result, and the name has to resolve to
+// something. Refused before anything is recorded, so a refusal leaves no
+// half-written sign-off behind.
+func TestPublishRequiresAPublicProfile(t *testing.T) {
+	d := testDeps(allowAll)
+	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
+	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Owned")
+	publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	h := NewRouter(d).Handler()
+
+	w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("publish with a private profile = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "profile_not_public") {
+		t.Errorf("error = %s, want profile_not_public", w.Body.String())
+	}
+	// Nothing was recorded.
+	got, _ := d.Projects.Get(context.Background(), p.ID)
+	if got.SignedOffAt != nil || got.SignedOffName != "" || got.Visibility == "public" {
+		t.Fatalf("a refused publish recorded something: %+v", got)
+	}
+
+	// A handle with no page is not enough either — the link would not resolve.
+	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
+		Principal: owner.Sub, DisplayName: "Ada", Contact: "ada@example.org", Handle: "ada",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusConflict {
+		t.Errorf("publish with a private profile that has a handle = %d, want 409", w.Code)
+	}
+
+	// Turning it public unblocks it.
+	publishable(t, d, owner.Sub, "ada")
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
+		t.Errorf("publish with a public profile = %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// PATCH means patch. A settings form that saves a display name must not take
+// somebody's page down as a side effect — and with it every link a published
+// attestation makes to them.
+func TestSavingOneProfileFieldLeavesTheRestAlone(t *testing.T) {
+	d := testDeps(allowAll)
+	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
+	publishable(t, d, owner.Sub, "ada")
+	h := NewRouter(d).Handler()
+
+	if w := doAs(t, h, "PATCH", "/me/profile", `{"institution":"LMU Munich"}`, owner); w.Code != http.StatusOK {
+		t.Fatalf("patch: %d (%s)", w.Code, w.Body.String())
+	}
+	got, _ := d.Profiles.Get(context.Background(), owner.Sub)
+	if got.Handle != "ada" || !got.Public {
+		t.Fatalf("a partial save took the page down: %+v", got)
+	}
+	if got.Institution != "LMU Munich" || got.DisplayName != "Ada Lovelace" {
+		t.Errorf("profile = %+v", got)
+	}
+	// And an explicit false really does take it down.
+	if w := doAs(t, h, "PATCH", "/me/profile", `{"public":false}`, owner); w.Code != http.StatusOK {
+		t.Fatalf("unpublish: %d", w.Code)
+	}
+	if got, _ := d.Profiles.Get(context.Background(), owner.Sub); got.Public {
+		t.Error("an explicit public:false did not take the page down")
+	}
+}
+
+// A handle somebody else holds is a conflict; a malformed or reserved one is a
+// bad field. Each gets its own code so the settings form can point at the input
+// and say which kind of problem it is.
+func TestHandleErrorsAreDistinct(t *testing.T) {
+	d := testDeps(allowAll)
+	publishable(t, d, "someone-else", "ada")
+	h := NewRouter(d).Handler()
+	me := Identity{Sub: "me-sub", Email: "me@example.org"}
+
+	for _, tt := range []struct {
+		body   string
+		status int
+		code   string
+	}{
+		{`{"handle":"ada"}`, http.StatusConflict, "handle_taken"},
+		{`{"handle":"no"}`, http.StatusBadRequest, "invalid_handle"},
+		{`{"handle":"Ada Lovelace"}`, http.StatusBadRequest, "invalid_handle"},
+		{`{"handle":"admin"}`, http.StatusBadRequest, "handle_reserved"},
+	} {
+		w := doAs(t, h, "PATCH", "/me/profile", tt.body, me)
+		if w.Code != tt.status || !strings.Contains(w.Body.String(), tt.code) {
+			t.Errorf("%s = %d %s, want %d %s", tt.body, w.Code, w.Body.String(), tt.status, tt.code)
+		}
+	}
+	// None of it was written.
+	if got, _ := d.Profiles.Get(context.Background(), me.Sub); got.Handle != "" {
+		t.Errorf("a refused handle was written: %+v", got)
+	}
+}
+
+// publicProfileOf reads a public profile page or fails the test.
+func publicProfileOf(t *testing.T, h http.Handler, handle string) profile.PublicProfile {
+	t.Helper()
+	w := getOpen(t, h, "/profiles/"+handle)
+	if w.Code != http.StatusOK {
+		t.Fatalf("/profiles/%s = %d (%s)", handle, w.Code, w.Body.String())
+	}
+	var got profile.PublicProfile
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return got
+}

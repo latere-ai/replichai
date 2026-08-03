@@ -305,6 +305,7 @@ func TestPublishAndWithdrawReportAWriteFailure(t *testing.T) {
 	d := testDeps(allowAll)
 	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Proj")
 	publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	publishable(t, d, owner.Sub, "ada")
 	d.Projects = failingProjects{Store: d.Projects.(project.Store), setErr: errStore}
 	h := NewRouter(d).Handler()
 
@@ -324,6 +325,7 @@ func TestPublishRefusesWhenSessionsCannotBeRead(t *testing.T) {
 	d := testDeps(allowAll)
 	p, _ := d.Projects.Create(context.Background(), owner.Sub, "Proj")
 	publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	publishable(t, d, owner.Sub, "ada")
 	d.Jobs = failingJobs{Store: d.Jobs.(job.Store), listErr: errStore}
 	h := NewRouter(d).Handler()
 

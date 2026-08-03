@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -84,6 +85,111 @@ func runStoreContract(t *testing.T, s Store) {
 	// Profiles are per-principal.
 	if got, _ := s.Get(ctx, "sub-3"); got.DisplayName != "" {
 		t.Errorf("another principal sees sub-1's profile: %+v", got)
+	}
+
+	runHandleContract(t, s)
+}
+
+// runHandleContract is the public-profile half (006r): a handle is unique, a
+// page exists only when its owner says so, and neither can be read around.
+func runHandleContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	// A handle is not a page. Claiming one leaves the profile private, and a
+	// private profile has nothing to read.
+	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada", Handle: "ada"}); err != nil {
+		t.Fatalf("claim a handle: %v", err)
+	}
+	if _, err := s.ByHandle(ctx, "ada"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a private profile is readable by handle: %v", err)
+	}
+	if _, ok, err := s.PrincipalHandle(ctx, "ada-sub"); err != nil || ok {
+		t.Errorf("a private profile reported a public handle: %v/%v", ok, err)
+	}
+
+	// Turning it public is what makes the page — and the link a sign-off can
+	// make to it.
+	saved, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada", Contact: "ada@example.org", Handle: "ada", Public: true})
+	if err != nil {
+		t.Fatalf("publish a profile: %v", err)
+	}
+	if saved.Handle != "ada" || !saved.Public {
+		t.Fatalf("saved profile = %+v", saved)
+	}
+	got, err := s.ByHandle(ctx, "ada")
+	if err != nil || got.Principal != "ada-sub" {
+		t.Fatalf("ByHandle = %+v, %v", got, err)
+	}
+	// Case and whitespace do not make a second person.
+	if got, err := s.ByHandle(ctx, "  ADA "); err != nil || got.Principal != "ada-sub" {
+		t.Errorf("ByHandle is case- or space-sensitive: %+v, %v", got, err)
+	}
+	if handle, ok, err := s.PrincipalHandle(ctx, "ada-sub"); err != nil || !ok || handle != "ada" {
+		t.Errorf("PrincipalHandle = %q/%v/%v", handle, ok, err)
+	}
+
+	// Nobody else may take it.
+	if _, err := s.Save(ctx, Profile{Principal: "other-sub", Handle: "ada"}); !errors.Is(err, ErrHandleTaken) {
+		t.Errorf("a second principal took a claimed handle: %v", err)
+	}
+	// Saving your own again is not a collision with yourself.
+	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada L.", Handle: "ada", Public: true}); err != nil {
+		t.Errorf("re-saving your own handle: %v", err)
+	}
+	// Changing yours frees the old one.
+	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", Handle: "ada-l", Public: true}); err != nil {
+		t.Fatalf("change a handle: %v", err)
+	}
+	if _, err := s.ByHandle(ctx, "ada"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the freed handle still resolves: %v", err)
+	}
+	if _, err := s.Save(ctx, Profile{Principal: "other-sub", Handle: "ada", Public: true}); err != nil {
+		t.Errorf("the freed handle could not be claimed: %v", err)
+	}
+
+	// Going private takes the page down and the link with it. The profile
+	// itself, and the handle, survive — this is reversible.
+	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada", Handle: "ada-l"}); err != nil {
+		t.Fatalf("go private: %v", err)
+	}
+	if _, err := s.ByHandle(ctx, "ada-l"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a profile turned private is still readable: %v", err)
+	}
+	if _, ok, _ := s.PrincipalHandle(ctx, "ada-sub"); ok {
+		t.Error("a private profile still offers a link target")
+	}
+	if back, _ := s.Get(ctx, "ada-sub"); back.Handle != "ada-l" || back.DisplayName != "Ada" {
+		t.Errorf("going private lost the profile: %+v", back)
+	}
+
+	// Many principals may have no handle at all: the uniqueness rule constrains
+	// only the people who chose one.
+	for _, sub := range []string{"nohandle-1", "nohandle-2", "nohandle-3"} {
+		if _, err := s.Save(ctx, Profile{Principal: sub, DisplayName: "Anon"}); err != nil {
+			t.Fatalf("save with no handle (%s): %v", sub, err)
+		}
+	}
+
+	// An unknown handle, and an empty one, are the same not-found.
+	for _, handle := range []string{"nobody", "", "   "} {
+		if _, err := s.ByHandle(ctx, handle); !errors.Is(err, ErrNotFound) {
+			t.Errorf("ByHandle(%q) = %v, want not-found", handle, err)
+		}
+	}
+	// A principal with no profile at all has no handle and no error.
+	if _, ok, err := s.PrincipalHandle(ctx, "stranger"); err != nil || ok {
+		t.Errorf("PrincipalHandle(stranger) = %v/%v", ok, err)
+	}
+
+	// A malformed or reserved handle never reaches the table.
+	for _, bad := range []string{"ab", "Ada Lovelace", "ada_lovelace", "ada!", strings.Repeat("a", 40)} {
+		if _, err := s.Save(ctx, Profile{Principal: "bad-sub", Handle: bad}); err == nil {
+			t.Errorf("handle %q was accepted", bad)
+		}
+	}
+	if _, err := s.Save(ctx, Profile{Principal: "bad-sub", Handle: "admin"}); !errors.Is(err, ErrHandleReserved) {
+		t.Errorf("a reserved handle was accepted: %v", err)
 	}
 }
 

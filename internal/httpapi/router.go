@@ -99,6 +99,13 @@ type ProjectStore interface {
 type ProfileStore interface {
 	Get(ctx context.Context, principal string) (profile.Profile, error)
 	Save(ctx context.Context, p profile.Profile) (profile.Profile, error)
+	// ByHandle resolves the public page anyone may read (006r).
+	ByHandle(ctx context.Context, handle string) (profile.Profile, error)
+	// PrincipalHandle is how a sign-off links to its signer, and the
+	// precondition the public flip checks. It resolves through the profile as it
+	// is now — never a handle snapshotted onto the project, which would be a
+	// second, staler copy of the same person.
+	PrincipalHandle(ctx context.Context, principal string) (string, bool, error)
 }
 
 // PaperResolver previews a paper reference against the source: it resolves the

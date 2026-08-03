@@ -67,6 +67,9 @@ func (rt *Router) routes() {
 	// A health check sits outside the gate so a load balancer can reach it; the
 	// sign-in and /me routes join the open set with 006c.
 	rt.openHandle("GET", "/healthz", rt.health)
+	// A researcher's page is readable by anyone, signed in or not (006r) — the
+	// same openness the public zone has, for the person behind it.
+	rt.openHandle("GET", "/profiles/{handle}", rt.publicProfile)
 	rt.gatedHandle("GET", "/me/profile", rt.getProfile)
 	rt.gatedHandle("PATCH", "/me/profile", rt.saveProfile)
 	rt.gatedHandle("POST", "/papers", rt.submitPaper)
@@ -551,14 +554,48 @@ func (rt *Router) getProfile(w http.ResponseWriter, r *http.Request) {
 // saveProfile writes the caller's researcher profile. The principal comes off
 // the session, never the body, so a profile is always its owner's; a malformed
 // identifier is refused by its own code, so the UI can point at the field.
+// It is a real PATCH: a field absent from the body is left as it was. That was
+// harmless while every field was one the settings form always sent, and stopped
+// being harmless when 006r added `public` — a client that saved a display name
+// without echoing it back would have silently taken somebody's page down, and
+// with it every link a published attestation made to them.
 func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
-	var body profile.Profile
+	var body struct {
+		DisplayName *string `json:"display_name"`
+		Institution *string `json:"institution"`
+		Contact     *string `json:"contact_email"`
+		ORCID       *string `json:"orcid"`
+		Scholar     *string `json:"scholar_url"`
+		Handle      *string `json:"handle"`
+		Public      *bool   `json:"public"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	body.Principal = principal(r)
-	saved, err := rt.profiles.Save(r.Context(), body)
+	current, err := rt.profiles.Get(r.Context(), principal(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "profile_read_failed")
+		return
+	}
+	setString(&current.DisplayName, body.DisplayName)
+	setString(&current.Institution, body.Institution)
+	setString(&current.Contact, body.Contact)
+	setString(&current.ORCID, body.ORCID)
+	setString(&current.Scholar, body.Scholar)
+	setString(&current.Handle, body.Handle)
+	if body.Public != nil {
+		current.Public = *body.Public
+	}
+	current.Principal = principal(r)
+	saved, err := rt.profiles.Save(r.Context(), current)
+	// A handle somebody else holds is a conflict, not a malformed field: the
+	// value is fine, the world disagrees. The UI points at the same input either
+	// way, but the status says which kind of problem it is.
+	if errors.Is(err, profile.ErrHandleTaken) {
+		writeError(w, http.StatusConflict, "handle_taken")
+		return
+	}
 	if code, ok := profileErrorCode(err); ok {
 		writeError(w, http.StatusBadRequest, code)
 		return
@@ -568,6 +605,14 @@ func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, saved)
+}
+
+// setString applies a PATCH field when the body carried one, and leaves the
+// existing value alone when it did not.
+func setString(dst *string, v *string) {
+	if v != nil {
+		*dst = *v
+	}
 }
 
 // profileErrorCode maps a profile validation error to its wire code, reporting
@@ -581,9 +626,67 @@ func profileErrorCode(err error) (string, bool) {
 		return "invalid_orcid", true
 	case errors.Is(err, profile.ErrInvalidScholar):
 		return "invalid_scholar", true
+	case errors.Is(err, profile.ErrInvalidHandle):
+		return "invalid_handle", true
+	case errors.Is(err, profile.ErrHandleReserved):
+		return "handle_reserved", true
 	default:
 		return "", false
 	}
+}
+
+// publicProfile serves a researcher's page: who they say they are, and the
+// public work signed under that name (006r).
+//
+// It is open — no sign-in — matching the public zone: a reproduction anyone can
+// read, signed by somebody anyone can look up. An unknown handle, a private
+// profile, and a profile with no handle are one 404, so the endpoint cannot be
+// walked to learn who holds which name.
+func (rt *Router) publicProfile(w http.ResponseWriter, r *http.Request) {
+	if rt.profiles == nil {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	p, err := rt.profiles.ByHandle(r.Context(), r.PathValue("handle"))
+	if errors.Is(err, profile.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "profile_read_failed")
+		return
+	}
+	out := profile.PublicProfile{
+		Handle:      p.Handle,
+		DisplayName: p.DisplayName,
+		Institution: p.Institution,
+		Contact:     p.Contact,
+		ORCID:       p.ORCID,
+		Scholar:     p.Scholar,
+		Projects:    rt.signedPublicProjects(r.Context(), p.Principal),
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// signedPublicProjects lists the public projects this principal signed. It reads
+// the public zone and filters by signer, so a withdrawn project leaves the page
+// the moment it leaves the zone — one source of truth for what is public.
+func (rt *Router) signedPublicProjects(ctx context.Context, principal string) []profile.PublicSigned {
+	out := []profile.PublicSigned{}
+	if rt.projects == nil || principal == "" {
+		return out
+	}
+	projects, err := rt.projects.ListPublic(ctx)
+	if err != nil {
+		return out
+	}
+	for _, p := range projects {
+		if p.SignedOffBy != principal {
+			continue
+		}
+		out = append(out, profile.PublicSigned{ID: p.ID, Title: p.Title, SignedOffAt: p.SignedOffAt})
+	}
+	return out
 }
 
 // maxWithdrawReason caps the owner's stated reason. It is their own record, not
@@ -705,6 +808,15 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Publishing puts a name on a result, and 006r's position is that the name
+	// must resolve to something: the signer needs a public profile with a
+	// handle. Checked before anything is recorded, so a refusal leaves no
+	// half-written sign-off behind.
+	if !rt.signerIsPublic(r.Context(), proj.Owner) {
+		writeError(w, http.StatusConflict, "profile_not_public")
+		return
+	}
+
 	// The project must have a published session whose manifest cleared the gate,
 	// and none that did not — a flagged tree bars the project from going public.
 	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
@@ -749,6 +861,20 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, _ := rt.projects.Get(r.Context(), proj.ID)
 	writeJSON(w, http.StatusOK, updated)
+}
+
+// signerIsPublic reports whether a principal has a public profile with a handle
+// — the precondition for publishing (006r).
+//
+// A deployment with no profile store wired does not block publishing: the
+// requirement is about attribution, and a missing store is not a reason to
+// refuse an owner their own decision.
+func (rt *Router) signerIsPublic(ctx context.Context, principal string) bool {
+	if rt.profiles == nil {
+		return true
+	}
+	_, ok, err := rt.profiles.PrincipalHandle(ctx, principal)
+	return err == nil && ok
 }
 
 // clearedForPublish reports whether a project's published sessions may go public:
