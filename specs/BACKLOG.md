@@ -42,6 +42,19 @@ This is not hypothetical caution. [`docs/landscape.md`](../docs/landscape.md) fo
 
 Backlog rather than roadmap because nothing is public yet, so nothing is currently wrong. It becomes blocking the first time a run naming a third party leaves the owner's project.
 
+## 5. The meter counts sessions, not money
+
+006l meters a session count, and [006q](006q-sign-in-is-open-budget-is-not.md) makes that count the only thing standing between an open sign-in and the platform's API credential. A session is not a unit of cost: a reproduction of a small notebook and one of a multi-day training run differ by orders of magnitude, and the number an admin tunes is the same for both. The direction is a **balance in currency** — an account holds USD, a session draws down what it actually spent, and a top-up is a deposit rather than an increment.
+
+Open questions:
+- **What is priced.** Token usage is already recorded per session (006h derives it from the transcript). Is the charge the model spend, the model spend plus a margin, or a published per-session price? A cost that moves with the vendor's price list is honest and unpredictable to the payer; a fixed price is the reverse.
+- **When it is charged.** A session that fails is refunded under the session counter today. A currency balance has to decide whether a failed run that burned real tokens is refunded, absorbed, or charged — and the answer is different for a platform bug and for an agent that ran and found nothing.
+- **Holds and overruns.** A count can be checked once, in the inserting transaction (006l). A balance cannot: spend accrues while the session runs, so it needs a reservation at enqueue and a settlement at the end, plus a decision about what happens when a running session exhausts the balance.
+- **Sponsorship in currency.** 006l's standing-consent sponsorship charges the project owner's count. In a balance model that is a real transfer of money between accounts, which is a different thing to consent to.
+- **What payment integration implies.** A balance that can be bought brings an invoice, a refund path, tax treatment, and a payment provider into a codebase that currently has no notion of money.
+
+Backlog rather than roadmap because the session counter already protects the credential, and 006q only changes its default. This becomes roadmap when someone outside the invited set is expected to pay.
+
 ## Why these are backlog, not roadmap
 
-1–3 are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, just not yet live, and it turns from a design question into an incident the day it is skipped. Recorded here to be picked up as deliberate later-stage investigations, each likely its own spec, once the single-study loop is solid.
+1–3 are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, just not yet live, and it turns from a design question into an incident the day it is skipped. 5 is deferred by adequacy rather than by distance: the session counter is a crude meter that nonetheless holds, and it stops holding the day someone is expected to pay. Recorded here to be picked up as deliberate later-stage investigations, each likely its own spec, once the single-study loop is solid.
