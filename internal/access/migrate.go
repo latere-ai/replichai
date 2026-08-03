@@ -56,6 +56,18 @@ ALTER TABLE access_grants ADD COLUMN revoked_by TEXT NOT NULL DEFAULT '';
 `},
 }
 
+// migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
+// old and new pods at once (maxSurge), so two processes migrate the same
+// database concurrently: both find a version missing, both run its DDL, and the
+// loser dies on "column already exists". It self-heals on restart, and it
+// crash-loops a pod on every schema change until it does.
+//
+// The lock is taken inside the migration transaction and released with it, so
+// the second process waits, then reads the version the first just recorded and
+// skips. Each namespace has its own id, so the five migrators only ever
+// serialise against another copy of themselves.
+const migrationLock = 2
+
 // Migrate applies the access schema. It uses its own version namespace table so
 // it composes with job.Migrate on the same database without either owning the
 // other's versions.
@@ -69,6 +81,9 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	for _, m := range migrations {
 		if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
+				return err
+			}
 			var exists bool
 			if err := tx.QueryRow(ctx,
 				`SELECT EXISTS(SELECT 1 FROM access_migrations WHERE version=$1)`, m.version).Scan(&exists); err != nil {
