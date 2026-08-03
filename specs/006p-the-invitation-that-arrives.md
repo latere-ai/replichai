@@ -46,7 +46,7 @@ This is the cut that makes the three-repo change small and provable. auth's exis
 6. An invite that adds nobody new (already a member) does not re-send. Re-inviting a removed member does.
 7. The email address is taken from the request body after normalisation, and the inviter's name from the session — never from the body.
 8. Every new environment variable appears in `example.env`, `docker-compose.yml`, `deploy/base/deployment.yaml`, and `deploy/README.md`.
-9. The frontend's invite hint no longer says the invitee needs a platform invitation from an admin (see 006q).
+9. The invitation copy matches the sign-in rules actually in force. If 006p lands first, the mail and the frontend's invite hint still say the invitee needs a platform invitation from an admin, because they do; [006q](006q-sign-in-is-open-budget-is-not.md) is what makes that sentence false, and removing it is that spec's acceptance criterion, not this one's. Landing them together is preferred precisely so the sentence is written once.
 
 ## Out of scope
 
