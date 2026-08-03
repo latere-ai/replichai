@@ -1583,6 +1583,127 @@ input.submit-input {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── The scrubber (006s) ──
+   The run drawn against its own clock: phases at the width they earned, a
+   histogram of where the run spent itself, and a cursor that seeks. It replaces
+   the lifecycle strip wherever the events carry timestamps, because a strip of
+   evenly-spaced labels tells you the order and hides the proportions. */
+.scrub {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.scrub-clock {
+  font: 500 10px/1 var(--font-mono);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.scrub-bar {
+  position: relative;
+  flex: 1;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none; /* a drag seeks; it must not scroll the page */
+}
+.scrub-bar:focus-visible {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: 1px;
+}
+.scrub-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid var(--border);
+  padding: 3px 6px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.scrub-band span {
+  font: 600 8.5px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+.scrub-band.running {
+  background: color-mix(in srgb, var(--run) 7%, transparent);
+}
+.scrub-band.running span {
+  color: var(--run);
+}
+.scrub-band.done {
+  background: color-mix(in srgb, var(--ok) 7%, transparent);
+}
+.scrub-band.done span {
+  color: var(--ok);
+}
+.scrub-band.failed {
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+}
+.scrub-band.failed span {
+  color: var(--err);
+}
+/* The bars sit at the bottom so the phase labels stay readable above them. */
+.scrub-hist {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 5px;
+  height: 15px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+.scrub-hist i {
+  flex: 1;
+  min-height: 1px;
+  border-radius: 1px;
+  background: var(--brand);
+  opacity: 0.75;
+  transform-origin: bottom;
+  animation: om-rise 0.5s var(--ease-fluid) both;
+}
+@keyframes om-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.scrub-past {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--brand-soft);
+  pointer-events: none;
+}
+.scrub-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--fg-1);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+  pointer-events: none;
+}
+.scrub-legend {
+  flex: none;
+  max-width: 200px;
+  font: 500 10px/1.35 var(--font-mono);
+  color: var(--fg-3);
+}
+
 .tx-body {
   flex: 1;
   min-height: 0;
@@ -1683,14 +1804,34 @@ input.submit-input {
   background: var(--fg-3);
   opacity: 0.5;
 }
+/* A card is a seek target and an inspector trigger, so it reads as a control. */
+.event {
+  cursor: pointer;
+  text-align: left;
+}
+.event:hover {
+  border-color: var(--border-strong);
+}
+.event.on {
+  border-color: var(--brand-line);
+  box-shadow: 0 0 0 1px var(--brand-line);
+}
+.event:focus-visible {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: 1px;
+}
 .event-gutter {
   display: flex;
   flex-direction: column;
   gap: 5px;
   align-items: flex-start;
 }
-.event-role {
+.event-clock {
   font: 500 10.5px/1 var(--font-mono);
+  color: var(--fg-2);
+}
+.event-offset {
+  font: 400 9.5px/1 var(--font-mono);
   color: var(--fg-3);
 }
 .event-kind {
@@ -1739,19 +1880,39 @@ input.submit-input {
   flex-direction: column;
   gap: 5px;
 }
-.event-title {
+/* The card's first line: the event's own opening line, the tool it called, and
+   what the backend charged for it. */
+.event-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
+}
+.event-title {
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.45;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-.event-title code {
+.event-title.dim {
+  color: var(--fg-3);
+  font-style: italic;
+  font-weight: 400;
+}
+.event-head code {
+  flex: none;
   font: 500 11px/1 var(--font-mono);
   color: var(--fg-2);
   background: var(--bg-code);
   padding: 3px 6px;
   border-radius: 5px;
+}
+.event-cost {
+  margin-left: auto;
+  flex: none;
+  font: 400 10.5px/1 var(--font-mono);
+  color: var(--fg-3);
 }
 .event-body {
   font-size: 12.5px;
@@ -1773,6 +1934,51 @@ input.submit-input {
   max-height: 220px;
   overflow: auto;
 }
+
+/* The selected event, in full. The cards can stay scannable because the detail
+   has somewhere to live — nothing here is folded or truncated. */
+.tx-search {
+  width: 100%;
+  height: 30px;
+}
+.ev-detail {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  animation: om-fade-up 0.2s var(--ease-fluid) both;
+}
+.ev-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font: 400 11px/1 var(--font-mono);
+  color: var(--fg-3);
+}
+.ev-detail-meta code {
+  color: var(--fg-2);
+  background: var(--bg-code);
+  padding: 3px 6px;
+  border-radius: 5px;
+}
+.ev-detail-body {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  font: 400 11.5px/1.6 var(--font-mono);
+  color: var(--fg-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 420px;
+  overflow: auto;
+}
+.icon-btn.tiny {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
 /* The signed-in person, at the head of Settings (006m). */
 .profile-head {
   display: flex;

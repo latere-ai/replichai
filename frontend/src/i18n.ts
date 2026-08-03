@@ -253,6 +253,15 @@ const strings: Record<Lang, Record<string, string>> = {
     showEvents: 'Show events',
     toolsUsed: 'Tools the agent used',
     hideLifecycle: 'Hide lifecycle events',
+    search: 'Search',
+    close: 'Close',
+    searchTranscript: 'Search this transcript',
+    searchNoMatch: 'Nothing in this transcript matches.',
+    // The scrubber says which question its bars answer, because "where the
+    // money went" and "where the chatter was" are different shapes (006s).
+    scrubLabel: 'Seek to a moment in the run',
+    scrubByTokens: 'Bar height is tokens spent',
+    scrubByEvents: 'Bar height is events recorded — no token usage was charged',
     // The sentence is the card's body; the label is what fits a filter row.
     thinking: 'thought for a moment (content not exposed by the backend)',
     thinkingLabel: 'thinking',

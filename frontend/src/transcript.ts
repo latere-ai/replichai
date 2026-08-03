@@ -21,6 +21,13 @@ export function timeOf(e: Event): number {
 // event, or many inside the same millisecond) is widened to 1ms so that every
 // position calculation downstream divides by something.
 export function spanOf(events: Event[]): Span | null {
+  const b = bounds(events)
+  return b && widen(b)
+}
+
+// bounds is the raw extent of the events, before any widening — so a caller that
+// unions it with something else does not carry a padded end into the union.
+function bounds(events: Event[]): Span | null {
   let from = Infinity
   let to = -Infinity
   for (const e of events) {
@@ -29,8 +36,33 @@ export function spanOf(events: Event[]): Span | null {
     if (t < from) from = t
     if (t > to) to = t
   }
-  if (from === Infinity) return null
-  return { from, to: to > from ? to : from + 1 }
+  return from === Infinity ? null : { from, to }
+}
+
+// widen guarantees a span has width, so every position calculation downstream
+// divides by something.
+function widen(s: Span): Span {
+  return { from: s.from, to: s.to > s.from ? s.to : s.from + 1 }
+}
+
+// runSpan is the interval the scrubber draws: the session's own extent, taken
+// from the phases it recorded, widened to cover any event outside it.
+//
+// The events alone are the wrong span. Every event is emitted inside `running`,
+// so a bar drawn to fit them would show one phase at full width and hide that
+// resolving took seven seconds and publishing seventeen — which is exactly the
+// proportion a reader came for. The phases alone are also wrong, because a live
+// session has not recorded its last phase yet and its events run past the end.
+export function runSpan(events: Event[], phaseAt: Record<string, string> | undefined): Span | null {
+  const ev = bounds(events)
+  const stamps = Object.values(phaseAt ?? {})
+    .map((s) => new Date(s).getTime())
+    .filter((t) => !Number.isNaN(t))
+  if (stamps.length === 0) return ev && widen(ev)
+  return widen({
+    from: Math.min(...stamps, ev?.from ?? Infinity),
+    to: Math.max(...stamps, ev?.to ?? -Infinity),
+  })
 }
 
 // A phase band: one lifecycle phase, positioned and sized by the time it really
