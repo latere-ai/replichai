@@ -45,7 +45,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006q](006q-sign-in-is-open-budget-is-not.md) splits *may sign in* from *may spend*. Signing in self-grants `TierUser`, the default session quota drops to zero, and 006l's meter — not an admin's guest list — is what protects the credential. Revocation becomes recorded state rather than a delete, because a self-granting sign-in would re-create a deleted row and turn a ban into a logout. With 006p, an invited collaborator now receives mail, follows it, signs in, and sees the project — which nobody could do before.
 
-**Designed, not built:** [006r](006r-the-public-profile.md) gives a researcher a handle and a public page, links every sign-off to it, and requires one before a project may be published.
+**Built:** [006r](006r-the-public-profile.md) gives a researcher a handle and a public page at `/u/{handle}`, listing the public work signed under that name, and requires one before a project may be published — asserting a result under your name means the name has to resolve to something. The sign-off card links to it through a field resolved per read and never snapshotted, so 006n's invariant holds: making a profile private later removes the link and changes nothing on the record.
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
