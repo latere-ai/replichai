@@ -43,6 +43,18 @@ CREATE UNIQUE INDEX profiles_handle_key ON profiles (handle);
 `},
 }
 
+// migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
+// old and new pods at once (maxSurge), so two processes migrate the same
+// database concurrently: both find a version missing, both run its DDL, and the
+// loser dies on "column already exists". It self-heals on restart, and it
+// crash-loops a pod on every schema change until it does.
+//
+// The lock is taken inside the migration transaction and released with it, so
+// the second process waits, then reads the version the first just recorded and
+// skips. Each namespace has its own id, so the five migrators only ever
+// serialise against another copy of themselves.
+const migrationLock = 4
+
 // Migrate applies the profile schema. Safe to run on every startup.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, `
@@ -54,6 +66,9 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	for _, m := range migrations {
 		if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
+				return err
+			}
 			var exists bool
 			if err := tx.QueryRow(ctx,
 				`SELECT EXISTS(SELECT 1 FROM profile_migrations WHERE version=$1)`, m.version).Scan(&exists); err != nil {

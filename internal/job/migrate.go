@@ -76,9 +76,26 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
+// old and new pods at once (maxSurge), so two processes migrate the same
+// database concurrently: both find a version missing, both run its DDL, and the
+// loser dies on "column already exists". It self-heals on restart, and it
+// crash-loops a pod on every schema change until it does.
+//
+// The lock is taken inside the migration transaction and released with it, so
+// the second process waits, then reads the version the first just recorded and
+// skips. Each namespace has its own id, so the five migrators only ever
+// serialise against another copy of themselves.
+const migrationLock = 1
+
 func applyMigration(ctx context.Context, pool *pgxpool.Pool, version int, sql string) error {
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		// Lock the version row so two starting servers do not both apply it.
+		// Serialise against another server starting at the same moment. The
+		// version check below cannot do this on its own: a row that does not
+		// exist yet locks nothing, so both would read "missing" and both apply.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
+			return err
+		}
 		var exists bool
 		if err := tx.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&exists); err != nil {
