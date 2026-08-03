@@ -124,6 +124,10 @@ export type Event = {
   tool?: string
   content?: string
   time?: string
+  // What the backend charged for this one request (006s). Absent on the events
+  // that were charged nothing, which is most of them — so it is rendered only
+  // where it exists, never as a zero.
+  usage?: Usage
 }
 
 // live is true when these events came from an in-flight run's live stream, so

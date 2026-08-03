@@ -1,6 +1,8 @@
 package spa
 
 import (
+	"compress/gzip"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -71,5 +73,77 @@ func TestHandlerFallsBackWhenNotBuilt(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "not built into this binary") {
 		t.Errorf("body did not explain the missing build: %s", w.Body.String())
+	}
+}
+
+// The bundle went out uncompressed: nothing in front of this server compresses,
+// and net/http does not do it on its own, so every visit shipped ~350 KB of
+// JavaScript raw. On a slow link that is the difference between a page that
+// loads and one somebody gives up on.
+func TestAssetsAreCompressedForClientsThatAcceptIt(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if got := w.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", got)
+	}
+	// A cache that stores the gzipped body under a key it shares with a client
+	// that cannot read gzip would serve that client bytes it cannot decode.
+	if got := w.Header().Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
+		t.Errorf("Vary = %q, want it to include Accept-Encoding", got)
+	}
+	// The body really is gzip, and really does decode back to the page.
+	zr, err := gzip.NewReader(w.Body)
+	if err != nil {
+		t.Fatalf("body is not gzip: %v", err)
+	}
+	body, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("read gzip body: %v", err)
+	}
+	if !strings.Contains(string(body), "<") {
+		t.Errorf("decompressed body does not look like html: %q", body)
+	}
+	// A Content-Length describing the uncompressed size would be a lie.
+	if w.Header().Get("Content-Length") != "" {
+		t.Error("Content-Length survived compression; it describes the wrong bytes")
+	}
+}
+
+// A client that cannot decompress must still get a readable page.
+func TestClientWithoutGzipGetsPlainBytes(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+
+	if got := w.Header().Get("Content-Encoding"); got != "" {
+		t.Errorf("Content-Encoding = %q for a client that did not ask for it", got)
+	}
+	if !strings.Contains(w.Body.String(), "<") {
+		t.Errorf("body = %q, want html", w.Body.String())
+	}
+}
+
+// index.html names the hashed assets, so caching it would pin a reader to an
+// old build; the hashed assets themselves never change and are cached hard.
+func TestCachingDistinguishesTheShellFromItsAssets(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if got := w.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("shell Cache-Control = %q, want no-cache", got)
 	}
 }

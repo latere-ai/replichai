@@ -1,0 +1,124 @@
+import { expect, test } from 'bun:test'
+import type { Event } from './api'
+import { clockOf, compactTokens, firstAtOrAfter, histogram, matches, offsetOf, phaseBands, spanOf, splitTitle } from './transcript'
+
+const at = (iso: string, over: Partial<Event> = {}): Event => ({ role: 'agent', kind: 'message', time: iso, ...over })
+
+test('a run with no timestamps anywhere has no span to draw', () => {
+  expect(spanOf([{ role: 'agent', kind: 'message' }])).toBeNull()
+  expect(spanOf([])).toBeNull()
+})
+
+test('a span covers the events and is never zero-width', () => {
+  const s = spanOf([at('2026-07-14T09:12:00Z'), at('2026-07-14T10:59:00Z')])!
+  expect(s.to - s.from).toBe(107 * 60 * 1000)
+  // One event, or many in the same instant, still leaves something to divide by.
+  const point = spanOf([at('2026-07-14T09:12:00Z')])!
+  expect(point.to).toBeGreaterThan(point.from)
+})
+
+test('phase bands are proportional to elapsed time, not to the number of phases', () => {
+  // The shape of a real session: resolving is seconds, running is hours.
+  const span = { from: Date.parse('2026-07-14T09:00:00Z'), to: Date.parse('2026-07-14T11:00:00Z') }
+  const bands = phaseBands(
+    {
+      submitted: '2026-07-14T09:00:00Z',
+      resolving: '2026-07-14T09:00:36Z',
+      running: '2026-07-14T09:01:00Z',
+      done: '2026-07-14T11:00:00Z',
+    },
+    span,
+  )
+  expect(bands.map((b) => b.phase)).toEqual(['submitted', 'resolving', 'running'])
+  // `done` opens at the very end of the span and so has no room; it is dropped
+  // rather than drawn at zero width.
+  expect(bands[2].width).toBeCloseTo(119 / 120, 5)
+  expect(bands[0].left).toBe(0)
+  // The bands tile the span without gaps.
+  expect(bands[1].left).toBeCloseTo(bands[0].left + bands[0].width, 9)
+})
+
+test('a session that never recorded a phase gets no bands rather than invented ones', () => {
+  const span = { from: 0, to: 1000 }
+  expect(phaseBands(undefined, span)).toEqual([])
+  expect(phaseBands({}, span)).toEqual([])
+})
+
+test('the histogram is token-weighted when any event was charged, and counts events when none was', () => {
+  const span = { from: Date.parse('2026-07-14T09:00:00Z'), to: Date.parse('2026-07-14T09:04:00Z') }
+  const charged = [
+    at('2026-07-14T09:00:30Z', { usage: { InputTokens: 10, OutputTokens: 0, CachedInputTokens: 0 } }),
+    at('2026-07-14T09:03:30Z', { usage: { InputTokens: 100, OutputTokens: 0, CachedInputTokens: 0 } }),
+  ]
+  const w = histogram(charged, span, 4)
+  expect(w.weighted).toBe(true)
+  // Normalised to the peak: the cheap bucket is a tenth of the expensive one.
+  expect(w.bars).toEqual([0.1, 0, 0, 1])
+
+  // The same two moments, uncharged: the shape is now "how busy", and says so.
+  const c = histogram([at('2026-07-14T09:00:30Z'), at('2026-07-14T09:03:30Z')], span, 4)
+  expect(c.weighted).toBe(false)
+  expect(c.bars).toEqual([1, 0, 0, 1])
+})
+
+test('the histogram survives a run where nothing is placeable', () => {
+  const h = histogram([{ role: 'agent', kind: 'message' }], { from: 0, to: 10 }, 3)
+  expect(h.bars).toEqual([0, 0, 0])
+})
+
+test('scrubbing lands on the first event at or after the instant, and clamps past the end', () => {
+  const events = [at('2026-07-14T09:00:00Z'), at('2026-07-14T09:05:00Z'), at('2026-07-14T09:10:00Z')]
+  expect(firstAtOrAfter(events, Date.parse('2026-07-14T08:00:00Z'))).toBe(0)
+  expect(firstAtOrAfter(events, Date.parse('2026-07-14T09:01:00Z'))).toBe(1)
+  expect(firstAtOrAfter(events, Date.parse('2026-07-14T09:05:00Z'))).toBe(1)
+  // Past the last event, the far right of the bar is the end of the run.
+  expect(firstAtOrAfter(events, Date.parse('2026-07-15T00:00:00Z'))).toBe(2)
+})
+
+test('search reads what the reader can see: content, tool, and kind', () => {
+  const e = at('2026-07-14T09:00:00Z', { kind: 'tool_use', tool: 'sandbox_run', content: 'python train.py --folds loo' })
+  expect(matches(e, 'train.py')).toBe(true)
+  expect(matches(e, 'SANDBOX')).toBe(true) // case-insensitive
+  expect(matches(e, 'tool_use')).toBe(true)
+  expect(matches(e, 'nothing here')).toBe(false)
+  // An empty or blank query restores the whole run.
+  expect(matches(e, '')).toBe(true)
+  expect(matches(e, '   ')).toBe(true)
+})
+
+test('a title is the event’s own first line, verbatim, and never a summary', () => {
+  expect(splitTitle('Resolving the reference\nThe DOI points to CHI ’24.')).toEqual({
+    title: 'Resolving the reference',
+    body: 'The DOI points to CHI ’24.',
+  })
+  // A single line is a title with no body.
+  expect(splitTitle('Clone and inspect the repository')).toEqual({ title: 'Clone and inspect the repository', body: '' })
+  expect(splitTitle(undefined)).toEqual({ title: '', body: '' })
+})
+
+test('a first line too long to be a title stays the body', () => {
+  const rambling = 'x'.repeat(200)
+  expect(splitTitle(rambling)).toEqual({ title: '', body: rambling })
+})
+
+test('token counts stay scannable in a column', () => {
+  expect(compactTokens(0)).toBe('0')
+  expect(compactTokens(999)).toBe('999')
+  expect(compactTokens(2100)).toBe('2.1k')
+  expect(compactTokens(9000)).toBe('9k')
+  expect(compactTokens(22_700)).toBe('23k')
+  expect(compactTokens(2_124_865)).toBe('2.1M')
+})
+
+test('an event with no timestamp shows no clock and no offset, rather than the epoch', () => {
+  const none: Event = { role: 'agent', kind: 'message' }
+  expect(clockOf(none)).toBe('')
+  expect(offsetOf(none, { from: 0, to: 1 })).toBe('')
+})
+
+test('an offset says how far into the run something happened', () => {
+  const span = { from: Date.parse('2026-07-14T09:00:00Z'), to: Date.parse('2026-07-14T12:00:00Z') }
+  expect(offsetOf(at('2026-07-14T09:00:41Z'), span)).toBe('+41s')
+  expect(offsetOf(at('2026-07-14T09:22:04Z'), span)).toBe('+22m 4s')
+  expect(offsetOf(at('2026-07-14T10:47:00Z'), span)).toBe('+1h 47m')
+})
