@@ -92,4 +92,8 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	// The same login-time binding contract the in-memory store satisfies, in a
 	// project of its own so it does not read the rows above.
 	bindingContract(t, mem, "proj-bind")
+
+	// And the grant contract, namespaced so it does not collide with the rows
+	// this test already wrote.
+	storeContract(t, acc, "pg")
 }
