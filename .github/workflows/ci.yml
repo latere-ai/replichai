@@ -72,3 +72,9 @@ jobs:
       - run: cd frontend && bun install --frozen-lockfile
       - run: cd frontend && bun run typecheck
       - run: cd frontend && bun run build
+      - run: cd frontend && bun test src
+      # The layout regression needs a real layout engine. The runner image ships
+      # Chrome; naming it makes a missing browser a failure rather than a skip.
+      - run: cd frontend && bun run test:browser
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome

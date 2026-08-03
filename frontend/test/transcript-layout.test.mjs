@@ -22,14 +22,19 @@ const BASE = `http://localhost:${PORT}`
 // fits, and a fitting transcript never shrinks.
 const EVENTS = 400
 
-const CHROME = [
-  process.env.PUPPETEER_EXECUTABLE_PATH,
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-].find((p) => p && require('node:fs').existsSync(p))
+// Naming a browser is a demand that it run: an unset PUPPETEER_EXECUTABLE_PATH
+// skips on a machine without Chrome, but a set one that does not exist fails, so
+// CI cannot quietly stop guarding the regression.
+const asked = process.env.PUPPETEER_EXECUTABLE_PATH
+const CHROME = asked
+  ? asked
+  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
 
-if (!CHROME) {
+if (!CHROME || !require('node:fs').existsSync(CHROME)) {
+  if (asked) {
+    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
+    process.exit(1)
+  }
   console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
   process.exit(0)
 }
