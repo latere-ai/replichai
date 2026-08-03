@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
-import { clockOf, compactTokens, firstAtOrAfter, histogram, matches, offsetOf, phaseBands, spanOf, splitTitle } from './transcript'
+import { clockOf, compactTokens, firstAtOrAfter, histogram, matches, offsetOf, phaseBands, runSpan, spanOf, splitTitle } from './transcript'
 
 const at = (iso: string, over: Partial<Event> = {}): Event => ({ role: 'agent', kind: 'message', time: iso, ...over })
 
@@ -15,6 +15,31 @@ test('a span covers the events and is never zero-width', () => {
   // One event, or many in the same instant, still leaves something to divide by.
   const point = spanOf([at('2026-07-14T09:12:00Z')])!
   expect(point.to).toBeGreaterThan(point.from)
+})
+
+test('the drawn span is the session, not just the events inside it', () => {
+  // The real shape: resolving takes seconds, then every event lands inside a
+  // multi-hour running phase. Fitting the bar to the events would hide that.
+  const phaseAt = {
+    submitted: '2026-07-14T09:12:00Z',
+    resolving: '2026-07-14T09:12:07Z',
+    running: '2026-07-14T09:12:14Z',
+    done: '2026-07-14T10:59:00Z',
+  }
+  const events = [at('2026-07-14T09:20:00Z'), at('2026-07-14T10:50:00Z')]
+  const s = runSpan(events, phaseAt)!
+  expect(s.from).toBe(Date.parse('2026-07-14T09:12:00Z'))
+  expect(s.to).toBe(Date.parse('2026-07-14T10:59:00Z'))
+})
+
+test('a live session whose events run past its last recorded phase still fits on the bar', () => {
+  const s = runSpan([at('2026-07-14T11:30:00Z')], { submitted: '2026-07-14T09:12:00Z', running: '2026-07-14T09:12:14Z' })!
+  expect(s.to).toBe(Date.parse('2026-07-14T11:30:00Z'))
+})
+
+test('with neither phases nor timestamps there is no clock to draw', () => {
+  expect(runSpan([{ role: 'agent', kind: 'message' }], undefined)).toBeNull()
+  expect(runSpan([], {})).toBeNull()
 })
 
 test('phase bands are proportional to elapsed time, not to the number of phases', () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
   addMember,
@@ -53,6 +53,20 @@ import {
   type Usage,
 } from './api'
 import { useI18n } from './i18n'
+import {
+  clockOf,
+  compactTokens,
+  firstAtOrAfter,
+  histogram,
+  matches,
+  offsetOf,
+  phaseBands,
+  runSpan,
+  splitTitle,
+  timeOf,
+  totalOf,
+  type Span,
+} from './transcript'
 import { Ico, type IconName } from './icons'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Radio, RadioGroup, Segmented, Select, Tip, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
@@ -2337,7 +2351,16 @@ function WithdrawDialog({
 
 // plumbingKinds are backend lifecycle ticks, hidden by default.
 const plumbingKinds = new Set(['status_idle', 'status_running', 'thread_status_idle', 'thread_status_running', 'model_request_start', 'model_request_end'])
-const gradeKinds = new Set(['grade', 'define_outcome', 'outcome_evaluation_end'])
+// gradeKinds is the whole outcome family, which the filter rail folds into one
+// row: a reader wants "the grading" as a thing, not four of the backend's
+// internal steps (006s).
+const gradeKinds = new Set([
+  'grade',
+  'define_outcome',
+  'outcome_evaluation_start',
+  'outcome_evaluation_ongoing',
+  'outcome_evaluation_end',
+])
 
 function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onBack: () => void }) {
   const { t } = i18n
@@ -2346,6 +2369,15 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   const [state, setState] = useState<'loading' | 'ready' | 'not_ready' | 'error'>('loading')
   const [hidePlumbing, setHidePlumbing] = useState(true)
   const [off, setOff] = useState<Set<string>>(new Set())
+  const [q, setQ] = useState('')
+  // The query is deferred so that typing stays responsive on a transcript of
+  // several hundred events: the input updates now, the list re-filters when
+  // React has room.
+  const dq = useDeferredValue(q)
+  // Which card the inspector is showing, as an index into the *filtered* list —
+  // so it is cleared whenever the filters move under it.
+  const [sel, setSel] = useState<number | null>(null)
+  const streamRef = useRef<HTMLElement>(null)
 
   // Watch the job: its phase_at feeds the timeline, and its terminal phase tells
   // the transcript poll when to stop chasing a run that will never publish.
@@ -2402,6 +2434,25 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
     </Tip>
   )
 
+  // The span the scrubber draws: the session's extent, widened to cover its
+  // events. A transcript whose events carry no timestamps and a session with no
+  // recorded phases leave no clock at all, and the lifecycle strip stands in.
+  const span = useMemo(() => (tr ? runSpan(tr.events, job?.phase_at) : null), [tr, job?.phase_at])
+
+  // seek scrolls the stream to the first *rendered* card at or after an instant
+  // — the list it searches is what the filters left standing, so scrubbing never
+  // aims at an event that is not on screen. Positions come off the DOM rather
+  // than from tracked heights, because a card is as tall as its content and
+  // nothing here knows that in advance.
+  const seek = useCallback((at: number, list: Event[]) => {
+    const stream = streamRef.current
+    if (!stream) return
+    const i = firstAtOrAfter(list, at)
+    if (i < 0) return
+    const card = stream.querySelector<HTMLElement>(`.event[data-i="${i}"]`)
+    if (card) stream.scrollTo({ top: card.offsetTop - stream.offsetTop - 8, behavior: 'smooth' })
+  }, [])
+
   if (state !== 'ready' || !tr) {
     // A session still working (non-terminal) hasn't failed to produce a
     // transcript — it just hasn't emitted events yet. Show its live timeline and
@@ -2422,8 +2473,9 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
     )
   }
 
-  // Real counts by kind, and tools used — never fabricated.
-  const shown = tr.events.filter((e) => !(hidePlumbing && plumbingKinds.has(e.kind)))
+  // Real counts by kind, and tools used — never fabricated. The counts describe
+  // what the search left standing, so the rail always adds up to the stream.
+  const shown = tr.events.filter((e) => !(hidePlumbing && plumbingKinds.has(e.kind)) && matches(e, dq))
   const kindCounts = new Map<string, number>()
   const toolCounts = new Map<string, number>()
   for (const e of shown) {
@@ -2432,6 +2484,7 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   }
   const visible = shown.filter((e) => !off.has(displayKind(e.kind)))
   const usage = tr.usage
+  const picked = sel !== null ? visible[sel] : undefined
 
   return (
     <div className="tx">
@@ -2462,10 +2515,33 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
         </div>
       </div>
 
-      {job && <Timeline i18n={i18n} job={job} />}
+      {/* The run's own clock when the events carry one; the lifecycle strip when
+          they do not, so a transcript without timestamps still says where the
+          session got to. */}
+      {span ? (
+        <Scrubber i18n={i18n} span={span} events={tr.events} job={job} onSeek={(at) => seek(at, visible)} />
+      ) : (
+        job && <Timeline i18n={i18n} job={job} />
+      )}
 
       <div className="tx-body">
         <aside className="tx-side">
+          <div>
+            <div className="eyebrow eyebrow-ico" style={{ marginBottom: 8 }}>
+              <Ico name="search" size={11} /> {t('search')}
+            </div>
+            <input
+              className="text tx-search"
+              type="search"
+              value={q}
+              placeholder={t('searchTranscript')}
+              aria-label={t('searchTranscript')}
+              onChange={(ev) => {
+                setQ(ev.target.value)
+                setSel(null) // the selection indexes the filtered list
+              }}
+            />
+          </div>
           <div>
             <div className="eyebrow eyebrow-ico" style={{ marginBottom: 8 }}>
               <Ico name="filter" size={11} /> {t('showEvents')}
@@ -2475,13 +2551,21 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
                 key={kind}
                 className={'kind-btn' + (off.has(kind) ? ' off' : '')}
                 aria-pressed={!off.has(kind)}
-                onClick={() => setOff((s) => toggle(s, kind))}
+                onClick={() => {
+                  setOff((s) => toggle(s, kind))
+                  setSel(null)
+                }}
               >
                 <span className="sq" style={{ color: kindColor(kind) }} />
                 <span>{kindLabel(t, kind)}</span>
                 <span className="n tabular">{n}</span>
               </button>
             ))}
+            {kindCounts.size === 0 && (
+              <p className="muted small" style={{ margin: '2px 8px' }}>
+                {t('searchNoMatch')}
+              </p>
+            )}
           </div>
           {toolCounts.size > 0 && (
             <div>
@@ -2496,18 +2580,25 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
               ))}
             </div>
           )}
-          <Toggle on={hidePlumbing} onChange={setHidePlumbing}>
+          <Toggle
+            on={hidePlumbing}
+            onChange={(v) => {
+              setHidePlumbing(v)
+              setSel(null)
+            }}
+          >
             {t('hideLifecycle')}
           </Toggle>
         </aside>
 
-        <main className="tx-stream">
+        <main className="tx-stream" ref={streamRef}>
           {visible.map((e, i) => (
-            <EventCard key={i} i18n={i18n} e={e} />
+            <EventCard key={i} i18n={i18n} e={e} i={i} span={span} on={i === sel} onPick={() => setSel(i === sel ? null : i)} />
           ))}
         </main>
 
         <aside className="tx-side tx-inspector">
+          {picked && <EventDetail i18n={i18n} e={picked} span={span} onClose={() => setSel(null)} />}
           <div>
             <div className="eyebrow eyebrow-ico" style={{ marginBottom: 10, color: 'var(--brand)' }}>
               <Ico name="bolt" size={11} /> {t('usage')}
@@ -2531,6 +2622,140 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   )
 }
 
+// Scrubber draws the run against its own clock: the lifecycle phases at the
+// width they earned, a histogram of where the run spent itself, and a cursor
+// that scrolls the stream to a moment.
+//
+// It never filters. Dimming the events outside the cursor would mean a style
+// recomputed on every one of several hundred cards per pointer frame — and
+// scrolling to the moment is what a reader wanted anyway.
+function Scrubber({
+  i18n,
+  span,
+  events,
+  job,
+  onSeek,
+}: {
+  i18n: I18n
+  span: Span
+  events: Event[]
+  job: Job | null
+  onSeek: (at: number) => void
+}) {
+  const { t } = i18n
+  const barRef = useRef<HTMLDivElement>(null)
+  const [cursor, setCursor] = useState<number | null>(null)
+  const bands = useMemo(() => phaseBands(job?.phase_at, span), [job?.phase_at, span])
+  const hist = useMemo(() => histogram(events, span, 64), [events, span])
+
+  // A pointer anywhere on the bar seeks; holding and dragging keeps seeking.
+  // Pointer capture is what makes a drag survive leaving the element.
+  const seekTo = (clientX: number) => {
+    const box = barRef.current?.getBoundingClientRect()
+    if (!box) return
+    const f = Math.min(1, Math.max(0, (clientX - box.left) / box.width))
+    setCursor(f)
+    onSeek(span.from + f * (span.to - span.from))
+  }
+
+  return (
+    <div className="scrub">
+      <span className="scrub-clock">{fmtClock(span.from)}</span>
+      <div
+        ref={barRef}
+        className="scrub-bar"
+        role="slider"
+        tabIndex={0}
+        aria-label={t('scrubLabel')}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round((cursor ?? 0) * 100)}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          seekTo(e.clientX)
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX)
+        }}
+        onKeyDown={(e) => {
+          const step = e.key === 'ArrowLeft' ? -0.02 : e.key === 'ArrowRight' ? 0.02 : 0
+          if (!step) return
+          e.preventDefault()
+          const box = barRef.current?.getBoundingClientRect()
+          if (box) seekTo(box.left + Math.min(1, Math.max(0, (cursor ?? 0) + step)) * box.width)
+        }}
+      >
+        {bands.map((b) => (
+          <div
+            key={b.phase}
+            className={'scrub-band ' + phaseClass(b.phase)}
+            data-phase={b.phase}
+            style={{ left: pct(b.left), width: pct(b.width) }}
+          >
+            <span>{phaseLabel(t, b.phase)}</span>
+          </div>
+        ))}
+        <div className="scrub-hist">
+          {hist.bars.map((h, i) => (
+            <i key={i} style={{ height: pct(h) }} />
+          ))}
+        </div>
+        {cursor !== null && (
+          <>
+            <div className="scrub-past" style={{ width: pct(cursor) }} />
+            <div className="scrub-cursor" style={{ left: pct(cursor) }} />
+          </>
+        )}
+      </div>
+      <span className="scrub-clock right">{fmtClock(span.to)}</span>
+      <span className="scrub-legend">{hist.weighted ? t('scrubByTokens') : t('scrubByEvents')}</span>
+    </div>
+  )
+}
+
+// EventDetail is the selected event in full — the reason the cards can stay
+// scannable. Nothing here is truncated or folded: this is where a reader goes
+// when the card was not enough.
+function EventDetail({ i18n, e, span, onClose }: { i18n: I18n; e: Event; span: Span | null; onClose: () => void }) {
+  const { t } = i18n
+  const dk = displayKind(e.kind)
+  return (
+    <div className="ev-detail">
+      <div className="eyebrow eyebrow-ico" style={{ marginBottom: 10, color: kindColor(dk) }}>
+        <Ico name={kindIcon(dk)} size={11} /> {kindLabel(t, dk)}
+        <button className="icon-btn tiny" onClick={onClose} aria-label={t('close')} style={{ marginLeft: 'auto' }}>
+          <Ico name="x" size={12} w={2} />
+        </button>
+      </div>
+      <div className="ev-detail-meta">
+        <span>{e.role}</span>
+        {e.tool && <code>{e.tool}</code>}
+        {clockOf(e) && <span className="tabular">{clockOf(e)}</span>}
+        {span && offsetOf(e, span) && <span className="tabular">{offsetOf(e, span)}</span>}
+      </div>
+      {e.usage && (
+        <div className="usage-rows" style={{ marginTop: 10 }}>
+          <UsageLine label={t('usageInput')} v={e.usage.InputTokens} tone="var(--run)" />
+          <UsageLine label={t('usageOutput')} v={e.usage.OutputTokens} tone="var(--pub)" />
+          <UsageLine label={t('usageCached')} v={e.usage.CachedInputTokens} tone="var(--ok)" />
+          <UsageLine label={t('usageTotal')} v={totalOf(e.usage)} tone="var(--brand)" strong />
+        </div>
+      )}
+      <pre className="ev-detail-body">{e.content || t('noContent')}</pre>
+    </div>
+  )
+}
+
+// pct formats a 0..1 fraction as a CSS percentage.
+function pct(f: number) {
+  return `${(f * 100).toFixed(3)}%`
+}
+
+// fmtClock is a wall-clock label for the ends of the scrubber.
+function fmtClock(ms: number) {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 function UsageLine({ label, v, strong, tone }: { label: string; v: number; strong?: boolean; tone?: string }) {
   return (
     <div className="usage-line">
@@ -2543,43 +2768,99 @@ function UsageLine({ label, v, strong, tone }: { label: string; v: number; stron
   )
 }
 
-function EventCard({ i18n, e }: { i18n: I18n; e: Event }) {
+function EventCard({
+  i18n,
+  e,
+  i,
+  span,
+  on,
+  onPick,
+}: {
+  i18n: I18n
+  e: Event
+  i: number
+  span: Span | null
+  on: boolean
+  onPick: () => void
+}) {
   const { t } = i18n
   const dk = displayKind(e.kind)
   const isTool = e.kind === 'tool_use' || e.kind === 'tool_result'
   const isGrade = gradeKinds.has(e.kind)
-  const cls = 'event ' + (e.kind === 'thinking' ? 'thinking' : isGrade ? 'grade' : isTool ? 'tool' : 'message')
+  const cls =
+    'event ' + (e.kind === 'thinking' ? 'thinking' : isGrade ? 'grade' : isTool ? 'tool' : 'message') + (on ? ' on' : '')
+  // A title is the event's own first line and nothing more — see splitTitle.
+  const { title, body } = splitTitle(e.content)
+  const at = timeOf(e)
   return (
-    <div className={cls}>
+    <div
+      className={cls}
+      data-i={i}
+      data-at={Number.isNaN(at) ? '' : at}
+      onClick={onPick}
+      role="button"
+      tabIndex={0}
+      aria-pressed={on}
+      onKeyDown={(ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault()
+          onPick()
+        }
+      }}
+    >
       <div className="event-gutter">
-        <span className="event-role">{e.role}</span>
+        <span className="event-clock tabular">{clockOf(e) || e.role}</span>
         <span className="event-kind">
           <Ico name={kindIcon(dk)} size={10} w={2.2} />
           {kindLabel(t, dk)}
         </span>
+        {span && <span className="event-offset tabular">{offsetOf(e, span)}</span>}
       </div>
       <div className="event-main">
         {e.kind === 'thinking' ? (
-          <div className="event-body" style={{ fontStyle: 'italic' }}>
-            {t('thinking')}
+          <div className="event-head">
+            <span className="event-title dim">{t('thinking')}</span>
+            <EventCost u={e.usage} />
           </div>
         ) : e.kind === 'tool_use' ? (
           <>
-            <div className="event-title">
-              {t('toolCall')} {e.tool && <code>{e.tool}</code>}
+            <div className="event-head">
+              <span className="event-title">{t('toolCall')}</span>
+              {e.tool && <code>{e.tool}</code>}
+              <EventCost u={e.usage} />
             </div>
             {e.content && <pre className="event-io">{e.content}</pre>}
           </>
         ) : e.kind === 'tool_result' ? (
-          <Disclosure summary={t('toolResult')}>
-            <pre>{e.content || t('noContent')}</pre>
-          </Disclosure>
+          <>
+            <div className="event-head">
+              <span className="event-title">{t('toolResult')}</span>
+              <EventCost u={e.usage} />
+            </div>
+            <Disclosure summary={title || t('noContent')}>
+              <pre>{e.content || t('noContent')}</pre>
+            </Disclosure>
+          </>
         ) : (
-          <div className="event-body">{e.content || t('noContent')}</div>
+          <>
+            <div className="event-head">
+              <span className="event-title">{title || t('noContent')}</span>
+              <EventCost u={e.usage} />
+            </div>
+            {body && <div className="event-body">{body}</div>}
+          </>
         )}
       </div>
     </div>
   )
+}
+
+// EventCost is what the backend charged for this one request. An event that was
+// charged nothing renders nothing — a zero here would claim a free request
+// happened, which is not what an absent figure means (006s).
+function EventCost({ u }: { u?: Usage }) {
+  if (!u) return null
+  return <span className="event-cost tabular">{compactTokens(totalOf(u))}</span>
 }
 
 /* ─── helpers ─── */
@@ -2707,6 +2988,11 @@ function displayKind(kind: string) {
 // filter list and the card's gutter. `thinking` has a separate short label
 // because its body copy is a whole sentence, which wrapped the gutter into a
 // column of single words.
+//
+// A kind with no name of its own is humanised rather than printed raw: the
+// backend adds event types faster than the client learns them, and
+// `outcome_evaluation_ongoing` sitting in a filter row is an identifier leaking
+// onto the screen, not a label (006s).
 function kindLabel(t: I18n['t'], kind: string) {
   const map: Record<string, string> = {
     message: 'message',
@@ -2715,7 +3001,7 @@ function kindLabel(t: I18n['t'], kind: string) {
     tool_result: 'toolResult',
     grade: 'grade',
   }
-  return map[kind] ? t(map[kind]) : kind
+  return map[kind] ? t(map[kind]) : kind.replace(/_/g, ' ')
 }
 function kindColor(kind: string) {
   if (kind === 'grade') return 'var(--run)'

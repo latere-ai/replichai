@@ -39,29 +39,51 @@ if (!CHROME || !require('node:fs').existsSync(CHROME)) {
   process.exit(0)
 }
 
-// A transcript with every card shape the viewer renders: a message, a tool call
-// with its argument block, a collapsed tool result, a thought, and a grade.
+const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
+
+// The proportions of a real session: resolving takes seconds, running takes
+// hours. A scrubber that divides its bar evenly would hide exactly that.
+const RUNNING_AT = 14_000
+const RUNNING_MS = 21_180_000
+
+// A transcript with every card shape the viewer renders: a message with a title
+// and a body, a tool call with its argument block, a collapsed tool result, a
+// thought, and a grade — spread across a two-hour run so the scrubber has a real
+// span to draw, and with some events charged so the histogram is token-weighted.
 function events() {
-  const out = [{ role: 'user', kind: 'message', content: 'Reproduce this paper.' }]
   const shapes = [
-    { role: 'agent', kind: 'message', content: "I'll start by acquiring the paper and understanding what I'm working with." },
+    {
+      role: 'agent',
+      kind: 'message',
+      content: "Resolving the reference\nThe DOI points to CHI '24. I will establish a stable identity and slug before searching for artifacts.",
+    },
     { role: 'agent', kind: 'tool_use', tool: 'bash', content: 'ls -la /work/repo\ncat method/README.md' },
     { role: 'agent', kind: 'tool_result', content: 'total 48\ndrwxr-xr-x 8 root root 4096 .\n' },
     { role: 'agent', kind: 'thinking', content: '' },
     { role: 'agent', kind: 'grade', content: 'partial' },
   ]
-  for (let i = 0; i < EVENTS; i++) out.push(shapes[i % shapes.length])
+  const out = [{ role: 'user', kind: 'message', content: 'Reproduce this paper.', time: at(RUNNING_AT) }]
+  for (let i = 0; i < EVENTS; i++) {
+    // Every event falls inside the running phase, as they do on a real run.
+    const e = { ...shapes[i % shapes.length], time: at(RUNNING_AT + Math.round(((i + 1) / EVENTS) * RUNNING_MS)) }
+    if (i % 5 === 1) e.usage = { InputTokens: 900 + i, OutputTokens: 120, CachedInputTokens: 40_000 }
+    out.push(e)
+  }
   return out
 }
-
-const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const job = {
   id: 'job-1',
   kind: 'replicate',
   ref: 'https://doi.org/10.1145/3562939.3567802',
   phase: 'done',
   created_at: at(0),
-  phase_at: { submitted: at(0), resolving: at(7e3), running: at(21e6), publishing: at(21.1e6), done: at(21.2e6) },
+  phase_at: {
+    submitted: at(0),
+    resolving: at(7_000),
+    running: at(RUNNING_AT),
+    publishing: at(RUNNING_AT + RUNNING_MS),
+    done: at(RUNNING_AT + RUNNING_MS + 17_000),
+  },
 }
 const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
 
@@ -137,7 +159,56 @@ try {
   if (!m.overflows) fail('the stream does not overflow its box — raise EVENTS')
   if (m.clipped) fail(`${m.clipped}/${m.n} event cards clip their own content`)
   if (m.overlapping) fail(`${m.overlapping} event cards overlap the next one`)
-  if (!process.exitCode) console.log(`ok: ${m.n} event cards, none clipped, none overlapping`)
+
+  // 006s AC3: the phase bands are proportional to elapsed time. `running` is
+  // 21e6 of the 21.2e6 ms the job spent, so it must own almost the whole bar —
+  // an evenly-divided strip would put it at a fifth.
+  const bands = await page.evaluate(() => {
+    const bar = document.querySelector('.scrub-bar')
+    if (!bar) return null
+    const w = bar.getBoundingClientRect().width
+    return [...document.querySelectorAll('.scrub-band')].map((b) => ({
+      phase: b.dataset.phase,
+      frac: +(b.getBoundingClientRect().width / w).toFixed(4),
+    }))
+  })
+  if (!bands) fail('no scrubber rendered for a transcript whose events carry timestamps')
+  else {
+    const running = bands.find((b) => b.phase === 'running')
+    if (!running) fail(`no running band; bands = ${JSON.stringify(bands)}`)
+    else if (running.frac < 0.9) {
+      fail(`running band is ${(running.frac * 100).toFixed(1)}% of the bar, want >90% — bands are not proportional. bands = ${JSON.stringify(bands)}`)
+    }
+  }
+
+  // 006s AC4 + the reason the design's dimming was rejected: scrubbing scrolls
+  // the stream and must not write a single per-card style. Snapshot every card's
+  // inline style, drag across the bar, and require the snapshot to be unchanged
+  // while the scroll position moved.
+  const scrub = await page.evaluate(async () => {
+    const stream = document.querySelector('.tx-stream')
+    const bar = document.querySelector('.scrub-bar')
+    const before = { top: stream.scrollTop, styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
+    const box = bar.getBoundingClientRect()
+    const send = (type, x) =>
+      bar.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x, clientY: box.top + box.height / 2 }))
+    send('pointerdown', box.left + box.width * 0.5)
+    send('pointermove', box.left + box.width * 0.8)
+    await new Promise((r) => setTimeout(r, 900)) // the scroll is smooth
+    const after = { top: stream.scrollTop, styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
+    return {
+      moved: after.top - before.top,
+      restyled: after.styles.filter((s, i) => s !== before.styles[i]).length,
+      cursor: !!document.querySelector('.scrub-cursor'),
+    }
+  })
+  if (!scrub.cursor) fail('scrubbing left no cursor on the bar')
+  if (scrub.moved <= 0) fail(`scrubbing moved the stream by ${scrub.moved}px, want a forward scroll`)
+  if (scrub.restyled) fail(`scrubbing rewrote the inline style of ${scrub.restyled} cards — that is the per-card work this design avoids`)
+
+  if (!process.exitCode) {
+    console.log(`ok: ${m.n} event cards, none clipped, none overlapping; scrub moved ${Math.round(scrub.moved)}px, restyled 0 cards`)
+  }
 } catch (e) {
   fail(e.message)
 } finally {
