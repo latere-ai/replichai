@@ -44,6 +44,16 @@ CREATE TABLE forge_links (
 -- stray trusted grant down to a plain user so no orphan tier lingers in the ACL.
 UPDATE access_grants SET tier = 1 WHERE tier = 2;
 `},
+	{3, `
+-- Sign-in is open (006q): a first login grants itself TierUser. That turns a
+-- deleted grant into a logout, because the very next sign-in would re-create
+-- the row an admin just removed. Revocation therefore becomes a recorded state
+-- rather than a DELETE, and the self-grant refuses a revoked address.
+--
+-- Every existing grant is un-revoked, which is what it already meant.
+ALTER TABLE access_grants ADD COLUMN revoked_at TIMESTAMPTZ;
+ALTER TABLE access_grants ADD COLUMN revoked_by TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies the access schema. It uses its own version namespace table so

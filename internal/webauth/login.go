@@ -153,6 +153,16 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Signing in admits you (006q). Anyone who proves their identity gets
+	// TierUser; what limits them is budget, metered inside Enqueue, not an
+	// admin's guest list. The gate is untouched and still fail-closed — this
+	// only creates the row it then finds — and SelfGrant never promotes, never
+	// demotes, and never re-admits a revoked address, so a seeded admin stays an
+	// admin through their first login and a ban survives one.
+	if _, _, err := l.access.SelfGrant(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
+		log.Printf("login: admitting %s: %v", sess.Sub, err)
+	}
+
 	// Sign-in is the one moment that always happens, so it is where a project
 	// invitation stops being an email and becomes this principal's membership.
 	// It cannot live in an authorisation check: every one of those short-circuits

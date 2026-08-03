@@ -41,12 +41,31 @@ AUTH_CLIENT_ID=replichai
 AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
 ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
-SEED_EMAILS=colleague@x.com    # bootstrap invited users (tier: user), comma-separated
+SEED_EMAILS=colleague@x.com    # optional since 006q: sign-in is open, so this only pre-sets a tier
 MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
 ```
 
 `DATABASE_URL`, `ADDR`, `BASE_URL`, and `PROVIDER` are set by the manifest and
 override any same-named key in `.env`, so the two cannot drift.
+
+### Who may sign in
+
+Since [006q](../specs/006q-sign-in-is-open-budget-is-not.md), anyone who
+completes the OIDC login is granted `user` — the deployment no longer keeps a
+guest list. What limits them is **budget**: the platform's default session quota
+is `0`, so a new account can sign in, create a project, and read what it may,
+and cannot run a replication session until an admin tops it up or a project
+owner sponsors sessions.
+
+`ADMIN_EMAILS` is unchanged and still the way a platform admin is bootstrapped
+before their first login; a self-grant never promotes or demotes an existing
+grant, so a seeded admin stays one. `SEED_EMAILS` is now optional — it pre-sets
+a tier for somebody who has not signed in yet, which nobody needs for plain
+access.
+
+Revoking is a **ban**, not an un-invite: the grant row is kept and marked
+revoked, so the next sign-in cannot silently re-create it, and the account stays
+visible in the admin console to be re-granted.
 
 ### Outbound mail
 

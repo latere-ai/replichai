@@ -10,9 +10,11 @@ const strings: Record<Lang, Record<string, string>> = {
     // auth
     tagline: 'Audit the reproducibility of a research paper.',
     signInWith: 'Sign in with latere',
-    notInvitedTitle: 'Not yet invited',
+    // Sign-in is open (006q), so reaching this screen means an admin revoked
+    // this account — not that it is waiting for one.
+    notInvitedTitle: 'Access revoked',
     notInvitedBody:
-      "You're signed in as {email}, but this is a closed beta and your account has not been granted access yet. Ask a platform admin to add you.",
+      "You're signed in as {email}, but a platform admin has revoked this account's access. Get in touch if you think that is a mistake.",
     // shell
     workspace: 'Workspace',
     navProjects: 'Projects',
@@ -25,17 +27,17 @@ const strings: Record<Lang, Record<string, string>> = {
     platform: 'Platform',
     navAdmin: 'Admin',
     adminIntro:
-      'Who may sign in, at what tier, and how much they may run. Everything here is seeded by email — nobody has to have signed in first, and a grant binds to them when they do.',
+      'Everyone who has signed in, at what tier, and how much they may run. Signing in is open: an account appears here on its first login, with no budget until you give it some. Grants can still be seeded by email before anyone signs in, and bind when they do. Revoking bans an account — it stays listed so you can undo it.',
     platformPolicy: 'Platform policy',
     defaultQuota: 'Default session quota',
     defaultQuotaHint:
-      'How many replication sessions an invited person may run. Completed and in-flight sessions count; a failed or stopped one is refunded. Platform admins are unlimited.',
+      'How many replication sessions somebody may run before you top them up. Zero \u2014 the default \u2014 means a new account arrives with nothing to spend, which is what keeps an open sign-in from spending the platform\u2019s budget. Completed and in-flight sessions count; a failed or stopped one is refunded. Platform admins are unlimited.',
     policyUpdatedBy: 'Last changed by {who}',
     people: 'People',
-    noGrants: 'Nobody is invited yet.',
+    noGrants: 'Nobody has signed in yet.',
     grant: 'Grant',
     revoke: 'Revoke',
-    grantHint: 'A granted person may sign in and create projects. Admins can also grant, revoke, and set platform policy.',
+    grantHint: 'Anyone may sign in and create projects; what they cannot do without budget is run a session. Grant to set someone\u2019s tier, revoke to ban them. Admins can also set platform policy.',
     topup: 'Top up',
     topupN: '+{n}',
     topupPrompt: 'Extra sessions for {email}, above the platform default (0 removes the top-up):',
@@ -46,6 +48,13 @@ const strings: Record<Lang, Record<string, string>> = {
     quotaLeft: '{n} sessions left',
     quotaTitle: '{used} of {limit} replication sessions used. Failed and stopped sessions are refunded.',
     quotaExhausted: 'You have no replication sessions left. Ask a platform admin for more.',
+    // Nothing spent and nothing to spend: a new account, not an exhausted one.
+    // Saying \u201c0 sessions left\u201d to somebody who never had any reads as a
+    // fault rather than a starting state.
+    quotaNone: 'no session budget',
+    quotaNoneTitle:
+      'This account has no session budget yet. Ask a platform admin to grant you some, or work in a project whose owner sponsors sessions.',
+    errQuotaNone: 'No session budget yet \u2014 ask a platform admin, or use a project that sponsors sessions.',
     notSponsored: "This project's owner is not covering sessions here.",
     chargeTo: 'Charge to',
     chargeMine: 'My quota',
@@ -143,7 +152,7 @@ const strings: Record<Lang, Record<string, string>> = {
     noMembers: 'No collaborators yet.',
     inviteEmail: 'colleague@university.edu',
     invite: 'Invite',
-    inviteHint: 'Invite by email. They also need a platform invitation from an admin to sign in.',
+    inviteHint: 'Invite by email. They get a message with a link, and can sign in straight away \u2014 running a session here needs budget of their own, or your sponsorship.',
     remove: 'Remove',
     pending: 'pending',
     inviteError: 'Could not add the collaborator.',

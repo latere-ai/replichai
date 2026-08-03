@@ -78,7 +78,17 @@ type Grant struct {
 	Tier      Tier
 	GrantedBy string
 	GrantedAt time.Time
+	// RevokedAt and RevokedBy record a ban (006q). Revocation is a state, not a
+	// deletion: with sign-in open, a first login grants itself TierUser, so a
+	// deleted row would be re-created by the next sign-in and a ban would be
+	// nothing more than a logout. A revoked row also keeps the person visible on
+	// the admin surface, which is what makes the ban reversible.
+	RevokedAt *time.Time
+	RevokedBy string
 }
+
+// Revoked reports whether this grant has been revoked.
+func (g Grant) Revoked() bool { return g.RevokedAt != nil }
 
 // Access is the grant side of authorisation. Resolve binds on first login and is
 // the only place a principal is learned; everything else an admin drives.
@@ -87,11 +97,24 @@ type Access interface {
 	// login. granted is false for an ungranted principal and for a second
 	// principal presenting an email already bound to someone else.
 	Resolve(ctx context.Context, p Principal) (tier Tier, granted bool, err error)
-	// Grant seeds or promotes a grant by email. Admin only.
+	// Grant seeds or promotes a grant by email, clearing any revocation on it —
+	// an admin re-admitting somebody is a first-class act, not a reason to
+	// hand-edit a column. Admin only.
 	Grant(ctx context.Context, byAdmin Principal, email string, tier Tier) error
-	// Revoke removes a grant by email, locking its holder out on the next
-	// request. Admin only; idempotent.
+	// Revoke bans an email, locking its holder out on the next request. It
+	// records the revocation rather than deleting the row (006q): sign-in
+	// self-grants, so a deleted grant would be re-created by the next login and
+	// the ban would last exactly one request. Admin only; idempotent, and a
+	// second revocation does not overwrite the first.
 	Revoke(ctx context.Context, byAdmin Principal, email string) error
+	// SelfGrant admits a principal who has just proven their identity, at
+	// TierUser (006q). It is the login's call and nobody else's: signing in is
+	// what creates the row the gate then finds.
+	//
+	// It never promotes, never demotes, and never re-admits a revoked address —
+	// so a seeded admin stays an admin through their first login, and a ban
+	// survives one.
+	SelfGrant(ctx context.Context, p Principal) (Tier, bool, error)
 	// List returns every grant, for the admin surface. Admin only.
 	List(ctx context.Context, byAdmin Principal) ([]Grant, error)
 	// LinkedAccount returns a principal's proven forge login, if any. Written
