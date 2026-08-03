@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -14,10 +15,15 @@ import (
 	"github.com/latere-ai/replichai/internal/platform"
 )
 
-// Signing out clears the session and returns to the app root — the mirror of
-// the login, and the only way a shared machine stops being signed in.
-func TestHandleLogoutClearsTheSession(t *testing.T) {
-	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore())
+// Signing out must end the session at the identity provider too.
+//
+// Clearing only this app's cookie is not signing out: the provider's session
+// survives, so the next /login is answered with a fresh code for the same
+// account with no prompt. The app appears to sign out and bounces straight back
+// in — and nobody can reach another profile or leave a shared machine.
+func TestHandleLogoutEndsTheProviderSession(t *testing.T) {
+	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore()).
+		EndSessionAt("https://auth.latere.ai/logout")
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/logout", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(sessionCookie, false), Value: "whatever"})
@@ -26,8 +32,17 @@ func TestHandleLogoutClearsTheSession(t *testing.T) {
 	if w.Code != http.StatusFound {
 		t.Fatalf("status = %d, want a redirect", w.Code)
 	}
-	if got := w.Header().Get("Location"); got != "https://replichai.latere.ai/" {
-		t.Errorf("Location = %q, want the app root", got)
+	loc, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("Location is not a URL: %v", err)
+	}
+	if loc.Host != "auth.latere.ai" || loc.Path != "/logout" {
+		t.Errorf("Location = %q, want the issuer's end-session endpoint", loc)
+	}
+	// And it has to come back here, or signing out strands the person at the
+	// identity provider.
+	if got := loc.Query().Get("post_logout_redirect_uri"); got != "https://replichai.latere.ai/" {
+		t.Errorf("post_logout_redirect_uri = %q, want the app root", got)
 	}
 	// The cookie is cleared by being reissued empty and already expired.
 	var cleared bool
@@ -38,6 +53,52 @@ func TestHandleLogoutClearsTheSession(t *testing.T) {
 	}
 	if !cleared {
 		t.Error("the session cookie was not cleared; signing out would not sign anybody out")
+	}
+}
+
+// An issuer that advertises no end-session endpoint still gets a working local
+// sign-out — and the cookie goes either way, before anything is redirected.
+func TestHandleLogoutWithoutAnIssuerEndpoint(t *testing.T) {
+	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore())
+	w := httptest.NewRecorder()
+	l.HandleLogout(w, httptest.NewRequest("GET", "/logout", nil))
+
+	if got := w.Header().Get("Location"); got != "https://replichai.latere.ai/" {
+		t.Errorf("Location = %q, want the app root", got)
+	}
+	var cleared bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == cookieName(sessionCookie, false) && c.Value == "" && c.MaxAge <= 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("the local session survived a sign-out")
+	}
+}
+
+// A malformed endpoint must not strand somebody mid-sign-out on a broken URL.
+func TestHandleLogoutFallsBackOnAnUnparseableEndpoint(t *testing.T) {
+	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore()).EndSessionAt("://not a url")
+	w := httptest.NewRecorder()
+	l.HandleLogout(w, httptest.NewRequest("GET", "/logout", nil))
+	if got := w.Header().Get("Location"); got != "https://replichai.latere.ai/" {
+		t.Errorf("Location = %q, want the app root", got)
+	}
+}
+
+// An endpoint that already carries query parameters keeps them.
+func TestHandleLogoutPreservesExistingQuery(t *testing.T) {
+	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore()).
+		EndSessionAt("https://auth.latere.ai/logout?tenant=latere")
+	w := httptest.NewRecorder()
+	l.HandleLogout(w, httptest.NewRequest("GET", "/logout", nil))
+	loc, _ := url.Parse(w.Header().Get("Location"))
+	if loc.Query().Get("tenant") != "latere" {
+		t.Errorf("Location = %q, dropped the endpoint's own query", loc)
+	}
+	if loc.Query().Get("post_logout_redirect_uri") == "" {
+		t.Errorf("Location = %q, missing the return URL", loc)
 	}
 }
 
@@ -109,19 +170,29 @@ func TestCookieNameIsHostScopedWhenSecure(t *testing.T) {
 
 // Discovery is how the login learns where to read an email the ID token does
 // not carry. Each failure is distinct, and none may return a usable endpoint.
-func TestDiscoverUserInfo(t *testing.T) {
+func TestDiscover(t *testing.T) {
 	t.Run("reads the endpoint", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/.well-known/openid-configuration" {
 				t.Errorf("discovery path = %q", r.URL.Path)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"userinfo_endpoint": "https://issuer.example/userinfo"})
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"userinfo_endpoint":    "https://issuer.example/userinfo",
+				"end_session_endpoint": "https://issuer.example/logout",
+			})
 		}))
 		defer srv.Close()
 
-		got, err := DiscoverUserInfo(context.Background(), srv.URL+"/")
-		if err != nil || got != "https://issuer.example/userinfo" {
-			t.Fatalf("DiscoverUserInfo = %q, %v", got, err)
+		got, err := Discover(context.Background(), srv.URL+"/")
+		if err != nil {
+			t.Fatalf("Discover: %v", err)
+		}
+		if got.UserInfo != "https://issuer.example/userinfo" {
+			t.Errorf("UserInfo = %q", got.UserInfo)
+		}
+		// Both endpoints come from one document and one request.
+		if got.EndSession != "https://issuer.example/logout" {
+			t.Errorf("EndSession = %q; sign-out would stay local", got.EndSession)
 		}
 	})
 
@@ -130,7 +201,7 @@ func TestDiscoverUserInfo(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
 		defer srv.Close()
-		if _, err := DiscoverUserInfo(context.Background(), srv.URL); err == nil {
+		if _, err := Discover(context.Background(), srv.URL); err == nil {
 			t.Error("expected an error for a 404 discovery document")
 		}
 	})
@@ -140,7 +211,7 @@ func TestDiscoverUserInfo(t *testing.T) {
 			_, _ = w.Write([]byte("not json"))
 		}))
 		defer srv.Close()
-		if _, err := DiscoverUserInfo(context.Background(), srv.URL); err == nil {
+		if _, err := Discover(context.Background(), srv.URL); err == nil {
 			t.Error("expected an error for a malformed discovery document")
 		}
 	})
@@ -150,16 +221,16 @@ func TestDiscoverUserInfo(t *testing.T) {
 			_, _ = w.Write([]byte("{}"))
 		}))
 		defer srv.Close()
-		if _, err := DiscoverUserInfo(context.Background(), srv.URL); err == nil {
+		if _, err := Discover(context.Background(), srv.URL); err == nil {
 			t.Error("expected an error when no userinfo_endpoint is advertised")
 		}
 	})
 
 	t.Run("an unreachable issuer is an error", func(t *testing.T) {
-		if _, err := DiscoverUserInfo(context.Background(), "http://127.0.0.1:1"); err == nil {
+		if _, err := Discover(context.Background(), "http://127.0.0.1:1"); err == nil {
 			t.Error("expected an error for an unreachable issuer")
 		}
-		if _, err := DiscoverUserInfo(context.Background(), "http://\x7f-bad-host"); err == nil {
+		if _, err := Discover(context.Background(), "http://\x7f-bad-host"); err == nil {
 			t.Error("expected an error for an unbuildable request")
 		}
 	})

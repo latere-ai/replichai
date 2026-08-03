@@ -52,19 +52,29 @@ type UserInfoFunc func(ctx context.Context, accessToken string) (Profile, error)
 // httpapi.Identity. It consumes only sub + verified email from the ID token —
 // roles, scopes, and org claims are dropped (006c AC1).
 type Login struct {
-	auth     OIDCClient
-	codec    *Codec
-	access   access.Access
-	members  access.Membership // optional; nil skips the membership bind
-	baseURL  string
-	secure   bool // __Host- cookies require Secure; false only for insecure dev
-	userInfo UserInfoFunc
+	auth    OIDCClient
+	codec   *Codec
+	access  access.Access
+	members access.Membership // optional; nil skips the membership bind
+	// endSession is the issuer's RP-initiated logout. Empty leaves sign-out
+	// local-only, which is what an issuer advertising none can offer.
+	endSession string
+	baseURL    string
+	secure     bool // __Host- cookies require Secure; false only for insecure dev
+	userInfo   UserInfoFunc
 }
 
 // NewLogin builds the login front door. userInfo may be nil, in which case the
 // email is taken only from the ID token.
 func NewLogin(auth OIDCClient, codec *Codec, acc access.Access, baseURL string, secure bool, userInfo UserInfoFunc) *Login {
 	return &Login{auth: auth, codec: codec, access: acc, baseURL: strings.TrimRight(baseURL, "/"), secure: secure, userInfo: userInfo}
+}
+
+// EndSessionAt tells the login where the issuer ends its own session, so
+// signing out here signs out there too. Returned fluently, like BindMemberships.
+func (l *Login) EndSessionAt(url string) *Login {
+	l.endSession = url
+	return l
 }
 
 // BindMemberships gives the login the membership store to bind on sign-in.
@@ -187,10 +197,37 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, l.baseURL+fs.Next, http.StatusFound)
 }
 
-// HandleLogout clears the session and returns to the site root.
+// HandleLogout ends the session here *and* at the identity provider.
+//
+// Clearing only this app's cookie is not signing out. The provider's own
+// session survives it, so the next visit to /login is answered with a fresh
+// code for the same account without ever showing a prompt: the app looks signed
+// out, bounces straight back in, and there is no way to reach another profile
+// or to actually leave a shared machine.
+//
+// So the local cookie goes first — it must be gone whatever the provider does
+// next — and the browser is then handed to the issuer's RP-initiated logout,
+// which returns it here. An issuer that advertises no such endpoint leaves
+// sign-out local-only, which is all it can offer.
 func (l *Login) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	clearCookie(w, sessionCookie, l.secure)
-	http.Redirect(w, r, l.baseURL+"/", http.StatusFound)
+	http.Redirect(w, r, l.logoutURL(), http.StatusFound)
+}
+
+// logoutURL is where the browser goes after the local cookie is cleared.
+func (l *Login) logoutURL() string {
+	home := l.baseURL + "/"
+	if l.endSession == "" {
+		return home
+	}
+	u, err := url.Parse(l.endSession)
+	if err != nil {
+		return home
+	}
+	q := u.Query()
+	q.Set("post_logout_redirect_uri", home)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // Middleware reads the session cookie and places the identity on the request so

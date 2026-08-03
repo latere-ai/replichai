@@ -9,35 +9,49 @@ import (
 	"time"
 )
 
-// DiscoverUserInfo reads the userinfo_endpoint from an issuer's OIDC discovery
-// document, so the login knows where to fetch the email that the ID token may
-// not carry.
-func DiscoverUserInfo(ctx context.Context, issuer string) (string, error) {
+// Endpoints are the issuer-advertised URLs this service uses.
+type Endpoints struct {
+	// UserInfo is where the email lives when the ID token does not carry it
+	// (latere auth keeps PII out of the token).
+	UserInfo string
+	// EndSession is the issuer's RP-initiated logout. Without it, signing out
+	// clears this app's cookie and leaves the identity provider's session
+	// standing — so the next sign-in silently re-issues a code for the same
+	// account, and nobody can switch profiles or actually leave a shared
+	// machine. Empty when the issuer advertises none.
+	EndSession string
+}
+
+// Discover reads the endpoints this service needs from an issuer's OIDC
+// discovery document. One request for both: they are two fields of one
+// document, and two round trips to fetch them would be two ways to fail.
+func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 	url := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return Endpoints{}, err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return Endpoints{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("discovery %s: status %d", url, resp.StatusCode)
+		return Endpoints{}, fmt.Errorf("discovery %s: status %d", url, resp.StatusCode)
 	}
 	var doc struct {
-		UserInfoEndpoint string `json:"userinfo_endpoint"`
+		UserInfoEndpoint   string `json:"userinfo_endpoint"`
+		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return "", err
+		return Endpoints{}, err
 	}
 	if doc.UserInfoEndpoint == "" {
-		return "", fmt.Errorf("discovery %s: no userinfo_endpoint", url)
+		return Endpoints{}, fmt.Errorf("discovery %s: no userinfo_endpoint", url)
 	}
-	return doc.UserInfoEndpoint, nil
+	return Endpoints{UserInfo: doc.UserInfoEndpoint, EndSession: doc.EndSessionEndpoint}, nil
 }
 
 // HTTPUserInfo builds a UserInfoFunc that GETs the OIDC userinfo endpoint with

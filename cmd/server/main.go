@@ -267,15 +267,21 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 		return nil, err
 	}
 	// The email may live only at /userinfo (latere auth's ID token carries the
-	// sub, not the email), so discover it and fetch it in the callback.
+	// sub, not the email), and signing out has to reach the issuer's session as
+	// well as ours. Both come from one discovery document.
 	var userInfo webauth.UserInfoFunc
-	if endpoint, err := webauth.DiscoverUserInfo(ctx, issuer); err != nil {
-		log.Printf("userinfo discovery failed (%v); email will come from the ID token only", err)
+	var endSession string
+	if eps, err := webauth.Discover(ctx, issuer); err != nil {
+		log.Printf("oidc discovery failed (%v); email comes from the ID token only and sign-out stays local", err)
 	} else {
-		userInfo = webauth.HTTPUserInfo(endpoint)
+		userInfo = webauth.HTTPUserInfo(eps.UserInfo)
+		endSession = eps.EndSession
+		if endSession == "" {
+			log.Printf("issuer advertises no end_session_endpoint; sign-out will not end the provider's session")
+		}
 	}
 	secure := strings.HasPrefix(baseURL, "https") && !envBool("AUTH_INSECURE_COOKIES")
-	return webauth.NewLogin(auth, codec, acc, baseURL, secure, userInfo), nil
+	return webauth.NewLogin(auth, codec, acc, baseURL, secure, userInfo).EndSessionAt(endSession), nil
 }
 
 // accessStore is the access model plus its bootstrap seeder, satisfied by both
