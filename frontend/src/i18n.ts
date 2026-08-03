@@ -10,11 +10,15 @@ const strings: Record<Lang, Record<string, string>> = {
     // auth
     tagline: 'Audit the reproducibility of a research paper.',
     signInWith: 'Sign in with latere',
-    // Sign-in is open (006q), so reaching this screen means an admin revoked
-    // this account — not that it is waiting for one.
-    notInvitedTitle: 'Access revoked',
+    // Sign-in is open (006q), so this screen is no longer "wait for an admin".
+    // It is not only "you were banned" either: a session minted before the
+    // change, an address the identity provider did not return, and an address
+    // already bound to another account all land here too. Naming a ban would
+    // accuse somebody of something that did not happen, so the copy says what
+    // is certain — no access right now — and offers the two things that help.
+    notInvitedTitle: 'No access to this account',
     notInvitedBody:
-      "You're signed in as {email}, but a platform admin has revoked this account's access. Get in touch if you think that is a mistake.",
+      "You're signed in as {email}, but this account cannot use replichai right now. Signing out and back in fixes most cases; if it persists, a platform admin has revoked access and can restore it.",
     // shell
     workspace: 'Workspace',
     navProjects: 'Projects',

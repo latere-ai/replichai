@@ -36,6 +36,22 @@ CREATE TABLE quota_topups (
 	granted_at TIMESTAMPTZ NOT NULL
 );
 `, DefaultSessionQuota)},
+	{2, `
+-- 006q drops the default session quota to zero: sign-in is open, so this number
+-- is no longer a second lock behind an admin's guest list but the only one.
+--
+-- Changing the Go constant is not enough. Migration 1 interpolated it *at
+-- migration time*, so a deployment that already ran it holds whatever the
+-- constant was then, and Settings() returns the row rather than the fallback.
+-- Without this statement, "nobody is grandfathered" would be true of a fresh
+-- database and false of the one in production.
+--
+-- Only the bootstrap row is rewritten. A row an admin has since set is their
+-- decision, made through the console 006k exists to provide, and a migration
+-- has no business overruling it.
+UPDATE platform_settings SET default_session_quota = 0, updated_at = now()
+WHERE id = 1 AND updated_by = 'bootstrap';
+`},
 }
 
 // Migrate applies the platform schema. It uses its own version namespace table

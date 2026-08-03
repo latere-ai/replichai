@@ -15,6 +15,21 @@ COMPOSE ?= $(shell \
 test:
 	go test ./...
 
+# Statement coverage across the whole tree, with the Postgres contracts running
+# rather than skipping. This is the number to quote: `go test -cover ./...`
+# without a database silently skips every PG store contract, which costs
+# internal/access alone about forty points and makes the total meaningless.
+#
+# It needs the scratch database, so it shares db-contract's guard and -p 1.
+.PHONY: cover
+cover:
+	@$(COMPOSE) exec -T postgres psql -U replichai -d postgres -tAc \
+		"SELECT 1 FROM pg_database WHERE datname='$(TEST_DB)'" | grep -q 1 || \
+		$(COMPOSE) exec -T postgres createdb -U replichai $(TEST_DB)
+	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' \
+		go test -p 1 -coverprofile=coverage.out ./...
+	@go tool cover -func=coverage.out | tail -1
+
 # The pure-Go full-stack e2e: submit -> job runs -> done, no Docker, no network.
 .PHONY: e2e
 e2e:

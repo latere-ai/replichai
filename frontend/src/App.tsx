@@ -293,6 +293,12 @@ function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
         <Logo big />
         <h2>{i18n.t('notInvitedTitle')}</h2>
         <p>{i18n.t('notInvitedBody', { email })}</p>
+        {/* Signing out clears a session minted before sign-in was opened, and
+            re-runs the admission with a fresh identity — which is the remedy
+            for every cause of this screen except an actual revocation. */}
+        <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
+          <Ico name="logOut" size={13} /> {i18n.t('signOut')}
+        </a>
       </div>
     </div>
   )
@@ -553,7 +559,19 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row-title">{p.title}</div>
                   <div className="row-sub">
-                    {tab === 'shared' ? `${t('initiator')}: ${signerOf(p)} · ` : ''}
+                    {tab === 'shared' && (
+                      <>
+                        {t('initiator')}:{' '}
+                        {p.signer_handle ? (
+                          <a href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
+                            {signerOf(p)}
+                          </a>
+                        ) : (
+                          signerOf(p)
+                        )}{' '}
+                        ·{' '}
+                      </>
+                    )}
                     {t('sessionCount', { n: String(p.session_count) })}
                   </div>
                 </div>
