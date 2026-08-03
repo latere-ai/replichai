@@ -11,7 +11,6 @@
 package job
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -63,25 +62,12 @@ var (
 	// deliberate re-run after the prior finished is allowed, an accidental
 	// concurrent double-fire is not.
 	ErrActiveSession = errors.New("an active session for this paper already exists")
-	// ErrQuotaExceeded reports a submit refused because the payer has no session
-	// allowance left (006l). Like the double-trigger guard it is a refusal, not a
-	// failure: the check runs in the transaction that inserts, so it is exact
-	// under concurrency and cannot be skipped by a new submit path.
-	ErrQuotaExceeded = errors.New("the session quota for this account is used up")
+	// ErrNoCredits reports a submit refused because the project cannot commit
+	// the start reserve (011). Like the double-trigger guard it is a refusal,
+	// not a failure: the check runs in the transaction that inserts, so it is
+	// exact under concurrency and cannot be skipped by a new submit path.
+	ErrNoCredits = errors.New("this project does not have the credits to start a session")
 )
-
-// Allowance reports how many sessions a payer may hold or have completed.
-// Injected by the composition root so internal/job never imports the policy
-// store; a nil Allowance means unlimited, which is what an offline run and the
-// tests without a quota want.
-type Allowance func(ctx context.Context, payerSub string) (n int, unlimited bool, err error)
-
-// Spends reports whether a phase consumes allowance. Consumed is everything but
-// failed: a completed session is spent, a running one holds its unit, and a
-// failed or cancelled one (cancel lands in failed, carrying CancelCause) is
-// refunded. Stating it as one predicate keeps the refund rule structural rather
-// than a list of phases to keep in sync.
-func (p Phase) Spends() bool { return p != PhaseFailed }
 
 // CancelCause is the error recorded on a session a user stopped, so the UI can
 // tell a deliberate stop from a real failure.
@@ -97,17 +83,12 @@ type ProjectStatus struct {
 
 // Job is the durable record of one submission.
 type Job struct {
-	ID        string `json:"id"`
-	Kind      Kind   `json:"kind"`
-	Principal string `json:"principal"`            // who submitted it; an opaque OIDC sub (006c)
-	ProjectID string `json:"project_id,omitempty"` // the project it belongs to (006g)
-	Ref       string `json:"ref"`                  // the paper reference, or an experiment id
-	PaperKey  string `json:"paper_key,omitempty"`  // the offline paper identity the session targets, keying the double-trigger guard (006g)
-	// ChargedTo is whose session quota this run spends (006l): the submitter, or
-	// the sponsor of a project that covers its members' sessions. It is set at
-	// enqueue and never rewritten, so a refund, an admin's usage table, and the
-	// remaining-quota display all read one column.
-	ChargedTo string             `json:"charged_to,omitempty"`
+	ID        string             `json:"id"`
+	Kind      Kind               `json:"kind"`
+	Principal string             `json:"principal"`            // who submitted it; an opaque OIDC sub (006c)
+	ProjectID string             `json:"project_id,omitempty"` // the project it belongs to (006g)
+	Ref       string             `json:"ref"`                  // the paper reference, or an experiment id
+	PaperKey  string             `json:"paper_key,omitempty"`  // the offline paper identity the session targets, keying the double-trigger guard (006g)
 	Phase     Phase              `json:"phase"`
 	Status    provider.RunStatus `json:"status"`              // latest observation while running
 	RepoName  string             `json:"repo_name,omitempty"` // set once publishing begins

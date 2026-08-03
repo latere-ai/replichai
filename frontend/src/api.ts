@@ -1,17 +1,19 @@
 // The API client. Every call is same-origin, so the session cookie (or the dev
 // bypass) rides along automatically.
 
-// Quota is what this person has spent and may spend on replication sessions
-// (006l). Completed and in-flight sessions count; a failed or stopped one is
-// refunded. Absent for an ungranted principal.
-export type Quota = { used: number; limit: number; unlimited: boolean }
+// Credits is what this person has to spend (011), in micro-USD. The wallet is
+// theirs; it is never spent by a session directly, because a run draws on the
+// pot of the project it belongs to. start_reserve is what a project must have
+// available before a session may start there — public so the client can explain
+// the refusal before it happens. Absent for an ungranted principal.
+export type Credits = { wallet: number; start_reserve: number }
 
 export type Me = {
   authenticated: boolean
   principal?: string
   email?: string
   tier?: string
-  quota?: Quota
+  credits?: Credits
   // Display claims from the IdP (006m): both optional, both purely cosmetic —
   // the email stays the identifier everything binds on.
   name?: string
@@ -56,10 +58,6 @@ export type Project = {
   signed_off_by?: string
   signed_off_at?: string
   attestation_version?: string
-  // sponsored is the owner's standing consent to cover their collaborators'
-  // sessions (006l): with it on, a collaborator may charge the owner instead of
-  // themselves.
-  sponsored?: boolean
   // The signer, as they were when they signed (006n): a snapshot recorded at the
   // flip, not a view of their profile — so these never change afterwards. Empty
   // on a v1 sign-off, which predates them.
@@ -206,29 +204,16 @@ async function ok(r: Response): Promise<void> {
 
 export const getMe = () => fetch('/me').then(json<Me>)
 
-// chargeTo picks whose quota a session spends: the submitter, or the owner of a
-// project they have chosen to sponsor. The server resolves the actual payer —
-// this only names which of the two.
-export type ChargeTo = 'me' | 'project'
-
 // submitPaper opens a replication session: with no project it creates a fresh
 // one; with a project the caller owns or collaborates on, it adds a session. It
-// returns both ids.
-export const submitPaper = (url: string, project = '', chargeTo: ChargeTo = 'me') =>
+// returns both ids. What pays is always the project's own pot, so there is
+// nothing here to choose.
+export const submitPaper = (url: string, project = '') =>
   fetch('/papers', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url, project, charge_to: chargeTo }),
+    body: JSON.stringify({ url, project }),
   }).then(json<{ job_id: string; project_id: string }>)
-
-// sponsorProject records or withdraws the owner's standing consent to cover
-// their collaborators' sessions (006l). Owner-only.
-export const sponsorProject = (id: string, on: boolean) =>
-  fetch(`/projects/${id}/sponsor`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ on }),
-  }).then(json<Project>)
 
 export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
 
@@ -379,21 +364,20 @@ export const getArtifact = (id: string, path: string) =>
 /* ─── Platform admin (006k) ─── */
 
 // GrantView is one row of the people table: the ACL row, whether it has bound
-// to a principal yet, and any quota headroom above the platform default.
+// to a principal yet, and what their wallet holds in micro-USD.
 export type GrantView = {
   email: string
   tier: string
   bound: boolean
   granted_by?: string
   granted_at?: string
-  topup?: number
-  used: number
-  limit: number
-  unlimited: boolean
+  wallet: number
 }
 
 export type PlatformSettings = {
-  default_session_quota: number
+  // start_reserve is micro-USD: what a project must have available before a
+  // session may start there.
+  start_reserve: number
   updated_by?: string
   updated_at?: string
 }
@@ -412,17 +396,19 @@ export const grantAccess = (email: string, tier: 'user' | 'admin') =>
 export const revokeAccess = (email: string) =>
   fetch(`/admin/access/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
 
-// setTopup gives one person headroom above the platform default; 0 removes it.
-export const setTopup = (email: string, extra: number) =>
-  fetch(`/admin/access/${encodeURIComponent(email)}/quota`, {
-    method: 'PUT',
+// topUp adds credits to one person's wallet, in micro-USD. The email need not
+// have signed in yet — the wallet is keyed by address, which is what lets an
+// admin fund somebody before inviting them.
+export const topUp = (email: string, amount: number) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}/credits`, {
+    method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ extra }),
-  }).then(json<{ email: string; extra: number }>)
+    body: JSON.stringify({ amount }),
+  }).then(json<{ email: string; wallet: number }>)
 
 export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
 
-export const setPlatformSettings = (s: Pick<PlatformSettings, 'default_session_quota'>) =>
+export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve'>) =>
   fetch('/admin/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

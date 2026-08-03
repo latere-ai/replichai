@@ -15,7 +15,7 @@ var migrations = []struct {
 	version int
 	sql     string
 }{
-	{1, fmt.Sprintf(`
+	{1, `
 -- One row, pinned. The check constraint makes a second row a constraint
 -- violation rather than an ambiguity about which row is the policy.
 CREATE TABLE platform_settings (
@@ -24,8 +24,11 @@ CREATE TABLE platform_settings (
 	updated_by            TEXT NOT NULL,
 	updated_at            TIMESTAMPTZ NOT NULL
 );
+-- Seeded at zero. This interpolated a Go constant when it was written, which
+-- 006q had to correct with a second migration; the literal is what that
+-- correction settled on, and migration 3 drops the column outright.
 INSERT INTO platform_settings (id, default_session_quota, updated_by, updated_at)
-VALUES (1, %d, 'bootstrap', now());
+VALUES (1, 0, 'bootstrap', now());
 
 -- Keyed by email, not principal, so an admin can hand someone headroom before
 -- they have ever signed in — the seed-by-email rule a grant follows (006c).
@@ -35,7 +38,7 @@ CREATE TABLE quota_topups (
 	granted_by TEXT NOT NULL,
 	granted_at TIMESTAMPTZ NOT NULL
 );
-`, DefaultSessionQuota)},
+`},
 	{2, `
 -- 006q drops the default session quota to zero: sign-in is open, so this number
 -- is no longer a second lock behind an admin's guest list but the only one.
@@ -56,6 +59,24 @@ CREATE TABLE quota_topups (
 UPDATE platform_settings SET default_session_quota = 0, updated_by = 'bootstrap', updated_at = now()
 WHERE id = 1;
 `},
+	{3, fmt.Sprintf(`
+-- 011 replaces the session counter with money. What an admin tunes is no longer
+-- how many sessions somebody may run but how much a project must be able to
+-- commit before one starts there, in micro-USD.
+--
+-- The old column is dropped rather than left behind. There is nothing to
+-- convert: a session count and a start reserve are different quantities in
+-- different units, and a number carried across would be a balance whose origin
+-- nobody could read — the reason 006q refused a backfill, for the same reason.
+ALTER TABLE platform_settings DROP COLUMN default_session_quota;
+ALTER TABLE platform_settings ADD COLUMN start_reserve BIGINT NOT NULL DEFAULT %d;
+
+-- The per-person session headroom an admin granted is now a wallet balance in
+-- the ledger (internal/credit), which records who granted it and when. This
+-- table cannot be converted into that: it holds a count, and the ledger holds
+-- money.
+DROP TABLE IF EXISTS quota_topups;
+`, DefaultStartReserve)},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

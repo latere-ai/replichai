@@ -77,6 +77,13 @@ ALTER TABLE projects ADD COLUMN withdrawn_at     TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN withdrawn_by     TEXT NOT NULL DEFAULT '';
 ALTER TABLE projects ADD COLUMN withdrawn_reason TEXT NOT NULL DEFAULT '';
 `},
+	{6, `
+-- 011 makes a project pay for its own sessions out of its own credits, so the
+-- owner's standing consent to cover a collaborator's run has nothing left to
+-- mean. A project holding money *is* that consent, expressed once and in the
+-- only unit that can actually be drawn down.
+ALTER TABLE projects DROP COLUMN sponsored;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

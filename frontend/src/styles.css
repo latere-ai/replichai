@@ -957,19 +957,11 @@ h1.screen-title {
   border-color: transparent;
   background: color-mix(in srgb, var(--err) 15%, transparent);
 }
-/* The payer picker, shown only in a project its owner sponsors (006l). */
-.charge-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-/* ── The control set: checkbox, switch, radio, select, stepper, disclosure ──
+/* ── The control set: checkbox, switch, select, stepper, disclosure ──
    Each one is drawn here rather than by the browser, so it carries the same
    tokens as everything around it and looks identical on every platform. */
 
 .ck,
-.rd,
 .tg {
   display: inline-flex;
   align-items: flex-start;
@@ -985,7 +977,6 @@ h1.screen-title {
   line-height: 1.5;
 }
 .ck:disabled,
-.rd:disabled,
 .tg:disabled {
   opacity: 0.5;
   cursor: default;
@@ -1013,37 +1004,6 @@ h1.screen-title {
 .ck.on .ck-box {
   background: var(--brand);
   border-color: var(--brand);
-}
-.rd-box {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  margin-top: 1px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--border-strong);
-  border-radius: 50%;
-  background: var(--bg-surface);
-  transition: border-color var(--dur-hover);
-}
-.rd:hover .rd-box {
-  border-color: var(--brand);
-}
-.rd.on .rd-box {
-  border-color: var(--brand);
-}
-.rd-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--brand);
-}
-.radio-group {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
 }
 .tg {
   align-items: center;
@@ -1308,7 +1268,7 @@ h1.screen-title {
   align-self: center;
   flex: 1;
 }
-input.text.quota-input {
+input.text.amount-input {
   width: 88px;
   flex: none;
   text-align: right;

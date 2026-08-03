@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/platform"
 )
@@ -256,12 +257,12 @@ type failingPlatform struct {
 }
 
 // Settings mirrors the Store contract on failure: the conservative default is
-// returned *alongside* the error, never a zero value and never unlimited. A
-// fake that returned zero here would make this test pass against a handler that
-// shows nobody any quota at all.
+// returned *alongside* the error, never a zero value. A fake that returned zero
+// here would make this test pass against a handler that shows a reserve of
+// nothing — which is the one answer that admits a session on an empty pot.
 func (f failingPlatform) Settings(ctx context.Context) (platform.Settings, error) {
 	if f.err != nil {
-		return platform.Settings{DefaultSessionQuota: platform.DefaultSessionQuota}, f.err
+		return platform.Settings{StartReserve: platform.DefaultStartReserve}, f.err
 	}
 	return f.Store.Settings(ctx)
 }
@@ -273,19 +274,12 @@ func (f failingPlatform) SetSettings(ctx context.Context, by access.Principal, s
 	return f.Store.SetSettings(ctx, by, s)
 }
 
-func (f failingPlatform) SetTopup(ctx context.Context, by access.Principal, email string, extra int) error {
-	if f.err != nil {
-		return f.err
-	}
-	return f.Store.SetTopup(ctx, by, email, extra)
-}
-
 // A policy *write* that did not happen must not be reported as done.
 func TestAdminReportsPlatformWriteFailures(t *testing.T) {
 	acc := access.NewMemStore()
 	adminID := seedAdmin(t, acc)
 	plat := failingPlatform{Store: platform.NewMemStore(acc), err: errors.New("policy store is down")}
-	a := NewAdmin(acc, plat, nil)
+	a := NewAdmin(acc, plat, failingLedger{err: errors.New("ledger is down")})
 
 	for _, tt := range []struct {
 		name   string
@@ -294,8 +288,8 @@ func TestAdminReportsPlatformWriteFailures(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{"write settings", a.SetSettings, "PUT", "/admin/platform", `{"default_session_quota":5}`},
-		{"set a top-up", a.SetTopup, "PUT", "/admin/topups/x@y.com", `{"extra":3}`},
+		{"write settings", a.SetSettings, "PUT", "/admin/platform", `{"start_reserve":5000000}`},
+		{"top up a wallet", a.Topup, "POST", "/admin/access/x@y.com/credits", `{"amount":3000000}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -326,23 +320,23 @@ func TestAdminShowsTheEnforcedDefaultWhenTheReadFails(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.DefaultSessionQuota != platform.DefaultSessionQuota {
-		t.Errorf("quota = %d, want the conservative default %d", got.DefaultSessionQuota, platform.DefaultSessionQuota)
+	if got.StartReserve != platform.DefaultStartReserve {
+		t.Errorf("reserve = %d, want the conservative default %d", got.StartReserve, platform.DefaultStartReserve)
 	}
 }
 
-// With no platform store wired at all, the policy routes say so rather than
-// pretending the deployment has no quota.
+// With no platform store or ledger wired at all, those routes say so rather
+// than pretending the deployment has no policy and no money.
 func TestAdminWithoutAPlatformStore(t *testing.T) {
 	acc := access.NewMemStore()
 	adminID := seedAdmin(t, acc)
 	a := NewAdmin(acc, nil, nil)
 
-	for _, call := range []func(http.ResponseWriter, *http.Request){a.Settings, a.SetSettings, a.SetTopup} {
+	for _, call := range []func(http.ResponseWriter, *http.Request){a.Settings, a.SetSettings, a.Topup} {
 		w := httptest.NewRecorder()
 		call(w, as(adminID, "PUT", "/admin/platform", "{}"))
 		if w.Code != http.StatusServiceUnavailable {
-			t.Errorf("status = %d, want 503 when no platform store is wired", w.Code)
+			t.Errorf("status = %d, want 503 when no store is wired", w.Code)
 		}
 	}
 }
@@ -351,9 +345,9 @@ func TestAdminWithoutAPlatformStore(t *testing.T) {
 func TestAdminRefusesMalformedBodies(t *testing.T) {
 	acc := access.NewMemStore()
 	adminID := seedAdmin(t, acc)
-	a := NewAdmin(acc, platform.NewMemStore(acc), nil)
+	a := NewAdmin(acc, platform.NewMemStore(acc), credit.NewMemStore(acc, nil))
 
-	for _, call := range []func(http.ResponseWriter, *http.Request){a.SetSettings, a.SetTopup, a.Grant} {
+	for _, call := range []func(http.ResponseWriter, *http.Request){a.SetSettings, a.Topup, a.Grant} {
 		w := httptest.NewRecorder()
 		call(w, as(adminID, "PUT", "/admin/x", "not json"))
 		if w.Code != http.StatusBadRequest {
@@ -361,3 +355,13 @@ func TestAdminRefusesMalformedBodies(t *testing.T) {
 		}
 	}
 }
+
+// failingLedger is a ledger that is down, so a top-up that did not happen is
+// never reported as done.
+type failingLedger struct {
+	credit.Store
+	err error
+}
+
+func (f failingLedger) Topup(context.Context, access.Principal, string, int64) error { return f.err }
+func (f failingLedger) Balance(context.Context, credit.Holder) (int64, error)        { return 0, f.err }

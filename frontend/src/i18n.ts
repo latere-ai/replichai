@@ -31,42 +31,32 @@ const strings: Record<Lang, Record<string, string>> = {
     platform: 'Platform',
     navAdmin: 'Admin',
     adminIntro:
-      'Everyone who has signed in, at what tier, and how much they may run. Signing in is open: an account appears here on its first login, with no budget until you give it some. Grants can still be seeded by email before anyone signs in, and bind when they do. Revoking bans an account — it stays listed so you can undo it.',
+      'Everyone who has signed in, at what tier, and what their wallet holds. Signing in is open: an account appears here on its first login, with no credits until you give it some. Grants and credits can both be seeded by email before anyone signs in, and bind when they do. Revoking bans an account — it stays listed so you can undo it.',
     platformPolicy: 'Platform policy',
-    defaultQuota: 'Default session quota',
-    defaultQuotaHint:
-      'How many replication sessions somebody may run before you top them up. Zero \u2014 the default \u2014 means a new account arrives with nothing to spend, which is what keeps an open sign-in from spending the platform\u2019s budget. Completed and in-flight sessions count; a failed or stopped one is refunded. Platform admins are unlimited.',
+    startReserve: 'Start reserve (USD)',
+    startReserveHint:
+      'How much a project must have available before a session may start in it. It is held while the session runs and returned when it settles, so it bounds how many runs one project can have in flight at once \u2014 not what a run finally costs, which is metered from the tokens it actually burned.',
     policyUpdatedBy: 'Last changed by {who}',
     people: 'People',
     noGrants: 'Nobody has signed in yet.',
     grant: 'Grant',
     revoke: 'Revoke',
-    grantHint: 'Anyone may sign in and create projects; what they cannot do without budget is run a session. Grant to set someone\u2019s tier, revoke to ban them. Admins can also set platform policy.',
-    topup: 'Top up',
-    topupN: '+{n}',
-    topupPrompt: 'Extra sessions for {email}, above the platform default (0 removes the top-up):',
+    grantHint: 'Anyone may sign in and look around; what they cannot do without credits is run a session. Grant to set someone\u2019s tier, revoke to ban them. Admins can also set platform policy.',
+    topup: 'Add credits',
+    topupPrompt: 'Credits to add to {email}\u2019s wallet, in US dollars. They allocate what they need to a project from there.',
+    walletOf: 'What {email} has left to allocate to a project.',
     adminError: 'That change did not go through.',
     adminNotAdmin: 'Only a platform admin may change this.',
     used: 'Used',
-    // session quota (006l)
-    quotaLeft: '{n} sessions left',
-    quotaTitle: '{used} of {limit} replication sessions used. Failed and stopped sessions are refunded.',
-    quotaExhausted: 'You have no replication sessions left. Ask a platform admin for more.',
-    // Nothing spent and nothing to spend: a new account, not an exhausted one.
-    // Saying \u201c0 sessions left\u201d to somebody who never had any reads as a
-    // fault rather than a starting state.
-    quotaNone: 'no session budget',
-    quotaNoneTitle:
-      'This account has no session budget yet. Ask a platform admin to grant you some, or work in a project whose owner sponsors sessions.',
-    errQuotaNone: 'No session budget yet \u2014 ask a platform admin, or use a project that sponsors sessions.',
-    notSponsored: "This project's owner is not covering sessions here.",
-    chargeTo: 'Charge to',
-    chargeMine: 'My quota',
-    chargeOwner: "The owner's quota",
-    sponsorTitle: 'Session costs',
-    sponsorBody:
-      'Collaborators spend their own session quota here by default. Turn this on to let them charge sessions in this project to you instead — they choose, each time, and you can withdraw it at any point.',
-    sponsorLabel: "Cover my collaborators' sessions in this project",
+    // credits (011)
+    walletTitle: 'Your credits. A project needs {reserve} available before a session can start there \u2014 allocate from here to fund one.',
+    // Nothing to spend and nothing ever spent: a new account, not one that has
+    // run down. Showing \u201c$0.00\u201d to somebody who never had any reads as a
+    // loss rather than a starting state.
+    walletEmpty: 'no credits yet',
+    walletEmptyTitle: 'This account has no credits yet. Ask a platform admin to add some, or work in a project somebody else has funded.',
+    errNoCredits: 'This project is out of credits \u2014 allocate more to it to keep going.',
+    errNoCreditsAtAll: 'No credits yet \u2014 ask a platform admin to add some, or work in a project somebody else has funded.',
     signOut: 'Sign out',
     back: 'Back',
     // appearance: three choices, not a toggle — "auto" follows the operating
@@ -80,7 +70,8 @@ const strings: Record<Lang, Record<string, string>> = {
     projectsIntro:
       'A project holds a paper and every replication session run against it. Each session is a durable, inspectable run — its trajectory and token usage are yours to check, never a score to rank papers by.',
     statProjects: 'Projects',
-    statSessions: 'Replication sessions',
+    statSessionsRun: 'Replication sessions',
+    statWallet: 'Credits',
     myProjects: 'My projects',
     sharedWithMe: 'Shared with me',
     noProjects: 'No projects yet. Start a new audit to open one.',
@@ -124,7 +115,6 @@ const strings: Record<Lang, Record<string, string>> = {
     errActiveSession: 'Already running.',
     errUnresolvable: 'Unresolvable reference.',
     errEnqueue: 'Could not start.',
-    errQuota: 'No sessions left.',
     allPapersFailed: 'No paper could be started — check the references.',
     partialStarted: '{n} session(s) started; some papers were skipped.',
     rename: 'Rename',
@@ -156,7 +146,7 @@ const strings: Record<Lang, Record<string, string>> = {
     noMembers: 'No collaborators yet.',
     inviteEmail: 'colleague@university.edu',
     invite: 'Invite',
-    inviteHint: 'Invite by email. They get a message with a link, and can sign in straight away \u2014 running a session here needs budget of their own, or your sponsorship.',
+    inviteHint: 'Invite by email. They get a message with a link, and can sign in straight away \u2014 sessions they start here are paid for out of this project\u2019s credits.',
     remove: 'Remove',
     pending: 'pending',
     inviteError: 'Could not add the collaborator.',

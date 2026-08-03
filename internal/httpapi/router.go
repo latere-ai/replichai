@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
@@ -84,9 +85,6 @@ type ProjectStore interface {
 	// SetPrivate withdraws a publication (006o), recording the retraction without
 	// erasing the sign-off it ends.
 	SetPrivate(ctx context.Context, id string, w project.Withdrawal) error
-	// SetSponsored records the owner's standing consent to cover their
-	// collaborators' sessions (006l).
-	SetSponsored(ctx context.Context, id string, on bool) error
 	// SetTitle renames a project — naming it at create and the rename endpoint
 	// (006j). The worker also enriches a placeholder title through this.
 	SetTitle(ctx context.Context, id, title string) error
@@ -220,6 +218,12 @@ type Deps struct {
 	Live          LiveTranscript
 	Resolver      PaperResolver
 	Gate          Gate
+	// Credits is the ledger a new project is funded from (011). Nil leaves a
+	// project unfunded at creation, which an unmetered offline run wants.
+	Credits credit.Store
+	// Reserve is how much a new project is funded with when the request names
+	// no amount — the same number the enqueue gate will then ask it for.
+	Reserve credit.Reserve
 	// Notifier reaches somebody who is not looking at the app (006p). Nil sends
 	// nothing, which is what a deployment with no mail configured does.
 	Notifier Notifier
@@ -250,6 +254,8 @@ type Router struct {
 	live        LiveTranscript
 	resolver    PaperResolver
 	notifier    Notifier
+	credits     credit.Store
+	reserve     credit.Reserve
 	sseInterval time.Duration
 	spa         http.Handler
 }
@@ -268,7 +274,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

@@ -250,24 +250,29 @@ func (l *Login) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// Quota is what a principal has spent and may spend, as /me reports it (006l).
-// The remaining allowance is rendered beside the "New project" button, so a
-// researcher sees the cost of the thing they are about to start.
-type Quota struct {
-	Used      int  `json:"used"`
-	Limit     int  `json:"limit"`
-	Unlimited bool `json:"unlimited"`
+// Credits is what a principal has to spend, as /me reports it (011). The wallet
+// is rendered beside the "New project" button, and the reserve is what the
+// client needs to say *this project needs at least this much to start a
+// session* before a submit is attempted.
+type Credits struct {
+	// Wallet is this person's own balance, in micro-USD. It is never spent by a
+	// session directly: money reaches a run by being allocated to a project.
+	Wallet int64 `json:"wallet"`
+	// StartReserve is how much a project must have available before a session
+	// may start there. Public on purpose — the refusal it causes has to be
+	// explainable before it happens.
+	StartReserve int64 `json:"start_reserve"`
 }
 
-// QuotaFunc reports one principal's quota. Injected so this package does not
-// import the job or platform stores; nil leaves the field off /me entirely,
-// which is what an offline run with no quota wants.
-type QuotaFunc func(ctx context.Context, principalSub, email string) (Quota, error)
+// CreditsFunc reports one principal's credits. Injected so this package does
+// not import the ledger or the policy store; nil leaves the field off /me
+// entirely, which is what an offline unmetered run wants.
+type CreditsFunc func(ctx context.Context, principalSub, email string) (Credits, error)
 
 // Me reports the current identity and its resolved tier. It sits OUTSIDE the
 // gate and always answers 200: an ungranted principal gets tier "none", which is
 // how the frontend learns to render the not-invited screen.
-func Me(acc access.Access, quota QuotaFunc) http.HandlerFunc {
+func Me(acc access.Access, credits CreditsFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := httpapi.IdentityFrom(r)
 		if !ok || id.Sub == "" {
@@ -290,13 +295,13 @@ func Me(acc access.Access, quota QuotaFunc) http.HandlerFunc {
 		if id.Picture != "" {
 			body["picture"] = id.Picture
 		}
-		// The quota is reported only for a granted principal: an ungranted one
+		// Credits are reported only for a granted principal: an ungranted one
 		// has nothing to spend, and the not-invited screen has nothing to show.
-		if quota != nil && tier.Granted() {
-			if q, err := quota(r.Context(), id.Sub, id.Email); err == nil {
-				body["quota"] = q
+		if credits != nil && tier.Granted() {
+			if c, err := credits(r.Context(), id.Sub, id.Email); err == nil {
+				body["credits"] = c
 			} else {
-				log.Printf("me: reading quota for %s: %v", id.Sub, err)
+				log.Printf("me: reading credits for %s: %v", id.Sub, err)
 			}
 		}
 		writeJSON(w, http.StatusOK, body)

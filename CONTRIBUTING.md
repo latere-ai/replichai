@@ -23,7 +23,7 @@ everywhere else. A test that needs either is in the wrong place.
 
 A few store contracts assert things only a real database can show — that
 `SELECT ... FOR UPDATE SKIP LOCKED` hands disjoint work to competing claimants,
-that the session quota stays exact under concurrent submits. They read
+that a project's credits stay exact under concurrent submits. They read
 `TEST_DATABASE_URL` and skip when it is unset, so plain `go test ./...` stays
 offline and green.
 

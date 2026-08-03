@@ -31,6 +31,7 @@ import (
 	"latere.ai/x/pkg/oidclogin"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
@@ -184,7 +185,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, sessionQuota(st), st.jobs.Consumed, *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, sessionCredits(st), *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -208,14 +209,14 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, quota webauth.QuotaFunc, consumed webauth.ConsumedFunc, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, me webauth.CreditsFunc, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
-	mux.HandleFunc("GET /me", webauth.Me(acc, quota))
+	mux.HandleFunc("GET /me", webauth.Me(acc, me))
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, consumed))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits))
 
 	if dev {
 		// The dev bypass has no login moment, so the bind sign-in performs runs
@@ -289,45 +290,23 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 type accessStore interface {
 	access.Access
 	SeedGrant(ctx context.Context, email string, tier access.Tier) error
-	// EmailOf prices a payer known only by their sub against the email-keyed
-	// quota top-ups (006l). Widened here rather than on access.Access, which
-	// stays the authorisation contract.
-	EmailOf(ctx context.Context, principalSub string) (string, bool, error)
 }
 
-// sessionQuota answers what /me reports: how much of the payer's allowance is
-// spent, and what the allowance is. Both halves read the same predicate the
-// enqueue check applies, so the number shown and the number that refuses a
-// submit cannot disagree.
-func sessionQuota(st stores) webauth.QuotaFunc {
-	return func(ctx context.Context, principalSub, email string) (webauth.Quota, error) {
-		limit, unlimited, err := st.platform.Allowance(ctx, access.Principal{Sub: principalSub, Email: email})
+// sessionCredits answers what /me reports: this person's own wallet, and the
+// reserve a project must be able to commit before a session starts there. Both
+// come from the same places the gate reads, so the number shown and the number
+// that refuses a submit cannot disagree.
+func sessionCredits(st stores) webauth.CreditsFunc {
+	return func(ctx context.Context, _, email string) (webauth.Credits, error) {
+		wallet, err := st.credits.Balance(ctx, credit.Wallet(email))
 		if err != nil {
-			return webauth.Quota{}, err
+			return webauth.Credits{}, err
 		}
-		used, err := st.jobs.Consumed(ctx, principalSub)
+		reserve, err := platform.StartReserve(st.platform)(ctx)
 		if err != nil {
-			return webauth.Quota{}, err
+			return webauth.Credits{}, err
 		}
-		return webauth.Quota{Used: used, Limit: limit, Unlimited: unlimited}, nil
-	}
-}
-
-// sessionAllowance is how the job store learns what a payer may spend: the
-// platform default plus that person's top-up, or unlimited for an admin. It is
-// the one adapter between the policy store and the enforcement point, so
-// internal/job never imports internal/platform.
-//
-// A payer whose email cannot be read is priced at the plain default rather than
-// refused or waved through — fail-closed, and a top-up they may have is simply
-// not applied.
-func sessionAllowance(acc accessStore, plat platform.Store) job.Allowance {
-	return func(ctx context.Context, payerSub string) (int, bool, error) {
-		email, _, err := acc.EmailOf(ctx, payerSub)
-		if err != nil {
-			log.Printf("quota: reading the payer's email for %s: %v", payerSub, err)
-		}
-		return plat.Allowance(ctx, access.Principal{Sub: payerSub, Email: email})
+		return webauth.Credits{Wallet: wallet, StartReserve: reserve}, nil
 	}
 }
 
@@ -339,6 +318,7 @@ type stores struct {
 	access   accessStore
 	members  access.Membership
 	platform platform.Store
+	credits  credit.Store
 	profiles profile.Store
 	close    func()
 }
@@ -352,12 +332,15 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
 		acc := access.NewMemStore()
 		plat := platform.NewMemStore(acc)
+		members := access.NewMemMembership()
+		ledger := credit.NewMemStore(acc, members)
 		return stores{
-			jobs:     job.NewMemStore(job.WithAllowance(sessionAllowance(acc, plat))),
+			jobs:     job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat))),
 			projects: project.NewMemStore(),
 			access:   acc,
-			members:  access.NewMemMembership(),
+			members:  members,
 			platform: plat,
+			credits:  ledger,
 			profiles: profile.NewMemStore(),
 			close:    func() {},
 		}, nil
@@ -379,6 +362,7 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		{"project", project.Migrate}, // after job: its backfill reads jobs
 		{"platform", platform.Migrate},
 		{"profile", profile.Migrate},
+		{"credit", credit.Migrate},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			pool.Close()
@@ -388,12 +372,15 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	log.Printf("connected to Postgres and applied migrations")
 	acc := access.NewPGAccess(pool)
 	plat := platform.NewPGStore(pool, acc)
+	members := access.NewPGMembership(pool)
+	ledger := credit.NewPGStore(pool, acc, members)
 	return stores{
-		jobs:     job.NewPGStore(pool, job.WithPGAllowance(sessionAllowance(acc, plat))),
+		jobs:     job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat))),
 		projects: project.NewPGStore(pool),
 		access:   acc,
-		members:  access.NewPGMembership(pool),
+		members:  members,
 		platform: plat,
+		credits:  ledger,
 		profiles: profile.NewPGStore(pool),
 		close:    pool.Close,
 	}, nil

@@ -64,6 +64,13 @@ var (
 	ErrNoRates = errors.New("no rate card: this deployment cannot price a session")
 )
 
+// Reserve reports how much a project must have available before a session may
+// start there, in micro-USD. It is injected rather than read, so the enforcement
+// point does not import the policy store that holds the number (011, after
+// 006l's Allowance). A nil Reserve means unmetered — what an offline run and
+// every test that is not about money want.
+type Reserve func(ctx context.Context) (int64, error)
+
 // Holder is who an entry is against: a person's wallet or a project's pot. It
 // is one namespaced string rather than two nullable columns so a balance is one
 // predicate, and so a level added later does not reshape the table.
