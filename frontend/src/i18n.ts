@@ -193,7 +193,10 @@ const strings: Record<Lang, Record<string, string>> = {
     // the signed-off card (006n)
     signedOffBy: 'Signed off by',
     signedOffOn: 'on {when}',
-    signedOffSigner: 'Signer',
+    // "Signer" read as the person, which the line above already names, so next
+    // to a contact address it looked like the same field twice. It is neither:
+    // it is the account the sign-off was made from (006n).
+    signedOffSigner: 'Signed in as',
     signedOffContact: 'Contact',
     signedOffOrcid: 'ORCID',
     signedOffScholar: 'Scholar',
