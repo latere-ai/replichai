@@ -99,7 +99,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 - **Ownership by invitation, never delegation** — GitHub OAuth proves identity only; the org invites the user's linked login as a collaborator. The service never holds a user's repo credentials. (006f, 006c)
 - **The redistribution gate fails closed** — third-party data is never published; the method keeps downloads out of the mounted repo, and the verifier bars a leaked repo from ever going public. (002, 006f)
 - **Never simulate the outer loop** — outer-loop execution is a downstream engine, `verdict`/`rate` stay audit-only, a synthetic cohort is labelled indelibly. Regression-tested in `evals/case-01`. (007)
-- **Open sign-in, metered spending** — anyone signs in with a latere account and is granted `user`; the session quota, not a guest list, is what limits them, and it starts at zero. The gate stays fail-closed and per-request. (006c, 006q)
+- **Open sign-in, metered spending** — anyone signs in with a latere account and is granted `user`; what limits them is money, not a guest list, and they arrive with none. The gate stays fail-closed and per-request. (006c, 006q, 011)
 
 **006f is built and deployed:** the per-project collaboration API, the owner's public flip gated by a recorded responsibility sign-off, the public zone, and withdrawal (006o) all shipped, and 006i wired the server-side mount-and-publish 006f had left open. What remains of 006f is the **two-token split** — a fine-grained, per-repo mount token distinct from the org credential — which is now **009**. Its first two commits shipped: the transcript-leak gate (a foreign secret in the transcript now bars the flip under a `secret_in_transcript` review, closing the 005 divergence) and a GitHub App credential that moves every *server-side* operation off the org PAT, with installation-token refresh. Its third commit — minting a per-repo mount token, revoking and scrubbing it — is **deferred on a hard constraint**: the mount sets its credential once at session creation and a GitHub App installation token lives ≤1h, shorter than some runs (the real 006i run was 53 min), so a minted mount token would lose push access mid-run. The mount keeps the non-expiring org PAT until audits are bounded under an hour or the backend can refresh a mount token.
 
@@ -129,6 +129,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
 | 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | commits 1–2 shipped; 3 deferred | 002, 005, 006f, 006i |
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
+| 011 | [What a session costs](011-what-a-session-costs.md) | draft | 006b, 006c, 006g, 006k, 006h |
 
 ## The three tracks
 
@@ -153,7 +154,7 @@ Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, a
 
 **006c's core is built**: the authorisation model (`internal/access` — grants, three tiers, project membership, seed-by-verified-email with one-way binding, in-memory and Postgres against one contract) and the fail-closed gate policy (`internal/webauth`) that resolves a grant per request. What remains of 006c is the **OIDC login front door** — sign-in via `latere.ai/x/pkg/oidclogin`, the session cookie holding only `sub`+email, `/me`, the `/admin/access` endpoints, the dev-bypass off-loopback refusal, and rewiring `cmd/server` from the `--dev` gate to the real one. Until that lands the server still runs behind `--dev`.
 
-**The web application is usable end to end.** What remains is depth, not the core loop: **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today, so runs are graded but not yet pushed to a repository), **006d** (dropping a PDF to submit), a server-side job list, and 007d.
+**The web application is usable end to end.** What remains is depth, not the core loop: **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today, so runs are graded but not yet pushed to a repository), **006d** (dropping a PDF to submit), a server-side job list, **011** (credits replacing the session counter, so what limits a run is what it actually costs), and 007d.
 
 **Production is provisioned** ([010](010-deployment-and-release.md)): `replichai.latere.ai` DNS, the `replichai` database and its secret (terraform, applied), the k8s kustomize manifests (`deploy/prod` in the `latere` namespace), and the CI/release pipeline — a `v*` tag builds, deploys to prod, and smokes. Prod is **fail-closed**: with no login yet it admits nobody, and the release smoke fails if the dev bypass ever reaches production.
 
