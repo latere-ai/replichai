@@ -79,7 +79,7 @@ down:
 # override (`make db-contract TEST_DB=foo`) still wins over both.
 TEST_DB := replichai_test
 TEST_DATABASE_URL := postgres://replichai:replichai@localhost:5432/$(TEST_DB)?sslmode=disable
-DB_CONTRACT_PKGS ?= ./internal/job/ ./internal/access/ ./internal/platform/
+DB_CONTRACT_PKGS ?= ./internal/job/ ./internal/access/ ./internal/platform/ ./internal/credit/
 
 .PHONY: db-contract
 db-contract:
