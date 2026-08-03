@@ -112,7 +112,14 @@ export function histogram(events: Event[], span: Span, buckets: number): Histogr
 
 // totalOf is a usage record's total, the one definition the whole client uses.
 export function totalOf(u: Usage): number {
-  return u.InputTokens + u.OutputTokens + u.CachedInputTokens
+  return u.InputTokens + u.OutputTokens + u.CachedInputTokens + cacheWrittenOf(u)
+}
+
+// cacheWrittenOf is every cache-write token, whatever lifetime it bought. The
+// split is priced, not read: a viewer wants one number for "what this run wrote
+// to the cache".
+export function cacheWrittenOf(u: Usage): number {
+  return (u.CacheWrite5mTokens ?? 0) + (u.CacheWrite1hTokens ?? 0) + (u.CacheWriteTokens ?? 0)
 }
 
 // freshOf is the tokens a request actually pushed through the model: the new

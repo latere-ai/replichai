@@ -361,6 +361,11 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 			InputTokens:       session.Usage.InputTokens,
 			OutputTokens:      session.Usage.OutputTokens,
 			CachedInputTokens: session.Usage.CacheReadInputTokens,
+			// Cache writes arrive already split by lifetime here, so they are
+			// carried split — the session total is what a charge is computed
+			// from (011), and the two lifetimes are priced differently.
+			CacheWrite5mTokens: session.Usage.CacheCreation.Ephemeral5mInputTokens,
+			CacheWrite1hTokens: session.Usage.CacheCreation.Ephemeral1hInputTokens,
 		},
 	}, nil
 }

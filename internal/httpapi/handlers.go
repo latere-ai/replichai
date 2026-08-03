@@ -1425,9 +1425,10 @@ func eventUsage(e provider.Event) (provider.Usage, bool) {
 	}
 	var wrap struct {
 		ModelUsage *struct {
-			InputTokens          int64 `json:"input_tokens"`
-			OutputTokens         int64 `json:"output_tokens"`
-			CacheReadInputTokens int64 `json:"cache_read_input_tokens"`
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 		} `json:"model_usage"`
 	}
 	if json.Unmarshal(e.Raw, &wrap) != nil || wrap.ModelUsage == nil {
@@ -1437,6 +1438,10 @@ func eventUsage(e provider.Event) (provider.Usage, bool) {
 		InputTokens:       wrap.ModelUsage.InputTokens,
 		OutputTokens:      wrap.ModelUsage.OutputTokens,
 		CachedInputTokens: wrap.ModelUsage.CacheReadInputTokens,
+		// A span reports cache creation as one number with no lifetime, unlike
+		// the session total. It goes to the unattributed field rather than into
+		// a bucket it might not belong to (011).
+		CacheWriteTokens: wrap.ModelUsage.CacheCreationInputTokens,
 	}, true
 }
 
@@ -1457,9 +1462,7 @@ func attachUsage(events []provider.Event) ([]TranscriptEvent, provider.Usage, bo
 		te := TranscriptEvent{}
 		if u, ok := eventUsage(e); ok {
 			found = true
-			total.InputTokens += u.InputTokens
-			total.OutputTokens += u.OutputTokens
-			total.CachedInputTokens += u.CachedInputTokens
+			total.Add(u)
 			te.Usage = &u
 		}
 		e.Raw = nil

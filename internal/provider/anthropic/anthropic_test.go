@@ -685,3 +685,42 @@ func TestModelTierPassesUnknownPreferencesThrough(t *testing.T) {
 		t.Errorf("an unknown preference should pass through, got %q", got)
 	}
 }
+
+func TestPollCarriesCacheWritesSplitByLifetime(t *testing.T) {
+	// A cache write is billed above fresh input, and a 1-hour write above a
+	// 5-minute one, so a charge computed from a Usage that dropped them
+	// under-bills a session by its most expensive input class (011). The
+	// backend reports them broken down; the adapter must not flatten them.
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"id": "sesn_1", "type": "session", "status": "running",
+			"usage": map[string]any{
+				"input_tokens":            100,
+				"output_tokens":           20,
+				"cache_read_input_tokens": 5000,
+				"cache_creation": map[string]any{
+					"ephemeral_5m_input_tokens": 700,
+					"ephemeral_1h_input_tokens": 300,
+				},
+			},
+		})
+	})
+
+	status, err := p.Poll(context.Background(), provider.RunHandle{ID: "sesn_1"})
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	want := provider.Usage{
+		InputTokens: 100, OutputTokens: 20, CachedInputTokens: 5000,
+		CacheWrite5mTokens: 700, CacheWrite1hTokens: 300,
+	}
+	if status.Usage != want {
+		t.Errorf("usage = %+v, want %+v", status.Usage, want)
+	}
+	if got, want := status.Usage.Total(), int64(6120); got != want {
+		t.Errorf("total = %d, want %d — a class missing from Total is a class nobody is charged for", got, want)
+	}
+	if got, want := status.Usage.CacheWritten(), int64(1000); got != want {
+		t.Errorf("cache written = %d, want %d", got, want)
+	}
+}

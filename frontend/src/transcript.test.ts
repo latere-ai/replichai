@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
-import { clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, splitTitle, totalOf } from './transcript'
+import { cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, splitTitle, totalOf } from './transcript'
 
 const at = (iso: string, over: Partial<Event> = {}): Event => ({ role: 'agent', kind: 'message', time: iso, ...over })
 
@@ -170,4 +170,29 @@ test('an offset says how far into the run something happened', () => {
   expect(offsetOf(at('2026-07-14T09:00:41Z'), span)).toBe('+41s')
   expect(offsetOf(at('2026-07-14T09:22:04Z'), span)).toBe('+22m 4s')
   expect(offsetOf(at('2026-07-14T10:47:00Z'), span)).toBe('+1h 47m')
+})
+
+test('cache writes count toward the total, whatever lifetime they bought', () => {
+  // A cache write is billed above fresh input (011), so a total that drops it
+  // under-reports the run. The 5m/1h split is a pricing detail; a reader wants
+  // one number, and a backend that reports no lifetime still gets counted.
+  const u = {
+    InputTokens: 100,
+    OutputTokens: 20,
+    CachedInputTokens: 5_000,
+    CacheWrite5mTokens: 700,
+    CacheWrite1hTokens: 300,
+    CacheWriteTokens: 40,
+  }
+  expect(cacheWrittenOf(u)).toBe(1_040)
+  expect(totalOf(u)).toBe(6_160)
+  // freshOf is deliberately untouched: it ranks a step by its work, and a cache
+  // write scales with the conversation rather than with what the agent did.
+  expect(freshOf(u)).toBe(120)
+})
+
+test('usage from a backend that reports no cache writes still totals', () => {
+  const u = { InputTokens: 10, OutputTokens: 5, CachedInputTokens: 1 }
+  expect(cacheWrittenOf(u)).toBe(0)
+  expect(totalOf(u)).toBe(16)
 })
