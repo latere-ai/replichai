@@ -16,8 +16,8 @@ const strings: Record<Lang, Record<string, string>> = {
     // already bound to another account all land here too. Naming a ban would
     // accuse somebody of something that did not happen, so the copy says what
     // is certain — no access right now — and offers the two things that help.
-    notInvitedTitle: 'No access to this account',
-    notInvitedBody:
+    noAccessTitle: 'No access to this account',
+    noAccessBody:
       "You're signed in as {email}, but this account cannot use replichai right now. Signing out and back in fixes most cases; if it persists, a platform admin has revoked access and can restore it.",
     // shell
     workspace: 'Workspace',

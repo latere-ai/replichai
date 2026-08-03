@@ -130,7 +130,7 @@ export default function App() {
 
   if (me === null) return <div className="center-load">…</div>
   if (!me.authenticated) return <SignIn i18n={i18n} />
-  if ((me.tier ?? 'none') === 'none') return <NotInvited i18n={i18n} email={me.email ?? ''} />
+  if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
   return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} />
 }
 
@@ -287,13 +287,13 @@ function SignIn({ i18n }: { i18n: I18n }) {
   )
 }
 
-function NotInvited({ i18n, email }: { i18n: I18n; email: string }) {
+function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
   return (
     <div className="auth-center">
       <div className="auth-card">
         <Logo big />
-        <h2>{i18n.t('notInvitedTitle')}</h2>
-        <p>{i18n.t('notInvitedBody', { email })}</p>
+        <h2>{i18n.t('noAccessTitle')}</h2>
+        <p>{i18n.t('noAccessBody', { email })}</p>
         {/* Signing out clears a session minted before sign-in was opened, and
             re-runs the admission with a fresh identity — which is the remedy
             for every cause of this screen except an actual revocation. */}
@@ -1091,7 +1091,7 @@ function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: Plat
   )
 }
 
-// PeopleCard is the whitelist: who may sign in, at what tier, with what
+// PeopleCard is the user list: who has signed in, at what tier, with what
 // headroom. Everything here is seeded by email — nobody needs to have signed in
 // first, and a grant binds to them when they do.
 function PeopleCard({

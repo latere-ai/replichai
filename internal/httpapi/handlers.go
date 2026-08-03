@@ -312,7 +312,7 @@ type SessionResult struct {
 func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	id, ok := IdentityFrom(r)
 	if !ok {
-		writeError(w, http.StatusForbidden, "not_invited")
+		writeError(w, http.StatusForbidden, "not_granted")
 		return
 	}
 	var body struct {

@@ -46,11 +46,15 @@ CREATE TABLE quota_topups (
 -- Without this statement, "nobody is grandfathered" would be true of a fresh
 -- database and false of the one in production.
 --
--- Only the bootstrap row is rewritten. A row an admin has since set is their
--- decision, made through the console 006k exists to provide, and a migration
--- has no business overruling it.
-UPDATE platform_settings SET default_session_quota = 0, updated_at = now()
-WHERE id = 1 AND updated_by = 'bootstrap';
+-- Unconditional, and it runs exactly once. Guarding on "only the bootstrapped
+-- row" would leave the cutover depending on whether anyone had ever touched the
+-- console, so whether the platform actually starts everyone at zero could only
+-- be answered by querying the deployment. 006q's rule is one rule for everyone;
+-- a cutover that quietly applies to some deployments and not others is not that
+-- rule. An admin who wants a different number sets it afterwards, and it sticks:
+-- this migration is version-gated and never runs again.
+UPDATE platform_settings SET default_session_quota = 0, updated_by = 'bootstrap', updated_at = now()
+WHERE id = 1;
 `},
 }
 

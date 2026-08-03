@@ -35,9 +35,9 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 		t.Errorf("unauthenticated: ok=%v reason=%q", ok, reason)
 	}
 
-	// Authenticated but ungranted -> not_invited (fail-closed on empty table).
+	// Authenticated but ungranted -> not_granted (fail-closed on empty table).
 	seed := httpapi.Identity{Sub: "seed-sub", Email: "seed@example.com"}
-	if ok, reason := gate.Allow(requestAs(&seed)); ok || reason != "not_invited" {
+	if ok, reason := gate.Allow(requestAs(&seed)); ok || reason != "not_granted" {
 		t.Errorf("ungranted: ok=%v reason=%q", ok, reason)
 	}
 
@@ -55,7 +55,7 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 	if err := store.Revoke(ctx, admin, "seed@example.com"); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
-	if ok, reason := gate.Allow(requestAs(&seed)); ok || reason != "not_invited" {
+	if ok, reason := gate.Allow(requestAs(&seed)); ok || reason != "not_granted" {
 		t.Errorf("after revoke: ok=%v reason=%q, want locked out", ok, reason)
 	}
 }
