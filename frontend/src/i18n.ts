@@ -260,8 +260,11 @@ const strings: Record<Lang, Record<string, string>> = {
     // The scrubber says which question its bars answer, because "where the
     // money went" and "where the chatter was" are different shapes (006s).
     scrubLabel: 'Seek to a moment in the run',
-    scrubByTokens: 'Bar height is tokens spent',
-    scrubByEvents: 'Bar height is events recorded — no token usage was charged',
+    // "New tokens" rather than "tokens": on a real session the cache reads are
+    // 99% of the total and grow with the conversation, so ranking steps by the
+    // total would measure length, not work (006s).
+    scrubByTokens: 'Bars and event figures are new tokens: input + output, cache reads excluded. Open an event for its full breakdown.',
+    scrubByEvents: 'Bar height is events recorded — nothing in this run was charged tokens.',
     // The sentence is the card's body; the label is what fits a filter row.
     thinking: 'thought for a moment (content not exposed by the backend)',
     thinkingLabel: 'thinking',

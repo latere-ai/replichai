@@ -17,14 +17,6 @@ export function timeOf(e: Event): number {
   return e.time ? new Date(e.time).getTime() : NaN
 }
 
-// spanOf is the interval the events actually cover. A span of zero width (one
-// event, or many inside the same millisecond) is widened to 1ms so that every
-// position calculation downstream divides by something.
-export function spanOf(events: Event[]): Span | null {
-  const b = bounds(events)
-  return b && widen(b)
-}
-
 // bounds is the raw extent of the events, before any widening — so a caller that
 // unions it with something else does not carry a padded end into the union.
 function bounds(events: Event[]): Span | null {
@@ -112,7 +104,7 @@ export function histogram(events: Event[], span: Span, buckets: number): Histogr
     const t = timeOf(e)
     if (Number.isNaN(t)) continue
     const i = Math.min(buckets - 1, Math.max(0, Math.floor(((t - span.from) / total) * buckets)))
-    raw[i] += weighted ? (e.usage ? totalOf(e.usage) : 0) : 1
+    raw[i] += weighted ? (e.usage ? freshOf(e.usage) : 0) : 1
   }
   const peak = Math.max(...raw)
   return { bars: peak > 0 ? raw.map((v) => v / peak) : raw, weighted }
@@ -121,6 +113,19 @@ export function histogram(events: Event[], span: Span, buckets: number): Histogr
 // totalOf is a usage record's total, the one definition the whole client uses.
 export function totalOf(u: Usage): number {
   return u.InputTokens + u.OutputTokens + u.CachedInputTokens
+}
+
+// freshOf is the tokens a request actually pushed through the model: the new
+// input and the output, with the cache reads left out.
+//
+// The total is the wrong measure of a *step*. On a real session it is 99% cache
+// reads (11.6M of 11.7M), and a cache read scales with how long the conversation
+// has grown rather than with what the agent did — so ranking steps by total
+// draws a monotonic ramp and calls it spend. Fresh tokens vary with the work,
+// which is the question the histogram and the per-card figure are asking. The
+// full breakdown, cache included, is always one click away in the inspector.
+export function freshOf(u: Usage): number {
+  return u.InputTokens + u.OutputTokens
 }
 
 // firstAtOrAfter is the index of the first event at or after an instant — where
