@@ -20,6 +20,7 @@ type fakeRunner struct {
 	publishRepo string // the RepoName Publish observed — proves the handoff survived
 	observed    provider.RunStatus
 	closed      []string // run ids Close was called with
+	onExecute   func()   // fires inside Execute; stands in for a signal landing mid-run
 }
 
 func (f *fakeRunner) record(s string) {
@@ -42,6 +43,9 @@ func (f *fakeRunner) Resolve(_ context.Context, j *Job) error {
 func (f *fakeRunner) Execute(_ context.Context, j *Job, observe func(provider.RunStatus)) error {
 	f.record("execute")
 	observe(f.observed)
+	if f.onExecute != nil {
+		f.onExecute()
+	}
 	if f.failAt == "execute" {
 		return errors.New("execute boom")
 	}
@@ -242,6 +246,93 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 	// restart finalizes to it rather than silently losing the publish.
 	if r.publishRepo != "open-hai/live" {
 		t.Errorf("resumed Publish saw RepoName %q, want the pre-crash name", r.publishRepo)
+	}
+}
+
+// A restart that lands after the run settled but before finalizing finished
+// must re-publish, not fail: the session succeeded, publishing is idempotent,
+// and failing the row would strand a reproduction that is already committed.
+func TestReconcileRepublishesAnInterruptedPublish(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx) // -> resolving
+	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" })
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})
+	_ = s.Advance(ctx, j.ID, PhasePublishing, nil) // crashed mid-publish
+
+	r := &fakeRunner{}
+	resumed, failed, err := NewWorker(s, r).Reconcile(ctx)
+	if err != nil || resumed != 1 || failed != 0 {
+		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 1/0/nil", resumed, failed, err)
+	}
+	waitForPhase(t, s, j.ID, PhaseDone)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.calls) != 1 || r.calls[0] != "publish" {
+		t.Errorf("reconcile should have re-published only, calls=%v", r.calls)
+	}
+	if r.publishRepo != "open-hai/live" {
+		t.Errorf("re-published against RepoName %q, want the pre-crash name", r.publishRepo)
+	}
+}
+
+// A shutdown is not a failed session. When the pool context is cancelled — every
+// deploy and node drain — the run's error must NOT write the terminal failed
+// phase, because failed is unreachable from Reconcile: the row would be stuck
+// dead while the backend session kept working. Leaving it in its phase is what
+// lets the next boot rejoin it.
+func TestShutdownLeavesTheJobForReconcile(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	pool, stopPool := context.WithCancel(ctx)
+	r := &fakeRunner{failAt: "execute", onExecute: stopPool} // SIGTERM lands mid-run
+	if _, err := NewWorker(s, r).Process(pool); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	got, _ := s.Get(ctx, j.ID)
+	if got.Phase != PhaseRunning {
+		t.Fatalf("phase = %s, want running — a shutdown must leave the job rejoinable", got.Phase)
+	}
+	if got.Err != "" {
+		t.Errorf("a shutdown recorded a failure cause: %q", got.Err)
+	}
+}
+
+// A person cancelling their session is the other path: only that job's context
+// is cancelled, not the pool's, so the row still ends terminal.
+func TestCancelStillFailsTheJob(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	r := &fakeRunner{failAt: "execute"}
+	if _, err := NewWorker(s, r).Process(ctx); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	got, _ := s.Get(ctx, j.ID)
+	if got.Phase != PhaseFailed || got.Err == "" {
+		t.Errorf("phase = %s err = %q, want failed with a cause", got.Phase, got.Err)
+	}
+}
+
+// waitForPhase blocks until a job reaches phase, or the test times out.
+func waitForPhase(t *testing.T, s Store, id string, phase Phase) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, _ := s.Get(context.Background(), id)
+		if got.Phase == phase {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job %s stopped at phase %s, want %s", id, got.Phase, phase)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

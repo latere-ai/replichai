@@ -38,8 +38,11 @@ const (
 	// DefaultPollFailures is how many *consecutive* failed observations are
 	// tolerated before the wait gives up. A single 5xx from the backend is not a
 	// failed session, and an unbounded wait makes hundreds of observations, so
-	// one transient error must not fail a healthy run.
-	DefaultPollFailures = 5
+	// one transient error must not fail a healthy run. At DefaultPollInterval
+	// this rides out roughly seven minutes of a backend that will not answer —
+	// long enough for an API degradation four hours into a run, short enough
+	// that a genuinely unreachable session does not poll forever.
+	DefaultPollFailures = 20
 	// DefaultMountPath is where a mounted repository lands when the caller does
 	// not choose a path.
 	DefaultMountPath = "/workspace/repro"
