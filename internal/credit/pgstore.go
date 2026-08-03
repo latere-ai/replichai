@@ -164,3 +164,40 @@ func (s *PGStore) insertTx(ctx context.Context, tx pgx.Tx, e Entry) error {
 		id, string(e.Holder), e.Amount, string(e.Kind), jobID, e.Actor, e.CreatedAt)
 	return err
 }
+
+// Fund moves credits from an email's wallet into a project's pot, with no
+// membership check — see creationOps for why the create path cannot ask that
+// question.
+func (s *PGStore) Fund(ctx context.Context, email, project string, amount int64) error {
+	if err := checkMove(email, project, amount); err != nil {
+		return err
+	}
+	return s.transfer(ctx, Wallet(email), Pot(project), amount, KindAllocate, normalizeEmail(email))
+}
+
+// Unwind returns everything a project's pot can still commit to an email's
+// wallet, as the system. The amount is read inside the transaction that moves
+// it, under the same advisory lock every transfer takes, so it cannot be read
+// before a concurrent hold and written after one.
+func (s *PGStore) Unwind(ctx context.Context, project, email string) error {
+	if err := checkMove(email, project, 1); err != nil {
+		return err
+	}
+	from, to := Pot(project), Wallet(email)
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, string(from)); err != nil {
+			return err
+		}
+		var amount int64
+		if err := tx.QueryRow(ctx, availableSQL, string(from)).Scan(&amount); err != nil {
+			return err
+		}
+		if amount <= 0 {
+			return nil
+		}
+		if err := s.insertTx(ctx, tx, Entry{Holder: from, Amount: -amount, Kind: KindReclaim, Actor: ActorSystem}); err != nil {
+			return err
+		}
+		return s.insertTx(ctx, tx, Entry{Holder: to, Amount: amount, Kind: KindReclaim, Actor: ActorSystem})
+	})
+}

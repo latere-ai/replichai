@@ -170,19 +170,20 @@ func (rt *Router) submitToNewProject(w http.ResponseWriter, r *http.Request, own
 		writeError(w, http.StatusInternalServerError, "project_create_failed")
 		return
 	}
-	// Same order as the batch create: the creator becomes the lead, then funds
-	// the pot the session about to start will draw on.
-	rt.seedCollaborators(r.Context(), proj.ID, id, nil)
-	if !rt.fundNewProject(w, r, proj.ID, id, 0) {
-		_ = rt.projects.Delete(r.Context(), proj.ID)
+	if !rt.fundNewProject(w, r, proj.ID, id, 0, 1) {
+		rt.undoProject(r, proj.ID, id)
 		return
 	}
 	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey})
 	if err != nil {
-		_ = rt.projects.Delete(r.Context(), proj.ID) // compensate: never leave an empty project
+		rt.undoProject(r, proj.ID, id) // compensate: never leave an empty project, or its money in one
 		rt.writeEnqueueError(w, err)
 		return
 	}
+	// Membership is seeded only now, once the project is real: a row written
+	// before the compensating delete would outlive the project it names, and
+	// nothing cascades it away.
+	rt.seedCollaborators(r.Context(), proj.ID, id, nil)
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
 }
 
@@ -305,8 +306,10 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		Papers        []string `json:"papers"`
 		Collaborators []string `json:"collaborators"`
 		// Credits funds the new project from the creator's wallet, in micro-USD.
-		// Zero means the start reserve — enough for exactly one session, which
-		// is the least a project can be created with and still do anything.
+		// Zero means one start reserve per paper, so a batch is funded for the
+		// sessions it is actually asking for — funding one reserve for four
+		// papers would refuse three of them by default, which reads as a bug
+		// rather than a budget.
 		Credits int64 `json:"credits"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -328,11 +331,8 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_create_failed")
 		return
 	}
-	// The lead is seeded before the pot is funded, because funding a project is
-	// a member's act and the creator has to already be one.
-	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
-	if !rt.fundNewProject(w, r, proj.ID, id, body.Credits) {
-		_ = rt.projects.Delete(r.Context(), proj.ID)
+	if !rt.fundNewProject(w, r, proj.ID, id, body.Credits, len(papers)) {
+		rt.undoProject(r, proj.ID, id)
 		return
 	}
 
@@ -351,12 +351,18 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		results = append(results, res)
 	}
 
-	// Never leave an empty project: if not one paper started, undo the create.
+	// Never leave an empty project: if not one paper started, undo the create —
+	// including the credits it was funded with, which would otherwise sit in a
+	// project that no longer exists and that nobody has a role in to reclaim.
 	if started == 0 {
-		_ = rt.projects.Delete(r.Context(), proj.ID)
+		rt.undoProject(r, proj.ID, id)
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "no_sessions_started", "sessions": results})
 		return
 	}
+
+	// Membership is seeded only now, once at least one session has started, so
+	// a refused create leaves no rows naming a project that is gone.
+	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"project_id": proj.ID,
@@ -376,11 +382,14 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 // same reason and with the same code as any other unfunded start — which is
 // what lets the client offer a top-up rather than say "could not create".
 //
+// The default amount is one start reserve per paper, so a batch is funded for
+// what it is asking for; a request naming its own amount gets exactly that.
+//
 // This is narrower than 006j's per-paper reporting on purpose: an unfunded
 // wallet fails before any paper is enqueued, so there is nothing per-paper to
 // report and the refusal is the whole request. Where the allocation succeeds and
 // individual papers then fail, 006j's rule is untouched.
-func (rt *Router) fundNewProject(w http.ResponseWriter, r *http.Request, projectID string, creator Identity, amount int64) bool {
+func (rt *Router) fundNewProject(w http.ResponseWriter, r *http.Request, projectID string, creator Identity, amount int64, sessions int) bool {
 	if rt.credits == nil {
 		return true // unmetered: an offline run funds nothing and refuses nothing
 	}
@@ -392,20 +401,39 @@ func (rt *Router) fundNewProject(w http.ResponseWriter, r *http.Request, project
 		if err != nil || n <= 0 {
 			return true
 		}
-		amount = n
+		amount = n * int64(max(sessions, 1))
 	}
-	p := access.Principal{Sub: creator.Sub, Email: creator.Email}
-	switch err := rt.credits.Allocate(r.Context(), p, projectID, amount); {
+	switch err := rt.credits.Fund(r.Context(), creator.Email, projectID, amount); {
 	case err == nil:
 		return true
 	case errors.Is(err, credit.ErrInsufficient):
 		writeError(w, http.StatusPaymentRequired, "no_credits")
-	case errors.Is(err, credit.ErrNotMember):
-		writeError(w, http.StatusForbidden, "not_owner")
 	default:
 		writeError(w, http.StatusInternalServerError, "project_create_failed")
 	}
 	return false
+}
+
+// undoProject is the compensating delete, credits included.
+//
+// A project that could not open a single session is deleted, and its pot has to
+// go back with it: the ledger deliberately has no foreign key on a project, so
+// nothing cleans up after the delete, and a reclaim needs a role in a project
+// that no longer exists. Without this the reserve a refused create moved is
+// gone from the creator's wallet and unreachable — which the double-trigger
+// guard makes easy to hit, by submitting a paper that is already running.
+//
+// The unwind runs first: it moves what the pot can still commit, and a project
+// row that is already gone would make that pot unreadable by anything else.
+func (rt *Router) undoProject(r *http.Request, projectID string, creator Identity) {
+	if rt.credits != nil {
+		if err := rt.credits.Unwind(r.Context(), projectID, creator.Email); err != nil {
+			// The delete still happens: an empty project nobody can see is a
+			// smaller problem than one holding credits *and* visible.
+			log.Printf("undo project %s: returning credits to %s: %v", projectID, creator.Email, err)
+		}
+	}
+	_ = rt.projects.Delete(r.Context(), projectID)
 }
 
 // seedCollaborators seeds the owner as lead (idempotent) and adds each
@@ -1088,6 +1116,12 @@ func (rt *Router) listShared(w http.ResponseWriter, r *http.Request) {
 		p, err := rt.projects.Get(r.Context(), pid)
 		if err != nil {
 			continue // a membership whose project is gone is skipped, not fatal
+		}
+		if p.Owner == id.Sub {
+			// An owner is their own project's lead, so it comes back from the
+			// membership store like any other. "Shared with me" means somebody
+			// else's; their own are already the list next to it.
+			continue
 		}
 		v := ProjectView{Project: p}
 		if sessions, err := rt.jobs.ListByProject(r.Context(), pid); err == nil {

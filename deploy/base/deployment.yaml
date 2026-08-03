@@ -66,10 +66,10 @@ spec:
             # manifest (version-controlled and reviewable), not the .env secret.
             # Runtime changes go through an admin via /admin/access.
             #
-            # Anyone who signs in is granted `user`; budget — the platform's
-            # default session quota, zero — is what limits them. This list is
-            # only how the first platform admin exists before anyone has an
-            # account to promote them from.
+            # Anyone who signs in is granted `user`; credits are what limit
+            # them, and a new account has none. This list is only how the first
+            # platform admin exists before anyone has an account to promote
+            # them from.
             - name: ADMIN_EMAILS
               value: hi@changkun.de
             # Outbound mail (006p): the project invitation. The sending domain
