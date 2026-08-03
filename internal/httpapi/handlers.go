@@ -1194,11 +1194,25 @@ func (rt *Router) listJobs(w http.ResponseWriter, r *http.Request) {
 // is nil when it was never recorded (a historical backfill), never a fabricated
 // zero.
 type Transcript struct {
-	Events []provider.Event `json:"events"`
-	Usage  *provider.Usage  `json:"usage"`
+	Events []TranscriptEvent `json:"events"`
+	Usage  *provider.Usage   `json:"usage"`
 	// Live reports that these events came from an in-flight run's live stream, so
 	// the client keeps polling for more.
 	Live bool `json:"live"`
+}
+
+// TranscriptEvent is one event as the viewer reads it: the neutral event, plus
+// the token usage the backend recorded against that one request (006s).
+//
+// Usage is derived on the read path from the event's backend-original payload
+// and is nil for an event that carried none — most events carry none, and an
+// absent number is a fact about the run rather than a gap to fill (the 006h
+// honesty rule, one level down). It is deliberately *not* a field on
+// provider.Event: that type is the schema of the committed transcript.jsonl
+// (005), and a published artifact's shape does not change to serve a viewer.
+type TranscriptEvent struct {
+	provider.Event
+	Usage *provider.Usage `json:"usage,omitempty"`
 }
 
 // getSessionTranscript serves a session's transcript as structured events plus
@@ -1258,22 +1272,22 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "not_ready")
 		return
 	}
-	// Prefer the session's recorded usage; when it was never recorded (a
-	// historical backfill), derive it from the transcript's per-request usage so
-	// the feature is not blank on real data. Only when neither exists is usage
-	// nil ("not recorded") — never a fabricated zero. Derive before stripping
-	// raw, since the per-request usage lives in raw.
+	// Pair each event with its own usage and take the session total from the same
+	// pass (006s); this also drops the raw payloads, which are the bulk of a
+	// transcript. The session's *recorded* usage still wins for the total when it
+	// has one — it is what the run itself observed — and the derived sum stands in
+	// for a historical backfill that never recorded any. Only when neither exists
+	// is usage nil ("not recorded"), never a fabricated zero.
+	shown, derived, ok := attachUsage(events)
 	var usage *provider.Usage
 	switch {
 	case j.Status.Usage.Total() > 0:
 		u := j.Status.Usage
 		usage = &u
-	default:
-		if u, ok := deriveUsage(events); ok {
-			usage = &u
-		}
+	case ok:
+		usage = &derived
 	}
-	writeJSON(w, http.StatusOK, Transcript{Events: stripRaw(events), Usage: usage, Live: live})
+	writeJSON(w, http.StatusOK, Transcript{Events: shown, Usage: usage, Live: live})
 }
 
 // repoName strips an "owner/" prefix from a repository path, so a session's
@@ -1382,8 +1396,8 @@ func artifactContentType(path string) string {
 // parseTranscriptEvents parses the newline-delimited provider.Event stream
 // committed as transcript.jsonl (005). A blank line is skipped; a malformed
 // line fails the parse, so a corrupt transcript is a 500, not a silent gap. Raw
-// is retained here (usage derivation reads it) and dropped from the response by
-// stripRaw before serving.
+// is retained here — usage derivation reads it — and dropped by attachUsage
+// before serving, since it is the bulk of a transcript (megabytes).
 func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	events := []provider.Event{}
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -1399,45 +1413,60 @@ func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	return events, nil
 }
 
-// stripRaw clears each event's backend-original payload: the viewer renders the
-// neutral fields, and raw is the bulk of a transcript (megabytes). It returns
-// the same slice for chaining.
-func stripRaw(events []provider.Event) []provider.Event {
-	for i := range events {
-		events[i].Raw = nil
+// eventUsage reads the token counts a managed-agents transcript records against
+// one request, in that event's raw payload (a `model_usage` object). ok is false
+// for an event that carries none, which is most of them — only an event that
+// closes a model request is charged for one. The field selection matches the
+// anthropic adapter's live-run mapping, so a derived figure agrees with a
+// recorded one.
+func eventUsage(e provider.Event) (provider.Usage, bool) {
+	if len(e.Raw) == 0 {
+		return provider.Usage{}, false
 	}
-	return events
+	var wrap struct {
+		ModelUsage *struct {
+			InputTokens          int64 `json:"input_tokens"`
+			OutputTokens         int64 `json:"output_tokens"`
+			CacheReadInputTokens int64 `json:"cache_read_input_tokens"`
+		} `json:"model_usage"`
+	}
+	if json.Unmarshal(e.Raw, &wrap) != nil || wrap.ModelUsage == nil {
+		return provider.Usage{}, false
+	}
+	return provider.Usage{
+		InputTokens:       wrap.ModelUsage.InputTokens,
+		OutputTokens:      wrap.ModelUsage.OutputTokens,
+		CachedInputTokens: wrap.ModelUsage.CacheReadInputTokens,
+	}, true
 }
 
-// deriveUsage sums per-request token counts a managed-agents transcript records
-// in each event's raw payload (a `model_usage` object), so a session whose usage
-// was never recorded still shows real numbers. ok is false when no event carries
-// usage — then the caller shows "not recorded" rather than a fabricated zero.
-// The field selection matches the anthropic adapter's live-run mapping, so a
-// derived total agrees with a recorded one.
-func deriveUsage(events []provider.Event) (provider.Usage, bool) {
-	var u provider.Usage
+// attachUsage pairs every event with its own usage and returns the session total
+// beside it, so a session whose usage was never recorded still shows real
+// numbers. ok is false when no event carries usage — then the caller shows "not
+// recorded" rather than a fabricated zero.
+//
+// Both come out of one pass on purpose: the total is the sum of exactly the
+// per-event numbers the viewer displays, so the two can never disagree (006s).
+// It also drops each event's raw payload, which is the bulk of a transcript and
+// which nothing downstream of this function reads.
+func attachUsage(events []provider.Event) ([]TranscriptEvent, provider.Usage, bool) {
+	out := make([]TranscriptEvent, len(events))
+	var total provider.Usage
 	found := false
-	for _, e := range events {
-		if len(e.Raw) == 0 {
-			continue
+	for i, e := range events {
+		te := TranscriptEvent{}
+		if u, ok := eventUsage(e); ok {
+			found = true
+			total.InputTokens += u.InputTokens
+			total.OutputTokens += u.OutputTokens
+			total.CachedInputTokens += u.CachedInputTokens
+			te.Usage = &u
 		}
-		var wrap struct {
-			ModelUsage *struct {
-				InputTokens          int64 `json:"input_tokens"`
-				OutputTokens         int64 `json:"output_tokens"`
-				CacheReadInputTokens int64 `json:"cache_read_input_tokens"`
-			} `json:"model_usage"`
-		}
-		if json.Unmarshal(e.Raw, &wrap) != nil || wrap.ModelUsage == nil {
-			continue
-		}
-		found = true
-		u.InputTokens += wrap.ModelUsage.InputTokens
-		u.OutputTokens += wrap.ModelUsage.OutputTokens
-		u.CachedInputTokens += wrap.ModelUsage.CacheReadInputTokens
+		e.Raw = nil
+		te.Event = e
+		out[i] = te
 	}
-	return u, found
+	return out, total, found
 }
 
 // getJob reports a session's status and phase, scoped to who may view its
