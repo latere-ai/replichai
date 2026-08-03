@@ -113,6 +113,20 @@ func storeContract(t *testing.T, s interface {
 		t.Errorf("revoked_by = %q, want the deciding admin", g.RevokedBy)
 	}
 
+	// A ban must also survive a restart. ADMIN_EMAILS and SEED_EMAILS are
+	// replayed through SeedGrant on every boot, so un-revoking there would make
+	// a ban last until the next deploy — the same failure a recorded revocation
+	// exists to prevent, one restart further out.
+	if err := s.SeedGrant(ctx, userEmail, TierUser); err != nil {
+		t.Fatalf("SeedGrant on a revoked address: %v", err)
+	}
+	if tier, ok, _ := s.Resolve(ctx, user); ok || tier != TierNone {
+		t.Errorf("bootstrap seeding un-revoked a ban: %s/%v", tier, ok)
+	}
+	if g := grantOf(t, s, admin, userEmail); g == nil || !g.Revoked() {
+		t.Error("bootstrap seeding cleared the revocation record")
+	}
+
 	// Granting again re-admits: an admin undoing their own decision is a
 	// first-class act, not a reason to edit a column by hand.
 	if err := s.Grant(ctx, admin, userEmail, TierUser); err != nil {

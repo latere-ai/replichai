@@ -9,6 +9,7 @@ import {
   getJob,
   getMe,
   getProfile,
+  errCode,
   getPublicProfile,
   getProject,
   getPlatformSettings,
@@ -855,6 +856,19 @@ function profileErrorText(t: I18n['t'], code: string) {
   return t('profileSaveError')
 }
 
+// publishErrText names why a publish was refused. The status is not enough on
+// its own: 409 covers both "this tree never cleared the gate" and "your profile
+// is not public", and telling a signer the wrong one sends them to fix
+// something that is not broken.
+export function publishErrText(t: I18n['t'], status: string, code: string): string {
+  if (code === 'profile_not_public') return t('publishProfileRequired')
+  if (code === 'not_clear') return t('publishNotClear')
+  if (code.startsWith('handle_') || code.startsWith('invalid_')) return profileErrorText(t, code)
+  if (status === '409') return t('publishNotClear')
+  if (status === '400') return profileErrorText(t, code)
+  return t('publishError')
+}
+
 // ProfileCard edits the researcher identity a sign-off is published under
 // (006n). It is a default, not the record: what a published project reports is
 // the snapshot taken when it was signed, so editing here changes nothing that is
@@ -891,7 +905,7 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
       setP(await saveProfile(p))
       setSaved(true)
     } catch (e) {
-      setErr(profileErrorText(t, (e as Error).message))
+      setErr(profileErrorText(t, errCode(e)))
     } finally {
       setBusy(false)
     }
@@ -2001,18 +2015,10 @@ function PublishWizard({
       await makeProjectPublic(projectID, signOff, flipRepo)
       onPublished()
     } catch (e) {
-      const code = (e as Error).message
-      // A 409 is either an unclear tree or a profile that is not public; the
-      // body says which, and they need different remedies.
-      setErr(
-        code.includes('profile_not_public')
-          ? t('publishProfileRequired')
-          : code.includes('handle_taken') || code.includes('handle') || code === '400'
-            ? profileErrorText(t, code)
-            : code === '409'
-              ? t('publishNotClear')
-              : t('publishError'),
-      )
+      // A 409 is either an unclear tree or a profile that is not public, and
+      // the status alone cannot tell them apart — they need different remedies,
+      // so the body's code decides.
+      setErr(publishErrText(t, (e as Error).message, errCode(e)))
       setStep(2)
     } finally {
       setBusy(false)

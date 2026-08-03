@@ -65,7 +65,24 @@ access.
 
 Revoking is a **ban**, not an un-invite: the grant row is kept and marked
 revoked, so the next sign-in cannot silently re-create it, and the account stays
-visible in the admin console to be re-granted.
+visible in the admin console to be re-granted. `ADMIN_EMAILS`/`SEED_EMAILS` are
+replayed through the bootstrap seeder on every start and deliberately skip a
+revoked address, so a restart does not undo a ban either.
+
+**One thing to check after deploying 006q.** The quota migration lowers the
+platform default to `0`, but only where the settings row is still the
+bootstrapped one (`updated_by = 'bootstrap'`). If anyone has ever changed the
+default through the admin console, that row carries their address instead and
+the migration deliberately leaves it alone — a migration should not overrule a
+decision an admin made. Confirm which case this deployment is in:
+
+```sql
+SELECT default_session_quota, updated_by FROM platform_settings WHERE id = 1;
+```
+
+If `updated_by` is not `bootstrap` and the quota is not `0`, set it to `0` in
+**Admin → Platform**; otherwise every account keeps the old allowance and the
+open sign-in hands out free sessions.
 
 ### Outbound mail
 
