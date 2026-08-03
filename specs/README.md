@@ -47,6 +47,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006r](006r-the-public-profile.md) gives a researcher a handle and a public page at `/u/{handle}`, listing the public work signed under that name, and requires one before a project may be published — asserting a result under your name means the name has to resolve to something. The sign-off card links to it through a field resolved per read and never snapshotted, so 006n's invariant holds: making a profile private later removes the link and changes nothing on the record.
 
+**Designed:** [006s](006s-reading-a-session-in-time.md) makes a 771-event transcript navigable — the run's real clock as the spine (proportional phase bands, a density histogram, a scrubber that scrolls to a moment), search, a selected-event inspector, and the per-event token usage the server already parses out of `raw.model_usage` and then discards. A revision of 006h: that spec made the transcript visible, this one makes it readable.
+
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
