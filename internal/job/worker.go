@@ -138,9 +138,12 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 // backend, rather than guessing they failed. A run whose backend session id was
 // observed is *rejoined* — resumed and driven to completion, reflecting the
 // backend's real outcome — so a session still running on the backend keeps being
-// tracked instead of being marked failed while it burns on. A job with no run to
-// rejoin (it never reached the backend, or its id was never recorded) cannot be
-// synced and is failed. It returns how many were resumed and how many failed.
+// tracked instead of being marked failed while it burns on. One interrupted
+// mid-publish is re-published: the session already settled, and finalizing is
+// idempotent, so re-running it is cheaper and truer than failing a reproduction
+// that succeeded. A job with no run to rejoin (it never reached the backend, or
+// its id was never recorded) cannot be synced and is failed. It returns how many
+// were resumed and how many failed.
 func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error) {
 	active, err := w.store.Active(ctx)
 	if err != nil {
@@ -155,6 +158,11 @@ func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error)
 			resumed++
 			continue
 		}
+		if j.Phase == PhasePublishing && j.Status.RunID != "" {
+			go w.drivePublish(ctx, j) // the run settled; finish finalizing it
+			resumed++
+			continue
+		}
 		cause := fmt.Sprintf("interrupted by a restart in %s; no live run to rejoin", j.Phase)
 		if aErr := w.store.Advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); aErr != nil {
 			return resumed, failed, aErr
@@ -164,44 +172,44 @@ func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error)
 	return resumed, failed, nil
 }
 
-// drive walks one claimed job (already in resolving) through the phases under a
-// per-job context Cancel can interrupt. Any error moves it to failed with the
-// cause recorded, never to done.
-func (w *Worker) drive(pool context.Context, j Job) {
+// track registers a job as being driven here under a per-job context Cancel can
+// interrupt, and returns that context with the deregistration.
+func (w *Worker) track(pool context.Context, id string) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(pool)
 	w.mu.Lock()
-	w.running[j.ID] = cancel
+	w.running[id] = cancel
 	w.mu.Unlock()
-	defer func() {
+	return ctx, func() {
 		w.mu.Lock()
-		delete(w.running, j.ID)
+		delete(w.running, id)
 		w.mu.Unlock()
 		cancel()
-	}()
+	}
+}
+
+// drive walks one claimed job (already in resolving) through the phases under a
+// per-job context Cancel can interrupt. Any error moves it to failed with the
+// cause recorded, never to done — except a shutdown, which leaves the job where
+// it is for the next boot to reconcile.
+func (w *Worker) drive(pool context.Context, j Job) {
+	ctx, done := w.track(pool, j.ID)
+	defer done()
 
 	observe := func(s provider.RunStatus) { _ = w.store.Observe(ctx, j.ID, s) }
 
 	if err := w.runner.Resolve(ctx, &j); err != nil {
-		w.fail(j.ID, err)
+		w.stop(pool, j.ID, err)
 		return
 	}
 	if err := w.store.Advance(ctx, j.ID, PhaseRunning, apply(j)); err != nil {
-		w.fail(j.ID, err)
+		w.stop(pool, j.ID, err)
 		return
 	}
 	if err := w.runner.Execute(ctx, &j, observe); err != nil {
-		w.fail(j.ID, err)
+		w.stop(pool, j.ID, err)
 		return
 	}
-	if err := w.store.Advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
-		w.fail(j.ID, err)
-		return
-	}
-	if err := w.runner.Publish(ctx, &j); err != nil {
-		w.fail(j.ID, err)
-		return
-	}
-	_ = w.store.Advance(ctx, j.ID, PhaseDone, apply(j))
+	w.publish(pool, ctx, j)
 }
 
 // driveResume rejoins a run already in flight (in the running phase) and drives
@@ -209,28 +217,40 @@ func (w *Worker) drive(pool context.Context, j Job) {
 // context Cancel can interrupt, exactly like a fresh drive minus the phases
 // already passed.
 func (w *Worker) driveResume(pool context.Context, j Job) {
-	ctx, cancel := context.WithCancel(pool)
-	w.mu.Lock()
-	w.running[j.ID] = cancel
-	w.mu.Unlock()
-	defer func() {
-		w.mu.Lock()
-		delete(w.running, j.ID)
-		w.mu.Unlock()
-		cancel()
-	}()
+	ctx, done := w.track(pool, j.ID)
+	defer done()
 
 	observe := func(s provider.RunStatus) { _ = w.store.Observe(ctx, j.ID, s) }
 	if err := w.runner.Resume(ctx, &j, observe); err != nil {
-		w.fail(j.ID, err)
+		w.stop(pool, j.ID, err)
 		return
 	}
+	w.publish(pool, ctx, j)
+}
+
+// drivePublish re-runs the publishing phase for a job a restart interrupted
+// after its run had already settled. Finalizing is idempotent — an unchanged
+// manifest adds no commit — so re-running it costs a few reads and recovers a
+// reproduction that succeeded, where failing the row would have stranded it.
+func (w *Worker) drivePublish(pool context.Context, j Job) {
+	ctx, done := w.track(pool, j.ID)
+	defer done()
+
+	if err := w.runner.Publish(ctx, &j); err != nil {
+		w.stop(pool, j.ID, err)
+		return
+	}
+	_ = w.store.Advance(ctx, j.ID, PhaseDone, apply(j))
+}
+
+// publish moves a job whose run has settled through publishing to done.
+func (w *Worker) publish(pool, ctx context.Context, j Job) {
 	if err := w.store.Advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
-		w.fail(j.ID, err)
+		w.stop(pool, j.ID, err)
 		return
 	}
 	if err := w.runner.Publish(ctx, &j); err != nil {
-		w.fail(j.ID, err)
+		w.stop(pool, j.ID, err)
 		return
 	}
 	_ = w.store.Advance(ctx, j.ID, PhaseDone, apply(j))
@@ -246,6 +266,24 @@ func apply(src Job) func(*Job) {
 		dst.ProjectID = src.ProjectID
 		dst.RepoName = src.RepoName
 	}
+}
+
+// stop ends the drive of one job: it fails the row, unless the pool itself is
+// shutting down.
+//
+// A shutdown is not a failed session. The pool context is cancelled on SIGTERM,
+// which surfaces inside the run as an ordinary error; writing failed for it
+// would mark a live backend session dead on every deploy and node drain — and
+// because failed is terminal, Reconcile could never rescue it. Leaving the row
+// in its phase is what lets the next boot rejoin the session and reflect its
+// real outcome. A person cancelling a session takes the other path: only that
+// job's own context is cancelled, the pool's is not, so the row is still failed
+// here — and the store's cancel write, made first, wins the state machine.
+func (w *Worker) stop(pool context.Context, id string, cause error) {
+	if pool.Err() != nil {
+		return
+	}
+	w.fail(id, cause)
 }
 
 // fail records the cause and moves the job to failed, best-effort. It uses a
