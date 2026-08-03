@@ -69,6 +69,15 @@ spec:
               value: hi@changkun.de
             - name: SEED_EMAILS
               value: changkun@latere.ai
+            # Outbound mail (006p): the project invitation. The sending domain
+            # and region are policy and live here; MAILGUN_API_KEY is a
+            # credential and comes from the replichai-config secret. With no key
+            # in that secret the server logs invitations instead of sending them
+            # — visible in the pod log, and never a failed invite.
+            - name: MAILGUN_DOMAIN
+              value: mg.latere.ai
+            - name: MAILGUN_REGION
+              value: eu
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector.observability.svc:4318
           resources:

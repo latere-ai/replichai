@@ -25,6 +25,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	// Aliased: "email" is a loop variable in the seeding code below, and a
+	// package with the same name would read as a shadowing accident.
+	xemail "latere.ai/x/pkg/email"
 	"latere.ai/x/pkg/oidclogin"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -32,6 +35,7 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/notify"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
@@ -166,6 +170,11 @@ func run() error {
 		log.Printf("reproductions: reading filesystem dir %q (set REPLICHAI_GITHUB_TOKEN to read the forge)", *reproDir)
 	}
 
+	notifier, err := buildNotifier(baseURL)
+	if err != nil {
+		return err
+	}
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
 		Projects:      projectStore,
@@ -177,6 +186,7 @@ func run() error {
 		Live:          liveTranscript{prov: prov},
 		Resolver:      paperResolver{fetch: newHTTPFetcher(30 * time.Second)},
 		Gate:          webauth.Gate(accessStore),
+		Notifier:      notifier,
 		SPA:           spaHandler,
 	})
 
@@ -402,6 +412,36 @@ func waitForDB(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// buildNotifier wires outbound mail (006p) from the environment: Mailgun when
+// MAILGUN_API_KEY is a real key, SMTP when SMTP_HOST is set, and a log-only
+// transport otherwise — so a local run and CI need no credentials and no
+// network, and an invitation is written to the log rather than lost silently.
+//
+// A misconfiguration (a key with no domain) is a startup error. Discovering it
+// at the first invitation instead would mean the one message the platform sends
+// to somebody who is not present is the one that fails.
+func buildNotifier(baseURL string) (*notify.Notifier, error) {
+	tx, err := xemail.New(
+		os.Getenv("MAILGUN_API_KEY"),
+		os.Getenv("MAILGUN_DOMAIN"),
+		os.Getenv("MAILGUN_REGION"),
+		&xemail.SMTPConfig{
+			Host:     os.Getenv("SMTP_HOST"),
+			Port:     os.Getenv("SMTP_PORT"),
+			Username: os.Getenv("SMTP_USERNAME"),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     envOr("SMTP_FROM", "noreply@latere.ai"),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("mail: %w", err)
+	}
+	if _, unconfigured := tx.(*xemail.LogSender); unconfigured {
+		log.Printf("mail: no transport configured; invitations will be logged, not sent")
+	}
+	return notify.New(tx, baseURL), nil
 }
 
 func envOr(key, def string) string {
