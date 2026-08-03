@@ -65,6 +65,7 @@ import {
   runSpan,
   splitTitle,
   timeOf,
+  cacheWrittenOf,
   totalOf,
   type Span,
 } from './transcript'
@@ -2504,7 +2505,7 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
               <span className="tx-stat-label">
                 <Ico name="bolt" size={11} /> {t('usageTotal')}
               </span>
-              <span className="tx-stat-value">{total(usage).toLocaleString()}</span>
+              <span className="tx-stat-value">{totalOf(usage).toLocaleString()}</span>
             </div>
           )}
           <div className="tx-stat">
@@ -2609,7 +2610,8 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
                 <UsageLine label={t('usageInput')} v={usage.InputTokens} tone="var(--run)" />
                 <UsageLine label={t('usageOutput')} v={usage.OutputTokens} tone="var(--pub)" />
                 <UsageLine label={t('usageCached')} v={usage.CachedInputTokens} tone="var(--ok)" />
-                <UsageLine label={t('usageTotal')} v={total(usage)} tone="var(--brand)" strong />
+                <UsageLine label={t('usageCacheWritten')} v={cacheWrittenOf(usage)} tone="var(--warn)" />
+                <UsageLine label={t('usageTotal')} v={totalOf(usage)} tone="var(--brand)" strong />
               </div>
             ) : (
               <p className="muted small" style={{ margin: 0 }}>
@@ -2739,6 +2741,7 @@ function EventDetail({ i18n, e, span, onClose }: { i18n: I18n; e: Event; span: S
           <UsageLine label={t('usageInput')} v={e.usage.InputTokens} tone="var(--run)" />
           <UsageLine label={t('usageOutput')} v={e.usage.OutputTokens} tone="var(--pub)" />
           <UsageLine label={t('usageCached')} v={e.usage.CachedInputTokens} tone="var(--ok)" />
+          <UsageLine label={t('usageCacheWritten')} v={cacheWrittenOf(e.usage)} tone="var(--warn)" />
           <UsageLine label={t('usageTotal')} v={totalOf(e.usage)} tone="var(--brand)" strong />
         </div>
       )}
@@ -2871,9 +2874,6 @@ function EventCost({ u }: { u?: Usage }) {
 
 /* ─── helpers ─── */
 
-function total(u: Usage) {
-  return u.InputTokens + u.OutputTokens + u.CachedInputTokens
-}
 function toggle(s: Set<string>, k: string) {
   const n = new Set(s)
   n.has(k) ? n.delete(k) : n.add(k)

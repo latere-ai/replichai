@@ -18,7 +18,18 @@ export type Me = {
   picture?: string
 }
 
-export type Usage = { InputTokens: number; OutputTokens: number; CachedInputTokens: number }
+// Usage is what a run consumed, in tokens, by priced class. Cache writes come
+// split by the lifetime they bought where the backend reports it, and in
+// CacheWriteTokens where it does not (a per-request span). A backend that
+// reports none of a class leaves it absent, so every field is optional.
+export type Usage = {
+  InputTokens: number
+  OutputTokens: number
+  CachedInputTokens: number
+  CacheWrite5mTokens?: number
+  CacheWrite1hTokens?: number
+  CacheWriteTokens?: number
+}
 
 export type Job = {
   id: string

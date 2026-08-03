@@ -276,6 +276,7 @@ const strings: Record<Lang, Record<string, string>> = {
     usageInput: 'Input',
     usageOutput: 'Output',
     usageCached: 'Cached',
+    usageCacheWritten: 'Cache written',
     usageTotal: 'Total',
     usageNotRecorded: 'Token usage was not recorded for this session.',
     // timeline + live stream

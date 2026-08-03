@@ -129,16 +129,53 @@ func (v Verdict) Passed() bool { return v.Grade == GradePassed }
 //
 // Every backend meters tokens, so these fields are neutral rather than
 // vendor-specific. A backend that does not report one leaves it zero.
+//
+// The classes are separate because they are *priced* separately (011): a cache
+// write costs more than fresh input and a cache read costs far less, so a
+// single "input" number cannot be turned into money. A backend reporting only a
+// total for one class must not silently fold it into another — that is what
+// CacheWriteTokens exists for.
 type Usage struct {
 	InputTokens  int64
 	OutputTokens int64
 	// CachedInputTokens were served from cache rather than processed fresh.
 	CachedInputTokens int64
+	// CacheWrite5mTokens and CacheWrite1hTokens wrote the prompt cache, split by
+	// the lifetime they bought. The two are priced differently, and the longer
+	// one costs more, so folding them together loses money in one direction and
+	// overcharges in the other.
+	CacheWrite5mTokens int64
+	CacheWrite1hTokens int64
+	// CacheWriteTokens wrote the cache with the lifetime unreported — what a
+	// per-request span carries, where the session total is broken down. Kept as
+	// its own field rather than dropped into one of the buckets above so that
+	// "we do not know which" stays visible; pricing charges it at the dearer
+	// rate, on the same fail-expensive rule an unknown model follows.
+	CacheWriteTokens int64
 }
 
 // Total is every token the run accounted for.
 func (u Usage) Total() int64 {
-	return u.InputTokens + u.OutputTokens + u.CachedInputTokens
+	return u.InputTokens + u.OutputTokens + u.CachedInputTokens +
+		u.CacheWrite5mTokens + u.CacheWrite1hTokens + u.CacheWriteTokens
+}
+
+// CacheWritten is every cache-write token, whatever lifetime it bought — the
+// figure a reader wants when the split is detail rather than the point.
+func (u Usage) CacheWritten() int64 {
+	return u.CacheWrite5mTokens + u.CacheWrite1hTokens + u.CacheWriteTokens
+}
+
+// Add accumulates another observation into this one, class by class. It is the
+// one place a sum over usages lives, so a class added to the struct cannot be
+// forgotten by a caller that was summing fields by hand.
+func (u *Usage) Add(o Usage) {
+	u.InputTokens += o.InputTokens
+	u.OutputTokens += o.OutputTokens
+	u.CachedInputTokens += o.CachedInputTokens
+	u.CacheWrite5mTokens += o.CacheWrite5mTokens
+	u.CacheWrite1hTokens += o.CacheWrite1hTokens
+	u.CacheWriteTokens += o.CacheWriteTokens
 }
 
 // RunStatus is one observation of a run.
