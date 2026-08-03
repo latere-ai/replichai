@@ -209,6 +209,25 @@ const strings: Record<Lang, Record<string, string>> = {
     signedOffContact: 'Contact',
     signedOffOrcid: 'ORCID',
     signedOffScholar: 'Scholar',
+    // the public profile (006r)
+    profileHandle: 'Public handle',
+    profileHandlePlaceholder: 'ada-lovelace',
+    profilePublicLabel: 'Give me a public profile page',
+    profilePublicHint:
+      'Publishes the fields above at /u/{your handle}, together with the public reproductions you have signed. Nothing here is new \u2014 every one of these fields already appears on any sign-off \u2014 what becomes visible is the list. Required before you can publish a project, and you can turn it off again at any time: published attestations keep everything they recorded, and simply stop linking to you.',
+    publishPublicProfile: 'Publish my researcher profile at /u/{handle}',
+    publishProfileRequired:
+      'Publishing puts your name on this result, so the name has to lead somewhere. Choose a handle above and turn on the public profile.',
+    profileNotFound: 'No such profile',
+    profileNotFoundBody: 'This researcher has no public page, or the address is wrong.',
+    profileBackHome: 'Go to replichai',
+    profileSignedWork: 'Signed reproductions',
+    profileNoSignedWork: 'Nothing published under this name yet.',
+    profileUnverified:
+      'Self-asserted and unverified: replichai does not check that somebody works where they say they work. What it does guarantee is that the work listed below is public and was signed by this account.',
+    errHandleTaken: 'That handle is already taken.',
+    errHandleReserved: 'That handle is reserved.',
+    errInvalidHandle: 'Use 3\u201339 characters: a\u2013z, 0\u20139 and hyphens.',
     // withdrawing a publication (006o)
     withdrawStart: 'Withdraw this publication…',
     withdrawTitle: 'Withdraw this publication',

@@ -479,6 +479,16 @@ type ProjectView struct {
 	SessionCount int    `json:"session_count"`
 	Running      int    `json:"running"`
 	LatestPhase  string `json:"latest_phase,omitempty"`
+	// SignerHandle is where the signer's name links (006r). It is resolved on
+	// every read from the signer's profile as it is *now*, and deliberately not
+	// snapshotted onto the project: a stored handle would be a second, staler
+	// copy of the same person, and 006n's whole position is that a published
+	// attestation reports what was signed, not what a profile says later.
+	//
+	// So the link comes and goes with the profile. Somebody who makes theirs
+	// private after publishing keeps their attestation intact and loses the
+	// link, which is correct — the record was never the profile.
+	SignerHandle string `json:"signer_handle,omitempty"`
 }
 
 // listProjects reports the caller's own projects, newest first, each with a
@@ -534,6 +544,9 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 			v = summarize(sessions)
 			v.Project = p
 		}
+		// The zone names a project by its signer, so it links to them too when
+		// they have a page.
+		v.SignerHandle = rt.signerHandle(r.Context(), p)
 		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -863,6 +876,20 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
+// signerHandle resolves the public handle of whoever signed a project, empty
+// when nobody signed it or their profile is not public. See ProjectView for why
+// this is a view and never a stored field.
+func (rt *Router) signerHandle(ctx context.Context, p project.Project) string {
+	if rt.profiles == nil || p.SignedOffBy == "" {
+		return ""
+	}
+	handle, ok, err := rt.profiles.PrincipalHandle(ctx, p.SignedOffBy)
+	if err != nil || !ok {
+		return ""
+	}
+	return handle
+}
+
 // signerIsPublic reports whether a principal has a public profile with a handle
 // — the precondition for publishing (006r).
 //
@@ -1068,6 +1095,8 @@ type ProjectDetail struct {
 	// (006l). The client cannot work this out: it does not know membership, and a
 	// public project is readable by everyone.
 	MaySubmit bool `json:"may_submit"`
+	// SignerHandle is where the signer's name links; see ProjectView.
+	SignerHandle string `json:"signer_handle,omitempty"`
 }
 
 // getProject returns a project and its sessions, refusing a project the caller
@@ -1132,9 +1161,10 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 		sessions = []job.Job{}
 	}
 	writeJSON(w, http.StatusOK, ProjectDetail{
-		Project:   proj,
-		Sessions:  sessions,
-		MaySubmit: rt.mayWorkInProject(r, proj, principal(r)),
+		Project:      proj,
+		Sessions:     sessions,
+		MaySubmit:    rt.mayWorkInProject(r, proj, principal(r)),
+		SignerHandle: rt.signerHandle(r.Context(), proj),
 	})
 }
 
