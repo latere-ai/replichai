@@ -28,14 +28,14 @@ This means a link that can come and go, and that is correct. A person who makes 
 
 `signed_off_handle` is therefore *not* snapshotted. The link resolves through the current profile of the principal who signed, which is what makes it a live link rather than a second, staler copy of the same person.
 
-**The page is public, unauthenticated, and thin.** `GET /u/{handle}` serves the SPA; `GET /api/profiles/{handle}` returns the public fields plus the public projects that principal signed, and `404`s for a handle that is unknown or whose profile is private — no distinction between the two, so the endpoint cannot be used to enumerate handles. The contact is rendered in full, exactly as the sign-off card renders it: it was published for inquiries. The account email never appears — that is what the redacted `signed_off_email` is for, and it stays on the attestation where it identifies a signature.
+**The page is public, unauthenticated, and thin.** `GET /u/{handle}` serves the SPA — it needs no route of its own, since the shell already answers any unmatched GET. `GET /profiles/{handle}` (no `/api` prefix; this app has none) returns the public fields plus the public projects that principal signed, and `404`s for a handle that is unknown or whose profile is private — no distinction between the two, so the endpoint cannot be used to enumerate handles. The contact is rendered in full, exactly as the sign-off card renders it: it was published for inquiries. The account email never appears — that is what the redacted `signed_off_email` is for, and it stays on the attestation where it identifies a signature.
 
 Reading a public profile requires no sign-in, matching the public zone: a reproduction anyone can read, signed by someone anyone can look up.
 
 ## Acceptance criteria
 
 1. `PATCH /me/profile` accepts `handle` and `public`; the handle is validated for shape, uniqueness (`409 handle_taken`), and the reserved list; changing a handle frees the old one.
-2. `GET /api/profiles/{handle}` returns the public fields and the signer's public projects for a public profile, and `404` for an unknown handle, a private profile, and a profile with no handle — indistinguishably.
+2. `GET /profiles/{handle}` returns the public fields and the signer's public projects for a public profile, and `404` for an unknown handle, a private profile, and a profile with no handle — indistinguishably.
 3. The projects listed are exactly those that are `visibility: public` and were signed by that principal; a withdrawn project leaves the list.
 4. `POST /projects/{id}/public` refuses `409 profile_not_public` when the owner's profile is not public or has no handle, before any sign-off is recorded.
 5. The publish wizard shows the requirement and can set the handle and flip the profile public in place, then continue — never dropping the user into settings and back.
