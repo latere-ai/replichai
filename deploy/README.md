@@ -42,10 +42,28 @@ AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
 ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
 SEED_EMAILS=colleague@x.com    # bootstrap invited users (tier: user), comma-separated
+MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
 ```
 
 `DATABASE_URL`, `ADDR`, `BASE_URL`, and `PROVIDER` are set by the manifest and
 override any same-named key in `.env`, so the two cannot drift.
+
+### Outbound mail
+
+A project invitation is the one message the platform sends to somebody who is
+not looking at it (006p), and it needs a transport:
+
+| variable | where it lives | notes |
+|---|---|---|
+| `MAILGUN_API_KEY` | `.env` → `replichai-config` secret | a credential; the literal `test` and an empty value both select the log transport |
+| `MAILGUN_DOMAIN` | the manifest | policy, not a secret; **required** when a key is set — a key with no domain fails at startup, deliberately |
+| `MAILGUN_REGION` | the manifest | `eu` selects the EU API host; anything else selects the US one |
+| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM` | `.env` | used only when no Mailgun key is set; port 587 (STARTTLS) is the default and 465 selects implicit TLS |
+
+With none of them set the server logs each message and starts normally — a
+deployment never fails to boot for want of mail, and an invitation is never
+silently dropped without a trace. `BASE_URL` is what every link in a message is
+built from, so a wrong value sends people to the wrong host.
 
 ## Build and push the image
 

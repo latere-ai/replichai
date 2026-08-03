@@ -11,6 +11,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/notify"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
@@ -816,6 +817,12 @@ func (rt *Router) listMembers(w http.ResponseWriter, r *http.Request) {
 // owner is seeded as the project's lead (idempotent) so the membership store's
 // own lead-check is satisfied — one authority, project ownership. Inviting an
 // email admits nobody to the platform: they still need a platform grant.
+//
+// It then tells them (006p). The mail is best-effort and deliberately so: the
+// membership is the durable thing, created and authorised here, and an outage
+// at a mail provider must not read to the owner as a failure to share their
+// work. A message that did not go out is logged and can be sent again by
+// inviting the same person once more.
 func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 	proj, id, ok := rt.ownedProject(w, r)
 	if !ok {
@@ -841,11 +848,47 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "member_add_failed")
 		return
 	}
+	// Asked before the add, so "already there" is distinguishable from "just
+	// added": re-inviting an existing member is a no-op the person should not
+	// hear about twice, while re-inviting somebody who was removed is a real
+	// invitation and gets one.
+	already := rt.isMember(r.Context(), proj.ID, body.Email)
 	if err := rt.members.Add(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, proj.ID, body.Email, role); err != nil {
 		writeError(w, http.StatusInternalServerError, "member_add_failed")
 		return
 	}
+	if !already && rt.notifier != nil {
+		if err := rt.notifier.ProjectInvitation(r.Context(), body.Email, proj.ID, proj.Title, inviterName(id)); err != nil {
+			notify.LogFailure("project invitation", body.Email, err)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isMember reports whether an email is already on a project. A store that
+// cannot be read answers false: the cost of being wrong is one extra message,
+// against a silent non-invitation the other way.
+func (rt *Router) isMember(ctx context.Context, projectID, email string) bool {
+	members, err := rt.members.List(ctx, projectID)
+	if err != nil {
+		return false
+	}
+	for _, m := range members {
+		if strings.EqualFold(m.Email, strings.TrimSpace(email)) {
+			return true
+		}
+	}
+	return false
+}
+
+// inviterName is how the invitation names the person who sent it: their display
+// name when the identity provider gave one, their address otherwise. Never the
+// opaque subject, which would tell a reader nothing.
+func inviterName(id Identity) string {
+	if n := strings.TrimSpace(id.Name); n != "" {
+		return n
+	}
+	return id.Email
 }
 
 // removeMember drops a collaborator by email, owner-only.

@@ -48,5 +48,17 @@ services:
       # publishing -> done instead of finishing instantly. Dev only; set to 0
       # (or override) for the memory provider's true speed.
       RUNNER_DELAY: ${RUNNER_DELAY:-1500ms}
+      # Outbound mail (006p). Unset by default, which selects the log-only
+      # transport: an invitation is printed in `docker compose logs server`
+      # instead of being sent, so a local run needs no credentials. Set a real
+      # MAILGUN_API_KEY + MAILGUN_DOMAIN, or SMTP_HOST, to actually deliver.
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY:-}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-}
+      MAILGUN_REGION: ${MAILGUN_REGION:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@latere.ai}
     ports:
       - "8080:8080"

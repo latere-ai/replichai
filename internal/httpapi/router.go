@@ -141,6 +141,17 @@ type MembershipStore interface {
 	Projects(ctx context.Context, principalSub string) ([]string, error)
 }
 
+// Notifier reaches a person who is not in the app (006p). The members route is
+// its only caller today: inviting somebody is the one act that asserts
+// something about a person who is not present, so it is the one act that has to
+// leave the building.
+//
+// It is an interface rather than *notify.Notifier so httpapi keeps testing
+// against a fake, and so a deployment can wire nothing at all.
+type Notifier interface {
+	ProjectInvitation(ctx context.Context, to, projectID, projectName, inviter string) error
+}
+
 // RepoPublisher flips a forge repository's visibility — the optional half of the
 // project public flip (006f) and of withdrawing it again (006o). It runs with the
 // server token, never in the sandbox. Nil when no forge is wired (a local run,
@@ -202,6 +213,9 @@ type Deps struct {
 	Live          LiveTranscript
 	Resolver      PaperResolver
 	Gate          Gate
+	// Notifier reaches somebody who is not looking at the app (006p). Nil sends
+	// nothing, which is what a deployment with no mail configured does.
+	Notifier Notifier
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
 	SSEInterval time.Duration
@@ -228,6 +242,7 @@ type Router struct {
 	canceler    Canceler
 	live        LiveTranscript
 	resolver    PaperResolver
+	notifier    Notifier
 	sseInterval time.Duration
 	spa         http.Handler
 }
@@ -246,7 +261,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }
