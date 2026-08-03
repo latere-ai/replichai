@@ -20,13 +20,25 @@ func NewPGMembership(pool *pgxpool.Pool) *PGMembership {
 }
 
 // SeedLead creates the first lead of a project with no lead check — the
-// bootstrap path project creation uses.
-func (m *PGMembership) SeedLead(ctx context.Context, project, email string) error {
-	email = normalizeEmail(email)
+// bootstrap path project creation uses. It binds the lead's principal in the
+// same statement, so an owner is never listed as a pending invitation to their
+// own project.
+func (m *PGMembership) SeedLead(ctx context.Context, project string, lead Principal) error {
+	email := normalizeEmail(lead.Email)
 	if project == "" || email == "" {
 		return ErrNoEmail
 	}
-	return m.upsert(ctx, project, email, RoleLead)
+	if lead.Sub == "" {
+		return m.upsert(ctx, project, email, RoleLead)
+	}
+	// COALESCE keeps a binding that already exists: seeding is idempotent and
+	// re-runs on every membership change, and it must never rebind a row.
+	_, err := m.pool.Exec(ctx, `
+		INSERT INTO project_members (project, email, role, principal) VALUES ($1,$2,$3,$4)
+		ON CONFLICT (project, email) DO UPDATE
+		SET role=EXCLUDED.role, principal=COALESCE(project_members.principal, EXCLUDED.principal)`,
+		project, email, int16(RoleLead), lead.Sub)
+	return err
 }
 
 // Add invites an email into a project. The caller must be the project's lead.
@@ -113,6 +125,30 @@ func (m *PGMembership) List(ctx context.Context, project string) ([]Member, erro
 		out = append(out, mem)
 	}
 	return out, rows.Err()
+}
+
+// BindAll binds every unbound membership seeded against this principal's
+// verified email. See Membership.BindAll for why it is a login-time operation.
+//
+// One statement, so a concurrent login cannot bind the same row twice: the
+// NOT EXISTS clause keeps a principal to one row per project even when their
+// address at the identity provider changed between invitations.
+func (m *PGMembership) BindAll(ctx context.Context, p Principal) (int, error) {
+	email := normalizeEmail(p.Email)
+	if p.Sub == "" || email == "" {
+		return 0, nil
+	}
+	tag, err := m.pool.Exec(ctx, `
+		UPDATE project_members AS t SET principal=$1
+		WHERE t.email=$2 AND t.principal IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM project_members AS o
+		    WHERE o.project=t.project AND o.principal=$1
+		  )`, p.Sub, email)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // Projects returns the project ids this principal is a bound member of.

@@ -55,6 +55,7 @@ type Login struct {
 	auth     OIDCClient
 	codec    *Codec
 	access   access.Access
+	members  access.Membership // optional; nil skips the membership bind
 	baseURL  string
 	secure   bool // __Host- cookies require Secure; false only for insecure dev
 	userInfo UserInfoFunc
@@ -64,6 +65,14 @@ type Login struct {
 // email is taken only from the ID token.
 func NewLogin(auth OIDCClient, codec *Codec, acc access.Access, baseURL string, secure bool, userInfo UserInfoFunc) *Login {
 	return &Login{auth: auth, codec: codec, access: acc, baseURL: strings.TrimRight(baseURL, "/"), secure: secure, userInfo: userInfo}
+}
+
+// BindMemberships gives the login the membership store to bind on sign-in.
+// Optional, and returned fluently so the wiring reads as one expression: a
+// deployment without a membership store simply never binds.
+func (l *Login) BindMemberships(m access.Membership) *Login {
+	l.members = m
+	return l
 }
 
 // flowState is the per-login secret carried in the flow cookie across the
@@ -141,6 +150,21 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 				sess.Email = p.Email
 			}
 			sess.Name, sess.Picture = p.Name, safePicture(p.Picture)
+		}
+	}
+
+	// Sign-in is the one moment that always happens, so it is where a project
+	// invitation stops being an email and becomes this principal's membership.
+	// It cannot live in an authorisation check: every one of those short-circuits
+	// for an owner or a public project, leaving an invitee unbound — absent from
+	// "shared with me" and permanently "pending" in the members view. Best-effort
+	// and logged: a bind failure costs a collaborator one sign-in, never the
+	// sign-in itself, and the next one retries it.
+	if l.members != nil && sess.Email != "" {
+		if n, err := l.members.BindAll(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
+			log.Printf("login: binding memberships for %s: %v", sess.Sub, err)
+		} else if n > 0 {
+			log.Printf("login: bound %d project membership(s) for %s", n, sess.Sub)
 		}
 	}
 

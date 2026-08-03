@@ -3,6 +3,7 @@ package webauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -129,6 +130,77 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" {
 		t.Errorf("session = %+v, want the userinfo email bound to the sub", s)
 	}
+}
+
+// Signing in is what turns a project invitation into a membership. Binding used
+// to be a side effect of the authorisation checks, every one of which
+// short-circuits for an owner or a public project — so an invitee stayed
+// unbound, absent from "shared with me" and shown as "pending" forever.
+func TestCallbackBindsProjectMemberships(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	members := access.NewMemMembership()
+	owner := access.Principal{Sub: "owner-sub", Email: "owner@example.com"}
+	if err := members.SeedLead(ctx, "proj-1", owner); err != nil {
+		t.Fatalf("seed lead: %v", err)
+	}
+	if err := members.Add(ctx, owner, "proj-1", "invitee@example.com", access.RoleCollaborator); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	if ids, _ := members.Projects(ctx, "invitee-sub"); len(ids) != 0 {
+		t.Fatalf("precondition: the invitee holds nothing before signing in, got %v", ids)
+	}
+
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "invitee-sub", Email: "invitee@example.com"}}
+	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, nil).
+		BindMemberships(members)
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
+	w := httptest.NewRecorder()
+	l.HandleCallback(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want a redirect", w.Code)
+	}
+	ids, err := members.Projects(ctx, "invitee-sub")
+	if err != nil || len(ids) != 1 || ids[0] != "proj-1" {
+		t.Fatalf("after sign-in the invitee should hold proj-1, got %v err=%v", ids, err)
+	}
+	list, _ := members.List(ctx, "proj-1")
+	for _, m := range list {
+		if !m.Bound {
+			t.Errorf("%s should no longer read as pending", m.Email)
+		}
+	}
+}
+
+// A membership store that is down costs a collaborator one sign-in, never the
+// sign-in itself.
+func TestCallbackSurvivesABindFailure(t *testing.T) {
+	codec, _ := NewCodec(testKey)
+	client := fakeOIDC{identity: oidclogin.Identity{Subject: "u1", Email: "u@example.com"}}
+	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, nil).
+		BindMemberships(failingMembership{})
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
+	w := httptest.NewRecorder()
+	l.HandleCallback(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want the sign-in to complete anyway", w.Code)
+	}
+	if findCookie(w, cookieName(sessionCookie, false)) == "" {
+		t.Error("the session cookie must still be set")
+	}
+}
+
+// failingMembership fails only the bind; nothing else in the callback path
+// touches it.
+type failingMembership struct{ access.Membership }
+
+func (failingMembership) BindAll(context.Context, access.Principal) (int, error) {
+	return 0, errors.New("membership store is down")
 }
 
 func TestCallbackRejections(t *testing.T) {

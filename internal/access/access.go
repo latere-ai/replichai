@@ -153,11 +153,29 @@ type Membership interface {
 	// "shared with me" surface (006f). Only bound memberships count; a seeded-
 	// but-not-yet-logged-in email is not yet this principal's.
 	Projects(ctx context.Context, principalSub string) ([]string, error)
+	// BindAll binds every unbound membership seeded against this principal's
+	// verified email, across all projects, and reports how many it bound.
+	//
+	// It exists because binding cannot be a side effect of an authorisation
+	// check: every predicate that would do it short-circuits for an owner or a
+	// public project, so an invitee stayed unbound — invisible in "shared with
+	// me" and forever "pending" in the members view. Login is the one moment
+	// that always happens, so binding happens there instead.
+	//
+	// The rules are the ones Role applies: only the IdP-verified email binds,
+	// only a row nobody holds, never a rebind, and never a second row in a
+	// project this principal already holds one in.
+	BindAll(ctx context.Context, p Principal) (int, error)
 	// SeedLead creates a project's lead with no lead-check — the bootstrap seed
 	// project creation uses, and the bridge the owner-driven members API (006f)
 	// uses to seed the project owner as its lead before an owner-authorised
 	// add/remove.
-	SeedLead(ctx context.Context, project, email string) error
+	//
+	// It takes a principal, not an email, because a lead is never a mere
+	// invitation: the person is signed in at the moment their project is
+	// created, so the row is bound there and then rather than waiting for a
+	// login that, for an owner, no authorisation check would ever bind on.
+	SeedLead(ctx context.Context, project string, lead Principal) error
 }
 
 // normalizeEmail lowercases and trims, so a seed and a login match regardless of

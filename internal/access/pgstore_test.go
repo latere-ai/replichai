@@ -71,7 +71,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 
 	// Membership binds and is lead-gated.
 	mem := NewPGMembership(pool)
-	if err := mem.SeedLead(ctx, "proj-1", "lead@example.com"); err != nil {
+	if err := mem.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"}); err != nil {
 		t.Fatalf("SeedLead: %v", err)
 	}
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
@@ -88,4 +88,8 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if err := mem.Add(ctx, collab, "proj-1", "x@example.com", RoleCollaborator); !errors.Is(err, ErrNotLead) {
 		t.Errorf("add by collaborator: want ErrNotLead, got %v", err)
 	}
+
+	// The same login-time binding contract the in-memory store satisfies, in a
+	// project of its own so it does not read the rows above.
+	bindingContract(t, mem, "proj-bind")
 }

@@ -180,7 +180,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.platform, sessionQuota(st), st.jobs.Consumed, *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, sessionQuota(st), st.jobs.Consumed, *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, plat platform.Store, quota webauth.QuotaFunc, consumed webauth.ConsumedFunc, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, quota webauth.QuotaFunc, consumed webauth.ConsumedFunc, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	mux.HandleFunc("GET /me", webauth.Me(acc, quota))
@@ -214,6 +214,13 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, p
 	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, consumed))
 
 	if dev {
+		// The dev bypass has no login moment, so the bind sign-in performs runs
+		// once at startup for the synthetic principal instead.
+		if members != nil {
+			if _, err := members.BindAll(ctx, access.Principal{Sub: devSub, Email: devEmail}); err != nil {
+				log.Printf("dev: binding memberships: %v", err)
+			}
+		}
 		// No OIDC locally: /login just returns to the app, already authenticated.
 		mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, baseURL+"/", http.StatusFound)
@@ -228,6 +235,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, p
 	if err != nil {
 		return nil, err
 	}
+	login.BindMemberships(members)
 	mux.HandleFunc("GET /login", login.HandleLogin)
 	mux.HandleFunc("GET /callback", login.HandleCallback)
 	mux.HandleFunc("GET /logout", login.HandleLogout)

@@ -2,6 +2,7 @@ package access
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -9,7 +10,7 @@ import (
 // verified email, bound to the first principal, a second principal refused.
 func TestMembershipSeedBindOneWay(t *testing.T) {
 	m := NewMemMembership()
-	_ = m.SeedLead(ctx, "proj-1", "lead@example.com")
+	_ = m.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"})
 
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	if role, ok, _ := m.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
@@ -38,7 +39,7 @@ func TestMembershipSeedBindOneWay(t *testing.T) {
 // Only a project's lead may change its membership.
 func TestMembershipLeadOnly(t *testing.T) {
 	m := NewMemMembership()
-	_ = m.SeedLead(ctx, "proj-1", "lead@example.com")
+	_ = m.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"})
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	_ = m.Add(ctx, lead, "proj-1", "collab@example.com", RoleCollaborator)
 	collab := Principal{Sub: "collab-sub", Email: "collab@example.com"}
@@ -75,6 +76,93 @@ func TestMembershipLeadOnly(t *testing.T) {
 	}
 }
 
+// bindingContract is the login-time binding contract both stores satisfy. It is
+// one function so the in-memory and Postgres implementations cannot drift on the
+// invariant a project invitation depends on.
+//
+// Before the fix this whole contract failed: binding was a side effect of the
+// authorisation checks, every one of which short-circuits for an owner or a
+// public project, so an owner read as "pending" forever and an invitee never
+// appeared under "shared with me".
+func bindingContract(t *testing.T, m Membership, project string) {
+	t.Helper()
+	// Subject and addresses are derived from the project so the contract is
+	// self-contained: it can run in a store that already holds other rows.
+	lead := Principal{Sub: project + "-lead", Email: "Lead-" + project + "@Example.com"}
+	collabEmail := "collab-" + project + "@example.com"
+
+	// An owner is bound the moment their project is seeded — no login, no
+	// project read, no authorisation check in between.
+	if err := m.SeedLead(ctx, project, lead); err != nil {
+		t.Fatalf("SeedLead: %v", err)
+	}
+	members, err := m.List(ctx, project)
+	if err != nil || len(members) != 1 {
+		t.Fatalf("List = %+v err=%v; want the lead", members, err)
+	}
+	if !members[0].Bound {
+		t.Error("the owner must be bound at seed time, not left pending")
+	}
+	if ids, _ := m.Projects(ctx, lead.Sub); len(ids) != 1 || ids[0] != project {
+		t.Errorf("the lead's own project should list, got %v", ids)
+	}
+
+	// An invitee is pending until they sign in, and signing in is what binds
+	// them — nothing else has to happen first.
+	if err := m.Add(ctx, lead, project, strings.ToUpper(collabEmail), RoleCollaborator); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	collab := Principal{Sub: project + "-collab", Email: collabEmail}
+	if ids, _ := m.Projects(ctx, collab.Sub); len(ids) != 0 {
+		t.Errorf("an invitee must not appear as a member before signing in, got %v", ids)
+	}
+	n, err := m.BindAll(ctx, collab)
+	if err != nil || n != 1 {
+		t.Fatalf("BindAll = %d, %v; want 1 membership bound", n, err)
+	}
+	ids, err := m.Projects(ctx, collab.Sub)
+	if err != nil || len(ids) != 1 || ids[0] != project {
+		t.Fatalf("after sign-in the invitee's project should list, got %v err=%v", ids, err)
+	}
+	members, _ = m.List(ctx, project)
+	for _, mem := range members {
+		if !mem.Bound {
+			t.Errorf("%s should be bound after sign-in", mem.Email)
+		}
+	}
+
+	// Binding is one-way: a second principal presenting a bound email takes
+	// nothing, and a repeat sign-in binds nothing new.
+	if n, _ := m.BindAll(ctx, Principal{Sub: project + "-imposter", Email: collabEmail}); n != 0 {
+		t.Error("a second principal must not bind an already-bound membership")
+	}
+	if n, _ := m.BindAll(ctx, collab); n != 0 {
+		t.Error("a repeat sign-in must bind nothing new")
+	}
+	if ids, _ := m.Projects(ctx, project+"-imposter"); len(ids) != 0 {
+		t.Errorf("the imposter must hold no membership, got %v", ids)
+	}
+
+	// An address change at the identity provider must not make one person a
+	// member of the same project twice.
+	if err := m.Add(ctx, lead, project, "collab-new-"+project+"@example.com", RoleCollaborator); err != nil {
+		t.Fatalf("Add second address: %v", err)
+	}
+	if n, _ := m.BindAll(ctx, Principal{Sub: collab.Sub, Email: "collab-new-" + project + "@example.com"}); n != 0 {
+		t.Error("a principal already holding a row in this project must not bind a second one")
+	}
+
+	// A sign-in with no verified email binds nothing at all.
+	if n, _ := m.BindAll(ctx, Principal{Sub: project + "-nobody"}); n != 0 {
+		t.Error("an unverified sign-in must never bind")
+	}
+}
+
+// The in-memory store satisfies the login-time binding contract.
+func TestMemMembershipBindingContract(t *testing.T) {
+	bindingContract(t, NewMemMembership(), "proj-bind")
+}
+
 // AC7: membership admits nobody to the platform. Tier and role are resolved by
 // independent stores, and neither can be satisfied by the other.
 func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
@@ -82,7 +170,7 @@ func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
 	members := NewMemMembership()
 
 	// A principal is a project lead but has no platform grant.
-	_ = members.SeedLead(ctx, "proj-1", "lead@example.com")
+	_ = members.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"})
 	lead := Principal{Sub: "lead-sub", Email: "lead@example.com"}
 	if role, ok, _ := members.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
 		t.Fatal("precondition: lead has a project role")

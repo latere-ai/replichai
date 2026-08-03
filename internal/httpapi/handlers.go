@@ -377,10 +377,10 @@ func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner
 		return nil
 	}
 	added := []string{}
-	if err := rt.members.SeedLead(ctx, projectID, owner.Email); err != nil {
+	p := access.Principal{Sub: owner.Sub, Email: owner.Email}
+	if err := rt.members.SeedLead(ctx, projectID, p); err != nil {
 		return added
 	}
-	p := access.Principal{Sub: owner.Sub, Email: owner.Email}
 	for _, email := range emails {
 		email = strings.TrimSpace(email)
 		if email == "" || strings.EqualFold(email, owner.Email) {
@@ -837,7 +837,7 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 	if body.Role == "lead" {
 		role = access.RoleLead
 	}
-	if err := rt.members.SeedLead(r.Context(), proj.ID, id.Email); err != nil {
+	if err := rt.members.SeedLead(r.Context(), proj.ID, access.Principal{Sub: id.Sub, Email: id.Email}); err != nil {
 		writeError(w, http.StatusInternalServerError, "member_add_failed")
 		return
 	}
@@ -854,7 +854,7 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := rt.members.SeedLead(r.Context(), proj.ID, id.Email); err != nil {
+	if err := rt.members.SeedLead(r.Context(), proj.ID, access.Principal{Sub: id.Sub, Email: id.Email}); err != nil {
 		writeError(w, http.StatusInternalServerError, "member_remove_failed")
 		return
 	}
