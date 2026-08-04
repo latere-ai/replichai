@@ -4,7 +4,7 @@
 
 Before this, a project was born implicitly from a single paper submit (`POST /papers`), its title defaulting to the reference, with no way to name it, seed collaborators, or start more than one paper at once.
 **Scope:** a create-with-papers endpoint and a resolve-preview endpoint, plus the frontend "New project" screen that drives them. It adds no new store and no new lifecycle; it composes the existing project store, job enqueue (with its double-trigger guard), and membership store (006c) behind one create. A child of [006g](006g-projects-and-replication-sessions.md).
-**Depends on:** [006g](006g-projects-and-replication-sessions.md) (projects own sessions; the enqueue guard), [006c](006-web-application.md) (the membership store the collaborators are seeded into), [001](001-paper-identity.md) (`paper.Resolve` / `paper.Key`).
+**Depends on:** [006g](006g-projects-and-replication-sessions.md) (projects own sessions; the enqueue guard), [006c](006c-identity-and-access.md) (the membership store the collaborators are seeded into), [001](001-paper-identity-and-slugs.md) (`paper.Resolve` / `paper.Key`).
 
 ## Problem
 

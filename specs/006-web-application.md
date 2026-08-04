@@ -153,7 +153,7 @@ platform admin only
 GET    /admin/access  ·  POST /admin/access { email, tier }  ·  DELETE /admin/access/{email}
 ```
 
-`GET /me` is deliberately outside the gate: it is how the frontend learns to render the not-invited screen instead of the operator UI. Everything the gate covers returns `403` with a machine-readable reason — `not_invited` for an ungranted principal, `not_owner` for a caller reaching for another owner's members or public flip — including the read surfaces, because a private project's repositories are private and a listing is not public information.
+`GET /me` is deliberately outside the gate: it is how the frontend learns to render the not-invited screen instead of the operator UI. Everything the gate covers returns `403` with a machine-readable reason — `not_granted` for an ungranted principal (`not_invited` until [006q](006q-sign-in-is-open-budget-is-not.md)), `not_owner` for a caller reaching for another owner's members or public flip — including the read surfaces, because a private project's repositories are private and a listing is not public information.
 
 Exact shapes are 006a's to settle; this fixes the surface, not the field names.
 
@@ -167,7 +167,7 @@ These are invariants the whole must hold, verified as the children land:
 4. A submitted audit runs asynchronously; no HTTP request blocks for the run, and progress is observable while it runs.
 5. The whole system comes up locally with `docker compose` and one backend credential — no per-user secrets.
 6. Every read surface (registry, a reproduction, its transcript) is the same data the CLI and the forge already hold, presented — never a divergent copy.
-7. The access gate is fail-closed: with an empty `access_grants` table, an authenticated session reaches no operator route. A test enumerates the gated routes and asserts each answers `not_invited` for an authenticated, ungranted principal — enumerated from the router, so a new route added without a grant check fails the test rather than silently shipping open.
+7. The access gate is fail-closed: with an empty `access_grants` table, an authenticated session reaches no operator route. A test enumerates the gated routes and asserts each answers `not_granted` for an authenticated, ungranted principal — enumerated from the router, so a new route added without a grant check fails the test rather than silently shipping open.
 8. A grant seeded by an email admits that person on their first sign-in and binds to their principal; a second principal presenting that email afterwards is refused. Revoking the grant locks the holder out on the next request, with no session left standing.
 9. A forge account is required for nothing but the collaborator invitation. A test drives an unlinked user from submission to a read result and transcript end to end; `claim` is the only route that answers differently (`409`).
 10. Only a project's **owner** can make it public — with no forge account required — and only with a recorded responsibility sign-off and a manifest this service published `clear` under 002's gate. A non-owner's flip is refused `403` server-side even when the request is forged past the UI; an un-signed request changes nothing; and a project with no accountable manifest is refused for everyone.

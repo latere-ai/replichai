@@ -12,7 +12,7 @@ But visibility and the attestation are not the same thing, and conflating them l
 
 The gap is not "we forgot a toggle". It is that *publishing* was modelled as a state change when it is really a speech act with a duration. The fix is not to make the flip erasable; it is to give it an end.
 
-Granting this to the owner is safe for a reason worth stating: **withdrawal is not deletion, and an owner has no deletion.** Removing a project cascades — sessions, transcripts, artifacts, manifests, quota history — so it stays an admin action. Withdrawal touches one column and takes nothing away; it is the strongest reversal an owner can be trusted with precisely because it destroys nothing. Everything published remains on the row, readable by its owner and by an operator, and republishable in one step.
+Granting this to the owner is safe for a reason worth stating: **withdrawal is not deletion, and an owner has no deletion.** Removing a project cascades — sessions, transcripts, artifacts, manifests, and the ledger entries recording what its runs cost — so it stays an admin action. Withdrawal touches one column and takes nothing away; it is the strongest reversal an owner can be trusted with precisely because it destroys nothing. Everything published remains on the row, readable by its owner and by an operator, and republishable in one step.
 
 ## Decisions
 

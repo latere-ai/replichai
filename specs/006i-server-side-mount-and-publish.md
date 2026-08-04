@@ -4,7 +4,7 @@
 
 Before this, the server audit path walked the phases but never mounted a repository nor published, so a web-submitted session graded but produced no repository — its Artifacts, Verdict, and committed-transcript tabs were empty and its work evaporated with the sandbox.
 **Scope:** the *backend* half of [006f](006f-taking-a-reproduction-out.md). It changes how `engineRunner` runs the three audit phases (resolve, run, publish); it adds no new HTTP surface, no new store, and no new user-facing concept. A child of [006f](006f-taking-a-reproduction-out.md).
-**Depends on:** [006f](006f-taking-a-reproduction-out.md) (the mount publish, the verifier, the manifest — the mechanism this wires server-side), [006g](006g-projects-and-replication-sessions.md) (the job that carries `repo_name`), [003](003-registry.md) (name allocation), [004](004-go-port.md) (the provider seam and `RepoMount`).
+**Depends on:** [006f](006f-taking-a-reproduction-out.md) (the mount publish, the verifier, the manifest — the mechanism this wires server-side), [006g](006g-projects-and-replication-sessions.md) (the job that carries `repo_name`), [003](003-reproduction-registry.md) (name allocation), [004](004-go-port.md) (the provider seam and `RepoMount`).
 
 ## Problem
 
