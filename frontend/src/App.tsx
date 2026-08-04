@@ -1748,13 +1748,21 @@ function WalletStatement({ i18n, balance }: { i18n: I18n; balance: number }) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
   const [open, setOpen] = useState(false)
 
-  const reveal = () => {
-    setOpen((was) => !was)
-    if (entries === null)
-      getWallet()
-        .then((w) => setEntries(w.entries))
-        .catch(() => setEntries([]))
-  }
+  // Keyed on the balance rather than fetched once: after an allocate the number
+  // above changes, and a statement still showing the pre-move entries would be
+  // a list that contradicts the total it is supposed to explain.
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    getWallet()
+      .then((w) => live && setEntries(w.entries))
+      .catch(() => live && setEntries([]))
+    return () => {
+      live = false
+    }
+  }, [open, balance])
+
+  const reveal = () => setOpen((was) => !was)
 
   return (
     <>

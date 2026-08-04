@@ -609,3 +609,58 @@ func TestASessionReportsWhatItCost(t *testing.T) {
 		}
 	}
 }
+
+// A project the caller may not see reads as not-found on the credit routes too.
+//
+// Answering `not_member` would confirm that a guessed private id exists, which
+// is the one thing every other read path withholds — getProject 404s for
+// exactly this reason. Somebody who *can* see the project still gets the honest
+// refusal: that one tells them nothing they did not already know.
+func TestTheCreditRoutesDoNotConfirmAPrivateProjectExists(t *testing.T) {
+	d, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+	owner := Identity{Sub: "owner-sub", Email: "owner@example.com"}
+	collab := Identity{Sub: "collab-sub", Email: "collab@example.com"}
+	stranger := Identity{Sub: "stranger-sub", Email: "stranger@example.com"}
+	topUp(t, ledger, owner, 20*credit.Dollar)
+	topUp(t, ledger, stranger, 20*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"title":"private","credits":`+itoa(6*credit.Dollar)+`,"papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["collab@example.com"]}`,
+		owner.Sub, owner.Email))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", w.Code, w.Body.String())
+	}
+	var out struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if _, err := d.Members.(access.Membership).BindAll(ctx, access.Principal{Sub: collab.Sub, Email: collab.Email}); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	post := func(id Identity, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		rt.Handler().ServeHTTP(w, asPrincipal("POST", path, body, id.Sub, id.Email))
+		return w
+	}
+	amount := `{"amount":` + itoa(1*credit.Dollar) + `}`
+
+	// A stranger who guessed the id learns nothing — including that it exists.
+	for _, path := range []string{"/projects/" + out.ProjectID + "/credits", "/projects/" + out.ProjectID + "/credits/reclaim"} {
+		w := post(stranger, path, amount)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("stranger POST %s = %d %s, want 404", path, w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "not_member") {
+			t.Errorf("POST %s told a stranger they are not a member, which says the project exists", path)
+		}
+	}
+	// A collaborator sees the project, so the refusal that applies to them is
+	// the honest one about their role.
+	if w := post(collab, "/projects/"+out.ProjectID+"/credits/reclaim", amount); w.Code != http.StatusForbidden ||
+		!strings.Contains(w.Body.String(), "not_lead") {
+		t.Errorf("collaborator reclaim = %d %s, want 403 not_lead", w.Code, w.Body.String())
+	}
+}

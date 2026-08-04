@@ -1,6 +1,10 @@
 # 011 — What a session costs
 
 **Status:** built. `provider.Usage` carries cache writes split by lifetime; `internal/credit` is the ledger (both stores against one contract, the advisory lock confirmed load-bearing by removing it); the gate lives inside `Enqueue` and the session counter, sponsorship and `jobs.charged_to` are gone. Settlement charges a session for the tokens it burned, priced from a card snapshotted at enqueue; the hidden floor is projected project-wide and published nowhere. The counter is retired from the specs, and the surfaces are in: a project shows what it holds and what it may still commit, credits move both ways under the ledger's own role rules, a wallet shows the statement that explains it, and a session says what it cost. Deliberately *not* here: payment — an admin is still how credits come into existence.
+
+**Verified by hand, against a real Postgres and the running app.** A new account reports zero and is refused `402 no_credits`; an admin top-up of $50 appears in the wallet statement naming the admin who granted it; a submit funds a fresh project with one reserve and leaves $40; the ledger records `allocate → hold → charge → release` in that order for each session. A run that never reached the provider (arXiv rate-limited the resolve) charged nothing and returned its hold whole, which is the rule for a session with no usage. A run that finished charged 5 µUSD for one input token — priced at the *dearest* rates, because the in-process provider reports no model and `Card.For` fails expensive, which is the intended behaviour seen working rather than assumed. Reclaiming $4 moved both balances in one response; reclaiming more than the pot holds was `402`. A project below the start reserve refused the next submit and admitted it again once topped up.
+
+One caveat worth stating: against the real backend, `ResolveModel` returns whatever the vendor's model list holds for the tier preference, which may not be one of the three ids the seeded card names. That path therefore charges the dearest rates rather than the model's own. Correct by design and cheap to fix — an admin edits the card — but it means the seeded card should be checked against what the deployment's backend actually returns before the first real run.
 **Scope:** replace the session counter with money. An append-only credit ledger at two levels — a person's wallet and a project's pot — priced in micro-USD, metered against the tokens a session actually burned, held at start and settled at the end. The counter, its top-ups, its sponsorship and its payer picker are removed rather than deprecated. A rework of [006l](006l-the-session-quota.md), and the promotion of `BACKLOG.md` item 5 onto the roadmap.
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store, the enqueue transaction, the worker's poll loop), [006k](006k-the-platform-admin-console.md) (where an admin sets policy and grants), [006g](006g-projects-and-replication-sessions.md) (projects own sessions), [006c](006c-identity-and-access.md) (project membership and `RoleLead`), [006h](006h-session-transcript-viewer.md) / [006s](006s-reading-a-session-in-time.md) (the usage a session records).
 **Supersedes:** 006l entirely; 006q's zero-quota default (its open sign-in stands).
@@ -55,7 +59,7 @@ Because the project pays, **sponsorship is deleted, not ported**: `projects.spon
 
 ### A session is priced from its own tokens, against a rate card snapshotted at enqueue
 
-Cost is `usage × rate`, per token class. The rate card lives in platform settings, admin-editable, keyed by model:
+Cost is `usage × rate`, per token class. The rate card lives in platform settings, keyed by model, and an admin changes it rather than a release doing so:
 
 | class | why it is its own rate |
 |---|---|
@@ -66,6 +70,8 @@ Cost is `usage × rate`, per token class. The rate card lives in platform settin
 | cache read | billed far below input |
 
 **`provider.Usage` must be widened first.** It carries `InputTokens`, `OutputTokens`, `CachedInputTokens` today and drops cache *creation* entirely, which the SDK reports broken down by cache lifetime. Charging without it under-bills every session by the most expensive input class there is. This widening is the first commit of this spec, before any ledger exists.
+
+**Editing it is an API write today, and the console only shows it.** `PUT /admin/settings` takes the whole card, and the Platform screen renders it beside the two numbers it bounds — an admin setting a floor should be able to see what output tokens cost. Building a per-cell editor for a list that changes when a vendor changes prices is deferred rather than done: the numbers are typed, the write is one request, and a wrong cell in a rate card mis-bills every session until somebody notices. Stated here so "admin-editable" is not read as "editable in the console".
 
 **The card is snapshotted onto the job row at enqueue, and everything prices from the snapshot.** Two consumers read the card at different times — the watchdog, every poll, and settlement, once — and an admin editing rates mid-run would otherwise let a session be killed against one ceiling and charged against another. A snapshot also makes pricing `func(usage, snapshot) int64`: pure, no I/O, therefore composable into the transaction that settles. And it makes "why was this session charged this much?" answerable from the ledger row plus the job row, with no archaeology through an audit log of rate edits.
 
@@ -180,7 +186,7 @@ Each step is one small diff, in order, and the system is coherent after each.
 4. **Settlement**: the rate snapshot on the job row, the final poll before terminal, release-and-charge inside the terminal write, the `charge` uniqueness constraint.
 5. **The backstop**: the overdraft floor in settings (`DefaultOverdraftCap`, fail-tight) with its per-project override (`projects.credit_cap`, `Store.SetCreditCap`, `PUT /admin/projects/{id}/cap` — admin policy, never the owner's), `Store.Accrued` for the project-wide projection, `job.Budget`/`WithBudget` and the watchdog on the observe path, `GenericFailure` as the recorded cause, and the true reason in the log and the admin console only.
 6. **Removal**: what is left after step 3 absorbed the rest — `BACKLOG.md` item 5 and the sentence naming it, 006l's status, and 006q where it describes the zero quota as live.
-7. **Surfaces**: `/me` wallet balance, project balance and available (members only), `GET /me/credits` and its statement, allocate and reclaim, a session's own cost, and the admin console's reserve, floor and rate card.
+7. **Surfaces**: `/me` wallet balance, project balance and available (members only), `GET /me/credits` and its statement, allocate and reclaim, a session's own cost, and the admin console's reserve, floor and (read-only) rate card.
 
 ## Acceptance criteria
 
@@ -209,6 +215,7 @@ Each step is one small diff, in order, and the system is coherent after each.
 ## Out of scope
 
 - **Purchase.** No Stripe, no checkout, no invoice, no tax, no refund-to-card. An admin is how credits are created. The ledger's `topup` entry is the seam a webhook will post to.
+- **A rate-card editor in the console.** The card is written through `PUT /admin/settings` and shown read-only. A per-cell editor is a small feature over a list that changes rarely and mis-bills everything when it is wrong; it waits for someone to actually need it.
 - **Per-contributor accounting inside a pot.** The pot is fungible by decision; who allocated what is recorded on the entries for audit, and confers no claim on reclaim.
 - **Currency other than micro-USD.** No conversion, no EUR-denominated balances, no FX. An admin typing a cap in euros converts it themselves.
 - **Pausing a session for approval.** The right end state for a run that hits its ceiling is to pause and ask a human, and it needs a new non-terminal phase, a resume path through the provider, a notification, and a timeout reaper. Recorded as the successor to the backstop, not built here.

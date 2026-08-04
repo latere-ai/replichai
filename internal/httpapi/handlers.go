@@ -528,6 +528,15 @@ func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool)
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
+	// A project the caller may not see reads as not-found here exactly as it
+	// does on every read path. Answering `not_member` instead would confirm
+	// that a guessed private id exists — the one thing getProject's 404 is
+	// there to withhold. Somebody who *can* see the project still gets the
+	// honest 403 below: that refusal tells them nothing they did not know.
+	if !rt.mayViewProject(r, proj) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
 	var body struct {
 		Amount int64 `json:"amount"`
 	}
