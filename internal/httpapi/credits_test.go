@@ -425,3 +425,187 @@ func TestSharedWithMeExcludesYourOwn(t *testing.T) {
 		t.Errorf("shared = %+v, want nothing — those are the owner's own projects", shared)
 	}
 }
+
+// Credits move both ways, and the rules differ by direction: any member may
+// fund a project, only a lead may take from it. The pot is fungible and does
+// not remember who filled it, so reclaiming is authority over the project's
+// money rather than a refund of one's own.
+func TestCreditsMoveBetweenWalletAndProject(t *testing.T) {
+	d, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+	owner := Identity{Sub: "owner-sub", Email: "owner@example.com"}
+	collab := Identity{Sub: "collab-sub", Email: "collab@example.com"}
+	topUp(t, ledger, owner, 20*credit.Dollar)
+	topUp(t, ledger, collab, 5*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"title":"shared","credits":`+itoa(4*credit.Dollar)+`,"papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["collab@example.com"]}`,
+		owner.Sub, owner.Email))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", w.Code, w.Body.String())
+	}
+	var out struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if _, err := d.Members.(access.Membership).BindAll(ctx, access.Principal{Sub: collab.Sub, Email: collab.Email}); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	post := func(id Identity, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		rt.Handler().ServeHTTP(w, asPrincipal("POST", path, body, id.Sub, id.Email))
+		return w
+	}
+
+	// A collaborator funds the project out of their own wallet.
+	if w := post(collab, "/projects/"+out.ProjectID+"/credits", `{"amount":`+itoa(3*credit.Dollar)+`}`); w.Code != http.StatusOK {
+		t.Fatalf("collaborator allocate = %d %s", w.Code, w.Body.String())
+	}
+	if n, _ := ledger.Balance(ctx, credit.Wallet(collab.Email)); n != 2*credit.Dollar {
+		t.Errorf("collaborator wallet = %d, want %d", n, 2*credit.Dollar)
+	}
+	if n, _ := ledger.Balance(ctx, credit.Pot(out.ProjectID)); n != 7*credit.Dollar {
+		t.Errorf("pot = %d, want %d", n, 7*credit.Dollar)
+	}
+
+	// They cannot take it back: funding is not a claim on the pot.
+	w = post(collab, "/projects/"+out.ProjectID+"/credits/reclaim", `{"amount":`+itoa(1*credit.Dollar)+`}`)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not_lead") {
+		t.Fatalf("collaborator reclaim = %d %s, want 403 not_lead", w.Code, w.Body.String())
+	}
+
+	// The lead can, including credits the collaborator put in.
+	if w := post(owner, "/projects/"+out.ProjectID+"/credits/reclaim", `{"amount":`+itoa(5*credit.Dollar)+`}`); w.Code != http.StatusOK {
+		t.Fatalf("lead reclaim = %d %s", w.Code, w.Body.String())
+	}
+	if n, _ := ledger.Balance(ctx, credit.Wallet(owner.Email)); n != 21*credit.Dollar {
+		t.Errorf("owner wallet = %d, want %d — a lead reclaimed a collaborator's funding", n, 21*credit.Dollar)
+	}
+
+	// Money already committed to a running session cannot be pulled out.
+	avail, _ := ledger.Available(ctx, credit.Pot(out.ProjectID))
+	if w := post(owner, "/projects/"+out.ProjectID+"/credits/reclaim", `{"amount":`+itoa(avail+1)+`}`); w.Code != http.StatusPaymentRequired {
+		t.Errorf("reclaiming into a hold = %d %s, want 402", w.Code, w.Body.String())
+	}
+	// And nonsense is a bad request rather than a silent no-op.
+	if w := post(owner, "/projects/"+out.ProjectID+"/credits", `{"amount":0}`); w.Code != http.StatusBadRequest {
+		t.Errorf("zero allocation = %d, want 400", w.Code)
+	}
+}
+
+// A project reports its money to somebody who may work there, and to nobody
+// else. A stranger reading a public project is looking at the research, not at
+// whose money paid for it.
+func TestAProjectReportsItsCreditsToMembersOnly(t *testing.T) {
+	d, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+	owner := Identity{Sub: "owner-sub", Email: "owner@example.com"}
+	stranger := Identity{Sub: "stranger-sub", Email: "stranger@example.com"}
+	topUp(t, ledger, owner, 20*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"title":"open","credits":`+itoa(6*credit.Dollar)+`,"papers":["https://arxiv.org/abs/2301.03711"]}`,
+		owner.Sub, owner.Email))
+	var out struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if err := d.Projects.SetPublic(ctx, out.ProjectID, project.SignOff{By: owner.Sub, AttestationVersion: "v1"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	read := func(id Identity) ProjectDetail {
+		t.Helper()
+		w := httptest.NewRecorder()
+		rt.Handler().ServeHTTP(w, asPrincipal("GET", "/projects/"+out.ProjectID, "", id.Sub, id.Email))
+		var got ProjectDetail
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return got
+	}
+
+	mine := read(owner)
+	if mine.Credits == nil {
+		t.Fatal("the owner cannot see what their own project holds")
+	}
+	if mine.Credits.Balance != 6*credit.Dollar {
+		t.Errorf("balance = %d, want %d", mine.Credits.Balance, 6*credit.Dollar)
+	}
+	// Available is lower by the running session's reserve — which is the whole
+	// reason both numbers are reported rather than one.
+	if mine.Credits.Available != 6*credit.Dollar-reserve {
+		t.Errorf("available = %d, want %d", mine.Credits.Available, 6*credit.Dollar-reserve)
+	}
+	if mine.Credits.StartReserve != reserve {
+		t.Errorf("start reserve = %d, want %d", mine.Credits.StartReserve, reserve)
+	}
+	if !mine.Credits.MayReclaim {
+		t.Error("the owner is their project's lead and may reclaim")
+	}
+
+	if theirs := read(stranger); theirs.Credits != nil {
+		t.Errorf("a stranger reading a public project sees its money: %+v", theirs.Credits)
+	}
+}
+
+// The wallet surface shows a balance and the entries that produced it. A number
+// nobody can account for is what the ledger exists to prevent, so the surface
+// that shows one shows its statement too.
+func TestTheWalletExplainsItself(t *testing.T) {
+	_, rt, ledger := creditDeps(t)
+	topUp(t, ledger, payer, 10*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/me/credits", "", payer.Sub, payer.Email))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /me/credits = %d %s", w.Code, w.Body.String())
+	}
+	var got Wallet
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Balance != 10*credit.Dollar {
+		t.Errorf("balance = %d, want %d", got.Balance, 10*credit.Dollar)
+	}
+	var sum int64
+	for _, e := range got.Entries {
+		sum += e.Amount
+		if e.Actor == "" || e.CreatedAt.IsZero() {
+			t.Errorf("entry %+v does not say who or when", e)
+		}
+	}
+	if sum != got.Balance {
+		t.Errorf("the statement sums to %d but the balance is %d", sum, got.Balance)
+	}
+}
+
+// A session reports what it cost, because whoever's project paid for it is
+// entitled to know. The rates it was priced at are not reported: those are the
+// platform's price list, not this owner's business.
+func TestASessionReportsWhatItCost(t *testing.T) {
+	_, rt, ledger := creditDeps(t)
+	topUp(t, ledger, payer, 10*credit.Dollar)
+
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
+	var started struct {
+		JobID string `json:"job_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &started)
+
+	w = httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/jobs/"+started.JobID, "", payer.Sub, payer.Email))
+	body := w.Body.String()
+	if !strings.Contains(body, `"cost"`) {
+		t.Errorf("the session payload does not say what it cost: %s", body)
+	}
+	for _, leak := range []string{"rate_card", "cache_write_5m", `"rates"`} {
+		if strings.Contains(body, leak) {
+			t.Errorf("the session payload carries %q — the price list is the platform's, not the owner's: %s", leak, body)
+		}
+	}
+}

@@ -83,6 +83,9 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
 	rt.gatedHandle("POST", "/projects/{id}/private", rt.withdrawProject)
+	rt.gatedHandle("GET", "/me/credits", rt.myCredits)
+	rt.gatedHandle("POST", "/projects/{id}/credits", rt.allocateCredits)
+	rt.gatedHandle("POST", "/projects/{id}/credits/reclaim", rt.reclaimCredits)
 	rt.gatedHandle("GET", "/projects/{id}/members", rt.listMembers)
 	rt.gatedHandle("POST", "/projects/{id}/members", rt.addMember)
 	rt.gatedHandle("DELETE", "/projects/{id}/members/{email}", rt.removeMember)
@@ -459,6 +462,111 @@ func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner
 		}
 	}
 	return added
+}
+
+// Wallet is one person's own money and the statement that explains it (011).
+// The statement is the point: a balance nobody can account for is the thing the
+// ledger exists to prevent, so the surface that shows a number also shows the
+// entries that produced it.
+type Wallet struct {
+	Balance int64          `json:"balance"`
+	Entries []credit.Entry `json:"entries"`
+}
+
+// myCredits reports the caller's own wallet. Always their own — there is no
+// path here to read somebody else's, and no id to pass.
+func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
+	if rt.credits == nil {
+		writeError(w, http.StatusNotImplemented, "credits_unavailable")
+		return
+	}
+	id, _ := IdentityFrom(r)
+	holder := credit.Wallet(id.Email)
+	balance, err := rt.credits.Balance(r.Context(), holder)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "credits_read_failed")
+		return
+	}
+	entries, err := rt.credits.Entries(r.Context(), holder, 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "credits_read_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, Wallet{Balance: balance, Entries: entries})
+}
+
+// allocateCredits moves credits from the caller's wallet into a project's pot.
+// Any member may fund a project they work in; the ledger re-checks that rather
+// than trusting this route, so a route mounted without a guard still cannot
+// move somebody's money.
+func (rt *Router) allocateCredits(w http.ResponseWriter, r *http.Request) {
+	rt.moveCredits(w, r, false)
+}
+
+// reclaimCredits moves credits from a project's pot back to the caller's
+// wallet. Leads only, enforced in the ledger: the pot is fungible and does not
+// remember who filled it, so taking from it is authority over the project's
+// money rather than a refund of one's own.
+func (rt *Router) reclaimCredits(w http.ResponseWriter, r *http.Request) {
+	rt.moveCredits(w, r, true)
+}
+
+// moveCredits is the shared half of the two directions: decode, refuse a
+// nonsense amount, move, and answer with the balances the client would
+// otherwise have to re-read.
+func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool) {
+	if rt.credits == nil {
+		writeError(w, http.StatusNotImplemented, "credits_unavailable")
+		return
+	}
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	var body struct {
+		Amount int64 `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	id, _ := IdentityFrom(r)
+	p := access.Principal{Sub: id.Sub, Email: id.Email}
+	if back {
+		err = rt.credits.Reclaim(r.Context(), p, proj.ID, body.Amount)
+	} else {
+		err = rt.credits.Allocate(r.Context(), p, proj.ID, body.Amount)
+	}
+	switch {
+	case err == nil:
+	case errors.Is(err, credit.ErrNotPositive):
+		writeError(w, http.StatusBadRequest, "bad_amount")
+		return
+	case errors.Is(err, credit.ErrInsufficient):
+		writeError(w, http.StatusPaymentRequired, "no_credits")
+		return
+	case errors.Is(err, credit.ErrNotLead):
+		writeError(w, http.StatusForbidden, "not_lead")
+		return
+	case errors.Is(err, credit.ErrNotMember):
+		writeError(w, http.StatusForbidden, "not_member")
+		return
+	default:
+		writeError(w, http.StatusInternalServerError, "credits_move_failed")
+		return
+	}
+	// Both sides come back, because both moved and a client that re-read them
+	// separately could show a moment where the money is in neither.
+	wallet, _ := rt.credits.Balance(r.Context(), credit.Wallet(id.Email))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"wallet":  wallet,
+		"project": rt.projectCredits(r, proj),
+	})
 }
 
 // renameProject renames an owned project (006j), owner-only.
@@ -1149,6 +1257,68 @@ type ProjectDetail struct {
 	MaySubmit bool `json:"may_submit"`
 	// SignerHandle is where the signer's name links; see ProjectView.
 	SignerHandle string `json:"signer_handle,omitempty"`
+	// Credits is what this project holds and what it may still commit (011).
+	// Reported only to somebody who may work here: a stranger reading a public
+	// project is looking at the research, not at whose money paid for it.
+	Credits *ProjectCredits `json:"credits,omitempty"`
+}
+
+// ProjectCredits is a project's money as a member reads it: what the pot holds,
+// what is still free to commit, and how much a session needs to start.
+//
+// Balance and Available differ by the sessions running right now — each holds
+// the reserve — which is exactly the thing a member needs to see before
+// wondering why a submit was refused on a project that "has credits".
+//
+// The overdraft floor is not here, and that is the point: an allowance somebody
+// can read is an allowance they plan around.
+type ProjectCredits struct {
+	Balance      int64 `json:"balance"`
+	Available    int64 `json:"available"`
+	StartReserve int64 `json:"start_reserve"`
+	// MayReclaim reports whether this caller may take credits back out. Only a
+	// lead may: the pot is fungible and does not remember who filled it, so
+	// reclaiming is authority over the project's money rather than a refund of
+	// one's own. The client cannot work this out — it does not know roles.
+	MayReclaim bool `json:"may_reclaim"`
+}
+
+// projectCredits reads a project's money for a caller who may work in it, and
+// reports nothing for anyone else. A read failure is not fatal: the project
+// still renders, without its balance.
+func (rt *Router) projectCredits(r *http.Request, proj project.Project) *ProjectCredits {
+	if rt.credits == nil || !rt.mayWorkInProject(r, proj, principal(r)) {
+		return nil
+	}
+	out := ProjectCredits{MayReclaim: rt.isLead(r, proj.ID)}
+	balance, err := rt.credits.Balance(r.Context(), credit.Pot(proj.ID))
+	if err != nil {
+		log.Printf("credits: reading the balance of %s: %v", proj.ID, err)
+		return nil
+	}
+	available, err := rt.credits.Available(r.Context(), credit.Pot(proj.ID))
+	if err != nil {
+		log.Printf("credits: reading the available balance of %s: %v", proj.ID, err)
+		return nil
+	}
+	out.Balance, out.Available = balance, available
+	if rt.reserve != nil {
+		if n, err := rt.reserve(r.Context()); err == nil {
+			out.StartReserve = n
+		}
+	}
+	return &out
+}
+
+// isLead reports whether the caller leads this project — the role a reclaim
+// needs. An owner is seeded as its lead, so this covers them too.
+func (rt *Router) isLead(r *http.Request, projectID string) bool {
+	if rt.members == nil {
+		return false
+	}
+	id, _ := IdentityFrom(r)
+	role, ok, err := rt.members.Role(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, projectID)
+	return err == nil && ok && role >= access.RoleLead
 }
 
 // getProject returns a project and its sessions, refusing a project the caller
@@ -1217,6 +1387,7 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 		Sessions:     sessions,
 		MaySubmit:    rt.mayWorkInProject(r, proj, principal(r)),
 		SignerHandle: rt.signerHandle(r.Context(), proj),
+		Credits:      rt.projectCredits(r, proj),
 	})
 }
 

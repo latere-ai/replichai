@@ -78,7 +78,7 @@ func TestTheFloorIsProjectWideNotPerSession(t *testing.T) {
 
 	// The per-session projection this replaces would not have: each session on
 	// its own is $2 short of the floor.
-	perSession := 6*credit.Dollar - first.Cost()
+	perSession := 6*credit.Dollar - first.Cost
 	if perSession <= -floor {
 		t.Fatalf("the fixture does not discriminate: per-session projection %d is already past the floor", perSession)
 	}
