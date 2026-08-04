@@ -9,6 +9,14 @@
    Retinting the product is a two-line change: --brand and its dark twin. */
 
 :root {
+  /* Row rhythm. Two gaps, and the distinction is the point: --gap-row separates
+     the *sides* of a list row (a label from its value), --gap-inline separates
+     things that sit together on one side (a number from the button beside it).
+     One shared value for both was the bug behind three screens where a
+     truncated title touched its date and a control touched the border. */
+  --gap-row: 18px;
+  --gap-inline: 10px;
+
   --bg: #fafaf9;
   --bg-deep: #f0f0ee;
   --bg-surface: #ffffff;
@@ -105,8 +113,13 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+/* Colour and decoration are both inherited-by-default here, so a link looks
+   like a link because it opted in (.link), never because an author forgot a
+   class. Without the second line the browser underlines every bare anchor, and
+   the app grows two kinds of link that nobody chose between. */
 a {
   color: inherit;
+  text-decoration: none;
 }
 input,
 button,
@@ -195,6 +208,10 @@ textarea {
 }
 .link:hover {
   text-decoration: underline;
+  /* Clear of descenders, and thin enough not to read as a strikethrough on
+     mono text — the default sits on the baseline and cuts g, y, p. */
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
 }
 /* An inline message and its glyph stay on one baseline. */
 .err,
@@ -679,7 +696,7 @@ h1.screen-title {
 .row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gap-row);
   padding: 13px 14px;
   border-top: 1px solid var(--border);
   cursor: pointer;
@@ -918,7 +935,7 @@ h1.screen-title {
 .member-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--gap-row);
   padding: 11px 14px;
   border-top: 1px solid var(--border);
   transition: background var(--dur-hover);
@@ -1973,8 +1990,10 @@ input.submit-input {
 .usage-line {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 11px;
+  gap: var(--gap-row);
+  /* 14px matches .row and .member-row: three primitives that look like one
+     list should not each pick their own inset. */
+  padding: 9px 14px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
   color: var(--fg-2);
@@ -1986,7 +2005,10 @@ input.submit-input {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  /* A value and a control beside it are two things, not one: 6px read as a
+     collision the moment this slot held a button rather than a number. */
+  gap: var(--gap-inline);
+  min-width: 0;
   font: 500 12px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
@@ -2426,10 +2448,4 @@ input.submit-input {
   color: var(--fg-2);
   font-size: 11px;
   letter-spacing: 0.02em;
-}
-.statement-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 12px;
-  align-items: center;
 }

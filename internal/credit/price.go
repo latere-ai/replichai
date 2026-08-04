@@ -64,26 +64,39 @@ type Card struct {
 
 // For resolves the rates to charge a model at.
 //
-// An exact match wins. A model the card does not name is charged at the
-// **dearest** rates the card holds, class by class — never at zero, which would
-// make a vendor's new model id free compute, and never by refusing to start,
-// which would make it an outage. The synthesized entry keeps the requested
-// model's name, so a snapshot records what was asked for and the amount records
-// what it was charged as.
+// An exact match wins. A **dated snapshot** of a model the card names is charged
+// at that model's rates: a backend listing `claude-haiku-4-5-20251001` is
+// offering Claude Haiku 4.5, and billing it as an unknown model would charge it
+// the dearest rates on the card — five times its real price, on the tier chosen
+// for being cheap. Anything else is charged at the dearest rates, class by
+// class: never at zero, which would make a vendor's new model id free compute,
+// and never by refusing to start, which would make it an outage. The synthesized
+// entry keeps the requested model's name, so a snapshot records what was asked
+// for and the amount records what it was charged as.
 //
 // An empty card cannot price anything and is ErrNoRates. That is fail-closed on
 // purpose: tokens nobody can price are not free tokens.
 func (c Card) For(model string) (Rates, error) {
 	model = strings.TrimSpace(model)
 	priced := make([]Rates, 0, len(c.Models))
+	var snapshot *Rates
 	for _, r := range c.Models {
 		if r.Zero() {
 			continue // a free row prices nothing; it cannot stand in for a model
 		}
-		if strings.EqualFold(strings.TrimSpace(r.Model), model) && model != "" {
+		name := strings.TrimSpace(r.Model)
+		if strings.EqualFold(name, model) && model != "" {
 			return r, nil
 		}
+		if snapshot == nil && isSnapshotOf(name, model) {
+			hit := r
+			hit.Model = model // record what was asked for, priced as what it is
+			snapshot = &hit
+		}
 		priced = append(priced, r)
+	}
+	if snapshot != nil {
+		return *snapshot, nil
 	}
 	if len(priced) == 0 {
 		return Rates{}, ErrNoRates
@@ -97,6 +110,32 @@ func (c Card) For(model string) (Rates, error) {
 		dearest.CacheWrite1h = max(dearest.CacheWrite1h, r.CacheWrite1h)
 	}
 	return dearest, nil
+}
+
+// isSnapshotOf reports whether model is a dated snapshot of the card entry
+// named alias — `claude-haiku-4-5-20251001` of `claude-haiku-4-5`.
+//
+// The suffix must be a date and nothing else. A bare prefix test would be
+// wrong in a way that costs money silently: a card naming `claude-opus-4` would
+// swallow `claude-opus-4-8`, a different model at a different price, and the
+// mispricing would look exactly like a correct match.
+func isSnapshotOf(alias, model string) bool {
+	if alias == "" || len(model) <= len(alias)+1 {
+		return false
+	}
+	if !strings.EqualFold(model[:len(alias)], alias) || model[len(alias)] != '-' {
+		return false
+	}
+	suffix := model[len(alias)+1:]
+	if len(suffix) < 6 { // a date, not a version fragment
+		return false
+	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // ceilDiv divides rounding away from zero, so a fraction of a micro-USD is

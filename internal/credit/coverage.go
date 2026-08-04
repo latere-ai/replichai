@@ -60,13 +60,19 @@ func (c Card) Covers(ctx context.Context, r ModelResolver) []Coverage {
 	return out
 }
 
-// names reports whether the card carries an entry for this model, as opposed to
-// Card.For having synthesised one. The synthesised entry carries the *requested*
-// name, so the two are indistinguishable by name — only the list separates them,
-// and a check that compared names would call every model an exact match.
+// names reports whether the card can price this model on its own terms — an
+// entry for it, or an entry for the model it is a dated snapshot of — as
+// opposed to Card.For having fallen back to the dearest rates.
+//
+// It cannot compare names to find out. The fallback synthesises an entry
+// carrying the *requested* name, so a fallback and a real match are identical
+// by name, and a check comparing them would report every model as priced.
 func (c Card) names(model string) bool {
 	for _, r := range c.Models {
-		if r.Model == model && !r.Zero() {
+		if r.Zero() {
+			continue
+		}
+		if r.Model == model || isSnapshotOf(r.Model, model) {
 			return true
 		}
 	}
