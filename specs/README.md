@@ -133,6 +133,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006q | [Sign-in is open, budget is not](006q-sign-in-is-open-budget-is-not.md) | built; half superseded by 011 | 006c, 006l, 006k |
 | 006r | [The public profile](006r-the-public-profile.md) | built | 006n, 006f |
 | 006s | [Reading a session in time](006s-reading-a-session-in-time.md) | built | 006h, 006g |
+| 006t | [The dashboard on a phone](006t-the-dashboard-on-a-phone.md) | built | 006e, 006s |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |
