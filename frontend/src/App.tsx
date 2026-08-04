@@ -414,7 +414,10 @@ function Shell({
         </div>
         <div className="rail-foot">
           <button className="user-btn" onClick={() => setView({ name: 'settings' })}>
-            <Avatar me={me} size={26} />
+            {/* Sized to the meta stack beside it (name + address + tier), not to
+                a default: a 26px square against three rows of text left the row
+                bottom-heavy and the card's right half empty. */}
+            <Avatar me={me} size={38} />
             <span className="user-meta">
               {me.name && <span className="user-name">{me.name}</span>}
               <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
