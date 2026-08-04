@@ -18,6 +18,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -69,6 +70,25 @@ var (
 	ErrNoCredits = errors.New("this project does not have the credits to start a session")
 )
 
+// Cost is what this session's recorded usage comes to under the rates it was
+// admitted at, in micro-USD (011).
+//
+// It prices the *last observation*, which is what the session is settled from.
+// On the ordinary path that is the terminal poll and therefore exact. On a run
+// that ended without one — a cancel, a worker that lost the backend — it is
+// what was last seen, and spend after that point is reconciled afterwards with
+// an adjusting ledger entry rather than guessed at here.
+//
+// A session with no rates costs nothing: an unpriced deployment holds and
+// releases the reserve and charges no money.
+func (j Job) Cost() int64 {
+	rates, err := j.Rates.For(j.Status.Model)
+	if err != nil {
+		return 0
+	}
+	return rates.Price(j.Status.Usage)
+}
+
 // CancelCause is the error recorded on a session a user stopped, so the UI can
 // tell a deliberate stop from a real failure.
 const CancelCause = "cancelled"
@@ -93,8 +113,15 @@ type Job struct {
 	Status    provider.RunStatus `json:"status"`              // latest observation while running
 	RepoName  string             `json:"repo_name,omitempty"` // set once publishing begins
 	Err       string             `json:"error,omitempty"`     // set with the failed phase
-	CreatedAt time.Time          `json:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at"`
+	// Rates is the price list this session was admitted under, snapshotted at
+	// enqueue (011). Settlement prices from it rather than from whatever the
+	// admin console holds when the run ends, so the ceiling a run was measured
+	// against and the amount it is charged cannot be computed from different
+	// numbers. Not on the wire: what a session cost is a number, and the list it
+	// was derived from is the admin's policy, not the owner's business.
+	Rates     credit.Card `json:"-"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
 	// PhaseAt records when the job entered each phase, so the timeline is durable.
 	PhaseAt map[Phase]time.Time `json:"phase_at,omitempty"`
 }

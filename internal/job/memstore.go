@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type MemStore struct {
 	// which is what an offline run and every test that is not about money want.
 	credits *credit.MemStore
 	reserve credit.Reserve
+	card    credit.CardSnapshot
 }
 
 // MemOption configures a MemStore.
@@ -37,6 +39,29 @@ func WithClock(f func() time.Time) MemOption {
 // it the store is unmetered.
 func WithCredits(c *credit.MemStore, r credit.Reserve) MemOption {
 	return func(s *MemStore) { s.credits, s.reserve = c, r }
+}
+
+// WithRates prices a settled session from the card in force when it started.
+// Without it a metered store still holds and releases the reserve but charges
+// nothing — what a test about the gate rather than about money wants.
+func WithRates(c credit.CardSnapshot) MemOption {
+	return func(s *MemStore) { s.card = c }
+}
+
+// settleLocked releases a session's hold and charges what it actually cost,
+// under the same lock that wrote its terminal phase. A session is never
+// terminal-but-unsettled, and settling twice is refused by the ledger rather
+// than guarded here.
+func (s *MemStore) settleLocked(ctx context.Context, j Job) {
+	if s.credits == nil || j.ProjectID == "" {
+		return
+	}
+	if _, err := s.credits.Settle(ctx, credit.Pot(j.ProjectID), j.ID, j.Cost()); err != nil {
+		// A settlement that could not be written must not fail the transition:
+		// a session stuck non-terminal is worse than one whose charge has to be
+		// reconciled. The hold stays open until it is.
+		log.Printf("settle session %s: %v", j.ID, err)
+	}
 }
 
 // takeReserve refuses a submission the project cannot afford to start, and
@@ -85,7 +110,7 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	j := Job{
 		ID: id, Kind: sub.Kind, Principal: sub.Principal, ProjectID: sub.Project, Ref: sub.Ref,
 		PaperKey: sub.PaperKey,
-		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
+		Phase:    PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
 	s.mu.Lock()
@@ -110,9 +135,25 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if err := s.takeReserve(ctx, sub.Project, id); err != nil {
 		return Job{}, err
 	}
+	j.Rates = s.snapshot(ctx)
 	s.jobs[id] = j
 	s.order = append(s.order, id)
 	return cloneJob(j), nil
+}
+
+// snapshot reads the price list this session will be charged at. A store with
+// no card wired prices nothing, and a card that cannot be read prices at
+// whatever the seam falls back to — never at nothing by accident.
+func (s *MemStore) snapshot(ctx context.Context) credit.Card {
+	if s.card == nil {
+		return credit.Card{}
+	}
+	card, err := s.card(ctx)
+	if err != nil {
+		log.Printf("rate card: %v", err)
+		return credit.Card{}
+	}
+	return card
 }
 
 // Get returns a copy of one job.
@@ -180,7 +221,7 @@ func (s *MemStore) StatusByProject(_ context.Context, owner string) (map[string]
 }
 
 // Cancel stops a non-terminal session, idempotently.
-func (s *MemStore) Cancel(_ context.Context, id string) (Job, error) {
+func (s *MemStore) Cancel(ctx context.Context, id string) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, ok := s.jobs[id]
@@ -200,6 +241,7 @@ func (s *MemStore) Cancel(_ context.Context, id string) (Job, error) {
 	}
 	j.PhaseAt[PhaseFailed] = now
 	s.jobs[id] = j
+	s.settleLocked(ctx, j)
 	return cloneJob(j), nil
 }
 
@@ -222,7 +264,7 @@ func (s *MemStore) Claim(_ context.Context) (Job, bool, error) {
 
 // Advance moves a job through the one transition function, refusing anything the
 // state machine forbids.
-func (s *MemStore) Advance(_ context.Context, id string, to Phase, mutate func(*Job)) error {
+func (s *MemStore) Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, ok := s.jobs[id]
@@ -234,6 +276,9 @@ func (s *MemStore) Advance(_ context.Context, id string, to Phase, mutate func(*
 	}
 	s.transition(&j, to, mutate)
 	s.jobs[id] = j
+	if to.Terminal() {
+		s.settleLocked(ctx, j)
+	}
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 )
 
 // MemStore is an in-memory Store for tests and for offline runs with no
@@ -28,7 +29,7 @@ func WithClock(f func() time.Time) MemOption { return func(s *MemStore) { s.cloc
 // for offline runs with no access store wired, never for a served deployment.
 func NewMemStore(auth Authority, opts ...MemOption) *MemStore {
 	s := &MemStore{
-		settings: Settings{StartReserve: DefaultStartReserve},
+		settings: Settings{StartReserve: DefaultStartReserve, Rates: credit.DefaultCard()},
 		auth:     auth,
 		clock:    time.Now,
 	}
@@ -71,6 +72,9 @@ func (s *MemStore) SetSettings(ctx context.Context, byAdmin access.Principal, ne
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(next.Rates.Models) == 0 {
+		next.Rates = credit.DefaultCard()
+	}
 	next.UpdatedBy, next.UpdatedAt = byAdmin.Email, s.clock().UTC()
 	s.settings = next
 	return nil

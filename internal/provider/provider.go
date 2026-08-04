@@ -188,6 +188,12 @@ type RunStatus struct {
 	// restart, close a session the process was driving — otherwise a run left in
 	// flight by a restart keeps running on the backend, unreachable.
 	RunID string `json:"run_id,omitempty"`
+	// Model is what the backend actually ran, as it names it. The engine asks
+	// for a *preference* ("best") and the backend resolves it, so this is the
+	// only place the concrete model appears — and it is what settlement prices
+	// the usage at (011). Empty where a backend does not report it, which is
+	// charged at the dearest rates on the card.
+	Model string `json:"model,omitempty"`
 }
 
 // Passed reports whether the run finished and met the rubric. A run with no

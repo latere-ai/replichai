@@ -53,9 +53,13 @@ var (
 type Settings struct {
 	// StartReserve is how much a project must have available, in micro-USD,
 	// before a session may start there (011 enforces; this only stores).
-	StartReserve int64     `json:"start_reserve"`
-	UpdatedBy    string    `json:"updated_by,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at,omitzero"`
+	StartReserve int64 `json:"start_reserve"`
+	// Rates is what each model's tokens cost. It is policy rather than a
+	// constant because a vendor's prices move: a compiled-in list makes every
+	// price change a redeploy, and a silent mispricing until then.
+	Rates     credit.Card `json:"rates"`
+	UpdatedBy string      `json:"updated_by,omitempty"`
+	UpdatedAt time.Time   `json:"updated_at,omitzero"`
 }
 
 // Authority answers what a caller may do. Satisfied by access.Access, so this
@@ -73,6 +77,26 @@ type Store interface {
 	Settings(ctx context.Context) (Settings, error)
 	// SetSettings writes the platform row, recording the admin who did it.
 	SetSettings(ctx context.Context, byAdmin access.Principal, s Settings) error
+}
+
+// RateSnapshot adapts a Store to credit.CardSnapshot — the seam the job store
+// takes its price list through at enqueue, so a session is charged at the rates
+// that were in force when it started rather than whatever an admin has set by
+// the time it ends.
+//
+// A failed read yields the compiled-in default rather than an empty card: an
+// empty card cannot price anything and would refuse every submit, which is
+// fail-closed in the wrong direction for a database hiccup. The default is the
+// published price list, so the worst case is being charged the seeded rates
+// rather than an admin's edited ones.
+func RateSnapshot(s Store) credit.CardSnapshot {
+	return func(ctx context.Context) (credit.Card, error) {
+		set, err := s.Settings(ctx)
+		if err != nil || len(set.Rates.Models) == 0 {
+			return credit.DefaultCard(), nil
+		}
+		return set.Rates, nil
+	}
 }
 
 // StartReserve adapts a Store to credit.Reserve — the seam the job store reads

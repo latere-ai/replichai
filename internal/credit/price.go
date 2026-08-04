@@ -108,3 +108,36 @@ func ceilDiv(n, d int64) int64 {
 	}
 	return (n + d - 1) / d
 }
+
+// DefaultCard is the price list this deployment is seeded with: the published
+// per-million-token rates for the models the engine's tier preference resolves
+// to ("best" → opus, "balanced" → sonnet, "fast" → haiku).
+//
+// Cache rates are derived from the published multipliers rather than typed
+// separately, so a card row cannot say a cache read costs more than fresh
+// input: a read is a tenth of input, a 5-minute write is 1.25× it, and an
+// hour's write is twice it.
+//
+// It is a *seed*, not the truth. Vendor prices move, and the platform_settings
+// row is what a session is actually priced from — an admin edits it in the
+// console and the change applies to sessions starting afterwards. A model the
+// card does not name is charged at the dearest rates it holds (Card.For), which
+// is why the list stops at the tiers this deployment runs: a model outside them
+// is most likely a new variant of the dearest one already here.
+func DefaultCard() Card {
+	rates := func(model string, in, out int64) Rates {
+		return Rates{
+			Model:        model,
+			Input:        in,
+			Output:       out,
+			CacheRead:    in / 10,
+			CacheWrite5m: in + in/4,
+			CacheWrite1h: in * 2,
+		}
+	}
+	return Card{Models: []Rates{
+		rates("claude-opus-5", 5*Dollar, 25*Dollar),
+		rates("claude-sonnet-5", 3*Dollar, 15*Dollar),
+		rates("claude-haiku-4-5", 1*Dollar, 5*Dollar),
+	}}
+}

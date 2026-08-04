@@ -335,7 +335,7 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		members := access.NewMemMembership()
 		ledger := credit.NewMemStore(acc, members)
 		return stores{
-			jobs:     job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat))),
+			jobs:     job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat)), job.WithRates(platform.RateSnapshot(plat))),
 			projects: project.NewMemStore(),
 			access:   acc,
 			members:  members,
@@ -375,7 +375,7 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	members := access.NewPGMembership(pool)
 	ledger := credit.NewPGStore(pool, acc, members)
 	return stores{
-		jobs:     job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat))),
+		jobs:     job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat)), job.WithPGRates(platform.RateSnapshot(plat))),
 		projects: project.NewPGStore(pool),
 		access:   acc,
 		members:  members,
