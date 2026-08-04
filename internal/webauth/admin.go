@@ -1,6 +1,7 @@
 package webauth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -24,13 +25,31 @@ type Admin struct {
 	access   access.Access
 	platform platform.Store
 	credits  credit.Store
+	projects ProjectCaps
+}
+
+// ProjectCaps is the sliver of the project store this console writes: one
+// project's own overdraft floor. Narrow on purpose — the admin surface has no
+// business renaming or publishing somebody's project.
+type ProjectCaps interface {
+	SetCreditCap(ctx context.Context, id string, cap int64) error
+}
+
+// WithProjectCaps enables the per-project overdraft override. Without it the
+// route answers 503 and every project runs against the platform default.
+func WithProjectCaps(p ProjectCaps) func(*Admin) {
+	return func(a *Admin) { a.projects = p }
 }
 
 // NewAdmin builds the admin handlers. A nil platform store disables the
 // settings endpoints and a nil ledger the top-up (they answer 503), for a
 // deployment or a test that wires only the access half.
-func NewAdmin(acc access.Access, plat platform.Store, credits credit.Store) *Admin {
-	return &Admin{access: acc, platform: plat, credits: credits}
+func NewAdmin(acc access.Access, plat platform.Store, credits credit.Store, opts ...func(*Admin)) *Admin {
+	a := &Admin{access: acc, platform: plat, credits: credits}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 // MountAdmin registers every admin route behind the tier guard and returns the
@@ -49,6 +68,7 @@ func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Ad
 		{httpapi.Route{Method: "POST", Pattern: "/admin/access/{email}/credits"}, a.Topup},
 		{httpapi.Route{Method: "GET", Pattern: "/admin/settings"}, a.Settings},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/settings"}, a.SetSettings},
+		{httpapi.Route{Method: "PUT", Pattern: "/admin/projects/{id}/cap"}, a.SetProjectCap},
 	}
 	out := make([]httpapi.Route, 0, len(routes))
 	for _, r := range routes {
@@ -130,12 +150,24 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		StartReserve int64 `json:"start_reserve"`
+		// OverdraftCap is admin-only, here and nowhere else. It is how far below
+		// zero a project may fall before a run is killed, and a number a project
+		// member could read is an allowance they would plan around (011).
+		OverdraftCap int64        `json:"overdraft_cap"`
+		Rates        *credit.Card `json:"rates"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	next := platform.Settings{StartReserve: body.StartReserve}
+	next := platform.Settings{StartReserve: body.StartReserve, OverdraftCap: body.OverdraftCap}
+	if body.Rates != nil {
+		next.Rates = *body.Rates
+	} else if current, err := a.platform.Settings(r.Context()); err == nil {
+		// A console that only edits the reserve must not silently wipe the
+		// price list, so an omitted card keeps the one in force.
+		next.Rates = current.Rates
+	}
 	if err := a.platform.SetSettings(r.Context(), principalFrom(r), next); err != nil {
 		writeAdminError(w, err)
 		return
@@ -172,6 +204,33 @@ func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"email": strings.ToLower(strings.TrimSpace(email)), "wallet": balance,
 	})
+}
+
+// SetProjectCap overrides one project's overdraft floor; zero restores the
+// platform default. Admin-only, and deliberately not the owner's: a project
+// deciding how far past its own balance it may run is the one party with an
+// interest in that number being large.
+func (a *Admin) SetProjectCap(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_project_store")
+		return
+	}
+	var body struct {
+		Cap int64 `json:"cap"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	if body.Cap < 0 {
+		httpapi.WriteError(w, http.StatusBadRequest, "bad_amount")
+		return
+	}
+	if err := a.projects.SetCreditCap(r.Context(), r.PathValue("id"), body.Cap); err != nil {
+		httpapi.WriteError(w, http.StatusInternalServerError, "cap_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"project": r.PathValue("id"), "cap": body.Cap})
 }
 
 // Grant seeds or promotes a grant by email.

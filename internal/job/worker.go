@@ -2,7 +2,9 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -37,6 +39,24 @@ type Runner interface {
 	Close(ctx context.Context, runID string) error
 }
 
+// Budget answers whether a session must be stopped for spend (011). It is
+// injected because the answer depends on policy and on the ledger, neither of
+// which this package imports; nil means no backstop, which is what an offline
+// unmetered run wants.
+//
+// The string it returns is for the **log and the admin console only**. It names
+// the number that fired, and that number is not published: an overdraft
+// somebody can read is an allowance they plan around. What reaches the session
+// owner is GenericFailure.
+type Budget func(ctx context.Context, j Job) (stop bool, why string, err error)
+
+// GenericFailure is what a session records when the real cause must not reach
+// its owner. It is true — the session did not complete — and it withholds the
+// reason rather than inventing one. The reason is logged, and an admin can read
+// it; a project's own members cannot, because it would tell them exactly how
+// far past their balance a run is allowed to go.
+const GenericFailure = "the session could not be completed"
+
 // Worker drives claimed jobs through the phases. A small pool of these is the
 // whole queue: no external broker, durability from the row.
 type Worker struct {
@@ -44,6 +64,7 @@ type Worker struct {
 	runner Runner
 	poll   time.Duration
 	sleep  func(context.Context, time.Duration) error
+	budget Budget
 
 	// running maps a session being driven here to the cancel func for its run
 	// context, so Cancel can interrupt the agent mid-run (and stop the spend),
@@ -58,6 +79,54 @@ type WorkerOption func(*Worker)
 // WithPoll sets how long a worker waits before looking for work again when the
 // queue is empty.
 func WithPoll(d time.Duration) WorkerOption { return func(w *Worker) { w.poll = d } }
+
+// WithBudget installs the spend backstop (011). Without it a run is never
+// stopped for money — which is right for an offline run and wrong for a
+// deployment holding a real credential.
+func WithBudget(b Budget) WorkerOption { return func(w *Worker) { w.budget = b } }
+
+// watch is the backstop, run on every observation because that is the only
+// moment fresh usage exists. A session runs to completion in the ordinary case
+// — killing one mid-run turns spend into nothing — so this fires only for a
+// runaway, and its job is to bound the loss rather than to meter the session.
+//
+// The order matters. The terminal write goes first, so the outcome is durable
+// even if the process dies immediately after; interrupting the run then stops
+// the agent, and the failure write that interruption provokes is refused by the
+// state machine and discarded — the same rule Cancel already relies on.
+func (w *Worker) watch(pool context.Context, id string) {
+	if w.budget == nil {
+		return
+	}
+	j, err := w.store.Get(pool, id)
+	if err != nil {
+		return
+	}
+	stop, why, err := w.budget(pool, j)
+	if err != nil {
+		log.Printf("budget: checking session %s: %v", id, err)
+		return
+	}
+	if !stop {
+		return
+	}
+	// Logged here and nowhere a member can read: the row records only that the
+	// session did not complete.
+	log.Printf("budget: stopping session %s in project %s: %s", j.ID, j.ProjectID, why)
+	w.fail(id, errors.New(GenericFailure))
+	w.interrupt(id)
+}
+
+// interrupt cancels the run context of a session this worker is driving, so the
+// agent stops rather than running on after the row went terminal.
+func (w *Worker) interrupt(id string) {
+	w.mu.Lock()
+	cancel := w.running[id]
+	w.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
 
 // withWorkerSleep replaces the idle wait so tests run instantly.
 func withWorkerSleep(f func(context.Context, time.Duration) error) WorkerOption {
@@ -195,7 +264,10 @@ func (w *Worker) drive(pool context.Context, j Job) {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
 
-	observe := func(s provider.RunStatus) { _ = w.store.Observe(ctx, j.ID, s) }
+	observe := func(s provider.RunStatus) {
+		_ = w.store.Observe(ctx, j.ID, s)
+		w.watch(pool, j.ID)
+	}
 
 	if err := w.runner.Resolve(ctx, &j); err != nil {
 		w.stop(pool, j.ID, err)
@@ -220,7 +292,10 @@ func (w *Worker) driveResume(pool context.Context, j Job) {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
 
-	observe := func(s provider.RunStatus) { _ = w.store.Observe(ctx, j.ID, s) }
+	observe := func(s provider.RunStatus) {
+		_ = w.store.Observe(ctx, j.ID, s)
+		w.watch(pool, j.ID)
+	}
 	if err := w.runner.Resume(ctx, &j, observe); err != nil {
 		w.stop(pool, j.ID, err)
 		return

@@ -47,7 +47,12 @@ type Project struct {
 	Owner      string     `json:"owner"`      // the owning principal (006c)
 	Title      string     `json:"title"`      // defaults from the first session's paper
 	Visibility Visibility `json:"visibility"` // private by default; the public flip is 006f
-	CreatedAt  time.Time  `json:"created_at"`
+	// CreditCap overrides the platform's overdraft floor for this project, in
+	// micro-USD; zero means the platform default. It is never on the wire: a
+	// published overdraft is an allowance somebody plans around, which is the
+	// one thing this number must not become (011).
+	CreditCap int64     `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
 	// The public-flip provenance (006f): who signed the responsibility
 	// attestation, when, and which attestation text version. Zero until the
 	// owner makes the project public.
@@ -116,6 +121,11 @@ type Store interface {
 	// placeholder with the resolved paper title once its Resolve phase has run.
 	// A missing project is not an error — the enrichment is best-effort.
 	SetTitle(ctx context.Context, id, title string) error
+	// SetCreditCap overrides this project's overdraft floor, in micro-USD; zero
+	// restores the platform default. Platform-admin policy, never the owner's:
+	// a project deciding how far past its own balance it may run is the one
+	// party with an interest in that number being large.
+	SetCreditCap(ctx context.Context, id string, cap int64) error
 	// SetPublic marks a project public and records the responsibility sign-off
 	// (006f, 006n): who signed, the attestation text version, the signer snapshot,
 	// and the time. Repeatable: publishing a withdrawn project overwrites the

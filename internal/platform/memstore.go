@@ -29,7 +29,7 @@ func WithClock(f func() time.Time) MemOption { return func(s *MemStore) { s.cloc
 // for offline runs with no access store wired, never for a served deployment.
 func NewMemStore(auth Authority, opts ...MemOption) *MemStore {
 	s := &MemStore{
-		settings: Settings{StartReserve: DefaultStartReserve, Rates: credit.DefaultCard()},
+		settings: Settings{StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard()},
 		auth:     auth,
 		clock:    time.Now,
 	}

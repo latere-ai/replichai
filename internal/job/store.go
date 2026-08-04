@@ -73,4 +73,11 @@ type Store interface {
 	// Active returns the jobs that are not terminal, so a restart can find work
 	// a crash left mid-flight and reap it.
 	Active(ctx context.Context) ([]Job, error)
+	// Accrued is what every session still running in a project has cost so far,
+	// priced from each one's own snapshotted rates (011). It is project-wide on
+	// purpose: accrued spend does not reach the ledger until a session settles,
+	// so a watchdog looking only at the session in front of it would let N
+	// concurrent runs each stay under the overdraft floor and jointly sail past
+	// it. This is the number that makes the floor a property of the project.
+	Accrued(ctx context.Context, project string) (int64, error)
 }

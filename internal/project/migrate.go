@@ -84,6 +84,12 @@ ALTER TABLE projects ADD COLUMN withdrawn_reason TEXT NOT NULL DEFAULT '';
 -- only unit that can actually be drawn down.
 ALTER TABLE projects DROP COLUMN sponsored;
 `},
+	{7, `
+-- This project's own overdraft floor, overriding the platform default (011).
+-- Zero means "use the platform's". Not exposed on any payload a member reads:
+-- a published overdraft is an allowance somebody plans around.
+ALTER TABLE projects ADD COLUMN credit_cap BIGINT NOT NULL DEFAULT 0;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
