@@ -66,6 +66,8 @@ visible in the admin console to be re-granted. `ADMIN_EMAILS` is replayed
 through the bootstrap seeder on every start and deliberately skips a revoked
 address, so a restart does not undo a ban either.
 
+Before the first real run, check the price list against the backend: `replichai rates` (with `DATABASE_URL` set, so it reads this deployment's card rather than the compiled-in seed) resolves each model preference the way the engine will and shows which ones the card actually names. A preference resolving to an id the card does not name is charged the dearest rates on it — never free, but not that model's own price either, which is worth knowing before the first invoice rather than after.
+
 Credits are the meter. A session charges the **project** it belongs to, out of
 credits somebody allocated to that project from their own wallet; a project must
 hold the **start reserve** before a session may begin there, and that reserve is
