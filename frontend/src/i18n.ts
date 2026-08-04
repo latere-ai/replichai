@@ -24,6 +24,7 @@ const strings: Record<Lang, Record<string, string>> = {
     navProjects: 'Projects',
     navPublic: 'Public registry',
     newProject: 'New project',
+    openNav: 'Open navigation',
     settings: 'Settings',
     access: 'Access',
     loading: 'Loading…',

@@ -121,7 +121,7 @@ try {
     await new Promise((r) => setTimeout(r, 250))
   }
 
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
+  browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] })
   const page = await browser.newPage()
   await page.setViewport({ width: 1440, height: 900 })
   await page.setRequestInterception(true)

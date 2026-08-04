@@ -375,18 +375,30 @@ function Shell({
 }) {
   const { t } = i18n
   const [view, setView] = useState<View>(openAtProject ? { name: 'project', id: openAtProject } : { name: 'projects' })
+  // On a phone the rail is a drawer over the content; on a desk it is a static
+  // column and this state is inert (the scrim and the fixed rail are both only
+  // laid out under the breakpoint).
+  const [railOpen, setRailOpen] = useState(false)
   // Navigation inside the app is state, not a router, so the deep-link path is
   // retired once it has been consumed — otherwise a reload after navigating
   // away would drop the reader back into the project they had left.
   useEffect(() => {
     if (openAtProject) window.history.replaceState(null, '', '/')
   }, [openAtProject])
+  // Any change of view closes the drawer, so a tap on a destination reveals the
+  // screen it named rather than leaving the overlay covering it.
+  useEffect(() => {
+    setRailOpen(false)
+  }, [view])
   const openProject = (id: string, title?: string) => setView({ name: 'project', id, title })
   const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string) =>
     setView({ name: 'session', jobId, projectId, ref, projectTitle })
 
   return (
-    <div className="shell">
+    <div className={'shell' + (railOpen ? ' rail-open' : '')}>
+      {/* A target only on a phone: on a desk the rail is in the layout and the
+          scrim is display:none, so this never intercepts a click. */}
+      <div className="rail-scrim" onClick={() => setRailOpen(false)} />
       <nav className="rail">
         <div className="rail-head">
           <Logo />
@@ -429,12 +441,17 @@ function Shell({
 
       <div className="main">
         <header className="topbar">
+          {/* Only shown under the breakpoint; on a desk the rail is permanent
+              and this button is display:none. */}
+          <button className="menu-btn" aria-label={t('openNav')} onClick={() => setRailOpen(true)}>
+            <Ico name="menu" size={18} />
+          </button>
           <Breadcrumb i18n={i18n} view={view} setView={setView} />
           <div className="topbar-actions">
             <ThemeSwitcher i18n={i18n} theme={theme} compact />
             <WalletPill i18n={i18n} credits={me.credits} />
             <button className="btn" onClick={() => setView({ name: 'submit' })}>
-              <Ico name="plus" size={13} w={2.2} /> {t('newProject')}
+              <Ico name="plus" size={13} w={2.2} /> <span className="btn-text">{t('newProject')}</span>
             </button>
           </div>
         </header>
@@ -494,8 +511,13 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
       )}
       {view.name === 'session' && (
         <>
-          <span className="sep">/</span>
-          <button onClick={() => setView({ name: 'project', id: view.projectId, title: view.projectTitle })}>{view.projectTitle ?? '…'}</button>
+          {/* The middle hop is dropped on a phone (`crumb-mid`), where three
+              levels plus the top-bar actions leave the leaf no room and the
+              screen carries its own title and back button. */}
+          <span className="sep crumb-mid">/</span>
+          <button className="crumb-mid" onClick={() => setView({ name: 'project', id: view.projectId, title: view.projectTitle })}>
+            {view.projectTitle ?? '…'}
+          </button>
           <span className="sep">/</span>
           <span className="leaf">{view.ref ?? t('transcript')}</span>
         </>

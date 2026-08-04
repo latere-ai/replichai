@@ -26,6 +26,7 @@ export const ICONS = {
   chevronRight: p('m9 18 6-6-6-6'),
   chevronLeft: p('m15 18-6-6 6-6'),
   chevronDown: p('m6 9 6 6 6-6'),
+  menu: p('M4 6h16M4 12h16M4 18h16'),
   pencil: [
     p('M12 20h9', 'a'),
     p('M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z', 'b'),

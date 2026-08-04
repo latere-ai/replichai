@@ -2452,3 +2452,143 @@ input.submit-input {
   font-size: 11px;
   letter-spacing: 0.02em;
 }
+
+/* ── Responsive: the dashboard on a phone (006t) ──
+   The whole app is drawn for a desk above this width. Below it the rail folds
+   into a drawer, the top bar tightens, and the width-assuming grids fall to a
+   single column. One breakpoint, no second DOM — the same rail is a static
+   column on a desk and a floating drawer on a phone. */
+
+/* The drawer's two phone-only chrome pieces are absent from the layout on a
+   desk, so neither the hamburger nor the scrim can be clicked there. */
+.menu-btn,
+.rail-scrim {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .menu-btn {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    margin-left: -6px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg-1);
+    cursor: pointer;
+    transition: background var(--dur-hover);
+  }
+  .menu-btn:hover {
+    background: var(--bg-raised);
+  }
+
+  /* The rail leaves the flow and floats over the content, held off-screen until
+     the shell is marked open. It keeps its own width so the drawer is the same
+     panel the desk shows, just sliding in from the edge. */
+  .rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 46;
+    transform: translateX(-100%);
+    transition: transform 0.24s var(--ease-fluid);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.18);
+  }
+  .shell.rail-open .rail {
+    transform: translateX(0);
+  }
+
+  /* The scrim is the tap target that closes the drawer, and it dims the content
+     behind it. It only exists while the drawer is open. */
+  .rail-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: rgba(0, 0, 0, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.24s var(--ease-fluid);
+  }
+  .shell.rail-open .rail-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* The top bar sheds width before function: tighter padding, and the one
+     action a thumb reaches keeps its glyph but drops its label. */
+  .topbar {
+    gap: 8px;
+    padding: 0 12px;
+  }
+  .topbar .btn-text {
+    display: none;
+  }
+  .topbar-actions .btn {
+    padding: 0 10px;
+  }
+  /* The breadcrumb stays one clipped line: a deep crumb (Projects / project /
+     ref) would otherwise wrap to three rows and grow the bar's height. Each
+     segment can shrink to an ellipsis; the leaf keeps the most room. */
+  .crumb {
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+  .crumb button {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The root ("Projects"/"Public registry") is short and orienting — it keeps
+     its whole label; only the deeper, longer segments give up width. */
+  .crumb > button:first-child {
+    flex: none;
+  }
+  /* The intermediate hop in a session breadcrumb is dropped here, so the leaf
+     (the run's ref) keeps enough room to read. */
+  .crumb-mid {
+    display: none;
+  }
+  .crumb .leaf {
+    max-width: 56vw;
+  }
+
+  /* The screen's generous desk gutters would waste a phone's width. */
+  .screen {
+    padding: 18px 14px 40px;
+  }
+
+  /* The project detail's side panel drops below its main column. */
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* The transcript's three columns stack in reading order — search first, the
+     stream in the middle, usage last — and the body scrolls as one piece rather
+     than three. The desk geometry (and its 1440px layout test) is untouched:
+     this lives only under the breakpoint. */
+  .tx-body {
+    grid-template-columns: none;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .tx-side {
+    flex: none;
+    overflow: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .tx-inspector {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .tx-stream {
+    flex: none;
+    overflow: visible;
+  }
+}
