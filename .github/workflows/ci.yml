@@ -78,3 +78,7 @@ jobs:
       - run: cd frontend && bun run test:browser
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+      # The mobile shell's drawer and reflow are geometry too — same engine.
+      - run: cd frontend && bun run test:mobile
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
