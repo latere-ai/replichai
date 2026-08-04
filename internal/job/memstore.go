@@ -129,31 +129,35 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 			}
 		}
 	}
+	// Pricing is resolved before the reserve is held, not after: the in-memory
+	// store has no transaction to roll back, so a hold taken and then abandoned
+	// by a refusal would sit against the project forever.
+	rates, err := s.snapshot(ctx)
+	if err != nil {
+		return Job{}, err
+	}
+	j.Rates = rates
 	// The gate (011): the project must be able to commit the start reserve, and
 	// committing it is what stops a burst of submits all reading the same
 	// balance.
 	if err := s.takeReserve(ctx, sub.Project, id); err != nil {
 		return Job{}, err
 	}
-	j.Rates = s.snapshot(ctx)
 	s.jobs[id] = j
 	s.order = append(s.order, id)
 	return cloneJob(j), nil
 }
 
-// snapshot reads the price list this session will be charged at. A store with
-// no card wired prices nothing, and a card that cannot be read prices at
-// whatever the seam falls back to — never at nothing by accident.
-func (s *MemStore) snapshot(ctx context.Context) credit.Card {
-	if s.card == nil {
-		return credit.Card{}
-	}
-	card, err := s.card(ctx)
-	if err != nil {
-		log.Printf("rate card: %v", err)
-		return credit.Card{}
-	}
-	return card
+// snapshot reads the price list this session will be charged at.
+//
+// Two states, and the difference matters. No card wired at all is the deliberate
+// unpriced mode — an offline run, or a test about the gate rather than about
+// money — and a session there costs nothing. A card that is wired but cannot be
+// read is a fault, and falling back to nothing would make every session free
+// for as long as the fault lasted, which is the silent underspend this whole
+// spec exists to close. It resolves to the compiled-in list instead.
+func (s *MemStore) snapshot(ctx context.Context) (credit.Card, error) {
+	return resolveCard(ctx, s.card)
 }
 
 // Get returns a copy of one job.

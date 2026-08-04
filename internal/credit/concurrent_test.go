@@ -87,3 +87,74 @@ func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 		})
 	}
 }
+
+// Two settlements of one session, racing in separate transactions, produce one
+// charge. Exactly one reports that it settled; the other says it did not.
+//
+// This is the concurrent half of the exactly-once guarantee, and it is asserted
+// here rather than through the job store: there the phase machine serialises
+// terminal writes, so a test driving cancels concurrently passes whether or not
+// the ledger guards anything.
+func TestPGStoreSettlesOnceUnderConcurrency(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+	auth, members := testAuthority()
+	s := NewPGStore(pool, auth, members)
+
+	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
+		t.Fatalf("Topup: %v", err)
+	}
+	if err := s.Allocate(ctx, lead, "p1", 10*Dollar); err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+	writeHold(t, s, Pot("p1"), "job-1", 3*Dollar)
+
+	const racers = 6
+	var (
+		wg          sync.WaitGroup
+		mu          sync.Mutex
+		settled     int
+		alreadyDone int
+	)
+	start := make(chan struct{})
+	for range racers {
+		wg.Go(func() {
+			<-start
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				t.Errorf("begin: %v", err)
+				return
+			}
+			defer func() { _ = tx.Rollback(ctx) }()
+			ok, err := s.SettleTx(ctx, tx, Pot("p1"), "job-1", 2*Dollar)
+			if err != nil {
+				// A loser may surface the unique violation instead of a clean
+				// false; both are "somebody else settled", never a second charge.
+				return
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if ok {
+				settled++
+			} else {
+				alreadyDone++
+			}
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	if settled != 1 {
+		t.Errorf("%d racers settled, want exactly 1", settled)
+	}
+	if n, _ := s.Balance(ctx, Pot("p1")); n != 8*Dollar {
+		t.Errorf("balance = %d after %d racing settlements, want %d", n, racers, 8*Dollar)
+	}
+	if n, _ := s.Available(ctx, Pot("p1")); n != 8*Dollar {
+		t.Errorf("available = %d, want %d — the hold was released more than once", n, 8*Dollar)
+	}
+}

@@ -322,12 +322,12 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 // subtracted only the observing session's own cost would let N concurrent runs
 // each stay above the floor and jointly sail past it.
 func spendBackstop(st stores) job.Budget {
-	cap := platform.OverdraftCap(st.platform)
+	platformFloor := platform.OverdraftCap(st.platform)
 	return func(ctx context.Context, j job.Job) (bool, string, error) {
 		if j.ProjectID == "" {
 			return false, "", nil
 		}
-		floor, err := cap(ctx)
+		floor, err := platformFloor(ctx)
 		if err != nil {
 			return false, "", err
 		}
@@ -335,11 +335,19 @@ func spendBackstop(st stores) job.Budget {
 		if p, err := st.projects.Get(ctx, j.ProjectID); err == nil && p.CreditCap > 0 {
 			floor = p.CreditCap
 		}
-		balance, err := st.credits.Balance(ctx, credit.Pot(j.ProjectID))
+		// Accrued is read *before* the balance, and the order is load-bearing.
+		// The two come from different tables on different connections, so a
+		// session settling between them lands on one side or the other: read
+		// this way round it is counted in the accrual and again in the balance,
+		// which makes the projection pessimistic and fires the floor early.
+		// Read the other way round it would fall out of both — the projection
+		// would look healthier than the project is, and the floor would fire
+		// late, which is the one failure this backstop exists to prevent.
+		accrued, err := st.jobs.Accrued(ctx, j.ProjectID)
 		if err != nil {
 			return false, "", err
 		}
-		accrued, err := st.jobs.Accrued(ctx, j.ProjectID)
+		balance, err := st.credits.Balance(ctx, credit.Pot(j.ProjectID))
 		if err != nil {
 			return false, "", err
 		}
