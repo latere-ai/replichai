@@ -31,7 +31,7 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	registerStub(t, "rates-dated", backend.URL)
 
 	out := runRatesJSON(t, "-provider", "rates-dated", "-json")
-	byPref := map[string]rateCheck{}
+	byPref := map[string]credit.Coverage{}
 	for _, c := range out.Checks {
 		byPref[c.Preference] = c
 	}
@@ -43,14 +43,14 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	if best.Model != "claude-opus-5-20260901" {
 		t.Fatalf("best resolved to %q", best.Model)
 	}
-	if best.Exact {
+	if best.Named {
 		t.Error("best reported an exact match against a card that does not name that id")
 	}
 
 	// The two the card does name are exact, so a reader can tell the one
 	// finding apart from the noise.
 	for _, pref := range []string{"balanced", "fast"} {
-		if c := byPref[pref]; !c.Exact {
+		if c := byPref[pref]; !c.Named {
 			t.Errorf("%s resolved to %q and was reported inexact against a card that names it", pref, c.Model)
 		}
 	}
@@ -70,35 +70,15 @@ func TestRatesReportsACardThatCoversTheBackend(t *testing.T) {
 
 	out := runRatesJSON(t, "-provider", "rates-exact", "-json")
 	for _, c := range out.Checks {
-		if !c.Exact {
+		if !c.Named {
 			t.Errorf("%s (%s) reported inexact against a card that names it", c.Preference, c.Model)
 		}
-		if c.InputPerMTok <= 0 || c.OutputPerMTok <= 0 {
-			t.Errorf("%s priced at %d/%d — a zero rate would make sessions free", c.Preference, c.InputPerMTok, c.OutputPerMTok)
+		if c.Rates.Input <= 0 || c.Rates.Output <= 0 {
+			t.Errorf("%s priced at %d/%d — a zero rate would make sessions free", c.Preference, c.Rates.Input, c.Rates.Output)
 		}
 	}
 	if out.Source != "compiled-in seed" {
 		t.Errorf("source = %q; with no database it must say which card it read", out.Source)
-	}
-}
-
-// isDearest is what separates "the card names this model" from "Card.For
-// synthesised an entry carrying its name". The synthesised entry looks
-// identical by name, which is exactly why the report cannot use the name.
-func TestIsDearestSeesThroughTheSynthesisedName(t *testing.T) {
-	card := credit.DefaultCard()
-	if isDearest(card, "claude-opus-5") {
-		t.Error("a model the card names was reported as priced by the fallback")
-	}
-	if !isDearest(card, "claude-opus-5-20260901") {
-		t.Error("a model the card does not name was reported as having its own entry")
-	}
-	rates, err := card.For("claude-opus-5-20260901")
-	if err != nil {
-		t.Fatalf("For: %v", err)
-	}
-	if rates.Model != "claude-opus-5-20260901" {
-		t.Fatalf("the synthesised entry did not carry the requested name: %q", rates.Model)
 	}
 }
 
@@ -113,8 +93,8 @@ func registerStub(t *testing.T, name, baseURL string) {
 }
 
 type ratesReport struct {
-	Source string      `json:"source"`
-	Checks []rateCheck `json:"checks"`
+	Source string            `json:"source"`
+	Checks []credit.Coverage `json:"checks"`
 }
 
 func runRatesJSON(t *testing.T, args ...string) ratesReport {

@@ -103,6 +103,7 @@ func run() error {
 	}
 	defer st.close()
 	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
+	reportRateCoverage(ctx, prov, st.platform)
 
 	for _, email := range splitList(os.Getenv("ADMIN_EMAILS")) {
 		if err := accessStore.SeedGrant(ctx, email, access.TierAdmin); err != nil {
@@ -310,6 +311,55 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 		}
 		return webauth.Credits{Wallet: wallet, StartReserve: reserve}, nil
 	}
+}
+
+// reportRateCoverage says, at every boot, whether the price list names the
+// models this backend will actually run.
+//
+// It belongs here rather than in a command an operator remembers to run: the
+// server is the one process that holds both the deployment's rate card and the
+// provider credential, so it is the only place the question can be answered
+// without assembling those two by hand. A CLI check exists as well, for a
+// laptop; this is the one that happens whether anybody asks.
+//
+// It logs and never blocks. A preference resolving to a model the card does not
+// name is still priced — at the dearest rates the card holds, so a vendor's new
+// id is never free compute — just at another model's price. Refusing to boot
+// because a card is a release behind would turn a billing imprecision into an
+// outage.
+func reportRateCoverage(ctx context.Context, prov provider.Provider, plat platform.Store) {
+	set, err := plat.Settings(ctx)
+	if err != nil {
+		log.Printf("rates: reading the platform card: %v", err)
+		return
+	}
+	// A short deadline: this is a boot-time courtesy, and a backend that will
+	// not answer must not hold up serving.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	cov := set.Rates.Covers(ctx, prov)
+	for _, c := range cov {
+		switch {
+		case c.Err != "":
+			log.Printf("rates: %s could not be resolved: %v", c.Preference, firstLine(c.Err))
+		case c.Named:
+			log.Printf("rates: %s → %s, priced at its own rates", c.Preference, c.Model)
+		default:
+			log.Printf("rates: %s → %s, which the card does NOT name — charged the dearest rates on it "+
+				"($%.2f/$%.2f per Mtok). Add it in Admin → Platform to bill it at its real price.",
+				c.Preference, c.Model,
+				float64(c.Rates.Input)/float64(credit.Dollar), float64(c.Rates.Output)/float64(credit.Dollar))
+		}
+	}
+}
+
+// firstLine keeps a multi-line backend error to one log line.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i] + " …"
+	}
+	return s
 }
 
 // spendBackstop is the hidden floor under one project's spend (011).

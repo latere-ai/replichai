@@ -52,31 +52,10 @@ func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error
 		return err
 	}
 
-	// The preferences the engine actually asks for. Adding one here without
-	// adding it to the engine would report on a question nobody asks.
-	prefs := []string{"best", "balanced", "fast"}
-	report := make([]rateCheck, 0, len(prefs))
-	for _, pref := range prefs {
-		check := rateCheck{Preference: pref}
-		model, err := prov.ResolveModel(ctx, pref)
-		if err != nil {
-			check.Error = err.Error()
-			report = append(report, check)
-			continue
-		}
-		check.Model = model
-		rates, err := card.For(model)
-		if err != nil {
-			check.Error = err.Error()
-			report = append(report, check)
-			continue
-		}
-		check.PricedAs = rates.Model
-		check.Exact = rates.Model == model && !isDearest(card, model)
-		check.InputPerMTok = rates.Input
-		check.OutputPerMTok = rates.Output
-		report = append(report, check)
-	}
+	// The comparison itself lives in internal/credit, beside the pricing it is
+	// about, so this command and the server's boot-time report cannot drift
+	// into two different answers to the same question.
+	report := card.Covers(ctx, prov)
 
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
@@ -85,30 +64,6 @@ func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error
 	}
 	printRates(stdout, source, report)
 	return nil
-}
-
-// rateCheck is what one preference resolves to and how it would be billed.
-type rateCheck struct {
-	Preference    string `json:"preference"`
-	Model         string `json:"model,omitempty"`
-	PricedAs      string `json:"priced_as,omitempty"`
-	Exact         bool   `json:"exact"`
-	InputPerMTok  int64  `json:"input_per_mtok,omitempty"`
-	OutputPerMTok int64  `json:"output_per_mtok,omitempty"`
-	Error         string `json:"error,omitempty"`
-}
-
-// isDearest reports whether a model is being priced by the fail-expensive
-// fallback rather than by an entry of its own. Card.For synthesises an entry
-// carrying the requested name either way, so the name alone cannot tell them
-// apart — the card's own list can.
-func isDearest(card credit.Card, model string) bool {
-	for _, r := range card.Models {
-		if r.Model == model {
-			return false
-		}
-	}
-	return true
 }
 
 // rateCard reads the price list a session would actually be charged against.
@@ -130,26 +85,26 @@ func rateCard(ctx context.Context, dbURL string) (credit.Card, string, error) {
 
 // printRates writes the report for a person, and says plainly what an
 // inexact match means rather than leaving a reader to infer it.
-func printRates(w *os.File, source string, checks []rateCheck) {
+func printRates(w *os.File, source string, checks []credit.Coverage) {
 	fmt.Fprintf(w, "rate card: %s\n\n", source)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "PREFERENCE\tRESOLVES TO\tPRICED AS\tINPUT $/MTok\tOUTPUT $/MTok")
 	fallbacks := 0
 	for _, c := range checks {
-		if c.Error != "" {
+		if c.Err != "" {
 			// Backend errors run to many lines (a credentials failure lists
 			// every source it tried). One line keeps the table a table; -json
 			// carries the whole thing for somebody debugging it.
-			fmt.Fprintf(tw, "%s\t-\t-\t-\t%s\n", c.Preference, firstLine(c.Error))
+			fmt.Fprintf(tw, "%s\t-\t-\t-\t%s\n", c.Preference, firstLine(c.Err))
 			continue
 		}
-		priced := c.PricedAs
-		if !c.Exact {
+		priced := c.Rates.Model
+		if !c.Named {
 			priced = "DEAREST ON CARD"
 			fallbacks++
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			c.Preference, c.Model, priced, dollars(c.InputPerMTok), dollars(c.OutputPerMTok))
+			c.Preference, c.Model, priced, dollars(c.Rates.Input), dollars(c.Rates.Output))
 	}
 	_ = tw.Flush()
 	if fallbacks > 0 {
