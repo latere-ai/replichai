@@ -35,7 +35,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006j](006j-the-new-project-flow.md) makes "New project" a deliberate act — name it, preview each paper link (`POST /resolve`), start several papers at once, and invite collaborators, through a dedicated `POST /projects` (plus `PATCH /projects/{id}` rename).
 
-**Built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person top-ups) instead of `curl` and a redeploy; [006l](006l-the-session-quota.md) spends against the number it stores — one check inside `Enqueue`, in the inserting transaction, with standing-consent sponsorship for shared projects; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has.
+**Built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person credit) instead of `curl` and a redeploy; [011](011-what-a-session-costs.md) spends against the numbers it stores — one check inside `Enqueue`, in the inserting transaction, settled in the transaction that ends the session; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has. [006l](006l-the-session-quota.md) was the first attempt at that meter and is superseded, kept for the argument 011 inherits.
 
 **Built:** [006n](006n-who-signed-off.md) gives the public sign-off a person — a researcher profile (name, institution, public contact, ORCID, Scholar) kept in settings, prefilled into a step-by-step publish wizard, and **snapshotted onto the project** so a later profile edit never rewrites a published attestation. The signer's own email is derived from the session and stored redacted; attestation v2.
 
@@ -43,7 +43,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006p](006p-the-invitation-that-arrives.md) sends the project invitation 006f never sent. auth's mail transport moved to a shared `latere.ai/x/pkg/email` — transports only, so each service keeps its own copy and escaping — and `internal/notify` owns what replichai says to somebody who is not looking at it. The message is an announcement, not an offer: the membership already exists, so there is no token and nothing to accept. Sending is best-effort, because the membership is the durable thing.
 
-**Built:** [006q](006q-sign-in-is-open-budget-is-not.md) splits *may sign in* from *may spend*. Signing in self-grants `TierUser`, the default session quota drops to zero, and 006l's meter — not an admin's guest list — is what protects the credential. Revocation becomes recorded state rather than a delete, because a self-granting sign-in would re-create a deleted row and turn a ban into a logout. With 006p, an invited collaborator now receives mail, follows it, signs in, and sees the project — which nobody could do before.
+**Built:** [006q](006q-sign-in-is-open-budget-is-not.md) splits *may sign in* from *may spend*. Signing in self-grants `TierUser`, a new account arrives with nothing to spend, and the meter — not an admin's guest list — is what protects the credential. Revocation becomes recorded state rather than a delete, because a self-granting sign-in would re-create a deleted row and turn a ban into a logout. With 006p, an invited collaborator now receives mail, follows it, signs in, and sees the project — which nobody could do before.
 
 **Built:** [006r](006r-the-public-profile.md) gives a researcher a handle and a public page at `/u/{handle}`, listing the public work signed under that name, and requires one before a project may be published — asserting a result under your name means the name has to resolve to something. The sign-off card links to it through a field resolved per read and never snapshotted, so 006n's invariant holds: making a profile private later removes the link and changes nothing on the record.
 
@@ -72,7 +72,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/registry` | the derived registry: relate reproductions of one paper (003) |
 | `internal/job` | the job lifecycle: the state machine, the store seam, the worker (006b) |
 | `internal/access` | the authorisation model: grants, tiers, project membership, seed-and-bind (006c) |
-| `internal/platform` | the policy an admin tunes at runtime: the settings row and quota top-ups (006k) |
+| `internal/platform` | the policy an admin tunes at runtime: the settings row — start reserve, overdraft floor, rate card (006k, 011) |
+| `internal/credit` | the ledger: wallets, project pots, holds and charges, in micro-USD (011) |
 | `internal/profile` | the self-asserted researcher identity a public sign-off is published under (006n) |
 | `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
@@ -121,6 +122,17 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, 006g, (006c) |
 | 006g | [Projects and replication sessions](006g-projects-and-replication-sessions.md) | implemented, deployed | 006b, 006c |
 | 006h | [Session transcript viewer](006h-session-transcript-viewer.md) | implemented, deployed | 006g, 005, 003 |
+| 006i | [Server-side mount and publish](006i-server-side-mount-and-publish.md) | built | 006f, 006b |
+| 006j | [The New-project flow](006j-the-new-project-flow.md) | built | 006g, 006c |
+| 006k | [The platform admin console](006k-the-platform-admin-console.md) | built; its policy row reshaped by 011 | 006c, 006b |
+| 006l | [The session quota](006l-the-session-quota.md) | **superseded by 011** | 006k, 006b, 006g, 006c |
+| 006m | [The signed-in person](006m-the-signed-in-person.md) | built | 006c |
+| 006n | [Who signed off](006n-who-signed-off.md) | built | 006f, 006g |
+| 006o | [Withdrawing a publication](006o-withdrawing-a-publication.md) | built | 006f, 006n |
+| 006p | [The invitation that arrives](006p-the-invitation-that-arrives.md) | built | 006f, 006c |
+| 006q | [Sign-in is open, budget is not](006q-sign-in-is-open-budget-is-not.md) | built; half superseded by 011 | 006c, 006l, 006k |
+| 006r | [The public profile](006r-the-public-profile.md) | built | 006n, 006f |
+| 006s | [Reading a session in time](006s-reading-a-session-in-time.md) | built | 006h, 006g |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
 | 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |
@@ -129,7 +141,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
 | 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | commits 1–2 shipped; 3 deferred | 002, 005, 006f, 006i |
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
-| 011 | [What a session costs](011-what-a-session-costs.md) | draft | 006b, 006c, 006g, 006k, 006h |
+| 011 | [What a session costs](011-what-a-session-costs.md) | steps 1–5 built; removal + surfaces open | 006b, 006c, 006g, 006k, 006h |
 
 ## The three tracks
 

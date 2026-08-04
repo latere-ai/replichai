@@ -2,7 +2,7 @@
 
 **Status:** built
 **Scope:** the HTTP server that wraps the audit engine — submit a paper, watch a job, read a result — and the seam the access gate mounts on. A child of [006](006-web-application.md).
-**Depends on:** [006b](006b-job-model-and-persistence.md) (the job store and worker it enqueues onto). Consumes [003](003-reproduction-registry.md) and [005](spec 005) for its read surfaces.
+**Depends on:** [006b](006b-job-model-and-persistence.md) (the job store and worker it enqueues onto). Consumes [003](003-reproduction-registry.md) and [005](005-transcript.md) for its read surfaces.
 
 ## Problem
 
@@ -14,7 +14,7 @@ The engine already returns values and streams progress through an observer, "so 
 
 **Progress is Server-Sent Events.** `GET /jobs/{id}/events` is an SSE stream carrying the observer's `RunStatus` transitions and, once 005 lands, transcript events. One-way, so SSE rather than WebSocket: it proxies cleanly, reconnects with `Last-Event-ID`, and needs no upgrade. Each write is flushed; a slow reader is dropped, never allowed to stall the run, which streams from the job's state regardless of who is watching.
 
-**Read surfaces present, never copy.** `GET /reproductions`, `/reproductions/{id}`, and `/reproductions/{id}/transcript` read straight through 003 (derived from the forge) and 005. No handler caches a reproduction into its own shape — the forge and the manifest stay the source of truth. Every one answers `403 not_invited` for an ungranted principal, because 002 keeps repositories private and a listing is not public.
+**Read surfaces present, never copy.** `GET /reproductions`, `/reproductions/{id}`, and `/reproductions/{id}/transcript` read straight through 003 (derived from the forge) and 005. No handler caches a reproduction into its own shape — the forge and the manifest stay the source of truth. Every one answers `403 not_granted` for an ungranted principal, because 002 keeps repositories private and a listing is not public.
 
 **The gate is a seam this spec exposes, not a policy it owns.** The operator routes are mounted behind one middleware that 006c supplies; 006a decides *which* routes are operator routes and makes that set enumerable. A route added outside the gate is a bug 006c's test must be able to catch, so the router surfaces its gated set rather than hiding it in `mux` registration. The decision of who passes is 006c's; the structural guarantee that nothing bypasses the check is 006a's.
 
