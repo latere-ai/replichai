@@ -354,10 +354,10 @@ textarea {
 .user-btn {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--gap-inline);
   width: 100%;
   text-align: left;
-  padding: 8px;
+  padding: 8px 10px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -407,8 +407,11 @@ textarea {
 .user-meta {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   overflow: hidden;
+  /* min-width:0 is what actually lets a long address ellipsis inside a flex
+     row; flex:1 alone leaves the column at its content width and pushes. */
+  min-width: 0;
   flex: 1;
 }
 .user-email {
