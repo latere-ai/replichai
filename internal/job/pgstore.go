@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -50,17 +49,11 @@ func WithPGRates(c credit.CardSnapshot) PGOption {
 	return func(s *PGStore) { s.card = c }
 }
 
-// snapshot reads the price list this session will be charged at.
-func (s *PGStore) snapshot(ctx context.Context) credit.Card {
-	if s.card == nil {
-		return credit.Card{}
-	}
-	card, err := s.card(ctx)
-	if err != nil {
-		log.Printf("rate card: %v", err)
-		return credit.Card{}
-	}
-	return card
+// snapshot reads the price list this session will be charged at. See the
+// in-memory store's for why a fault and an unpriced deployment resolve
+// differently.
+func (s *PGStore) snapshot(ctx context.Context) (credit.Card, error) {
+	return resolveCard(ctx, s.card)
 }
 
 // settleTx releases a session's hold and charges what it actually cost, inside
@@ -142,7 +135,11 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	now := s.clock()
 	status, _ := json.Marshal(provider.RunStatus{})
 	phaseAt, _ := json.Marshal(map[Phase]time.Time{PhaseSubmitted: now})
-	rates, err := json.Marshal(s.snapshot(ctx))
+	card, err := s.snapshot(ctx)
+	if err != nil {
+		return Job{}, err
+	}
+	rates, err := json.Marshal(card)
 	if err != nil {
 		return Job{}, err
 	}

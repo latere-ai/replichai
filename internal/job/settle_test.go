@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -308,4 +309,96 @@ func settlePool(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("truncate: %v", err)
 	}
 	return pool
+}
+
+// A metered deployment that cannot price a session refuses it at the door.
+//
+// The alternative is worse than it looks: an empty card makes Cost() zero, so
+// the session settles at nothing *and* is invisible to the backstop's accrual —
+// it would run for free and count against no floor. Tokens nobody can price are
+// not free tokens, so the refusal is at enqueue, where nothing has been spent.
+func TestAnUnpriceableSessionIsRefusedAtTheDoor(t *testing.T) {
+	ctx := context.Background()
+	ledger := credit.NewMemStore(nil, nil)
+	s := NewMemStore(
+		WithCredits(ledger, fixedReserve(testReserve)),
+		WithRates(fixedCard(credit.Card{})),
+	)
+	fund(t, ledger, "p", 10*credit.Dollar)
+
+	_, err := s.Enqueue(ctx, Submission{Principal: "u", Ref: "r", Kind: KindAudit, Project: "p", PaperKey: "r"})
+	if !errors.Is(err, ErrUnpriceable) {
+		t.Fatalf("enqueue with an empty card: want ErrUnpriceable, got %v", err)
+	}
+	// And nothing was committed on the way to the refusal.
+	bal, _ := ledger.Balance(ctx, credit.Pot("p"))
+	avail, _ := ledger.Available(ctx, credit.Pot("p"))
+	if bal != avail || bal != 10*credit.Dollar {
+		t.Errorf("balance %d, available %d; want %d and no hold taken", bal, avail, 10*credit.Dollar)
+	}
+}
+
+// A rate card that cannot be *read* is a fault, not an unpriced deployment. It
+// resolves to the compiled-in list, because falling back to nothing would make
+// every session free for as long as the fault lasted.
+func TestABrokenRateCardStillPrices(t *testing.T) {
+	ctx := context.Background()
+	ledger := credit.NewMemStore(nil, nil)
+	s := NewMemStore(
+		WithCredits(ledger, fixedReserve(testReserve)),
+		WithRates(func(context.Context) (credit.Card, error) {
+			return credit.Card{}, errors.New("postgres is not answering")
+		}),
+	)
+	fund(t, ledger, "p", 40*credit.Dollar)
+
+	j, err := s.Enqueue(ctx, Submission{Principal: "u", Ref: "r", Kind: KindAudit, Project: "p", PaperKey: "r"})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if len(j.Rates.Models) == 0 {
+		t.Fatal("a session was admitted with no way to price it")
+	}
+	if err := s.Observe(ctx, j.ID, provider.RunStatus{
+		Model: "claude-opus-5", Usage: provider.Usage{InputTokens: 1_000_000},
+	}); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	before, _ := ledger.Balance(ctx, credit.Pot("p"))
+	for _, p := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing, PhaseDone} {
+		if err := s.Advance(ctx, j.ID, p, nil); err != nil {
+			t.Fatalf("advance: %v", err)
+		}
+	}
+	after, _ := ledger.Balance(ctx, credit.Pot("p"))
+	if before-after != 5*credit.Dollar {
+		t.Errorf("charged %d, want the compiled-in input rate %d", before-after, 5*credit.Dollar)
+	}
+}
+
+// An in-flight session with no priced rates would be invisible to the floor.
+// Accrued must see what every running session has cost, which is only true if a
+// session can never be admitted unpriced in the first place.
+func TestAccruedSeesEveryInFlightSession(t *testing.T) {
+	ctx := context.Background()
+	ledger := credit.NewMemStore(nil, nil)
+	s := NewMemStore(WithCredits(ledger, fixedReserve(testReserve)), WithRates(fixedCard(testCard)))
+	fund(t, ledger, "p", 20*credit.Dollar)
+
+	for _, ref := range []string{"a", "b"} {
+		j, err := s.Enqueue(ctx, Submission{Principal: "u", Ref: ref, Kind: KindAudit, Project: "p", PaperKey: ref})
+		if err != nil {
+			t.Fatalf("enqueue %s: %v", ref, err)
+		}
+		if err := s.Observe(ctx, j.ID, burned); err != nil {
+			t.Fatalf("observe: %v", err)
+		}
+	}
+	n, err := s.Accrued(ctx, "p")
+	if err != nil {
+		t.Fatalf("Accrued: %v", err)
+	}
+	if n != 2*burnedCost {
+		t.Errorf("accrued = %d, want %d — a running session was priced at nothing", n, 2*burnedCost)
+	}
 }

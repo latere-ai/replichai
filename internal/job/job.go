@@ -11,10 +11,12 @@
 package job
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"time"
 
@@ -63,12 +65,40 @@ var (
 	// deliberate re-run after the prior finished is allowed, an accidental
 	// concurrent double-fire is not.
 	ErrActiveSession = errors.New("an active session for this paper already exists")
+	// ErrUnpriceable reports a submit refused because this deployment meters
+	// money but cannot price a session — an empty rate card. Tokens nobody can
+	// price are not free tokens, so the refusal is at the door rather than at
+	// settlement, where it would have been a session that ran for nothing.
+	ErrUnpriceable = errors.New("this deployment cannot price a session")
 	// ErrNoCredits reports a submit refused because the project cannot commit
 	// the start reserve (011). Like the double-trigger guard it is a refusal,
 	// not a failure: the check runs in the transaction that inserts, so it is
 	// exact under concurrency and cannot be skipped by a new submit path.
 	ErrNoCredits = errors.New("this project does not have the credits to start a session")
 )
+
+// resolveCard reads the price list a session starting now is admitted under.
+//
+// A nil seam is the deliberate unpriced mode and yields an empty card, which
+// prices nothing. A seam that fails resolves to the compiled-in list rather
+// than to nothing: a fault must not make sessions free while it lasts. A seam
+// that succeeds but yields a card with no models is a metered deployment that
+// cannot price anything, and that refuses the submit — settling it at zero
+// would be the silent underspend the refusal exists to prevent.
+func resolveCard(ctx context.Context, seam credit.CardSnapshot) (credit.Card, error) {
+	if seam == nil {
+		return credit.Card{}, nil
+	}
+	card, err := seam(ctx)
+	if err != nil {
+		log.Printf("rate card: %v; falling back to the compiled-in list", err)
+		return credit.DefaultCard(), nil
+	}
+	if len(card.Models) == 0 {
+		return credit.Card{}, ErrUnpriceable
+	}
+	return card, nil
+}
 
 // Cost is what this session's recorded usage comes to under the rates it was
 // admitted at, in micro-USD (011).
