@@ -2401,3 +2401,35 @@ input.submit-input {
   font-size: 12px;
   color: var(--fg-3);
 }
+
+/* The admin's price list, and a wallet's statement: both are tables of numbers,
+   and pretending otherwise costs the reader alignment. */
+.rate-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.rate-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.6fr) repeat(4, minmax(88px, 1fr));
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 12px;
+  align-items: center;
+}
+.rate-row + .rate-row {
+  border-top: 1px solid var(--border);
+}
+.rate-head {
+  color: var(--fg-2);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.statement-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+}

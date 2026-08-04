@@ -141,7 +141,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
 | 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | commits 1–2 shipped; 3 deferred | 002, 005, 006f, 006i |
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
-| 011 | [What a session costs](011-what-a-session-costs.md) | steps 1–5 built; removal + surfaces open | 006b, 006c, 006g, 006k, 006h |
+| 011 | [What a session costs](011-what-a-session-costs.md) | built | 006b, 006c, 006g, 006k, 006h |
 
 ## The three tracks
 

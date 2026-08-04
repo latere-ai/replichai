@@ -83,23 +83,55 @@ func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 	}
 }
 
-// The client never learns the number either — not as a string it could render,
-// and not as a field it could read. A catalogue entry explaining the overdraft
-// would publish it just as surely as an API field.
-func TestTheClientCatalogueNeverNamesTheFloor(t *testing.T) {
-	root := repoRoot(t)
-	for _, rel := range []string{"frontend/src/i18n.ts", "frontend/src/api.ts"} {
-		raw, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-		text := strings.ToLower(string(raw))
-		for _, word := range []string{"overdraft", "credit_cap", "creditcap"} {
-			if strings.Contains(text, word) {
-				t.Errorf("%s mentions %q — the floor must reach no client surface", rel, word)
+// The client learns the floor on exactly one screen — the admin's — and the
+// member-facing surfaces do not know it exists.
+//
+// The blunt version of this test (ban the word anywhere in the client) was
+// wrong, and worth recording why: an admin *sets* this number, so the console
+// names it in a label, a hint and a request body. The invariant is not "the
+// string never appears", it is "nothing a project member reads carries it". So
+// the check is on the member-facing types — the two the app renders on a
+// project screen and in the header — rather than on the file.
+func TestTheMemberFacingClientTypesNeverNameTheFloor(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "frontend/src/api.ts"))
+	if err != nil {
+		t.Fatalf("read api.ts: %v", err)
+	}
+	text := string(raw)
+	for _, typ := range []string{"ProjectCredits", "Credits"} {
+		decl := declarationOf(t, text, typ)
+		for _, word := range []string{"overdraft", "cap", "floor"} {
+			if strings.Contains(strings.ToLower(decl), word) {
+				t.Errorf("the member-facing type %s mentions %q: %s", typ, word, decl)
 			}
 		}
 	}
+	// And the number itself is nowhere in the client at all: a default compiled
+	// into the UI would publish it whatever the types say.
+	for _, rel := range []string{"frontend/src/api.ts", "frontend/src/App.tsx", "frontend/src/i18n.ts"} {
+		body, err := os.ReadFile(filepath.Join(repoRoot(t), rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		if strings.Contains(string(body), strconv.FormatInt(platform.DefaultOverdraftCap, 10)) {
+			t.Errorf("%s hard-codes the platform floor", rel)
+		}
+	}
+}
+
+// declarationOf returns the source of one exported type, from its name to the
+// blank line after it — enough to read its fields without parsing TypeScript.
+func declarationOf(t *testing.T, src, name string) string {
+	t.Helper()
+	at := strings.Index(src, "export type "+name+" = ")
+	if at < 0 {
+		t.Fatalf("no declaration of %s in api.ts", name)
+	}
+	end := strings.Index(src[at:], "\n\n")
+	if end < 0 {
+		end = len(src) - at
+	}
+	return src[at : at+end]
 }
 
 // A killed run tells its owner that it failed and not why. That is withholding

@@ -38,6 +38,9 @@ export type Job = {
   kind: string
   ref: string
   phase: string
+  // What this session has cost so far, in micro-USD — the same number its
+  // project is charged when it ends.
+  cost?: number
   status?: { State: string; Usage: Usage }
   repo_name?: string
   error?: string
@@ -119,7 +122,55 @@ export type ProjectView = Project & {
 // may_submit is the server's answer to "may this caller open a session here" —
 // owner or collaborator. A public project is readable by everyone, so the
 // client cannot infer it (006l).
-export type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean; signer_handle?: string }
+export type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean; signer_handle?: string; credits?: ProjectCredits }
+
+// ProjectCredits is a project's money as a member reads it, in micro-USD.
+// balance is what the pot holds; available is what is still free to commit —
+// they differ by the sessions running right now, each holding the start
+// reserve, which is why a project with credits can still refuse a submit.
+// Absent for anyone who may not work here.
+//
+// may_reclaim is the server's answer: only a lead may take credits back out.
+// The client cannot work it out — it does not know roles.
+export type ProjectCredits = { balance: number; available: number; start_reserve: number; may_reclaim: boolean }
+
+// Wallet is one person's own credits and the entries that produced them. The
+// statement is the point: a balance nobody can account for is what the ledger
+// exists to prevent.
+export type Wallet = { balance: number; entries: LedgerEntry[] }
+
+export type LedgerEntry = {
+  id: string
+  holder: string
+  amount: number
+  kind: 'topup' | 'allocate' | 'reclaim' | 'hold' | 'release' | 'charge' | 'adjust'
+  job_id?: string
+  actor: string
+  created_at: string
+}
+
+export const getWallet = () => fetch('/me/credits').then(json<Wallet>)
+
+// allocateCredits moves credits from your wallet into a project's pot; any
+// member may. reclaimCredits moves them back, and only a lead may — the pot
+// does not remember who filled it. Both answer with both balances, because both
+// moved and a client re-reading them separately could show a moment where the
+// money is in neither.
+export type CreditMove = { wallet: number; project: ProjectCredits | null }
+
+export const allocateCredits = (id: string, amount: number) =>
+  fetch(`/projects/${id}/credits`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  }).then(json<CreditMove>)
+
+export const reclaimCredits = (id: string, amount: number) =>
+  fetch(`/projects/${id}/credits/reclaim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  }).then(json<CreditMove>)
 
 // A project member: the seeded email, the role (1 = collaborator, 2 = lead), and
 // whether they have signed in yet (bound).
@@ -378,9 +429,20 @@ export type PlatformSettings = {
   // start_reserve is micro-USD: what a project must have available before a
   // session may start there.
   start_reserve: number
+  // overdraft_cap is how far below zero a project may fall before a run is
+  // stopped. Admin-only — it appears here and on no surface a project's own
+  // members can read, because a floor somebody knows is one they plan around.
+  overdraft_cap: number
+  rates: RateCard
   updated_by?: string
   updated_at?: string
 }
+
+// A model's price, in micro-USD per million tokens — the unit vendors quote, so
+// an admin copying a price list types the number they read.
+export type ModelRates = { model: string; input: number; output: number; cache_read: number; cache_write_5m: number; cache_write_1h: number }
+
+export type RateCard = { models: ModelRates[] }
 
 export const listGrants = () => fetch('/admin/access').then(json<GrantView[]>)
 
@@ -408,7 +470,7 @@ export const topUp = (email: string, amount: number) =>
 
 export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
 
-export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve'>) =>
+export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates'>) =>
   fetch('/admin/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
