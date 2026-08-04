@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { emptyWallet, sessionErrLabel, submitErrLabel } from './App'
+import { creditMoveErrLabel, emptyWallet, ledgerKindLabel, sessionErrLabel, submitErrLabel } from './App'
 import { formatUSD, MICRO, parseUSD, toDollars } from './money'
 
 // The identity function for the label helpers: they take a translate function,
@@ -76,5 +76,30 @@ test('typed dollars become micro-USD', () => {
 test('a field round-trips through the parser', () => {
   for (const micro of [0, 1, 10 * MICRO, 12_340_000, 200 * MICRO]) {
     expect(parseUSD(toDollars(micro))).toBe(micro)
+  }
+})
+
+// Each refusal of a credit move has a different remedy, so each gets its own
+// sentence. One "that did not work" would tell somebody who mistyped an amount
+// the same thing it tells somebody who is not a lead.
+test('a refused credit move says which refusal it was', () => {
+  expect(creditMoveErrLabel(t, 'no_credits')).toBe('errMoveInsufficient')
+  expect(creditMoveErrLabel(t, 'not_lead')).toBe('errMoveNotLead')
+  expect(creditMoveErrLabel(t, 'not_member')).toBe('errMoveNotMember')
+  expect(creditMoveErrLabel(t, 'bad_amount')).toBe('errMoveAmount')
+  // An unknown code is a generic failure rather than a wrong specific one.
+  expect(creditMoveErrLabel(t, 'something_new')).toBe('errMoveFailed')
+  expect(creditMoveErrLabel(t, '')).toBe('errMoveFailed')
+})
+
+// A wallet only ever sees three of the ledger's seven kinds: holds, releases
+// and charges happen to a project's pot, never to a person. The rest fall
+// through to a neutral label rather than leaking vocabulary nobody here needs.
+test('a wallet statement names only the kinds a wallet can hold', () => {
+  expect(ledgerKindLabel(t, 'topup')).toBe('ledgerTopup')
+  expect(ledgerKindLabel(t, 'allocate')).toBe('ledgerAllocate')
+  expect(ledgerKindLabel(t, 'reclaim')).toBe('ledgerReclaim')
+  for (const kind of ['hold', 'release', 'charge', 'adjust'] as const) {
+    expect(ledgerKindLabel(t, kind)).toBe('ledgerOther')
   }
 })

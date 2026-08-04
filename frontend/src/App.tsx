@@ -7,7 +7,10 @@ import {
   createProject,
   getArtifact,
   getJob,
+  allocateCredits,
   getMe,
+  getWallet,
+  reclaimCredits,
   getProfile,
   errCode,
   getPublicProfile,
@@ -40,7 +43,10 @@ import {
   type Job,
   type Me,
   type Member,
+  type LedgerEntry,
   type PlatformSettings,
+  type ProjectCredits,
+  type RateCard,
   type Profile,
   type Project,
   type ProjectView,
@@ -867,13 +873,7 @@ function SettingsScreen({ i18n, me, theme }: { i18n: I18n; me: Me; theme: Return
               <TierPill i18n={i18n} tier={me.tier} />
             </span>
           </div>
-          {me.credits && (
-            <div className="usage-line">
-              <Ico name="wallet" size={13} style={{ color: 'var(--ok)' }} />
-              {t('statWallet')}
-              <span className="v tabular">{formatUSD(me.credits.wallet)}</span>
-            </div>
-          )}
+          {me.credits && <WalletStatement i18n={i18n} balance={me.credits.wallet} />}
           <div className="usage-line">
             <Ico name={theme.theme === 'dark' ? 'moon' : 'sun'} size={13} style={{ color: 'var(--warn)' }} />
             {t('theme')}
@@ -1091,7 +1091,7 @@ function AdminScreen({ i18n }: { i18n: I18n }) {
       </div>
       {err && <p className="err small">{err}</p>}
       <div className="stack" style={{ maxWidth: 720 }}>
-        <PlatformPolicy i18n={i18n} settings={settings} onSave={(n) => run(() => setPlatformSettings({ start_reserve: n }))} />
+        <PlatformPolicy i18n={i18n} settings={settings} onSave={(next) => run(() => setPlatformSettings(next))} />
         <PeopleCard
           i18n={i18n}
           people={people}
@@ -1104,18 +1104,38 @@ function AdminScreen({ i18n }: { i18n: I18n }) {
   )
 }
 
-// PlatformPolicy edits the one platform-wide number: how much a project must
-// have available before a session may start there. It is typed in dollars and
-// held in micro-USD, because that is the unit money travels in.
-function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: PlatformSettings | null; onSave: (n: number) => void }) {
+// PlatformPolicy edits what this deployment charges and what it will risk: two
+// numbers and a price list, all micro-USD, all typed in dollars because that is
+// the resolution an admin decides anything at.
+//
+// The two numbers fail closed in opposite directions and the copy says so — a
+// reserve that vanished would start sessions on empty projects, a floor that
+// grew would stop bounding a runaway.
+function PlatformPolicy({
+  i18n,
+  settings,
+  onSave,
+}: {
+  i18n: I18n
+  settings: PlatformSettings | null
+  onSave: (next: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates'>) => void
+}) {
   const { t } = i18n
-  const [draft, setDraft] = useState('')
+  const [reserve, setReserve] = useState('')
+  const [floor, setFloor] = useState('')
   useEffect(() => {
-    if (settings) setDraft(toDollars(settings.start_reserve))
+    if (!settings) return
+    setReserve(toDollars(settings.start_reserve))
+    setFloor(toDollars(settings.overdraft_cap))
   }, [settings])
-  const parsed = parseUSD(draft)
-  const valid = parsed !== null && parsed >= 0
-  const dirty = !!settings && valid && parsed !== settings.start_reserve
+
+  const nextReserve = parseUSD(reserve)
+  const nextFloor = parseUSD(floor)
+  const valid = nextReserve !== null && nextReserve >= 0 && nextFloor !== null && nextFloor >= 0
+  const dirty = !!settings && valid && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap)
+  const save = () => {
+    if (settings && valid) onSave({ start_reserve: nextReserve, overdraft_cap: nextFloor, rates: settings.rates })
+  }
 
   return (
     <div className="card card-pad stack">
@@ -1129,12 +1149,55 @@ function PlatformPolicy({ i18n, settings, onSave }: { i18n: I18n; settings: Plat
         <label className="admin-label" htmlFor="start-reserve">
           {t('startReserve')}
         </label>
-        <NumberField id="start-reserve" value={draft} onChange={setDraft} min={0} ariaLabel={t('startReserve')} />
-        <button className="btn" disabled={!dirty} onClick={() => onSave(parsed ?? 0)}>
+        <NumberField id="start-reserve" value={reserve} onChange={setReserve} min={0} ariaLabel={t('startReserve')} />
+      </div>
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {t('overdraftHint')}
+      </p>
+      <div className="field-row">
+        <label className="admin-label" htmlFor="overdraft-cap">
+          {t('overdraftCap')}
+        </label>
+        <NumberField id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
+        <button className="btn" disabled={!dirty} onClick={save}>
           <Ico name="check" size={13} w={2.2} /> {t('save')}
         </button>
       </div>
+      {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
       {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
+    </div>
+  )
+}
+
+// RateCardTable shows what each model costs. It is here because a reserve and a
+// floor mean nothing without the prices they bound — an admin setting a $200
+// floor should be able to see what output tokens cost and work out what it buys.
+function RateCardTable({ i18n, card }: { i18n: I18n; card: RateCard }) {
+  const { t } = i18n
+  if (!card?.models?.length) return null
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <span className="muted small">{t('rateCardHint')}</span>
+      <div className="rate-card">
+        <div className="rate-row rate-head">
+          <span>{t('rateModel')}</span>
+          <span>{t('rateInput')}</span>
+          <span>{t('rateOutput')}</span>
+          <span>{t('rateCacheRead')}</span>
+          <span>{t('rateCacheWrite')}</span>
+        </div>
+        {card.models.map((m) => (
+          <div className="rate-row" key={m.model}>
+            <span className="mono">{m.model}</span>
+            <span className="tabular">{formatUSD(m.input)}</span>
+            <span className="tabular">{formatUSD(m.output)}</span>
+            <span className="tabular">{formatUSD(m.cache_read)}</span>
+            <span className="tabular">
+              {formatUSD(m.cache_write_5m)} / {formatUSD(m.cache_write_1h)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1337,6 +1400,7 @@ function ProjectScreen({
   const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
   const [maySubmit, setMaySubmit] = useState(false)
+  const [credits, setCredits] = useState<ProjectCredits | null>(null)
   const [signerHandle, setSignerHandle] = useState('')
   const [tab, setTab] = useState<'sessions' | 'verdict' | 'artifacts' | 'people'>('sessions')
 
@@ -1346,6 +1410,7 @@ function ProjectScreen({
         setProject(d.project)
         setSessions(d.sessions ?? [])
         setMaySubmit(d.may_submit)
+        setCredits(d.credits ?? null)
         setSignerHandle(d.signer_handle ?? '')
       })
       .catch(() => setSessions([]))
@@ -1395,6 +1460,7 @@ function ProjectScreen({
       <div className="screen" style={{ animation: 'none' }}>
         {tab === 'sessions' && (
           <div className="stack">
+            {credits && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
             {maySubmit && <ProjectSubmit i18n={i18n} me={me} project={project} onSubmitted={onSpent} />}
             <div className="card">
               <CardHead label={t('projectSessions')} icon="layers" tone="var(--run)" />
@@ -1671,6 +1737,69 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
   )
 }
 
+// WalletStatement is a balance and, on request, the entries that produced it.
+//
+// The statement is the point rather than a nicety: a balance nobody can account
+// for is exactly what the ledger exists to prevent, so the one place a person
+// reads their own number is the place that can show where it came from. Fetched
+// lazily — most visits to settings are not about money.
+function WalletStatement({ i18n, balance }: { i18n: I18n; balance: number }) {
+  const { t } = i18n
+  const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
+  const [open, setOpen] = useState(false)
+
+  const reveal = () => {
+    setOpen((was) => !was)
+    if (entries === null)
+      getWallet()
+        .then((w) => setEntries(w.entries))
+        .catch(() => setEntries([]))
+  }
+
+  return (
+    <>
+      <div className="usage-line">
+        <Ico name="wallet" size={13} style={{ color: 'var(--ok)' }} />
+        {t('statWallet')}
+        <span className="v tabular">
+          {formatUSD(balance)}
+          <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={reveal}>
+            {open ? t('statementHide') : t('statementShow')}
+          </button>
+        </span>
+      </div>
+      {open && (
+        <div className="stack" style={{ gap: 4, padding: '2px 0 8px' }}>
+          {entries === null ? (
+            <span className="muted small">{t('loading')}</span>
+          ) : entries.length === 0 ? (
+            <span className="muted small">{t('statementEmpty')}</span>
+          ) : (
+            entries.map((e) => (
+              <div className="statement-row" key={e.id}>
+                <span className="muted small">{ledgerKindLabel(t, e.kind)}</span>
+                <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
+                <span className={'tabular small' + (e.amount < 0 ? ' err' : '')}>{formatUSD(e.amount)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+// ledgerKindLabel names an entry in the reader's terms. A wallet only ever sees
+// three of the seven kinds — holds, releases and charges happen to a project's
+// pot, never to a person — so the rest fall through to a neutral label rather
+// than leaking vocabulary nobody here needs.
+export function ledgerKindLabel(t: I18n['t'], kind: LedgerEntry['kind']): string {
+  if (kind === 'topup') return t('ledgerTopup')
+  if (kind === 'allocate') return t('ledgerAllocate')
+  if (kind === 'reclaim') return t('ledgerReclaim')
+  return t('ledgerOther')
+}
+
 // WalletPill shows what this person has to spend, next to the button that
 // starts spending it.
 //
@@ -1705,6 +1834,89 @@ export function submitErrLabel(t: I18n['t'], status: string, credits?: Credits):
   if (status === '409') return t('activeSession')
   if (status === '402') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
   return t('submitError')
+}
+
+// ProjectCreditsCard is a project's money and the two moves a member can make on
+// it. It sits above the submit form because it is the answer to the question a
+// refused submit raises.
+//
+// Both numbers are shown, not one. They differ by the sessions running right now
+// — each holds the start reserve — and that difference is the whole reason a
+// project with credits can still refuse a submit. Showing only the balance would
+// make that refusal look like a bug.
+function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n; projectID: string; credits: ProjectCredits; onMoved: () => void }) {
+  const { t } = i18n
+  const [amount, setAmount] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const parsed = parseUSD(amount)
+  const valid = parsed !== null && parsed > 0
+  const short = credits.available < credits.start_reserve
+
+  const move = async (back: boolean) => {
+    if (!valid || busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await (back ? reclaimCredits(projectID, parsed) : allocateCredits(projectID, parsed))
+      setAmount('')
+      onMoved()
+    } catch (e) {
+      setErr(creditMoveErrLabel(t, errCode(e)))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card card-pad stack">
+      <span className="eyebrow eyebrow-ico" style={{ color: short ? 'var(--warn)' : 'var(--ok)' }}>
+        <Ico name="wallet" size={12} /> {t('projectCredits')}
+      </span>
+      <div className="usage-rows">
+        <div className="usage-line">
+          {t('creditsBalance')}
+          <span className="v tabular">{formatUSD(credits.balance)}</span>
+        </div>
+        <Tip text={t('creditsAvailableTitle')}>
+          <div className="usage-line">
+            {t('creditsAvailable')}
+            <span className="v tabular">{formatUSD(credits.available)}</span>
+          </div>
+        </Tip>
+      </div>
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {short ? t('creditsShort', { reserve: formatUSD(credits.start_reserve) }) : t('creditsEnough', { reserve: formatUSD(credits.start_reserve) })}
+      </p>
+      <div className="field-row">
+        <NumberField value={amount} onChange={setAmount} min={0} ariaLabel={t('creditsAmount')} />
+        <button className="btn" disabled={!valid || busy} onClick={() => move(false)}>
+          <Ico name="plus" size={13} w={2.2} /> {t('creditsAllocate')}
+        </button>
+        {credits.may_reclaim && (
+          <button className="btn ghost" disabled={!valid || busy} onClick={() => move(true)}>
+            <Ico name="minus" size={13} w={2.2} /> {t('creditsReclaim')}
+          </button>
+        )}
+      </div>
+      {err && (
+        <span className="err small">
+          <Ico name="alert" size={13} /> {err}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// creditMoveErrLabel names why a move was refused. Each refusal has a different
+// remedy, so each gets its own sentence rather than one "that did not work".
+export function creditMoveErrLabel(t: I18n['t'], code: string): string {
+  if (code === 'no_credits') return t('errMoveInsufficient')
+  if (code === 'not_lead') return t('errMoveNotLead')
+  if (code === 'not_member') return t('errMoveNotMember')
+  if (code === 'bad_amount') return t('errMoveAmount')
+  return t('errMoveFailed')
 }
 
 // ProjectSubmit adds a session to a project the caller owns or collaborates on.
@@ -1818,6 +2030,11 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
         </Pill>
       </span>
       <span className="row-mono row-title">{j.ref}</span>
+      {!!j.cost && (
+        <Tip text={terminal(j.phase) ? t('sessionCostTitle') : t('sessionCostRunningTitle')}>
+          <span className="muted small tabular">{formatUSD(j.cost)}</span>
+        </Tip>
+      )}
       {!terminal(j.phase) && (
         <button className="btn ghost sm danger" onClick={stop} disabled={stopping}>
           <Ico name="stop" size={11} /> {stopping ? t('stopping') : t('stop')}
