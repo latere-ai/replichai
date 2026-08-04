@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ type PGStore struct {
 	// credits and reserve are the enqueue gate (011). Both nil means unmetered.
 	credits *credit.PGStore
 	reserve credit.Reserve
+	card    credit.CardSnapshot
 }
 
 // PGOption configures a PGStore.
@@ -39,6 +41,38 @@ type PGOption func(*PGStore)
 // Without it the store is unmetered.
 func WithPGCredits(c *credit.PGStore, r credit.Reserve) PGOption {
 	return func(s *PGStore) { s.credits, s.reserve = c, r }
+}
+
+// WithPGRates prices a settled session from the card in force when it started.
+// Without it a metered store holds and releases the reserve but charges
+// nothing.
+func WithPGRates(c credit.CardSnapshot) PGOption {
+	return func(s *PGStore) { s.card = c }
+}
+
+// snapshot reads the price list this session will be charged at.
+func (s *PGStore) snapshot(ctx context.Context) credit.Card {
+	if s.card == nil {
+		return credit.Card{}
+	}
+	card, err := s.card(ctx)
+	if err != nil {
+		log.Printf("rate card: %v", err)
+		return credit.Card{}
+	}
+	return card
+}
+
+// settleTx releases a session's hold and charges what it actually cost, inside
+// the transaction that wrote its terminal phase. A session is therefore never
+// terminal-but-unsettled, and settling twice is refused by the ledger's own
+// partial unique index rather than by a check here.
+func (s *PGStore) settleTx(ctx context.Context, tx pgx.Tx, j Job) error {
+	if s.credits == nil || j.ProjectID == "" {
+		return nil
+	}
+	_, err := s.credits.SettleTx(ctx, tx, credit.Pot(j.ProjectID), j.ID, j.Cost())
+	return err
 }
 
 // NewPGStore builds a store over a pgx pool.
@@ -51,7 +85,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card`
 
 // scanJob reads one row in jobColumns order.
 func scanJob(row pgx.Row) (Job, error) {
@@ -59,9 +93,10 @@ func scanJob(row pgx.Row) (Job, error) {
 		j          Job
 		statusRaw  []byte
 		phaseAtRaw []byte
+		ratesRaw   []byte
 	)
 	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
-		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw)
+		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -77,6 +112,12 @@ func scanJob(row pgx.Row) (Job, error) {
 		if err := json.Unmarshal(phaseAtRaw, &j.PhaseAt); err != nil {
 			return Job{}, fmt.Errorf("decode phase_at: %w", err)
 		}
+	}
+	if len(ratesRaw) > 0 {
+		// A card that will not decode prices nothing rather than failing the
+		// read: a session that cannot be read is worse than one whose charge
+		// has to be reconciled.
+		_ = json.Unmarshal(ratesRaw, &j.Rates)
 	}
 	return j, nil
 }
@@ -101,6 +142,10 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	now := s.clock()
 	status, _ := json.Marshal(provider.RunStatus{})
 	phaseAt, _ := json.Marshal(map[Phase]time.Time{PhaseSubmitted: now})
+	rates, err := json.Marshal(s.snapshot(ctx))
+	if err != nil {
+		return Job{}, err
+	}
 
 	var j Job
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -108,10 +153,10 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 			return err
 		}
 		row := tx.QueryRow(ctx, `
-			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10)
+			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10,$11)
 			RETURNING `+jobColumns,
-			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, PhaseSubmitted, status, now, phaseAt)
+			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, PhaseSubmitted, status, now, phaseAt, rates)
 		var err error
 		j, err = scanJob(row)
 		return err
@@ -208,12 +253,17 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 
 		status, _ := json.Marshal(j.Status)
 		phaseAt, _ := json.Marshal(j.PhaseAt)
-		_, err = tx.Exec(ctx, `
+		if _, err = tx.Exec(ctx, `
 			UPDATE jobs SET phase=$2, ref=$3, project_id=$4, repo_name=$5, error=$6,
 				status=$7, updated_at=$8, phase_at=$9
 			WHERE id=$1`,
-			id, j.Phase, j.Ref, j.ProjectID, j.RepoName, j.Err, status, now, phaseAt)
-		return err
+			id, j.Phase, j.Ref, j.ProjectID, j.RepoName, j.Err, status, now, phaseAt); err != nil {
+			return err
+		}
+		if to.Terminal() {
+			return s.settleTx(ctx, tx, j)
+		}
+		return nil
 	})
 }
 
@@ -297,13 +347,23 @@ func (s *PGStore) StatusByProject(ctx context.Context, owner string) (map[string
 // the phase machine. An already-terminal session is returned unchanged.
 func (s *PGStore) Cancel(ctx context.Context, id string) (Job, error) {
 	now := s.clock()
-	row := s.pool.QueryRow(ctx, `
-		UPDATE jobs SET phase='failed', error=$2, updated_at=$3,
-			phase_at = phase_at || jsonb_build_object('failed', to_jsonb($3::timestamptz))
-		WHERE id=$1 AND phase NOT IN ('done','failed')
-		RETURNING `+jobColumns,
-		id, CancelCause, now)
-	j, err := scanJob(row)
+	var j Job
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `
+			UPDATE jobs SET phase='failed', error=$2, updated_at=$3,
+				phase_at = phase_at || jsonb_build_object('failed', to_jsonb($3::timestamptz))
+			WHERE id=$1 AND phase NOT IN ('done','failed')
+			RETURNING `+jobColumns,
+			id, CancelCause, now)
+		var err error
+		if j, err = scanJob(row); err != nil {
+			return err
+		}
+		// Cancelling is a terminal write like any other, so it settles in the
+		// same transaction: a stopped session pays for the tokens it burned
+		// before it stopped, and its remaining reserve goes back.
+		return s.settleTx(ctx, tx, j)
+	})
 	if errors.Is(err, ErrNotFound) {
 		// No active row updated: either it does not exist, or it is already
 		// terminal. Return the current row (idempotent), or ErrNotFound.

@@ -64,6 +64,13 @@ CREATE INDEX jobs_charged_to_phase ON jobs (charged_to, phase);
 DROP INDEX IF EXISTS jobs_charged_to_phase;
 ALTER TABLE jobs DROP COLUMN charged_to;
 `},
+	{5, `
+-- The price list a session was admitted under (011), snapshotted at enqueue.
+-- Settlement prices from this rather than from the admin's current card, so an
+-- edit mid-run cannot make the ceiling a run was watched against and the amount
+-- it is finally charged come from different numbers.
+ALTER TABLE jobs ADD COLUMN rate_card JSONB NOT NULL DEFAULT '{}'::jsonb;
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

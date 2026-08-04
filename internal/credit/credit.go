@@ -71,6 +71,13 @@ var (
 // every test that is not about money want.
 type Reserve func(ctx context.Context) (int64, error)
 
+// CardSnapshot resolves the price list a session starting now will be charged
+// at. Injected for the same reason Reserve is: the enforcement point does not
+// import the policy store. A nil CardSnapshot means unpriced — the gate still
+// holds the reserve, and settlement releases it and charges nothing, which is
+// what a test about the gate rather than about money wants.
+type CardSnapshot func(ctx context.Context) (Card, error)
+
 // Holder is who an entry is against: a person's wallet or a project's pot. It
 // is one namespaced string rather than two nullable columns so a balance is one
 // predicate, and so a level added later does not reshape the table.

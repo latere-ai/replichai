@@ -2,10 +2,14 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/latere-ai/replichai/internal/credit"
 )
 
 // migrations are the platform-policy schema (006k), versioned and applied at
@@ -77,6 +81,31 @@ ALTER TABLE platform_settings ADD COLUMN start_reserve BIGINT NOT NULL DEFAULT %
 -- money.
 DROP TABLE IF EXISTS quota_topups;
 `, DefaultStartReserve)},
+	{4, fmt.Sprintf(`
+-- What a session's tokens cost (011). Policy rather than a compiled-in
+-- constant: a vendor's prices move, and a constant makes every price change a
+-- redeploy and a silent mispricing until then.
+--
+-- Seeded with the published list so a fresh deployment can price a session
+-- before an admin has touched anything. An empty card prices nothing, and the
+-- gate refuses a session it cannot price, so the seed is what keeps a new
+-- deployment usable.
+ALTER TABLE platform_settings ADD COLUMN rate_card JSONB NOT NULL DEFAULT '%s'::jsonb;
+`, defaultCardJSON())},
+}
+
+// defaultCardJSON renders the seeded price list for the migration. It is
+// interpolated at migration time on purpose: the row is what a session is
+// priced from afterwards, and an admin's later edit must not be overwritten by
+// a constant changing in a subsequent release.
+func defaultCardJSON() string {
+	raw, err := json.Marshal(credit.DefaultCard())
+	if err != nil {
+		panic("marshal default rate card: " + err.Error())
+	}
+	// The card holds no apostrophes today; the escape keeps a model id that
+	// ever does from ending the SQL literal early.
+	return strings.ReplaceAll(string(raw), "'", "''")
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

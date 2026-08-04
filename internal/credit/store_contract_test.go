@@ -342,3 +342,101 @@ func swapDBName(t *testing.T, raw, name string) string {
 	u.Path = "/" + name
 	return u.String()
 }
+
+// Settlement is exactly-once, and this is where that is actually tested.
+//
+// The job store's phase machine already serialises terminal transitions, so a
+// double settle cannot be reached through it today — which means a test driving
+// cancels concurrently passes whether or not the ledger guards anything. The
+// guarantee has to be asserted here, by settling the same session twice
+// directly: a partial unique index on the charge is what makes the second call
+// a no-op rather than a second charge and a second release.
+func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		make func(t *testing.T) (Store, func())
+	}{
+		{"mem", func(t *testing.T) (Store, func()) {
+			auth, members := testAuthority()
+			return NewMemStore(auth, members), func() {}
+		}},
+		{"postgres", func(t *testing.T) (Store, func()) {
+			pool := testPool(t)
+			auth, members := testAuthority()
+			return NewPGStore(pool, auth, members), pool.Close
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, done := tc.make(t)
+			defer done()
+			ctx := context.Background()
+
+			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
+				t.Fatalf("Topup: %v", err)
+			}
+			if err := s.Allocate(ctx, lead, "p1", 10*Dollar); err != nil {
+				t.Fatalf("Allocate: %v", err)
+			}
+			writeHold(t, s, Pot("p1"), "job-1", 3*Dollar)
+
+			if ok := settle(t, s, Pot("p1"), "job-1", 2*Dollar); !ok {
+				t.Fatal("the first settlement reported it had already settled")
+			}
+			after, _ := s.Balance(ctx, Pot("p1"))
+			if after != 8*Dollar {
+				t.Fatalf("balance after settling = %d, want %d", after, 8*Dollar)
+			}
+
+			// The second settlement is a no-op, and says so rather than
+			// erroring: a retried terminal write is normal, not a fault.
+			if ok := settle(t, s, Pot("p1"), "job-1", 2*Dollar); ok {
+				t.Error("the second settlement reported that it settled")
+			}
+			if n, _ := s.Balance(ctx, Pot("p1")); n != after {
+				t.Errorf("balance = %d after settling twice, want %d — the session was charged again", n, after)
+			}
+			if n, _ := s.Available(ctx, Pot("p1")); n != after {
+				t.Errorf("available = %d, want %d — the hold was released twice", n, after)
+			}
+
+			// And a correction afterwards is still possible: reconciliation
+			// posts the difference as an adjustment, which carries no
+			// uniqueness constraint precisely so this stays open.
+			post(t, s, Entry{Holder: Pot("p1"), Amount: -1 * Dollar, Kind: KindAdjust, JobID: "job-1", Actor: ActorSystem})
+			if n, _ := s.Balance(ctx, Pot("p1")); n != 7*Dollar {
+				t.Errorf("balance after an adjustment = %d, want %d", n, 7*Dollar)
+			}
+		})
+	}
+}
+
+// settle calls the store's settlement, whichever shape it takes.
+func settle(t *testing.T, s Store, h Holder, job string, cost int64) bool {
+	t.Helper()
+	ctx := context.Background()
+	switch st := s.(type) {
+	case *MemStore:
+		ok, err := st.Settle(ctx, h, job, cost)
+		if err != nil {
+			t.Fatalf("Settle: %v", err)
+		}
+		return ok
+	case *PGStore:
+		tx, err := st.pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		ok, err := st.SettleTx(ctx, tx, h, job, cost)
+		if err != nil {
+			t.Fatalf("SettleTx: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		return ok
+	default:
+		t.Fatalf("unknown store %T", s)
+		return false
+	}
+}
