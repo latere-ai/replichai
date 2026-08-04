@@ -64,7 +64,7 @@ func (s *PGStore) settleTx(ctx context.Context, tx pgx.Tx, j Job) error {
 	if s.credits == nil || j.ProjectID == "" {
 		return nil
 	}
-	_, err := s.credits.SettleTx(ctx, tx, credit.Pot(j.ProjectID), j.ID, j.Cost())
+	_, err := s.credits.SettleTx(ctx, tx, credit.Pot(j.ProjectID), j.ID, j.cost())
 	return err
 }
 
@@ -112,7 +112,8 @@ func scanJob(row pgx.Row) (Job, error) {
 		// has to be reconciled.
 		_ = json.Unmarshal(ratesRaw, &j.Rates)
 	}
-	return j, nil
+	// Every read goes through here, so the derived cost is filled in once.
+	return j.withCost(), nil
 }
 
 // Enqueue inserts a new submitted job. A unique_violation on either partial
@@ -389,7 +390,7 @@ func (s *PGStore) Accrued(ctx context.Context, project string) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		n += j.Cost()
+		n += j.cost()
 	}
 	return n, rows.Err()
 }

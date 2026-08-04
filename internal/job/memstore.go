@@ -56,7 +56,7 @@ func (s *MemStore) settleLocked(ctx context.Context, j Job) {
 	if s.credits == nil || j.ProjectID == "" {
 		return
 	}
-	if _, err := s.credits.Settle(ctx, credit.Pot(j.ProjectID), j.ID, j.Cost()); err != nil {
+	if _, err := s.credits.Settle(ctx, credit.Pot(j.ProjectID), j.ID, j.cost()); err != nil {
 		// A settlement that could not be written must not fail the transition:
 		// a session stuck non-terminal is worse than one whose charge has to be
 		// reconciled. The hold stays open until it is.
@@ -307,7 +307,7 @@ func (s *MemStore) Accrued(_ context.Context, project string) (int64, error) {
 	var n int64
 	for _, j := range s.jobs {
 		if j.ProjectID == project && !j.Phase.Terminal() {
-			n += j.Cost()
+			n += j.cost()
 		}
 	}
 	return n, nil
@@ -344,7 +344,11 @@ func (s *MemStore) transition(j *Job, to Phase, mutate func(*Job)) {
 	j.PhaseAt[to] = now
 }
 
+// cloneJob copies a job on its way out of the store — the one boundary every
+// read crosses, which is why the derived cost is filled in here rather than at
+// each of the eight call sites.
 func cloneJob(j Job) Job {
+	j = j.withCost()
 	j.PhaseAt = clonePhaseAt(j.PhaseAt)
 	return j
 }

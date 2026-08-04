@@ -100,7 +100,7 @@ func resolveCard(ctx context.Context, seam credit.CardSnapshot) (credit.Card, er
 	return card, nil
 }
 
-// Cost is what this session's recorded usage comes to under the rates it was
+// cost is what this session's recorded usage comes to under the rates it was
 // admitted at, in micro-USD (011).
 //
 // It prices the *last observation*, which is what the session is settled from.
@@ -111,12 +111,20 @@ func resolveCard(ctx context.Context, seam credit.CardSnapshot) (credit.Card, er
 //
 // A session with no rates costs nothing: an unpriced deployment holds and
 // releases the reserve and charges no money.
-func (j Job) Cost() int64 {
+func (j Job) cost() int64 {
 	rates, err := j.Rates.For(j.Status.Model)
 	if err != nil {
 		return 0
 	}
 	return rates.Price(j.Status.Usage)
+}
+
+// withCost returns the job with its derived cost filled in — what a read path
+// hands out. Deriving it on the way out rather than storing it keeps the number
+// the client sees and the number settlement charges the same expression.
+func (j Job) withCost() Job {
+	j.Cost = j.cost()
+	return j
 }
 
 // CancelCause is the error recorded on a session a user stopped, so the UI can
@@ -149,9 +157,16 @@ type Job struct {
 	// against and the amount it is charged cannot be computed from different
 	// numbers. Not on the wire: what a session cost is a number, and the list it
 	// was derived from is the admin's policy, not the owner's business.
-	Rates     credit.Card `json:"-"`
-	CreatedAt time.Time   `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	Rates credit.Card `json:"-"`
+	// Cost is what this session has cost so far, in micro-USD — the same number
+	// settlement charges. Derived from Rates and the recorded usage rather than
+	// stored, so it cannot disagree with the charge. It is on the wire because
+	// whoever's project paid for a run is entitled to know what it cost; the
+	// rates it came from are not, being the platform's price list rather than
+	// this owner's business.
+	Cost      int64     `json:"cost"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// PhaseAt records when the job entered each phase, so the timeline is durable.
 	PhaseAt map[Phase]time.Time `json:"phase_at,omitempty"`
 }

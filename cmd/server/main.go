@@ -181,6 +181,8 @@ func run() error {
 		Live:          liveTranscript{prov: prov},
 		Resolver:      paperResolver{fetch: newHTTPFetcher(30 * time.Second)},
 		Gate:          webauth.Gate(accessStore),
+		Credits:       st.credits,
+		Reserve:       platform.StartReserve(st.platform),
 		Notifier:      notifier,
 		SPA:           spaHandler,
 	})
