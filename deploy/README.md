@@ -66,7 +66,17 @@ visible in the admin console to be re-granted. `ADMIN_EMAILS` is replayed
 through the bootstrap seeder on every start and deliberately skips a revoked
 address, so a restart does not undo a ban either.
 
-Before the first real run, check the price list against the backend: `replichai rates` (with `DATABASE_URL` set, so it reads this deployment's card rather than the compiled-in seed) resolves each model preference the way the engine will and shows which ones the card actually names. A preference resolving to an id the card does not name is charged the dearest rates on it — never free, but not that model's own price either, which is worth knowing before the first invoice rather than after.
+**The server checks its own price list at every boot**, and the pod log says what it found:
+
+```
+rates: best → claude-opus-5-20260901, which the card does NOT name — charged the
+       dearest rates on it ($5.00/$25.00 per Mtok). Add it in Admin → Platform …
+rates: balanced → claude-sonnet-5, priced at its own rates
+```
+
+That is the check worth reading after a deploy. It happens where it can: the server is the one process holding both this deployment's rate card and the provider credential, so nothing has to be assembled by hand. It logs and never blocks — a card a release behind is a billing imprecision, not a reason to refuse to boot. A preference resolving to an id the card does not name is still charged, at the dearest rates on the card, which is never free but is not that model's own price either.
+
+`replichai rates` runs the same comparison from a laptop (`-json` for a pipeline). The production image ships only the server, so that one is for a local check against `DATABASE_URL`, not something to exec in the cluster.
 
 Credits are the meter. A session charges the **project** it belongs to, out of
 credits somebody allocated to that project from their own wallet; a project must

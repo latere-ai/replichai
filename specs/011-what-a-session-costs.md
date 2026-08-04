@@ -6,7 +6,7 @@
 
 One caveat worth stating, and a command for it: against the real backend, `ResolveModel` returns whatever the vendor's model list holds for the tier preference, which may not be one of the three ids the seeded card names. That path charges the dearest rates rather than the model's own — correct by design, and not free, but not that model's price either.
 
-Reading the vendor's model list by eye answers the wrong question, because the engine asks for a *preference* and the adapter resolves it by substring against whatever is listed today. `replichai rates` drives that same resolution and compares its answer to the card:
+Reading the vendor's model list by eye answers the wrong question, because the engine asks for a *preference* and the adapter resolves it by substring against whatever is listed today. `Card.Covers` drives that same resolution and compares its answer to the card, and **the server runs it at every boot** — it is the one process holding both the deployment's card and the provider credential, so the check happens whether anybody remembers to ask. It logs and never blocks: a card a release behind is a billing imprecision, not a reason to refuse to boot. `replichai rates` prints the same comparison from a laptop:
 
 ```
 PREFERENCE  RESOLVES TO             PRICED AS         INPUT $/MTok  OUTPUT $/MTok
@@ -14,7 +14,7 @@ best        claude-opus-5-20260901  DEAREST ON CARD   $5.00         $25.00
 balanced    claude-sonnet-5         claude-sonnet-5   $3.00         $15.00
 ```
 
-It reads the deployment's own card when `DATABASE_URL` is set — that row is what sessions are actually priced from — and the compiled-in seed otherwise. `-json` makes it a pre-flight check a release can run. It is a *report*, not a gate: a preference resolving to an unnamed id is a thing to know before the first run, not a reason to refuse to start.
+The CLI reads the deployment's own card when `DATABASE_URL` is set — that row is what sessions are actually priced from — and the compiled-in seed otherwise; `-json` makes it a pipeline check. The production image ships only the server, so the CLI is a laptop tool and the boot log is what an operator actually reads.
 **Scope:** replace the session counter with money. An append-only credit ledger at two levels — a person's wallet and a project's pot — priced in micro-USD, metered against the tokens a session actually burned, held at start and settled at the end. The counter, its top-ups, its sponsorship and its payer picker are removed rather than deprecated. A rework of [006l](006l-the-session-quota.md), and the promotion of `BACKLOG.md` item 5 onto the roadmap.
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store, the enqueue transaction, the worker's poll loop), [006k](006k-the-platform-admin-console.md) (where an admin sets policy and grants), [006g](006g-projects-and-replication-sessions.md) (projects own sessions), [006c](006c-identity-and-access.md) (project membership and `RoleLead`), [006h](006h-session-transcript-viewer.md) / [006s](006s-reading-a-session-in-time.md) (the usage a session records).
 **Supersedes:** 006l entirely; 006q's zero-quota default (its open sign-in stands).
