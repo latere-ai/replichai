@@ -4,7 +4,17 @@
 
 **Verified by hand, against a real Postgres and the running app.** A new account reports zero and is refused `402 no_credits`; an admin top-up of $50 appears in the wallet statement naming the admin who granted it; a submit funds a fresh project with one reserve and leaves $40; the ledger records `allocate → hold → charge → release` in that order for each session. A run that never reached the provider (arXiv rate-limited the resolve) charged nothing and returned its hold whole, which is the rule for a session with no usage. A run that finished charged 5 µUSD for one input token — priced at the *dearest* rates, because the in-process provider reports no model and `Card.For` fails expensive, which is the intended behaviour seen working rather than assumed. Reclaiming $4 moved both balances in one response; reclaiming more than the pot holds was `402`. A project below the start reserve refused the next submit and admitted it again once topped up.
 
-One caveat worth stating: against the real backend, `ResolveModel` returns whatever the vendor's model list holds for the tier preference, which may not be one of the three ids the seeded card names. That path therefore charges the dearest rates rather than the model's own. Correct by design and cheap to fix — an admin edits the card — but it means the seeded card should be checked against what the deployment's backend actually returns before the first real run.
+One caveat worth stating, and a command for it: against the real backend, `ResolveModel` returns whatever the vendor's model list holds for the tier preference, which may not be one of the three ids the seeded card names. That path charges the dearest rates rather than the model's own — correct by design, and not free, but not that model's price either.
+
+Reading the vendor's model list by eye answers the wrong question, because the engine asks for a *preference* and the adapter resolves it by substring against whatever is listed today. `replichai rates` drives that same resolution and compares its answer to the card:
+
+```
+PREFERENCE  RESOLVES TO             PRICED AS         INPUT $/MTok  OUTPUT $/MTok
+best        claude-opus-5-20260901  DEAREST ON CARD   $5.00         $25.00
+balanced    claude-sonnet-5         claude-sonnet-5   $3.00         $15.00
+```
+
+It reads the deployment's own card when `DATABASE_URL` is set — that row is what sessions are actually priced from — and the compiled-in seed otherwise. `-json` makes it a pre-flight check a release can run. It is a *report*, not a gate: a preference resolving to an unnamed id is a thing to know before the first run, not a reason to refuse to start.
 **Scope:** replace the session counter with money. An append-only credit ledger at two levels — a person's wallet and a project's pot — priced in micro-USD, metered against the tokens a session actually burned, held at start and settled at the end. The counter, its top-ups, its sponsorship and its payer picker are removed rather than deprecated. A rework of [006l](006l-the-session-quota.md), and the promotion of `BACKLOG.md` item 5 onto the roadmap.
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store, the enqueue transaction, the worker's poll loop), [006k](006k-the-platform-admin-console.md) (where an admin sets policy and grants), [006g](006g-projects-and-replication-sessions.md) (projects own sessions), [006c](006c-identity-and-access.md) (project membership and `RoleLead`), [006h](006h-session-transcript-viewer.md) / [006s](006s-reading-a-session-in-time.md) (the usage a session records).
 **Supersedes:** 006l entirely; 006q's zero-quota default (its open sign-in stands).

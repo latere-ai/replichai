@@ -56,6 +56,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	}
 
 	switch args[0] {
+	case "rates":
+		return runRates(ctx, args[1:], stdout, stderr)
+
 	case "providers":
 		for _, name := range provider.Available() {
 			suffix := ""
@@ -732,6 +735,7 @@ usage:
   replichai publish <artifact-dir> <paper-ref> [flags]
   replichai finish <owner>/<repo> <paper-ref> --session <id> [flags]
   replichai providers
+  replichai rates [flags]
 
 a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
 
@@ -746,6 +750,11 @@ flags for audit:
   -owner          GitHub owner for -publish (default "`+publish.DefaultOrg+`")
   -invite         GitHub login to invite as a collaborator
   -detach         with -publish, start the run and return; finish it later
+
+flags for rates:
+  -provider       provider to ask (default "`+provider.DefaultName+`")
+  -database-url   read the live rate card from a deployment (default $DATABASE_URL)
+  -json           machine-readable output
 
 flags for finish:
   -session        session id to reattach to and wait for
