@@ -220,12 +220,16 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
 
   const rows: { label: string; node: React.ReactNode }[] = []
   if (p.contact_email)
-    rows.push({ label: t('signedOffContact'), node: <a href={`mailto:${p.contact_email}`}>{p.contact_email}</a> })
+    rows.push({ label: t('signedOffContact'), node: (
+        <a className="link" href={`mailto:${p.contact_email}`}>
+          {p.contact_email}
+        </a>
+      ) })
   if (p.orcid)
     rows.push({
       label: t('signedOffOrcid'),
       node: (
-        <a href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer noopener">
+        <a className="link" href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer noopener">
           {p.orcid}
         </a>
       ),
@@ -240,7 +244,7 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
     rows.push({
       label: t('signedOffScholar'),
       node: (
-        <a href={p.scholar_url} target="_blank" rel="noreferrer noopener">
+        <a className="link" href={p.scholar_url} target="_blank" rel="noreferrer noopener">
           {host}
         </a>
       ),
@@ -618,7 +622,7 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
                       <>
                         {t('initiator')}:{' '}
                         {p.signer_handle ? (
-                          <a href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
+                          <a className="link" href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
                             {signerOf(p)}
                           </a>
                         ) : (
@@ -673,7 +677,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
                       // The link opens the signer's page rather than the
                       // project, so the click is stopped from bubbling into the
                       // row's own handler.
-                      <a href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
+                      <a className="link" href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
                         {signerOf(p)}
                       </a>
                     ) : (
@@ -1776,23 +1780,22 @@ function WalletStatement({ i18n, balance }: { i18n: I18n; balance: number }) {
           </button>
         </span>
       </div>
-      {open && (
-        <div className="stack" style={{ gap: 4, padding: '2px 0 8px' }}>
-          {entries === null ? (
-            <span className="muted small">{t('loading')}</span>
-          ) : entries.length === 0 ? (
-            <span className="muted small">{t('statementEmpty')}</span>
-          ) : (
-            entries.map((e) => (
-              <div className="statement-row" key={e.id}>
-                <span className="muted small">{ledgerKindLabel(t, e.kind)}</span>
+      {open &&
+        (entries === null ? (
+          <div className="usage-line muted small">{t('loading')}</div>
+        ) : entries.length === 0 ? (
+          <div className="usage-line muted small">{t('statementEmpty')}</div>
+        ) : (
+          entries.map((e) => (
+            <div className="usage-line" key={e.id}>
+              <span className="muted small">{ledgerKindLabel(t, e.kind)}</span>
+              <span className="v">
                 <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
-                <span className={'tabular small' + (e.amount < 0 ? ' err' : '')}>{formatUSD(e.amount)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+                <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
+              </span>
+            </div>
+          ))
+        ))}
     </>
   )
 }
@@ -2355,12 +2358,16 @@ function PublishedCard({
   const rows: { label: string; node: React.ReactNode }[] = []
   if (project.signed_off_email) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{project.signed_off_email}</span> })
   if (project.signed_off_contact)
-    rows.push({ label: t('signedOffContact'), node: <a href={`mailto:${project.signed_off_contact}`}>{project.signed_off_contact}</a> })
+    rows.push({ label: t('signedOffContact'), node: (
+        <a className="link" href={`mailto:${project.signed_off_contact}`}>
+          {project.signed_off_contact}
+        </a>
+      ) })
   if (project.signed_off_orcid)
     rows.push({
       label: t('signedOffOrcid'),
       node: (
-        <a href={`https://orcid.org/${project.signed_off_orcid}`} target="_blank" rel="noreferrer noopener">
+        <a className="link" href={`https://orcid.org/${project.signed_off_orcid}`} target="_blank" rel="noreferrer noopener">
           {project.signed_off_orcid}
         </a>
       ),
@@ -2377,7 +2384,7 @@ function PublishedCard({
     rows.push({
       label: t('signedOffScholar'),
       node: (
-        <a href={project.signed_off_scholar} target="_blank" rel="noreferrer noopener">
+        <a className="link" href={project.signed_off_scholar} target="_blank" rel="noreferrer noopener">
           {host}
         </a>
       ),
@@ -2402,7 +2409,7 @@ function PublishedCard({
                 as its owner turns their profile on and off (006r). */}
             {t('signedOffBy')}{' '}
             {signerHandle ? (
-              <a href={`/u/${signerHandle}`}>
+              <a className="link" href={`/u/${signerHandle}`}>
                 <strong>{project.signed_off_name}</strong>
               </a>
             ) : (

@@ -131,3 +131,63 @@ func TestForRefusesWithNoCard(t *testing.T) {
 		t.Errorf("card of zero rates: want ErrNoRates, got %v", err)
 	}
 }
+
+// A dated snapshot is the model it is a snapshot of, and must be billed as one.
+//
+// This is not hypothetical: the first production boot of 011 resolved the
+// "fast" preference to claude-haiku-4-5-20251001 against a card naming
+// claude-haiku-4-5, and charged it the dearest rates on the card — $5/$25
+// instead of $1/$5, five times over, on the tier chosen for being cheap.
+func TestASnapshotIsPricedAsTheModelItIs(t *testing.T) {
+	card := Card{Models: []Rates{haiku, opus}}
+
+	got, err := card.For("claude-haiku-4-5-20251001")
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	if got.Input != haiku.Input || got.Output != haiku.Output {
+		t.Errorf("a dated haiku was priced at %d/%d, want haiku's %d/%d", got.Input, got.Output, haiku.Input, haiku.Output)
+	}
+	// The snapshot still records what was asked for, so an amount can be traced
+	// back to the id that produced it.
+	if got.Model != "claude-haiku-4-5-20251001" {
+		t.Errorf("the entry names %q; it must record what was asked for", got.Model)
+	}
+	// An exact match is still exact, and still wins.
+	if exact, _ := card.For("claude-haiku-4-5"); exact.Model != "claude-haiku-4-5" {
+		t.Errorf("an exact match was rewritten: %+v", exact)
+	}
+}
+
+// The suffix has to be a date and nothing else. A bare prefix test would be
+// wrong in the expensive direction and look correct doing it: a card naming a
+// shorter id would swallow a longer, different, differently-priced model.
+func TestASnapshotMatchDoesNotSwallowADifferentModel(t *testing.T) {
+	// `claude-opus-4` is a prefix of `claude-opus-4-8`, which is another model.
+	card := Card{Models: []Rates{
+		{Model: "claude-opus-4", Input: 1 * Dollar, Output: 2 * Dollar, CacheRead: 1, CacheWrite5m: 1, CacheWrite1h: 1},
+		{Model: "expensive", Input: 90 * Dollar, Output: 90 * Dollar, CacheRead: 9, CacheWrite5m: 9, CacheWrite1h: 9},
+	}}
+	got, err := card.For("claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	if got.Input == 1*Dollar {
+		t.Error("a different model was priced as a snapshot of a shorter id")
+	}
+	if got.Input != 90*Dollar {
+		t.Errorf("input = %d, want the dearest rate %d — an unrecognised model fails expensive", got.Input, 90*Dollar)
+	}
+
+	// Nor does a version fragment count as a date.
+	for _, id := range []string{"claude-opus-4-8", "claude-opus-4-x", "claude-opus-4-", "claude-opus-4-2026"} {
+		if isSnapshotOf("claude-opus-4", id) {
+			t.Errorf("%q was treated as a dated snapshot", id)
+		}
+	}
+	for _, id := range []string{"claude-opus-4-20260901", "claude-opus-4-251001"} {
+		if !isSnapshotOf("claude-opus-4", id) {
+			t.Errorf("%q was not treated as a dated snapshot", id)
+		}
+	}
+}

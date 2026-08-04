@@ -14,15 +14,14 @@ import (
 	"github.com/latere-ai/replichai/internal/provider/anthropic"
 )
 
-// A backend whose model list is a dated snapshot rather than the bare alias —
-// which is the case this command exists to catch. `ResolveModel` matches on the
-// tier substring, so "best" resolves to the dated opus id, and the seeded card
-// (which names `claude-opus-5`) has no entry for it.
+// A backend offering a model the card cannot price on its own terms — the case
+// this command exists to catch. A *dated snapshot* of a named model is not that
+// case (the card prices it as the model it is); a genuinely unfamiliar id is.
 func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{
-			{"id": "claude-opus-5-20260901"},
+			{"id": "claude-opus-6-preview"},
 			{"id": "claude-sonnet-5"},
 			{"id": "claude-haiku-4-5"},
 		}})
@@ -40,7 +39,7 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	// dearest rates — never free, which is the design, but not opus's own price
 	// either. That is the whole finding.
 	best := byPref["best"]
-	if best.Model != "claude-opus-5-20260901" {
+	if best.Model != "claude-opus-6-preview" {
 		t.Fatalf("best resolved to %q", best.Model)
 	}
 	if best.Named {
