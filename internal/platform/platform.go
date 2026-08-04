@@ -39,6 +39,22 @@ import (
 // deployment can actually afford.
 const DefaultStartReserve = 10 * credit.Dollar
 
+// DefaultOverdraftCap is how far below zero a project's balance may go before
+// a run is killed: the value the settings row is seeded with, and the value a
+// failed or missing read resolves to. One constant, so the two cannot drift.
+//
+// It fails **tight**, the opposite direction from the reserve. A cap that grew
+// when the settings read failed would remove the one bound on a runaway
+// session at exactly the moment the platform is least able to notice; a cap
+// that stays put kills a run no later than it would have. The number is an
+// admin's to set against what this deployment can afford to lose on one
+// replication.
+//
+// It is not published anywhere a user can read (011). A known overdraft is an
+// allowance to be spent, and the whole point of this number is that nobody
+// plans around it.
+const DefaultOverdraftCap = 200 * credit.Dollar
+
 // Errors this package returns.
 var (
 	// ErrNotAdmin reports a settings write by a non-admin.
@@ -54,6 +70,10 @@ type Settings struct {
 	// StartReserve is how much a project must have available, in micro-USD,
 	// before a session may start there (011 enforces; this only stores).
 	StartReserve int64 `json:"start_reserve"`
+	// OverdraftCap is how far below zero a project's balance may fall before a
+	// run is killed, in micro-USD. It is admin-only: it appears on the admin
+	// settings payload and on no surface a project's own members can read.
+	OverdraftCap int64 `json:"overdraft_cap"`
 	// Rates is what each model's tokens cost. It is policy rather than a
 	// constant because a vendor's prices move: a compiled-in list makes every
 	// price change a redeploy, and a silent mispricing until then.
@@ -116,8 +136,21 @@ func StartReserve(s Store) credit.Reserve {
 
 // validate rejects a settings value that cannot mean anything.
 func (s Settings) validate() error {
-	if s.StartReserve < 0 {
+	if s.StartReserve < 0 || s.OverdraftCap < 0 {
 		return ErrNegative
 	}
 	return nil
+}
+
+// OverdraftCap adapts a Store to the number the spend watchdog compares a
+// project's projected balance against. A failed read resolves to the constant,
+// which is the tight direction: the bound stays rather than disappearing.
+func OverdraftCap(s Store) func(ctx context.Context) (int64, error) {
+	return func(ctx context.Context) (int64, error) {
+		set, err := s.Settings(ctx)
+		if err != nil || set.OverdraftCap <= 0 {
+			return DefaultOverdraftCap, nil
+		}
+		return set.OverdraftCap, nil
+	}
 }

@@ -138,7 +138,7 @@ func run() error {
 		token:    forgeToken,
 		delay:    delay,
 	}
-	worker := job.NewWorker(jobStore, runner)
+	worker := job.NewWorker(jobStore, runner, job.WithBudget(spendBackstop(st)))
 	if resumed, failed, err := worker.Reconcile(ctx); err != nil {
 		log.Printf("reconcile on startup: %v", err)
 	} else if resumed > 0 || failed > 0 {
@@ -185,7 +185,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, sessionCredits(st), *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -209,14 +209,14 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, me webauth.CreditsFunc, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	mux.HandleFunc("GET /me", webauth.Me(acc, me))
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps)))
 
 	if dev {
 		// The dev bypass has no login moment, so the bind sign-in performs runs
@@ -307,6 +307,47 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 			return webauth.Credits{}, err
 		}
 		return webauth.Credits{Wallet: wallet, StartReserve: reserve}, nil
+	}
+}
+
+// spendBackstop is the hidden floor under one project's spend (011).
+//
+// A session runs to completion once it has started — killing one mid-run turns
+// money into nothing — so this is not the meter. The meter is the start gate:
+// a project that has gone negative cannot begin anything until it is topped up.
+// This is the bound on how negative one runaway can take it.
+//
+// The projection is project-wide, and that is the load-bearing part. Accrued
+// spend does not reach the ledger until a session settles, so a watchdog that
+// subtracted only the observing session's own cost would let N concurrent runs
+// each stay above the floor and jointly sail past it.
+func spendBackstop(st stores) job.Budget {
+	cap := platform.OverdraftCap(st.platform)
+	return func(ctx context.Context, j job.Job) (bool, string, error) {
+		if j.ProjectID == "" {
+			return false, "", nil
+		}
+		floor, err := cap(ctx)
+		if err != nil {
+			return false, "", err
+		}
+		// A project may set its own floor; zero means the platform's.
+		if p, err := st.projects.Get(ctx, j.ProjectID); err == nil && p.CreditCap > 0 {
+			floor = p.CreditCap
+		}
+		balance, err := st.credits.Balance(ctx, credit.Pot(j.ProjectID))
+		if err != nil {
+			return false, "", err
+		}
+		accrued, err := st.jobs.Accrued(ctx, j.ProjectID)
+		if err != nil {
+			return false, "", err
+		}
+		if projected := balance - accrued; projected <= -floor {
+			return true, fmt.Sprintf("projected balance %d is at or below the floor of -%d (balance %d, accrued %d)",
+				projected, floor, balance, accrued), nil
+		}
+		return false, "", nil
 	}
 }
 

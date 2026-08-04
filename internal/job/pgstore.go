@@ -372,6 +372,31 @@ func (s *PGStore) Cancel(ctx context.Context, id string) (Job, error) {
 	return j, err
 }
 
+// Accrued sums what every in-flight session in a project has cost so far.
+//
+// The pricing is per row, in Go, because each session carries its own rate
+// snapshot: a SQL sum would have to reimplement the price function against
+// whatever card each row happens to hold, and the two would drift the first
+// time a token class was added.
+func (s *PGStore) Accrued(ctx context.Context, project string) (int64, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+jobColumns+` FROM jobs WHERE project_id = $1 AND phase NOT IN ($2,$3)`,
+		project, PhaseDone, PhaseFailed)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var n int64
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return 0, err
+		}
+		n += j.Cost()
+	}
+	return n, rows.Err()
+}
+
 // Active returns every non-terminal job.
 func (s *PGStore) Active(ctx context.Context) ([]Job, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE phase NOT IN ($1,$2) ORDER BY created_at`,

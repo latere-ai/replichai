@@ -92,6 +92,14 @@ DROP TABLE IF EXISTS quota_topups;
 -- deployment usable.
 ALTER TABLE platform_settings ADD COLUMN rate_card JSONB NOT NULL DEFAULT '%s'::jsonb;
 `, defaultCardJSON())},
+	{5, fmt.Sprintf(`
+-- How far below zero a project may fall before a run is killed (011). A
+-- session runs to completion once started — killing it mid-run converts spend
+-- into nothing — so this is a backstop against one runaway, not the routine
+-- mechanism. The routine mechanism is the start reserve: a negative project
+-- cannot begin anything until it is topped up.
+ALTER TABLE platform_settings ADD COLUMN overdraft_cap BIGINT NOT NULL DEFAULT %d;
+`, DefaultOverdraftCap)},
 }
 
 // defaultCardJSON renders the seeded price list for the migration. It is

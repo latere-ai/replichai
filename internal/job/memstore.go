@@ -296,6 +296,19 @@ func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStat
 	return nil
 }
 
+// Accrued sums what every in-flight session in a project has cost so far.
+func (s *MemStore) Accrued(_ context.Context, project string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var n int64
+	for _, j := range s.jobs {
+		if j.ProjectID == project && !j.Phase.Terminal() {
+			n += j.Cost()
+		}
+	}
+	return n, nil
+}
+
 // Active returns copies of every non-terminal job, in submission order.
 func (s *MemStore) Active(_ context.Context) ([]Job, error) {
 	s.mu.Lock()

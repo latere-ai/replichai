@@ -85,6 +85,18 @@ func (s *MemStore) SetTitle(_ context.Context, id, title string) error {
 	return nil
 }
 
+// SetCreditCap overrides this project's overdraft floor; zero restores the
+// platform default.
+func (s *MemStore) SetCreditCap(_ context.Context, id string, cap int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.projects[id]; ok {
+		p.CreditCap = cap
+		s.projects[id] = p
+	}
+	return nil
+}
+
 // SetPublic marks a project public and records the sign-off, superseding any
 // earlier withdrawal.
 func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
