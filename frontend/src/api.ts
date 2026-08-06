@@ -407,8 +407,10 @@ export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`)
 export const listArtifacts = (id: string) => fetch(`/jobs/${id}/artifacts`).then(json<{ files: string[] }>)
 export const artifactUrl = (id: string, path: string) => `/jobs/${id}/artifact?path=${encodeURIComponent(path)}`
 export const getArtifact = (id: string, path: string) =>
-  fetch(`/jobs/${id}/artifact?path=${encodeURIComponent(path)}`).then((r) => {
-    if (!r.ok) throw new Error(`${r.status}`)
+  fetch(`/jobs/${id}/artifact?path=${encodeURIComponent(path)}`).then(async (r) => {
+    // An ApiError like every other call, so a caller that asks why can tell a
+    // refusal from a network failure. A plain Error would be read as "offline".
+    if (!r.ok) throw await refusal(r)
     return r.text()
   })
 

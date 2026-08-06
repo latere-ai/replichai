@@ -782,7 +782,14 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
 
         <label className="field">
           {t('projectNameLabel')}
-          <input className="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('projectNamePlaceholder')} spellCheck={false} />
+          <input
+            className="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={t('projectNamePlaceholder')}
+            spellCheck={false}
+            disabled={!!created}
+          />
         </label>
 
         <div className="field">
@@ -798,14 +805,15 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
                     placeholder={t('paperPlaceholder')}
                     spellCheck={false}
                     onKeyDown={(e) => e.key === 'Enter' && resolveRow(i)}
+                    disabled={!!created}
                   />
-                  <button className="btn ghost sm" disabled={!row.url.trim() || row.resolving} onClick={() => resolveRow(i)}>
+                  <button className="btn ghost sm" disabled={!row.url.trim() || row.resolving || !!created} onClick={() => resolveRow(i)}>
                     <Ico name="search" size={12} w={2} />
                     {row.resolving ? t('resolvingPaper') : t('resolve')}
                   </button>
                   {rows.length > 1 && (
                     <Tip text={t('removePaper')}>
-                      <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => removeRow(i)}>
+                      <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => removeRow(i)} disabled={!!created}>
                         <Ico name="x" size={13} w={1.9} />
                       </button>
                     </Tip>
@@ -824,14 +832,21 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
               </div>
             ))}
           </div>
-          <button className="btn ghost sm" onClick={addRow} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+          <button className="btn ghost sm" onClick={addRow} disabled={!!created} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
             <Ico name="plus" size={12} w={2.2} /> {t('addPaper')}
           </button>
         </div>
 
         <label className="field">
           {t('collaboratorsLabel')}
-          <input className="text" value={collaborators} onChange={(e) => setCollaborators(e.target.value)} placeholder={t('collaboratorsPlaceholder')} spellCheck={false} />
+          <input
+            className="text"
+            value={collaborators}
+            onChange={(e) => setCollaborators(e.target.value)}
+            placeholder={t('collaboratorsPlaceholder')}
+            spellCheck={false}
+            disabled={!!created}
+          />
           <span className="attestation">{t('collaboratorsHint')}</span>
         </label>
 
@@ -845,7 +860,7 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
               <Ico name="sparkles" size={14} /> {busy ? t('creatingProject') : t('createProjectBtn')}
             </button>
           )}
-          <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>
+          {!created && <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>}
         </div>
         {/* A partly-successful create is not a failure: the project exists. */}
         {err && <p className={created ? 'muted small' : 'err small'}>{err}</p>}

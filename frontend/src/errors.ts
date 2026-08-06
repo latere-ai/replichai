@@ -97,9 +97,11 @@ export function createOutcome(t: T, status: number, data: CreatedProject, credit
   if (status === 201 && data.project_id) {
     const started = sessions.filter((s) => s.job_id).length
     // Partial success used to be silent: the screen navigated away having said
-    // nothing about the papers it dropped. The project opens either way — the
-    // banner is carried to it rather than blocking here.
-    return { ok: true, banner: rows.size ? t('partialStarted', { n: String(started) }) : '', rows }
+    // nothing about the papers it dropped. The project exists either way, and
+    // the papers that did not start belong in it — which is where the message
+    // sends them, because this form only ever creates a new project.
+    const banner = rows.size ? t('partialStarted', { n: String(started), total: String(sessions.length) }) : ''
+    return { ok: true, banner, rows }
   }
 
   if (rows.size) return { ok: false, banner: t('allPapersFailed'), rows }
