@@ -164,7 +164,7 @@ const strings: Record<Lang, Record<string, string>> = {
     errUnresolvable: 'We don’t recognise this link.',
     errEnqueue: 'Couldn’t start this one. Try again in a moment.',
     allPapersFailed: 'None of these papers could be started. Each one says why below.',
-    partialStarted: '{n} of these papers started. The rest are listed below with the reason.',
+    partialStarted: 'Started {n} of {total}. The papers below did not start — open the project to try them again there.',
     createFailed: 'Something went wrong on our side and the project wasn’t created. Nothing was charged — try again in a moment.',
     errNotAllowed: 'Your account can’t do this right now. Signing out and back in fixes most cases; if it persists, ask a platform admin.',
     errOffline: 'You appear to be offline. Check your connection and try again.',

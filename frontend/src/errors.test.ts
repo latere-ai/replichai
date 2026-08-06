@@ -66,7 +66,7 @@ test('a partly successful create does not swallow the papers it dropped', () => 
   }
   const out = createOutcome(t, 201, data, funded, 3)
   expect(out.ok).toBe(true)
-  expect(out.banner).toBe('partialStarted:1')
+  expect(out.banner).toBe('partialStarted:1,3')
   expect(out.rows.get('b')).toBe('errActiveSession')
   expect(out.rows.get('c')).toBe('errNoCredits')
 })
