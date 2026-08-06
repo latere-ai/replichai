@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test'
-import { creditMoveErrLabel, emptyWallet, ledgerKindLabel, sessionErrLabel, submitErrLabel } from './App'
+import { ledgerKindLabel } from './App'
+import { ApiError } from './api'
+import { creditMoveErrLabel, emptyWallet, sessionErrLabel, submitErrLabel } from './errors'
 import { formatUSD, MICRO, parseUSD, toDollars } from './money'
 
 // The identity function for the label helpers: they take a translate function,
@@ -22,13 +24,13 @@ test('emptyWallet separates a new account from a project that ran out', () => {
 // One refusal, two problems: only one of them the person can fix by moving
 // money they already hold.
 test('a refused submit tells a new account something different from a spent project', () => {
-  expect(submitErrLabel(t, '402', { wallet: 0, start_reserve: 10 * MICRO })).toBe('errNoCreditsAtAll')
-  expect(submitErrLabel(t, '402', { wallet: 20 * MICRO, start_reserve: 10 * MICRO })).toBe('errNoCredits')
+  expect(submitErrLabel(t, new ApiError(402), { wallet: 0, start_reserve: 10 * MICRO })).toBe('errNoCreditsAtAll')
+  expect(submitErrLabel(t, new ApiError(402), { wallet: 20 * MICRO, start_reserve: 10 * MICRO })).toBe('errNoCredits')
   // With nothing known, the message that does not accuse anybody of anything.
-  expect(submitErrLabel(t, '402', undefined)).toBe('errNoCredits')
+  expect(submitErrLabel(t, new ApiError(402), undefined)).toBe('errNoCredits')
   // Every other refusal is unchanged.
-  expect(submitErrLabel(t, '409', undefined)).toBe('activeSession')
-  expect(submitErrLabel(t, '500', undefined)).toBe('submitError')
+  expect(submitErrLabel(t, new ApiError(409), undefined)).toBe('activeSession')
+  expect(submitErrLabel(t, new ApiError(500), undefined)).toBe('submitError')
 })
 
 // The same distinction on the per-paper path a batch create reports through.
@@ -83,13 +85,13 @@ test('a field round-trips through the parser', () => {
 // sentence. One "that did not work" would tell somebody who mistyped an amount
 // the same thing it tells somebody who is not a lead.
 test('a refused credit move says which refusal it was', () => {
-  expect(creditMoveErrLabel(t, 'no_credits')).toBe('errMoveInsufficient')
-  expect(creditMoveErrLabel(t, 'not_lead')).toBe('errMoveNotLead')
-  expect(creditMoveErrLabel(t, 'not_member')).toBe('errMoveNotMember')
-  expect(creditMoveErrLabel(t, 'bad_amount')).toBe('errMoveAmount')
+  expect(creditMoveErrLabel(t, new ApiError(400, 'no_credits'))).toBe('errMoveInsufficient')
+  expect(creditMoveErrLabel(t, new ApiError(400, 'not_lead'))).toBe('errMoveNotLead')
+  expect(creditMoveErrLabel(t, new ApiError(400, 'not_member'))).toBe('errMoveNotMember')
+  expect(creditMoveErrLabel(t, new ApiError(400, 'bad_amount'))).toBe('errMoveAmount')
   // An unknown code is a generic failure rather than a wrong specific one.
-  expect(creditMoveErrLabel(t, 'something_new')).toBe('errMoveFailed')
-  expect(creditMoveErrLabel(t, '')).toBe('errMoveFailed')
+  expect(creditMoveErrLabel(t, new ApiError(400, 'something_new'))).toBe('errMoveFailed')
+  expect(creditMoveErrLabel(t, new ApiError(400, ''))).toBe('errMoveFailed')
 })
 
 // A wallet only ever sees three of the ledger's seven kinds: holds, releases

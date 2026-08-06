@@ -5,6 +5,11 @@ import { useCallback, useState } from 'react'
 // matching block to `strings`, and a language switcher becomes trivial again.
 export type Lang = 'en'
 
+// I18n is what a component needs to render text: the chosen language, a setter,
+// and the translate function. It lives here rather than in App so that the
+// error-copy module can type against it without importing the whole app.
+export type I18n = ReturnType<typeof useI18n>
+
 const strings: Record<Lang, Record<string, string>> = {
   en: {
     // auth
@@ -54,7 +59,7 @@ const strings: Record<Lang, Record<string, string>> = {
     topup: 'Add credits',
     topupPrompt: 'Credits to add to {email}\u2019s wallet, in US dollars. They allocate what they need to a project from there.',
     walletOf: 'What {email} has left to allocate to a project.',
-    adminError: 'That change did not go through.',
+    adminError: 'That change didn’t go through. Try again in a moment.',
     adminNotAdmin: 'Only a platform admin may change this.',
     used: 'Used',
     // credits (011)
@@ -66,6 +71,12 @@ const strings: Record<Lang, Record<string, string>> = {
     walletEmptyTitle: 'This account has no credits yet. Ask a platform admin to add some, or work in a project somebody else has funded.',
     errNoCredits: 'This project is out of credits \u2014 allocate more to it to keep going.',
     errNoCreditsAtAll: 'No credits yet \u2014 ask a platform admin to add some, or work in a project somebody else has funded.',
+    // Creating a project spends from your own credits, and there is no project
+    // yet to allocate to \u2014 so this cannot borrow the sentence above, which
+    // would send someone to top up something that was never created.
+    errCreateNoCredits: 'You don\u2019t have the credits to start this. Ask a platform admin to add some to your account.',
+    errCreateNoCreditsAmount:
+      'Not enough credits: starting {n} paper(s) needs {need}, and you have {have}. Ask a platform admin to add credits, or start fewer papers.',
     // a project's own credits, and the two moves on them
     projectCredits: 'Credits',
     creditsBalance: 'Balance',
@@ -81,7 +92,7 @@ const strings: Record<Lang, Record<string, string>> = {
     errMoveNotLead: 'Only a project lead can take credits back out.',
     errMoveNotMember: 'You are not a member of this project.',
     errMoveAmount: 'Enter an amount above zero.',
-    errMoveFailed: 'That move did not go through.',
+    errMoveFailed: 'That transfer didn’t go through. Try again in a moment.',
     sessionCostTitle: 'What this session cost its project.',
     sessionCostRunningTitle: 'What this session has cost so far. It is charged when the session ends.',
     signOut: 'Sign out',
@@ -120,11 +131,11 @@ const strings: Record<Lang, Record<string, string>> = {
     initiator: 'Published by',
     // submit / new project
     submitHint:
-      'Paste an arXiv link, a DOI, or an ACM Digital Library link. The reference resolves to a stable identity first, so repeat replications stay related instead of colliding. Nothing runs, and nothing is spent, until the session starts.',
+      'Paste a link to the paper — an arXiv page, a DOI, or an ACM Digital Library entry. We look it up first, so every replication of the same paper stays grouped together. Nothing runs, and nothing is spent, until the session starts.',
     submit: 'Submit',
     submitting: 'Submitting…',
-    submitError: 'Could not submit — check the URL and try again.',
-    activeSession: 'A session for this paper is already running.',
+    submitError: 'Couldn’t start a session for this paper. Try again in a moment.',
+    activeSession: 'This paper is already being replicated in this project.',
     sessionOptions: 'Session options',
     destinationProject: 'Destination project',
     newProjectOption: 'New project',
@@ -136,21 +147,27 @@ const strings: Record<Lang, Record<string, string>> = {
     paperPlaceholder: 'arXiv link · DOI · ACM DL',
     addPaper: 'Add another paper',
     removePaper: 'Remove',
-    resolve: 'Resolve',
-    resolvingPaper: 'Resolving…',
+    resolve: 'Look up',
+    resolvingPaper: 'Looking up…',
     collaboratorsLabel: 'Collaborators',
     collaboratorsPlaceholder: 'Emails, comma-separated (optional)',
     collaboratorsHint: 'Invited to the project as collaborators.',
     createProjectBtn: 'Create project',
     creatingProject: 'Creating…',
-    resolveFailed: 'Could not reach the source — the link may be down or rate-limited.',
-    unresolvablePaper: 'Not a DOI, arXiv ID, or URL.',
+    openProject: 'Open the project',
+    resolveFailed: 'We couldn’t reach the site this paper is on. It may be down or busy — try again in a moment.',
+    unresolvablePaper: 'We don’t recognise this link. Paste a DOI, an arXiv link, or the paper’s page on a publisher site.',
     noPapers: 'Add at least one paper.',
-    errActiveSession: 'Already running.',
-    errUnresolvable: 'Unresolvable reference.',
-    errEnqueue: 'Could not start.',
-    allPapersFailed: 'No paper could be started — check the references.',
-    partialStarted: '{n} session(s) started; some papers were skipped.',
+    // The short forms sit directly under the paper they belong to, so they only
+    // have to say what about it — the row already says which one.
+    errActiveSession: 'Already being replicated in this project.',
+    errUnresolvable: 'We don’t recognise this link.',
+    errEnqueue: 'Couldn’t start this one. Try again in a moment.',
+    allPapersFailed: 'None of these papers could be started. Each one says why below.',
+    partialStarted: '{n} of these papers started. The rest are listed below with the reason.',
+    createFailed: 'Something went wrong on our side and the project wasn’t created. Nothing was charged — try again in a moment.',
+    errNotAllowed: 'Your account can’t do this right now. Signing out and back in fixes most cases; if it persists, ask a platform admin.',
+    errOffline: 'You appear to be offline. Check your connection and try again.',
     rename: 'Rename',
     save: 'Save',
     cancel: 'Cancel',
@@ -161,12 +178,23 @@ const strings: Record<Lang, Record<string, string>> = {
     stop: 'Stop',
     stopping: 'Stopping…',
     stopped: 'stopped',
+    // A session that failed used to print the worker's own error string here —
+    // "put replication-manifest.json in latere/x: unexpected status 422". These
+    // say what class of thing went wrong and who can move it; the original text
+    // is still one hover away, for whoever is actually debugging it.
+    failUnresolvable: 'Stopped — the paper couldn’t be identified from its link.',
+    failSource: 'Stopped — the paper’s source couldn’t be reached.',
+    failSecret: 'Stopped — a file in the results looked like it held a password or key.',
+    failPublish: 'Stopped while saving the results to GitHub.',
+    failCredits: 'Stopped — this project ran out of credits.',
+    failGeneric: 'This session didn’t finish.',
+    failDetail: 'What the run reported: {cause}',
     verdict: 'Verdict',
     artifacts: 'Artifacts',
     noVerdict: 'No published session yet — the verdict appears once a session finishes.',
     noArtifacts: 'No artifacts committed yet.',
     selectArtifact: 'Select a file to view it.',
-    artifactError: 'Could not load the file.',
+    artifactError: 'Couldn’t open this file. Try again in a moment.',
     graded: 'Graded',
     redistribution: 'Redistribution',
     methodDigest: 'Method digest',
@@ -183,7 +211,7 @@ const strings: Record<Lang, Record<string, string>> = {
     inviteHint: 'Invite by email. They get a message with a link, and can sign in straight away \u2014 sessions they start here are paid for out of this project\u2019s credits.',
     remove: 'Remove',
     pending: 'pending',
-    inviteError: 'Could not add the collaborator.',
+    inviteError: 'Couldn’t add that person. Check the email address and try again.',
     // researcher profile (006n)
     profileTitle: 'Researcher profile',
     profileIntro:
@@ -199,7 +227,7 @@ const strings: Record<Lang, Record<string, string>> = {
     profileScholarPlaceholder: 'https://scholar.google.com/citations?user=…',
     saving: 'Saving…',
     profileSaved: 'Saved.',
-    profileSaveError: 'Could not save your profile.',
+    profileSaveError: 'Couldn’t save your profile. Try again in a moment.',
     errInvalidContact: 'That is not a valid email address.',
     errInvalidOrcid: 'An ORCID iD looks like 0000-0002-1825-0097.',
     errInvalidScholar: 'That is not a Google Scholar profile URL.',
@@ -211,7 +239,7 @@ const strings: Record<Lang, Record<string, string>> = {
     flipRepoLabel: 'Also make the GitHub repository public',
     publishConfirm: 'Sign off & make public',
     publishNotClear: 'This project cannot be made public: its reproduction did not pass the redistribution check.',
-    publishError: 'Could not make the project public.',
+    publishError: 'Couldn’t make the project public. Try again in a moment.',
     attestationNote: 'Attestation v2 · recorded against your principal',
     // publish wizard (006n)
     publishStart: 'Make this project public…',
@@ -267,11 +295,11 @@ const strings: Record<Lang, Record<string, string>> = {
     withdrawReasonHint: 'e.g. an unreleased figure slipped into the artifacts',
     withdrawConfirm: 'Withdraw & make private',
     withdrawBusy: 'Withdrawing…',
-    withdrawError: 'Could not withdraw the publication.',
+    withdrawError: 'Couldn’t make the project private again. Try again in a moment.',
     // transcript
     transcript: 'Transcript',
     transcriptNotReady: 'The transcript will appear once this session has published.',
-    transcriptError: 'Could not load the transcript.',
+    transcriptError: 'Couldn’t load the transcript. Try again in a moment.',
     events: 'Events',
     eventsCounted: '{n} events',
     showEvents: 'Show events',

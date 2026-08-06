@@ -12,7 +12,6 @@ import {
   getWallet,
   reclaimCredits,
   getProfile,
-  errCode,
   getPublicProfile,
   getProject,
   getPlatformSettings,
@@ -56,7 +55,17 @@ import {
   type Transcript,
   type Usage,
 } from './api'
-import { useI18n } from './i18n'
+import { type I18n, useI18n } from './i18n'
+import {
+  createOutcome,
+  creditMoveErrLabel,
+  generic,
+  profileSaveErrText,
+  publishErrText,
+  refusal,
+  sessionFailureText,
+  submitErrLabel,
+} from './errors'
 import { formatUSD, parseUSD, toDollars } from './money'
 import {
   clockOf,
@@ -77,8 +86,6 @@ import {
 import { Ico, type IconName } from './icons'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
-
-type I18n = ReturnType<typeof useI18n>
 
 // signerOf names the person who published a project. `owner` is an opaque OIDC
 // subject and means nothing to a reader, so the signer's recorded name is used
@@ -703,29 +710,9 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
 
 /* ─── Submit / New audit ─── */
 
-// A paper row in the New-project form: the reference, and its live-resolved
-// preview (title) or error, filled by the Resolve button.
+// A paper row in the New-project form: the link, and its looked-up preview
+// (title) or error, filled by the Look-up button.
 type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
-
-// sessionErrLabel turns a per-paper error code from POST /projects into a short
-// human label. credits distinguishes an account that has never had any from a
-// project that has run out — the same refusal, two different problems, and only
-// one of them the person can fix by moving money they already hold.
-export function sessionErrLabel(t: I18n['t'], code?: string, credits?: Credits): string {
-  if (code === 'active_session') return t('errActiveSession')
-  if (code === 'unresolvable_paper') return t('errUnresolvable')
-  // A batch that outran the project's credits reports this per paper; without
-  // the case it would read as "could not start", which is not what happened.
-  if (code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
-  return t('errEnqueue')
-}
-
-// emptyWallet reports the state a new account arrives in: nothing to spend and
-// nothing ever spent. It is not the same as a project having run out, and the
-// remedy is different — an admin top-up rather than moving your own credits.
-export function emptyWallet(credits?: Credits): boolean {
-  return !!credits && credits.wallet <= 0
-}
 
 function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitted: (projectId: string) => void }) {
   const { t } = i18n
@@ -734,12 +721,15 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
   const [collaborators, setCollaborators] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // Set when a create partly succeeded: the project is open for business, but
+  // the screen stays put long enough to say which papers did not start.
+  const [created, setCreated] = useState('')
 
   const setRow = (i: number, patch: Partial<PaperRow>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const addRow = () => setRows((rs) => [...rs, { url: '' }])
   const removeRow = (i: number) => setRows((rs) => (rs.length > 1 ? rs.filter((_, k) => k !== i) : rs))
 
-  // Resolve one row's reference and show the previewed title (or an error).
+  // Look one row's link up and show the title it found (or why it could not).
   const resolveRow = async (i: number) => {
     const url = rows[i].url.trim()
     if (!url) return
@@ -748,8 +738,9 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
       const preview = await resolvePaper(url)
       setRow(i, { preview, resolving: false })
     } catch (e) {
-      const code = (e as Error).message
-      setRow(i, { error: code === '400' ? t('unresolvablePaper') : t('resolveFailed'), resolving: false })
+      const { status, offline } = refusal(e)
+      const msg = offline ? t('errOffline') : status === 400 ? t('unresolvablePaper') : t('resolveFailed')
+      setRow(i, { error: msg, resolving: false })
     }
   }
 
@@ -765,16 +756,17 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
     const collabs = collaborators.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
     try {
       const { status, data } = await createProject(title.trim(), papers, collabs)
-      if (status === 201 && data.project_id) {
-        onSubmitted(data.project_id)
-        return
-      }
-      // 422: every paper failed — surface the per-paper reasons on their rows.
-      const byURL = new Map((data.sessions ?? []).map((s) => [s.url, s.error]))
-      setRows((rs) => rs.map((r) => (byURL.has(r.url.trim()) ? { ...r, error: sessionErrLabel(t, byURL.get(r.url.trim()), me.credits) } : r)))
-      setErr(t('allPapersFailed'))
-    } catch {
-      setErr(t('submitError'))
+      const outcome = createOutcome(t, status, data, me.credits, papers.length)
+      setRows((rs) => rs.map((r) => (outcome.rows.has(r.url.trim()) ? { ...r, error: outcome.rows.get(r.url.trim()) } : r)))
+      setErr(outcome.banner)
+      // A create that started every paper has nothing to report, so it goes
+      // straight to the project. One that started only some has: the project
+      // exists and is worth opening, but leaving before saying which papers were
+      // dropped is how a batch silently loses half its work.
+      if (outcome.ok && !outcome.banner) onSubmitted(data.project_id!)
+      else if (outcome.ok) setCreated(data.project_id!)
+    } catch (e) {
+      setErr(generic(t, e, 'createFailed'))
     } finally {
       setBusy(false)
     }
@@ -844,12 +836,19 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
         </label>
 
         <div className="submit-input-row">
-          <button className="btn lg" disabled={busy} onClick={submit}>
-            <Ico name="sparkles" size={14} /> {busy ? t('creatingProject') : t('createProjectBtn')}
-          </button>
+          {created ? (
+            <button className="btn lg" onClick={() => onSubmitted(created)}>
+              <Ico name="chevronRight" size={14} /> {t('openProject')}
+            </button>
+          ) : (
+            <button className="btn lg" disabled={busy} onClick={submit}>
+              <Ico name="sparkles" size={14} /> {busy ? t('creatingProject') : t('createProjectBtn')}
+            </button>
+          )}
           <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>
         </div>
-        {err && <p className="err small">{err}</p>}
+        {/* A partly-successful create is not a failure: the project exists. */}
+        {err && <p className={created ? 'muted small' : 'err small'}>{err}</p>}
       </div>
     </div>
   )
@@ -898,31 +897,6 @@ function SettingsScreen({ i18n, me, theme }: { i18n: I18n; me: Me; theme: Return
   )
 }
 
-// profileErrorText maps a server validation code to the message for the field
-// that is wrong, so a refusal points somewhere rather than saying "invalid".
-function profileErrorText(t: I18n['t'], code: string) {
-  if (code.includes('invalid_contact')) return t('errInvalidContact')
-  if (code.includes('invalid_orcid')) return t('errInvalidOrcid')
-  if (code.includes('invalid_scholar')) return t('errInvalidScholar')
-  if (code.includes('handle_taken')) return t('errHandleTaken')
-  if (code.includes('handle_reserved')) return t('errHandleReserved')
-  if (code.includes('invalid_handle')) return t('errInvalidHandle')
-  return t('profileSaveError')
-}
-
-// publishErrText names why a publish was refused. The status is not enough on
-// its own: 409 covers both "this tree never cleared the gate" and "your profile
-// is not public", and telling a signer the wrong one sends them to fix
-// something that is not broken.
-export function publishErrText(t: I18n['t'], status: string, code: string): string {
-  if (code === 'profile_not_public') return t('publishProfileRequired')
-  if (code === 'not_clear') return t('publishNotClear')
-  if (code.startsWith('handle_') || code.startsWith('invalid_')) return profileErrorText(t, code)
-  if (status === '409') return t('publishNotClear')
-  if (status === '400') return profileErrorText(t, code)
-  return t('publishError')
-}
-
 // ProfileCard edits the researcher identity a sign-off is published under
 // (006n). It is a default, not the record: what a published project reports is
 // the snapshot taken when it was signed, so editing here changes nothing that is
@@ -959,7 +933,7 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
       setP(await saveProfile(p))
       setSaved(true)
     } catch (e) {
-      setErr(profileErrorText(t, errCode(e)))
+      setErr(profileSaveErrText(t, e))
     } finally {
       setBusy(false)
     }
@@ -1842,14 +1816,6 @@ function WalletPill({ i18n, credits }: { i18n: I18n; credits?: Credits }) {
   )
 }
 
-// submitErrLabel names why a submit was refused, so "this project is out of
-// credits" never reads as "something went wrong".
-export function submitErrLabel(t: I18n['t'], status: string, credits?: Credits): string {
-  if (status === '409') return t('activeSession')
-  if (status === '402') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
-  return t('submitError')
-}
-
 // ProjectCreditsCard is a project's money and the two moves a member can make on
 // it. It sits above the submit form because it is the answer to the question a
 // refused submit raises.
@@ -1877,7 +1843,7 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n;
       setAmount('')
       onMoved()
     } catch (e) {
-      setErr(creditMoveErrLabel(t, errCode(e)))
+      setErr(creditMoveErrLabel(t, e))
     } finally {
       setBusy(false)
     }
@@ -1923,16 +1889,6 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n;
   )
 }
 
-// creditMoveErrLabel names why a move was refused. Each refusal has a different
-// remedy, so each gets its own sentence rather than one "that did not work".
-export function creditMoveErrLabel(t: I18n['t'], code: string): string {
-  if (code === 'no_credits') return t('errMoveInsufficient')
-  if (code === 'not_lead') return t('errMoveNotLead')
-  if (code === 'not_member') return t('errMoveNotMember')
-  if (code === 'bad_amount') return t('errMoveAmount')
-  return t('errMoveFailed')
-}
-
 // ProjectSubmit adds a session to a project the caller owns or collaborates on.
 // What pays is the project's own credits, whoever submits — so there is no
 // choice to offer here.
@@ -1952,7 +1908,7 @@ function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me;
       setUrl('')
       onSubmitted()
     } catch (e) {
-      setErr(submitErrLabel(t, (e as Error).message, me.credits))
+      setErr(submitErrLabel(t, e, me.credits))
     } finally {
       setBusy(false)
     }
@@ -2061,10 +2017,16 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
           </a>
         </Tip>
       )}
+      {/* What the worker recorded is a Go error string. It says what broke to
+          somebody who wrote the worker, and nothing to anybody else — so the row
+          states the class of failure, and keeps the original on hover for the
+          person who does want it. */}
       {j.error && !stopped && (
-        <span className="err small">
-          <Ico name="alert" size={13} /> {j.error}
-        </span>
+        <Tip text={t('failDetail', { cause: j.error })}>
+          <span className="err small">
+            <Ico name="alert" size={13} /> {sessionFailureText(t, j.error)}
+          </span>
+        </Tip>
       )}
       <span className="muted small row-cta">
         <Ico name="message" size={12} /> {i18n.t('viewTranscript')}
@@ -2244,7 +2206,7 @@ function PublishWizard({
       // A 409 is either an unclear tree or a profile that is not public, and
       // the status alone cannot tell them apart — they need different remedies,
       // so the body's code decides.
-      setErr(publishErrText(t, (e as Error).message, errCode(e)))
+      setErr(publishErrText(t, e))
       setStep(2)
     } finally {
       setBusy(false)
