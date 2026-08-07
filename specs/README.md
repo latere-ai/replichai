@@ -35,6 +35,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [006j](006j-the-new-project-flow.md) makes "New project" a deliberate act — name it, preview each paper link (`POST /resolve`), start several papers at once, and invite collaborators, through a dedicated `POST /projects` (plus `PATCH /projects/{id}` rename).
 
+**Drafted:** [012](012-a-project-holds-papers.md) separates the two acts 006j fused. A paper becomes a row a project holds, not an argument to starting a run: create records papers and enqueues nothing, and a member starts a session per paper from the project screen. Creating a project stops being spending, which is what today refuses an empty wallet at the door — the credit check moves to the Start button, where the pot is on screen.
+
 **Built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person credit) instead of `curl` and a redeploy; [011](011-what-a-session-costs.md) spends against the numbers it stores — one check inside `Enqueue`, in the inserting transaction, settled in the transaction that ends the session; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has. [006l](006l-the-session-quota.md) was the first attempt at that meter and is superseded, kept for the argument 011 inherits.
 
 **Built:** [006n](006n-who-signed-off.md) gives the public sign-off a person — a researcher profile (name, institution, public contact, ORCID, Scholar) kept in settings, prefilled into a step-by-step publish wizard, and **snapshotted onto the project** so a later profile edit never rewrites a published attestation. The signer's own email is derived from the session and stored redacted; attestation v2.
@@ -142,6 +144,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | commits 1–2 shipped; 3 deferred | 002, 005, 006f, 006i |
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
 | 011 | [What a session costs](011-what-a-session-costs.md) | built | 006b, 006c, 006g, 006k, 006h |
+| 012 | [A project holds papers](012-a-project-holds-papers.md) | drafted | 006g, 006j, 006c, 011, 001 |
 
 ## The three tracks
 
