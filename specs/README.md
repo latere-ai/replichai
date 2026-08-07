@@ -151,6 +151,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 014b | [Job-state writes are required](014b-job-state-writes-are-required.md) | built | 006b, 011, 014a |
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
 | 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | built | 006c, 006e, 013 |
+| 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | draft | 012, 013, 006f, 006s |
 
 ## The three tracks
 
