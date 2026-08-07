@@ -1,6 +1,6 @@
 # 014d — An auth outage is not sign-out
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** distinguish failure to load `/me` from a successful unauthenticated response at app startup. This is the authentication boundary only; the broader read-surface empty/error states remain separate follow-up work.
 
@@ -27,3 +27,6 @@ The app maps every `/me` rejection—network failure, 5xx, invalid JSON—to `{a
 - Browser test starts with `/me` returning 503, asserts no login link, restores the endpoint, clicks Retry, and sees the requested app screen without navigation.
 - Existing auth and routing tests continue to cover successful authenticated and unauthenticated responses.
 
+## Outcome
+
+Startup now has explicit loading, unavailable, and authoritative `/me` states. An outage renders service copy and retries in place without a login link or URL change; successful unauthenticated responses remain the only path to Sign in. The browser regression exercises 503 → Retry → recovered deep-linked project end to end.

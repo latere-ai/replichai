@@ -127,6 +127,7 @@ export default function App() {
   const i18n = useI18n()
   const theme = useTheme()
   const [me, setMe] = useState<Me | null>(null)
+  const [meUnavailable, setMeUnavailable] = useState(false)
   const { view, navigate } = useRouter()
 
   // refreshMe re-reads the identity, and with it the wallet — called
@@ -135,14 +136,20 @@ export default function App() {
   const refreshMe = useCallback(() => {
     getMe().then(setMe).catch(() => {})
   }, [])
-  useEffect(() => {
-    getMe().then(setMe).catch(() => setMe({ authenticated: false }))
+  const loadMe = useCallback(() => {
+    setMe(null)
+    setMeUnavailable(false)
+    getMe().then(setMe).catch(() => setMeUnavailable(true))
   }, [])
+  useEffect(() => {
+    loadMe()
+  }, [loadMe])
 
   // A researcher's page renders before every auth gate: it is public, and a
   // reader who followed a link from a paper has no account to sign in to.
   if (view.name === 'profile') return <PublicProfileScreen i18n={i18n} handle={view.handle} />
 
+  if (meUnavailable) return <AuthUnavailable i18n={i18n} onRetry={loadMe} />
   if (me === null) return <div className="center-load">…</div>
   // Every screen is gated, and every one of them is an address somebody can
   // arrive at cold — an invitation mail pointing at a project, a shared link to a
@@ -305,6 +312,21 @@ function SignIn({ i18n, next }: { i18n: I18n; next?: string }) {
         <a className="btn lg" href={href} style={{ justifyContent: 'center' }}>
           {i18n.t('signInWith')}
         </a>
+      </div>
+    </div>
+  )
+}
+
+function AuthUnavailable({ i18n, onRetry }: { i18n: I18n; onRetry: () => void }) {
+  return (
+    <div className="auth-center">
+      <div className="auth-card">
+        <Logo big />
+        <h2>{i18n.t('authUnavailableTitle')}</h2>
+        <p>{i18n.t('authUnavailableBody')}</p>
+        <button className="btn lg" onClick={onRetry} style={{ justifyContent: 'center' }}>
+          {i18n.t('retry')}
+        </button>
       </div>
     </div>
   )
