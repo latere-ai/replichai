@@ -148,18 +148,28 @@ func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
 // store write wins; the interrupted run's own failure write is refused by the
 // state machine and discarded.
 func (w *Worker) Cancel(ctx context.Context, id string) error {
+	j, err := w.store.Get(ctx, id)
+	if err != nil {
+		return fmt.Errorf("read session before cancel: %w", err)
+	}
+	if j.Phase.Terminal() {
+		return nil
+	}
+	// Stop the durable backend handle before making the row terminal. If this
+	// fails, the active row is the retry handle; cancelling it locally first
+	// would report success while making the still-live remote run unreachable.
+	if j.Status.RunID != "" {
+		if err := w.runner.Close(ctx, j.Status.RunID); err != nil {
+			return fmt.Errorf("stop backend run %s: %w", j.Status.RunID, err)
+		}
+	}
 	w.mu.Lock()
 	cancel := w.running[id]
 	w.mu.Unlock()
 	if cancel != nil {
-		cancel() // a run we drive: its deferred CloseRun archives the session
+		cancel() // a run we drive: stop its local wait after the backend stopped
 	}
-	// Also close the backend run directly, in case this is an orphan we are not
-	// driving (a run left in flight by a prior restart). Idempotent.
-	if j, err := w.store.Get(ctx, id); err == nil && j.Status.RunID != "" {
-		_ = w.runner.Close(ctx, j.Status.RunID)
-	}
-	_, err := w.store.Cancel(ctx, id)
+	_, err = w.store.Cancel(ctx, id)
 	return err
 }
 

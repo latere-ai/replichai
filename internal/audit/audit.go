@@ -376,12 +376,14 @@ func (a *Auditor) Resume(ctx context.Context, h provider.RunHandle, paper, dst s
 // finish drives a started run to completion: it waits for a terminal state,
 // collects the artifacts, and releases the run even on failure — release on a
 // context detached from ctx so a cancelled audit still cleans up after itself.
-func (a *Auditor) finish(ctx context.Context, h provider.RunHandle, paper, dst string) (Result, error) {
-	result := Result{Paper: paper, Handle: h, ArtifactDir: dst, MethodDigest: a.method.Digest()}
+func (a *Auditor) finish(ctx context.Context, h provider.RunHandle, paper, dst string) (result Result, err error) {
+	result = Result{Paper: paper, Handle: h, ArtifactDir: dst, MethodDigest: a.method.Digest()}
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_ = a.provider.CloseRun(releaseCtx, h)
+		if closeErr := a.provider.CloseRun(releaseCtx, h); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close run %s: %w", h.ID, closeErr))
+		}
 	}()
 
 	status, waitErr := a.Wait(ctx, h)

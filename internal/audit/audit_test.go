@@ -366,6 +366,29 @@ func TestRunEndToEnd(t *testing.T) {
 	}
 }
 
+type closeFailProvider struct {
+	*memory.Provider
+	err error
+}
+
+func (p *closeFailProvider) CloseRun(context.Context, provider.RunHandle) error { return p.err }
+
+func TestRunReturnsCleanupErrors(t *testing.T) {
+	closeErr := errors.New("close failed")
+	p := &closeFailProvider{Provider: memory.New(), err: closeErr}
+	p.Files = map[string][]byte{"REPRODUCIBILITY.md": []byte("40%")}
+
+	if _, err := newTestAuditor(t, p).Run(context.Background(), "paper", t.TempDir()); !errors.Is(err, closeErr) {
+		t.Fatalf("Run error = %v, want cleanup error", err)
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newTestAuditor(t, p).Resume(cancelled, provider.RunHandle{ID: "run-existing"}, "paper", t.TempDir()); !errors.Is(err, closeErr) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want joined run and cleanup errors", err)
+	}
+}
+
 // A well-formed instrument.json the memory provider can hand back as an
 // artifact, so Run's finalize-time check has something to validate.
 const validInstrumentJSON = `{

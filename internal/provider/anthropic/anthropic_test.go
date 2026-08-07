@@ -21,7 +21,8 @@ func newTestProvider(t *testing.T, handler http.HandlerFunc) *Provider {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	p, err := New(WithAPIKey("test-credential"), WithAPIBase(server.URL))
+	p, err := New(WithAPIKey("test-credential"), WithAPIBase(server.URL),
+		WithRequestOptions(option.WithMaxRetries(0)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -447,6 +448,23 @@ func TestCloseRunInterruptsBeforeArchiving(t *testing.T) {
 
 	if err := p.CloseRun(context.Background(), provider.RunHandle{ID: "sesn_1"}); err != nil {
 		t.Fatalf("CloseRun: %v", err)
+	}
+	want := []string{"/v1/sessions/sesn_1/events", "/v1/sessions/sesn_1/archive"}
+	if len(paths) != len(want) || paths[0] != want[0] || paths[1] != want[1] {
+		t.Errorf("close requests = %v, want %v", paths, want)
+	}
+}
+
+func TestCloseRunReturnsFailuresAfterTryingBothOperations(t *testing.T) {
+	var paths []string
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		http.Error(w, `{"error":{"message":"backend down"}}`, http.StatusInternalServerError)
+	})
+
+	err := p.CloseRun(context.Background(), provider.RunHandle{ID: "sesn_1"})
+	if err == nil || !strings.Contains(err.Error(), "interrupt") || !strings.Contains(err.Error(), "archive") {
+		t.Fatalf("CloseRun error = %v, want joined interrupt and archive failures", err)
 	}
 	want := []string{"/v1/sessions/sesn_1/events", "/v1/sessions/sesn_1/archive"}
 	if len(paths) != len(want) || paths[0] != want[0] || paths[1] != want[1] {

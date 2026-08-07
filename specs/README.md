@@ -147,7 +147,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
 | 011 | [What a session costs](011-what-a-session-costs.md) | built | 006b, 006c, 006g, 006k, 006h |
 | 012 | [A project holds papers](012-a-project-holds-papers.md) | built | 006g, 006j, 006c, 011, 001 |
-| 014a | [Managed runs close truthfully](014a-managed-runs-close-truthfully.md) | designed | 004, 006b, 011 |
+| 014a | [Managed runs close truthfully](014a-managed-runs-close-truthfully.md) | built | 004, 006b, 011 |
 | 014b | [Job-state writes are required](014b-job-state-writes-are-required.md) | designed | 006b, 011, 014a |
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | designed | 002, 005, 006i, 009 |
 
