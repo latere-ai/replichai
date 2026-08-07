@@ -251,7 +251,8 @@ type Provider interface {
 	// may make the run unreadable.
 	Transcript(ctx context.Context, h RunHandle) ([]Event, error)
 
-	// CloseRun releases a finished run. It must be safe to call more than once.
+	// CloseRun stops any live work and releases the run. It must be safe to call
+	// more than once and on a run that has already finished.
 	CloseRun(ctx context.Context, h RunHandle) error
 }
 
