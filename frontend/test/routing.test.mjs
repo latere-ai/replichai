@@ -47,6 +47,7 @@ const titleOf = (id) => (id === OTHER ? 'Retention Under Load' : project.title)
 // How long the second project takes to answer. Long enough to look at the screen
 // while it is loading, short enough not to pad the run.
 const SLOW_MS = 700
+let meUnavailable = false
 
 const routes = [
   [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 20, start_reserve: 5 } }],
@@ -93,6 +94,9 @@ try {
   page.on('request', (req) => {
     const u = new URL(req.url())
     if (u.origin === BASE) {
+      if (u.pathname === '/me' && meUnavailable) {
+        return req.respond({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'unavailable' }) })
+      }
       const hit = routes.find(([re]) => re.test(u.pathname))
       if (hit) {
         // A route body may be a function of the id in the path, for the two
@@ -232,7 +236,24 @@ try {
   await page.waitForSelector('.row')
   if ((await path()) !== '/') fail(`an unknown address stayed at ${await path()}, want / (${await at_('stray')})`)
 
-  if (!process.exitCode) console.log(`ok: every screen has an address; reload, Back and Forward all hold; a stray path is corrected to /`)
+  // Failure to read /me is an outage, not evidence that the person signed out.
+  // Keep the deep link, offer a retry, and never send them into a login loop.
+  meUnavailable = true
+  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.auth-card')
+  const unavailable = await page.evaluate(() => ({
+    text: document.querySelector('.auth-card')?.textContent ?? '',
+    login: !!document.querySelector('.auth-card a[href^="/login"]'),
+  }))
+  if (unavailable.login) fail('a /me outage rendered Sign in')
+  if (!/unavailable/i.test(unavailable.text)) fail(`a /me outage rendered no service error: ${JSON.stringify(unavailable.text)}`)
+  if ((await path()) !== `/p/${PROJECT}`) fail(`a /me outage discarded the deep link: ${await path()}`)
+  meUnavailable = false
+  await page.evaluate(() => [...document.querySelectorAll('.auth-card button')].find((b) => /try again/i.test(b.textContent))?.click())
+  await page.waitForSelector('.detail-tabs')
+  if ((await path()) !== `/p/${PROJECT}`) fail(`retrying /me navigated away from the deep link: ${await path()}`)
+
+  if (!process.exitCode) console.log(`ok: routes survive browser history and an auth outage stays distinct from sign-out`)
 } catch (e) {
   fail(e.message)
 } finally {

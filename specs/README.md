@@ -150,7 +150,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 014a | [Managed runs close truthfully](014a-managed-runs-close-truthfully.md) | built | 004, 006b, 011 |
 | 014b | [Job-state writes are required](014b-job-state-writes-are-required.md) | built | 006b, 011, 014a |
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
-| 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | designed | 006c, 006e, 013 |
+| 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | built | 006c, 006e, 013 |
 
 ## The three tracks
 
