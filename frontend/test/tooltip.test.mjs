@@ -187,6 +187,21 @@ try {
   })
   if (!focused) fail('focusing the remove button raised no tooltip')
 
+  // Clicking a remove button takes its own row away. The bubble must go with the
+  // trigger rather than hang over an empty list under a pointer that never moved.
+  const orphan = await page.evaluate(async () => {
+    const btn = document.querySelector('.icon-btn.danger')
+    const box = btn.getBoundingClientRect()
+    const send = (type) => btn.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }))
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 300))
+    send('pointerdown')
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 400))
+    return [...document.querySelectorAll('.tip-bubble')].filter((b) => +getComputedStyle(b).opacity > 0.5).length
+  })
+  if (orphan) fail(`${orphan} tooltips outlived the trigger that was clicked away`)
+
   // Scrolling would leave a bubble stranded where its trigger used to be, so it
   // must go when the page moves under it.
   const stranded = await page.evaluate(async () => {
