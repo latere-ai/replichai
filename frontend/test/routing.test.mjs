@@ -39,11 +39,25 @@ const project = { id: PROJECT, owner: 'p', title: 'Walk This Beam', visibility: 
 const job = { id: JOB, kind: 'replicate', ref: 'arxiv:2301.03711', phase: 'done', created_at: at(0), phase_at: { submitted: at(0), done: at(9000) } }
 const paper = { key: 'pap-1', ref: 'arxiv:2301.03711', title: 'Walk This Beam', sessions: 1 }
 
+// A second project, so the screen can be asked to show one project after
+// another: every piece of its state belongs to one project, and it is remounted
+// per id rather than reused.
+const OTHER = 'proj-2'
+const titleOf = (id) => (id === OTHER ? 'Retention Under Load' : project.title)
+// How long the second project takes to answer. Long enough to look at the screen
+// while it is loading, short enough not to pad the run.
+const SLOW_MS = 700
+
 const routes = [
   [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 20, start_reserve: 5 } }],
   [/^\/me\/profile$/, {}],
   [/^\/projects$/, [{ ...project, session_count: 1, running: 0, latest_phase: 'done' }]],
-  [/^\/projects\/[^/]+$/, { project, sessions: [job], papers: [paper], may_submit: true }],
+  // Echoes back whichever project was asked for, so the two are told apart by
+  // what the screen renders rather than by the request that fetched it.
+  [
+    /^\/projects\/[^/]+$/,
+    (id) => ({ project: { ...project, id, title: titleOf(id) }, sessions: id === OTHER ? [] : [job], papers: [paper], may_submit: true }),
+  ],
   [/^\/projects\/[^/]+\/papers$/, [paper]],
   [/^\/projects\/[^/]+\/members$/, []],
   [/^\/jobs\/[^/]+$/, job],
@@ -80,7 +94,17 @@ try {
     const u = new URL(req.url())
     if (u.origin === BASE) {
       const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(hit[1]) })
+      if (hit) {
+        // A route body may be a function of the id in the path, for the two
+        // projects that have to answer differently.
+        const body = typeof hit[1] === 'function' ? hit[1](u.pathname.split('/')[2]) : hit[1]
+        const send = () => req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+        // The second project answers slowly on purpose: the defect a remount
+        // prevents is only visible while a fetch is in flight, and an instant
+        // mock closes that window before anything can look through it.
+        if (u.pathname === `/projects/${OTHER}`) return void setTimeout(send, SLOW_MS)
+        return send()
+      }
       if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
     }
     req.continue()
@@ -171,6 +195,36 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.topbar-actions .btn')].pop()?.click())
   await new Promise((r) => setTimeout(r, 300))
   if ((await path()) !== '/new') fail(`new project is at ${await path()}, want /new`)
+
+  // One project screen after another. The screen is remounted per project, so
+  // nothing of the first survives into the second — reusing the instance showed
+  // the previous project's title and sessions until the fetch landed.
+  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.detail-tabs')
+  const heading = () => page.evaluate(() => document.querySelector('.detail-title')?.textContent?.trim() ?? '')
+  if ((await heading()) !== project.title) fail(`the first project is titled ${JSON.stringify(await heading())}`)
+  await page.evaluate((id) => history.pushState(null, '', `/p/${id}`) || dispatchEvent(new PopStateEvent('popstate')), OTHER)
+  // Mid-flight: nothing of the first project may still be on screen while the
+  // second is loading — not its title, not its session row.
+  await new Promise((r) => setTimeout(r, SLOW_MS / 2))
+  const inFlight = await page.evaluate((was) => ({
+    title: document.querySelector('.detail-title')?.textContent?.trim() ?? '',
+    stale: !!document.querySelector('.row:has(.phase-slot)'),
+    was,
+  }), project.title)
+  if (inFlight.title === inFlight.was) fail(`while the second project loads, the first project's title is still on screen: ${JSON.stringify(inFlight.title)}`)
+  if (inFlight.stale) fail("while the second project loads, the first project's session row is still on screen")
+  await new Promise((r) => setTimeout(r, SLOW_MS))
+  if ((await heading()) !== titleOf(OTHER)) fail(`moving to a second project ended at ${JSON.stringify(await heading())}`)
+  if (await page.evaluate(() => !!document.querySelector('.row:has(.phase-slot)'))) {
+    fail("a second project with no sessions is showing the first project's session row")
+  }
+
+  // A mistyped tab keeps the project it names, rather than dropping the reader
+  // back at the dashboard, and the address is corrected to the project's own.
+  await page.goto(`${BASE}/p/${PROJECT}/nonsense`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.detail-tabs')
+  if ((await path()) !== `/p/${PROJECT}`) fail(`a mistyped tab left the address at ${await path()}, want /p/${PROJECT}`)
 
   // An address we do not own is the app, at a corrected address — not a dead end,
   // and not a URL that keeps resolving somewhere else on every reload.

@@ -75,14 +75,14 @@ export function viewOf(pathname: string): View {
   const session = /^\/p\/([A-Za-z0-9_-]+)\/s\/([A-Za-z0-9_-]+)$/.exec(path)
   if (session) return { name: 'session', projectId: session[1], jobId: session[2] }
 
+  // A project, and a tab if the segment after it names one. A segment that names
+  // no tab — a typo, or a session link cut short at /p/{id}/s — still identifies
+  // the project, so the reader lands on it rather than back at the dashboard, and
+  // the address is corrected to the project's own.
   const project = /^\/p\/([A-Za-z0-9_-]+)(?:\/([a-z]+))?$/.exec(path)
   if (project) {
     const tab = project[2]
-    if (!tab) return { name: 'project', id: project[1] }
-    // A segment that is not a tab is not a project either — /p/x/nonsense must
-    // not silently read as the project itself, or a mistyped tab would look
-    // like it worked.
-    if (isTab(tab)) return { name: 'project', id: project[1], tab }
+    return tab && isTab(tab) ? { name: 'project', id: project[1], tab } : { name: 'project', id: project[1] }
   }
   return { name: 'projects' }
 }

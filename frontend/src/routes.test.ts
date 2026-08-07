@@ -33,6 +33,15 @@ test('the sessions tab is the project path itself', () => {
   expect(viewOf('/p/abc')).toEqual({ name: 'project', id: 'abc' })
 })
 
+// A segment that names no tab is still a project: a mistyped tab, or a session
+// link cut short, keeps the reader on the project they were addressing rather
+// than sending them back to the dashboard. The caller corrects the address.
+test('a project survives a segment that names no tab', () => {
+  for (const path of ['/p/abc/nonsense', '/p/abc/extra', '/p/abc/s']) {
+    expect(viewOf(path)).toEqual({ name: 'project', id: 'abc' })
+  }
+})
+
 // Display hints are not identity: a title in a URL is a copy of a record that
 // can change, so the path is the same with or without one.
 test('display hints never reach the address', () => {
@@ -67,9 +76,6 @@ test('an address we do not own is the dashboard', () => {
     '/public',
     '/admin',
     '/me',
-    '/p/abc/nonsense',
-    '/p/abc/extra',
-    '/p/abc/s',
     '/p/abc/s/j/extra',
     // A false positive here would render a stranger's page instead of the
     // workspace, which is why the profile pattern claims one segment only (006r).
