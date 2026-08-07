@@ -174,14 +174,39 @@ try {
     if (c.shown) fail(`${c.sel} is still laid out in the folded rail and holds the column open`)
   }
 
-  // The label has to actually reach the reader, not just sit in an attribute.
+  // The label has to actually reach the reader, not just sit in an attribute —
+  // and it has to reach them without hiding the destination underneath it. The
+  // rail stacks its rows vertically, so a bubble placed below its trigger lands
+  // squarely on the next row's icon: the tip that names one destination would
+  // cover the next one.
   await page.hover('.rail .nav-btn')
   await new Promise((r) => setTimeout(r, 400))
   const tip = await page.evaluate(() => {
     const b = [...document.querySelectorAll('.tip-bubble')].find((x) => +getComputedStyle(x).opacity > 0.5)
-    return b ? b.textContent.trim() : ''
+    if (!b) return { text: '' }
+    const r = b.getBoundingClientRect()
+    const rows = [...document.querySelectorAll('.rail .nav-btn')]
+    // No row may be covered — not the neighbours the bubble would land on if it
+    // were placed below, and not the row being pointed at either.
+    const covered = rows
+      .map((row) => ({ row: row.getAttribute('data-tip'), r: row.getBoundingClientRect() }))
+      .filter(({ r: q }) => r.left < q.right && r.right > q.left && r.top < q.bottom && r.bottom > q.top)
+      .map(({ row }) => row)
+    return {
+      text: b.textContent.trim(),
+      covered,
+      // Beside its trigger, and level with it: the placement that has somewhere
+      // to go in a vertical stack.
+      beside: r.left >= rows[0].getBoundingClientRect().right - 0.5,
+      offCentre: Math.abs((r.top + r.bottom) / 2 - (rows[0].getBoundingClientRect().top + rows[0].getBoundingClientRect().bottom) / 2),
+      inViewport: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+    }
   })
-  if (!tip) fail('hovering a folded nav row raised no tooltip, so the destination is unnamed')
+  if (!tip.text) fail('hovering a folded nav row raised no tooltip, so the destination is unnamed')
+  if (tip.covered?.length) fail(`the "${tip.text}" tooltip covers ${tip.covered.map((c) => `"${c}"`).join(', ')} — naming a destination must not hide one`)
+  if (tip.beside === false) fail(`the "${tip.text}" tooltip is not beside its row; in a vertical rail that puts it on another destination`)
+  if (tip.offCentre > 2) fail(`the "${tip.text}" tooltip sits ${Math.round(tip.offCentre)}px off its row's middle`)
+  if (tip.inViewport === false) fail(`the "${tip.text}" tooltip runs off the viewport`)
 
   // A folded rail still navigates. This is the assertion that a rail collapsed
   // by width alone — icons squeezed to nothing — would fail.

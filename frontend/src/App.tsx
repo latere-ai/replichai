@@ -352,7 +352,7 @@ function NavItem({
   onClick: () => void
 }) {
   return (
-    <button className={'nav-btn' + (on ? ' active' : '')} data-tip={folded ? label : undefined} onClick={onClick}>
+    <button className={'nav-btn' + (on ? ' active' : '')} data-tip={folded ? label : undefined} data-tip-side="right" onClick={onClick}>
       <span className="nav-ico" style={{ color: tone }}>
         <Ico name={icon} size={13} />
       </span>
@@ -416,7 +416,7 @@ function Shell({
           <span className="rail-beta">BETA</span>
           {/* The one control that must stay reachable in both states, so it is
               the only thing the head keeps when the rail folds. */}
-          <button className="rail-fold-btn" aria-expanded={!folded} aria-label={foldLabel} data-tip={foldLabel} onClick={toggleRail}>
+          <button className="rail-fold-btn" aria-expanded={!folded} aria-label={foldLabel} data-tip={foldLabel} data-tip-side="right" onClick={toggleRail}>
             <Ico name={folded ? 'chevronRight' : 'chevronLeft'} size={14} w={2.2} />
           </button>
         </div>
@@ -455,7 +455,7 @@ function Shell({
           )}
         </div>
         <div className="rail-foot">
-          <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} onClick={() => setView({ name: 'settings' })}>
+          <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => setView({ name: 'settings' })}>
             {/* Sized to the meta stack beside it (name + address + tier), not to
                 a default: a 26px square against three rows of text left the row
                 bottom-heavy and the card's right half empty. Folded there is no
