@@ -41,3 +41,5 @@ The HTTP handler (006a) hands `POST /papers`' multipart body here; everything do
 ## Out of scope
 
 The upload transport and size limits (006a). Auditing the paper (the engine). OCR of scanned PDFs — a no-text PDF is an error here, not a vision problem this spec takes on. Any change to 001's identity, slug, or scheme rules — this spec only adds a reader that feeds them.
+
+A paper that declares **no** identifier *and whose bytes will change* — a draft, a manuscript under submission — is [016](016-a-paper-that-is-not-published-yet.md), deferred. The digest rule above is correct for a fixed document and gives a new identity to every revision of a moving one, which is a model question rather than a reader question. This spec ships unchanged either way.
