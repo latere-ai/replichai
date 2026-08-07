@@ -518,7 +518,7 @@ function Shell({
           />
         )}
         {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} />}
-        {view.name === 'admin' && <AdminScreen i18n={i18n} />}
+        {view.name === 'admin' && <AdminScreen i18n={i18n} onCreditsChanged={refreshMe} />}
         {view.name === 'project' && (
           <ProjectScreen
             // Remounted per project: every piece of state here belongs to one
@@ -1125,7 +1125,7 @@ export function isAdmin(me: Me): boolean {
 
 // AdminScreen is the console: who may sign in, at what tier, with how much
 // headroom, and the platform-wide default they draw from.
-function AdminScreen({ i18n }: { i18n: I18n }) {
+function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged: () => void }) {
   const { t } = i18n
   const [people, setPeople] = useState<GrantView[] | null>(null)
   const [settings, setSettings] = useState<PlatformSettings | null>(null)
@@ -1165,7 +1165,12 @@ function AdminScreen({ i18n }: { i18n: I18n }) {
           people={people}
           onGrant={(email, tier) => run(() => grantAccess(email, tier))}
           onRevoke={(email) => run(() => revokeAccess(email))}
-          onTopup={(email, amount) => run(() => topUp(email, amount))}
+          onTopup={(email, amount) =>
+            run(async () => {
+              await topUp(email, amount)
+              onCreditsChanged()
+            })
+          }
         />
       </div>
     </div>
