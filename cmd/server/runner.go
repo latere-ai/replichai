@@ -139,11 +139,11 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 		return fmt.Errorf("resolve %q: %w", j.Ref, err)
 	}
 	// Enrich the project's offline placeholder title with the resolved paper
-	// title, but only while it is still the placeholder (the submitted ref) — so
-	// a project that already carries a real title, or gathers a second paper, is
-	// never clobbered. Best-effort: a failure here must not fail the run.
+	// title, but only while it is still a placeholder — so a project that already
+	// carries a real title is never clobbered. Best-effort: a failure here must
+	// not fail the run.
 	if id.Title != "" && e.projects != nil && j.ProjectID != "" {
-		if p, err := e.projects.Get(ctx, j.ProjectID); err == nil && (p.Title == "" || p.Title == j.Ref) {
+		if p, err := e.projects.Get(ctx, j.ProjectID); err == nil && e.isPlaceholderTitle(ctx, p, j.Ref) {
 			_ = e.projects.SetTitle(ctx, j.ProjectID, id.Title)
 		}
 	}
@@ -407,4 +407,30 @@ func newHTTPFetcher(timeout time.Duration) paper.Fetcher {
 		}
 		return io.ReadAll(resp.Body)
 	})
+}
+
+// isPlaceholderTitle reports whether a project is still carrying the offline
+// stand-in it was created with, rather than a name somebody chose or a resolved
+// paper title.
+//
+// The placeholder is a paper *reference*, and since 012 a project holds several.
+// Comparing against the running job's ref alone was right while every paper
+// started at create — the first paper's session always ran, so it always did the
+// naming. Now that starting is its own act, a project created around papers A
+// and B and started at B compares B's ref to A's, declines, and keeps a URL
+// nobody chose as the project name forever.
+func (e *engineRunner) isPlaceholderTitle(ctx context.Context, p project.Project, ref string) bool {
+	if p.Title == "" || p.Title == ref {
+		return true
+	}
+	papers, err := e.projects.ListPapers(ctx, p.ID)
+	if err != nil {
+		return false // unreadable: leave the title alone rather than guess
+	}
+	for _, held := range papers {
+		if p.Title == held.Ref {
+			return true
+		}
+	}
+	return false
 }
