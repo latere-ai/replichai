@@ -538,9 +538,18 @@ func firstNonZeroTime(ts ...time.Time) time.Time {
 	return time.Time{}
 }
 
-// CloseRun releases a finished run. Releasing is best-effort: a run that is
-// already released is not an error worth propagating.
+// CloseRun stops any live work before releasing the session. Archiving alone
+// only hides a managed-agent session; user.interrupt is what actually pauses
+// every active thread. Both operations are best-effort so closing an already
+// terminal or archived session remains idempotent.
 func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
+	_, _ = p.client.Beta.Sessions.Events.Send(ctx, h.ID, anthropic.BetaSessionEventSendParams{
+		Events: []anthropic.BetaManagedAgentsEventParamsUnion{
+			anthropic.BetaManagedAgentsEventParamsOfUserInterrupt(
+				anthropic.BetaManagedAgentsUserInterruptEventParamsTypeUserInterrupt,
+			),
+		},
+	})
 	_, _ = p.client.Beta.Sessions.Archive(ctx, h.ID, anthropic.BetaSessionArchiveParams{})
 	return nil
 }

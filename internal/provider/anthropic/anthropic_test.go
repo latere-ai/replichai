@@ -418,6 +418,42 @@ func TestCloseRunToleratesAnAlreadyClosedRun(t *testing.T) {
 	}
 }
 
+// Closing a live managed-agent session must interrupt its work before archiving
+// it. Archival alone hides the session but leaves the agent running.
+func TestCloseRunInterruptsBeforeArchiving(t *testing.T) {
+	var paths []string
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/v1/sessions/sesn_1/events":
+			var body struct {
+				Events []struct {
+					Type string `json:"type"`
+				} `json:"events"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode interrupt: %v", err)
+			}
+			if len(body.Events) != 1 || body.Events[0].Type != "user.interrupt" {
+				t.Fatalf("close event = %+v, want one user.interrupt", body.Events)
+			}
+			writeJSON(t, w, map[string]any{"data": []any{}})
+		case "/v1/sessions/sesn_1/archive":
+			writeJSON(t, w, map[string]any{"id": "sesn_1"})
+		default:
+			t.Fatalf("unexpected close request: %s", r.URL.Path)
+		}
+	})
+
+	if err := p.CloseRun(context.Background(), provider.RunHandle{ID: "sesn_1"}); err != nil {
+		t.Fatalf("CloseRun: %v", err)
+	}
+	want := []string{"/v1/sessions/sesn_1/events", "/v1/sessions/sesn_1/archive"}
+	if len(paths) != len(want) || paths[0] != want[0] || paths[1] != want[1] {
+		t.Errorf("close requests = %v, want %v", paths, want)
+	}
+}
+
 func TestEnsureWorkspaceAndWorkerCarryTheSpec(t *testing.T) {
 	var payloads []map[string]any
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
