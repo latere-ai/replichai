@@ -1,5 +1,3 @@
-import type { Job } from './api'
-
 // Stopping a session is not one instant act. The request signals the worker,
 // which closes the backend run and only then writes the terminal phase. The
 // control has to hold the whole of that wait, or a second click fires a second
@@ -18,5 +16,5 @@ export const stopPending = (phase: string, requested: boolean) => requested && !
 // hands it a new one. A list read taken before the session settled is stale: it
 // would walk a stopped session back to running and offer Stop again. Same
 // session, settled here, unsettled there — keep the settled one.
-export const freshest = (shown: Job, incoming: Job): Job =>
+export const freshest = <T extends { id: string; phase: string }>(shown: T, incoming: T): T =>
   shown.id === incoming.id && terminal(shown.phase) && !terminal(incoming.phase) ? shown : incoming

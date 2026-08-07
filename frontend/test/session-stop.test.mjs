@@ -68,6 +68,8 @@ const fail = (msg) => {
 const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
 let browser
 let cancels = 0
+let cancelStatus = 200
+let settled = false
 try {
   for (let i = 0; ; i++) {
     try {
@@ -90,11 +92,17 @@ try {
       // signal landed, the session has not settled yet.
       if (u.pathname === '/jobs/job-1/cancel' && req.method() === 'POST') {
         cancels++
+        if (cancelStatus !== 200) return req.respond({ status: cancelStatus, contentType: 'application/json', body: JSON.stringify({ error: 'cancel_failed' }) })
         return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(running) })
       }
       const hit = routes.find(([re]) => re.test(u.pathname))
       if (hit) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(hit[1]) })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
+      // A short reconnect keeps the stream cheap to drive: each poll is a fresh
+      // interception, so a frame can be armed at any point in the test.
+      if (u.pathname.endsWith('/events')) {
+        const frame = settled ? `event: status\ndata: ${JSON.stringify({ ...running, phase: 'failed', error: 'cancelled by owner' })}\n\n` : ''
+        return req.respond({ status: 200, contentType: 'text/event-stream', body: `retry: 200\n\n${frame}` })
+      }
     }
     req.continue()
   })
@@ -110,7 +118,7 @@ try {
   // An early mismatch means the mock or the row changed, and the measurement
   // below would not be the reported bug — so those cases stop the run.
   await (async () => {
-    await page.goto(`${BASE}/p/proj-1`, { waitUntil: 'networkidle0' })
+    await page.goto(`${BASE}/p/proj-1`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('.rows .row button.btn')
     await new Promise((r) => setTimeout(r, 400)) // let the entrance animation settle
 
@@ -135,6 +143,56 @@ try {
     await (await stopBtn()).click().catch(() => {})
     await new Promise((r) => setTimeout(r, 300))
     if (cancels !== 1) fail(`a click on the stopping button sent another cancel (${cancels} total)`)
+  })()
+
+  // A stop that does not land — the worker could not close the backend run — is
+  // the other half: the session is still up, so the button has to come back
+  // rather than sit dead, and the reason has to be on screen. The row carries
+  // one error slot, and it still has to fit in the row.
+  await (async () => {
+    cancelStatus = 500
+    cancels = 0
+    await page.goto(`${BASE}/p/proj-1`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('.rows .row button.btn')
+    await new Promise((r) => setTimeout(r, 400))
+
+    await (await stopBtn()).click()
+    for (let i = 0; cancels === 0 && i < 100; i++) await new Promise((r) => setTimeout(r, 50))
+    await new Promise((r) => setTimeout(r, 300))
+
+    const back = await readBtn()
+    if (!back || back.disabled || back.label !== 'Stop') fail(`a stop that failed must hand the button back, got ${JSON.stringify(back)}`)
+
+    const row = await page.evaluate(() => {
+      const r = document.querySelector('.rows .row')
+      const errs = [...r.querySelectorAll('.err')]
+      const chev = r.querySelector('.chev')
+      return {
+        errors: errs.map((e) => e.textContent.trim()),
+        overflow: r.scrollWidth - r.clientWidth,
+        chevInside: chev ? r.getBoundingClientRect().right - chev.getBoundingClientRect().right : null,
+      }
+    })
+    if (row.errors.length !== 1 || !row.errors[0].startsWith('Couldn’t stop')) fail(`the row should carry exactly one error, the stop failure — got ${JSON.stringify(row.errors)}`)
+    if (row.overflow > 1) fail(`the row overflows by ${row.overflow}px once the stop error is in it`)
+    if (row.chevInside === null || row.chevInside < 0) fail(`the stop error pushed the chevron out of the row (${row.chevInside}px)`)
+
+    // "It's still running" stops being true the moment it stops running — by a
+    // retry, by another window, or by the run ending on its own. The stream
+    // settles the session here, and the message has to go with it.
+    settled = true
+    for (let i = 0; i < 60; i++) {
+      const now = await page.evaluate(() => document.querySelector('.rows .row')?.textContent ?? '')
+      if (now.includes('stopped')) break
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    const end = await page.evaluate(() => {
+      const r = document.querySelector('.rows .row')
+      return { text: r.textContent, errors: [...r.querySelectorAll('.err')].map((e) => e.textContent.trim()), btn: !!r.querySelector('button.btn') }
+    })
+    if (!end.text.includes('stopped')) return fail(`the stream never settled the session: ${JSON.stringify(end.text)}`)
+    if (end.btn) fail('a settled session still offers Stop')
+    if (end.errors.length) fail(`a settled session still shows a stop error: ${JSON.stringify(end.errors)}`)
   })()
 
   if (!process.exitCode) console.log('ok: Stop stays pending until the session settles')
