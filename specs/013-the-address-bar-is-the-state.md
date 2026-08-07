@@ -1,6 +1,10 @@
 # 013 — The address bar is the state
 
-**Status:** designed.
+**Status:** built. `frontend/src/routes.ts` holds the `View` union with `pathOf`/`viewOf` and the `useRouter` hook; `App.tsx` reads its view from the address instead of from `useState`. `projectFromPath`, `publicHandleFromPath` and the `replaceState('/')` that discarded the path after startup are all gone, and with them `deeplink.test.ts` and `profile-page.test.ts`, whose coverage moved into `routes.test.ts`. No server change.
+
+**Verified in Chrome** (`frontend/test/routing.test.mjs`, driven over a mocked API): a click into a project puts `/p/{id}` in the address bar and a click into its session `/p/{id}/s/{jobId}`; the verdict tab reaches `/p/{id}/verdict` and survives a reload on that tab; a cold `/p/{id}/s/{jobId}` renders the transcript and fills its breadcrumb — project title and paper reference — from what the screen loaded; Back walks session → project → dashboard and Forward walks back down; the rail's destinations land on `/registry`, `/console`, `/settings` and `/new`; a mistyped tab keeps its project; a stray path is corrected to `/`. Every assertion was verified to fail with the change stashed.
+
+Two refinements came out of the build, both in the spec below: a correction passes `replace` explicitly rather than relying on the path-changed rule, and `navigate` ignores an update that returns the view it was given — otherwise a screen offering the same title on every render would write history on every render.
 
 **Scope:** give every screen a URL. Navigation inside the app becomes a path the browser owns, so a reload stays where it was, Back and Forward work, and a screen can be linked to. One new module (`frontend/src/routes.ts`) holds the path↔state mapping; `App.tsx` reads its view from it instead of from `useState`. No server change — `internal/spa` already serves `index.html` for any unmatched path, which is the half of routing that was already in place.
 
@@ -22,7 +26,9 @@ Two deep links already exist and prove the shape works: `/p/{id}` from an invita
 
 **The path and the view are one bijection, not two parsers.** `routes.ts` exports the `View` union together with `pathOf(view)` and `viewOf(path)`. `View` is already a discriminated union carrying exactly the fields a path needs, so the mapping is total in both directions and the compiler catches a new screen that has no URL. Both functions are pure and are tested as a round trip, the way `projectFromPath` is tested today; they replace `projectFromPath` and `publicHandleFromPath`, which were the same job done twice for two paths.
 
-**Push only when the path changes.** One `navigate(view)` writes the path with `pushState` when `pathOf` differs from the current location, and `replaceState` when it does not. That single rule gets three behaviours right without a flag at any call site: opening a screen adds a history entry, a tab change adds one (its path differs), and filling in a title the app had not fetched yet adds none.
+**Push only when the path changes.** `navigate(view)` writes the path with `pushState` when `pathOf` differs from the current location, and `replaceState` when it does not. That default gets three behaviours right without a flag at any call site: opening a screen adds a history entry, a tab change adds one (its path differs), and filling in a title the app had not fetched yet adds none.
+
+A correction — a tab the reader may not open, an address being fixed — passes `replace` explicitly, because a corrected address must not be a place Back can return to: it would be corrected again, and Back would never get past it. And `navigate` ignores an update that returns the view it was handed, so a screen that offers the same title on every render writes history on none of them.
 
 **The API owns its roots, so two screens are renamed.** `/projects`, `/public` and `/admin` are API paths — the release smoke asserts that `GET /projects` answers with a JSON error — and Go's mux matches them before the SPA fallback, so a browser sent there gets JSON. The registry and the console take names of their own; nothing else moves.
 
@@ -44,7 +50,7 @@ Two deep links already exist and prove the shape works: `/p/{id}` from an invita
 
 **A path carries identity; the screen fetches the rest.** `View` keeps its optional display hints (a project's title, a session's paper reference) and the path carries none of them — a title in a URL is a copy of a record that can change. On a cold load the screens already fetch what they render, so they report what they loaded upward and the hint is filled in silently, under the push-only-when-the-path-changes rule. The breadcrumb's existing `…` covers the moment before that arrives.
 
-**An unknown path is not an error screen.** `viewOf` returns the dashboard for anything it does not recognise, and the app rewrites the address to `/` without a history entry. A 404 screen would be the right answer for a public site; here every path is either one of ours or a typo in a hand-edited URL, and the useful response is the app rather than a dead end.
+**An unknown path is not an error screen.** `viewOf` returns the dashboard for anything it does not recognise, and the app rewrites the address to `/` without a history entry. A 404 screen would be the right answer for a public site; here every path is either one of ours or a typo in a hand-edited URL, and the useful response is the app rather than a dead end. A path that names a project and then something unrecognisable — a mistyped tab, a session link cut short at `/p/{id}/s` — resolves to *that project* rather than to the dashboard: the reader addressed a real thing, and the unreadable part of the address is the only part worth discarding.
 
 **A tab the reader may not open resolves to sessions.** `people` is the owner's tab. A non-owner following `/p/{id}/people` gets the sessions tab and the address corrected, rather than an empty panel — the same rule the screen already applies when it hides the tab.
 
