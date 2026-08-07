@@ -1,6 +1,6 @@
 # Backlog
 
-Feasibility questions and scope extensions worth getting right *eventually*, deliberately kept **out of the implementation roadmap** (the numbered spec map). These are not committed work and not sequenced. They are recorded so they shape the model when the time comes, and so they are not lost to a hallway conversation. An item that becomes committed work leaves this file rather than gaining a note here: the meter-in-currency item did, as [011](011-what-a-session-costs.md).
+Feasibility questions and scope extensions worth getting right *eventually*, deliberately kept **out of the implementation roadmap** (the numbered spec map). An item large enough to need its own argument gets a deferred spec and a pointer from here — item 5 does. These are not committed work and not sequenced. They are recorded so they shape the model when the time comes, and so they are not lost to a hallway conversation. An item that becomes committed work leaves this file rather than gaining a note here: the meter-in-currency item did, as [011](011-what-a-session-costs.md).
 
 The MVP proves the loop on **single-study, machine-runnable-inner-loop papers** — which the golden set (`evals/`) targets on purpose. The items below are the later-stage stress tests of the "audit / replication" model, and each is large enough to warrant its own investigation before any spec.
 
@@ -42,6 +42,19 @@ This is not hypothetical caution. [`docs/landscape.md`](../docs/landscape.md) fo
 
 Backlog rather than roadmap because nothing is public yet, so nothing is currently wrong. It becomes blocking the first time a run naming a third party leaves the owner's project.
 
+## 5. A paper the world cannot fetch
+
+Every paper the platform can hold is one that already exists publicly, because `paper.Key` is offline over an immutable public reference. A draft, or a manuscript under submission, has no DOI, no arXiv id, and no URL — and is the case where a reproduction is worth the most, since a failing inner loop is still fixable before it becomes a published record. Written up at ideation level as [016](016-a-paper-that-is-not-published-yet.md), which names the forks and resolves none.
+
+The short version of why it is not a storage feature:
+
+- **A mutable document has no stable identity.** 006d's rule for an identifier-less PDF is `sha256` of the extracted text, so v1/v2/v3 of one manuscript are three unrelated papers to `project_papers`, to the double-trigger guard (which therefore lets two versions run at once), and to the registry. This is 012's unsolved arXiv-versus-DOI divergence promoted to the normal case.
+- **The good outcome makes it worse.** A draft that gets published acquires the DOI it should always have had, and the sessions already run against it must follow — a merge of two paper keys, which nothing does today.
+- **A paper and a bundle of materials are different things.** An audit handed its code and data is not measuring what an audit that had to find them measured; one `rate` cannot answer both questions honestly.
+- **Deletion collides with a rule that is right.** 012 makes a paper with sessions permanently undeletable, deliberately. "Delete my manuscript" is a request that must be honourable. Both cannot hold.
+
+Storage itself is the easy part and is already forked cleanly: `experiment.ArtifactStore` is the seam, and below it either drive ([008](008-drive-data-plane.md), which already claims this ground) or a `replichai/` prefix in the shared bucket.
+
 ## Why these are backlog, not roadmap
 
-1–3 are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, just not yet live, and it turns from a design question into an incident the day it is skipped. Recorded here to be picked up as deliberate later-stage investigations, each likely its own spec, once the single-study loop is solid.
+1–3 are end-to-end "get the auditing/replication model right" concerns — valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, just not yet live, and it turns from a design question into an incident the day it is skipped. 5 is deferred for a third reason again: it is wanted, and the storage half is a week's work, but the identity half rewrites indexes the whole product keys on — so building the obvious part first would mean discovering the model by migration.
