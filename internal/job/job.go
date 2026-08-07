@@ -75,7 +75,18 @@ var (
 	// not a failure: the check runs in the transaction that inserts, so it is
 	// exact under concurrency and cannot be skipped by a new submit path.
 	ErrNoCredits = errors.New("this project does not have the credits to start a session")
+	// ErrRetryablePublish marks a publishing dependency failure that must leave
+	// the job in publishing for restart reconciliation instead of making the
+	// already-completed managed run terminally failed.
+	ErrRetryablePublish = errors.New("retryable publishing failure")
 )
+
+// RetryablePublish preserves cause while marking it for the worker's recovery
+// policy. The server runner uses it for forge/source/transcript reads that can
+// succeed when publishing is reconciled later.
+func RetryablePublish(cause error) error {
+	return fmt.Errorf("%w: %w", ErrRetryablePublish, cause)
+}
 
 // resolveCard reads the price list a session starting now is admitted under.
 //

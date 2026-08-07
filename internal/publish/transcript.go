@@ -25,15 +25,17 @@ const (
 // index), and transcript/NNN.md (interlinked chunks). Chunking keeps any single
 // file small enough to read and to commit — a full run's transcript can be many
 // megabytes as one file.
-func RenderTranscriptFiles(events []provider.Event) map[string][]byte {
+func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 
 	var j bytes.Buffer
-	for _, e := range events {
-		if line, err := json.Marshal(e); err == nil {
-			j.Write(line)
-			j.WriteByte('\n')
+	for i, e := range events {
+		line, err := json.Marshal(e)
+		if err != nil {
+			return nil, fmt.Errorf("encode transcript event %d: %w", i+1, err)
 		}
+		j.Write(line)
+		j.WriteByte('\n')
 	}
 	files[TranscriptJSONL] = j.Bytes()
 
@@ -54,7 +56,7 @@ func RenderTranscriptFiles(events []provider.Event) map[string][]byte {
 	}
 
 	files[TranscriptMD] = renderIndex(events, chunks)
-	return files
+	return files, nil
 }
 
 // chunkNav is the previous/index/next line at the top and bottom of each chunk.

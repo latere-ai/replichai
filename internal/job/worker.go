@@ -370,6 +370,9 @@ func (w *Worker) drivePublish(pool context.Context, j Job) error {
 	defer done()
 
 	if err := w.runner.Publish(ctx, &j); err != nil {
+		if errors.Is(err, ErrRetryablePublish) {
+			return err
+		}
 		return w.stop(pool, j.ID, err)
 	}
 	return w.complete(ctx, j)
@@ -381,6 +384,9 @@ func (w *Worker) publish(pool, ctx context.Context, j Job) error {
 		return w.stop(pool, j.ID, err)
 	}
 	if err := w.runner.Publish(ctx, &j); err != nil {
+		if errors.Is(err, ErrRetryablePublish) {
+			return err
+		}
 		return w.stop(pool, j.ID, err)
 	}
 	return w.complete(ctx, j)

@@ -20,6 +20,7 @@ type fakeRunner struct {
 	repo        string
 	resolveRepo string // when set, Resolve stamps it onto the job (the 006i handoff)
 	publishRepo string // the RepoName Publish observed — proves the handoff survived
+	publishErr  error
 	observed    provider.RunStatus
 	closed      []string // run ids Close was called with
 	closeErr    error
@@ -75,7 +76,7 @@ func (f *fakeRunner) Publish(_ context.Context, j *Job) error {
 	if f.failAt == "publish" {
 		return errors.New("publish boom")
 	}
-	return nil
+	return f.publishErr
 }
 
 func (f *fakeRunner) Close(_ context.Context, runID string) error {
@@ -515,6 +516,32 @@ func TestPersistentDoneTransitionFailureSurfaces(t *testing.T) {
 	if got, _ := base.Get(context.Background(), j.ID); got.Phase != PhasePublishing {
 		t.Fatalf("phase = %s, want publishing for reconciliation", got.Phase)
 	}
+}
+
+func TestRetryablePublishFailureStaysPublishing(t *testing.T) {
+	base := NewMemStore()
+	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	dependencyErr := errors.New("transcript backend unavailable")
+	r := &fakeRunner{
+		publishErr: RetryablePublish(dependencyErr),
+		observed:   provider.RunStatus{RunID: "sesn_retry_publish"},
+	}
+
+	if _, err := NewWorker(base, r).Process(context.Background()); !errors.Is(err, dependencyErr) {
+		t.Fatalf("Process error = %v, want retryable publish cause", err)
+	}
+	if got, _ := base.Get(context.Background(), j.ID); got.Phase != PhasePublishing {
+		t.Fatalf("phase = %s, want publishing for reconciliation", got.Phase)
+	}
+
+	// Once the dependency recovers, restart reconciliation replays the
+	// idempotent publish and records success.
+	r.publishErr = nil
+	resumed, failed, err := NewWorker(base, r).Reconcile(context.Background())
+	if err != nil || resumed != 1 || failed != 0 {
+		t.Fatalf("Reconcile = %d/%d/%v, want 1/0/nil", resumed, failed, err)
+	}
+	waitForPhase(t, base, j.ID, PhaseDone)
 }
 
 func TestFailureTransitionFailureSurfaces(t *testing.T) {

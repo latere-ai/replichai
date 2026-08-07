@@ -18,7 +18,10 @@ func TestRenderTranscriptFiles(t *testing.T) {
 		{Role: "agent", Kind: "tool_result", Content: "main.py\ndata/"},
 		{Role: "agent", Kind: "thinking"},
 	}
-	files := RenderTranscriptFiles(events)
+	files, err := RenderTranscriptFiles(events)
+	if err != nil {
+		t.Fatalf("RenderTranscriptFiles: %v", err)
+	}
 
 	// The expected file set: the machine stream, the index, and one chunk.
 	for _, want := range []string{TranscriptJSONL, TranscriptMD, transcriptDir + "/001.md"} {
@@ -65,7 +68,10 @@ func TestRenderTranscriptChunksAndInterlinks(t *testing.T) {
 	for i := range events {
 		events[i] = provider.Event{Role: "agent", Kind: "message", Content: "step"}
 	}
-	files := RenderTranscriptFiles(events)
+	files, err := RenderTranscriptFiles(events)
+	if err != nil {
+		t.Fatalf("RenderTranscriptFiles: %v", err)
+	}
 
 	if _, ok := files[transcriptDir+"/002.md"]; !ok {
 		t.Fatalf("45 events should span two chunks; have %v", keys(files))
@@ -79,6 +85,16 @@ func TestRenderTranscriptChunksAndInterlinks(t *testing.T) {
 	}
 	if !strings.Contains(string(files[transcriptDir+"/001.md"]), "../"+TranscriptMD) {
 		t.Error("a chunk should link up to the index")
+	}
+}
+
+func TestRenderTranscriptRejectsAnUnencodableEvent(t *testing.T) {
+	_, err := RenderTranscriptFiles([]provider.Event{
+		{Kind: "message", Content: "valid"},
+		{Kind: "message", Content: "invalid raw", Raw: json.RawMessage(`{`)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "event 2") {
+		t.Fatalf("RenderTranscriptFiles error = %v, want event index", err)
 	}
 }
 

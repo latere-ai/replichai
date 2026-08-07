@@ -404,6 +404,14 @@ func TestFinishNeedsRepoAndPaper(t *testing.T) {
 	}
 }
 
+func TestFinishRejectsAnInvalidVerdictBeforePublishing(t *testing.T) {
+	t.Setenv("REPLICHAI_GITHUB_TOKEN", "")
+	_, _, err := capture(t, "finish", "--verdict", "definitely-not-a-grade", "owner/repo", "doi:10.1234/a")
+	if err == nil || !strings.Contains(err.Error(), "--verdict") {
+		t.Fatalf("finish error = %v, want invalid --verdict", err)
+	}
+}
+
 func TestPublishRequiresTwoPositionals(t *testing.T) {
 	for _, args := range [][]string{{"publish"}, {"publish", "only-one-arg"}} {
 		_, stderr, err := capture(t, args...)
