@@ -13,9 +13,8 @@
 // sentence is how you end up telling somebody to top up a project that does not
 // exist yet.
 
-import { ApiError, type Credits, type CreatedProject, type SessionResult } from './api'
+import { ApiError, type Credits, type CreatedProject, type PaperResult } from './api'
 import type { I18n } from './i18n'
-import { formatUSD } from './money'
 
 type T = I18n['t']
 
@@ -44,87 +43,65 @@ export function emptyWallet(credits?: Credits): boolean {
   return !!credits && credits.wallet <= 0
 }
 
-// sessionErrLabel turns a per-paper error code from POST /projects into a short
-// label that sits under the paper it belongs to. It is deliberately terse: the
-// row already names which paper, so the message only has to say what about it.
-export function sessionErrLabel(t: T, code?: string, credits?: Credits): string {
-  if (code === 'active_session') return t('errActiveSession')
-  if (code === 'unresolvable_paper') return t('errUnresolvable')
-  // A batch that outran the project's credits reports this per paper; without
-  // the case it would read as "could not start", which is not what happened.
-  if (code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
-  return t('errEnqueue')
-}
-
-// submitErrLabel names why adding a session to an *existing* project was
-// refused. Its 402 is the project's pot, not the wallet — there is a project on
-// screen to allocate to, which is what the message tells you to do.
-export function submitErrLabel(t: T, e: unknown, credits?: Credits): string {
-  const { status, code, offline } = refusal(e)
-  if (offline) return t('errOffline')
-  if (status === 409 || code === 'active_session') return t('activeSession')
-  if (status === 402 || code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
-  if (status === 400 || code === 'unresolvable_paper') return t('unresolvablePaper')
-  if (status === 502 || code === 'resolve_failed') return t('resolveFailed')
-  return t('submitError')
-}
-
 /* ─── creating a project ─── */
 
 // CreateOutcome is everything the New-project screen has to say after a create:
 // a banner (empty when there is nothing to say) and a message for each paper row
-// that failed, keyed by the reference the row holds.
+// the server did not recognise, keyed by the reference the row holds.
 export type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
 
-// createOutcome decides what a create attempt tells the person, from the status
-// and body alone. It is a pure function so the four cases that used to be one
-// case can each be asserted:
+// createOutcome decides what a create attempt tells the person.
 //
-//   201 with every paper started  — nothing to say, go to the project
-//   201 with some papers refused  — go to the project, but say which were not
-//   422                           — no project; every paper carries its reason
-//   anything else                 — no project, and no per-paper reasons exist,
-//                                   so the banner has to carry the whole story
-//
-// The last case is the one this replaces. It used to fall through to "no paper
-// could be started", which named neither the cause nor a remedy — an out-of-
-// credits wallet, a server fault, and a broken deployment all read identically.
-export function createOutcome(t: T, status: number, data: CreatedProject, credits?: Credits, papers = 0): CreateOutcome {
+// It is a short function because the act is now a short one. A create records
+// papers and starts nothing (012), so there is no per-paper session to fail, no
+// partial success to explain, and no credits to run out of — all of that went
+// with the enqueue it no longer does. What is left: the papers were recorded, or
+// the server did not recognise some of the references.
+export function createOutcome(t: T, status: number, data: CreatedProject): CreateOutcome {
   const rows = new Map<string, string>()
-  const sessions: SessionResult[] = data.sessions ?? []
-  for (const s of sessions) if (s.error) rows.set(s.url, sessionErrLabel(t, s.error, credits))
+  const papers: PaperResult[] = data.papers ?? []
+  for (const p of papers) if (p.error) rows.set(p.ref, t('errUnresolvable'))
 
   if (status === 201 && data.project_id) {
-    const started = sessions.filter((s) => s.job_id).length
-    // Partial success used to be silent: the screen navigated away having said
-    // nothing about the papers it dropped. The project exists either way, and
-    // the papers that did not start belong in it — which is where the message
-    // sends them, because this form only ever creates a new project.
-    const banner = rows.size ? t('partialStarted', { n: String(started), total: String(sessions.length) }) : ''
-    return { ok: true, banner, rows }
+    return { ok: true, banner: rows.size ? t('somePapersNotRecognised') : '', rows }
   }
-
-  if (rows.size) return { ok: false, banner: t('allPapersFailed'), rows }
-
-  // No per-paper detail: the request was refused before any paper was tried.
-  // A wallet that cannot cover the batch is the common one, and it is the whole
-  // request rather than one paper — so it names what a batch of this size needs,
-  // not a project that was never created.
-  if (status === 402 || data.error === 'no_credits') return { ok: false, banner: createCreditsText(t, credits, papers), rows }
   if (status === 403) return { ok: false, banner: t('errNotAllowed'), rows }
   return { ok: false, banner: t('createFailed'), rows }
 }
 
-// createCreditsText says what the batch needed and what the person has, when
-// both numbers are known. Naming them turns "not enough credits" into a decision
-// they can make — add credits, or submit fewer papers.
-function createCreditsText(t: T, credits?: Credits, papers = 0): string {
-  if (!credits || !credits.start_reserve || papers <= 0) return t('errCreateNoCredits')
-  return t('errCreateNoCreditsAmount', {
-    n: String(papers),
-    need: formatUSD(credits.start_reserve * papers),
-    have: formatUSD(credits.wallet),
-  })
+/* ─── working inside a project ─── */
+
+// startErrLabel names why starting a session was refused. This is where every
+// refusal a create used to report per paper now lives, and the one place money
+// is asked about — so "this project is out of credits" is said on the screen
+// showing the pot, which is what makes it something the reader can act on.
+export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
+  const { status, code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (status === 409 || code === 'active_session') return t('activeSession')
+  if (status === 402 || code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
+  if (status === 404) return t('errPaperGone')
+  return t('startFailed')
+}
+
+// addPaperErrLabel names why a paper could not be added. Nothing on this path
+// costs anything, so none of it is about money.
+export function addPaperErrLabel(t: T, e: unknown): string {
+  const { status, code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (status === 409 || code === 'paper_exists') return t('errPaperExists')
+  if (status === 400 || code === 'unresolvable_paper') return t('unresolvablePaper')
+  return t('addPaperFailed')
+}
+
+// removePaperErrLabel names why a paper could not be dropped. A paper that has
+// been run stays: the record of what was actually reproduced is not editable.
+export function removePaperErrLabel(t: T, e: unknown): string {
+  const { status, code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (status === 409 || code === 'paper_has_sessions') return t('errPaperHasSessions')
+  if (status === 403 || code === 'not_lead') return t('errRemoveNotLead')
+  return t('removePaperFailed')
 }
 
 /* ─── a session that failed while running ─── */

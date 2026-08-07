@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { ApiError, type CreatedProject } from './api'
-import { createOutcome, generic, refusal, sessionFailureText, submitErrLabel } from './errors'
+import { addPaperErrLabel, createOutcome, generic, refusal, removePaperErrLabel, sessionFailureText, startErrLabel } from './errors'
 import { MICRO } from './money'
 
 // The helpers take a translate function, so asserting the key is what matters
@@ -11,74 +11,65 @@ const t = ((key: string, vars?: Record<string, string>) =>
 const wallet = { wallet: 0, start_reserve: 5 * MICRO }
 const funded = { wallet: 40 * MICRO, start_reserve: 5 * MICRO }
 
-// The bug this file exists for: a create that was refused *before* any paper was
-// tried carries no per-paper detail, and every one of those refusals used to
-// print "No paper could be started — check the references." That named neither
-// the cause nor a remedy, and pointed at the one thing that was not wrong.
-test('a refusal with no per-paper detail says what actually happened', () => {
-  // Out of credits, and the numbers are known: say what the batch needs.
-  expect(createOutcome(t, 402, { error: 'no_credits' }, funded, 3).banner).toBe('errCreateNoCreditsAmount:3,$15.00,$40.00')
-  // Out of credits with nothing known about the wallet: no invented figures.
-  expect(createOutcome(t, 402, { error: 'no_credits' }, undefined, 3).banner).toBe('errCreateNoCredits')
-  // A revoked or unknown account is not a money problem.
-  expect(createOutcome(t, 403, {}, wallet, 1).banner).toBe('errNotAllowed')
-  // A server fault, or a body that was not even JSON (a broken deployment
-  // answers 404 with HTML): generic, and never the credits branch.
-  expect(createOutcome(t, 500, {}, wallet, 1).banner).toBe('createFailed')
-  expect(createOutcome(t, 404, {}, funded, 1).banner).toBe('createFailed')
-})
-
-// The create-time 402 must not borrow the message written for an existing
-// project. There is no project yet, so "allocate more to it" points at nothing.
-test('a create refusal never tells you to top up a project that does not exist', () => {
-  const banner = createOutcome(t, 402, { error: 'no_credits' }, wallet, 1).banner
-  expect(banner.startsWith('errCreateNoCredits')).toBe(true)
-  expect(banner).not.toBe('errNoCredits')
-})
-
-// 422: the project was rolled back and each paper carries its own reason.
-test('a fully refused batch puts a reason on every paper', () => {
-  const data: CreatedProject = {
-    error: 'no_sessions_started',
-    sessions: [
-      { url: 'https://doi.org/10/a', error: 'active_session' },
-      { url: 'https://arxiv.org/abs/b', error: 'unresolvable_paper' },
-    ],
-  }
-  const out = createOutcome(t, 422, data, funded, 2)
-  expect(out.ok).toBe(false)
-  expect(out.banner).toBe('allPapersFailed')
-  expect(out.rows.get('https://doi.org/10/a')).toBe('errActiveSession')
-  expect(out.rows.get('https://arxiv.org/abs/b')).toBe('errUnresolvable')
-})
-
-// 201 means at least one paper started — not that all of them did. The screen
-// used to navigate away on any 201, so a batch could silently drop three of four
-// papers and say nothing about it.
-test('a partly successful create does not swallow the papers it dropped', () => {
+// A create records papers and starts nothing (012), so the only thing that can
+// go wrong per reference is the reference. Everything the old outcome had to
+// explain — a paper refused for credits, a partial batch, a project rolled back
+// because nothing started — went with the enqueue that caused it.
+test('a create reports the references the server did not recognise', () => {
   const data: CreatedProject = {
     project_id: 'p1',
-    sessions: [
-      { url: 'a', job_id: 'j1' },
-      { url: 'b', error: 'active_session' },
-      { url: 'c', error: 'no_credits' },
+    papers: [
+      { ref: 'https://doi.org/10/a', key: 'doi:10/a' },
+      { ref: 'just some words', error: 'unresolvable_paper' },
     ],
   }
-  const out = createOutcome(t, 201, data, funded, 3)
+  const out = createOutcome(t, 201, data)
+  // The project exists and is worth opening either way.
   expect(out.ok).toBe(true)
-  expect(out.banner).toBe('partialStarted:1,3')
-  expect(out.rows.get('b')).toBe('errActiveSession')
-  expect(out.rows.get('c')).toBe('errNoCredits')
+  expect(out.banner).toBe('somePapersNotRecognised')
+  expect(out.rows.get('just some words')).toBe('errUnresolvable')
+  expect(out.rows.has('https://doi.org/10/a')).toBe(false)
 })
 
-// A create where everything started has nothing to say, so the screen goes
-// straight through to the project.
+// Every reference recognised: nothing to say, so the screen goes through.
 test('a clean create says nothing', () => {
-  const data: CreatedProject = { project_id: 'p1', sessions: [{ url: 'a', job_id: 'j1' }] }
-  const out = createOutcome(t, 201, data, funded, 1)
+  const data: CreatedProject = { project_id: 'p1', papers: [{ ref: 'a', key: 'doi:a' }] }
+  const out = createOutcome(t, 201, data)
   expect(out.ok).toBe(true)
   expect(out.banner).toBe('')
   expect(out.rows.size).toBe(0)
+})
+
+// A create cannot be refused for money any more — that was the whole point — so
+// a non-201 is a real fault and says so rather than blaming the papers.
+test('a failed create names a fault, not the references', () => {
+  expect(createOutcome(t, 403, {}).banner).toBe('errNotAllowed')
+  expect(createOutcome(t, 500, {}).banner).toBe('createFailed')
+  // A body that was not even JSON (a broken deployment answers 404 with HTML).
+  expect(createOutcome(t, 404, {}).banner).toBe('createFailed')
+  expect(createOutcome(t, 500, {}).ok).toBe(false)
+})
+
+// Starting a session is where every refusal a create used to report per paper
+// now lives, and the one place money is asked about.
+test('a refused start names the one thing that went wrong', () => {
+  expect(startErrLabel(t, new ApiError(409, 'active_session'), funded)).toBe('activeSession')
+  expect(startErrLabel(t, new ApiError(402, 'no_credits'), funded)).toBe('errNoCredits')
+  expect(startErrLabel(t, new ApiError(402, 'no_credits'), wallet)).toBe('errNoCreditsAtAll')
+  expect(startErrLabel(t, new ApiError(404, 'paper_not_found'), funded)).toBe('errPaperGone')
+  expect(startErrLabel(t, new ApiError(500, ''), funded)).toBe('startFailed')
+  expect(startErrLabel(t, new TypeError('Failed to fetch'), funded)).toBe('errOffline')
+})
+
+// Adding a paper costs nothing, so none of its refusals are about money.
+test('adding and removing a paper never mention credits', () => {
+  expect(addPaperErrLabel(t, new ApiError(409, 'paper_exists'))).toBe('errPaperExists')
+  expect(addPaperErrLabel(t, new ApiError(400, 'unresolvable_paper'))).toBe('unresolvablePaper')
+  expect(addPaperErrLabel(t, new ApiError(500, ''))).toBe('addPaperFailed')
+  // A paper that has been run stays: the record of what was reproduced is not
+  // editable, and that is a different refusal from not being allowed to try.
+  expect(removePaperErrLabel(t, new ApiError(409, 'paper_has_sessions'))).toBe('errPaperHasSessions')
+  expect(removePaperErrLabel(t, new ApiError(403, 'not_lead'))).toBe('errRemoveNotLead')
 })
 
 // A failed session used to print the worker's own error text on the row:
@@ -102,12 +93,4 @@ test('offline is told apart from a refusal', () => {
   expect(refusal(new ApiError(500, '')).offline).toBe(false)
   expect(generic(t, new TypeError('Failed to fetch'), 'createFailed')).toBe('errOffline')
   expect(generic(t, new ApiError(500, ''), 'createFailed')).toBe('createFailed')
-  expect(submitErrLabel(t, new TypeError('Failed to fetch'), funded)).toBe('errOffline')
-})
-
-// The code decides where the status is ambiguous — a 400 from the paper lookup
-// is a link the person can fix, and says so rather than "could not submit".
-test('adding a session to a project names the fixable cases', () => {
-  expect(submitErrLabel(t, new ApiError(400, 'unresolvable_paper'), funded)).toBe('unresolvablePaper')
-  expect(submitErrLabel(t, new ApiError(502, 'resolve_failed'), funded)).toBe('resolveFailed')
 })

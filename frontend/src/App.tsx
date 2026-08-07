@@ -34,7 +34,11 @@ import {
   type PublicProfile,
   setPlatformSettings,
   topUp,
-  submitPaper,
+  listPapers,
+  addPaper,
+  removePaper,
+  startSession,
+  type ProjectPaper,
   watchJob,
   type ResolvedPaper,
   type Event,
@@ -64,7 +68,9 @@ import {
   publishErrText,
   refusal,
   sessionFailureText,
-  submitErrLabel,
+  startErrLabel,
+  addPaperErrLabel,
+  removePaperErrLabel,
 } from './errors'
 import { formatUSD, parseUSD, toDollars } from './money'
 import {
@@ -451,7 +457,6 @@ function Shell({
         {view.name === 'submit' && (
           <SubmitScreen
             i18n={i18n}
-            me={me}
             onSubmitted={(id) => {
               refreshMe()
               openProject(id)
@@ -714,16 +719,15 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
 // (title) or error, filled by the Look-up button.
 type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
 
-function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitted: (projectId: string) => void }) {
+// Creating a project spends nothing (012), so this screen needs to know
+// nothing about anybody's credits.
+function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (projectId: string) => void }) {
   const { t } = i18n
   const [title, setTitle] = useState('')
   const [rows, setRows] = useState<PaperRow[]>([{ url: '' }])
   const [collaborators, setCollaborators] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  // Set when a create partly succeeded: the project is open for business, but
-  // the screen stays put long enough to say which papers did not start.
-  const [created, setCreated] = useState('')
 
   const setRow = (i: number, patch: Partial<PaperRow>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const addRow = () => setRows((rs) => [...rs, { url: '' }])
@@ -756,15 +760,14 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
     const collabs = collaborators.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
     try {
       const { status, data } = await createProject(title.trim(), papers, collabs)
-      const outcome = createOutcome(t, status, data, me.credits, papers.length)
+      const outcome = createOutcome(t, status, data)
       setRows((rs) => rs.map((r) => (outcome.rows.has(r.url.trim()) ? { ...r, error: outcome.rows.get(r.url.trim()) } : r)))
       setErr(outcome.banner)
-      // A create that started every paper has nothing to report, so it goes
-      // straight to the project. One that started only some has: the project
-      // exists and is worth opening, but leaving before saying which papers were
-      // dropped is how a batch silently loses half its work.
-      if (outcome.ok && !outcome.banner) onSubmitted(data.project_id!)
-      else if (outcome.ok) setCreated(data.project_id!)
+      // The project exists either way — it records papers and runs nothing, so
+      // there is no partial state to explain and nothing to keep the person here
+      // for. A reference we did not recognise is reported on its row and can be
+      // added again from inside the project.
+      if (outcome.ok) onSubmitted(data.project_id!)
     } catch (e) {
       setErr(generic(t, e, 'createFailed'))
     } finally {
@@ -788,7 +791,6 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
             onChange={(e) => setTitle(e.target.value)}
             placeholder={t('projectNamePlaceholder')}
             spellCheck={false}
-            disabled={!!created}
           />
         </label>
 
@@ -805,15 +807,14 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
                     placeholder={t('paperPlaceholder')}
                     spellCheck={false}
                     onKeyDown={(e) => e.key === 'Enter' && resolveRow(i)}
-                    disabled={!!created}
-                  />
-                  <button className="btn ghost sm" disabled={!row.url.trim() || row.resolving || !!created} onClick={() => resolveRow(i)}>
+                          />
+                  <button className="btn ghost sm" disabled={!row.url.trim() || row.resolving } onClick={() => resolveRow(i)}>
                     <Ico name="search" size={12} w={2} />
                     {row.resolving ? t('resolvingPaper') : t('resolve')}
                   </button>
                   {rows.length > 1 && (
                     <Tip text={t('removePaper')}>
-                      <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => removeRow(i)} disabled={!!created}>
+                      <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => removeRow(i)}>
                         <Ico name="x" size={13} w={1.9} />
                       </button>
                     </Tip>
@@ -832,7 +833,7 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
               </div>
             ))}
           </div>
-          <button className="btn ghost sm" onClick={addRow} disabled={!!created} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+          <button className="btn ghost sm" onClick={addRow} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
             <Ico name="plus" size={12} w={2.2} /> {t('addPaper')}
           </button>
         </div>
@@ -845,25 +846,17 @@ function SubmitScreen({ i18n, me, onSubmitted }: { i18n: I18n; me: Me; onSubmitt
             onChange={(e) => setCollaborators(e.target.value)}
             placeholder={t('collaboratorsPlaceholder')}
             spellCheck={false}
-            disabled={!!created}
           />
           <span className="attestation">{t('collaboratorsHint')}</span>
         </label>
 
         <div className="submit-input-row">
-          {created ? (
-            <button className="btn lg" onClick={() => onSubmitted(created)}>
-              <Ico name="chevronRight" size={14} /> {t('openProject')}
-            </button>
-          ) : (
-            <button className="btn lg" disabled={busy} onClick={submit}>
-              <Ico name="sparkles" size={14} /> {busy ? t('creatingProject') : t('createProjectBtn')}
-            </button>
-          )}
-          {!created && <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>}
+          <button className="btn lg" disabled={busy} onClick={submit}>
+            <Ico name="sparkles" size={14} /> {busy ? t('creatingProject') : t('createProjectBtn')}
+          </button>
+          <span className="attestation" style={{ alignSelf: 'center' }}>{t('submitNoSpend')}</span>
         </div>
-        {/* A partly-successful create is not a failure: the project exists. */}
-        {err && <p className={created ? 'muted small' : 'err small'}>{err}</p>}
+        {err && <p className="err small">{err}</p>}
       </div>
     </div>
   )
@@ -1457,7 +1450,7 @@ function ProjectScreen({
         {tab === 'sessions' && (
           <div className="stack">
             {credits && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
-            {maySubmit && <ProjectSubmit i18n={i18n} me={me} project={project} onSubmitted={onSpent} />}
+            {maySubmit && <PapersCard i18n={i18n} me={me} project={project} credits={credits ?? undefined} onChanged={onSpent} />}
             <div className="card">
               <CardHead label={t('projectSessions')} icon="layers" tone="var(--run)" />
               {sessions === null || sessions.length === 0 ? (
@@ -1904,44 +1897,140 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n;
   )
 }
 
-// ProjectSubmit adds a session to a project the caller owns or collaborates on.
-// What pays is the project's own credits, whoever submits — so there is no
-// choice to offer here.
-function ProjectSubmit({ i18n, me, project, onSubmitted }: { i18n: I18n; me: Me; project: Project; onSubmitted: () => void }) {
+// PapersCard is what a project is about, and where a run is started (012).
+//
+// It is the answer to two questions that used to be one. Adding a paper says
+// what this project means to reproduce and costs nothing; starting a session
+// runs it and spends. Fusing them is what made creating a project an act that
+// could be refused for money — and made a paper whose only run failed disappear
+// from the project it belonged to.
+function PapersCard({
+  i18n,
+  me,
+  project,
+  credits,
+  onChanged,
+}: {
+  i18n: I18n
+  me: Me
+  project: Project
+  credits?: ProjectCredits
+  onChanged: () => void
+}) {
   const { t } = i18n
+  const [papers, setPapers] = useState<ProjectPaper[] | null>(null)
   const [url, setUrl] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [busyKey, setBusyKey] = useState('')
   const [err, setErr] = useState('')
 
-  const submit = async (e: React.FormEvent) => {
+  const refresh = useCallback(() => {
+    listPapers(project.id).then(setPapers).catch(() => setPapers([]))
+  }, [project.id])
+  useEffect(refresh, [refresh])
+
+  const add = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!url.trim() || busy) return
-    setBusy(true)
+    if (!url.trim() || adding) return
+    setAdding(true)
     setErr('')
     try {
-      await submitPaper(url.trim(), project.id)
+      await addPaper(project.id, url.trim())
       setUrl('')
-      onSubmitted()
+      refresh()
+      // The title resolves after the answer, so a second read a moment later is
+      // what turns "Looking up the title…" into the paper's name.
+      setTimeout(refresh, 1500)
     } catch (e) {
-      setErr(submitErrLabel(t, e, me.credits))
+      setErr(addPaperErrLabel(t, e))
     } finally {
-      setBusy(false)
+      setAdding(false)
     }
   }
+
+  const start = async (key: string) => {
+    if (busyKey) return
+    setBusyKey(key)
+    setErr('')
+    try {
+      await startSession(project.id, key)
+      refresh()
+      onChanged()
+    } catch (e) {
+      setErr(startErrLabel(t, e, me.credits))
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  const remove = async (key: string) => {
+    setErr('')
+    try {
+      await removePaper(project.id, key)
+      refresh()
+    } catch (e) {
+      setErr(removePaperErrLabel(t, e))
+    }
+  }
+
+  // Whether the project can afford another run. Saying so on the button beats
+  // letting somebody press it and reading the refusal afterwards — and the pot
+  // it is short of is on the same screen.
+  const short = !!credits && credits.available < credits.start_reserve
+  const shortWhy = credits ? t('startNeedsCredits', { reserve: formatUSD(credits.start_reserve) }) : ''
+
   return (
-    <form className="card card-pad stack" onSubmit={submit}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input className="text" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t('addReplicationHint')} spellCheck={false} />
-        <button className="btn" disabled={busy}>
-          <Ico name="repeat" size={13} /> {busy ? t('submitting') : t('addReplication')}
-        </button>
+    <div className="card">
+      <CardHead label={t('papers')} icon="fileText" tone="var(--accent)" />
+      <div className="card-pad stack">
+        <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            className="text"
+            style={{ flex: 1 }}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={t('paperPlaceholder')}
+            spellCheck={false}
+          />
+          <button className="btn" disabled={adding || !url.trim()}>
+            <Ico name="plus" size={13} w={2.2} /> {adding ? t('addingPaper') : t('addPaperBtn')}
+          </button>
+        </form>
+        <span className="attestation">{t('addPaperHint')}</span>
+        {err && (
+          <span className="err small">
+            <Ico name="alert" size={13} /> {err}
+          </span>
+        )}
       </div>
-      {err && (
-        <span className="err small">
-          <Ico name="alert" size={13} /> {err}
-        </span>
+      {papers === null ? null : papers.length === 0 ? (
+        <Empty icon="fileText" text={t('noPapers2')} />
+      ) : (
+        <div className="rows">
+          {papers.map((p) => (
+            <div className="row" key={p.key}>
+              <span className="row-title">{p.title || t('paperUntitled')}</span>
+              <span className="muted small mono">{p.ref}</span>
+              <span className="muted small">
+                {p.sessions > 0 ? t('paperSessions', { n: String(p.sessions) }) : t('paperNeverRun')}
+              </span>
+              {p.sessions === 0 && (
+                <Tip text={t('removePaper')}>
+                  <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => remove(p.key)}>
+                    <Ico name="x" size={13} w={1.9} />
+                  </button>
+                </Tip>
+              )}
+              <Tip text={short ? shortWhy : ''}>
+                <button className="btn sm" disabled={!!busyKey || short} onClick={() => start(p.key)}>
+                  <Ico name="sparkles" size={12} /> {busyKey === p.key ? t('startingSession') : t('startSession')}
+                </button>
+              </Tip>
+            </div>
+          ))}
+        </div>
       )}
-    </form>
+    </div>
   )
 }
 

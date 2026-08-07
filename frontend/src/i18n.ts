@@ -71,12 +71,6 @@ const strings: Record<Lang, Record<string, string>> = {
     walletEmptyTitle: 'This account has no credits yet. Ask a platform admin to add some, or work in a project somebody else has funded.',
     errNoCredits: 'This project is out of credits \u2014 allocate more to it to keep going.',
     errNoCreditsAtAll: 'No credits yet \u2014 ask a platform admin to add some, or work in a project somebody else has funded.',
-    // Creating a project spends from your own credits, and there is no project
-    // yet to allocate to \u2014 so this cannot borrow the sentence above, which
-    // would send someone to top up something that was never created.
-    errCreateNoCredits: 'You don\u2019t have the credits to start this. Ask a platform admin to add some to your account.',
-    errCreateNoCreditsAmount:
-      'Not enough credits: starting {n} paper(s) needs {need}, and you have {have}. Ask a platform admin to add credits, or start fewer papers.',
     // a project's own credits, and the two moves on them
     projectCredits: 'Credits',
     creditsBalance: 'Balance',
@@ -154,7 +148,6 @@ const strings: Record<Lang, Record<string, string>> = {
     collaboratorsHint: 'Invited to the project as collaborators.',
     createProjectBtn: 'Create project',
     creatingProject: 'Creating…',
-    openProject: 'Open the project',
     resolveFailed: 'We couldn’t reach the site this paper is on. It may be down or busy — try again in a moment.',
     unresolvablePaper: 'We don’t recognise this link. Paste a DOI, an arXiv link, or the paper’s page on a publisher site.',
     noPapers: 'Add at least one paper.',
@@ -163,9 +156,29 @@ const strings: Record<Lang, Record<string, string>> = {
     errActiveSession: 'Already being replicated in this project.',
     errUnresolvable: 'We don’t recognise this link.',
     errEnqueue: 'Couldn’t start this one. Try again in a moment.',
-    allPapersFailed: 'None of these papers could be started. Each one says why below.',
-    partialStarted: 'Started {n} of {total}. The papers below did not start — open the project to try them again there.',
-    createFailed: 'Something went wrong on our side and the project wasn’t created. Nothing was charged — try again in a moment.',
+    somePapersNotRecognised: 'The project was created. We didn’t recognise the links marked below — you can add those papers again from inside the project.',
+    createFailed: 'Something went wrong on our side and the project wasn’t created. Try again in a moment.',
+    // Working inside a project: adding a paper costs nothing, starting one is
+    // the only act that spends.
+    papers: 'Papers',
+    noPapers2: 'No papers yet. Add one to say what this project is about.',
+    addPaperLabel: 'Add a paper',
+    addPaperHint: 'Paste a link. Adding it records what this project is about — nothing runs until you start it.',
+    addPaperBtn: 'Add',
+    addingPaper: 'Adding…',
+    addPaperFailed: 'Couldn’t add that paper. Try again in a moment.',
+    errPaperExists: 'This project already has that paper.',
+    startSession: 'Start replication',
+    startingSession: 'Starting…',
+    startFailed: 'Couldn’t start this session. Try again in a moment.',
+    errPaperGone: 'That paper is no longer on this project.',
+    startNeedsCredits: 'This project needs {reserve} available to start a session. Allocate credits above.',
+    removePaperFailed: 'Couldn’t remove that paper. Try again in a moment.',
+    errPaperHasSessions: 'This paper has been run, so it stays on the project.',
+    errRemoveNotLead: 'Only a project lead can remove a paper.',
+    paperSessions: '{n} session(s)',
+    paperNeverRun: 'not started',
+    paperUntitled: 'Looking up the title…',
     errNotAllowed: 'Your account can’t do this right now. Signing out and back in fixes most cases; if it persists, ask a platform admin.',
     errOffline: 'You appear to be offline. Check your connection and try again.',
     rename: 'Rename',
