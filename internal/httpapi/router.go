@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -265,6 +266,9 @@ type Router struct {
 	reserve     credit.Reserve
 	sseInterval time.Duration
 	spa         http.Handler
+	// bg tracks work scheduled to outlive the request that started it — title
+	// enrichment today. Nothing in the serving path waits on it; tests do.
+	bg sync.WaitGroup
 }
 
 // defaultSSEInterval is how often the event stream re-reads a job when the

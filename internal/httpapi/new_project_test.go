@@ -125,41 +125,67 @@ func TestCreateProjectNeedsAPaper(t *testing.T) {
 	}
 }
 
-// AC8 (012): the title is the server's to write. It resolves each paper against
-// the source best-effort — a reachable source fills the title in, and an
-// unreachable one leaves it blank on a paper you can still start.
+// AC8 (012): titles are the server's to write, and they land after the answer —
+// a create must not block on somebody else's web server.
 func TestCreateProjectResolvesPaperTitles(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = fakeResolver{got: ResolvedPaper{Key: "doi:10.1234/aaa", Title: "Point of no Undo"}}
-	h := NewRouter(d).Handler()
+	rt := NewRouter(d)
 
-	w := do(t, h, "POST", "/projects", `{"papers":["doi:10.1234/aaa"]}`, "me")
+	w := do(t, rt.Handler(), "POST", "/projects", `{"papers":["doi:10.1234/aaa"]}`, "me")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", w.Code, w.Body)
+	}
 	var got createResult
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if got.Papers[0].Title != "Point of no Undo" {
-		t.Errorf("resolved title = %q", got.Papers[0].Title)
-	}
+	rt.WaitBackground()
+
 	papers, _ := d.Projects.ListPapers(context.Background(), got.ProjectID)
 	if len(papers) != 1 || papers[0].Title != "Point of no Undo" {
 		t.Errorf("stored papers = %+v", papers)
+	}
+	// A project nobody named takes the resolved title rather than keeping the
+	// raw reference it was created with.
+	p, _ := d.Projects.Get(context.Background(), got.ProjectID)
+	if p.Title != "Point of no Undo" {
+		t.Errorf("project title = %q, want the resolved paper title", p.Title)
 	}
 
 	// A source that cannot be reached is not a failure: the paper is recorded
 	// without a title, and the create still succeeds.
 	d2 := testDeps(allowAll)
 	d2.Resolver = fakeResolver{err: errors.New("arxiv timeout")}
-	w = do(t, NewRouter(d2).Handler(), "POST", "/projects", `{"papers":["doi:10.1234/bbb"]}`, "me")
+	rt2 := NewRouter(d2)
+	w = do(t, rt2.Handler(), "POST", "/projects", `{"papers":["doi:10.1234/bbb"]}`, "me")
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create with an unreachable source: status %d", w.Code)
 	}
 	var unreachable createResult
 	_ = json.Unmarshal(w.Body.Bytes(), &unreachable)
-	if unreachable.Papers[0].Error != "" || unreachable.Papers[0].Title != "" {
-		t.Errorf("paper with an unreachable source = %+v", unreachable.Papers[0])
+	rt2.WaitBackground()
+	if unreachable.Papers[0].Error != "" {
+		t.Errorf("an unreachable source must not fail the paper: %+v", unreachable.Papers[0])
 	}
 	papers, _ = d2.Projects.ListPapers(context.Background(), unreachable.ProjectID)
-	if len(papers) != 1 {
-		t.Errorf("the paper must still be recorded: %+v", papers)
+	if len(papers) != 1 || papers[0].Title != "" {
+		t.Errorf("papers with an unreachable source = %+v", papers)
+	}
+}
+
+// A project somebody named keeps its name, whatever the papers resolve to.
+func TestResolvedTitlesNeverClobberAChosenName(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Resolver = fakeResolver{got: ResolvedPaper{Title: "Point of no Undo"}}
+	rt := NewRouter(d)
+
+	w := do(t, rt.Handler(), "POST", "/projects", `{"title":"My study","papers":["doi:10.1234/aaa"]}`, "me")
+	var got createResult
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	rt.WaitBackground()
+
+	p, _ := d.Projects.Get(context.Background(), got.ProjectID)
+	if p.Title != "My study" {
+		t.Errorf("project title = %q, want the name the person chose", p.Title)
 	}
 }
 

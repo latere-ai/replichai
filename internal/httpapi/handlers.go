@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -205,9 +206,11 @@ func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "add_paper_failed")
 		return
 	}
-	results := []PaperResult{{Ref: body.URL, Key: key}}
-	rt.fillPaperTitles(r, proj.ID, results)
-	writeJSON(w, http.StatusCreated, results[0])
+	added := PaperResult{Ref: body.URL, Key: key}
+	// No placeholder: adding a paper to a project that already exists fills in
+	// that paper's title and never touches the project's own name.
+	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, "", []PaperResult{added}) })
+	writeJSON(w, http.StatusCreated, added)
 }
 
 // removeProjectPaper drops a paper a project has never run.
@@ -459,9 +462,12 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_papers")
 		return
 	}
-	title := strings.TrimSpace(body.Title)
+	// placeholder is the stand-in a project gets when nobody names it — and the
+	// only title enrichment may replace. A project somebody named is theirs.
+	title, placeholder := strings.TrimSpace(body.Title), ""
 	if title == "" {
-		title = defaultTitle(papers[0]) // enriched once the first paper resolves
+		placeholder = defaultTitle(papers[0])
+		title = placeholder
 	}
 
 	proj, err := rt.projects.Create(r.Context(), id.Sub, title)
@@ -474,7 +480,9 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	for _, ref := range papers {
 		results = append(results, rt.recordPaper(r, proj.ID, id.Sub, ref))
 	}
-	rt.fillPaperTitles(r, proj.ID, results)
+	// Titles land after the answer: a create must not wait on somebody else's
+	// web server, and the papers are already recorded without them.
+	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, placeholder, results) })
 
 	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
 
@@ -508,22 +516,26 @@ func (rt *Router) recordPaper(r *http.Request, projectID, principal, ref string)
 	return res
 }
 
-// fillPaperTitles resolves each recorded paper against its source and writes the
-// title back, best-effort and in parallel.
+// enrichTitles resolves each recorded paper against its source and writes back
+// what it learns: the paper's own title, and the project's title while that is
+// still the placeholder it was created with.
 //
-// Best-effort is the whole design: a source that is down leaves the title blank,
-// which is a paper you can still start, and the first session's Resolve phase
-// fills it in later. The client's own preview is never trusted onto the record —
-// the New-project screen has already resolved these papers for its own display,
-// but a title stored against a project is a record, and records are the server's
-// to write.
-func (rt *Router) fillPaperTitles(r *http.Request, projectID string, papers []PaperResult) {
+// It runs *after* the response, on a context of its own. Blocking a create on N
+// network fetches is exactly the half-failure paper.Key was chosen to avoid — a
+// four-paper create would wait on the slowest source, and a client that timed
+// out would be left with the papers recorded and nothing to show for it.
+// Nothing here is load-bearing: every title it writes, the first session's
+// Resolve phase would write anyway.
+//
+// The client's own preview is never trusted onto the record. The New-project
+// screen has already resolved these papers for its display, but a title stored
+// against a project is a record, and records are the server's to write.
+func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder string, papers []PaperResult) {
 	if rt.resolver == nil {
 		return
 	}
-	ctx := r.Context()
+	titles := make([]string, len(papers))
 	var wg sync.WaitGroup
-	var mu sync.Mutex
 	for i := range papers {
 		if papers[i].Error != "" {
 			continue
@@ -535,16 +547,50 @@ func (rt *Router) fillPaperTitles(r *http.Request, projectID string, papers []Pa
 			if err != nil || strings.TrimSpace(got.Title) == "" {
 				return
 			}
-			if err := rt.projects.SetPaperTitle(ctx, projectID, papers[i].Key, got.Title); err != nil {
-				return
-			}
-			mu.Lock()
-			papers[i].Title = got.Title
-			mu.Unlock()
+			titles[i] = got.Title
+			_ = rt.projects.SetPaperTitle(ctx, projectID, papers[i].Key, got.Title)
 		}(i)
 	}
 	wg.Wait()
+
+	// The project takes the first title that resolved, not necessarily the first
+	// paper's: a project whose lead paper sits on an unreachable source should
+	// still end up named after something a person can read. It only ever
+	// replaces the placeholder, so a project somebody named keeps its name.
+	for _, title := range titles {
+		if title == "" {
+			continue
+		}
+		if placeholder == "" {
+			return
+		}
+		if p, err := rt.projects.Get(ctx, projectID); err == nil && p.Title == placeholder {
+			_ = rt.projects.SetTitle(ctx, projectID, title)
+		}
+		return
+	}
 }
+
+// background runs work that outlives the request which scheduled it, on a
+// context of its own so a client hanging up cannot cancel a write that is
+// already half done. The WaitGroup is what lets a test wait for it.
+func (rt *Router) background(f func(context.Context)) {
+	rt.bg.Add(1)
+	go func() {
+		defer rt.bg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), backgroundWork)
+		defer cancel()
+		f(ctx)
+	}()
+}
+
+// WaitBackground blocks until every background task scheduled so far has
+// finished. Tests use it; nothing in the serving path does.
+func (rt *Router) WaitBackground() { rt.bg.Wait() }
+
+// backgroundWork bounds any after-the-response work. It is generous: the only
+// thing running under it is best-effort enrichment nobody is waiting on.
+const backgroundWork = 30 * time.Second
 
 // seedCollaborators seeds the owner as lead (idempotent) and adds each
 // collaborator email as a member, best-effort. It returns the emails that were
