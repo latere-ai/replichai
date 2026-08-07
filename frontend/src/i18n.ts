@@ -29,6 +29,8 @@ const strings: Record<Lang, Record<string, string>> = {
     navProjects: 'Projects',
     navPublic: 'Public registry',
     newProject: 'New project',
+    foldSidebar: 'Collapse sidebar',
+    unfoldSidebar: 'Expand sidebar',
     settings: 'Settings',
     access: 'Access',
     loading: 'Loading…',

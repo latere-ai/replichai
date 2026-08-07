@@ -91,7 +91,7 @@ import {
 } from './transcript'
 import { Ico, type IconName } from './icons'
 import { useRouter, type Navigate, type ProjectTab, type View } from './routes'
-import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
 import { useSidebar } from './sidebar'
 
@@ -332,13 +332,31 @@ function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
 
 // NavItem is one destination in the rail. Each keeps a fixed hue on its icon so
 // the rail is scannable by colour; the label only takes the brand when current.
-function NavItem({ label, icon, tone, on, onClick }: { label: string; icon: IconName; tone: string; on: boolean; onClick: () => void }) {
+// A folded rail has room for the icon and nothing else, so the label moves into
+// a tooltip rather than disappearing. `data-tip` goes on the button itself: it is
+// all TipHost reads, and the `tip` class that usually comes with it is an
+// `inline-flex` that would undo the row's own layout.
+function NavItem({
+  label,
+  icon,
+  tone,
+  on,
+  folded,
+  onClick,
+}: {
+  label: string
+  icon: IconName
+  tone: string
+  on: boolean
+  folded?: boolean
+  onClick: () => void
+}) {
   return (
-    <button className={'nav-btn' + (on ? ' active' : '')} onClick={onClick}>
+    <button className={'nav-btn' + (on ? ' active' : '')} data-tip={folded ? label : undefined} onClick={onClick}>
       <span className="nav-ico" style={{ color: tone }}>
         <Ico name={icon} size={13} />
       </span>
-      {label}
+      <span className="nav-label">{label}</span>
     </button>
   )
 }
@@ -383,13 +401,24 @@ function Shell({
     }
   }, [untitledSessionProject, setView])
 
+  // The rail folds to its icons and stays that way across reloads. Folding is a
+  // preference about the chrome rather than a destination, so it is not in the
+  // address (013) — a shared link opens at the width its reader last chose.
+  const { folded, toggle: toggleRail } = useSidebar()
+  const foldLabel = folded ? t('unfoldSidebar') : t('foldSidebar')
+
   return (
     <div className="shell">
-      <nav className="rail">
+      <nav className={folded ? 'rail rail-fold' : 'rail'}>
         <div className="rail-head">
           <Logo />
           <span className="rail-name">replichai</span>
           <span className="rail-beta">BETA</span>
+          {/* The one control that must stay reachable in both states, so it is
+              the only thing the head keeps when the rail folds. */}
+          <button className="rail-fold-btn" aria-expanded={!folded} aria-label={foldLabel} data-tip={foldLabel} onClick={toggleRail}>
+            <Ico name={folded ? 'chevronRight' : 'chevronLeft'} size={14} w={2.2} />
+          </button>
         </div>
         <div className="rail-nav">
           <div className="rail-group">
@@ -398,24 +427,40 @@ function Shell({
               label={t('navProjects')}
               icon="folder"
               tone="var(--brand)"
+              folded={folded}
               on={view.name === 'projects' || view.name === 'project' || view.name === 'session'}
               onClick={() => setView({ name: 'projects' })}
             />
-            <NavItem label={t('navPublic')} icon="globe" tone="var(--pub)" on={view.name === 'public'} onClick={() => setView({ name: 'public' })} />
+            <NavItem
+              label={t('navPublic')}
+              icon="globe"
+              tone="var(--pub)"
+              folded={folded}
+              on={view.name === 'public'}
+              onClick={() => setView({ name: 'public' })}
+            />
           </div>
           {isAdmin(me) && (
             <div className="rail-group">
               <div className="eyebrow">{t('platform')}</div>
-              <NavItem label={t('navAdmin')} icon="shieldCheck" tone="var(--warn)" on={view.name === 'admin'} onClick={() => setView({ name: 'admin' })} />
+              <NavItem
+                label={t('navAdmin')}
+                icon="shieldCheck"
+                tone="var(--warn)"
+                folded={folded}
+                on={view.name === 'admin'}
+                onClick={() => setView({ name: 'admin' })}
+              />
             </div>
           )}
         </div>
         <div className="rail-foot">
-          <button className="user-btn" onClick={() => setView({ name: 'settings' })}>
+          <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} onClick={() => setView({ name: 'settings' })}>
             {/* Sized to the meta stack beside it (name + address + tier), not to
                 a default: a 26px square against three rows of text left the row
-                bottom-heavy and the card's right half empty. */}
-            <Avatar me={me} size={38} />
+                bottom-heavy and the card's right half empty. Folded there is no
+                stack, and 38px would not clear the rail's own padding. */}
+            <Avatar me={me} size={folded ? 30 : 38} />
             <span className="user-meta">
               {me.name && <span className="user-name">{me.name}</span>}
               <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
