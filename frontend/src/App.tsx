@@ -2177,10 +2177,14 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
   // the control cannot re-arm mid-stop and take a second click.
   const [stopAsked, setStopAsked] = useState(false)
   const [stopErr, setStopErr] = useState(false)
+  // Every snapshot of this session — the list's, the cancel's answer, the
+  // stream's — arrives through the same guard, so none of them can walk a
+  // settled session back to running.
+  const show = useCallback((next: Job) => setJob((shown) => freshest(shown, next)), [])
   useEffect(() => {
-    setJob((shown) => freshest(shown, job))
-    if (!terminal(job.phase)) return watchJob(job.id, setJob)
-  }, [job])
+    show(job)
+    if (!terminal(job.phase)) return watchJob(job.id, show)
+  }, [job, show])
   useEffect(() => setStopAsked(false), [job.id])
 
   const stopping = stopPending(j.phase, stopAsked)
@@ -2190,8 +2194,7 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
     setStopAsked(true)
     setStopErr(false)
     try {
-      const updated = await cancelSession(j.id)
-      setJob((shown) => freshest(shown, updated))
+      show(await cancelSession(j.id))
       onChanged()
     } catch {
       // The stop did not land — the run is still up. Hand the control back, and
@@ -2228,11 +2231,6 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
           <Ico name="stop" size={11} /> {stopping ? t('stopping') : t('stop')}
         </button>
       )}
-      {stopErr && (
-        <span className="err small">
-          <Ico name="alert" size={13} /> {t('stopError')}
-        </span>
-      )}
       {j.repo_name && (
         <Tip text={j.repo_name}>
           <a className="link small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -2240,16 +2238,26 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
           </a>
         </Tip>
       )}
-      {/* What the worker recorded is a Go error string. It says what broke to
-          somebody who wrote the worker, and nothing to anybody else — so the row
-          states the class of failure, and keeps the original on hover for the
-          person who does want it. */}
-      {j.error && !stopped && (
-        <Tip text={t('failDetail', { cause: j.error })}>
-          <span className="err small">
-            <Ico name="alert" size={13} /> {sessionFailureText(t, j.error)}
-          </span>
-        </Tip>
+      {/* One error slot. A stop that did not land is the newer news and the one
+          the reader can act on, so it takes the slot while the session is still
+          up; it is gone the moment the session settles, whoever settled it.
+          Otherwise: what the worker recorded is a Go error string. It says what
+          broke to somebody who wrote the worker, and nothing to anybody else —
+          so the row states the class of failure, and keeps the original on hover
+          for the person who does want it. */}
+      {stopErr && !terminal(j.phase) ? (
+        <span className="err small">
+          <Ico name="alert" size={13} /> {t('stopError')}
+        </span>
+      ) : (
+        j.error &&
+        !stopped && (
+          <Tip text={t('failDetail', { cause: j.error })}>
+            <span className="err small">
+              <Ico name="alert" size={13} /> {sessionFailureText(t, j.error)}
+            </span>
+          </Tip>
+        )
       )}
       <span className="muted small row-cta">
         <Ico name="message" size={12} /> {i18n.t('viewTranscript')}
