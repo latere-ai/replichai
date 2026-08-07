@@ -2,7 +2,7 @@
 
 Designs, and the record of what got built. One spec per tightly-scoped feature; each states the problem, the decisions, the acceptance criteria, and what it deliberately leaves out. This page is the map: what exists today, how it fits, what is only designed, and the order it gets built.
 
-Feasibility questions and scope extensions that are *not* on the roadmap — multi-study papers, hard-to-replicate instruments — live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced.
+Feasibility questions and scope extensions that are *not* on the roadmap — multi-study papers, hard-to-replicate instruments, unpublished manuscripts — live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced. One of them, [016](016-a-paper-that-is-not-published-yet.md), needed enough argument to get a deferred spec of its own.
 
 ## What replichai is
 
@@ -152,6 +152,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
 | 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | built | 006c, 006e, 013 |
 | 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | draft | 012, 013, 006f, 006s |
+| 016 | [A paper that is not published yet](016-a-paper-that-is-not-published-yet.md) | deferred (ideation) | 001, 006d, 012, 007b, 008 |
 
 ## The three tracks
 
