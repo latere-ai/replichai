@@ -248,48 +248,50 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
           <Ico name="globe" size={13} /> replichai
         </a>
       </div>
-      <div className="card card-pad stack" style={{ gap: 14 }}>
-        <div className="profile-head">
-          <Initials email={p.display_name || p.handle} />
-          <div className="profile-id">
-            <div className="profile-name">{p.display_name || p.handle}</div>
-            {p.institution && <div className="profile-email">{p.institution}</div>}
-            <div className="profile-email mono">@{p.handle}</div>
+      <div className="stack">
+        <div className="card card-pad stack" style={{ gap: 14 }}>
+          <div className="profile-head">
+            <Initials email={p.display_name || p.handle} />
+            <div className="profile-id">
+              <div className="profile-name">{p.display_name || p.handle}</div>
+              {p.institution && <div className="profile-email">{p.institution}</div>}
+              <div className="profile-email mono">@{p.handle}</div>
+            </div>
           </div>
+          {rows.length > 0 && (
+            <div className="usage-rows">
+              {rows.map((r) => (
+                <div key={r.label} className="usage-line">
+                  {r.label}
+                  <span className="v">{r.node}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <span className="muted small" style={{ lineHeight: 1.6 }}>
+            {t('profileUnverified')}
+          </span>
         </div>
-        {rows.length > 0 && (
-          <div className="usage-rows">
-            {rows.map((r) => (
-              <div key={r.label} className="usage-line">
-                {r.label}
-                <span className="v">{r.node}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <span className="muted small" style={{ lineHeight: 1.6 }}>
-          {t('profileUnverified')}
-        </span>
-      </div>
 
-      <div className="card card-pad stack">
-        <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
-          <Ico name="globe" size={12} /> {t('profileSignedWork')}
-        </span>
-        {p.projects.length === 0 ? (
-          <Empty icon="globe" text={t('profileNoSignedWork')} />
-        ) : (
-          <div className="stack" style={{ gap: 8 }}>
-            {p.projects.map((proj) => (
-              <a key={proj.id} className="member-row" href={`/p/${proj.id}`}>
-                <span className="member-email">{proj.title}</span>
-                {proj.signed_off_at && (
-                  <span className="muted small">{new Date(proj.signed_off_at).toLocaleDateString()}</span>
-                )}
-              </a>
-            ))}
-          </div>
-        )}
+        <div className="card card-pad stack">
+          <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
+            <Ico name="globe" size={12} /> {t('profileSignedWork')}
+          </span>
+          {p.projects.length === 0 ? (
+            <Empty icon="globe" text={t('profileNoSignedWork')} />
+          ) : (
+            <div className="stack" style={{ gap: 8 }}>
+              {p.projects.map((proj) => (
+                <a key={proj.id} className="member-row" href={`/p/${proj.id}`}>
+                  <span className="member-email">{proj.title}</span>
+                  {proj.signed_off_at && (
+                    <span className="muted small">{new Date(proj.signed_off_at).toLocaleDateString()}</span>
+                  )}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -946,36 +948,38 @@ function SettingsScreen({ i18n, me, theme }: { i18n: I18n; me: Me; theme: Return
       <div className="screen-head">
         <h1 className="screen-title">{t('settings')}</h1>
       </div>
-      <div className="card card-pad stack" style={{ maxWidth: 520 }}>
-        <div className="profile-head">
-          <Avatar me={me} size={44} />
-          <div className="profile-id">
-            <div className="profile-name">{me.name ?? me.email}</div>
-            {me.name && <div className="profile-email">{me.email}</div>}
+      <div className="stack" style={{ maxWidth: 520 }}>
+        <div className="card card-pad stack">
+          <div className="profile-head">
+            <Avatar me={me} size={44} />
+            <div className="profile-id">
+              <div className="profile-name">{me.name ?? me.email}</div>
+              {me.name && <div className="profile-email">{me.email}</div>}
+            </div>
           </div>
+          <div className="usage-rows">
+            <div className="usage-line">
+              <Ico name="key" size={13} style={{ color: 'var(--brand)' }} />
+              {t('access')}
+              <span className="v">
+                <TierPill i18n={i18n} tier={me.tier} />
+              </span>
+            </div>
+            {me.credits && <WalletStatement i18n={i18n} balance={me.credits.wallet} />}
+            <div className="usage-line">
+              <Ico name={theme.theme === 'dark' ? 'moon' : 'sun'} size={13} style={{ color: 'var(--warn)' }} />
+              {t('theme')}
+              <span className="v">
+                <ThemeSwitcher i18n={i18n} theme={theme} />
+              </span>
+            </div>
+          </div>
+          <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
+            <Ico name="logOut" size={13} /> {t('signOut')}
+          </a>
         </div>
-        <div className="usage-rows">
-          <div className="usage-line">
-            <Ico name="key" size={13} style={{ color: 'var(--brand)' }} />
-            {t('access')}
-            <span className="v">
-              <TierPill i18n={i18n} tier={me.tier} />
-            </span>
-          </div>
-          {me.credits && <WalletStatement i18n={i18n} balance={me.credits.wallet} />}
-          <div className="usage-line">
-            <Ico name={theme.theme === 'dark' ? 'moon' : 'sun'} size={13} style={{ color: 'var(--warn)' }} />
-            {t('theme')}
-            <span className="v">
-              <ThemeSwitcher i18n={i18n} theme={theme} />
-            </span>
-          </div>
-        </div>
-        <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
-          <Ico name="logOut" size={13} /> {t('signOut')}
-        </a>
+        <ProfileCard i18n={i18n} />
       </div>
-      <ProfileCard i18n={i18n} />
     </div>
   )
 }
@@ -1024,7 +1028,7 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
 
   if (!p) return null
   return (
-    <div className="card card-pad stack" style={{ maxWidth: 520 }}>
+    <div className="card card-pad stack">
       <div>
         <span className="eyebrow eyebrow-ico">
           <Ico name="user" size={12} /> {t('profileTitle')}
