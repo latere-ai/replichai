@@ -255,17 +255,6 @@ async function ok(r: Response): Promise<void> {
 
 export const getMe = () => fetch('/me').then(json<Me>)
 
-// submitPaper opens a replication session: with no project it creates a fresh
-// one; with a project the caller owns or collaborates on, it adds a session. It
-// returns both ids. What pays is always the project's own pot, so there is
-// nothing here to choose.
-export const submitPaper = (url: string, project = '') =>
-  fetch('/papers', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url, project }),
-  }).then(json<{ job_id: string; project_id: string }>)
-
 export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
 
 // A previewed paper reference: the resolved identity the New-project screen
@@ -282,14 +271,53 @@ export const resolvePaper = (url: string) =>
     body: JSON.stringify({ url }),
   }).then(json<ResolvedPaper>)
 
-// One paper's fate in a create: a job id when it started, or an error code.
-export type SessionResult = { url: string; job_id?: string; error?: string }
-export type CreatedProject = { project_id?: string; title?: string; sessions?: SessionResult[]; members?: string[]; error?: string }
+// One reference's fate in a create: the paper it was recorded as, or why it was
+// not recorded. A create runs nothing (012), so the only thing that can go wrong
+// per reference is the reference.
+export type PaperResult = { ref: string; key?: string; title?: string; error?: string }
+export type CreatedProject = { project_id?: string; title?: string; papers?: PaperResult[]; members?: string[]; error?: string }
 
-// createProject opens a named project with one session per paper and seeded
-// collaborators (006j). It returns the HTTP status alongside the body, so the
-// caller can surface per-paper results whether the create fully or partly
-// succeeded (201) or every paper failed (422).
+// A paper a project is about, with what has happened to it. sessions is 0 for a
+// paper nobody has started — the ordinary state of one just written down.
+export type ProjectPaper = {
+  key: string
+  ref: string
+  title?: string
+  added_by: string
+  added_at: string
+  sessions: number
+  latest_phase?: string
+}
+
+// listPapers returns the papers a project is about.
+export const listPapers = (id: string) => fetch(`/projects/${id}/papers`).then(json<ProjectPaper[]>)
+
+// addPaper records another paper on a project. It starts nothing.
+export const addPaper = (id: string, url: string) =>
+  fetch(`/projects/${id}/papers`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url }),
+  }).then(json<PaperResult>)
+
+// removePaper drops a paper the project has never run.
+export const removePaper = (id: string, key: string) =>
+  fetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, { method: 'DELETE' }).then(ok)
+
+// startSession runs one paper the project holds. This is the call that spends:
+// it is refused 402 when the project's pot cannot cover the start reserve, and
+// 409 when that paper is already running.
+export const startSession = (id: string, paperKey: string) =>
+  fetch(`/projects/${id}/sessions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ paper_key: paperKey }),
+  }).then(json<{ job_id: string; project_id: string }>)
+
+// createProject opens a named project holding its papers, with seeded
+// collaborators. It records and runs nothing, so it cannot be refused for money
+// — the credit check is startSession's. The status rides along so the caller can
+// tell a recorded paper from a reference the server did not recognise.
 export async function createProject(
   title: string,
   papers: string[],

@@ -34,9 +34,20 @@ for i in $(seq 1 30); do
   [ "$i" = 30 ] && { echo " timed out"; docker compose logs server | tail -20; exit 1; }
 done
 
-echo "==> submitting a paper"
-JOB=$(curl -sf -XPOST "$BASE/papers" -H 'content-type: application/json' \
-  -d '{"url":"10.1145/3544548.3580778","project":"smoke"}')
+# Two acts since 012: a project records the papers it is about, and a session
+# runs one of them. The create spends nothing, which is why it works here with
+# no credits configured at all.
+echo "==> opening a project with one paper"
+CREATED=$(curl -sf -XPOST "$BASE/projects" -H 'content-type: application/json' \
+  -d '{"title":"smoke","papers":["10.1145/3544548.3580778"]}')
+PROJECT=$(printf '%s' "$CREATED" | sed -n 's/.*"project_id":"\([^"]*\)".*/\1/p')
+KEY=$(printf '%s' "$CREATED" | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+[ -n "$PROJECT" ] && [ -n "$KEY" ] || { echo "no project or paper key in: $CREATED"; exit 1; }
+echo "    project: $PROJECT, paper: $KEY"
+
+echo "==> starting a session for it"
+JOB=$(curl -sf -XPOST "$BASE/projects/$PROJECT/sessions" -H 'content-type: application/json' \
+  -d "{\"paper_key\":\"$KEY\"}")
 ID=$(printf '%s' "$JOB" | sed -n 's/.*"job_id":"\([^"]*\)".*/\1/p')
 [ -n "$ID" ] || { echo "no job id in: $JOB"; exit 1; }
 echo "    job_id: $ID"

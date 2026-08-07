@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { ledgerKindLabel } from './App'
 import { ApiError } from './api'
-import { creditMoveErrLabel, emptyWallet, sessionErrLabel, submitErrLabel } from './errors'
+import { creditMoveErrLabel, emptyWallet, startErrLabel } from './errors'
 import { formatUSD, MICRO, parseUSD, toDollars } from './money'
 
 // The identity function for the label helpers: they take a translate function,
@@ -22,24 +22,16 @@ test('emptyWallet separates a new account from a project that ran out', () => {
 })
 
 // One refusal, two problems: only one of them the person can fix by moving
-// money they already hold.
-test('a refused submit tells a new account something different from a spent project', () => {
-  expect(submitErrLabel(t, new ApiError(402), { wallet: 0, start_reserve: 10 * MICRO })).toBe('errNoCreditsAtAll')
-  expect(submitErrLabel(t, new ApiError(402), { wallet: 20 * MICRO, start_reserve: 10 * MICRO })).toBe('errNoCredits')
+// money they already hold. It is asked on the one act that spends — starting a
+// session — where the project's pot is on screen to answer it with.
+test('a refused start tells a new account something different from a spent project', () => {
+  expect(startErrLabel(t, new ApiError(402), { wallet: 0, start_reserve: 10 * MICRO })).toBe('errNoCreditsAtAll')
+  expect(startErrLabel(t, new ApiError(402), { wallet: 20 * MICRO, start_reserve: 10 * MICRO })).toBe('errNoCredits')
   // With nothing known, the message that does not accuse anybody of anything.
-  expect(submitErrLabel(t, new ApiError(402), undefined)).toBe('errNoCredits')
+  expect(startErrLabel(t, new ApiError(402), undefined)).toBe('errNoCredits')
   // Every other refusal is unchanged.
-  expect(submitErrLabel(t, new ApiError(409), undefined)).toBe('activeSession')
-  expect(submitErrLabel(t, new ApiError(500), undefined)).toBe('submitError')
-})
-
-// The same distinction on the per-paper path a batch create reports through.
-test('a per-paper credit refusal makes the same distinction', () => {
-  expect(sessionErrLabel(t, 'no_credits', { wallet: 0, start_reserve: 10 * MICRO })).toBe('errNoCreditsAtAll')
-  expect(sessionErrLabel(t, 'no_credits', { wallet: 20 * MICRO, start_reserve: 10 * MICRO })).toBe('errNoCredits')
-  expect(sessionErrLabel(t, 'active_session')).toBe('errActiveSession')
-  expect(sessionErrLabel(t, 'unresolvable_paper')).toBe('errUnresolvable')
-  expect(sessionErrLabel(t, undefined)).toBe('errEnqueue')
+  expect(startErrLabel(t, new ApiError(409), undefined)).toBe('activeSession')
+  expect(startErrLabel(t, new ApiError(500), undefined)).toBe('startFailed')
 })
 
 // Money is micro-USD in flight and dollars on screen, and the conversion is in
