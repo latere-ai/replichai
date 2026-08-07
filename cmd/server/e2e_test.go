@@ -60,22 +60,46 @@ func TestServerEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(webauth.DevMiddleware(devSub, devEmail)(router.Handler()))
 	defer srv.Close()
 
-	// Submit a paper with no project (a DOI resolves offline, so the run stays
-	// free): the composition root opens a fresh project and its first session.
-	body := strings.NewReader(`{"url":"10.1145/3544548.3580778"}`)
-	resp, err := http.Post(srv.URL+"/papers", "application/json", body)
+	// Open a project holding one paper (a DOI resolves offline, so the run stays
+	// free). Since 012 this records and starts nothing — the create costs no
+	// credits, which is why it works on a deployment with no ledger wired at all.
+	body := strings.NewReader(`{"papers":["10.1145/3544548.3580778"]}`)
+	resp, err := http.Post(srv.URL+"/projects", "application/json", body)
 	if err != nil {
-		t.Fatalf("submit: %v", err)
+		t.Fatalf("create: %v", err)
 	}
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("submit status = %d, want 202", resp.StatusCode)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201", resp.StatusCode)
+	}
+	var created struct {
+		ProjectID string `json:"project_id"`
+		Papers    []struct {
+			Key string `json:"key"`
+		} `json:"papers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	resp.Body.Close()
+	if created.ProjectID == "" || len(created.Papers) != 1 || created.Papers[0].Key == "" {
+		t.Fatalf("create returned %+v", created)
+	}
+
+	// Starting it is the second act, and the only one that runs anything.
+	body = strings.NewReader(`{"paper_key":"` + created.Papers[0].Key + `"}`)
+	resp, err = http.Post(srv.URL+"/projects/"+created.ProjectID+"/sessions", "application/json", body)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("start status = %d, want 201", resp.StatusCode)
 	}
 	var out struct {
 		JobID     string `json:"job_id"`
 		ProjectID string `json:"project_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode submit: %v", err)
+		t.Fatalf("decode start: %v", err)
 	}
 	resp.Body.Close()
 	if out.JobID == "" || out.ProjectID == "" {

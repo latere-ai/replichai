@@ -49,15 +49,16 @@ func TestResolvePaperPreview(t *testing.T) {
 }
 
 type createResult struct {
-	ProjectID string          `json:"project_id"`
-	Title     string          `json:"title"`
-	Sessions  []SessionResult `json:"sessions"`
-	Members   []string        `json:"members"`
+	ProjectID string        `json:"project_id"`
+	Title     string        `json:"title"`
+	Papers    []PaperResult `json:"papers"`
+	Members   []string      `json:"members"`
 }
 
-// AC1: create with a title and several valid papers opens one project with one
-// session per paper, each with a job id.
-func TestCreateProjectAllSucceed(t *testing.T) {
+// AC1 (012): create with a title and several papers opens one project holding
+// both, and runs neither. 006j's version started a session per paper here; the
+// two acts are separate now, and this is the recording half.
+func TestCreateProjectRecordsEveryPaper(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
@@ -70,19 +71,25 @@ func TestCreateProjectAllSucceed(t *testing.T) {
 	if got.Title != "My study" {
 		t.Errorf("title = %q, want the chosen name", got.Title)
 	}
-	if len(got.Sessions) != 2 || got.Sessions[0].JobID == "" || got.Sessions[1].JobID == "" {
-		t.Fatalf("sessions = %+v, want two started", got.Sessions)
+	if len(got.Papers) != 2 || got.Papers[0].Key != "doi:10.1234/aaa" || got.Papers[1].Key != "doi:10.5678/bbb" {
+		t.Fatalf("papers = %+v, want both recorded", got.Papers)
 	}
-	// The project exists under the owner with the chosen title.
 	p, err := d.Projects.Get(context.Background(), got.ProjectID)
 	if err != nil || p.Title != "My study" || p.Owner != "me" {
 		t.Errorf("stored project = %+v (err %v)", p, err)
 	}
+	// Nothing was enqueued and nothing was spent.
+	sessions, _ := d.Jobs.ListByProject(context.Background(), got.ProjectID)
+	if len(sessions) != 0 {
+		t.Errorf("create started %d sessions, want 0", len(sessions))
+	}
 }
 
-// AC2: among mixed papers, a bad one is reported while the valid one starts, and
-// the project survives.
-func TestCreateProjectPartial(t *testing.T) {
+// AC3 (012): a reference that is not a DOI, arXiv ID, or URL is reported against
+// itself, and the project — with the papers that were fine — survives. There is
+// no all-failed case left to compensate for: nothing was spent, so a project
+// holding no valid papers is just an empty project.
+func TestCreateProjectReportsBadReferencesAndKeepsTheProject(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
@@ -92,27 +99,21 @@ func TestCreateProjectPartial(t *testing.T) {
 	}
 	var got createResult
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if got.Sessions[0].JobID == "" || got.Sessions[1].Error != "unresolvable_paper" {
-		t.Errorf("sessions = %+v, want one started + one unresolvable", got.Sessions)
+	if got.Papers[0].Key == "" || got.Papers[1].Error != "unresolvable_paper" {
+		t.Errorf("papers = %+v, want one recorded + one unresolvable", got.Papers)
 	}
 	if _, err := d.Projects.Get(context.Background(), got.ProjectID); err != nil {
 		t.Errorf("project should survive a partial failure: %v", err)
 	}
-}
 
-// AC3: when every paper fails, no project is left behind and the call is 422.
-func TestCreateProjectAllFailDeletesProject(t *testing.T) {
-	d := testDeps(allowAll)
-	h := NewRouter(d).Handler()
-
-	w := do(t, h, "POST", "/projects", `{"papers":["garbage","also bad"]}`, "me")
-	if w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("all-fail status = %d, want 422", w.Code)
+	// Every reference bad: still a project, still 201, no 422 and no undo.
+	w = do(t, h, "POST", "/projects", `{"papers":["garbage","also bad"]}`, "me2")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("all-bad status = %d, want 201; body %s", w.Code, w.Body)
 	}
-	// No project was left behind for this owner.
-	list, _ := d.Projects.ListByOwner(context.Background(), "me")
-	if len(list) != 0 {
-		t.Errorf("an all-failed create left %d project(s) behind", len(list))
+	list, _ := d.Projects.ListByOwner(context.Background(), "me2")
+	if len(list) != 1 {
+		t.Errorf("an all-bad create left %d projects, want 1 — nothing was spent to undo", len(list))
 	}
 }
 
@@ -121,6 +122,44 @@ func TestCreateProjectNeedsAPaper(t *testing.T) {
 	d := testDeps(allowAll)
 	if w := do(t, NewRouter(d).Handler(), "POST", "/projects", `{"title":"x","papers":[]}`, "me"); w.Code != http.StatusBadRequest {
 		t.Errorf("no-papers status = %d, want 400", w.Code)
+	}
+}
+
+// AC8 (012): the title is the server's to write. It resolves each paper against
+// the source best-effort — a reachable source fills the title in, and an
+// unreachable one leaves it blank on a paper you can still start.
+func TestCreateProjectResolvesPaperTitles(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Resolver = fakeResolver{got: ResolvedPaper{Key: "doi:10.1234/aaa", Title: "Point of no Undo"}}
+	h := NewRouter(d).Handler()
+
+	w := do(t, h, "POST", "/projects", `{"papers":["doi:10.1234/aaa"]}`, "me")
+	var got createResult
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Papers[0].Title != "Point of no Undo" {
+		t.Errorf("resolved title = %q", got.Papers[0].Title)
+	}
+	papers, _ := d.Projects.ListPapers(context.Background(), got.ProjectID)
+	if len(papers) != 1 || papers[0].Title != "Point of no Undo" {
+		t.Errorf("stored papers = %+v", papers)
+	}
+
+	// A source that cannot be reached is not a failure: the paper is recorded
+	// without a title, and the create still succeeds.
+	d2 := testDeps(allowAll)
+	d2.Resolver = fakeResolver{err: errors.New("arxiv timeout")}
+	w = do(t, NewRouter(d2).Handler(), "POST", "/projects", `{"papers":["doi:10.1234/bbb"]}`, "me")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create with an unreachable source: status %d", w.Code)
+	}
+	var unreachable createResult
+	_ = json.Unmarshal(w.Body.Bytes(), &unreachable)
+	if unreachable.Papers[0].Error != "" || unreachable.Papers[0].Title != "" {
+		t.Errorf("paper with an unreachable source = %+v", unreachable.Papers[0])
+	}
+	papers, _ = d2.Projects.ListPapers(context.Background(), unreachable.ProjectID)
+	if len(papers) != 1 {
+		t.Errorf("the paper must still be recorded: %+v", papers)
 	}
 }
 
@@ -170,19 +209,23 @@ func TestRenameProject(t *testing.T) {
 	}
 }
 
-// A create that starts at least one session but cannot enqueue a duplicate of
-// the same paper reports the guard per-paper, not as a whole-request failure.
-func TestCreateProjectDuplicatePaperGuarded(t *testing.T) {
+// The same reference twice in one create is the same paper named twice, not a
+// failure: the project is about it once, and says so without an error.
+func TestCreateProjectDedupesARepeatedReference(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
 	w := do(t, h, "POST", "/projects", `{"papers":["doi:10.1234/dup","doi:10.1234/dup"]}`, "me")
 	if w.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201 (one started); body %s", w.Code, w.Body)
+		t.Fatalf("status = %d, want 201; body %s", w.Code, w.Body)
 	}
 	var got createResult
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if got.Sessions[0].JobID == "" || got.Sessions[1].Error != "active_session" {
-		t.Errorf("sessions = %+v, want one started + the duplicate guarded", got.Sessions)
+	if got.Papers[0].Error != "" || got.Papers[1].Error != "" {
+		t.Errorf("papers = %+v, want no error on either", got.Papers)
+	}
+	papers, _ := d.Projects.ListPapers(context.Background(), got.ProjectID)
+	if len(papers) != 1 {
+		t.Errorf("the project holds %d papers, want 1", len(papers))
 	}
 }

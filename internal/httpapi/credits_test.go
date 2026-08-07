@@ -60,132 +60,142 @@ var payer = Identity{Sub: "u", Email: "u@example.com"}
 // itoa writes an amount into a JSON body.
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
-// A submit into a project that cannot commit the reserve is a 402 with a
-// machine-readable code — not a 500, and not a generic failure the client would
-// have to guess at to offer a top-up.
-func TestSubmitRefusedWithoutCredits(t *testing.T) {
-	_, rt, ledger := creditDeps(t)
-	// Enough for exactly one session: the project is funded at creation with the
-	// reserve, and a second session in it has nothing left to commit.
-	topUp(t, ledger, payer, reserve)
-
+// createHolding opens a project holding the given papers and returns its id.
+// Since 012 this spends nothing, so it works from an empty wallet.
+func createHolding(t *testing.T, rt *Router, who Identity, papers ...string) string {
+	t.Helper()
+	quoted := make([]string, len(papers))
+	for i, p := range papers {
+		quoted[i] = `"` + p + `"`
+	}
 	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("first submit = %d %s", w.Code, w.Body.String())
-	}
-	var first struct {
-		ProjectID string `json:"project_id"`
-	}
-	_ = json.Unmarshal(w.Body.Bytes(), &first)
-
-	w = httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers",
-		`{"url":"https://arxiv.org/abs/2302.03712","project":"`+first.ProjectID+`"}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusPaymentRequired {
-		t.Fatalf("second submit = %d %s, want 402", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "no_credits") {
-		t.Errorf("body = %s, want no_credits", w.Body.String())
-	}
-}
-
-// Creating a project funds it from the creator's wallet, in the request that
-// creates it — otherwise the project's own first session could never start.
-func TestCreatingAProjectFundsItFromTheWallet(t *testing.T) {
-	_, rt, ledger := creditDeps(t)
-	topUp(t, ledger, payer, 10*credit.Dollar)
-
-	w := httptest.NewRecorder()
-	body := `{"title":"funded","papers":["https://arxiv.org/abs/2301.03711"],"credits":` + itoa(4*credit.Dollar) + `}`
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects", body, payer.Sub, payer.Email))
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
+		`{"papers":[`+strings.Join(quoted, ",")+`]}`, who.Sub, who.Email))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
 	}
 	var out struct {
 		ProjectID string `json:"project_id"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("decode: %v", err)
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if out.ProjectID == "" {
+		t.Fatalf("create returned no project id: %s", w.Body.String())
 	}
-	ctx := context.Background()
-	if n, _ := ledger.Balance(ctx, credit.Pot(out.ProjectID)); n != 4*credit.Dollar {
-		t.Errorf("pot = %d, want the %d that was allocated", n, 4*credit.Dollar)
-	}
-	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != 6*credit.Dollar {
-		t.Errorf("wallet = %d, want %d — the money moved rather than being copied", n, 6*credit.Dollar)
-	}
-	// One session started, so one reserve is committed and the rest is free.
-	if n, _ := ledger.Available(ctx, credit.Pot(out.ProjectID)); n != 4*credit.Dollar-reserve {
-		t.Errorf("available = %d, want %d", n, 4*credit.Dollar-reserve)
+	return out.ProjectID
+}
+
+// allocate moves credits from a wallet into a project's pot — the act that
+// funding-at-create used to hide inside the create request.
+func allocate(t *testing.T, rt *Router, who Identity, projectID string, amount int64) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects/"+projectID+"/credits",
+		`{"amount":`+itoa(amount)+`}`, who.Sub, who.Email))
+	if w.Code != http.StatusOK {
+		t.Fatalf("allocate = %d %s", w.Code, w.Body.String())
 	}
 }
 
-// An empty wallet is refused before any paper is enqueued, so the refusal is the
-// whole request rather than 006j's per-paper report — and no project survives.
-func TestCreatingAProjectWithAnEmptyWalletIsRefused(t *testing.T) {
-	d, rt, _ := creditDeps(t)
-
+// start runs a paper the project holds, returning the raw response so a test can
+// assert on the refusal it is about.
+func start(rt *Router, who Identity, projectID, key string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"broke","papers":["https://arxiv.org/abs/2301.03711"]}`, payer.Sub, payer.Email))
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects/"+projectID+"/sessions",
+		`{"paper_key":"`+key+`"}`, who.Sub, who.Email))
+	return w
+}
+
+// A submit into a project that cannot commit the reserve is a 402 with a
+// machine-readable code — not a 500, and not a generic failure the client would
+// have to guess at to offer a top-up.
+func TestStartRefusedWithoutCredits(t *testing.T) {
+	_, rt, ledger := creditDeps(t)
+	topUp(t, ledger, payer, reserve) // enough for exactly one session
+
+	proj := createHolding(t, rt, payer, "https://arxiv.org/abs/2301.03711", "https://arxiv.org/abs/2302.03712")
+	allocate(t, rt, payer, proj, reserve)
+
+	if w := start(rt, payer, proj, "arxiv:2301.03711"); w.Code != http.StatusCreated {
+		t.Fatalf("first start = %d %s", w.Code, w.Body.String())
+	}
+	w := start(rt, payer, proj, "arxiv:2302.03712")
 	if w.Code != http.StatusPaymentRequired {
-		t.Fatalf("create with an empty wallet = %d %s, want 402", w.Code, w.Body.String())
+		t.Fatalf("second start = %d %s, want 402", w.Code, w.Body.String())
 	}
 	if !strings.Contains(w.Body.String(), "no_credits") {
 		t.Errorf("body = %s, want no_credits", w.Body.String())
 	}
-	list, err := d.Projects.ListByOwner(context.Background(), payer.Sub)
-	if err != nil {
-		t.Fatalf("list: %v", err)
+}
+
+// 012: creating a project spends nothing, so an empty wallet creates one freely.
+//
+// This is the inversion at the centre of the spec. Until now a project was opened
+// *by submitting a paper*, so the create had to fund the pot before its first
+// enqueue — and an account that had never been given credits was refused 402 at
+// the door, for the act of naming a container. Somebody arriving at the platform
+// could not write down what they intended to reproduce, or invite anyone to help,
+// until an admin had paid for it.
+func TestCreatingAProjectWithAnEmptyWalletSucceeds(t *testing.T) {
+	d, rt, ledger := creditDeps(t)
+	ctx := context.Background()
+
+	proj := createHolding(t, rt, payer, "https://arxiv.org/abs/2301.03711")
+
+	list, err := d.Projects.ListByOwner(ctx, payer.Sub)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("owner holds %d project(s), want 1 (err %v)", len(list), err)
 	}
-	if len(list) != 0 {
-		t.Errorf("owner holds %d project(s); a refused create must leave none", len(list))
+	// It holds the paper, holds no money, and has run nothing.
+	papers, _ := d.Projects.ListPapers(ctx, proj)
+	if len(papers) != 1 {
+		t.Errorf("project holds %d papers, want 1", len(papers))
+	}
+	if n, _ := ledger.Balance(ctx, credit.Pot(proj)); n != 0 {
+		t.Errorf("pot = %d, want 0 — creating a project moves no money", n)
+	}
+	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != 0 {
+		t.Errorf("wallet = %d, want 0 — and takes none", n)
+	}
+	if sessions, _ := d.Jobs.ListByProject(ctx, proj); len(sessions) != 0 {
+		t.Errorf("create started %d sessions, want 0", len(sessions))
+	}
+
+	// The refusal it used to meet is still there — once, on the act that spends.
+	if w := start(rt, payer, proj, "arxiv:2301.03711"); w.Code != http.StatusPaymentRequired {
+		t.Errorf("start with an empty pot = %d %s, want 402", w.Code, w.Body.String())
 	}
 }
 
-// 006j's rule is untouched where it still applies: an allocation that succeeds
-// and papers that then run out of credits keep the project and report per paper.
-func TestBatchCreateStartsWhatTheProjectCanAfford(t *testing.T) {
+// A project funded for two sessions starts two, and refuses the third — the
+// per-paper partial reporting a batch create used to do, now spread across the
+// acts that actually spend.
+func TestAProjectStartsWhatItCanAfford(t *testing.T) {
 	_, rt, ledger := creditDeps(t)
 	topUp(t, ledger, payer, 10*credit.Dollar)
 
-	w := httptest.NewRecorder()
-	body := `{"title":"batch","credits":` + itoa(2*reserve) + `,"papers":[` +
-		`"https://arxiv.org/abs/2301.03711","https://arxiv.org/abs/2302.03712",` +
-		`"https://arxiv.org/abs/2303.03713","https://arxiv.org/abs/2304.03714"]}`
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects", body, payer.Sub, payer.Email))
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s, want 201 with partial results", w.Code, w.Body.String())
-	}
-	var out struct {
-		ProjectID string          `json:"project_id"`
-		Sessions  []SessionResult `json:"sessions"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	proj := createHolding(t, rt, payer,
+		"https://arxiv.org/abs/2301.03711", "https://arxiv.org/abs/2302.03712",
+		"https://arxiv.org/abs/2303.03713", "https://arxiv.org/abs/2304.03714")
+	allocate(t, rt, payer, proj, 2*reserve)
+
 	started, refused := 0, 0
-	for _, s := range out.Sessions {
-		switch {
-		case s.JobID != "":
+	for _, key := range []string{"arxiv:2301.03711", "arxiv:2302.03712", "arxiv:2303.03713", "arxiv:2304.03714"} {
+		switch w := start(rt, payer, proj, key); w.Code {
+		case http.StatusCreated:
 			started++
-		case s.Error == "no_credits":
+		case http.StatusPaymentRequired:
 			refused++
 		default:
-			t.Errorf("unexpected session result %+v", s)
+			t.Errorf("start %s = %d %s", key, w.Code, w.Body.String())
 		}
 	}
 	if started != 2 || refused != 2 {
-		t.Errorf("batch = %d started / %d refused, want 2 and 2", started, refused)
-	}
-	if out.ProjectID == "" {
-		t.Error("the project should survive when at least one session started")
+		t.Errorf("%d started / %d refused, want 2 and 2", started, refused)
 	}
 }
 
-// The project pays, not the person: a collaborator submitting into a funded
-// project is admitted on the project's credits, with nothing of their own.
+// The project pays, not the person: a collaborator starting a session in a
+// funded project is admitted on the project's credits, with nothing of their own.
 func TestACollaboratorSpendsTheProjectsCredits(t *testing.T) {
 	d, rt, ledger := creditDeps(t)
 	ctx := context.Background()
@@ -195,7 +205,7 @@ func TestACollaboratorSpendsTheProjectsCredits(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"shared","credits":`+itoa(4*credit.Dollar)+`,"papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["collab@example.com"]}`,
+		`{"title":"shared","papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["collab@example.com"]}`,
 		owner.Sub, owner.Email))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
@@ -204,15 +214,23 @@ func TestACollaboratorSpendsTheProjectsCredits(t *testing.T) {
 		ProjectID string `json:"project_id"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	allocate(t, rt, owner, out.ProjectID, 4*credit.Dollar)
 	if _, err := d.Members.(access.Membership).BindAll(ctx, access.Principal{Sub: collab.Sub, Email: collab.Email}); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
 
+	// The collaborator adds a paper and runs it, both on the project's money.
 	w = httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers",
-		`{"url":"https://arxiv.org/abs/2302.03712","project":"`+out.ProjectID+`"}`, collab.Sub, collab.Email))
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("collaborator submit = %d %s", w.Code, w.Body.String())
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects/"+out.ProjectID+"/papers",
+		`{"url":"https://arxiv.org/abs/2302.03712"}`, collab.Sub, collab.Email))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("collaborator add paper = %d %s", w.Code, w.Body.String())
+	}
+	if w := start(rt, collab, out.ProjectID, "arxiv:2302.03712"); w.Code != http.StatusCreated {
+		t.Fatalf("collaborator start = %d %s", w.Code, w.Body.String())
+	}
+	if w := start(rt, owner, out.ProjectID, "arxiv:2301.03711"); w.Code != http.StatusCreated {
+		t.Fatalf("owner start = %d %s", w.Code, w.Body.String())
 	}
 	// Their own wallet was never touched — there is no path from a run to a
 	// person's money.
@@ -224,19 +242,23 @@ func TestACollaboratorSpendsTheProjectsCredits(t *testing.T) {
 	}
 }
 
-// A stranger — neither owner nor collaborator — may not open a session, so a
-// funded project never becomes a way in.
-func TestStrangerCannotSubmitIntoAProject(t *testing.T) {
+// A stranger — neither owner nor collaborator — may not add a paper or open a
+// session, so a funded project never becomes a way in.
+func TestStrangerCannotWorkInAProject(t *testing.T) {
 	d, rt, _ := creditDeps(t)
 	proj, err := d.Projects.Create(context.Background(), "owner-sub", "private")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	body := `{"url":"https://arxiv.org/abs/2301.03711","project":"` + proj.ID + `"}`
+	stranger := Identity{Sub: "stranger", Email: "stranger@example.com"}
 	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", body, "stranger", "stranger@example.com"))
+	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects/"+proj.ID+"/papers",
+		`{"url":"https://arxiv.org/abs/2301.03711"}`, stranger.Sub, stranger.Email))
 	if w.Code != http.StatusForbidden {
-		t.Fatalf("stranger submit = %d %s, want 403", w.Code, w.Body.String())
+		t.Fatalf("stranger add paper = %d %s, want 403", w.Code, w.Body.String())
+	}
+	if w := start(rt, stranger, proj.ID, "arxiv:2301.03711"); w.Code != http.StatusForbidden {
+		t.Fatalf("stranger start = %d %s, want 403", w.Code, w.Body.String())
 	}
 }
 
@@ -295,68 +317,61 @@ func TestMaySubmitDistinguishesWhoMayOpenASession(t *testing.T) {
 	}
 }
 
-// A create that opens no session gives the credits back.
-//
-// The pot is funded before any paper is enqueued, and the compensating delete
-// (006j) then removes the project — so without an unwind the allocation sits in
-// a project that no longer exists, unreachable: the ledger has no foreign key
-// to clean up after it, and a reclaim needs a role in a project that is gone.
-//
-// The double-trigger guard makes this easy to hit rather than exotic: submit a
-// paper that is already running and the second create is refused after its pot
-// was funded.
-func TestARefusedCreateGivesTheCreditsBack(t *testing.T) {
+// A refused start strands nothing. The credit hold lives inside the enqueue
+// transaction, so a session the double-trigger guard turns away never took one —
+// and there is no longer a speculatively-created project holding money that a
+// refusal has to unwind. That unwind (undoProject) is gone with the create-time
+// funding that needed it.
+func TestARefusedStartStrandsNoCredits(t *testing.T) {
 	_, rt, ledger := creditDeps(t)
-	ctx := context.Background()
-	const funded = 10 * credit.Dollar
-	topUp(t, ledger, payer, funded)
-
-	// The first submit opens a project and starts a session for this paper.
-	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("first submit = %d %s", w.Code, w.Body.String())
-	}
-	after, _ := ledger.Balance(ctx, credit.Wallet(payer.Email))
-
-	// The second is refused by the double-trigger guard, *after* its new
-	// project has been funded.
-	w = httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusConflict {
-		t.Fatalf("second submit = %d %s, want 409", w.Code, w.Body.String())
-	}
-	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != after {
-		t.Errorf("wallet = %d after a refused create, want %d — the reserve is stranded in a deleted project", n, after)
-	}
-
-	// The same on the batch path, where every paper fails.
-	w = httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"doomed","credits":`+itoa(3*credit.Dollar)+`,"papers":["not-a-paper"]}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("doomed create = %d %s, want 422", w.Code, w.Body.String())
-	}
-	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != after {
-		t.Errorf("wallet = %d after a batch that started nothing, want %d", n, after)
-	}
-}
-
-// A refused create leaves no membership rows behind either. They are seeded
-// only once a session has actually started, because nothing cascades them away
-// when the project is deleted — an invited collaborator would otherwise carry a
-// row naming a project that is gone, and read it in "shared with me".
-func TestARefusedCreateLeavesNoMembership(t *testing.T) {
-	d, rt, ledger := creditDeps(t)
 	ctx := context.Background()
 	topUp(t, ledger, payer, 10*credit.Dollar)
 
+	proj := createHolding(t, rt, payer, "https://arxiv.org/abs/2301.03711")
+	allocate(t, rt, payer, proj, 4*credit.Dollar)
+	if w := start(rt, payer, proj, "arxiv:2301.03711"); w.Code != http.StatusCreated {
+		t.Fatalf("first start = %d %s", w.Code, w.Body.String())
+	}
+	wallet, _ := ledger.Balance(ctx, credit.Wallet(payer.Email))
+	pot, _ := ledger.Balance(ctx, credit.Pot(proj))
+	available, _ := ledger.Available(ctx, credit.Pot(proj))
+
+	// The same paper again, still running: refused by the guard.
+	if w := start(rt, payer, proj, "arxiv:2301.03711"); w.Code != http.StatusConflict {
+		t.Fatalf("second start = %d %s, want 409", w.Code, w.Body.String())
+	}
+	if n, _ := ledger.Balance(ctx, credit.Wallet(payer.Email)); n != wallet {
+		t.Errorf("wallet = %d after a refused start, want %d", n, wallet)
+	}
+	if n, _ := ledger.Balance(ctx, credit.Pot(proj)); n != pot {
+		t.Errorf("pot = %d after a refused start, want %d", n, pot)
+	}
+	if n, _ := ledger.Available(ctx, credit.Pot(proj)); n != available {
+		t.Errorf("available = %d after a refused start, want %d — the refusal held a reserve", n, available)
+	}
+}
+
+// Collaborators are seeded on every create, because no create is undone any
+// more. The old rule delayed seeding until a session had started, since a
+// membership row naming a deleted project would surface in the collaborator's
+// "shared with me" and nothing cascades it away. With nothing spent there is
+// nothing to compensate for, so the row is safe to write immediately.
+func TestCreateSeedsMembershipEvenWithNothingRunning(t *testing.T) {
+	d, rt, _ := creditDeps(t)
+	ctx := context.Background()
+
 	w := httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"doomed","papers":["not-a-paper"],"collaborators":["friend@example.com"]}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("doomed create = %d %s, want 422", w.Code, w.Body.String())
+		`{"title":"planned","papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["friend@example.com"]}`,
+		payer.Sub, payer.Email))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", w.Code, w.Body.String())
 	}
+	var out struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+
 	friend := access.Principal{Sub: "friend-sub", Email: "friend@example.com"}
 	if _, err := d.Members.(access.Membership).BindAll(ctx, friend); err != nil {
 		t.Fatalf("bind: %v", err)
@@ -365,40 +380,13 @@ func TestARefusedCreateLeavesNoMembership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projects: %v", err)
 	}
-	if len(projects) != 0 {
-		t.Errorf("collaborator holds %v, want nothing — those projects were deleted", projects)
+	// The project they were invited to is real, and it is there whether or not
+	// anybody has started a session in it.
+	if len(projects) != 1 || projects[0] != out.ProjectID {
+		t.Fatalf("collaborator holds %v, want [%s]", projects, out.ProjectID)
 	}
-}
-
-// A batch is funded for the sessions it asks for. Funding one reserve for four
-// papers would refuse three of them by default, which reads as a bug rather
-// than a budget — and a request naming its own amount still gets exactly that.
-func TestABatchIsFundedPerPaper(t *testing.T) {
-	_, rt, ledger := creditDeps(t)
-	ctx := context.Background()
-	topUp(t, ledger, payer, 100*credit.Dollar)
-
-	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"four","papers":["https://arxiv.org/abs/2301.03711","https://arxiv.org/abs/2302.03712",`+
-			`"https://arxiv.org/abs/2303.03713","https://arxiv.org/abs/2304.03714"]}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s", w.Code, w.Body.String())
-	}
-	var out struct {
-		ProjectID string          `json:"project_id"`
-		Sessions  []SessionResult `json:"sessions"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	for _, s := range out.Sessions {
-		if s.JobID == "" {
-			t.Errorf("paper %s did not start (%s); a default-funded batch must cover its own papers", s.URL, s.Error)
-		}
-	}
-	if n, _ := ledger.Balance(ctx, credit.Pot(out.ProjectID)); n != 4*reserve {
-		t.Errorf("pot = %d, want one reserve per paper (%d)", n, 4*reserve)
+	if _, err := d.Projects.Get(ctx, out.ProjectID); err != nil {
+		t.Errorf("the project the membership names must exist: %v", err)
 	}
 }
 
@@ -409,13 +397,9 @@ func TestSharedWithMeExcludesYourOwn(t *testing.T) {
 	_, rt, ledger := creditDeps(t)
 	topUp(t, ledger, payer, 10*credit.Dollar)
 
-	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("submit = %d %s", w.Code, w.Body.String())
-	}
+	createHolding(t, rt, payer, "https://arxiv.org/abs/2301.03711")
 
-	w = httptest.NewRecorder()
+	w := httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/shared", "", payer.Sub, payer.Email))
 	var shared []ProjectView
 	if err := json.Unmarshal(w.Body.Bytes(), &shared); err != nil {
@@ -440,7 +424,7 @@ func TestCreditsMoveBetweenWalletAndProject(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"shared","credits":`+itoa(4*credit.Dollar)+`,"papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["collab@example.com"]}`,
+		`{"title":"shared","papers":["https://arxiv.org/abs/2301.03711"],"collaborators":["collab@example.com"]}`,
 		owner.Sub, owner.Email))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", w.Code, w.Body.String())
@@ -449,6 +433,7 @@ func TestCreditsMoveBetweenWalletAndProject(t *testing.T) {
 		ProjectID string `json:"project_id"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	allocate(t, rt, owner, out.ProjectID, 4*credit.Dollar)
 	if _, err := d.Members.(access.Membership).BindAll(ctx, access.Principal{Sub: collab.Sub, Email: collab.Email}); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
@@ -507,12 +492,18 @@ func TestAProjectReportsItsCreditsToMembersOnly(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects",
-		`{"title":"open","credits":`+itoa(6*credit.Dollar)+`,"papers":["https://arxiv.org/abs/2301.03711"]}`,
+		`{"title":"open","papers":["https://arxiv.org/abs/2301.03711"]}`,
 		owner.Sub, owner.Email))
 	var out struct {
 		ProjectID string `json:"project_id"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	allocate(t, rt, owner, out.ProjectID, 6*credit.Dollar)
+	// One session running, so available sits a reserve below the balance — the
+	// whole reason both numbers are reported rather than one.
+	if w := start(rt, owner, out.ProjectID, "arxiv:2301.03711"); w.Code != http.StatusCreated {
+		t.Fatalf("start = %d %s", w.Code, w.Body.String())
+	}
 	if err := d.Projects.SetPublic(ctx, out.ProjectID, project.SignOff{By: owner.Sub, AttestationVersion: "v1"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -590,8 +581,9 @@ func TestASessionReportsWhatItCost(t *testing.T) {
 	_, rt, ledger := creditDeps(t)
 	topUp(t, ledger, payer, 10*credit.Dollar)
 
-	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, payer.Sub, payer.Email))
+	proj := createHolding(t, rt, payer, "https://arxiv.org/abs/2301.03711")
+	allocate(t, rt, payer, proj, 4*credit.Dollar)
+	w := start(rt, payer, proj, "arxiv:2301.03711")
 	var started struct {
 		JobID string `json:"job_id"`
 	}

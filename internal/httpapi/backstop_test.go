@@ -38,16 +38,18 @@ func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 	me := Identity{Sub: "u", Email: "u@example.com"}
 	topUp(t, ledger, me, 10*credit.Dollar)
 
-	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`, me.Sub, me.Email))
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("submit = %d %s", w.Code, w.Body.String())
+	projectID := createHolding(t, rt, me, "https://arxiv.org/abs/2301.03711")
+	allocate(t, rt, me, projectID, 4*credit.Dollar)
+	w := start(rt, me, projectID, "arxiv:2301.03711")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("start = %d %s", w.Code, w.Body.String())
 	}
 	var started struct {
 		JobID     string `json:"job_id"`
 		ProjectID string `json:"project_id"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &started)
+	started.ProjectID = projectID
 
 	// Give the project a floor of its own, so a leak would have something
 	// distinctive to leak.
