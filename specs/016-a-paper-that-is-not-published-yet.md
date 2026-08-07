@@ -61,6 +61,8 @@ The tree already has the right seam. `experiment.ArtifactStore` (`internal/exper
 
 Terraform is a separate repository. This spec names what would change there and commits nothing to it.
 
+**The UI is the asymmetry between the branches, not the bucket.** What is being asked for is project-scoped file management: the project screen ([012](012-a-project-holds-papers.md)) grows a Files card beside its Papers card, or a paper row that lists its versions and lets one be replaced — plus upload progress, size and type refusals, a per-project quota, and a delete that actually removes bytes. Branch 1 inherits all of that from drive, which ships a file tree, quotas, and browser multipart upload today. Branch 2 gets a bucket in an afternoon and then builds every one of those screens. Costed on the bucket alone Branch 2 looks cheaper than it is, and that is probably the tie-breaker.
+
 ## A paper and its materials are two different things
 
 "A zipped folder of files to use for the replication" is not a paper. The paper is the document making the claim; the materials are code, data, and protocol. Today materials reach a session one way — the agent finds and downloads them, into the sandbox but deliberately *outside* the mounted repository ([006i](006i-server-side-mount-and-publish.md), [002](002-publishing-reproductions.md)'s redistribution gate). A supplied bundle would be a third materials source, alongside that and [007b](007b-experiments-over-instruments.md)'s uploaded dataset.
@@ -84,11 +86,12 @@ This is a different concern from [BACKLOG](BACKLOG.md) item 4. There the risk is
 
 1. **Identity of a mutable document** — A, B, or C above, and whether merge (C) is designed before anything ships.
 2. **What the guard guards** once versions exist: one active session per paper, or per version?
-3. **Storage branch**, and with it whether 008 is pulled forward or replichai grows its own prefix and swaps later behind `ArtifactStore`.
-4. **Does a supplied bundle change the verdict**, and if so how is that recorded so rates stay comparable?
-5. **Deletion versus the permanent record** — which rule yields, and what the tombstone-free removal looks like (the project's clean-removal preference argues against a "withdrawn" marker).
-6. **Extraction of a zip** — where it is unpacked, size and file-count limits, and whether an archive is even the right transport versus a file tree.
-7. **Does the draft ever enter the registry?** Relating reproductions by identity is 003's job; an unpublished paper arguably has no business in a derived public index at all.
+3. **Storage branch**, and with it whether 008 is pulled forward or replichai grows its own prefix and swaps later behind `ArtifactStore` — weighed on the file-management UI, not on the bucket.
+4. **Quota and limits.** Per-project storage ceiling, per-file size, accepted types. Drive has an answer; a `replichai/` prefix has none, and an unbounded upload path against a shared bucket is a cost surface with no meter, in a product where [011](011-what-a-session-costs.md) meters everything else.
+5. **Does a supplied bundle change the verdict**, and if so how is that recorded so rates stay comparable?
+6. **Deletion versus the permanent record** — which rule yields, and what the tombstone-free removal looks like (the project's clean-removal preference argues against a "withdrawn" marker).
+7. **Extraction of a zip** — where it is unpacked, file-count limits, and whether an archive is even the right transport versus a file tree.
+8. **Does the draft ever enter the registry?** Relating reproductions by identity is 003's job; an unpublished paper arguably has no business in a derived public index at all.
 
 ## Out of scope
 
