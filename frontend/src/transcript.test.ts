@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
-import { cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, splitTitle, totalOf } from './transcript'
+import { cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, seekTarget, splitTitle, totalOf } from './transcript'
 
 const at = (iso: string, over: Partial<Event> = {}): Event => ({ role: 'agent', kind: 'message', time: iso, ...over })
 
@@ -195,4 +195,41 @@ test('usage from a backend that reports no cache writes still totals', () => {
   const u = { InputTokens: 10, OutputTokens: 5, CachedInputTokens: 1 }
   expect(cacheWrittenOf(u)).toBe(0)
   expect(totalOf(u)).toBe(16)
+})
+
+// The scrubber's cursor follows the event it landed on, not the pointer.
+//
+// A session that finishes its work early and sits in a phase for hours leaves a
+// stretch of bar with no events under it — an overnight run puts every event in
+// the first quarter. Each position in that tail resolves to the last event, so a
+// cursor drawn where the pointer was reported 09:00 while the transcript showed
+// 18:45. Snapping it back is both honest and a visible answer to "why can I not
+// scrub further".
+test('a scrub into the dead tail snaps the cursor back to the last event', () => {
+  // Events span the first quarter; the session runs four times as long.
+  const events = [at('2026-08-03T18:00:00Z'), at('2026-08-03T18:30:00Z'), at('2026-08-03T19:00:00Z')]
+  const span = { from: Date.parse('2026-08-03T18:00:00Z'), to: Date.parse('2026-08-04T02:00:00Z') }
+
+  const far = seekTarget(events, span, 0.9)
+  expect(far?.index).toBe(2)
+  // 19:00 is one eighth of an eight-hour span, not the 0.9 that was clicked.
+  expect(far?.cursor).toBeCloseTo(0.125, 3)
+
+  // Inside the events the cursor still lands on the event, which is at or after
+  // the click rather than exactly on it.
+  const mid = seekTarget(events, span, 0.05)
+  expect(mid?.index).toBe(1)
+  expect(mid?.cursor).toBeCloseTo(0.0625, 3)
+
+  // The start is the first event.
+  expect(seekTarget(events, span, 0)?.index).toBe(0)
+  expect(seekTarget(events, span, 0)?.cursor).toBeCloseTo(0, 3)
+})
+
+// Nothing to land on is not a cursor at zero: a filtered-out list leaves the
+// scrubber where it was rather than jumping to the top.
+test('a scrub with no events to land on reports nothing', () => {
+  const span = { from: 0, to: 1000 }
+  expect(seekTarget([], span, 0.5)).toBeNull()
+  expect(seekTarget([{ role: 'agent', kind: 'message' }], span, 0.5)).toBeNull()
 })

@@ -61,7 +61,6 @@ const strings: Record<Lang, Record<string, string>> = {
     walletOf: 'What {email} has left to allocate to a project.',
     adminError: 'That change didn’t go through. Try again in a moment.',
     adminNotAdmin: 'Only a platform admin may change this.',
-    used: 'Used',
     // credits (011)
     walletTitle: 'Your credits. A project needs {reserve} available before a session can start there \u2014 allocate from here to fund one.',
     // Nothing to spend and nothing ever spent: a new account, not one that has
@@ -124,15 +123,9 @@ const strings: Record<Lang, Record<string, string>> = {
     noPublic: 'No public projects yet.',
     initiator: 'Published by',
     // submit / new project
-    submitHint:
-      'Paste a link to the paper — an arXiv page, a DOI, or an ACM Digital Library entry. We look it up first, so every replication of the same paper stays grouped together. Nothing runs, and nothing is spent, until the session starts.',
     submit: 'Submit',
     submitting: 'Submitting…',
-    submitError: 'Couldn’t start a session for this paper. Try again in a moment.',
     activeSession: 'This paper is already being replicated in this project.',
-    sessionOptions: 'Session options',
-    destinationProject: 'Destination project',
-    newProjectOption: 'New project',
     submitNoSpend: 'Nothing runs until the session starts.',
     newProjectDesc: 'Name it, add one or more papers, and invite collaborators. Each paper opens its own replication session.',
     projectNameLabel: 'Project name',
@@ -153,16 +146,13 @@ const strings: Record<Lang, Record<string, string>> = {
     noPapers: 'Add at least one paper.',
     // The short forms sit directly under the paper they belong to, so they only
     // have to say what about it — the row already says which one.
-    errActiveSession: 'Already being replicated in this project.',
     errUnresolvable: 'We don’t recognise this link.',
-    errEnqueue: 'Couldn’t start this one. Try again in a moment.',
     somePapersNotRecognised: 'The project was created. We didn’t recognise the links marked below — you can add those papers again from inside the project.',
     createFailed: 'Something went wrong on our side and the project wasn’t created. Try again in a moment.',
     // Working inside a project: adding a paper costs nothing, starting one is
     // the only act that spends.
     papers: 'Papers',
-    noPapers2: 'No papers yet. Add one to say what this project is about.',
-    addPaperLabel: 'Add a paper',
+    projectNoPapers: 'No papers yet. Add one to say what this project is about.',
     addPaperHint: 'Paste a link. Adding it records what this project is about — nothing runs until you start it.',
     addPaperBtn: 'Add',
     addingPaper: 'Adding…',
@@ -212,8 +202,6 @@ const strings: Record<Lang, Record<string, string>> = {
     redistribution: 'Redistribution',
     methodDigest: 'Method digest',
     repository: 'Repository',
-    addReplication: 'Replicate again',
-    addReplicationHint: 'Run another replication of a paper in this project.',
     viewTranscript: 'Transcript',
     publishedNote: 'Public — signed off {when}.',
     // members
@@ -270,7 +258,6 @@ const strings: Record<Lang, Record<string, string>> = {
     backStep: 'Back',
     // the signed-off card (006n)
     signedOffBy: 'Signed off by',
-    signedOffOn: 'on {when}',
     // "Signer" read as the person, which the line above already names, so next
     // to a contact address it looked like the same field twice. It is neither:
     // it is the account the sign-off was made from (006n).
