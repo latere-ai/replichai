@@ -90,6 +90,40 @@ ALTER TABLE projects DROP COLUMN sponsored;
 -- a published overdraft is an allowance somebody plans around.
 ALTER TABLE projects ADD COLUMN credit_cap BIGINT NOT NULL DEFAULT 0;
 `},
+	{8, `
+-- The papers a project is about (012). Before this a paper existed only as the
+-- ref of a session that had been started, so a project could not hold a paper it
+-- had not run, and a paper whose only session failed left no trace of having
+-- been part of the work.
+--
+-- The key is paper.Key, the same offline identity a session stores in
+-- jobs.paper_key — which is what joins a session to its paper without a column
+-- on either side.
+CREATE TABLE project_papers (
+	project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+	paper_key  TEXT NOT NULL,
+	ref        TEXT NOT NULL,
+	title      TEXT NOT NULL DEFAULT '',
+	added_by   TEXT NOT NULL,
+	added_at   TIMESTAMPTZ NOT NULL,
+	PRIMARY KEY (project_id, paper_key)
+);
+
+-- Backfill from the sessions already run: every distinct (project, paper) pair
+-- in jobs is a paper its project is about, whatever became of the run. The
+-- earliest session dates the paper and its principal is credited with adding it,
+-- which is true — that submit is how the paper entered the project. The ref is
+-- that session's ref; the title is left blank rather than guessed, and fills in
+-- the next time the paper resolves.
+INSERT INTO project_papers (project_id, paper_key, ref, title, added_by, added_at)
+SELECT DISTINCT ON (j.project_id, j.paper_key)
+	j.project_id, j.paper_key, j.ref, '', j.principal, j.created_at
+FROM jobs j
+JOIN projects p ON p.id = j.project_id
+WHERE j.paper_key <> '' AND j.project_id <> ''
+ORDER BY j.project_id, j.paper_key, j.created_at
+ON CONFLICT (project_id, paper_key) DO NOTHING;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
