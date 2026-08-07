@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "bun test src",
-    "test:browser": "node test/transcript-layout.test.mjs"
+    "test:browser": "node test/transcript-layout.test.mjs && node test/tooltip.test.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.12",

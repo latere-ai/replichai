@@ -1230,17 +1230,15 @@ h1.screen-title {
 }
 
 /* The app's own tooltip: no delay the browser decides, no chrome we cannot
-   theme. Hidden from the accessibility tree — the trigger carries its own label. */
+   theme. `.tip` only marks a trigger — the bubble is one element portalled to
+   <body> by TipHost and placed from the trigger's rect, because a card that
+   rounds its corners with overflow:hidden clips anything positioned inside it. */
 .tip {
-  position: relative;
   display: inline-flex;
 }
-.tip::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 50%;
-  z-index: 40;
-  transform: translateX(-50%) translateY(2px);
+.tip-bubble {
+  position: fixed;
+  z-index: 70;
   padding: 6px 9px;
   border-radius: 7px;
   background: var(--fg-1);
@@ -1248,37 +1246,16 @@ h1.screen-title {
   font: 500 11px/1.45 var(--font-sans);
   letter-spacing: 0;
   text-transform: none;
-  /* A sentence-long tip wraps rather than growing into a 450px strip that
-     overruns the viewport or gets clipped by the card it sits in. */
+  /* A sentence-long tip wraps rather than growing into a 450px strip that runs
+     off the viewport. */
   width: max-content;
   max-width: 240px;
   white-space: normal;
   text-align: left;
+  /* A bubble that took the pointer would dismiss itself. */
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s, transform 0.12s var(--ease-fluid);
   box-shadow: var(--shadow-pop);
-}
-/* Pinned to the trigger's right edge, for a trigger near the viewport's. */
-.tip[data-tip-align='end']::after {
-  left: auto;
-  right: 0;
-  transform: translateY(2px);
-}
-.tip-bottom::after {
-  top: calc(100% + 6px);
-}
-.tip-top::after {
-  bottom: calc(100% + 6px);
-}
-.tip:hover::after,
-.tip:focus-within::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-.tip[data-tip-align='end']:hover::after,
-.tip[data-tip-align='end']:focus-within::after {
-  transform: translateY(0);
+  animation: om-fade-up 0.12s var(--ease-fluid) both;
 }
 
 /* The admin console's policy field: a label, a narrow number, a save (006k). */

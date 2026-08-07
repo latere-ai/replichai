@@ -396,23 +396,125 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 // Tip is the app's own tooltip. The `title` attribute is drawn by the browser,
 // appears after a delay nobody controls, and cannot be themed.
 //
-// `align` pins the bubble to one edge instead of centring it, for a trigger
-// close enough to the viewport edge that a centred bubble would run off it.
+// A trigger only declares its text with `data-tip`; the bubble itself is drawn
+// by TipHost. `side` is the preferred edge, and TipHost overrides it when the
+// bubble would leave the viewport.
 export type TipSide = 'top' | 'bottom'
-export type TipAlign = 'center' | 'end'
 
 // tipAttrs applies the tooltip to an element directly, for the cases where a
 // wrapper element would break an ARIA relationship.
-export function tipAttrs(text: string, side: TipSide = 'bottom', align: TipAlign = 'center') {
-  return { 'data-tip': text, 'data-tip-align': align === 'end' ? 'end' : undefined, className: `tip tip-${side}` }
+export function tipAttrs(text: string, side: TipSide = 'bottom') {
+  return { 'data-tip': text, className: `tip tip-${side}` }
 }
 
-export function Tip({ text, children, side = 'bottom', align = 'center' }: { text?: string; children: ReactNode; side?: TipSide; align?: TipAlign }) {
+export function Tip({ text, children, side = 'bottom' }: { text?: string; children: ReactNode; side?: TipSide }) {
   if (!text) return <>{children}</>
   return (
-    <span className={'tip tip-' + side} data-tip={text} data-tip-align={align === 'end' ? 'end' : undefined}>
+    <span className={'tip tip-' + side} data-tip={text}>
       {children}
     </span>
+  )
+}
+
+// TipHost draws every tooltip in the app, from one bubble portalled to <body>.
+//
+// The bubble used to be a `::after` on the trigger. Absolute positioning is
+// contained by the nearest clipping ancestor, and every card in the app rounds
+// its corners with `overflow: hidden` — so a tip on any control inside a card
+// was sliced off at the card's edge. One fixed bubble outside every card is the
+// only placement no container can cut.
+//
+// It listens on the document rather than per trigger: `data-tip` stays a plain
+// attribute, so a tip can sit on an element that cannot take a wrapper — a
+// radio inside a radiogroup — and no call site owns hover state.
+export function TipHost() {
+  const [tip, setTip] = useState<{ text: string; side: TipSide; rect: DOMRect } | null>(null)
+  // Placement is a second pass: it needs the bubble's own size, which only
+  // exists once the text is in the DOM.
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null)
+  const bubble = useRef<HTMLDivElement>(null)
+  const trigger = useRef<Element | null>(null)
+
+  useEffect(() => {
+    const hide = () => {
+      trigger.current = null
+      setTip(null)
+      setAt(null)
+    }
+    const show = (el: Element) => {
+      // Crossing from a button into its own icon resolves to the same trigger.
+      // Re-raising the bubble there would restart the animation on every pixel.
+      if (el === trigger.current) return
+      const text = el.getAttribute('data-tip')
+      if (!text) return hide()
+      trigger.current = el
+      setAt(null)
+      setTip({ text, side: el.classList.contains('tip-top') ? 'top' : 'bottom', rect: el.getBoundingClientRect() })
+    }
+    // One pointer handler covers entering and leaving: whatever is under the
+    // pointer either carries a tip or dismisses the one that is up.
+    const move = (e: Event) => {
+      const el = (e.target as Element | null)?.closest?.('[data-tip]')
+      el ? show(el) : hide()
+    }
+    // A trigger that is clicked often disappears — a row is removed, a dialog
+    // opens over it — and the bubble would outlive it.
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && hide()
+    document.addEventListener('pointerover', move)
+    document.addEventListener('focusin', move)
+    document.addEventListener('focusout', hide)
+    document.addEventListener('pointerdown', hide)
+    document.addEventListener('keydown', esc)
+    // A fixed bubble does not travel with a trigger inside a scroll container,
+    // so anything that moves the page under it takes it down.
+    document.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    window.addEventListener('blur', hide)
+    return () => {
+      document.removeEventListener('pointerover', move)
+      document.removeEventListener('focusin', move)
+      document.removeEventListener('focusout', hide)
+      document.removeEventListener('pointerdown', hide)
+      document.removeEventListener('keydown', esc)
+      document.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+      window.removeEventListener('blur', hide)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!tip || !bubble.current) return
+    const b = bubble.current.getBoundingClientRect()
+    const M = 6 // the gap from the trigger, and the margin from the viewport
+    const above = tip.rect.top - b.height - M
+    const below = tip.rect.bottom + M
+    // The preferred side, unless it has no room and the other one does.
+    const fits = (top: number) => top >= M && top + b.height <= window.innerHeight - M
+    const top = tip.side === 'top' ? (fits(above) || !fits(below) ? above : below) : fits(below) || !fits(above) ? below : above
+    const left = tip.rect.left + tip.rect.width / 2 - b.width / 2
+    setAt({
+      // Pulled back inside for a trigger near the viewport's edge — the header's
+      // wallet pill sits there, and a centred bubble would hang off the screen.
+      left: Math.min(Math.max(M, left), Math.max(M, window.innerWidth - b.width - M)),
+      top: Math.min(Math.max(M, top), Math.max(M, window.innerHeight - b.height - M)),
+    })
+  }, [tip])
+
+  if (!tip) return null
+  // Hidden from the accessibility tree: the trigger carries its own label, and a
+  // second reading of it is noise. It cannot be hovered either — a bubble that
+  // takes the pointer would dismiss itself.
+  return createPortal(
+    <div
+      ref={bubble}
+      className="tip-bubble"
+      aria-hidden="true"
+      // Measured off-screen on the first pass, placed on the second.
+      style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}
+    >
+      {tip.text}
+    </div>,
+    document.body,
   )
 }
 

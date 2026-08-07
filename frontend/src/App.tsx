@@ -1809,13 +1809,8 @@ function WalletPill({ i18n, credits }: { i18n: I18n; credits?: Credits }) {
   // Not enough left to open one more session is a warning; nothing at all is an
   // error; the rest is just a number.
   const state = empty ? ' out' : credits.wallet < credits.start_reserve ? ' low' : ''
-  // Pinned to its own right edge: the pill sits near the viewport's, where a
-  // centred bubble would hang off the screen.
   return (
-    <Tip
-      align="end"
-      text={empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(credits.start_reserve) })}
-    >
+    <Tip text={empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(credits.start_reserve) })}>
       <span className={'quota-pill' + state}>
         <Ico name={empty ? 'alert' : 'wallet'} size={12} />
         {empty ? t('walletEmpty') : formatUSD(credits.wallet)}
