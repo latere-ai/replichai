@@ -1,6 +1,12 @@
 # 012 — A project holds papers
 
-**Status:** drafted.
+**Status:** built. `project_papers` holds what a project is about, keyed by the same `paper.Key` a session already stores, so a paper needs no column on `jobs` and outlives every run against it. `POST /projects` records papers and enqueues nothing; `GET/POST/DELETE /projects/{id}/papers` and `POST /projects/{id}/sessions` are the four routes that replaced `POST /papers`. Credits left the create path entirely — `fundNewProject`, `undoProject`, the 422, and 006j's never-leave-an-empty-project rule are all gone, along with the frontend's partial-success apparatus. The project screen gained a Papers card where a run is started; the New-project screen records and navigates.
+
+**Verified by hand against a running server, on an account with a wallet of $0.00** — the state that produced the refusal this spec exists to remove. A create naming three references (one deliberate garbage) answered `201` with the two good papers recorded, the bad one reported against itself, the project kept, and **no sessions started**. The project's placeholder title was replaced a moment later by the real one resolved in the background ("Short-Form Videos Degrade Our Capacity to Retain Intentions…"), which is the enrichment running off the request path. Starting a session was then `402 no_credits`; a paper the project did not hold was `404`; after an admin top-up and an allocation the same start returned `201` and the session ran to `done`; a second start of the same paper while it ran was `409`. Removing the paper that had run was `409` and the one that had not was `204`.
+
+One thing the run surfaced that this spec does not solve: `paper.Key` is offline and `paper.Resolve` is not, so an arXiv preprint and its published DOI are two rows here and one paper to the identity system (arXiv 2302.03714 declares DOI 10.1145/3544548.3580778, and resolving either returns the DOI identity). The project then lists two papers with the same title. That divergence predates this spec — `jobs.paper_key` and the double-trigger guard both key on the offline value — and unifying them is a paper-identity question for 001/003, not a papers-table one.
+
+Coverage went from 79.2% to 79.4% overall, with `internal/httpapi` at 84.3%.
 
 **Scope:** make a paper a durable thing a project holds, rather than an argument to the act of starting a session. `POST /projects` records its papers and runs nothing; a member starts a session for a paper from the project page, which is also where the credit check now lands. Adds one table (`project_papers`), four routes under `/projects/{id}/papers`, and a papers section to the project screen. Revises [006j](006j-the-new-project-flow.md) (its create enqueues; its 422 and per-paper session errors go) and [011](011-what-a-session-costs.md) (credits leave the create path).
 **Depends on:** [006g](006g-projects-and-replication-sessions.md) (projects own sessions; `jobs.paper_key` and the double-trigger guard), [006j](006j-the-new-project-flow.md) (the create endpoint and the `PaperResolver` seam this reshapes), [006c](006c-identity-and-access.md) (membership decides who may add a paper or start a session), [011](011-what-a-session-costs.md) (the pot and the start reserve the Start button meets), [001](001-paper-identity-and-slugs.md) (`paper.Key`, `paper.Resolve`).
@@ -126,3 +132,19 @@ Removed: `POST /papers`.
 - **Starting every paper at once** from the project screen. It is one more button over the same route, and it is worth having only once the per-paper flow is real.
 - **Moving a paper between projects.** The identity would survive it, but nothing asks for it yet.
 - **PDF upload** as a paper source — still [006d](006d-pdf-ingestion.md).
+
+## Outcome
+
+Every acceptance criterion holds, and two defects the decoupling introduced were found and fixed before it shipped.
+
+**The project title was orphaned by the split.** The worker enriched a project's placeholder title only when it equalled the *running job's* ref. That was right while every paper started at create — the first paper's session always ran, so it always did the naming. Once starting became its own act, a project created around papers A and B and started at B compared B's ref to A's, declined, and kept a URL nobody chose as the project name forever. `isPlaceholderTitle` now recognises the ref of any paper the project holds, and the create resolves titles itself so the worker's pass is a fallback rather than the primary path. Neither case had a test; both do now.
+
+**Title resolution was blocking the create.** The first implementation waited on N source fetches inside the request — exactly the half-failure `paper.Key`'s offline key was chosen to avoid, since a client timing out would leave the papers recorded and the caller with nothing. It moved after the response, onto a context of its own so a client hanging up cannot cancel a half-done write; tests wait on it through `WaitBackground` rather than polling. Only a *derived* placeholder is ever replaced, so a project somebody named keeps its name.
+
+**Deliberate divergences from the spec as drafted:**
+
+- The start route is `POST /projects/{id}/sessions {paper_key}`, not `/papers/{key}/sessions`. A key is `doi:10.1145/3544548.3581433` — colons and slashes — so it spans four path segments and routes nowhere. Delete takes it as an encoded `?key=`. A test round-trips a slashed key through both.
+- The optional `credits` field on create was dropped rather than kept. Funding best-effort would answer `201` to a wallet that could not cover it with the refusal buried in the body — the exact failure this path had just finished removing.
+- `errNoCreditsAtAll` and the create-time credit copy are deleted rather than kept for a case that can no longer happen.
+
+**Unspecified work that landed with it:** the `background` helper and `WaitBackground` (a general seam, but introduced for this); `getArtifact` moved onto `ApiError` so the shared refusal reader cannot misread a 404 as a network failure.
