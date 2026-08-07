@@ -94,6 +94,7 @@ import { useRouter, type Navigate, type ProjectTab, type View } from './routes'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
 import { useSidebar } from './sidebar'
+import { freshest, stopPending, terminal } from './session-stop'
 
 // signerOf names the person who published a project. `owner` is an opaque OIDC
 // subject and means nothing to a reader, so the signer's recorded name is used
@@ -101,7 +102,6 @@ import { useSidebar } from './sidebar'
 // back to the principal, as it did before.
 const signerOf = (p: Project) => p.signed_off_name || p.owner
 
-const terminal = (p: string) => p === 'done' || p === 'failed'
 // phaseClass tones a phase badge: any non-terminal phase reads as "running".
 const phaseClass = (p: string) => (terminal(p) ? p : 'running')
 
@@ -2173,24 +2173,31 @@ const isStopped = (j: Job) => j.phase === 'failed' && !!j.error && /cancel|stopp
 function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; onOpen: () => void; onChanged: () => void }) {
   const { t } = i18n
   const [j, setJob] = useState<Job>(job)
-  const [stopping, setStopping] = useState(false)
+  // Asking to stop is remembered for as long as the session takes to settle, so
+  // the control cannot re-arm mid-stop and take a second click.
+  const [stopAsked, setStopAsked] = useState(false)
+  const [stopErr, setStopErr] = useState(false)
   useEffect(() => {
-    setJob(job)
+    setJob((shown) => freshest(shown, job))
     if (!terminal(job.phase)) return watchJob(job.id, setJob)
   }, [job])
+  useEffect(() => setStopAsked(false), [job.id])
 
+  const stopping = stopPending(j.phase, stopAsked)
   const stop = async (e: React.MouseEvent) => {
     e.stopPropagation()
     if (stopping) return
-    setStopping(true)
+    setStopAsked(true)
+    setStopErr(false)
     try {
       const updated = await cancelSession(j.id)
-      setJob(updated)
+      setJob((shown) => freshest(shown, updated))
       onChanged()
     } catch {
-      /* leave as-is */
-    } finally {
-      setStopping(false)
+      // The stop did not land — the run is still up. Hand the control back, and
+      // say why, rather than leaving a dead button on a running session.
+      setStopAsked(false)
+      setStopErr(true)
     }
   }
 
@@ -2217,9 +2224,14 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
         </Tip>
       )}
       {!terminal(j.phase) && (
-        <button className="btn ghost sm danger" onClick={stop} disabled={stopping}>
+        <button className={'btn ghost sm' + (stopping ? ' pending' : ' danger')} onClick={stop} disabled={stopping}>
           <Ico name="stop" size={11} /> {stopping ? t('stopping') : t('stop')}
         </button>
+      )}
+      {stopErr && (
+        <span className="err small">
+          <Ico name="alert" size={13} /> {t('stopError')}
+        </span>
       )}
       {j.repo_name && (
         <Tip text={j.repo_name}>

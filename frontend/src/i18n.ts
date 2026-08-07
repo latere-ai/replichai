@@ -186,6 +186,7 @@ const strings: Record<Lang, Record<string, string>> = {
     stop: 'Stop',
     stopping: 'Stopping…',
     stopped: 'stopped',
+    stopError: 'Couldn’t stop this session — it’s still running. Try again.',
     // A session that failed used to print the worker's own error string here —
     // "put replication-manifest.json in latere/x: unexpected status 422". These
     // say what class of thing went wrong and who can move it; the original text

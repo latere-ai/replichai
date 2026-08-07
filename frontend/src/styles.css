@@ -630,6 +630,17 @@ textarea {
   color: var(--err);
   border-color: color-mix(in srgb, var(--err) 35%, transparent);
 }
+/* A stop lasts as long as the run takes to come down. The control keeps its
+   place and breathes while it waits, so the wait reads as work in progress
+   rather than a button that went dead. */
+.btn.pending,
+.btn.pending:hover {
+  cursor: progress;
+  background: var(--bg-raised);
+  color: var(--fg-1);
+  border-color: var(--border-strong);
+  animation: livepulse 1.5s ease-in-out infinite;
+}
 .btn svg {
   flex: none;
 }
