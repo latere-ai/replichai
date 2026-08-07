@@ -450,15 +450,28 @@ textarea {
   font-size: 13px;
   color: var(--fg-2);
 }
+/* The topbar is one 52px row, so every crumb segment stays on one line and
+   ellipsizes instead. A paper title is long enough to wrap on its own — that
+   wrap pushed the trail into a second line the bar had no height for, and the
+   unshrinkable text behind it scrolled the whole app sideways. */
+.crumb > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The root of the trail is a nav label of a word or two: it keeps its width so
+   the shrinking falls on the title and the reference, which have room to lose. */
+.crumb > :first-child,
+.crumb .sep {
+  flex: none;
+}
 .crumb .sep {
   color: var(--fg-3);
 }
 .crumb .leaf {
   color: var(--fg-1);
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 420px;
 }
 .crumb button {
@@ -474,6 +487,9 @@ textarea {
 }
 .topbar-actions {
   margin-left: auto;
+  /* The trail yields, the controls do not: squeezing these is what put the
+     "new project" button past the right edge. */
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;

@@ -77,7 +77,7 @@ function events() {
 const job = {
   id: 'job-1',
   kind: 'replicate',
-  ref: 'https://doi.org/10.1145/3562939.3567802',
+  ref: 'https://dl.acm.org/doi/10.1145/3544548.3581100',
   phase: 'done',
   created_at: at(0),
   phase_at: {
@@ -88,7 +88,15 @@ const job = {
     done: at(RUNNING_AT + RUNNING_MS + 17_000),
   },
 }
-const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
+// A paper's real title and a real ACM address: the breadcrumb carries both, and
+// they are long enough to have wrapped the topbar into two lines.
+const project = {
+  id: 'proj-1',
+  owner: 'p',
+  title: 'Point of no Undo: Irreversible Interactions as a Design Strategy',
+  visibility: 'private',
+  created_at: at(0),
+}
 
 const routes = [
   [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin' }],
@@ -246,7 +254,37 @@ try {
   if (railTotal !== search.narrowed.cards) fail(`rail counts sum to ${railTotal} but ${search.narrowed.cards} cards are shown`)
   if (search.restored !== EVENTS + 1) fail(`clearing the search left ${search.restored} cards, want ${EVENTS + 1}`)
 
+  // The topbar is a single 52px row and the app is a full-height shell: nothing
+  // on the session screen may wrap it or scroll the document sideways. The
+  // breadcrumb is what broke both — a paper title long enough to wrap took the
+  // trail onto a second line and pushed the header's controls off the right
+  // edge. Run last: it moves the viewport, and the checks above are placed at
+  // 1440. The floor is the three-column body (220 + 300 side rails beside the
+  // 236px nav), so the sweep stops where that layout stops fitting.
+  const widths = [1680, 1440, 1280, 1100, 1000, 900, 820]
+  for (const width of widths) {
+    await page.setViewport({ width, height: 900 })
+    await new Promise((r) => setTimeout(r, 300))
+    const bar = await page.evaluate(() => {
+      const de = document.documentElement
+      const line = 24 // 13px text in a 20px line box; anything taller is a second line
+      const wrapped = [...document.querySelectorAll('.crumb > *')]
+        .filter((c) => c.getBoundingClientRect().height > line)
+        .map((c) => c.textContent.slice(0, 30))
+      return {
+        scroll: de.scrollWidth - de.clientWidth,
+        topbar: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+        wrapped,
+      }
+    })
+    if (bar.scroll > 0.5) fail(`at ${width}px the document scrolls ${Math.round(bar.scroll)}px sideways`)
+    if (bar.topbar !== 52) fail(`at ${width}px the topbar is ${bar.topbar}px tall, want 52`)
+    if (bar.wrapped.length) fail(`at ${width}px these breadcrumb segments wrap onto a second line: ${bar.wrapped.join(' | ')}`)
+  }
+  await page.setViewport({ width: 1440, height: 900 })
+
   if (!process.exitCode) {
+    console.log(`ok: no sideways scroll and a one-line topbar from ${widths[0]}px down to ${widths[widths.length - 1]}px`)
     console.log(
       `ok: ${m.n} cards, none clipped or overlapping; scrub moved ${Math.round(scrub.moved)}px restyling 0 cards; ` +
         `search narrowed ${EVENTS + 1}→${search.narrowed.cards} and restored; every kind labelled`,
