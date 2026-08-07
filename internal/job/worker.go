@@ -113,7 +113,10 @@ func (w *Worker) watch(pool context.Context, id string) {
 	// Logged here and nowhere a member can read: the row records only that the
 	// session did not complete.
 	log.Printf("budget: stopping session %s in project %s: %s", j.ID, j.ProjectID, why)
-	w.fail(id, errors.New(GenericFailure))
+	if err := w.fail(id, errors.New(GenericFailure)); err != nil {
+		log.Printf("budget: recording stopped session %s: %v", id, err)
+		return
+	}
 	w.interrupt(id)
 }
 
@@ -163,14 +166,13 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 			return fmt.Errorf("stop backend run %s: %w", j.Status.RunID, err)
 		}
 	}
-	w.mu.Lock()
-	cancel := w.running[id]
-	w.mu.Unlock()
-	if cancel != nil {
-		cancel() // a run we drive: stop its local wait after the backend stopped
+	// Persist the terminal cancellation before interrupting the local waiter, so
+	// the waiter's context error cannot win the race and replace "cancelled".
+	if _, err = w.store.Cancel(ctx, id); err != nil {
+		return err
 	}
-	_, err = w.store.Cancel(ctx, id)
-	return err
+	w.interrupt(id)
+	return nil
 }
 
 // Process claims one job and drives it to a terminal phase, reporting whether it
@@ -184,8 +186,7 @@ func (w *Worker) Process(ctx context.Context) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	w.drive(ctx, j)
-	return true, nil
+	return true, w.drive(ctx, j)
 }
 
 // Start runs a pool of workers until ctx is canceled. Each loops: process a job,
@@ -200,6 +201,9 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 			defer func() { done <- struct{}{} }()
 			for ctx.Err() == nil {
 				did, err := w.Process(ctx)
+				if err != nil {
+					log.Printf("worker: process: %v", err)
+				}
 				if err != nil || !did {
 					if w.sleep(ctx, w.poll) != nil {
 						return
@@ -233,12 +237,20 @@ func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error)
 			continue // still claimable; not stranded
 		}
 		if j.Phase == PhaseRunning && j.Status.RunID != "" {
-			go w.driveResume(ctx, j) // rejoin the live backend session
+			go func(j Job) {
+				if err := w.driveResume(ctx, j); err != nil {
+					log.Printf("worker: resume session %s: %v", j.ID, err)
+				}
+			}(j) // rejoin the live backend session
 			resumed++
 			continue
 		}
 		if j.Phase == PhasePublishing && j.Status.RunID != "" {
-			go w.drivePublish(ctx, j) // the run settled; finish finalizing it
+			go func(j Job) {
+				if err := w.drivePublish(ctx, j); err != nil {
+					log.Printf("worker: republish session %s: %v", j.ID, err)
+				}
+			}(j) // the run settled; finish finalizing it
 			resumed++
 			continue
 		}
@@ -270,75 +282,124 @@ func (w *Worker) track(pool context.Context, id string) (context.Context, func()
 // per-job context Cancel can interrupt. Any error moves it to failed with the
 // cause recorded, never to done — except a shutdown, which leaves the job where
 // it is for the next boot to reconcile.
-func (w *Worker) drive(pool context.Context, j Job) {
+func (w *Worker) drive(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
 
+	var observeMu sync.Mutex
+	var observeErr error
 	observe := func(s provider.RunStatus) {
-		_ = w.store.Observe(ctx, j.ID, s)
+		if err := w.store.Observe(ctx, j.ID, s); err != nil {
+			observeMu.Lock()
+			if observeErr == nil {
+				observeErr = fmt.Errorf("record run status: %w", err)
+			}
+			observeMu.Unlock()
+			w.interrupt(j.ID)
+			return
+		}
 		w.watch(pool, j.ID)
 	}
 
 	if err := w.runner.Resolve(ctx, &j); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+		return w.stop(pool, j.ID, err)
 	}
 	if err := w.store.Advance(ctx, j.ID, PhaseRunning, apply(j)); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+		return w.stop(pool, j.ID, err)
 	}
-	if err := w.runner.Execute(ctx, &j, observe); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+	runErr := w.runner.Execute(ctx, &j, observe)
+	observeMu.Lock()
+	statusErr := observeErr
+	observeMu.Unlock()
+	if statusErr != nil {
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
+			statusErr = errors.Join(statusErr, runErr)
+		}
+		return w.stop(pool, j.ID, statusErr)
 	}
-	w.publish(pool, ctx, j)
+	if runErr != nil {
+		return w.stop(pool, j.ID, runErr)
+	}
+	return w.publish(pool, ctx, j)
 }
 
 // driveResume rejoins a run already in flight (in the running phase) and drives
 // it the rest of the way — resume, then publish, then done — under a per-job
 // context Cancel can interrupt, exactly like a fresh drive minus the phases
 // already passed.
-func (w *Worker) driveResume(pool context.Context, j Job) {
+func (w *Worker) driveResume(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
 
+	var observeMu sync.Mutex
+	var observeErr error
 	observe := func(s provider.RunStatus) {
-		_ = w.store.Observe(ctx, j.ID, s)
+		if err := w.store.Observe(ctx, j.ID, s); err != nil {
+			observeMu.Lock()
+			if observeErr == nil {
+				observeErr = fmt.Errorf("record resumed run status: %w", err)
+			}
+			observeMu.Unlock()
+			w.interrupt(j.ID)
+			return
+		}
 		w.watch(pool, j.ID)
 	}
-	if err := w.runner.Resume(ctx, &j, observe); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+	runErr := w.runner.Resume(ctx, &j, observe)
+	observeMu.Lock()
+	statusErr := observeErr
+	observeMu.Unlock()
+	if statusErr != nil {
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
+			statusErr = errors.Join(statusErr, runErr)
+		}
+		return w.stop(pool, j.ID, statusErr)
 	}
-	w.publish(pool, ctx, j)
+	if runErr != nil {
+		return w.stop(pool, j.ID, runErr)
+	}
+	return w.publish(pool, ctx, j)
 }
 
 // drivePublish re-runs the publishing phase for a job a restart interrupted
 // after its run had already settled. Finalizing is idempotent — an unchanged
 // manifest adds no commit — so re-running it costs a few reads and recovers a
 // reproduction that succeeded, where failing the row would have stranded it.
-func (w *Worker) drivePublish(pool context.Context, j Job) {
+func (w *Worker) drivePublish(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
 
 	if err := w.runner.Publish(ctx, &j); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+		return w.stop(pool, j.ID, err)
 	}
-	_ = w.store.Advance(ctx, j.ID, PhaseDone, apply(j))
+	return w.complete(ctx, j)
 }
 
 // publish moves a job whose run has settled through publishing to done.
-func (w *Worker) publish(pool, ctx context.Context, j Job) {
+func (w *Worker) publish(pool, ctx context.Context, j Job) error {
 	if err := w.store.Advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+		return w.stop(pool, j.ID, err)
 	}
 	if err := w.runner.Publish(ctx, &j); err != nil {
-		w.stop(pool, j.ID, err)
-		return
+		return w.stop(pool, j.ID, err)
 	}
-	_ = w.store.Advance(ctx, j.ID, PhaseDone, apply(j))
+	return w.complete(ctx, j)
+}
+
+// complete records the terminal success after publishing. Publishing is
+// already complete and idempotent, so retry only the durable transition; if all
+// attempts fail, leave the row in publishing for restart reconciliation.
+func (w *Worker) complete(ctx context.Context, j Job) error {
+	var err error
+	for range 3 {
+		if err = w.store.Advance(ctx, j.ID, PhaseDone, apply(j)); err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return fmt.Errorf("record session %s done: %w", j.ID, err)
 }
 
 // apply copies the fields a Runner set on its local job onto the stored job at
@@ -364,11 +425,14 @@ func apply(src Job) func(*Job) {
 // real outcome. A person cancelling a session takes the other path: only that
 // job's own context is cancelled, the pool's is not, so the row is still failed
 // here — and the store's cancel write, made first, wins the state machine.
-func (w *Worker) stop(pool context.Context, id string, cause error) {
+func (w *Worker) stop(pool context.Context, id string, cause error) error {
 	if pool.Err() != nil {
-		return
+		return nil
 	}
-	w.fail(id, cause)
+	if err := w.fail(id, cause); err != nil {
+		return errors.Join(cause, err)
+	}
+	return nil
 }
 
 // fail records the cause and moves the job to failed, best-effort. It uses a
@@ -376,10 +440,19 @@ func (w *Worker) stop(pool context.Context, id string, cause error) {
 // context was cancelled by a stop — otherwise a cancelled run would be left
 // non-terminal. When the store already cancelled the job, this transition is
 // refused by the state machine and harmlessly discarded.
-func (w *Worker) fail(id string, cause error) {
+func (w *Worker) fail(id string, cause error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = w.store.Advance(ctx, id, PhaseFailed, func(j *Job) { j.Err = cause.Error() })
+	err := w.store.Advance(ctx, id, PhaseFailed, func(j *Job) { j.Err = cause.Error() })
+	if errors.Is(err, ErrIllegalTransition) {
+		if j, getErr := w.store.Get(ctx, id); getErr == nil && j.Phase.Terminal() {
+			return nil // cancellation/backstop won the terminal transition race
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("record session %s failed: %w", id, err)
+	}
+	return nil
 }
 
 // sleepCtx waits for d, or returns early if ctx is canceled.

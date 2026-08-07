@@ -3,6 +3,8 @@ package job
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -432,6 +434,99 @@ func TestReconcileSurfacesActiveError(t *testing.T) {
 type failActiveStore struct{ Store }
 
 func (failActiveStore) Active(context.Context) ([]Job, error) { return nil, errors.New("db down") }
+
+type observeFailureStore struct {
+	Store
+	err error
+}
+
+func (s observeFailureStore) Observe(context.Context, string, provider.RunStatus) error { return s.err }
+
+type advanceFailureStore struct {
+	Store
+	phase     Phase
+	remaining int
+	err       error
+}
+
+func (s *advanceFailureStore) Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error {
+	if to == s.phase && s.remaining != 0 {
+		if s.remaining > 0 {
+			s.remaining--
+		}
+		return s.err
+	}
+	return s.Store.Advance(ctx, id, to, mutate)
+}
+
+type waitAfterObserveRunner struct{ *fakeRunner }
+
+func (r *waitAfterObserveRunner) Execute(ctx context.Context, _ *Job, observe func(provider.RunStatus)) error {
+	r.record("execute")
+	observe(provider.RunStatus{State: provider.StateRunning, RunID: "sesn_lost"})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(100 * time.Millisecond):
+		return nil
+	}
+}
+
+func TestObserveFailureInterruptsAndPreventsPublish(t *testing.T) {
+	base := NewMemStore()
+	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	storeErr := errors.New("observe write failed")
+	r := &waitAfterObserveRunner{fakeRunner: &fakeRunner{}}
+
+	if _, err := NewWorker(observeFailureStore{Store: base, err: storeErr}, r).Process(context.Background()); err != nil {
+		t.Fatalf("Process recorded the observation failure and should not surface it: %v", err)
+	}
+	got, _ := base.Get(context.Background(), j.ID)
+	if got.Phase != PhaseFailed || !strings.Contains(got.Err, storeErr.Error()) {
+		t.Fatalf("job = %s/%q, want failed with observation error", got.Phase, got.Err)
+	}
+	if slices.Contains(r.calls, "publish") {
+		t.Errorf("publish ran after observation failed: %v", r.calls)
+	}
+}
+
+func TestDoneTransitionRetriesAWriteFailure(t *testing.T) {
+	base := NewMemStore()
+	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	s := &advanceFailureStore{Store: base, phase: PhaseDone, remaining: 1, err: errors.New("transient write failure")}
+
+	if _, err := NewWorker(s, &fakeRunner{}).Process(context.Background()); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if got, _ := base.Get(context.Background(), j.ID); got.Phase != PhaseDone {
+		t.Fatalf("phase = %s, want done after retry", got.Phase)
+	}
+}
+
+func TestPersistentDoneTransitionFailureSurfaces(t *testing.T) {
+	base := NewMemStore()
+	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	writeErr := errors.New("persistent write failure")
+	s := &advanceFailureStore{Store: base, phase: PhaseDone, remaining: -1, err: writeErr}
+
+	if _, err := NewWorker(s, &fakeRunner{}).Process(context.Background()); !errors.Is(err, writeErr) {
+		t.Fatalf("Process error = %v, want terminal write failure", err)
+	}
+	if got, _ := base.Get(context.Background(), j.ID); got.Phase != PhasePublishing {
+		t.Fatalf("phase = %s, want publishing for reconciliation", got.Phase)
+	}
+}
+
+func TestFailureTransitionFailureSurfaces(t *testing.T) {
+	base := NewMemStore()
+	_, _ = base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	writeErr := errors.New("cannot persist failure")
+	s := &advanceFailureStore{Store: base, phase: PhaseFailed, remaining: -1, err: writeErr}
+
+	if _, err := NewWorker(s, &fakeRunner{failAt: "resolve"}).Process(context.Background()); !errors.Is(err, writeErr) || !strings.Contains(err.Error(), "resolve boom") {
+		t.Fatalf("Process error = %v, want joined work and failure-write errors", err)
+	}
+}
 
 func equal(a, b []string) bool {
 	if len(a) != len(b) {
