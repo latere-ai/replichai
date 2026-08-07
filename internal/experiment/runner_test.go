@@ -24,6 +24,13 @@ func newTestRunner(t *testing.T, p *memory.Provider, blobs ArtifactStore) *Runne
 	)
 }
 
+type closeFailProvider struct {
+	*memory.Provider
+	err error
+}
+
+func (p *closeFailProvider) CloseRun(context.Context, provider.RunHandle) error { return p.err }
+
 func mountedInstrument() Instrument {
 	inst := runnableInstrument()
 	inst.Ref.Repo.URL = "https://github.com/open-hai/a-repro"
@@ -62,6 +69,19 @@ func TestRunnerRunsAndReports(t *testing.T) {
 	}
 	if out.Artifacts[0].Checksum != Checksum([]byte("a,b\n1,2\n")) {
 		t.Errorf("checksum mismatch: %s", out.Artifacts[0].Checksum)
+	}
+}
+
+func TestRunnerReturnsCleanupError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	p := &closeFailProvider{Provider: memory.New(), err: closeErr}
+	p.Files = map[string][]byte{ResultFile: []byte(`{"ran":true}`)}
+	r := NewRunner(p, NewMemArtifactStore(), testDoctrine,
+		WithMountToken("ro-token"),
+		withRunnerSleep(func(context.Context, time.Duration) error { return nil }))
+
+	if _, err := r.Run(context.Background(), &Experiment{ID: "exp-1"}, mountedInstrument(), []byte("data")); !errors.Is(err, closeErr) {
+		t.Fatalf("Run error = %v, want cleanup error", err)
 	}
 }
 

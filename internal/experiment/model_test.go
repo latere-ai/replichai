@@ -2,17 +2,29 @@ package experiment
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/provider/memory"
 )
 
-func newModelCohort(p *memory.Provider, config PilotConfig, cov Coverage) *ModelCohort {
+func newModelCohort(p provider.Provider, config PilotConfig, cov Coverage) *ModelCohort {
 	return &ModelCohort{
 		N: config.N, Trials: 4, Provider: p, Config: config, Coverage: cov,
 		sleep: func(context.Context, time.Duration) error { return nil },
+	}
+}
+
+func TestModelCohortReturnsCleanupError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	p := &closeFailProvider{Provider: memory.New(), err: closeErr}
+	p.Files = map[string][]byte{CohortDataFile: []byte("participant,answer\np1,yes\n")}
+
+	if _, err := newModelCohort(p, cohortConfig(), Coverage{Servable: []string{"task"}}).Collect(context.Background(), caseTwoInstrument().Decl); !errors.Is(err, closeErr) {
+		t.Fatalf("Collect error = %v, want cleanup error", err)
 	}
 }
 

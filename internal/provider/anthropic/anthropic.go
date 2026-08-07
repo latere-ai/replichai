@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -543,13 +544,27 @@ func firstNonZeroTime(ts ...time.Time) time.Time {
 // every active thread. Both operations are best-effort so closing an already
 // terminal or archived session remains idempotent.
 func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
-	_, _ = p.client.Beta.Sessions.Events.Send(ctx, h.ID, anthropic.BetaSessionEventSendParams{
+	_, interruptErr := p.client.Beta.Sessions.Events.Send(ctx, h.ID, anthropic.BetaSessionEventSendParams{
 		Events: []anthropic.BetaManagedAgentsEventParamsUnion{
 			anthropic.BetaManagedAgentsEventParamsOfUserInterrupt(
 				anthropic.BetaManagedAgentsUserInterruptEventParamsTypeUserInterrupt,
 			),
 		},
 	})
-	_, _ = p.client.Beta.Sessions.Archive(ctx, h.ID, anthropic.BetaSessionArchiveParams{})
-	return nil
+	_, archiveErr := p.client.Beta.Sessions.Archive(ctx, h.ID, anthropic.BetaSessionArchiveParams{})
+	return errors.Join(closeRunError("interrupt", interruptErr), closeRunError("archive", archiveErr))
+}
+
+// closeRunError keeps CloseRun idempotent without hiding infrastructure
+// failures. The managed-agents API uses not-found/conflict when work is already
+// terminal or archived; those are the requested end state.
+func closeRunError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var apiErr *anthropic.Error
+	if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusConflict) {
+		return nil
+	}
+	return fmt.Errorf("%s managed session: %w", operation, err)
 }

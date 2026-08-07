@@ -3,6 +3,7 @@ package experiment
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -121,7 +122,7 @@ type runReport struct {
 // resolves the instrument's command onto the input path, runs it once, and
 // reads the worker's report back. A command that failed to run is a complete
 // outcome, not an error from Run.
-func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input []byte) (Outcome, error) {
+func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input []byte) (out Outcome, err error) {
 	if inst.Decl.Analysis == nil {
 		return Outcome{}, ErrNoAnalysis
 	}
@@ -170,7 +171,9 @@ func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input 
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_ = r.provider.CloseRun(releaseCtx, h)
+		if closeErr := r.provider.CloseRun(releaseCtx, h); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close run %s: %w", h.ID, closeErr))
+		}
 	}()
 
 	if err := r.wait(ctx, h); err != nil {

@@ -1,6 +1,6 @@
 # 014a — Managed runs close truthfully
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** make managed-run teardown observable from the Anthropic adapter through the audit/experiment orchestrators and the server cancel route. A caller may tolerate a cleanup error explicitly; no layer may turn it into success implicitly.
 
@@ -31,3 +31,6 @@
 - Audit and experiment unit tests inject cleanup-only and primary-plus-cleanup failures.
 - Worker and HTTP tests inject `Runner.Close` failure and assert a retryable active row plus `500 cancel_failed`.
 
+## Outcome
+
+Teardown is now an ordered interrupt-and-archive operation whose non-idempotent failures are joined and returned. Audit and experiment cleanup preserves both the primary and cleanup error, and worker cancellation stops a persisted backend handle before making the local row terminal, so a failed stop remains retryable.

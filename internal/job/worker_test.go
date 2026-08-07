@@ -20,7 +20,8 @@ type fakeRunner struct {
 	publishRepo string // the RepoName Publish observed — proves the handoff survived
 	observed    provider.RunStatus
 	closed      []string // run ids Close was called with
-	onExecute   func()   // fires inside Execute; stands in for a signal landing mid-run
+	closeErr    error
+	onExecute   func() // fires inside Execute; stands in for a signal landing mid-run
 }
 
 func (f *fakeRunner) record(s string) {
@@ -79,7 +80,7 @@ func (f *fakeRunner) Close(_ context.Context, runID string) error {
 	f.mu.Lock()
 	f.closed = append(f.closed, runID)
 	f.mu.Unlock()
-	return nil
+	return f.closeErr
 }
 
 func drained(t *testing.T, w *Worker) {
@@ -354,6 +355,24 @@ func TestCancelClosesAnOrphanRun(t *testing.T) {
 	}
 	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseFailed || got.Err != CancelCause {
 		t.Errorf("cancelled job = %s/%q, want failed/cancelled", got.Phase, got.Err)
+	}
+}
+
+// A backend stop failure must not be turned into a terminal local cancellation:
+// that would make the still-running remote session impossible to stop by retry.
+func TestCancelKeepsTheJobRetryableWhenBackendCloseFails(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p", PaperKey: "arxiv:1"})
+	_, _, _ = s.Claim(ctx)
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_03"})
+
+	r := &fakeRunner{closeErr: errors.New("backend down")}
+	if err := NewWorker(s, r).Cancel(ctx, j.ID); err == nil {
+		t.Fatal("Cancel succeeded despite a failed backend close")
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase.Terminal() {
+		t.Errorf("failed backend close made job terminal: %s", got.Phase)
 	}
 }
 

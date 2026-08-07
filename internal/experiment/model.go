@@ -65,7 +65,7 @@ func (m *ModelCohort) Usage() provider.Usage { return m.usage }
 // data. It refuses a persona-bearing prompt and an over-cap run before any
 // session starts, so neither reaches the backend. In CI the in-process provider
 // returns canned data, so no model is called.
-func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (CohortData, error) {
+func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (data CohortData, err error) {
 	if decl.Analysis == nil {
 		return CohortData{}, ErrNoAnalysis
 	}
@@ -100,7 +100,9 @@ func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_ = m.Provider.CloseRun(releaseCtx, h)
+		if closeErr := m.Provider.CloseRun(releaseCtx, h); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close run %s: %w", h.ID, closeErr))
+		}
 	}()
 
 	if err := m.wait(ctx, h); err != nil {
