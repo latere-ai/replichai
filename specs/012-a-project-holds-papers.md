@@ -41,15 +41,17 @@ CREATE TABLE project_papers (
 
 **Titles resolve best-effort, server-side.** After the rows are written, the handler resolves each new paper through the existing `PaperResolver` seam and fills `title`, concurrently and bounded by the fetcher's timeout. A source that cannot be reached leaves the title blank and is not an error — the row is a paper you can still start, and the first session's Resolve phase fills the title in as it does today for the project. The client's previewed title is never trusted onto the record: the New-project screen has already resolved the paper for its own preview, but a title stored against a project is a record, and records are the server's to write.
 
-**Credits leave the create path entirely.** `fundNewProject` is removed from `createProject`. A new project starts with an empty pot, and the existing `ProjectCreditsCard` on the project screen is how it is funded — which is where its copy already points ("allocate from here to fund one"). The request body's `credits` field is kept and honoured when non-zero, so a caller that wants to create and fund in one act still can; zero, the default, funds nothing. A funding failure at create is reported and does not fail the create.
+**Credits leave the create path entirely.** `fundNewProject` is removed from `createProject`, and so is the request body's `credits` field — not kept as an optional convenience. A field that funds best-effort would answer `201` to a caller whose wallet could not cover it, with the refusal buried in the body: a project that exists, holds no money, and said so somewhere the reader did not look. That is the exact failure this codebase has just finished removing from the create path, and one funding path is worth more than one saved request. A new project starts with an empty pot, and the existing `ProjectCreditsCard` on the project screen is how it is funded — which is where its copy already points ("allocate from here to fund one").
 
 This is the fix for the refusal a new account meets: with no session started, there is nothing to reserve against, so an empty wallet creates projects freely and meets the credit check exactly once — when somebody presses Start, on a screen showing the pot they are spending from.
 
-**Starting a session is its own route.** `POST /projects/{id}/papers/{key}/sessions` enqueues one session for one paper the project holds, with the same submission `job.Enqueue` builds today (`Kind: KindAudit`, the project, the paper key). Every refusal that create used to report per paper now belongs here, singly and unambiguously: `409 active_session` from the double-trigger guard, `402 no_credits` from the pot, `404` for a paper the project does not hold.
+**Starting a session is its own route.** `POST /projects/{id}/sessions {paper_key}` enqueues one session for one paper the project holds, with the same submission `job.Enqueue` builds today (`Kind: KindAudit`, the project, the paper key). Every refusal that create used to report per paper now belongs here, singly and unambiguously: `409 active_session` from the double-trigger guard, `402 no_credits` from the pot, `404` for a paper the project does not hold.
+
+**A paper key is never a path segment.** `paper.Key` returns `doi:10.1145/3544548.3581433` and `url:https://…` — colons and slashes both. So a paper is addressed by body (`{paper_key}`) or by an encoded `?key=` query, never by `/papers/{key}`, which would split one key across several segments and route it nowhere.
 
 **`POST /papers` is removed, not deprecated.** It exists to create-or-append-and-enqueue, which is exactly the conflation this spec undoes; every one of its uses is now two explicit calls. Its consumers are the frontend's "Replicate again" (which becomes a Start on a paper the project already holds) and `scripts/smoke.sh`, which is updated in the same change.
 
-**The papers a project holds are readable and editable.** `GET /projects/{id}/papers` lists them, each with its session count and the phase of its latest session, so the project screen can render a paper with what has happened to it. `DELETE /projects/{id}/papers/{key}` removes a paper that has no sessions — once a paper has been run, the record of what was reproduced stays.
+**The papers a project holds are readable and editable.** `GET /projects/{id}/papers` lists them, each with its session count and the phase of its latest session, so the project screen can render a paper with what has happened to it. `DELETE /projects/{id}/papers?key=…` removes a paper that has no sessions — once a paper has been run, the record of what was reproduced stays, and stays undeletable. That rule applies to the backfill too: every paper seeded from an existing job has a session by definition, so **no paper that exists at deploy time can be removed**. That is the intended reading of "the record stays", not an oversight — a project's history of what it ran is not editable, and the only removable papers are ones added after this ships and never started.
 
 **Membership decides.** Adding, starting, and listing are open to any project member, matching what `POST /papers` allows today for an existing project; removing a paper is the lead's, matching who may move credits out.
 
@@ -81,12 +83,12 @@ sequenceDiagram
 ## API surface
 
 ```
-POST   /projects                              { title?, papers[], collaborators[], credits? }
+POST   /projects                        { title?, papers[], collaborators[] }
          → 201 { project_id, title, papers: [{key, ref, title} | {ref, error}], members[] }
-GET    /projects/{id}/papers                  → 200 [{key, ref, title, added_by, added_at, sessions, latest_phase}]
-POST   /projects/{id}/papers                  { url } → 201 {key, ref, title}
-DELETE /projects/{id}/papers/{key}            → 204   (lead only; refused 409 once it has sessions)
-POST   /projects/{id}/papers/{key}/sessions   → 201 {job_id}
+GET    /projects/{id}/papers            → 200 [{key, ref, title, added_by, added_at, sessions, latest_phase}]
+POST   /projects/{id}/papers            { url } → 201 {key, ref, title}
+DELETE /projects/{id}/papers?key=<enc>  → 204   (lead only; refused 409 once it has sessions)
+POST   /projects/{id}/sessions          { paper_key } → 201 {job_id}
 ```
 
 Removed: `POST /papers`.
@@ -100,12 +102,12 @@ Removed: `POST /papers`.
 ## Acceptance criteria
 
 1. `POST /projects` with several papers creates the project, records one paper per reference, seeds the collaborators, and enqueues **nothing** — `GET /projects/{id}` reports no sessions.
-2. An account with an empty wallet creates a project successfully. The refusal it used to meet (`402` at create) is gone, and appears instead on `POST …/papers/{key}/sessions`.
+2. An account with an empty wallet creates a project successfully. The refusal it used to meet (`402` at create) is gone, and appears instead on `POST /projects/{id}/sessions`. `POST /projects` no longer accepts a `credits` field at all.
 3. A reference that is not a DOI/arXiv/URL is reported against that reference; the other papers are still recorded and the project survives. There is no response that deletes a just-created project.
-4. `POST /projects/{id}/papers/{key}/sessions` starts one session for that paper; a second call while it runs is `409 active_session`; a project below the start reserve is `402 no_credits`; an unknown key is `404`.
+4. `POST /projects/{id}/sessions {paper_key}` starts one session for that paper; a second call while it runs is `409 active_session`; a project below the start reserve is `402 no_credits`; an unknown key is `404`. A DOI key (`doi:10.1145/3544548.3581433`) round-trips through both this body and the delete route's encoded query.
 5. A paper whose session failed still lists on the project, and can be started again from the same button.
 6. `GET /projects/{id}/papers` reports each paper's session count and latest phase; the same paper cannot be added twice.
-7. `DELETE /projects/{id}/papers/{key}` removes a paper with no sessions, is refused for one that has any, and is refused for a non-lead.
+7. `DELETE /projects/{id}/papers?key=…` removes a paper with no sessions, is refused `409` for one that has any — including every backfilled paper, which has a session by definition — and is refused for a non-lead.
 8. Paper titles resolve server-side best-effort: a reachable source fills the title at create, an unreachable one leaves it blank without failing anything, and the first session's Resolve phase fills it in afterwards.
 9. The migration seeds `project_papers` from the distinct `(project_id, paper_key)` pairs already in `jobs`, so every existing session's paper is listed on its project after deploy.
 10. `POST /papers` is gone, and `scripts/smoke.sh` walks the new two-call path.
