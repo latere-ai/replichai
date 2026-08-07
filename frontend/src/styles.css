@@ -240,6 +240,7 @@ textarea {
   flex-direction: column;
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
+  transition: width 0.18s var(--ease-fluid);
 }
 .rail-head {
   height: 52px;
@@ -249,6 +250,66 @@ textarea {
   gap: 9px;
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
+}
+/* The fold control. It keeps the head's right edge in both states, so the click
+   that folds the rail and the click that unfolds it are the same gesture in
+   nearly the same place. */
+.rail-fold-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--fg-3);
+  transition: background var(--dur-hover), color var(--dur-hover);
+}
+.rail-fold-btn:hover {
+  background: var(--bg-raised);
+  color: var(--fg-1);
+}
+
+/* ── Folded rail ──
+   Every destination stays clickable at its icon; only the words go. The labels
+   are not `visibility: hidden` but `display: none`, so the 56px column never
+   reserves space for text it will not draw and the icons sit truly centred. */
+.rail-fold {
+  width: 56px;
+}
+.rail-fold .rail-logo,
+.rail-fold .rail-name,
+.rail-fold .rail-beta,
+.rail-fold .rail-group .eyebrow,
+.rail-fold .nav-label,
+.rail-fold .nav-btn .count,
+.rail-fold .user-meta {
+  display: none;
+}
+.rail-fold .rail-head {
+  padding: 0;
+  justify-content: center;
+}
+.rail-fold .rail-fold-btn {
+  margin-left: 0;
+}
+.rail-fold .rail-nav {
+  padding: 14px 8px;
+  gap: 10px;
+}
+.rail-fold .nav-btn,
+.rail-fold .user-btn {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.rail-fold .rail-foot {
+  padding: 10px 8px;
 }
 .rail-logo {
   width: 22px;
