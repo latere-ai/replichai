@@ -34,17 +34,23 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada"}`, newcomer); w.Code != http.StatusOK {
 		t.Errorf("save profile = %d, want 200 with no budget", w.Code)
 	}
-	// Creating a project is *not* on this side of the line: a project is opened
-	// by submitting a paper (006j), so creating one is starting a session, which
-	// is spending. It is refused, the half-made project is undone, and each
-	// paper reports why — which is what lets the client offer a top-up rather
-	// than say "could not start".
+	// Creating a project moved onto this side of the line with 012. It used to
+	// be spending — a project was opened *by submitting a paper*, so the create
+	// funded a pot and was refused 402 without one — which meant an account that
+	// had never been given credits could not so much as name what it intended to
+	// reproduce. Now it records papers and runs nothing, so it costs nothing.
 	w := doAs(t, h, "POST", "/projects", `{"title":"Mine","papers":["https://arxiv.org/abs/2401.00003"]}`, newcomer)
-	if w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("create project = %d, want 422 with no budget", w.Code)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create project = %d %s, want 201 with no budget", w.Code, w.Body)
 	}
-	if code := firstSessionError(t, w.Body.Bytes()); code != "no_credits" {
-		t.Errorf("per-paper error = %q, want no_credits", code)
+	var planned struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &planned)
+	// Adding another paper to it is free too: writing down what you mean to run
+	// is not running it.
+	if w := doAs(t, h, "POST", "/projects/"+planned.ProjectID+"/papers", `{"url":"https://arxiv.org/abs/2401.00004"}`, newcomer); w.Code != http.StatusCreated {
+		t.Errorf("add a paper = %d, want 201 with no budget", w.Code)
 	}
 
 	// A project they already own — renaming it, inviting somebody, reading its
@@ -79,19 +85,18 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 		t.Errorf("read a shared project = %d, want 200 with no budget", w.Code)
 	}
 
-	// And the one thing they cannot do: spend.
-	if w := doAs(t, h, "POST", "/papers", `{"url":"https://arxiv.org/abs/2401.00001"}`, newcomer); w.Code != http.StatusPaymentRequired {
-		t.Errorf("submit a paper = %d, want 402 with no budget", w.Code)
+	// And the one thing they cannot do: spend. It is asked once, on the act that
+	// actually starts a run, in a project whose pot is on screen to answer it.
+	if w := doAs(t, h, "POST", "/projects/"+planned.ProjectID+"/sessions",
+		`{"paper_key":"arxiv:2401.00003"}`, newcomer); w.Code != http.StatusPaymentRequired {
+		t.Errorf("start a session = %d, want 402 with no budget", w.Code)
 	}
-	if w := doAs(t, h, "POST", "/papers", `{"url":"https://arxiv.org/abs/2401.00002","project":"`+proj+`"}`, newcomer); w.Code != http.StatusPaymentRequired {
-		t.Errorf("submit into a project = %d, want 402 with no budget", w.Code)
-	}
-	// The project half-made for a paper that could not be enqueued is not left
-	// behind — the compensating delete still runs on the credit path, so a
-	// broke account does not accumulate empty projects by retrying.
+	// The projects they hold are the ones they made on purpose. A broke account
+	// no longer accumulates half-made projects by retrying, because a retry
+	// creates nothing to clean up.
 	list := doAs(t, h, "GET", "/projects", "", newcomer)
-	if n := countProjects(t, list.Body.Bytes()); n != 1 {
-		t.Errorf("owner holds %d project(s), want only the one they already had", n)
+	if n := countProjects(t, list.Body.Bytes()); n != 2 {
+		t.Errorf("owner holds %d project(s), want the two they created", n)
 	}
 }
 

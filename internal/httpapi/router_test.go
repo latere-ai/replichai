@@ -6,12 +6,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -118,57 +120,122 @@ func do(t *testing.T, h http.Handler, method, path, body, principalSub string) *
 	return w
 }
 
-// submitResult is the shape POST /papers returns.
+// submitResult is the shape a started session returns.
 type submitResult struct {
 	JobID     string `json:"job_id"`
 	ProjectID string `json:"project_id"`
 }
 
-func submit(t *testing.T, h http.Handler, body, sub string) (*httptest.ResponseRecorder, submitResult) {
+// createWithPaper opens a project holding one paper and returns the project id.
+// Since 012 this starts nothing — it is the first half of what POST /papers used
+// to do in one call.
+func createWithPaper(t *testing.T, h http.Handler, url, sub string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
-	w := do(t, h, "POST", "/papers", body, sub)
+	w := do(t, h, "POST", "/projects", `{"papers":["`+url+`"]}`, sub)
+	var got struct {
+		ProjectID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	return w, got.ProjectID
+}
+
+// startPaper runs a paper a project already holds — the second half.
+func startPaper(t *testing.T, h http.Handler, projectID, key, sub string) (*httptest.ResponseRecorder, submitResult) {
+	t.Helper()
+	w := do(t, h, "POST", "/projects/"+projectID+"/sessions", `{"paper_key":"`+key+`"}`, sub)
 	var got submitResult
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
 	return w, got
 }
 
-// AC2: a bare submit (no project) opens a fresh project and its first session,
-// returning both ids without blocking on the run.
-func TestSubmitBareOpensAProjectAndSession(t *testing.T) {
+// submit is the whole old flow in one call, for the many tests that only need a
+// running session and do not care which half produced it: create a project
+// holding the paper, then start it.
+func submit(t *testing.T, h http.Handler, url, sub string) (*httptest.ResponseRecorder, submitResult) {
+	t.Helper()
+	w, projectID := createWithPaper(t, h, url, sub)
+	if projectID == "" {
+		return w, submitResult{}
+	}
+	key, err := paper.Key(url)
+	if err != nil {
+		t.Fatalf("paper.Key(%q): %v", url, err)
+	}
+	w, got := startPaper(t, h, projectID, key, sub)
+	got.ProjectID = projectID
+	return w, got
+}
+
+// 012: creating a project records the papers it is about and starts nothing.
+// The session is a second, deliberate act — which is what lets somebody name a
+// project and write down its papers before they have the credits to run them.
+func TestCreateRecordsPapersAndStartsNothing(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
-	w, got := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1")
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202", w.Code)
+	w, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "sub-1")
+	if w.Code != http.StatusCreated || projectID == "" {
+		t.Fatalf("create: status %d, body %s", w.Code, w.Body)
 	}
-	if got.JobID == "" || got.ProjectID == "" {
-		t.Fatalf("missing ids: %+v", got)
-	}
-	// The project exists, owned by the caller; the session persisted, submitted,
-	// under that project — the run has not started blocking anything.
-	p, err := d.Projects.Get(context.Background(), got.ProjectID)
+	p, err := d.Projects.Get(context.Background(), projectID)
 	if err != nil || p.Owner != "sub-1" {
 		t.Fatalf("project = %+v, err %v", p, err)
 	}
+	// Nothing ran.
+	sessions, _ := d.Jobs.ListByProject(context.Background(), projectID)
+	if len(sessions) != 0 {
+		t.Fatalf("create started %d sessions, want 0", len(sessions))
+	}
+	// But the paper is on the project, by its offline identity.
+	papers, err := d.Projects.ListPapers(context.Background(), projectID)
+	if err != nil || len(papers) != 1 || papers[0].Key != "arxiv:2302.03714" {
+		t.Fatalf("papers = %+v, err %v", papers, err)
+	}
+	if papers[0].Ref != "https://arxiv.org/abs/2302.03714" || papers[0].AddedBy != "sub-1" {
+		t.Errorf("paper = %+v", papers[0])
+	}
+
+	// Starting it is the second act, and it is the one that makes a session.
+	sw, got := startPaper(t, h, projectID, "arxiv:2302.03714", "sub-1")
+	if sw.Code != http.StatusCreated || got.JobID == "" {
+		t.Fatalf("start: status %d, body %s", sw.Code, sw.Body)
+	}
 	j, err := d.Jobs.Get(context.Background(), got.JobID)
-	if err != nil || j.Phase != job.PhaseSubmitted || j.Principal != "sub-1" || j.ProjectID != got.ProjectID {
+	if err != nil || j.Phase != job.PhaseSubmitted || j.Principal != "sub-1" || j.ProjectID != projectID {
 		t.Errorf("session = %+v, err %v", j, err)
 	}
 	if j.PaperKey != "arxiv:2302.03714" {
 		t.Errorf("session paper_key = %q, want arxiv:2302.03714", j.PaperKey)
 	}
+	// The session carries the ref the paper was recorded with, not one the
+	// caller re-typed — starting names a paper, it does not describe one.
+	if j.Ref != "https://arxiv.org/abs/2302.03714" {
+		t.Errorf("session ref = %q", j.Ref)
+	}
 }
 
-// AC2: submitting with an owned project adds a second session to it.
-func TestSubmitToOwnedProjectAddsASession(t *testing.T) {
+// 012: a paper added to an existing project, then run. This is what the old
+// project-scoped submit did, split into the two acts it was doing at once.
+func TestAddPaperToOwnedProjectThenStart(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "sub-1", "My project")
 
-	w, got := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714","project":"`+p.ID+`"}`, "sub-1")
-	if w.Code != http.StatusAccepted || got.ProjectID != p.ID {
-		t.Fatalf("status %d, project %q; want 202 into %s", w.Code, got.ProjectID, p.ID)
+	w := do(t, h, "POST", "/projects/"+p.ID+"/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("add paper: status %d, body %s", w.Code, w.Body)
+	}
+	if sessions, _ := d.Jobs.ListByProject(context.Background(), p.ID); len(sessions) != 0 {
+		t.Fatalf("adding a paper started %d sessions, want 0", len(sessions))
+	}
+	// The same paper twice is the same paper: a project is about it once.
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1"); w.Code != http.StatusConflict {
+		t.Errorf("duplicate paper: status %d, want 409", w.Code)
+	}
+
+	sw, got := startPaper(t, h, p.ID, "arxiv:2302.03714", "sub-1")
+	if sw.Code != http.StatusCreated || got.ProjectID != p.ID {
+		t.Fatalf("start: status %d, project %q", sw.Code, got.ProjectID)
 	}
 	sessions, _ := d.Jobs.ListByProject(context.Background(), p.ID)
 	if len(sessions) != 1 {
@@ -176,50 +243,171 @@ func TestSubmitToOwnedProjectAddsASession(t *testing.T) {
 	}
 }
 
-// AC3: a second concurrent submit of the same paper is refused 409, and creates
-// no orphan project — the double-trigger guard, including its bare-submit hole.
-func TestSubmitDoubleFireIsRefused(t *testing.T) {
+// AC4: the double-trigger guard now answers on the one route that starts a run,
+// so the refusal names the act that was refused. Nothing is created to undo,
+// because starting a session creates nothing but the session.
+func TestStartDoubleFireIsRefused(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
-	if w, _ := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1"); w.Code != http.StatusAccepted {
-		t.Fatalf("first submit: %d", w.Code)
+	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "sub-1")
+	if w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "sub-1"); w.Code != http.StatusCreated {
+		t.Fatalf("first start: %d", w.Code)
 	}
-	// Same paper again, still running: refused, even though it is a bare submit
-	// that would otherwise open a brand-new project.
-	w, _ := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1")
+	w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "sub-1")
 	if w.Code != http.StatusConflict {
 		t.Fatalf("double-fire status = %d, want 409", w.Code)
 	}
-	// Exactly one project exists — the compensating delete removed the second.
+	// One project, one session: the refusal left nothing behind, and there was
+	// never a project created speculatively to have to delete.
 	ps, _ := d.Projects.ListByOwner(context.Background(), "sub-1")
 	if len(ps) != 1 {
-		t.Errorf("owner has %d projects, want 1 (no orphan)", len(ps))
+		t.Errorf("owner has %d projects, want 1", len(ps))
+	}
+	if sessions, _ := d.Jobs.ListByProject(context.Background(), projectID); len(sessions) != 1 {
+		t.Errorf("project has %d sessions, want 1", len(sessions))
 	}
 }
 
-func TestSubmitValidation(t *testing.T) {
-	h := NewRouter(testDeps(allowAll)).Handler()
-	if w := do(t, h, "POST", "/papers", `{"url":"  "}`, "sub"); w.Code != http.StatusBadRequest {
+// AC4: a session may only run a paper the project is about. Without that a
+// caller could spend a project's credits on anything they cared to name.
+func TestStartRefusesAPaperTheProjectDoesNotHold(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "sub-1")
+
+	if w, _ := startPaper(t, h, projectID, "arxiv:9999.99999", "sub-1"); w.Code != http.StatusNotFound {
+		t.Errorf("unheld paper: status %d, want 404", w.Code)
+	}
+	if w := do(t, h, "POST", "/projects/"+projectID+"/sessions", `{"paper_key":"  "}`, "sub-1"); w.Code != http.StatusBadRequest {
+		t.Errorf("blank key: status %d, want 400", w.Code)
+	}
+	if w := do(t, h, "POST", "/projects/nope/sessions", `{"paper_key":"arxiv:2302.03714"}`, "sub-1"); w.Code != http.StatusNotFound {
+		t.Errorf("missing project: status %d, want 404", w.Code)
+	}
+}
+
+// A paper key spans several path segments — "doi:10.1145/3544548.3581433" — so
+// it travels in a body or an encoded query, never a path. This is the case that
+// would silently 404 if anybody moved it into the URL.
+func TestAPaperKeyWithSlashesRoundTrips(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	const ref = "https://doi.org/10.1145/3544548.3581433"
+	const key = "doi:10.1145/3544548.3581433"
+
+	_, projectID := createWithPaper(t, h, ref, "sub-1")
+	if w, got := startPaper(t, h, projectID, key, "sub-1"); w.Code != http.StatusCreated || got.JobID == "" {
+		t.Fatalf("start with a slashed key: status %d, body %s", w.Code, w.Body)
+	}
+	// And the same key through the delete route's query, which is the other
+	// place it has to survive being a URL.
+	w := do(t, h, "DELETE", "/projects/"+projectID+"/papers?key="+url.QueryEscape(key), "", "sub-1")
+	if w.Code != http.StatusConflict {
+		t.Errorf("delete a started paper: status %d, want 409 (it has a session)", w.Code)
+	}
+}
+
+// AC7: a paper with no sessions can be dropped; one that has been run cannot.
+// The record of what was actually reproduced is not editable.
+func TestRemovePaperOnlyBeforeItHasRun(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "owner")
+	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `{"url":"https://arxiv.org/abs/2401.00001"}`, "owner"); w.Code != http.StatusCreated {
+		t.Fatalf("add second paper: %d", w.Code)
+	}
+
+	// Never run: it goes.
+	if w := do(t, h, "DELETE", "/projects/"+projectID+"/papers?key=arxiv:2401.00001", "", "owner"); w.Code != http.StatusNoContent {
+		t.Fatalf("remove an unrun paper: status %d, body %s", w.Code, w.Body)
+	}
+	papers, _ := d.Projects.ListPapers(context.Background(), projectID)
+	if len(papers) != 1 {
+		t.Fatalf("after remove: %d papers, want 1", len(papers))
+	}
+
+	// Run once: it stays, whatever became of the run.
+	if w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "owner"); w.Code != http.StatusCreated {
+		t.Fatalf("start: %d", w.Code)
+	}
+	if w := do(t, h, "DELETE", "/projects/"+projectID+"/papers?key=arxiv:2302.03714", "", "owner"); w.Code != http.StatusConflict {
+		t.Errorf("remove a run paper: status %d, want 409", w.Code)
+	}
+	if w := do(t, h, "DELETE", "/projects/"+projectID+"/papers", "", "owner"); w.Code != http.StatusBadRequest {
+		t.Errorf("remove with no key: status %d, want 400", w.Code)
+	}
+}
+
+// AC6: the papers list reports what has happened to each paper, so the project
+// screen can show a paper nobody has started beside one that failed.
+func TestListPapersReportsSessions(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "owner")
+	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `{"url":"https://arxiv.org/abs/2401.00001"}`, "owner"); w.Code != http.StatusCreated {
+		t.Fatalf("add: %d", w.Code)
+	}
+	if w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "owner"); w.Code != http.StatusCreated {
+		t.Fatalf("start: %d", w.Code)
+	}
+
+	w := do(t, h, "GET", "/projects/"+projectID+"/papers", "", "owner")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list papers: status %d", w.Code)
+	}
+	var got []PaperView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || len(got) != 2 {
+		t.Fatalf("papers = %s, err %v", w.Body, err)
+	}
+	if got[0].Key != "arxiv:2302.03714" || got[0].Sessions != 1 || got[0].LatestPhase != string(job.PhaseSubmitted) {
+		t.Errorf("started paper = %+v", got[0])
+	}
+	if got[1].Key != "arxiv:2401.00001" || got[1].Sessions != 0 || got[1].LatestPhase != "" {
+		t.Errorf("unstarted paper = %+v", got[1])
+	}
+}
+
+func TestPaperRouteValidation(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "sub")
+
+	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `{"url":"  "}`, "sub"); w.Code != http.StatusBadRequest {
 		t.Errorf("empty url: status %d, want 400", w.Code)
 	}
-	if w := do(t, h, "POST", "/papers", `not json`, "sub"); w.Code != http.StatusBadRequest {
+	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `not json`, "sub"); w.Code != http.StatusBadRequest {
 		t.Errorf("bad json: status %d, want 400", w.Code)
 	}
 	// A reference that is not a DOI, arXiv ID, or URL is rejected at the edge.
-	if w := do(t, h, "POST", "/papers", `{"url":"just some words"}`, "sub"); w.Code != http.StatusBadRequest {
+	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `{"url":"just some words"}`, "sub"); w.Code != http.StatusBadRequest {
 		t.Errorf("garbage url: status %d, want 400", w.Code)
 	}
-	// Submitting into a project the caller does not own is refused.
-	d := testDeps(allowAll)
-	other, _ := d.Projects.Create(context.Background(), "someone-else", "Theirs")
-	h2 := NewRouter(d).Handler()
-	if w := do(t, h2, "POST", "/papers", `{"url":"https://arxiv.org/abs/2302.03714","project":"`+other.ID+`"}`, "me"); w.Code != http.StatusForbidden {
-		t.Errorf("not-owner submit: status %d, want 403", w.Code)
+	// A create naming nothing but garbage still opens the project and reports
+	// the reference — there is no enqueue left to fail, so nothing is undone.
+	w := do(t, h, "POST", "/projects", `{"papers":["just some words"]}`, "sub")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create with an unresolvable paper: status %d, body %s", w.Code, w.Body)
 	}
-	// Submitting into a project that does not exist is a 404.
-	if w := do(t, h2, "POST", "/papers", `{"url":"https://arxiv.org/abs/2302.03714","project":"nope"}`, "me"); w.Code != http.StatusNotFound {
-		t.Errorf("missing-project submit: status %d, want 404", w.Code)
+	var created struct {
+		ProjectID string        `json:"project_id"`
+		Papers    []PaperResult `json:"papers"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	if created.ProjectID == "" || len(created.Papers) != 1 || created.Papers[0].Error != "unresolvable_paper" {
+		t.Errorf("create result = %+v", created)
+	}
+	if _, err := d.Projects.Get(context.Background(), created.ProjectID); err != nil {
+		t.Errorf("the project must survive: %v", err)
+	}
+
+	// Working in a project the caller is neither owner nor collaborator of.
+	other, _ := d.Projects.Create(context.Background(), "someone-else", "Theirs")
+	if w := do(t, h, "POST", "/projects/"+other.ID+"/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "me"); w.Code != http.StatusForbidden {
+		t.Errorf("not-owner add: status %d, want 403", w.Code)
+	}
+	if w := do(t, h, "POST", "/projects/nope/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "me"); w.Code != http.StatusNotFound {
+		t.Errorf("missing-project add: status %d, want 404", w.Code)
 	}
 }
 
@@ -229,9 +417,9 @@ func TestProjectListAndDetail(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 
-	// Two bare submits for the same owner open two projects.
-	_, a := submit(t, h, `{"url":"https://arxiv.org/abs/2302.03714"}`, "me")
-	_, _ = submit(t, h, `{"url":"https://doi.org/10.1145/3313831"}`, "me")
+	// Two create-and-start flows for the same owner open two projects.
+	_, a := submit(t, h, "https://arxiv.org/abs/2302.03714", "me")
+	_, _ = submit(t, h, "https://doi.org/10.1145/3313831", "me")
 	// A stranger's project must never appear in my list or be readable by me.
 	strangerP, _ := d.Projects.Create(context.Background(), "stranger", "Theirs")
 

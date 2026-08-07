@@ -108,7 +108,11 @@ func TestOperatorRoutesAreGated(t *testing.T) {
 		gated[route.Method+" "+route.Pattern] = true
 	}
 	for _, must := range []string{
-		"POST /papers",
+		"POST /projects",
+		"GET /projects/{id}/papers",
+		"POST /projects/{id}/papers",
+		"DELETE /projects/{id}/papers",
+		"POST /projects/{id}/sessions",
 		"GET /projects",
 		"GET /shared",
 		"GET /public",

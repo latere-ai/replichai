@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -73,9 +74,12 @@ func (rt *Router) routes() {
 	rt.openHandle("GET", "/profiles/{handle}", rt.publicProfile)
 	rt.gatedHandle("GET", "/me/profile", rt.getProfile)
 	rt.gatedHandle("PATCH", "/me/profile", rt.saveProfile)
-	rt.gatedHandle("POST", "/papers", rt.submitPaper)
 	rt.gatedHandle("POST", "/resolve", rt.resolvePaper)
 	rt.gatedHandle("POST", "/projects", rt.createProject)
+	rt.gatedHandle("GET", "/projects/{id}/papers", rt.listProjectPapers)
+	rt.gatedHandle("POST", "/projects/{id}/papers", rt.addProjectPaper)
+	rt.gatedHandle("DELETE", "/projects/{id}/papers", rt.removeProjectPaper)
+	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
 	rt.gatedHandle("GET", "/shared", rt.listShared)
@@ -122,20 +126,62 @@ func (rt *Router) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// submitPaper opens a replication session in a project (006g): it resolves the
-// paper's offline identity (rejecting garbage early, never touching the
-// network), then either opens a fresh project for it or adds a session to a
-// project the caller already owns. It returns the session and project ids
-// without waiting on the run — no request handler ever blocks on an audit.
-func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
-		// PDF ingestion is 006d; the URL path works today.
-		writeError(w, http.StatusNotImplemented, "pdf_ingestion_not_available")
+/* ─── The papers a project holds, and starting a session on one (012) ─── */
+
+// PaperView is a paper as the project screen reads it: the record, plus what has
+// happened to it. The session count and latest phase are the join to the job
+// store through the paper key both sides already carry — a paper with no
+// sessions is the ordinary state of one nobody has started yet.
+type PaperView struct {
+	project.Paper
+	Sessions    int    `json:"sessions"`
+	LatestPhase string `json:"latest_phase,omitempty"`
+}
+
+// listProjectPapers returns the papers a project is about, each with what has
+// been run against it.
+func (rt *Router) listProjectPapers(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForRead(w, r)
+	if !ok {
+		return
+	}
+	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	out := make([]PaperView, 0, len(papers))
+	for _, p := range papers {
+		v := PaperView{Paper: p}
+		for _, j := range sessions {
+			if j.PaperKey != p.Key {
+				continue
+			}
+			v.Sessions++
+			// ListByProject is newest-first, so the first match is the latest.
+			if v.LatestPhase == "" {
+				v.LatestPhase = string(j.Phase)
+			}
+		}
+		out = append(out, v)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// addProjectPaper records another paper on a project. It starts nothing: adding
+// a paper and running it are two acts since 012, and this is the first.
+func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
-		URL     string `json:"url"`
-		Project string `json:"project"`
+		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
@@ -145,77 +191,159 @@ func (rt *Router) submitPaper(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_url")
 		return
 	}
-	// The offline paper key: it fails fast on a reference that is not a DOI,
-	// arXiv ID, or URL, and keys the double-trigger guard. The worker's Resolve
-	// phase does the enriching lookup; a submit never rides arXiv's availability.
-	paperKey, err := paper.Key(body.URL)
+	key, err := paper.Key(body.URL)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "unresolvable_paper")
 		return
 	}
-	owner := principal(r)
-
-	if strings.TrimSpace(body.Project) == "" {
-		rt.submitToNewProject(w, r, owner, body.URL, paperKey)
+	rec := project.Paper{Key: key, Ref: body.URL, AddedBy: principal(r)}
+	switch err := rt.projects.AddPaper(r.Context(), proj.ID, rec); {
+	case errors.Is(err, project.ErrPaperExists):
+		writeError(w, http.StatusConflict, "paper_exists")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "add_paper_failed")
 		return
 	}
-	rt.submitToExistingProject(w, r, owner, body.Project, body.URL, paperKey)
+	results := []PaperResult{{Ref: body.URL, Key: key}}
+	rt.fillPaperTitles(r, proj.ID, results)
+	writeJSON(w, http.StatusCreated, results[0])
 }
 
-// submitToNewProject opens a fresh project and its first session. If the session
-// fails to enqueue — including the per-principal guard catching the same paper
-// already running under this owner — the just-created project is deleted, so a
-// project is never left empty.
-func (rt *Router) submitToNewProject(w http.ResponseWriter, r *http.Request, owner, url, paperKey string) {
-	id, _ := IdentityFrom(r)
-	proj, err := rt.projects.Create(r.Context(), owner, defaultTitle(url))
+// removeProjectPaper drops a paper a project has never run.
+//
+// Once a paper has a session it stays: the record of what was actually
+// reproduced is not editable, and every paper the 012 migration backfilled has a
+// session by definition — so nothing that predates this endpoint can be removed
+// through it. Removing is the lead's, matching who may move credits out.
+func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok {
+		return
+	}
+	// An owner leads their own project by definition; isLead covers the case
+	// where a collaborator was promoted to lead.
+	if proj.Owner != principal(r) && !rt.isLead(r, proj.ID) {
+		writeError(w, http.StatusForbidden, "not_lead")
+		return
+	}
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "missing_key")
+		return
+	}
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "project_create_failed")
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
 		return
 	}
-	if !rt.fundNewProject(w, r, proj.ID, id, 0, 1) {
-		rt.undoProject(r, proj.ID, id)
+	for _, j := range sessions {
+		if j.PaperKey == key {
+			writeError(w, http.StatusConflict, "paper_has_sessions")
+			return
+		}
+	}
+	if err := rt.projects.RemovePaper(r.Context(), proj.ID, key); err != nil {
+		writeError(w, http.StatusInternalServerError, "remove_paper_failed")
 		return
 	}
-	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey})
-	if err != nil {
-		rt.undoProject(r, proj.ID, id) // compensate: never leave an empty project, or its money in one
-		rt.writeEnqueueError(w, err)
-		return
-	}
-	// Membership is seeded only now, once the project is real: a row written
-	// before the compensating delete would outlive the project it names, and
-	// nothing cascades it away.
-	rt.seedCollaborators(r.Context(), proj.ID, id, nil)
-	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// submitToExistingProject adds a session to a project the caller owns or
-// collaborates on, refusing a project they are neither of and a paper already
-// running in it. What pays is the project's own pot, so there is nothing about
-// a payer for the body to carry.
-func (rt *Router) submitToExistingProject(w http.ResponseWriter, r *http.Request, owner, projectID, url, paperKey string) {
-	proj, err := rt.projects.Get(r.Context(), projectID)
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "project_not_found")
+// startSession runs one paper the project already holds.
+//
+// This is where every refusal a create used to report per paper now lives,
+// singly: the double-trigger guard (409), the project pot (402), and a key the
+// project does not hold (404). One act, one answer — and the caller is looking at
+// the project whose credits are being spent, which is the one screen where "this
+// project is out of credits" names something they can act on.
+//
+// The paper key travels in the body, never the path: paper.Key returns
+// "doi:10.1145/3544548.3581433" and "url:https://…", so a key spans several path
+// segments and would route nowhere.
+func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok {
 		return
 	}
+	var body struct {
+		PaperKey string `json:"paper_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	key := strings.TrimSpace(body.PaperKey)
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "missing_key")
+		return
+	}
+	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	if !rt.mayWorkInProject(r, proj, owner) {
-		writeError(w, http.StatusForbidden, "not_owner")
+	var held *project.Paper
+	for i := range papers {
+		if papers[i].Key == key {
+			held = &papers[i]
+			break
+		}
+	}
+	// A session may only run a paper the project is about. Without this a caller
+	// could spend a project's credits on anything at all.
+	if held == nil {
+		writeError(w, http.StatusNotFound, "paper_not_found")
 		return
 	}
 	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{
-		Principal: owner, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: paperKey,
+		Principal: principal(r), Ref: held.Ref, Kind: job.KindAudit, Project: proj.ID, PaperKey: held.Key,
 	})
 	if err != nil {
 		rt.writeEnqueueError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": j.ID, "project_id": proj.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"job_id": j.ID, "project_id": proj.ID})
+}
+
+// projectForWork loads the project named in the path and refuses a caller who
+// may not work in it — the one gate every paper and session write shares, so no
+// route can forget it.
+func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project_not_found")
+		return project.Project{}, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return project.Project{}, false
+	}
+	if !rt.mayWorkInProject(r, proj, principal(r)) {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return project.Project{}, false
+	}
+	return proj, true
+}
+
+// projectForRead is projectForWork's read counterpart: a public project is open
+// to anyone signed in, so listing what a project is about follows the same rule
+// as listing its sessions.
+func (rt *Router) projectForRead(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project_not_found")
+		return project.Project{}, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return project.Project{}, false
+	}
+	if !rt.mayViewProject(r, proj) {
+		writeError(w, http.StatusForbidden, "not_owner")
+		return project.Project{}, false
+	}
+	return proj, true
 }
 
 // mayWorkInProject reports whether a caller may open a session in a project:
@@ -285,19 +413,32 @@ func (rt *Router) resolvePaper(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, got)
 }
 
-// SessionResult reports one paper's fate in a create: a job id when it started,
-// or a machine-readable error when it did not (a bad reference, or the
-// double-trigger guard catching a duplicate).
-type SessionResult struct {
-	URL   string `json:"url"`
-	JobID string `json:"job_id,omitempty"`
+// PaperResult reports one reference's fate in a create: the paper it was
+// recorded as, or why it was not recorded at all. Since 012 a create records
+// papers and starts nothing, so the only thing that can go wrong per reference
+// is the reference itself — there is no enqueue here to fail, and no credits to
+// run out of.
+type PaperResult struct {
+	Ref   string `json:"ref"`
+	Key   string `json:"key,omitempty"`
+	Title string `json:"title,omitempty"`
 	Error string `json:"error,omitempty"`
 }
 
-// createProject opens a project with a chosen title, one session per paper, and
-// seeded collaborators (006j). Papers are enqueued best-effort: each is reported
-// in sessions[]. The project is kept if at least one session started; if every
-// paper failed it is deleted (never leave an empty project) and the call is 422.
+// createProject opens a project with a chosen title, the papers it is about, and
+// seeded collaborators (006j, reshaped by 012).
+//
+// It records; it does not run. Nothing is enqueued and nothing is spent, which
+// is what lets an account with an empty wallet name a project, write down what it
+// intends to reproduce, and invite people to it — all of which the funding-at-
+// create rule used to refuse with a 402 at the door. The credit question is asked
+// once, later, by startSession, where there is a project pot on screen to answer
+// it with.
+//
+// Because nothing is spent there is nothing to compensate for: 006j's "never
+// leave an empty project" rule, its 422, and the undo delete all go with the
+// enqueue that needed them. A project with no papers is simply a project nobody
+// has added a paper to yet.
 func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	id, ok := IdentityFrom(r)
 	if !ok {
@@ -308,12 +449,6 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		Title         string   `json:"title"`
 		Papers        []string `json:"papers"`
 		Collaborators []string `json:"collaborators"`
-		// Credits funds the new project from the creator's wallet, in micro-USD.
-		// Zero means one start reserve per paper, so a batch is funded for the
-		// sessions it is actually asking for — funding one reserve for four
-		// papers would refuse three of them by default, which reads as a bug
-		// rather than a budget.
-		Credits int64 `json:"credits"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
@@ -326,7 +461,7 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	}
 	title := strings.TrimSpace(body.Title)
 	if title == "" {
-		title = defaultTitle(papers[0]) // the worker enriches this placeholder
+		title = defaultTitle(papers[0]) // enriched once the first paper resolves
 	}
 
 	proj, err := rt.projects.Create(r.Context(), id.Sub, title)
@@ -334,109 +469,81 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_create_failed")
 		return
 	}
-	if !rt.fundNewProject(w, r, proj.ID, id, body.Credits, len(papers)) {
-		rt.undoProject(r, proj.ID, id)
-		return
-	}
 
-	results := make([]SessionResult, 0, len(papers))
-	started := 0
-	for _, url := range papers {
-		res := SessionResult{URL: url}
-		if key, kErr := paper.Key(url); kErr != nil {
-			res.Error = "unresolvable_paper"
-		} else if j, eErr := rt.jobs.Enqueue(r.Context(), job.Submission{Principal: id.Sub, Ref: url, Kind: job.KindAudit, Project: proj.ID, PaperKey: key}); eErr != nil {
-			res.Error = enqueueErrorCode(eErr)
-		} else {
-			res.JobID = j.ID
-			started++
-		}
-		results = append(results, res)
+	results := make([]PaperResult, 0, len(papers))
+	for _, ref := range papers {
+		results = append(results, rt.recordPaper(r, proj.ID, id.Sub, ref))
 	}
+	rt.fillPaperTitles(r, proj.ID, results)
 
-	// Never leave an empty project: if not one paper started, undo the create —
-	// including the credits it was funded with, which would otherwise sit in a
-	// project that no longer exists and that nobody has a role in to reclaim.
-	if started == 0 {
-		rt.undoProject(r, proj.ID, id)
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "no_sessions_started", "sessions": results})
-		return
-	}
-
-	// Membership is seeded only now, once at least one session has started, so
-	// a refused create leaves no rows naming a project that is gone.
 	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"project_id": proj.ID,
 		"title":      title,
-		"sessions":   results,
+		"papers":     results,
 		"members":    members,
 	})
 }
 
-// fundNewProject moves credits from the creator's wallet into the project's pot,
-// in the request that creates it.
-//
-// It has to happen here rather than later, because since 006j a project is
-// opened *by submitting a paper*: a project born with an empty pot fails its own
-// first enqueue and is deleted again by the compensating delete. So creating a
-// project is spending, and a creator with an empty wallet is refused for the
-// same reason and with the same code as any other unfunded start — which is
-// what lets the client offer a top-up rather than say "could not create".
-//
-// The default amount is one start reserve per paper, so a batch is funded for
-// what it is asking for; a request naming its own amount gets exactly that.
-//
-// This is narrower than 006j's per-paper reporting on purpose: an unfunded
-// wallet fails before any paper is enqueued, so there is nothing per-paper to
-// report and the refusal is the whole request. Where the allocation succeeds and
-// individual papers then fail, 006j's rule is untouched.
-func (rt *Router) fundNewProject(w http.ResponseWriter, r *http.Request, projectID string, creator Identity, amount int64, sessions int) bool {
-	if rt.credits == nil {
-		return true // unmetered: an offline run funds nothing and refuses nothing
+// recordPaper writes one reference onto a project, reporting what became of it.
+// paper.Key is offline, so a create costs no network and cannot half-fail on a
+// slow source — a reference that is not a DOI, arXiv ID, or URL is the only
+// thing that can be refused here.
+func (rt *Router) recordPaper(r *http.Request, projectID, principal, ref string) PaperResult {
+	res := PaperResult{Ref: ref}
+	key, err := paper.Key(ref)
+	if err != nil {
+		res.Error = "unresolvable_paper"
+		return res
 	}
-	if amount <= 0 {
-		if rt.reserve == nil {
-			return true
-		}
-		n, err := rt.reserve(r.Context())
-		if err != nil || n <= 0 {
-			return true
-		}
-		amount = n * int64(max(sessions, 1))
-	}
-	switch err := rt.credits.Fund(r.Context(), creator.Email, projectID, amount); {
-	case err == nil:
-		return true
-	case errors.Is(err, credit.ErrInsufficient):
-		writeError(w, http.StatusPaymentRequired, "no_credits")
+	res.Key = key
+	switch err := rt.projects.AddPaper(r.Context(), projectID, project.Paper{Key: key, Ref: ref, AddedBy: principal}); {
+	case err == nil, errors.Is(err, project.ErrPaperExists):
+		// A repeated reference in one batch is the same paper named twice, not a
+		// failure: the project is about it either way.
 	default:
-		writeError(w, http.StatusInternalServerError, "project_create_failed")
+		res.Error = "add_paper_failed"
 	}
-	return false
+	return res
 }
 
-// undoProject is the compensating delete, credits included.
+// fillPaperTitles resolves each recorded paper against its source and writes the
+// title back, best-effort and in parallel.
 //
-// A project that could not open a single session is deleted, and its pot has to
-// go back with it: the ledger deliberately has no foreign key on a project, so
-// nothing cleans up after the delete, and a reclaim needs a role in a project
-// that no longer exists. Without this the reserve a refused create moved is
-// gone from the creator's wallet and unreachable — which the double-trigger
-// guard makes easy to hit, by submitting a paper that is already running.
-//
-// The unwind runs first: it moves what the pot can still commit, and a project
-// row that is already gone would make that pot unreadable by anything else.
-func (rt *Router) undoProject(r *http.Request, projectID string, creator Identity) {
-	if rt.credits != nil {
-		if err := rt.credits.Unwind(r.Context(), projectID, creator.Email); err != nil {
-			// The delete still happens: an empty project nobody can see is a
-			// smaller problem than one holding credits *and* visible.
-			log.Printf("undo project %s: returning credits to %s: %v", projectID, creator.Email, err)
-		}
+// Best-effort is the whole design: a source that is down leaves the title blank,
+// which is a paper you can still start, and the first session's Resolve phase
+// fills it in later. The client's own preview is never trusted onto the record —
+// the New-project screen has already resolved these papers for its own display,
+// but a title stored against a project is a record, and records are the server's
+// to write.
+func (rt *Router) fillPaperTitles(r *http.Request, projectID string, papers []PaperResult) {
+	if rt.resolver == nil {
+		return
 	}
-	_ = rt.projects.Delete(r.Context(), projectID)
+	ctx := r.Context()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	for i := range papers {
+		if papers[i].Error != "" {
+			continue
+		}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			got, err := rt.resolver.Resolve(ctx, papers[i].Ref)
+			if err != nil || strings.TrimSpace(got.Title) == "" {
+				return
+			}
+			if err := rt.projects.SetPaperTitle(ctx, projectID, papers[i].Key, got.Title); err != nil {
+				return
+			}
+			mu.Lock()
+			papers[i].Title = got.Title
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
 }
 
 // seedCollaborators seeds the owner as lead (idempotent) and adds each
