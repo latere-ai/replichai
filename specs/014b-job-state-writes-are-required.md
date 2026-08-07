@@ -1,6 +1,6 @@
 # 014b — Job-state writes are required
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** stop the worker from continuing after a run observation or terminal transition failed to persist. This is the durable lifecycle only; business-level best-effort enrichment is unchanged.
 
@@ -33,3 +33,6 @@ The worker ignores `Store.Observe` and final `Store.Advance` errors. Losing the 
 - A pool test captures logs for a surfaced processing error.
 - The Postgres scan contract injects an incompatible JSON rate card and expects a decode error.
 
+## Outcome
+
+Observation failures now interrupt the per-job context and become the job's durable failure instead of allowing publication. Success transitions retry three times and surface persistent failure while leaving `publishing` recoverable; failure writes return joined errors and pool/reconciliation goroutines log them. Corrupt rate cards now fail decoding rather than silently pricing a run at zero.

@@ -107,10 +107,9 @@ func scanJob(row pgx.Row) (Job, error) {
 		}
 	}
 	if len(ratesRaw) > 0 {
-		// A card that will not decode prices nothing rather than failing the
-		// read: a session that cannot be read is worse than one whose charge
-		// has to be reconciled.
-		_ = json.Unmarshal(ratesRaw, &j.Rates)
+		if err := json.Unmarshal(ratesRaw, &j.Rates); err != nil {
+			return Job{}, fmt.Errorf("decode rate_card: %w", err)
+		}
 	}
 	// Every read goes through here, so the derived cost is filled in once.
 	return j.withCost(), nil
