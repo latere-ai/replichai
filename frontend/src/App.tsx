@@ -76,7 +76,7 @@ import { formatUSD, parseUSD, toDollars } from './money'
 import {
   clockOf,
   compactTokens,
-  firstAtOrAfter,
+  seekTarget,
   freshOf,
   histogram,
   matches,
@@ -1450,7 +1450,7 @@ function ProjectScreen({
         {tab === 'sessions' && (
           <div className="stack">
             {credits && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
-            {maySubmit && <PapersCard i18n={i18n} me={me} project={project} credits={credits ?? undefined} onChanged={onSpent} />}
+            <PapersCard i18n={i18n} me={me} project={project} credits={credits ?? undefined} mayWork={maySubmit} onChanged={onSpent} />
             <div className="card">
               <CardHead label={t('projectSessions')} icon="layers" tone="var(--run)" />
               {sessions === null || sessions.length === 0 ? (
@@ -1909,12 +1909,18 @@ function PapersCard({
   me,
   project,
   credits,
+  mayWork,
   onChanged,
 }: {
   i18n: I18n
   me: Me
   project: Project
   credits?: ProjectCredits
+  // Whether this caller may work here — owner or collaborator. Reading is not
+  // working: a public project's papers are what it is *about*, and the public
+  // zone exists so a visitor can check that. Adding one and starting a run are
+  // the parts that need a role.
+  mayWork: boolean
   onChanged: () => void
 }) {
   const { t } = i18n
@@ -1982,6 +1988,7 @@ function PapersCard({
   return (
     <div className="card">
       <CardHead label={t('papers')} icon="fileText" tone="var(--accent)" />
+      {mayWork && (
       <div className="card-pad stack">
         <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
@@ -2003,8 +2010,9 @@ function PapersCard({
           </span>
         )}
       </div>
+      )}
       {papers === null ? null : papers.length === 0 ? (
-        <Empty icon="fileText" text={t('noPapers2')} />
+        <Empty icon="fileText" text={t('projectNoPapers')} />
       ) : (
         <div className="rows">
           {papers.map((p) => (
@@ -2014,18 +2022,25 @@ function PapersCard({
               <span className="muted small">
                 {p.sessions > 0 ? t('paperSessions', { n: String(p.sessions) }) : t('paperNeverRun')}
               </span>
-              {p.sessions === 0 && (
+              {mayWork && p.sessions === 0 && (
                 <Tip text={t('removePaper')}>
                   <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => remove(p.key)}>
                     <Ico name="x" size={13} w={1.9} />
                   </button>
                 </Tip>
               )}
-              <Tip text={short ? shortWhy : ''}>
-                <button className="btn sm" disabled={!!busyKey || short} onClick={() => start(p.key)}>
-                  <Ico name="sparkles" size={12} /> {busyKey === p.key ? t('startingSession') : t('startSession')}
-                </button>
-              </Tip>
+              {mayWork &&
+                (short ? (
+                  <Tip text={shortWhy}>
+                    <button className="btn sm" disabled>
+                      <Ico name="sparkles" size={12} /> {t('startSession')}
+                    </button>
+                  </Tip>
+                ) : (
+                  <button className="btn sm" disabled={!!busyKey} onClick={() => start(p.key)}>
+                    <Ico name="sparkles" size={12} /> {busyKey === p.key ? t('startingSession') : t('startSession')}
+                  </button>
+                ))}
             </div>
           ))}
         </div>
@@ -2696,7 +2711,10 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
   const seek = useCallback((at: number, list: Event[]) => {
     const stream = streamRef.current
     if (!stream) return
-    const i = firstAtOrAfter(list, at)
+    const i = list.findIndex((e) => {
+      const t = timeOf(e)
+      return !Number.isNaN(t) && t >= at
+    })
     if (i < 0) return
     const card = stream.querySelector<HTMLElement>(`.event[data-i="${i}"]`)
     if (card) stream.scrollTo({ top: card.offsetTop - stream.offsetTop - 8, behavior: 'smooth' })
@@ -2768,7 +2786,7 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
           they do not, so a transcript without timestamps still says where the
           session got to. */}
       {span ? (
-        <Scrubber i18n={i18n} span={span} events={tr.events} job={job} onSeek={(at) => seek(at, visible)} />
+        <Scrubber i18n={i18n} span={span} events={tr.events} job={job} seekList={visible} onSeek={seek} />
       ) : (
         job && <Timeline i18n={i18n} job={job} />
       )}
@@ -2884,13 +2902,18 @@ function Scrubber({
   span,
   events,
   job,
+  seekList,
   onSeek,
 }: {
   i18n: I18n
   span: Span
   events: Event[]
   job: Job | null
-  onSeek: (at: number) => void
+  // seekList is what the filters left standing — the same list the seek
+  // resolves against, so the cursor never points at a card that is not on
+  // screen.
+  seekList: Event[]
+  onSeek: (at: number, list: Event[]) => void
 }) {
   const { t } = i18n
   const barRef = useRef<HTMLDivElement>(null)
@@ -2900,12 +2923,21 @@ function Scrubber({
 
   // A pointer anywhere on the bar seeks; holding and dragging keeps seeking.
   // Pointer capture is what makes a drag survive leaving the element.
+  // The cursor follows the event the scrub landed on, not the pointer. A long
+  // session that finished its work early leaves a stretch of bar with no events
+  // under it; every position in it resolves to the last event, so a cursor left
+  // where the pointer was would report a time the transcript is nowhere near.
   const seekTo = (clientX: number) => {
     const box = barRef.current?.getBoundingClientRect()
     if (!box) return
     const f = Math.min(1, Math.max(0, (clientX - box.left) / box.width))
-    setCursor(f)
-    onSeek(span.from + f * (span.to - span.from))
+    const target = seekTarget(seekList, span, f)
+    if (!target) {
+      setCursor(f)
+      return
+    }
+    setCursor(target.cursor)
+    onSeek(target.at, seekList)
   }
 
   return (

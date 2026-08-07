@@ -150,6 +150,33 @@ export function firstAtOrAfter(events: Event[], t: number): number {
   return last
 }
 
+// seekTarget maps a position on the scrubber onto the event it lands on, and
+// the position the cursor should then occupy.
+//
+// The two are not the same number, and that is the whole point. The bar spans
+// the *session* (006s: every event is emitted inside `running`, so a bar drawn
+// across the events alone would make the phase bands meaningless), but a long
+// session can finish its work early and sit in a phase for hours — an overnight
+// run leaves three quarters of the bar with no events under it. Every position
+// in that tail resolves to the last event, so a cursor drawn where the pointer
+// was told you that you were at 09:00 while the transcript showed 18:45.
+//
+// So the cursor follows the event, not the pointer. Clicking into the dead tail
+// snaps back to the last event, which is both where the transcript went and a
+// visible answer to "why can I not scrub further" — the span stays honest and
+// the cursor stops lying about it.
+export function seekTarget(events: Event[], span: Span, f: number): { index: number; at: number; cursor: number } | null {
+  const width = span.to - span.from
+  const at = span.from + Math.min(1, Math.max(0, f)) * width
+  const index = firstAtOrAfter(events, at)
+  if (index < 0) return null
+  const landed = timeOf(events[index])
+  // An event with no timestamp cannot place the cursor; leave it where the
+  // pointer put it rather than snapping to an arbitrary edge.
+  const cursor = Number.isNaN(landed) ? Math.min(1, Math.max(0, f)) : (landed - span.from) / width
+  return { index, at, cursor: Math.min(1, Math.max(0, cursor)) }
+}
+
 // matches is the transcript search predicate: an event matches when the query
 // appears in what the reader can see of it — its content, its tool, or its kind.
 // An empty query matches everything, so clearing the box restores the run.
