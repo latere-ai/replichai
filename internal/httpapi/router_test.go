@@ -1513,3 +1513,37 @@ func TestNoEngineImports(t *testing.T) {
 		}
 	}
 }
+
+// Papers follow the project's visibility, like everything else under it: a
+// public project's papers are readable by anyone signed in, a private one's are
+// not, and a project the caller cannot see reads as missing rather than
+// forbidden — the same rule every other read path holds.
+func TestReadingPapersFollowsTheProjectsVisibility(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "owner")
+
+	// Private: a stranger may not read it, and may not work in it either.
+	if w := do(t, h, "GET", "/projects/"+projectID+"/papers", "", "stranger"); w.Code != http.StatusForbidden {
+		t.Errorf("stranger reads a private project's papers: status %d, want 403", w.Code)
+	}
+	if w := do(t, h, "GET", "/projects/nope/papers", "", "owner"); w.Code != http.StatusNotFound {
+		t.Errorf("papers of a missing project: status %d, want 404", w.Code)
+	}
+
+	// Public: readable by anyone signed in — but reading is not working, so a
+	// stranger still cannot add a paper or spend the project's credits.
+	if err := d.Projects.(project.Store).SetPublic(context.Background(), projectID,
+		project.SignOff{By: "owner", AttestationVersion: "v2"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if w := do(t, h, "GET", "/projects/"+projectID+"/papers", "", "stranger"); w.Code != http.StatusOK {
+		t.Errorf("stranger reads a public project's papers: status %d, want 200", w.Code)
+	}
+	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `{"url":"https://arxiv.org/abs/2401.00001"}`, "stranger"); w.Code != http.StatusForbidden {
+		t.Errorf("stranger adds to a public project: status %d, want 403", w.Code)
+	}
+	if w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "stranger"); w.Code != http.StatusForbidden {
+		t.Errorf("stranger starts in a public project: status %d, want 403", w.Code)
+	}
+}
