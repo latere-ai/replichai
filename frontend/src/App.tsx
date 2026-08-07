@@ -90,24 +90,16 @@ import {
   type Span,
 } from './transcript'
 import { Ico, type IconName } from './icons'
-import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
+import { useRouter, type Navigate, type ProjectTab, type View } from './routes'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
+import { useSidebar } from './sidebar'
 
 // signerOf names the person who published a project. `owner` is an opaque OIDC
 // subject and means nothing to a reader, so the signer's recorded name is used
 // whenever the sign-off carries one (006n); a v1 sign-off has none and falls
 // back to the principal, as it did before.
 const signerOf = (p: Project) => p.signed_off_name || p.owner
-
-// A view is where the operator is. Navigation is state, not a router.
-type View =
-  | { name: 'projects' }
-  | { name: 'public' }
-  | { name: 'submit' }
-  | { name: 'settings' }
-  | { name: 'admin' }
-  | { name: 'project'; id: string; title?: string }
-  | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string }
 
 const terminal = (p: string) => p === 'done' || p === 'failed'
 // phaseClass tones a phase badge: any non-terminal phase reads as "running".
@@ -131,33 +123,11 @@ function phaseIcon(phase: string): IconName {
   return 'clock'
 }
 
-// projectFromPath reads a project id out of a deep link.
-//
-// The path is /p/{id}, not /projects/{id}: the API owns /projects/{id}, so a
-// browser sent there gets JSON rather than the app. That is exactly what the
-// first invitation emails did — the link in them could never load anything.
-export function projectFromPath(pathname: string): string {
-  const m = /^\/p\/([A-Za-z0-9_-]+)\/?$/.exec(pathname)
-  return m ? m[1] : ''
-}
-
-// publicHandleFromPath reads a researcher's handle out of the address bar.
-//
-// Navigation inside the app is state rather than a router, but a profile page
-// is not internal navigation: it is a link on a published attestation that a
-// stranger follows from somewhere else, so it has to be a real URL that works
-// on a cold load and without signing in.
-export function publicHandleFromPath(pathname: string): string {
-  const m = /^\/u\/([^/?#]+)\/?$/.exec(pathname)
-  return m ? decodeURIComponent(m[1]).toLowerCase() : ''
-}
-
 export default function App() {
   const i18n = useI18n()
   const theme = useTheme()
   const [me, setMe] = useState<Me | null>(null)
-  const handle = publicHandleFromPath(window.location.pathname)
-  const deepProject = projectFromPath(window.location.pathname)
+  const { view, navigate } = useRouter()
 
   // refreshMe re-reads the identity, and with it the wallet — called
   // after anything that spends allowance, so the header never shows a stale
@@ -171,15 +141,15 @@ export default function App() {
 
   // A researcher's page renders before every auth gate: it is public, and a
   // reader who followed a link from a paper has no account to sign in to.
-  if (handle) return <PublicProfileScreen i18n={i18n} handle={handle} />
+  if (view.name === 'profile') return <PublicProfileScreen i18n={i18n} handle={view.handle} />
 
   if (me === null) return <div className="center-load">…</div>
-  // A project is private, so a deep link into one is gated: sign in first, and
-  // come back to the project rather than to the dashboard. Anything else would
-  // make an invitation mail end at a login screen and stop there.
-  if (!me.authenticated) return <SignIn i18n={i18n} next={deepProject ? window.location.pathname : ''} />
+  // Every screen is gated, and every one of them is an address somebody can
+  // arrive at cold — an invitation mail pointing at a project, a shared link to a
+  // session. Sign-in comes back to that address rather than to the dashboard.
+  if (!me.authenticated) return <SignIn i18n={i18n} next={window.location.pathname} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
-  return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} openAtProject={deepProject} />
+  return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
 }
 
 // ThemeSwitcher offers the three appearances directly rather than cycling
@@ -378,25 +348,40 @@ function Shell({
   me,
   theme,
   refreshMe,
-  openAtProject,
+  view,
+  navigate,
 }: {
   i18n: I18n
   me: Me
   theme: ReturnType<typeof useTheme>
   refreshMe: () => void
-  openAtProject?: string
+  view: View
+  navigate: Navigate
 }) {
   const { t } = i18n
-  const [view, setView] = useState<View>(openAtProject ? { name: 'project', id: openAtProject } : { name: 'projects' })
-  // Navigation inside the app is state, not a router, so the deep-link path is
-  // retired once it has been consumed — otherwise a reload after navigating
-  // away would drop the reader back into the project they had left.
-  useEffect(() => {
-    if (openAtProject) window.history.replaceState(null, '', '/')
-  }, [openAtProject])
-  const openProject = (id: string, title?: string) => setView({ name: 'project', id, title })
+  const setView = navigate
+  const openProject = (id: string, title?: string, tab?: ProjectTab) => setView({ name: 'project', id, title, tab })
   const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string) =>
     setView({ name: 'session', jobId, projectId, ref, projectTitle })
+
+  // A session reached by its own link knows its project's id from the path and
+  // its title from nowhere — the job carries the paper, not the project. The
+  // breadcrumb's middle step is read once, here, rather than by threading the
+  // title through every screen that could have linked to this one.
+  const untitledSessionProject = view.name === 'session' && !view.projectTitle ? view.projectId : ''
+  useEffect(() => {
+    if (!untitledSessionProject) return
+    let live = true
+    getProject(untitledSessionProject)
+      .then((d) => {
+        if (!live || !d.project?.title) return
+        setView((now) => (now.name === 'session' ? { ...now, projectTitle: d.project.title } : now), { replace: true })
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [untitledSessionProject, setView])
 
   return (
     <div className="shell">
@@ -467,15 +452,38 @@ function Shell({
         {view.name === 'admin' && <AdminScreen i18n={i18n} />}
         {view.name === 'project' && (
           <ProjectScreen
+            // Remounted per project: every piece of state here belongs to one
+            // project, and reusing the instance across two of them showed the
+            // previous project's papers and money until the fetch landed.
+            key={view.id}
             i18n={i18n}
             me={me}
             id={view.id}
+            tab={view.tab ?? 'sessions'}
+            // A tab is a place, so it is pushed; a tab the reader may not open is
+            // a correction, so it is not.
+            onTab={(tab, correct) => setView({ name: 'project', id: view.id, title: view.title, tab }, { replace: correct })}
+            // The title is the breadcrumb's, and only the screen that fetched the
+            // project knows it. It corrects the view in place rather than
+            // travelling anywhere.
+            onTitle={(title) =>
+              setView((now) => (now.name === 'project' && now.title !== title ? { ...now, title } : now), { replace: true })
+            }
             onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)}
             onCreditsSpent={refreshMe}
           />
         )}
         {view.name === 'session' && (
-          <SessionScreen i18n={i18n} jobId={view.jobId} onBack={() => openProject(view.projectId, view.projectTitle)} />
+          <SessionScreen
+            key={view.jobId}
+            i18n={i18n}
+            jobId={view.jobId}
+            // A session reached by its own link does not know its paper until the
+            // job is fetched; the breadcrumb's leaf is filled in from what the
+            // screen loaded.
+            onLoaded={(ref) => setView((now) => (now.name === 'session' && now.ref !== ref ? { ...now, ref } : now), { replace: true })}
+            onBack={() => openProject(view.projectId, view.projectTitle)}
+          />
         )}
       </div>
     </div>
@@ -1376,12 +1384,19 @@ function ProjectScreen({
   i18n,
   me,
   id,
+  tab,
+  onTab,
+  onTitle,
   onOpenSession,
   onCreditsSpent,
 }: {
   i18n: I18n
   me: Me
   id: string
+  // Which tab is open comes from the address, so a verdict can be linked to.
+  tab: ProjectTab
+  onTab: (tab: ProjectTab, correction?: boolean) => void
+  onTitle: (title: string) => void
   onOpenSession: (jobId: string, ref: string, projectTitle: string) => void
   onCreditsSpent: () => void
 }) {
@@ -1391,7 +1406,6 @@ function ProjectScreen({
   const [maySubmit, setMaySubmit] = useState(false)
   const [credits, setCredits] = useState<ProjectCredits | null>(null)
   const [signerHandle, setSignerHandle] = useState('')
-  const [tab, setTab] = useState<'sessions' | 'verdict' | 'artifacts' | 'people'>('sessions')
 
   const refresh = useCallback(() => {
     getProject(id)
@@ -1419,6 +1433,18 @@ function ProjectScreen({
   // artifact views; sessions are newest-first.
   const published = (sessions ?? []).find((s) => s.repo_name) ?? null
 
+  // The breadcrumb's leaf, once it is known: on a link followed from outside, the
+  // shell has the id and nothing to name it with.
+  useEffect(() => {
+    if (project?.title) onTitle(project.title)
+  }, [project?.title, onTitle])
+
+  // People is the owner's tab. A reader following that address gets the sessions
+  // they came for and a corrected address, rather than an empty panel.
+  useEffect(() => {
+    if (tab === 'people' && project !== null && !isOwner) onTab('sessions', true)
+  }, [tab, project, isOwner, onTab])
+
   if (project === null) return <div className="center-load">…</div>
 
   return (
@@ -1439,10 +1465,10 @@ function ProjectScreen({
           </div>
         </div>
         <div className="detail-tabs">
-          <Tab on={tab === 'sessions'} onClick={() => setTab('sessions')} icon="layers" label={t('projectSessions')} />
-          <Tab on={tab === 'verdict'} onClick={() => setTab('verdict')} icon="gauge" label={t('verdict')} />
-          <Tab on={tab === 'artifacts'} onClick={() => setTab('artifacts')} icon="package" label={t('artifacts')} />
-          {isOwner && <Tab on={tab === 'people'} onClick={() => setTab('people')} icon="users" label={t('members')} />}
+          <Tab on={tab === 'sessions'} onClick={() => onTab('sessions')} icon="layers" label={t('projectSessions')} />
+          <Tab on={tab === 'verdict'} onClick={() => onTab('verdict')} icon="gauge" label={t('verdict')} />
+          <Tab on={tab === 'artifacts'} onClick={() => onTab('artifacts')} icon="package" label={t('artifacts')} />
+          {isOwner && <Tab on={tab === 'people'} onClick={() => onTab('people')} icon="users" label={t('members')} />}
         </div>
       </div>
 
@@ -2621,7 +2647,19 @@ const gradeKinds = new Set([
   'outcome_evaluation_end',
 ])
 
-function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onBack: () => void }) {
+function SessionScreen({
+  i18n,
+  jobId,
+  onLoaded,
+  onBack,
+}: {
+  i18n: I18n
+  jobId: string
+  // The paper this session is about, reported once the job is read — a session
+  // opened by its own link has nothing else to name it with.
+  onLoaded: (ref: string) => void
+  onBack: () => void
+}) {
   const { t } = i18n
   const [tr, setTr] = useState<Transcript | null>(null)
   const [job, setJob] = useState<Job | null>(null)
@@ -2648,6 +2686,9 @@ function SessionScreen({ i18n, jobId, onBack }: { i18n: I18n; jobId: string; onB
     getJob(jobId).then(setJob).catch(() => {})
     return watchJob(jobId, setJob)
   }, [jobId])
+  useEffect(() => {
+    if (job?.ref) onLoaded(job.ref)
+  }, [job?.ref, onLoaded])
 
   // Poll the transcript. While the run is live (or not yet ready but still in
   // flight) keep re-fetching so an in-flight session's trajectory streams in
