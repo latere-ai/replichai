@@ -149,7 +149,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 012 | [A project holds papers](012-a-project-holds-papers.md) | built | 006g, 006j, 006c, 011, 001 |
 | 014a | [Managed runs close truthfully](014a-managed-runs-close-truthfully.md) | built | 004, 006b, 011 |
 | 014b | [Job-state writes are required](014b-job-state-writes-are-required.md) | built | 006b, 011, 014a |
-| 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | designed | 002, 005, 006i, 009 |
+| 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
 
 ## The three tracks
 

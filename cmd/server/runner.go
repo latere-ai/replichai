@@ -251,19 +251,27 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 
 	// Prefer the identity recorded in the repo (resolving wrote it); fall back to
 	// re-resolving only if it is absent, to avoid the paper source's rate limit.
-	id, ok, _ := publish.RecordedIdentity(ctx, e.gh, owner, name)
+	id, ok, err := publish.RecordedIdentity(ctx, e.gh, owner, name)
+	if err != nil {
+		return job.RetryablePublish(fmt.Errorf("read recorded paper identity: %w", err))
+	}
 	if !ok {
-		if rid, err := paper.Resolve(ctx, j.Ref, paper.WithFetcher(e.fetch)); err == nil {
-			id = rid
+		id, err = paper.Resolve(ctx, j.Ref, paper.WithFetcher(e.fetch))
+		if err != nil {
+			return job.RetryablePublish(fmt.Errorf("resolve paper identity for publish: %w", err))
 		}
+	}
+	if id.Key == "" {
+		return errors.New("publish requires a non-empty paper identity")
 	}
 
 	// Commit the transcript alongside the manifest. A momentary transcript
 	// failure must not block the manifest — publish it either way.
 	var events []provider.Event
 	if runID != "" {
-		if evs, err := e.provider.Transcript(ctx, provider.RunHandle{ID: runID}); err == nil {
-			events = evs
+		events, err = e.provider.Transcript(ctx, provider.RunHandle{ID: runID})
+		if err != nil {
+			return job.RetryablePublish(fmt.Errorf("read transcript for run %s: %w", runID, err))
 		}
 	}
 

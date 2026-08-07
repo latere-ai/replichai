@@ -438,6 +438,12 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		return errExitQuiet
 	}
 	paperRef := positional[1]
+	var verdictOverride provider.Grade
+	if *verdictFlag != "" {
+		if err := verdictOverride.UnmarshalJSON([]byte(`"` + *verdictFlag + `"`)); err != nil {
+			return fmt.Errorf("invalid --verdict %q: %w", *verdictFlag, err)
+		}
+	}
 
 	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	if token == "" {
@@ -477,13 +483,13 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 			verdict = status.Verdict.Grade
 		}
 		// Fetch the transcript before the session is released; a failure is not
-		// fatal to the manifest and invite.
+		// safe to publish around: without the evidence stream the redistribution
+		// review cannot truthfully be called clear.
 		if events, err = p.Transcript(ctx, provider.RunHandle{ID: *session}); err != nil {
-			fmt.Fprintf(stderr, "  transcript unavailable: %v\n", err)
-			events = nil
+			return fmt.Errorf("read transcript for session %s: %w", *session, err)
 		}
 	} else if *verdictFlag != "" {
-		_ = verdict.UnmarshalJSON([]byte(`"` + *verdictFlag + `"`))
+		verdict = verdictOverride
 	}
 
 	return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, events, *invite, stdout)

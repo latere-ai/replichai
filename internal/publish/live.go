@@ -108,6 +108,13 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	// leaked file in the tree, keeps the reproduction private (009 commit 1).
 	rep.TranscriptLeaks = TranscriptLeaks(events)
 	redist := RedistributionFrom(len(rep.Leaked) == 0, len(rep.TranscriptLeaks) == 0)
+	var transcriptFiles map[string][]byte
+	if len(events) > 0 {
+		transcriptFiles, err = RenderTranscriptFiles(events)
+		if err != nil {
+			return rep, fmt.Errorf("render transcript: %w", err)
+		}
+	}
 
 	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), redist)
 	committed, err := commitManifestIfChanged(ctx, forge, owner, name, manifest)
@@ -119,13 +126,12 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	// A flagged transcript is still committed intact — the reproduction stays
 	// readable to the owner and collaborators; only the public flip is refused.
 	if len(events) > 0 {
-		files := RenderTranscriptFiles(events)
-		changed, err := forge.CommitFiles(ctx, owner, name, "chore: reproduction transcript", files)
+		changed, err := forge.CommitFiles(ctx, owner, name, "chore: reproduction transcript", transcriptFiles)
 		if err != nil {
 			return rep, fmt.Errorf("commit transcript: %w", err)
 		}
 		rep.TranscriptCommitted = changed
-		rep.TranscriptFiles = len(files)
+		rep.TranscriptFiles = len(transcriptFiles)
 		rep.TranscriptEvents = len(events)
 	}
 	return rep, nil

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/job"
@@ -25,6 +26,8 @@ type fakeForge struct {
 	prepared []string
 	files    map[string][]byte
 	tree     []string
+	getErr   error
+	headGets int
 }
 
 func newRunnerForge(tree []string) *fakeForge {
@@ -37,12 +40,16 @@ func (f *fakeForge) Prepare(_ context.Context, _ string, id paper.Identity) (str
 	return name, nil
 }
 func (f *fakeForge) HeadCommit(context.Context, string, string) (string, error) {
+	f.headGets++
 	return "deadbeef", nil
 }
 func (f *fakeForge) TreePaths(context.Context, string, string, string) ([]string, error) {
 	return f.tree, nil
 }
 func (f *fakeForge) GetFileContent(_ context.Context, _, _, path string) ([]byte, bool, error) {
+	if f.getErr != nil {
+		return nil, false, f.getErr
+	}
 	b, ok := f.files[path]
 	return b, ok, nil
 }
@@ -79,10 +86,11 @@ func (r *mountRecorder) StartRun(ctx context.Context, w provider.WorkerRef, ws p
 type transcriptProvider struct {
 	*memory.Provider
 	events []provider.Event
+	err    error
 }
 
 func (p *transcriptProvider) Transcript(context.Context, provider.RunHandle) ([]provider.Event, error) {
-	return p.events, nil
+	return p.events, p.err
 }
 
 // AC7: Resolve creates and names the repository through the forge and sets
@@ -161,7 +169,7 @@ func TestPublishFinalizesToTheRepo(t *testing.T) {
 		owner:    "open-hai",
 		jobs:     fakeJobs{j: job.Job{ID: "j1", Status: provider.RunStatus{RunID: "run-1", Verdict: &provider.Verdict{Grade: provider.GradePassed}}}},
 	}
-	j := &job.Job{ID: "j1", RepoName: "open-hai/a-paper-xyz"}
+	j := &job.Job{ID: "j1", Ref: "doi:10.1234/a-paper", RepoName: "open-hai/a-paper-xyz"}
 
 	if err := e.Publish(context.Background(), j); err != nil {
 		t.Fatalf("Publish: %v", err)
@@ -183,6 +191,63 @@ func TestPublishFinalizesToTheRepo(t *testing.T) {
 	// The transcript was committed beside the manifest.
 	if len(f.files) < 2 {
 		t.Errorf("expected manifest + transcript files, got %d", len(f.files))
+	}
+}
+
+func TestPublishStopsWhenRecordedIdentityCannotBeRead(t *testing.T) {
+	readErr := errors.New("forge unavailable")
+	f := newRunnerForge([]string{"README.md"})
+	f.getErr = readErr
+	e := &engineRunner{
+		provider: memory.New(), method: runnerMethod, gh: f, owner: "open-hai",
+		jobs: fakeJobs{j: job.Job{ID: "j1"}},
+	}
+
+	err := e.Publish(context.Background(), &job.Job{ID: "j1", Ref: "doi:10.1234/a", RepoName: "open-hai/a-paper"})
+	if !errors.Is(err, readErr) {
+		t.Fatalf("Publish error = %v, want identity read error", err)
+	}
+	if f.headGets != 0 {
+		t.Fatal("publish continued into finalization after identity read failed")
+	}
+	if _, ok := f.files[publish.ManifestFile]; ok {
+		t.Fatal("manifest was committed without a readable paper identity")
+	}
+}
+
+func TestPublishStopsWhenFallbackIdentityCannotResolve(t *testing.T) {
+	f := newRunnerForge([]string{"README.md"})
+	fetchErr := errors.New("paper source unavailable")
+	e := &engineRunner{
+		provider: memory.New(), method: runnerMethod, gh: f, owner: "open-hai",
+		fetch: paper.FetcherFunc(func(context.Context, string) ([]byte, error) { return nil, fetchErr }),
+		jobs:  fakeJobs{j: job.Job{ID: "j1"}},
+	}
+
+	err := e.Publish(context.Background(), &job.Job{ID: "j1", Ref: "arxiv:2603.01795", RepoName: "open-hai/a-paper"})
+	if err == nil {
+		t.Fatal("Publish succeeded without resolving the fallback paper identity")
+	}
+	if _, ok := f.files[publish.ManifestFile]; ok {
+		t.Fatal("manifest was committed with an empty paper identity")
+	}
+}
+
+func TestPublishStopsWhenTranscriptCannotBeRead(t *testing.T) {
+	f := newRunnerForge([]string{"README.md"})
+	transcriptErr := errors.New("transcript unavailable")
+	prov := &transcriptProvider{Provider: memory.New(), err: transcriptErr}
+	e := &engineRunner{
+		provider: prov, method: runnerMethod, gh: f, owner: "open-hai",
+		jobs: fakeJobs{j: job.Job{ID: "j1", Status: provider.RunStatus{RunID: "run-1"}}},
+	}
+
+	err := e.Publish(context.Background(), &job.Job{ID: "j1", Ref: "doi:10.1234/a", RepoName: "open-hai/a-paper"})
+	if !errors.Is(err, transcriptErr) {
+		t.Fatalf("Publish error = %v, want transcript error", err)
+	}
+	if _, ok := f.files[publish.ManifestFile]; ok {
+		t.Fatal("manifest was committed and marked clear without its transcript")
 	}
 }
 

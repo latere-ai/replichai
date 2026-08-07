@@ -1,6 +1,6 @@
 # 014c — Publication requires evidence
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** make server and CLI finalization stop when the paper identity or a named managed session's transcript cannot be read. The publication gate must never call missing evidence "clear."
 
@@ -34,3 +34,6 @@ Server publishing ignores errors reading the recorded paper identity, ignores fa
 - Publish tests use invalid `json.RawMessage` and assert the failing event index.
 - CLI tests cover an invalid `--verdict`.
 
+## Outcome
+
+Server finalization now distinguishes an absent recorded identity from a failed read, requires fallback resolution to succeed, and treats a named run's transcript as required evidence. Those dependency failures keep the job in `publishing` under a typed retryable error and restart reconciliation completes it after recovery. Transcript rendering is all-or-error before the manifest write, and CLI finish validates verdict overrides and transcript availability before publishing.
