@@ -399,18 +399,22 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 // A trigger only declares its text with `data-tip`; the bubble itself is drawn
 // by TipHost. `side` is the preferred edge, and TipHost overrides it when the
 // bubble would leave the viewport.
-export type TipSide = 'top' | 'bottom'
+//
+// 'right' is for a trigger in a vertical stack. Above and below are both a
+// neighbour's row there — the folded navigation rail is the case — so the bubble
+// goes out to the side instead, where nothing is stacked.
+export type TipSide = 'top' | 'bottom' | 'right'
 
 // tipAttrs applies the tooltip to an element directly, for the cases where a
 // wrapper element would break an ARIA relationship.
 export function tipAttrs(text: string, side: TipSide = 'bottom') {
-  return { 'data-tip': text, className: `tip tip-${side}` }
+  return { 'data-tip': text, 'data-tip-side': side, className: `tip tip-${side}` }
 }
 
 export function Tip({ text, children, side = 'bottom' }: { text?: string; children: ReactNode; side?: TipSide }) {
   if (!text) return <>{children}</>
   return (
-    <span className={'tip tip-' + side} data-tip={text}>
+    <span className={'tip tip-' + side} data-tip={text} data-tip-side={side}>
       {children}
     </span>
   )
@@ -449,7 +453,13 @@ export function TipHost() {
       if (!text) return hide()
       trigger.current = el
       setAt(null)
-      setTip({ text, side: el.classList.contains('tip-top') ? 'top' : 'bottom', rect: el.getBoundingClientRect() })
+      // The side is an attribute rather than only a class, because a trigger
+      // that cannot take the `tip` class still needs to ask for one: `.tip` is
+      // an `inline-flex`, and the rail's nav rows are flex rows of their own
+      // that it would undo.
+      const asked = el.getAttribute('data-tip-side')
+      const side: TipSide = asked === 'top' || asked === 'right' ? asked : el.classList.contains('tip-top') ? 'top' : 'bottom'
+      setTip({ text, side, rect: el.getBoundingClientRect() })
     }
     // One pointer handler covers entering and leaving: whatever is under the
     // pointer either carries a tip or dismisses the one that is up.
@@ -490,8 +500,20 @@ export function TipHost() {
     const below = tip.rect.bottom + M
     // The preferred side, unless it has no room and the other one does.
     const fits = (top: number) => top >= M && top + b.height <= window.innerHeight - M
-    const top = tip.side === 'top' ? (fits(above) || !fits(below) ? above : below) : fits(below) || !fits(above) ? below : above
-    const left = tip.rect.left + tip.rect.width / 2 - b.width / 2
+    // Beside the trigger rather than under it: level with its middle, clear of
+    // its right edge. Nothing flips here — the vertical stack this is for has a
+    // neighbour above and below, and the clamp below keeps it on screen.
+    const beside = tip.side === 'right'
+    const top = beside
+      ? tip.rect.top + tip.rect.height / 2 - b.height / 2
+      : tip.side === 'top'
+        ? fits(above) || !fits(below)
+          ? above
+          : below
+        : fits(below) || !fits(above)
+          ? below
+          : above
+    const left = beside ? tip.rect.right + M : tip.rect.left + tip.rect.width / 2 - b.width / 2
     setAt({
       // Pulled back inside for a trigger near the viewport's edge — the header's
       // wallet pill sits there, and a centred bubble would hang off the screen.
