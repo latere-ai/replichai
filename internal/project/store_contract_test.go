@@ -164,6 +164,102 @@ func runStoreContract(t *testing.T, s Store) {
 	if err := s.Delete(ctx, p.ID); err != nil {
 		t.Errorf("idempotent Delete: %v", err)
 	}
+
+	runPaperContract(t, s)
+}
+
+// runPaperContract asserts what a project's papers must do (012). A paper is
+// what the project is *about*, so it exists before any session and outlives
+// every one — which is the difference from the session list this store
+// deliberately does not hold.
+func runPaperContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	p, err := s.Create(ctx, "owner", "Irreversible interactions")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// A fresh project holds no papers. That is an answer, not a failure.
+	papers, err := s.ListPapers(ctx, p.ID)
+	if err != nil || len(papers) != 0 {
+		t.Fatalf("ListPapers on a new project = %v, err %v", papers, err)
+	}
+
+	// A paper the project is about, before anything has been run against it.
+	first := Paper{Key: "doi:10.1145/3544548.3581433", Ref: "https://doi.org/10.1145/3544548.3581433", AddedBy: "owner"}
+	if err := s.AddPaper(ctx, p.ID, first); err != nil {
+		t.Fatalf("AddPaper: %v", err)
+	}
+	second := Paper{Key: "arxiv:2401.00001", Ref: "arXiv:2401.00001", AddedBy: "collaborator"}
+	if err := s.AddPaper(ctx, p.ID, second); err != nil {
+		t.Fatalf("AddPaper second: %v", err)
+	}
+
+	// A project is about a paper once, however many times it is run.
+	if err := s.AddPaper(ctx, p.ID, first); !errors.Is(err, ErrPaperExists) {
+		t.Errorf("duplicate paper: want ErrPaperExists, got %v", err)
+	}
+
+	// Added order, not reverse: the paper a project was created for reads first.
+	papers, err = s.ListPapers(ctx, p.ID)
+	if err != nil || len(papers) != 2 {
+		t.Fatalf("ListPapers = %v, err %v", papers, err)
+	}
+	if papers[0].Key != first.Key || papers[1].Key != second.Key {
+		t.Errorf("paper order = %s, %s", papers[0].Key, papers[1].Key)
+	}
+	if papers[0].Ref != first.Ref || papers[0].AddedBy != "owner" || papers[0].AddedAt.IsZero() {
+		t.Errorf("first paper = %+v", papers[0])
+	}
+	if papers[0].Title != "" {
+		t.Errorf("a paper nobody has resolved should carry no title, got %q", papers[0].Title)
+	}
+
+	// The title arrives later, from whichever resolve answers first.
+	if err := s.SetPaperTitle(ctx, p.ID, first.Key, "Point of no Undo"); err != nil {
+		t.Fatalf("SetPaperTitle: %v", err)
+	}
+	papers, _ = s.ListPapers(ctx, p.ID)
+	if papers[0].Title != "Point of no Undo" {
+		t.Errorf("title after SetPaperTitle = %q", papers[0].Title)
+	}
+	// Best-effort, exactly as SetTitle is: naming a paper nobody holds is not an
+	// error, because the enrichment races a paper that may have been removed.
+	if err := s.SetPaperTitle(ctx, p.ID, "url:nobody", "x"); err != nil {
+		t.Errorf("SetPaperTitle on a missing paper: %v", err)
+	}
+
+	// Removal is the store's to do and idempotent; who may ask is the caller's.
+	if err := s.RemovePaper(ctx, p.ID, second.Key); err != nil {
+		t.Fatalf("RemovePaper: %v", err)
+	}
+	if err := s.RemovePaper(ctx, p.ID, second.Key); err != nil {
+		t.Errorf("idempotent RemovePaper: %v", err)
+	}
+	papers, _ = s.ListPapers(ctx, p.ID)
+	if len(papers) != 1 || papers[0].Key != first.Key {
+		t.Errorf("after RemovePaper: %+v", papers)
+	}
+
+	// A project that is not there is ErrNotFound on both sides, so "no papers"
+	// and "no project" never read as the same answer.
+	if err := s.AddPaper(ctx, "nope", first); !errors.Is(err, ErrNotFound) {
+		t.Errorf("AddPaper to a missing project: want ErrNotFound, got %v", err)
+	}
+	if _, err := s.ListPapers(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ListPapers of a missing project: want ErrNotFound, got %v", err)
+	}
+
+	// Deleting a project takes its papers with it, so a later project reusing
+	// the id inherits nothing.
+	if err := s.Delete(ctx, p.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := s.ListPapers(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("papers of a deleted project: want ErrNotFound, got %v", err)
+	}
 }
 
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
@@ -299,4 +395,67 @@ func swapDBName(t *testing.T, raw, name string) string {
 	}
 	u.Path = "/" + name
 	return u.String()
+}
+
+// TestMigrationBackfillsPapersFromSessions is 012 AC9: after the migration,
+// every paper a project has ever run is listed on it — including one whose only
+// session failed, which is the case that proves a paper is not the same thing as
+// a successful run. Postgres-only.
+func TestMigrationBackfillsPapersFromSessions(t *testing.T) {
+	pool := freshDB(t)
+	defer pool.Close()
+	ctx := context.Background()
+
+	if err := job.Migrate(ctx, pool); err != nil {
+		t.Fatalf("job migrate: %v", err)
+	}
+	js := job.NewPGStore(pool)
+
+	// One project, two papers: one that finished, one whose session failed. The
+	// second is the point — before 012 the only record of that paper was a red
+	// row, and after it the paper is still what the project is about.
+	done, err := js.Enqueue(ctx, job.Submission{
+		Principal: "owner", Ref: "https://doi.org/10.1145/3544548.3581433",
+		Kind: job.KindAudit, Project: "proj-1", PaperKey: "doi:10.1145/3544548.3581433"})
+	if err != nil {
+		t.Fatalf("seed done: %v", err)
+	}
+	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing, job.PhaseDone} {
+		if err := js.Advance(ctx, done.ID, p, nil); err != nil {
+			t.Fatalf("advance done: %v", err)
+		}
+	}
+	failed, err := js.Enqueue(ctx, job.Submission{
+		Principal: "owner", Ref: "arXiv:2401.00001",
+		Kind: job.KindAudit, Project: "proj-1", PaperKey: "arxiv:2401.00001"})
+	if err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+	if err := js.Advance(ctx, failed.ID, job.PhaseFailed, func(j *job.Job) { j.Err = "resolve: source unreachable" }); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("project migrate: %v", err)
+	}
+
+	papers, err := NewPGStore(pool).ListPapers(ctx, "proj-1")
+	if err != nil {
+		t.Fatalf("ListPapers: %v", err)
+	}
+	if len(papers) != 2 {
+		t.Fatalf("backfilled %d papers, want 2: %+v", len(papers), papers)
+	}
+	byKey := map[string]Paper{}
+	for _, p := range papers {
+		byKey[p.Key] = p
+	}
+	if p, ok := byKey["arxiv:2401.00001"]; !ok {
+		t.Errorf("the failed session's paper is missing — a paper is not its run")
+	} else if p.Ref != "arXiv:2401.00001" || p.AddedBy != "owner" || p.AddedAt.IsZero() {
+		t.Errorf("failed session's paper = %+v", p)
+	}
+	if p := byKey["doi:10.1145/3544548.3581433"]; p.Title != "" {
+		t.Errorf("the backfill must not guess a title, got %q", p.Title)
+	}
 }

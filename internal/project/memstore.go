@@ -13,6 +13,7 @@ type MemStore struct {
 	mu       sync.Mutex
 	projects map[string]Project
 	order    []string // creation order, so ListByOwner is newest-first in reverse
+	papers   map[string][]Paper
 	clock    func() time.Time
 }
 
@@ -26,7 +27,7 @@ func WithClock(f func() time.Time) MemOption {
 
 // NewMemStore builds an empty in-memory store.
 func NewMemStore(opts ...MemOption) *MemStore {
-	s := &MemStore{projects: map[string]Project{}, clock: time.Now}
+	s := &MemStore{projects: map[string]Project{}, papers: map[string][]Paper{}, clock: time.Now}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -158,15 +159,74 @@ func (s *MemStore) ListPublic(_ context.Context) ([]Project, error) {
 	return out, nil
 }
 
-// Delete removes a project by id, idempotently.
+// Delete removes a project by id, and its papers with it, idempotently.
 func (s *MemStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.projects, id)
+	delete(s.papers, id)
 	for i, oid := range s.order {
 		if oid == id {
 			s.order = append(s.order[:i], s.order[i+1:]...)
 			break
+		}
+	}
+	return nil
+}
+
+// AddPaper records a paper the project is about, refusing a duplicate key.
+func (s *MemStore) AddPaper(_ context.Context, projectID string, p Paper) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.projects[projectID]; !ok {
+		return ErrNotFound
+	}
+	for _, have := range s.papers[projectID] {
+		if have.Key == p.Key {
+			return ErrPaperExists
+		}
+	}
+	if p.AddedAt.IsZero() {
+		p.AddedAt = s.clock()
+	}
+	s.papers[projectID] = append(s.papers[projectID], p)
+	return nil
+}
+
+// ListPapers returns a project's papers in the order they were added.
+func (s *MemStore) ListPapers(_ context.Context, projectID string) ([]Paper, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.projects[projectID]; !ok {
+		return nil, ErrNotFound
+	}
+	// A copy: the caller must not be able to edit the store through the slice.
+	out := make([]Paper, len(s.papers[projectID]))
+	copy(out, s.papers[projectID])
+	return out, nil
+}
+
+// SetPaperTitle fills in a title, ignoring a missing project or paper.
+func (s *MemStore) SetPaperTitle(_ context.Context, projectID, key, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, p := range s.papers[projectID] {
+		if p.Key == key {
+			s.papers[projectID][i].Title = title
+			return nil
+		}
+	}
+	return nil
+}
+
+// RemovePaper drops a paper from a project, idempotently.
+func (s *MemStore) RemovePaper(_ context.Context, projectID, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, p := range s.papers[projectID] {
+		if p.Key == key {
+			s.papers[projectID] = append(s.papers[projectID][:i], s.papers[projectID][i+1:]...)
+			return nil
 		}
 	}
 	return nil

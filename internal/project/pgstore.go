@@ -7,8 +7,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// foreignKeyViolation is the SQLSTATE a paper insert returns when the project it
+// names is not there.
+const foreignKeyViolation = "23503"
 
 // PGStore is the Postgres implementation of Store, satisfying the same contract
 // the in-memory store does.
@@ -161,5 +166,74 @@ func (s *PGStore) ListPublic(ctx context.Context) ([]Project, error) {
 // Delete removes a project by id, idempotently.
 func (s *PGStore) Delete(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)
+	return err
+}
+
+// paperColumns is the column list every paper read selects, in scan order.
+const paperColumns = `paper_key, ref, title, added_by, added_at`
+
+// AddPaper records a paper the project is about. The primary key is what makes
+// a duplicate impossible, so the refusal is read off the insert rather than
+// guessed at with a prior SELECT — two adds racing must not both succeed.
+func (s *PGStore) AddPaper(ctx context.Context, projectID string, p Paper) error {
+	if p.AddedAt.IsZero() {
+		p.AddedAt = s.clock()
+	}
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO project_papers (project_id, paper_key, ref, title, added_by, added_at)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (project_id, paper_key) DO NOTHING`,
+		projectID, p.Key, p.Ref, p.Title, p.AddedBy, p.AddedAt)
+	if err != nil {
+		// The foreign key is the only other way this fails on well-formed input,
+		// and it means the project is not there.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation {
+			return ErrNotFound
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrPaperExists
+	}
+	return nil
+}
+
+// ListPapers returns a project's papers in the order they were added.
+func (s *PGStore) ListPapers(ctx context.Context, projectID string) ([]Paper, error) {
+	// The project read comes first so a missing project is ErrNotFound rather
+	// than an empty list — "no papers" and "no project" are different answers.
+	if _, err := s.Get(ctx, projectID); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+paperColumns+` FROM project_papers
+		WHERE project_id=$1 ORDER BY added_at, paper_key`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Paper
+	for rows.Next() {
+		var p Paper
+		if err := rows.Scan(&p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SetPaperTitle fills in a title, ignoring a missing project or paper.
+func (s *PGStore) SetPaperTitle(ctx context.Context, projectID, key, title string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE project_papers SET title=$3 WHERE project_id=$1 AND paper_key=$2`, projectID, key, title)
+	return err
+}
+
+// RemovePaper drops a paper from a project, idempotently.
+func (s *PGStore) RemovePaper(ctx context.Context, projectID, key string) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM project_papers WHERE project_id=$1 AND paper_key=$2`, projectID, key)
 	return err
 }

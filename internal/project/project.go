@@ -106,9 +106,35 @@ type SignOff struct {
 	Email              string // already redacted; see Project.SignedOffEmail
 }
 
+// Paper is one paper a project holds (012).
+//
+// It is what the project is *about*, which is not the same as what has been run
+// against it. Before this the paper existed only as `ref` on a session, so a
+// project could not name a paper it had not started, and a paper whose only
+// session failed left no record that it was ever part of the work. A paper row
+// outlives every session it carries.
+//
+// Key is the offline identity from paper.Key — the same value a session stores
+// in PaperKey, which is what joins the two without a column on either side.
+// Title is filled in best-effort: blank until a source answers, which is a
+// paper you can still start rather than a failure.
+type Paper struct {
+	Key     string    `json:"key"` // paper.Key: "doi:10.1145/…", "arxiv:2401.00001", "url:…"
+	Ref     string    `json:"ref"` // the reference it was added from, as typed
+	Title   string    `json:"title,omitempty"`
+	AddedBy string    `json:"added_by"`
+	AddedAt time.Time `json:"added_at"`
+}
+
+// ErrPaperExists reports adding a paper a project already holds. The store's
+// primary key makes the duplicate impossible rather than merely unlikely, so
+// this is the shape that refusal takes.
+var ErrPaperExists = errors.New("the project already holds this paper")
+
 // Store is where projects live. Sessions are not stored here — they are jobs in
 // the job store, joined to a project by the handler through job.ListByProject —
-// so this store owns only the container, keeping the two relations independent.
+// so this store owns only the container and the papers it is about, keeping the
+// session relation independent.
 type Store interface {
 	// Create opens a new project for an owner, its title defaulted from the
 	// first paper. A blank owner is refused.
@@ -142,10 +168,27 @@ type Store interface {
 	// ListPublic returns every public project, newest first — the public zone's
 	// read surface, across all owners.
 	ListPublic(ctx context.Context) ([]Project, error)
-	// Delete removes a project by id. It is the compensating action when the
-	// first session of a just-created project fails to enqueue, so a project is
-	// never left empty. Idempotent: deleting a missing project is not an error.
+	// Delete removes a project by id, and the papers it holds with it.
+	// Idempotent: deleting a missing project is not an error.
 	Delete(ctx context.Context, id string) error
+
+	// AddPaper records a paper the project is about (012). It returns
+	// ErrPaperExists when the project already holds that key — a project is
+	// about a paper once, however many times it is run — and ErrNotFound for a
+	// project that is not there.
+	AddPaper(ctx context.Context, projectID string, p Paper) error
+	// ListPapers returns a project's papers, oldest first: the order they were
+	// added is the order somebody wrote them down, and reversing it would put
+	// the paper a project was created for at the bottom.
+	ListPapers(ctx context.Context, projectID string) ([]Paper, error)
+	// SetPaperTitle fills in a paper's title once a source has answered — at
+	// create, or from the first session's resolve. A missing project or paper is
+	// not an error: the enrichment is best-effort, exactly as SetTitle is.
+	SetPaperTitle(ctx context.Context, projectID, key, title string) error
+	// RemovePaper drops a paper from a project. The caller decides whether it may
+	// go (012 refuses one that has sessions, so the record of what was actually
+	// reproduced stays); this store only records. Idempotent.
+	RemovePaper(ctx context.Context, projectID, key string) error
 }
 
 // newID mints a random project identifier.
