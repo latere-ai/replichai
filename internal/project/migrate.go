@@ -124,6 +124,21 @@ WHERE j.paper_key <> '' AND j.project_id <> ''
 ORDER BY j.project_id, j.paper_key, j.created_at
 ON CONFLICT (project_id, paper_key) DO NOTHING;
 `},
+	{9, `
+-- The trash (019). A project an owner threw away leaves every list without
+-- taking its papers, its sessions, or its published repositories with it, so the
+-- act is reversible until they say otherwise.
+--
+-- A column rather than a second table: project_papers and jobs.project_id both
+-- reference this row, and moving a row means moving everything that points at
+-- it. NULL means "not in the trash", which is where every project predating this
+-- migration is.
+ALTER TABLE projects ADD COLUMN deleted_at TIMESTAMPTZ;
+
+-- The two reads that filter on it: an owner's list, and the trash screen.
+CREATE INDEX projects_by_owner_live ON projects (owner, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX projects_trashed ON projects (owner, deleted_at DESC) WHERE deleted_at IS NOT NULL;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

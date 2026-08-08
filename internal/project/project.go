@@ -81,7 +81,19 @@ type Project struct {
 	WithdrawnAt     *time.Time `json:"withdrawn_at,omitempty"`
 	WithdrawnBy     string     `json:"withdrawn_by,omitempty"`
 	WithdrawnReason string     `json:"withdrawn_reason,omitempty"`
+	// DeletedAt is when the owner moved this project to the trash (019), nil for
+	// one that is not there. It is a column rather than a second table because
+	// both project_papers and jobs.project_id point at this row, and moving a row
+	// means moving everything that points at it.
+	//
+	// Every list read filters it out. Get does not: the trash screen, the restore
+	// and the permanent delete all have to read a trashed project, and a read that
+	// refused would leave them nothing to work with.
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
+
+// Trashed reports whether this project is in the trash.
+func (p Project) Trashed() bool { return p.DeletedAt != nil }
 
 // Withdrawal is one recorded retraction: who ended the publication and why. A
 // struct for the same reason SignOff is one — two adjacent strings are two
@@ -177,8 +189,20 @@ type Store interface {
 	// write site to forget: a rename, an added paper, a publish, a withdrawal and
 	// a credit move would each have had to remember to touch one.
 	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
+	// Trash moves a project to the trash, and Restore takes it back out (019).
+	// Both are idempotent, and Trash keeps the first timestamp: a repeated call
+	// must not rewrite the moment the project actually left the list. A missing
+	// project is ErrNotFound, because the caller has just authorised against one.
+	Trash(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	// ListTrashed returns an owner's trashed projects, newest-trashed first — the
+	// one read that answers with them, since every other list filters them out.
+	ListTrashed(ctx context.Context, owner string) ([]Project, error)
 	// Delete removes a project by id, and the papers it holds with it.
 	// Idempotent: deleting a missing project is not an error.
+	//
+	// It does not touch the project's sessions: they live in the job store, joined
+	// by project_id, and the handler deletes them there first (019).
 	Delete(ctx context.Context, id string) error
 
 	// AddPaper records a paper the project is about (012). It returns

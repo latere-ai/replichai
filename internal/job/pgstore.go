@@ -313,6 +313,12 @@ func (s *PGStore) ListByProject(ctx context.Context, projectID string) ([]Job, e
 	return out, rows.Err()
 }
 
+// DeleteByProject removes every session belonging to a project, idempotently.
+func (s *PGStore) DeleteByProject(ctx context.Context, projectID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM jobs WHERE project_id = $1`, projectID)
+	return err
+}
+
 // StatusByProjects summarises the named projects' sessions in one query. The
 // running filter uses the same terminal set as Phase.Terminal, so the in-memory
 // and Postgres stores agree.

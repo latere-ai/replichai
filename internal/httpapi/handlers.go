@@ -83,6 +83,12 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
+	// The literal segment wins over {id} in Go's mux, so the trash screen is
+	// reachable at a path that also looks like a project id. router_test asserts
+	// it rather than trusting the precedence.
+	rt.gatedHandle("GET", "/projects/trash", rt.listTrash)
+	rt.gatedHandle("DELETE", "/projects/{id}", rt.trashProject)
+	rt.gatedHandle("POST", "/projects/{id}/restore", rt.restoreProject)
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
@@ -323,6 +329,14 @@ func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (projec
 	}
 	if !rt.mayWorkInProject(r, proj, principal(r)) {
 		writeError(w, http.StatusForbidden, "not_owner")
+		return project.Project{}, false
+	}
+	// A project in the trash is readable by its owner and writable by nobody
+	// (019). It is refused here, at the one gate every working route passes, so
+	// starting a session, adding a paper, moving credits and publishing are all
+	// closed by one check rather than five that have to be remembered.
+	if proj.Trashed() {
+		writeError(w, http.StatusConflict, "project_trashed")
 		return project.Project{}, false
 	}
 	return proj, true
@@ -852,6 +866,12 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 				continue // a membership whose project is gone is skipped, not fatal
 			}
 			seen[pid] = true
+			if p.Trashed() {
+				// Get answers with trashed projects on purpose (019), so this is the
+				// one list read that has to filter them itself. The owner's own half
+				// came from ListByOwner, which already has.
+				continue
+			}
 			projects = append(projects, p)
 		}
 	}
@@ -1348,7 +1368,183 @@ func (rt *Router) ownedProject(w http.ResponseWriter, r *http.Request) (project.
 		writeError(w, http.StatusForbidden, "not_owner")
 		return project.Project{}, id, false
 	}
+	// Nothing about a project in the trash changes (019) — not its name, not its
+	// members, not its visibility. The trash routes resolve through
+	// trashableProject instead, which is what lets them act on one.
+	if proj.Trashed() {
+		writeError(w, http.StatusConflict, "project_trashed")
+		return project.Project{}, id, false
+	}
 	return proj, id, true
+}
+
+// trashableProject resolves a project for the trash routes (019): the owner
+// alone may remove one. A collaborator is refused; anybody who may not even view
+// it is told nothing exists, the same rule getProject applies, because whether a
+// stranger's project is there is not a stranger's business.
+func (rt *Router) trashableProject(w http.ResponseWriter, r *http.Request) (project.Project, Identity, bool) {
+	id, _ := IdentityFrom(r)
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return project.Project{}, id, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return project.Project{}, id, false
+	}
+	if proj.Owner != id.Sub {
+		if !rt.mayViewProject(r, proj) {
+			writeError(w, http.StatusNotFound, "not_found")
+		} else {
+			writeError(w, http.StatusForbidden, "not_owner")
+		}
+		return project.Project{}, id, false
+	}
+	return proj, id, true
+}
+
+// trashProject moves a project to the trash, or — with ?purge=1 — removes it for
+// good (019).
+//
+// The two are one verb at different depths because that is what they are, and
+// because the depth is what carries the order: a purge is refused on a project
+// that is not in the trash, so the reversible step cannot be skipped.
+func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
+	proj, id, ok := rt.trashableProject(w, r)
+	if !ok {
+		return
+	}
+	if r.URL.Query().Get("purge") == "1" {
+		rt.purgeProject(w, r, proj)
+		return
+	}
+	// A running session spends this project's credits into a container its owner
+	// is about to stop looking at. Stop it first.
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	for _, s := range sessions {
+		if !s.Phase.Terminal() {
+			writeError(w, http.StatusConflict, "sessions_running")
+			return
+		}
+	}
+	// A publication ends with a recorded retraction or it does not end (006o).
+	// Deleting is not a licence to skip the record, so the withdrawal happens
+	// first and through the same path an ordinary withdrawal takes.
+	if proj.Visibility == project.VisibilityPublic {
+		if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{By: id.Sub, Reason: withdrawnByDeletion}); err != nil {
+			writeError(w, http.StatusInternalServerError, "withdraw_failed")
+			return
+		}
+		rt.closeRepos(r.Context(), sessions)
+	}
+	if err := rt.projects.Trash(r.Context(), proj.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "trash_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// withdrawnByDeletion is the reason recorded against a publication that ended
+// because its project was thrown away. It is the owner's record of why, and the
+// one case where the reason is not in their own words.
+const withdrawnByDeletion = "the project was deleted"
+
+// purgeProject removes a trashed project for good: its sessions, its papers, and
+// the row itself.
+//
+// What it does not remove is the repositories those sessions published. They are
+// closed on the forge, exactly as a withdrawal closes them — a repository the
+// agent authored is evidence, and this product does not destroy evidence on a
+// click. What a purge ends is the app's claim on it.
+func (rt *Router) purgeProject(w http.ResponseWriter, r *http.Request, proj project.Project) {
+	if !proj.Trashed() {
+		writeError(w, http.StatusConflict, "not_trashed")
+		return
+	}
+	// Money outlives the project that held it unless somebody takes it back. A
+	// purge that dropped a funded pot would leave a balance nobody can account
+	// for, which is the one thing the ledger exists to prevent.
+	if rt.credits != nil {
+		balance, err := rt.credits.Balance(r.Context(), credit.Pot(proj.ID))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "credits_read_failed")
+			return
+		}
+		if balance != 0 {
+			writeError(w, http.StatusConflict, "credits_remaining")
+			return
+		}
+	}
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	rt.closeRepos(r.Context(), sessions)
+	// The sessions go first: jobs.project_id references the project row and the
+	// foreign key does not cascade, so the other order fails at the database.
+	if err := rt.jobs.DeleteByProject(r.Context(), proj.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "purge_failed")
+		return
+	}
+	if err := rt.projects.Delete(r.Context(), proj.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "purge_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// closeRepos makes every repository a project's sessions published private,
+// best-effort. A forge that refuses is logged and not fatal: the record in this
+// app has already changed, and failing the call would leave the two disagreeing
+// in the other direction.
+func (rt *Router) closeRepos(ctx context.Context, sessions []job.Job) {
+	if rt.repoPub == nil {
+		return
+	}
+	for _, s := range sessions {
+		if s.RepoName == "" {
+			continue
+		}
+		if err := rt.repoPub.SetPrivate(ctx, repoName(s.RepoName)); err != nil {
+			log.Printf("delete: repo %s not closed: %v", s.RepoName, err)
+		}
+	}
+}
+
+// restoreProject takes a project back out of the trash. Owner-only, and a
+// success on one that was never in it.
+func (rt *Router) restoreProject(w http.ResponseWriter, r *http.Request) {
+	proj, _, ok := rt.trashableProject(w, r)
+	if !ok {
+		return
+	}
+	if err := rt.projects.Restore(r.Context(), proj.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "restore_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// listTrash is the trash screen: the caller's own trashed projects, newest-
+// trashed first. Only an owner's own, because only an owner can put one here.
+func (rt *Router) listTrash(w http.ResponseWriter, r *http.Request) {
+	projects, err := rt.projects.ListTrashed(r.Context(), principal(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	views, err := rt.projectViews(r.Context(), projects)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, views)
 }
 
 // listMembers returns a project's contributors, owner-only.
@@ -1548,6 +1744,14 @@ func (rt *Router) isLead(r *http.Request, projectID string) bool {
 // inherits this decision — there is no second, unscoped "published" surface.
 func (rt *Router) mayViewProject(r *http.Request, p project.Project) bool {
 	id, _ := IdentityFrom(r)
+	// A trashed project is its owner's alone (019), whatever its visibility column
+	// still says. Putting it here rather than in each read is what closes the
+	// sessions, transcripts and artifacts underneath it in one edit — this
+	// predicate is documented as the decision everything below a project
+	// inherits, and a delete that left those readable would be a delete in name.
+	if p.Trashed() {
+		return p.Owner == id.Sub
+	}
 	if p.Visibility == project.VisibilityPublic || p.Owner == id.Sub {
 		return true
 	}
@@ -1603,7 +1807,7 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ProjectDetail{
 		Project:      proj,
 		Sessions:     sessions,
-		MaySubmit:    rt.mayWorkInProject(r, proj, principal(r)),
+		MaySubmit:    !proj.Trashed() && rt.mayWorkInProject(r, proj, principal(r)),
 		SignerHandle: rt.signerHandle(r.Context(), proj),
 		Credits:      rt.projectCredits(r, proj),
 	})
