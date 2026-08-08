@@ -1,6 +1,10 @@
 # 017 — The first screen
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `frontend/src/brand.tsx` owns `Mark`, `Wordmark`, and `Lockup`; the letter-`r` `Logo` and its two tile rules are gone; `SignIn` is the two-column landing and the three failure cards keep the centred one. `frontend/test/landing.test.mjs` drives criteria 1 and 3–6 in Chrome — the geometry at 1440×900 and 390×844, the area reorder, the fold, the `/login?next=` round trip, and the mark painting in both themes — and was verified to fail with the change stashed. The browser suite is green (8 files) and the 83 unit tests still pass.
+
+Two things came out of the build. The mark lives in `brand.tsx`, not `icons.tsx` as this spec said: an icon inherits `currentColor` so one glyph can sit in a brand button and a muted row, while the mark owns its colour everywhere, and putting it in the icon set would have contradicted that file's first line. And the outer ring draws six dashes, not the ten first drawn — at 26px ten read as a loading spinner, which is a thing this app puts on screen a few pixels away. The favicon and the generated rasters use the same six, so the three are one mark.
+
+One fix outside the spec's scope came with it: `/internal/spa/dist/` was ignored one artifact at a time (`index.html`, `assets/`), so the three new static files landed untracked and one `git add` from being committed. The rule now ignores the directory and un-ignores `PLACEHOLDER`.
 
 **Scope:** the surface an unauthenticated visitor lands on, and the mark it carries. Replaces the 440px sign-in card with a split screen — what replichai is on the left, the sign-in card on the right — and replaces the letter-`r` gradient tile with a drawn mark and a wordmark lockup. Adds the head metadata the app has never had (description, favicon, `og:`/`twitter:` cards). Frontend only: no route, no API, no schema.
 
@@ -18,7 +22,7 @@ There is also nothing in `<head>`: no description, no icon, no social card (`fro
 
 ## Decisions
 
-**The mark is the boundary the product defends.** A closed solid ring inside a dashed open one: the inner loop is mechanically re-runnable, so it is drawn closed; the outer loop is the study with human participants, so it is drawn open, and the product never closes it. The mark is an inline SVG in `icons.tsx`, coloured from `--brand` and scaling by an explicit `size`, so it survives dark mode and needs no font and no raster.
+**The mark is the boundary the product defends.** A closed solid ring inside a dashed open one: the inner loop is mechanically re-runnable, so it is drawn closed; the outer loop is the study with human participants, so it is drawn open, and the product never closes it. The mark is an inline SVG in its own `brand.tsx`, coloured from `--brand` and scaling by an explicit `size`, so it survives dark mode and needs no font and no raster. It is not in `icons.tsx`: an icon there inherits `currentColor` on purpose, and the mark must mean the same thing in every context it is dropped into.
 
 **The wordmark carries the same seam.** `replichai` is `replic` (replication) and `hai` (human–AI, the lineage the `open-hai` forge account already names). The lockup sets it as one word with a hairline optical gap at that seam and tightened tracking. It is *not* tinted: the stylesheet's rule is that one brand hue marks what the operator can act on (`styles.css:1-9`), and a two-tone wordmark would spend that hue on decoration. The mark is where the colour goes.
 
