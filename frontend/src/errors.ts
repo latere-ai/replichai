@@ -104,6 +104,25 @@ export function removePaperErrLabel(t: T, e: unknown): string {
   return t('removePaperFailed')
 }
 
+// trashErrLabel names why a project could not be moved to the trash. The one
+// refusal an owner can act on is a session still running: a run spends this
+// project's credits, and hiding the container it spends from is not tidying up.
+export function trashErrLabel(t: T, e: unknown): string {
+  const { code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (code === 'sessions_running') return t('errSessionsRunning')
+  return t('trashFailed')
+}
+
+// purgeErrLabel names why a project could not be removed for good. Credits in
+// the pot are the blocker with a remedy: take them back, then delete.
+export function purgeErrLabel(t: T, e: unknown): string {
+  const { code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (code === 'credits_remaining') return t('errCreditsRemaining')
+  return t('purgeFailed')
+}
+
 /* ─── a session that failed while running ─── */
 
 // sessionFailureText turns the cause a worker recorded into a sentence.

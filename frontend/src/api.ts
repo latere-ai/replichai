@@ -84,6 +84,10 @@ export type Project = {
   withdrawn_at?: string
   withdrawn_by?: string
   withdrawn_reason?: string
+  // When the owner moved this project to the trash (019), absent for one that is
+  // not there. A trashed project leaves every list but keeps its address: its
+  // owner still reads it, read-only, with a way back.
+  deleted_at?: string
 }
 
 // A researcher profile: who a sign-off is published under. Self-asserted and
@@ -365,6 +369,21 @@ export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { metho
 // ones they were invited to — newest-modified first, each with a session count
 // (018). The session cookie scopes the result server-side.
 export const listProjects = () => fetch('/projects').then(json<ProjectView[]>)
+
+// trashProject moves an owned project to the trash. It rejects 409
+// `sessions_running` while anything is still in flight there.
+export const trashProject = (id: string) => fetch(`/projects/${id}`, { method: 'DELETE' }).then(ok)
+
+// restoreProject takes one back out.
+export const restoreProject = (id: string) => fetch(`/projects/${id}/restore`, { method: 'POST' }).then(ok)
+
+// purgeProject removes a trashed project for good. It rejects 409
+// `credits_remaining` while its pot still holds money, and `not_trashed` for one
+// that was never thrown away — the reversible step cannot be skipped.
+export const purgeProject = (id: string) => fetch(`/projects/${id}?purge=1`, { method: 'DELETE' }).then(ok)
+
+// listTrash returns the caller's own trashed projects, newest-trashed first.
+export const listTrash = () => fetch('/projects/trash').then(json<ProjectView[]>)
 
 // getProject returns one project and its sessions, newest first.
 export const getProject = (id: string) => fetch(`/projects/${id}`).then(json<ProjectDetail>)

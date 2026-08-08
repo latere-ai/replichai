@@ -24,6 +24,10 @@ import {
   listMembers,
   listProjects,
   listPublic,
+  listTrash,
+  purgeProject,
+  restoreProject,
+  trashProject,
   makeProjectPublic,
   withdrawProject,
   removeMember,
@@ -71,6 +75,8 @@ import {
   startErrLabel,
   addPaperErrLabel,
   removePaperErrLabel,
+  trashErrLabel,
+  purgeErrLabel,
 } from './errors'
 import { formatUSD, parseUSD, toDollars } from './money'
 import {
@@ -505,6 +511,18 @@ function Shell({
               />
             </div>
           )}
+          {/* The trash sits on its own at the foot of the destinations: it is
+              where work goes, not a place work is done. */}
+          <div className="rail-group rail-group-foot">
+            <NavItem
+              label={t('navTrash')}
+              icon="trash"
+              tone="var(--fg-3)"
+              folded={folded}
+              on={view.name === 'trash'}
+              onClick={() => setView({ name: 'trash' })}
+            />
+          </div>
         </div>
         <div className="rail-foot">
           <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => setView({ name: 'settings' })}>
@@ -535,6 +553,7 @@ function Shell({
         </header>
 
         {view.name === 'projects' && <ProjectsScreen i18n={i18n} me={me} onOpen={openProject} />}
+        {view.name === 'trash' && <TrashScreen i18n={i18n} me={me} />}
         {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
         {view.name === 'submit' && (
           <SubmitScreen
@@ -596,14 +615,17 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
   const root = () =>
     view.name === 'public'
       ? t('navPublic')
-      : view.name === 'submit'
-        ? t('newProject')
-        : view.name === 'settings'
-          ? t('settings')
-          : view.name === 'admin'
-            ? t('navAdmin')
-            : t('navProjects')
-  const rootView: View = view.name === 'public' ? { name: 'public' } : { name: 'projects' }
+      : view.name === 'trash'
+        ? t('navTrash')
+        : view.name === 'submit'
+          ? t('newProject')
+          : view.name === 'settings'
+            ? t('settings')
+            : view.name === 'admin'
+              ? t('navAdmin')
+              : t('navProjects')
+  const rootView: View =
+    view.name === 'public' ? { name: 'public' } : view.name === 'trash' ? { name: 'trash' } : { name: 'projects' }
   return (
     <div className="crumb">
       <button onClick={() => setView(rootView)}>{root()}</button>
@@ -700,12 +722,15 @@ function TierPill({ i18n, tier }: { i18n: I18n; tier?: string }) {
 function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
   const [list, setList] = useState<ProjectView[] | null>(null)
+  // The project the reader has asked to throw away, held while they confirm.
+  const [dropping, setDropping] = useState<ProjectView | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     listProjects()
       .then((p) => setList(p ?? []))
       .catch(() => setList([]))
   }, [])
+  useEffect(load, [load])
 
   const projects = list ?? []
   const sessionTotal = projects.reduce((n, p) => n + p.session_count, 0)
@@ -739,13 +764,214 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                 <ModifiedCell i18n={i18n} at={p.modified_at} />
                 <StatusBadge i18n={i18n} p={p} />
                 <VisibilityBadge i18n={i18n} visibility={p.visibility} />
+                {/* Only on what you own: removing a project you were invited to
+                    is not a thing that should be possible. */}
+                {p.owner === me.principal && (
+                  <Tip text={t('trashProject')}>
+                    <button
+                      className="icon-btn danger"
+                      aria-label={t('trashProject')}
+                      data-test="trash-project"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setDropping(p)
+                      }}
+                    >
+                      <Ico name="trash" size={13} />
+                    </button>
+                  </Tip>
+                )}
                 <Ico name="chevronRight" size={15} className="chev" />
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {dropping && (
+        <TrashDialog
+          i18n={i18n}
+          p={dropping}
+          onClose={() => setDropping(null)}
+          onDone={() => {
+            setDropping(null)
+            load()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// The confirmation before a project leaves the list. It is the app's own dialog,
+// not window.confirm: a chrome-owned box ignores the theme, cannot say the one
+// thing worth saying here, and blocks the tab while it is up.
+//
+// The one thing worth saying is that this is reversible — and, for a published
+// project, that it is not only a removal: the publication ends, and the
+// retraction goes on the record.
+function TrashDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView; onClose: () => void; onDone: () => void }) {
+  const { t } = i18n
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const go = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await trashProject(p.id)
+      onDone()
+    } catch (e) {
+      setErr(trashErrLabel(t, e))
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal
+      title={t('trashTitle')}
+      icon="trash"
+      eyebrow={p.title}
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>
+            {t('cancel')}
+          </button>
+          <button className="btn danger" onClick={go} disabled={busy} data-test="trash-confirm">
+            {busy ? t('trashing') : t('trashConfirm')}
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{t('trashBody')}</p>
+      {p.visibility === 'public' && <p className="warn small">{t('trashPublicNote')}</p>}
+      {err && <p className="err small">{err}</p>}
+    </Modal>
+  )
+}
+
+/* ─── Trash ─── */
+
+// The trash: what an owner threw away, and the two things they can do about it.
+// It is a screen rather than an undo toast because the decision it holds — the
+// permanent one — is not a decision to make inside a five-second window.
+function TrashScreen({ i18n, me }: { i18n: I18n; me: Me }) {
+  const { t } = i18n
+  const [list, setList] = useState<ProjectView[] | null>(null)
+  const [busy, setBusy] = useState('')
+  const [err, setErr] = useState('')
+  const [purging, setPurging] = useState<ProjectView | null>(null)
+
+  const load = useCallback(() => {
+    listTrash()
+      .then((p) => setList(p ?? []))
+      .catch(() => setList([]))
+  }, [])
+  useEffect(load, [load])
+
+  const restore = async (p: ProjectView) => {
+    setBusy(p.id)
+    setErr('')
+    try {
+      await restoreProject(p.id)
+      load()
+    } catch (e) {
+      setErr(generic(t, e, 'restoreFailed'))
+    }
+    setBusy('')
+  }
+
+  const projects = list ?? []
+  return (
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('navTrash')}</h1>
+        <p className="screen-desc">{t('trashIntro')}</p>
+      </div>
+      <div className="card">
+        {list === null ? (
+          <div className="empty">…</div>
+        ) : projects.length === 0 ? (
+          <Empty icon="trash" text={t('noTrash')} />
+        ) : (
+          <div className="rows" data-test="trash-rows">
+            {projects.map((p) => (
+              <div key={p.id} className="row" style={{ cursor: 'default' }}>
+                <div className="row-main">
+                  <div className="row-title">{p.title}</div>
+                  <div className="row-sub">{t('sessionCount', { n: String(p.session_count) })}</div>
+                </div>
+                <OwnerCell i18n={i18n} me={me} p={p} />
+                <ModifiedCell i18n={i18n} at={p.deleted_at} />
+                <button className="btn ghost small" disabled={busy === p.id} data-test="restore" onClick={() => restore(p)}>
+                  <Ico name="repeat" size={13} /> {busy === p.id ? t('restoring') : t('restore')}
+                </button>
+                <Tip text={t('purge')}>
+                  <button className="icon-btn danger" aria-label={t('purge')} data-test="purge" onClick={() => setPurging(p)}>
+                    <Ico name="trash" size={13} />
+                  </button>
+                </Tip>
+              </div>
+            ))}
+          </div>
+        )}
+        {err && <p className="err small" style={{ padding: '0 14px 12px' }}>{err}</p>}
+      </div>
+
+      {purging && (
+        <PurgeDialog
+          i18n={i18n}
+          p={purging}
+          onClose={() => setPurging(null)}
+          onDone={() => {
+            setPurging(null)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// The permanent delete's confirmation. What it spends its words on is what does
+// *not* go: the repositories close rather than being destroyed, because a
+// reproduction the agent wrote is evidence and this product does not destroy
+// evidence on a click.
+function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView; onClose: () => void; onDone: () => void }) {
+  const { t } = i18n
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const go = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await purgeProject(p.id)
+      onDone()
+    } catch (e) {
+      setErr(purgeErrLabel(t, e))
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal
+      title={t('purgeTitle')}
+      icon="alert"
+      eyebrow={p.title}
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>
+            {t('cancel')}
+          </button>
+          <button className="btn danger" onClick={go} disabled={busy} data-test="purge-confirm">
+            {busy ? t('purging') : t('purgeConfirm')}
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{t('purgeBody')}</p>
+      <p className="muted small">{t('purgeKeepsRepos')}</p>
+      {err && <p className="err small">{err}</p>}
+    </Modal>
   )
 }
 
@@ -1600,6 +1826,25 @@ function ProjectScreen({
       </div>
 
       <div className="screen" style={{ animation: 'none' }}>
+        {/* A trashed project keeps its address (013), so its owner can still
+            follow a link to it — and has to be told why nothing here works,
+            with the way back on the same line (019). */}
+        {project.deleted_at && (
+          <div className="banner warn" data-test="trashed-banner">
+            <Ico name="trash" size={14} />
+            <span style={{ flex: 1 }}>{t('trashedBanner')}</span>
+            <button
+              className="btn ghost small"
+              data-test="restore"
+              onClick={async () => {
+                await restoreProject(id)
+                refresh()
+              }}
+            >
+              <Ico name="repeat" size={13} /> {t('restore')}
+            </button>
+          </div>
+        )}
         {tab === 'sessions' && (
           <div className="stack">
             {credits && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
