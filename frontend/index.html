@@ -3,7 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>replichai</title>
+    <title>replichai — does the paper actually reproduce?</title>
+    <meta
+      name="description"
+      content="replichai audits the reproducibility of research papers. It implements and re-runs the part of a paper a machine can run, never simulates the study with human participants, and returns a verdict published with the full transcript."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#4f46e5" />
+    <!-- The card is absolute because a crawler resolves it against nothing, and
+         it points at production from every environment on purpose: the image is
+         the same picture wherever the link was copied from. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="replichai" />
+    <meta property="og:title" content="Does the paper actually reproduce?" />
+    <meta
+      property="og:description"
+      content="It runs the paper. The inner loop is implemented and re-run; the outer loop — the study with people — is named, bounded, and never simulated."
+    />
+    <meta property="og:url" content="https://replichai.latere.ai/" />
+    <meta property="og:image" content="https://replichai.latere.ai/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Does the paper actually reproduce?" />
+    <meta
+      name="twitter:description"
+      content="It runs the paper. The inner loop is implemented and re-run; the outer loop — the study with people — is named, bounded, and never simulated."
+    />
+    <meta name="twitter:image" content="https://replichai.latere.ai/og.png" />
   </head>
   <body>
     <div id="root"></div>
