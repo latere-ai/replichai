@@ -1,0 +1,63 @@
+# 017 — The first screen
+
+**Status:** designed.
+
+**Scope:** the surface an unauthenticated visitor lands on, and the mark it carries. Replaces the 440px sign-in card with a split screen — what replichai is on the left, the sign-in card on the right — and replaces the letter-`r` gradient tile with a drawn mark and a wordmark lockup. Adds the head metadata the app has never had (description, favicon, `og:`/`twitter:` cards). Frontend only: no route, no API, no schema.
+
+**Depends on:** [006e](006e-frontend.md) (the screens and the design tokens), [006q](006q-sign-in-is-open-budget-is-not.md) (sign-in is open, which is what the copy may promise), [013](013-the-address-bar-is-the-state.md) (`/login?next=` carries where to come back to).
+
+## Problem
+
+The first thing a visitor sees is a centred card holding a gradient tile with the letter `r`, the word `replichai`, one sentence — *"Audit the reproducibility of a research paper."* — and a button (`frontend/src/App.tsx:307-321`). Nothing on that screen says what the product does that nothing else does, and the one sentence it does show is the only claim it makes.
+
+That matters more here than on most products, because the differentiator is not a category — it is a boundary. `docs/landscape.md` puts it plainly: every tool in the field reads a paper's text and images, and none of them re-runs a line of its code. The thing worth saying on the first screen is that this one executes the paper, and that it refuses to execute the half of the paper a machine cannot honestly execute. A card with room for one sentence cannot say either.
+
+The mark has a second, smaller problem. It is a `<div>` containing the character `r`, styled `font-family: var(--font-serif); font-style: italic` — and `--font-serif: 'Instrument Serif'` is declared at `styles.css:51` with no `@font-face` and no font link anywhere in the repository. The mark has therefore always rendered in Georgia. An identity that depends on a font the app does not ship is not an identity.
+
+There is also nothing in `<head>`: no description, no icon, no social card (`frontend/index.html` is twelve lines). A link to a replichai project pasted into Slack or a mail client shows a bare URL.
+
+## Decisions
+
+**The mark is the boundary the product defends.** A closed solid ring inside a dashed open one: the inner loop is mechanically re-runnable, so it is drawn closed; the outer loop is the study with human participants, so it is drawn open, and the product never closes it. The mark is an inline SVG in `icons.tsx`, coloured from `--brand` and scaling by an explicit `size`, so it survives dark mode and needs no font and no raster.
+
+**The wordmark carries the same seam.** `replichai` is `replic` (replication) and `hai` (human–AI, the lineage the `open-hai` forge account already names). The lockup sets it as one word with a hairline optical gap at that seam and tightened tracking. It is *not* tinted: the stylesheet's rule is that one brand hue marks what the operator can act on (`styles.css:1-9`), and a two-tone wordmark would spend that hue on decoration. The mark is where the colour goes.
+
+**The landing is two columns, and the sign-in card never leaves the fold.** Left: the lockup, the claim, the lead paragraph, and three lines naming the inner loop, the outer loop, and the verdict. Right: the sign-in card. Below 900px the grid becomes one column ordered *brand → card → the three lines*, so the button stays reachable on a phone without scrolling past the argument.
+
+**Nothing on this screen links anywhere a signed-out visitor cannot go.** `GET /public` is gated (`internal/httpapi/handlers.go:87`), so a "browse the public registry" link would bounce the visitor straight back to the screen they clicked from. The public registry becomes linkable from here when it becomes readable signed-out, which is its own spec. The only action is signing in.
+
+**The copy promises exactly what 006q made true.** Signing in is open and costs nothing; a session is what spends. The card says that rather than "get started free", which would be a claim about credits a new account does not have.
+
+**`AuthUnavailable` and `NoAccess` keep the centred card.** They are failures, not invitations: an argument for the product is the wrong thing to put in front of somebody whose session just broke. They inherit the new mark and lockup and nothing else.
+
+## The copy
+
+| Slot | Text |
+|---|---|
+| Claim | Does the paper actually reproduce? |
+| Lead | Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart. |
+| Inner loop | The algorithm, model, or analysis pipeline. Implemented, run, and published as a repository with the agent's own commit history. |
+| Outer loop | The study that validates it with people. Named, bounded, and never simulated — pretending otherwise is how reproducibility claims go wrong. |
+| The verdict | Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number. |
+| Card | Sign in — Signing in is open and costs nothing. A session is what spends, and only when you start one. |
+
+Every string lives in `i18n.ts` under the `auth` section. `Lang` is `'en'` only (`i18n.ts:6`), so there is no second locale to update.
+
+## Head metadata
+
+`frontend/index.html` gains a description, `og:`/`twitter:` cards pointing at `https://replichai.latere.ai/og.png`, a `theme-color`, and icons. `frontend/public/` gains `favicon.svg` (the mark, white on brand, in a rounded tile so it holds at 16px), `apple-touch-icon.png`, and `og.png` (1200×630). The rasters are generated from the same SVG source by `frontend/scripts/brand.mjs` over the Chrome that already drives the browser tests, and committed, so a build needs no browser.
+
+## Acceptance criteria
+
+1. `Mark` renders as SVG at both rail and landing sizes, in light and dark, with no dependence on `--font-serif`; the letter-`r` tile and its two CSS rules are deleted, not left beside the new mark.
+2. The wordmark is one component used at every site that currently hardcodes `replichai` (`App.tsx:249`, `:313`, `:440`).
+3. At 1440×900 the landing renders two columns, and the sign-in button's bounding box lies entirely above 900px.
+4. At 390×844 the landing renders one column, the order is brand → card → points, and the sign-in button is entirely above 844px.
+5. The sign-in button still links to `/login?next={current path}`, and the deep-link case (`/p/{id}` signed out) still round-trips.
+6. `AuthUnavailable` and `NoAccess` still render their centred card with the new mark.
+7. `index.html` carries a description, an `og:image`, and an icon; `favicon.svg`, `apple-touch-icon.png`, and `og.png` are served from the built bundle's root.
+8. A browser test (`frontend/test/landing.test.mjs`) drives 3, 4, 5, and 6 in Chrome against a mocked `/me`, and fails without the change.
+
+## Not in scope
+
+A public, signed-out registry; a marketing site with its own routes; a pricing page; loading `Inter`/`Instrument Serif` as real webfonts (the declaration stays a fallback chain, and nothing in the new design depends on it); any second locale.
