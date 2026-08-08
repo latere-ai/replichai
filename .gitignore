@@ -4,9 +4,12 @@
 
 # Frontend build + deps (the build is embedded at image-build time; a
 # committed dist/PLACEHOLDER keeps the go:embed non-empty without a build).
+# Everything the build writes is ignored by default rather than named one
+# artifact at a time — naming them meant each new static file (a favicon, a
+# social card) arrived untracked and one `git add` away from being committed.
 /frontend/node_modules/
-/internal/spa/dist/index.html
-/internal/spa/dist/assets/
+/internal/spa/dist/*
+!/internal/spa/dist/PLACEHOLDER
 
 # Scratch
 *.tfplan
