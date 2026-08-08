@@ -24,7 +24,6 @@ import {
   listMembers,
   listProjects,
   listPublic,
-  listShared,
   makeProjectPublic,
   withdrawProject,
   removeMember,
@@ -93,16 +92,17 @@ import {
 import { Ico, type IconName } from './icons'
 import { useRouter, type Navigate, type ProjectTab, type SessionTab, type View } from './routes'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
-import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
+import { absoluteTime, relativeTime } from './when'
 import { useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
 
-// signerOf names the person who published a project. `owner` is an opaque OIDC
-// subject and means nothing to a reader, so the signer's recorded name is used
-// whenever the sign-off carries one (006n); a v1 sign-off has none and falls
-// back to the principal, as it did before.
-const signerOf = (p: Project) => p.signed_off_name || p.owner
+// signerOf names the person who published a project. The signer's recorded name
+// is used whenever the sign-off carries one (006n); a v1 sign-off has none and
+// falls back to the owner's profile name (018). `owner` itself is never shown —
+// it is an opaque OIDC subject and names nobody.
+const signerOf = (p: Project & { owner_name?: string }) => p.signed_off_name || p.owner_name || '—'
 
 // phaseClass tones a phase badge: any non-terminal phase reads as "running".
 const phaseClass = (p: string) => (terminal(p) ? p : 'running')
@@ -534,7 +534,7 @@ function Shell({
           </div>
         </header>
 
-        {view.name === 'projects' && <ProjectsScreen i18n={i18n} onOpen={openProject} />}
+        {view.name === 'projects' && <ProjectsScreen i18n={i18n} me={me} onOpen={openProject} />}
         {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
         {view.name === 'submit' && (
           <SubmitScreen
@@ -693,19 +693,22 @@ function TierPill({ i18n, tier }: { i18n: I18n; tier?: string }) {
 
 /* ─── Projects ─── */
 
-function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title?: string) => void }) {
+// The projects list: one list of everything the reader may work in, owned or
+// shared, with the owner as a column rather than a tab (018). Which of the two a
+// project was never a fact the reader chose, and splitting on it meant finding
+// work started with remembering who had created it.
+function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
-  const [tab, setTab] = useState<'mine' | 'shared'>('mine')
-  const [mine, setMine] = useState<ProjectView[] | null>(null)
-  const [shared, setShared] = useState<ProjectView[]>([])
+  const [list, setList] = useState<ProjectView[] | null>(null)
 
   useEffect(() => {
-    listProjects().then((p) => setMine(p ?? [])).catch(() => setMine([]))
-    listShared().then((p) => setShared(p ?? [])).catch(() => setShared([]))
+    listProjects()
+      .then((p) => setList(p ?? []))
+      .catch(() => setList([]))
   }, [])
 
-  const list = tab === 'mine' ? mine ?? [] : shared
-  const sessionTotal = (mine ?? []).reduce((n, p) => n + p.session_count, 0)
+  const projects = list ?? []
+  const sessionTotal = projects.reduce((n, p) => n + p.session_count, 0)
 
   return (
     <div className="screen">
@@ -715,49 +718,25 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
       </div>
 
       <div className="stat-grid">
-        <Stat label={t('statProjects')} value={mine === null ? '—' : mine.length} icon="folder" tone="var(--brand)" />
-        <Stat label={t('statSessionsRun')} value={mine === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
+        <Stat label={t('statProjects')} value={list === null ? '—' : projects.length} icon="folder" tone="var(--brand)" />
+        <Stat label={t('statSessionsRun')} value={list === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
       </div>
 
       <div className="card">
-        <div className="card-head">
-          <Segmented
-            value={tab}
-            onChange={setTab}
-            label={t('navProjects')}
-            options={[
-              { value: 'mine', label: t('myProjects'), icon: 'folder' },
-              { value: 'shared', label: t('sharedWithMe'), icon: 'users' },
-            ]}
-          />
-        </div>
-        {mine === null ? (
+        {list === null ? (
           <div className="empty">…</div>
-        ) : list.length === 0 ? (
-          <Empty icon={tab === 'mine' ? 'folder' : 'users'} text={tab === 'mine' ? t('noProjects') : t('noShared')} />
+        ) : projects.length === 0 ? (
+          <Empty icon="folder" text={t('noProjects')} />
         ) : (
-          <div className="rows">
-            {list.map((p) => (
+          <div className="rows" data-test="project-rows">
+            {projects.map((p) => (
               <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="row-main">
                   <div className="row-title">{p.title}</div>
-                  <div className="row-sub">
-                    {tab === 'shared' && (
-                      <>
-                        {t('initiator')}:{' '}
-                        {p.signer_handle ? (
-                          <a className="link" href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
-                            {signerOf(p)}
-                          </a>
-                        ) : (
-                          signerOf(p)
-                        )}{' '}
-                        ·{' '}
-                      </>
-                    )}
-                    {t('sessionCount', { n: String(p.session_count) })}
-                  </div>
+                  <div className="row-sub">{t('sessionCount', { n: String(p.session_count) })}</div>
                 </div>
+                <OwnerCell i18n={i18n} me={me} p={p} />
+                <ModifiedCell i18n={i18n} at={p.modified_at} />
                 <StatusBadge i18n={i18n} p={p} />
                 <VisibilityBadge i18n={i18n} visibility={p.visibility} />
                 <Ico name="chevronRight" size={15} className="chev" />
@@ -766,6 +745,38 @@ function ProjectsScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, tit
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// The Owner column. Your own projects say "You" — the common case, and one
+// nobody should have to read a name to recognise. Somebody else's is their
+// profile name, linking to their public page when they have one. A name the
+// server could not resolve is a dash: the opaque subject it would otherwise fall
+// back to named nobody either.
+function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
+  const { t } = i18n
+  const label = p.owner === me.principal ? t('ownerYou') : p.owner_name || t('ownerUnknown')
+  return (
+    <div className="row-col row-owner" data-test="owner">
+      {p.owner_handle && p.owner !== me.principal ? (
+        <a className="link" href={`/u/${p.owner_handle}`} onClick={(e) => e.stopPropagation()}>
+          {label}
+        </a>
+      ) : (
+        label
+      )}
+    </div>
+  )
+}
+
+// The Last-modified column: an age to scan, the exact moment to read.
+function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
+  const rel = relativeTime(at)
+  const tip = tipAttrs(absoluteTime(at))
+  return (
+    <div {...tip} className={`row-col row-modified ${tip.className}`} data-test="modified">
+      {rel || i18n.t('ownerUnknown')}
     </div>
   )
 }

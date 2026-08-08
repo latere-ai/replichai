@@ -124,6 +124,16 @@ export type ProjectView = Project & {
   running: number
   latest_phase?: string
   signer_handle?: string
+  // Who owns it, as a reader can read them (018). `owner` is an opaque OIDC
+  // subject and names nobody, so the list's Owner column reads these: the
+  // owner's profile name, and their handle when that profile is public and the
+  // name can therefore link. Both absent for somebody who has saved no profile.
+  // Neither is ever an email address.
+  owner_name?: string
+  owner_handle?: string
+  // When this project last changed — the newest of its creation, its papers, and
+  // its sessions. Derived server-side on every read, and what the list sorts on.
+  modified_at?: string
 }
 
 // may_submit is the server's answer to "may this caller open a session here" —
@@ -351,8 +361,9 @@ export const renameProject = (id: string, title: string) =>
 // job — failed with a "cancelled" cause.
 export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)
 
-// listProjects returns the caller's own projects, newest first, each with a
-// session count. The session cookie scopes the result server-side.
+// listProjects returns every project the caller may work in — their own and the
+// ones they were invited to — newest-modified first, each with a session count
+// (018). The session cookie scopes the result server-side.
 export const listProjects = () => fetch('/projects').then(json<ProjectView[]>)
 
 // getProject returns one project and its sessions, newest first.
@@ -360,9 +371,6 @@ export const getProject = (id: string) => fetch(`/projects/${id}`).then(json<Pro
 
 // listPublic returns the public zone: every public project, newest first.
 export const listPublic = () => fetch('/public').then(json<ProjectView[]>)
-
-// listShared returns projects the caller is a collaborator on (not their own).
-export const listShared = () => fetch('/shared').then(json<ProjectView[]>)
 
 // Project members (owner-only): list, invite by email, remove by email.
 export const listMembers = (id: string) => fetch(`/projects/${id}/members`).then(json<Member[]>)
