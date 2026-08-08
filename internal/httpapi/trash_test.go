@@ -74,6 +74,39 @@ func TestTrashAndRestore(t *testing.T) {
 	}
 }
 
+// The trash shows the deleted time, so it sorts on the deleted time. A project
+// created long ago and thrown away today belongs above one created recently and
+// thrown away last month — the ordinary list's modified-time sort would put them
+// the other way round, which is a column that does not order what it shows.
+func TestTrashIsSortedByWhenItWasDeleted(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	ctx := context.Background()
+	me := Identity{Sub: "me", Email: "me@x.com"}
+
+	old, _ := d.Projects.Create(ctx, me.Sub, "Old but just deleted")
+	recent, _ := d.Projects.Create(ctx, me.Sub, "New but deleted earlier")
+	// The newer project is worked in (so it has the later modified time) and
+	// thrown away first; the older one is thrown away last.
+	if err := d.Projects.AddPaper(ctx, recent.ID, project.Paper{Key: "arxiv:1", Ref: "r", AddedBy: me.Sub}); err != nil {
+		t.Fatalf("add paper: %v", err)
+	}
+	if w := doAs(t, h, "DELETE", "/projects/"+recent.ID, "", me); w.Code != http.StatusNoContent {
+		t.Fatalf("delete recent: %d", w.Code)
+	}
+	if w := doAs(t, h, "DELETE", "/projects/"+old.ID, "", me); w.Code != http.StatusNoContent {
+		t.Fatalf("delete old: %d", w.Code)
+	}
+
+	trash := listOf(t, h, "/projects/trash", me)
+	if len(trash) != 2 {
+		t.Fatalf("trash holds %d projects, want 2", len(trash))
+	}
+	if trash[0].ID != old.ID {
+		t.Errorf("the trash leads with %q, want the most recently deleted %q", trash[0].Title, old.Title)
+	}
+}
+
 // 019 AC6: a trashed project's address still resolves for its owner, read-only,
 // and 404s everybody else — including the sessions and transcripts underneath
 // it, which inherit the decision through mayViewProject.

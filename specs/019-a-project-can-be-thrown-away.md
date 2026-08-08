@@ -1,6 +1,16 @@
 # 019 — A project can be thrown away
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `projects.deleted_at` (migration 9, with a partial index per read), `Trash`/`Restore`/`ListTrashed` on the project store and `DeleteByProject` on the job store, all under the shared contract tests; `DELETE /projects/{id}`, `?purge=1`, `POST /projects/{id}/restore` and `GET /projects/trash` in `internal/httpapi`, with `trash_test.go` covering the guards, the cascade, the read rules and the route precedence. The frontend has the row action, the two dialogs, the `/trash` screen and the banner; `frontend/test/trash.test.mjs` drives the whole round trip in Chrome and was verified to fail with the change stashed. Go and the 10-file browser suite are green.
+
+Four things came out of the build. **The trashed check went to three gates, not one caller-by-caller decision.** The spec said `Get` answers and "the caller decides"; what shipped puts it in `mayViewProject` (which closes the sessions, transcripts and artifacts underneath a project in one edit, because that predicate is already documented as the decision everything below a project inherits), in `projectForWork` (start, add-paper, credits) and in `ownedProject` (rename, members, publish, withdraw), with `trashableProject` as the deliberate opt-out the trash routes resolve through. That is a better answer than the spec's and the reason the read-path audit it worried about never had to happen.
+
+**`signedPublicProjects` was free.** It reads `ListPublic` and filters by signer, so a trashed project left `/u/{handle}` the moment it left the zone — 006o's one-source-of-truth choice paying for itself a spec later.
+
+**`trashableProject` hides existence where `ownedProject` does not.** A collaborator's delete is 403 and a stranger's is 404, which is `getProject`'s rule rather than the members routes' (403 for both). Whether a stranger's project exists is not a stranger's business, and a route added now should not inherit the older leak.
+
+**Two follow-on fixes the first pass missed**, both found by review rather than by a test: the trash screen inherited `projectViews`' modified-time sort and so did not order by the column it displays (now sorted on `deleted_at`, with a test that discriminates); and the project screen still rendered the rename pencil, the People tab and the credits card on a trashed project, every one of which the server now refuses — `isOwner` folds in `!deleted_at`. `closeRepos` was also extracted so a withdrawal and a delete close repositories through one helper instead of two copies.
+
+One thing deliberately left: purging a project **orphans its `project_members` rows**. There is no foreign key (the ledger's `job_id` is unconstrained on purpose — "deleting a project must not delete the record of what its sessions cost" — and `project_members.project` is a plain column), so nothing breaks: a membership whose project is gone is already skipped by the merged list. It is untidy, not wrong.
 
 **Scope:** removing a project. An owner moves one to the trash, sees it in a Trash screen reached from the rail, restores it, or deletes it permanently. Soft delete is a `deleted_at` column and a filter on every read path; permanent delete is the cascade `project.Store.Delete` already performs, plus the two things it does not cover.
 
