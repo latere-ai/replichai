@@ -57,7 +57,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [017](017-the-first-screen.md) gives the product a first screen and an identity. The surface a visitor met was a 440px card holding the character `r`, the name, one sentence and a button — and that `r` was set in a font (`Instrument Serif`) the app has never shipped, so the mark had always rendered in Georgia. The landing is now two columns, the claim and the inner/outer boundary beside the way in, collapsing on a phone to an order that keeps the button reachable; the mark is a drawn SVG of the thing the product actually defends, a closed inner ring inside an open one; and `index.html` finally has a description, a tab icon and a social card, so a link pasted into Slack stops being a bare URL.
 
-**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
+**Built:** [018](018-one-list-of-projects.md) merges "My projects" and "Shared with me" into one list. The screen split a reader's work by a fact they did not choose — whether they had created a project or been invited to it — so finding work started with remembering who had started it, and the two halves disagreed about the same project, because the owned list counted only the sessions *you* had submitted. Ownership is a column now, not a place: `GET /shared` is gone, one query summarises a project's sessions however started them, the owner is named through their profile (never their address — the redaction rule that governs a signer's email governs this too), and the list sorts on a modified time derived from the newest of the project, its papers and its sessions rather than on when a container was opened.
+
+**Designed, not built:** [019](019-a-project-can-be-thrown-away.md) (a trash, and the two guards a permanent delete needs), [020](020-download-the-whole-project.md) (one archive of everything a project produced), 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
@@ -158,6 +160,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | built | 012, 013, 006f, 006s |
 | 016 | [A paper that is not published yet](016-a-paper-that-is-not-published-yet.md) | deferred (ideation) | 001, 006d, 012, 007b, 008 |
 | 017 | [The first screen](017-the-first-screen.md) | built | 006e, 006q, 013 |
+| 018 | [One list of projects](018-one-list-of-projects.md) | built | 006g, 006f, 006r, 013 |
+| 019 | [A project can be thrown away](019-a-project-can-be-thrown-away.md) | designed | 006g, 006o, 011, 013, 018 |
+| 020 | [Download the whole project](020-download-the-whole-project.md) | designed | 006f, 005, 015, 018 |
 
 ## The three tracks
 
