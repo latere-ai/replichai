@@ -163,6 +163,18 @@ try {
   if (stats[0] !== '2') fail(`the projects tile reads ${stats[0]}, want 2 — the merged list`)
   if (stats[1] !== '5') fail(`the sessions tile reads ${stats[1]}, want 5 — every row's sessions`)
 
+  // The download is a real link to the archive, so the browser saves it rather
+  // than the tab buffering a body that size — and a project that has produced
+  // nothing offers no download at all (020).
+  const downloads = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-test="download-project"]')].map((a) => ({ tag: a.tagName, href: a.getAttribute('href') })),
+  )
+  if (downloads.length !== 2) fail(`${downloads.length} rows offer a download; both projects have sessions`)
+  for (const d of downloads) {
+    if (d.tag !== 'A') fail(`the download is a <${d.tag}>; it has to be a link for the browser to save the file`)
+    if (!/^\/projects\/[^/]+\/archive$/.test(d.href)) fail(`the download points at ${d.href}, want the project's archive`)
+  }
+
   // Narrow enough and the two context columns fold away; the row's identity does
   // not. A column that squeezes the title out is worse than one that leaves.
   await page.setViewport({ width: 640, height: 900 })

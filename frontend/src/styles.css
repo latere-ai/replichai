@@ -588,6 +588,10 @@ textarea {
   background: var(--bg-raised);
   color: var(--fg-2);
   cursor: pointer;
+  /* The download is an anchor rather than a button, so the browser saves the
+     archive instead of the tab buffering it (020). It has to look like the
+     controls beside it. */
+  text-decoration: none;
   transition: color var(--dur-hover), border-color var(--dur-hover), background var(--dur-hover);
 }
 .icon-btn:hover {

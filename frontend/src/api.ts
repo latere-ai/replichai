@@ -382,6 +382,13 @@ export const restoreProject = (id: string) => fetch(`/projects/${id}/restore`, {
 // that was never thrown away — the reversible step cannot be skipped.
 export const purgeProject = (id: string) => fetch(`/projects/${id}?purge=1`, { method: 'DELETE' }).then(ok)
 
+// archiveUrl is where a project's whole output is downloaded from (020): one zip
+// of every session's committed tree, built server-side from the repositories the
+// app already proxies file by file. It is a URL rather than a fetch because the
+// browser's own download is what should handle a body this size — a fetch would
+// buffer the archive in the tab before saving it.
+export const archiveUrl = (id: string) => `/projects/${id}/archive`
+
 // listTrash returns the caller's own trashed projects, newest-trashed first.
 export const listTrash = () => fetch('/projects/trash').then(json<ProjectView[]>)
 

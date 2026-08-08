@@ -61,7 +61,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [019](019-a-project-can-be-thrown-away.md) lets an owner throw a project away. Nothing in the product removed one before: `Delete` existed in the store and no route had ever called it, because 006o's argument for giving owners withdrawal rested on withdrawal *not* being deletion. Removing is two steps now, and the guards are what make the second one safe. The trash is reversible and a `deleted_at` column, so a project leaves every list without taking its papers, sessions or repositories with it; a running session refuses it, and a public project is withdrawn on the way out with the retraction recorded. The permanent delete is refused while the pot holds credits — a balance nobody can account for is what the ledger exists to prevent — and it closes the published repositories rather than destroying them, because a reproduction the agent wrote is evidence. The trashed check lives at the three gates every read and write already pass, so the sessions and transcripts under a trashed project close in one edit rather than five.
 
-**Designed, not built:** [020](020-download-the-whole-project.md) (one archive of everything a project produced), 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
+**Built:** [020](020-download-the-whole-project.md) gives a project one download. The app proxies committed files one at a time because the repositories are usually private, which meant there was no way to get the work out: a project with three sessions and forty files each was a hundred and twenty clicks and a hundred and twenty loose files with no record of which session each came from. `GET /projects/{id}/archive` streams a zip organised by session — `sessions/{job-id}/…`, because 015 established that a repository belongs to the session that produced it and a flat merge would collide two sessions' files. The status code is committed before the walk finishes, so a forge read that fails is recorded in the archive's own `MANIFEST.txt` rather than truncating the download silently. The gate is view rights, not ownership: a collaborator takes away the project they work in, and a reader takes away what was published.
+
+**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
@@ -164,7 +166,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 017 | [The first screen](017-the-first-screen.md) | built | 006e, 006q, 013 |
 | 018 | [One list of projects](018-one-list-of-projects.md) | built | 006g, 006f, 006r, 013 |
 | 019 | [A project can be thrown away](019-a-project-can-be-thrown-away.md) | built | 006g, 006o, 011, 013, 018 |
-| 020 | [Download the whole project](020-download-the-whole-project.md) | designed | 006f, 005, 015, 018 |
+| 020 | [Download the whole project](020-download-the-whole-project.md) | built | 006f, 005, 015, 018 |
 
 ## The three tracks
 
