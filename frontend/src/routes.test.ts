@@ -13,9 +13,10 @@ const table: [string, View][] = [
   ['/u/ada-lovelace', { name: 'profile', handle: 'ada-lovelace' }],
   ['/p/4fbff44c3323f724ea8c9ed5d5ecdbca', { name: 'project', id: '4fbff44c3323f724ea8c9ed5d5ecdbca' }],
   ['/p/abc/verdict', { name: 'project', id: 'abc', tab: 'verdict' }],
-  ['/p/abc/artifacts', { name: 'project', id: 'abc', tab: 'artifacts' }],
   ['/p/abc/people', { name: 'project', id: 'abc', tab: 'people' }],
   ['/p/abc/s/job-1', { name: 'session', projectId: 'abc', jobId: 'job-1' }],
+  ['/p/abc/s/job-1/verdict', { name: 'session', projectId: 'abc', jobId: 'job-1', tab: 'verdict' }],
+  ['/p/abc/s/job-1/artifacts', { name: 'session', projectId: 'abc', jobId: 'job-1', tab: 'artifacts' }],
 ]
 
 test('every address resolves to its screen', () => {
@@ -31,6 +32,28 @@ test('every screen writes the address it is read from', () => {
 test('the sessions tab is the project path itself', () => {
   expect(pathOf({ name: 'project', id: 'abc', tab: 'sessions' })).toBe('/p/abc')
   expect(viewOf('/p/abc')).toEqual({ name: 'project', id: 'abc' })
+})
+
+// The same rule one level down: a session opens on its transcript, and the links
+// to one already sent point at the bare path.
+test('the transcript tab is the session path itself', () => {
+  expect(pathOf({ name: 'session', projectId: 'abc', jobId: 'j1', tab: 'transcript' })).toBe('/p/abc/s/j1')
+  expect(viewOf('/p/abc/s/j1')).toEqual({ name: 'session', projectId: 'abc', jobId: 'j1' })
+})
+
+// A project has no repository of its own to browse — there are as many as it has
+// published sessions — so the tab that had to pick one is gone (015). The
+// address falls back to the project, as any unrecognised segment does.
+test('the retired project artifacts address is just the project', () => {
+  expect(viewOf('/p/abc/artifacts')).toEqual({ name: 'project', id: 'abc' })
+})
+
+// A segment that names no session tab keeps the reader on the session, the same
+// way a bad project tab keeps them on the project.
+test('a session survives a segment that names no tab', () => {
+  for (const path of ['/p/abc/s/j1/nonsense', '/p/abc/s/j1/sessions']) {
+    expect(viewOf(path)).toEqual({ name: 'session', projectId: 'abc', jobId: 'j1' })
+  }
 })
 
 // A segment that names no tab is still a project: a mistyped tab, or a session
@@ -76,7 +99,7 @@ test('an address we do not own is the dashboard', () => {
     '/public',
     '/admin',
     '/me',
-    '/p/abc/s/j/extra',
+    '/p/abc/s/j/one/too/many',
     // A false positive here would render a stranger's page instead of the
     // workspace, which is why the profile pattern claims one segment only (006r).
     '/u/ada/extra',
