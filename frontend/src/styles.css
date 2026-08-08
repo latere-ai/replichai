@@ -877,6 +877,36 @@ h1.screen-title {
   font-size: 11.5px;
   color: var(--fg-3);
 }
+/* The merged project list's columns (018). The title takes the space left over;
+   Owner and Last modified are fixed so they line up down the page — a column
+   that wanders is one the eye has to re-find on every row. Both are quiet: they
+   are what you scan by, not what you read the row for. */
+.row-main {
+  flex: 1;
+  min-width: 0;
+}
+.row-col {
+  flex: none;
+  font-size: 12px;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-owner {
+  width: 140px;
+}
+.row-modified {
+  width: 110px;
+}
+/* Below the width where five columns fit, the two that are context rather than
+   identity fold away first. The title, status, and visibility are what a row is. */
+@media (max-width: 760px) {
+  .row-owner,
+  .row-modified {
+    display: none;
+  }
+}
 .chev {
   flex: none;
   color: var(--fg-3);

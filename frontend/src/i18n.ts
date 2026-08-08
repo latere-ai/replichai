@@ -135,10 +135,14 @@ const strings: Record<Lang, Record<string, string>> = {
     ledgerAllocate: 'Allocated to a project',
     ledgerReclaim: 'Taken back from a project',
     ledgerOther: 'Adjustment',
-    myProjects: 'My projects',
-    sharedWithMe: 'Shared with me',
+    // The merged list (018). Ownership is a column, not a place to look, so the
+    // owner of your own project is "You" — the common row, and the one nobody
+    // should have to read a name to recognise.
+    colOwner: 'Owner',
+    colModified: 'Last modified',
+    ownerYou: 'You',
+    ownerUnknown: '—',
     noProjects: 'No projects yet. Start a new audit to open one.',
-    noShared: 'Nothing shared with you yet.',
     sessionCount: '{n} session(s)',
     private: 'Private',
     public: 'Public',
