@@ -90,11 +90,11 @@ func (f failingJobs) ListByProject(ctx context.Context, id string) ([]job.Job, e
 	return f.Store.ListByProject(ctx, id)
 }
 
-func (f failingJobs) StatusByProject(ctx context.Context, owner string) (map[string]job.ProjectStatus, error) {
+func (f failingJobs) StatusByProjects(ctx context.Context, ids []string) (map[string]job.ProjectStatus, error) {
 	if f.statusErr != nil {
 		return nil, f.statusErr
 	}
-	return f.Store.StatusByProject(ctx, owner)
+	return f.Store.StatusByProjects(ctx, ids)
 }
 
 type failingMembers struct {
@@ -191,7 +191,7 @@ func TestReadsReportAStoreFailureAsFiveHundred(t *testing.T) {
 			d.Members = failingMembers{Membership: d.Members.(access.Membership), listErr: errStore}
 			return d
 		}},
-		{"shared with me", "GET", "/shared", "", func(d Deps, _ string) Deps {
+		{"list projects when the membership walk fails", "GET", "/projects", "", func(d Deps, _ string) Deps {
 			d.Members = failingMembers{Membership: d.Members.(access.Membership), projectsErr: errStore}
 			return d
 		}},

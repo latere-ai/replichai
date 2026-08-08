@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -166,6 +167,50 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	runPaperContract(t, s)
+	runModifiedContract(t, s)
+}
+
+// runModifiedContract asserts what a project's modified time must do (018): it
+// starts at creation and moves when a paper is added, so a list can sort on the
+// work rather than on when a container was opened.
+func runModifiedContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	p, err := s.Create(ctx, "owner", "Modified")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	at, err := s.ModifiedAt(ctx, []string{p.ID})
+	if err != nil {
+		t.Fatalf("ModifiedAt: %v", err)
+	}
+	// A project with no papers answers its creation time rather than dropping out
+	// of the result — the row still has to sort somewhere.
+	if got, want := at[p.ID].UTC(), p.CreatedAt.UTC(); !got.Equal(want) {
+		t.Errorf("ModifiedAt with no papers = %v, want the creation time %v", got, want)
+	}
+
+	added := p.CreatedAt.Add(time.Hour)
+	if err := s.AddPaper(ctx, p.ID, Paper{Key: "arxiv:2401.1", Ref: "r", AddedBy: "owner", AddedAt: added}); err != nil {
+		t.Fatalf("AddPaper: %v", err)
+	}
+	at, err = s.ModifiedAt(ctx, []string{p.ID})
+	if err != nil {
+		t.Fatalf("ModifiedAt after AddPaper: %v", err)
+	}
+	if got := at[p.ID].UTC(); !got.Equal(added.UTC()) {
+		t.Errorf("ModifiedAt after AddPaper = %v, want the paper's time %v", got, added.UTC())
+	}
+
+	// A project nobody asked about is not answered for, and asking for none is
+	// not an error — an empty list is what a signed-in newcomer's page sends.
+	if at, err := s.ModifiedAt(ctx, nil); err != nil || len(at) != 0 {
+		t.Errorf("ModifiedAt(nil) = %v, %v; want an empty map and no error", at, err)
+	}
+	if at, err := s.ModifiedAt(ctx, []string{"nope"}); err != nil || len(at) != 0 {
+		t.Errorf("ModifiedAt of a missing project = %v, %v; want an empty map and no error", at, err)
+	}
 }
 
 // runPaperContract asserts what a project's papers must do (012). A paper is

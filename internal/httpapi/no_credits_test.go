@@ -25,7 +25,7 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 	newcomer := Identity{Sub: "newcomer", Email: "new@example.com"}
 
 	// Reads, and their own workspace.
-	for _, path := range []string{"/projects", "/shared", "/public", "/me/profile"} {
+	for _, path := range []string{"/projects", "/public", "/me/profile"} {
 		if w := doAs(t, h, "GET", path, "", newcomer); w.Code != http.StatusOK {
 			t.Errorf("GET %s = %d, want 200 with no budget", path, w.Code)
 		}
@@ -91,12 +91,13 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 		`{"paper_key":"arxiv:2401.00003"}`, newcomer); w.Code != http.StatusPaymentRequired {
 		t.Errorf("start a session = %d, want 402 with no budget", w.Code)
 	}
-	// The projects they hold are the ones they made on purpose. A broke account
-	// no longer accumulates half-made projects by retrying, because a retry
-	// creates nothing to clean up.
+	// The projects they hold are the ones they made on purpose, plus the one they
+	// were invited into — one list now (018). A broke account no longer
+	// accumulates half-made projects by retrying, because a retry creates nothing
+	// to clean up.
 	list := doAs(t, h, "GET", "/projects", "", newcomer)
-	if n := countProjects(t, list.Body.Bytes()); n != 2 {
-		t.Errorf("owner holds %d project(s), want the two they created", n)
+	if n := countProjects(t, list.Body.Bytes()); n != 3 {
+		t.Errorf("newcomer holds %d project(s), want the two they created and the one they were invited into", n)
 	}
 }
 

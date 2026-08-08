@@ -60,7 +60,7 @@ func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 
 	// Every payload this member can read about themselves and their work.
 	for _, path := range []string{
-		"/projects", "/projects/" + started.ProjectID, "/jobs", "/jobs/" + started.JobID, "/shared", "/public",
+		"/projects", "/projects/" + started.ProjectID, "/jobs", "/jobs/" + started.JobID, "/public",
 	} {
 		w := httptest.NewRecorder()
 		rt.Handler().ServeHTTP(w, asPrincipal("GET", path, "", me.Sub, me.Email))

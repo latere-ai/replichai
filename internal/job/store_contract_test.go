@@ -195,17 +195,25 @@ func runProjectJoinContract(t *testing.T, s Store) {
 		t.Fatalf("pX sessions = %d, first %s; want 3 newest-first %s", len(inX), first3(inX), two.ID)
 	}
 
-	status, err := s.StatusByProject(ctx, "owner")
+	status, err := s.StatusByProjects(ctx, []string{"pX", "pY"})
 	if err != nil {
-		t.Fatalf("StatusByProject: %v", err)
+		t.Fatalf("StatusByProjects: %v", err)
 	}
-	// The owner's own sessions only (no stranger), with the newest phase and a
-	// running count — all four are still submitted (non-terminal).
-	if status["pX"].Total != 2 || status["pY"].Total != 1 {
-		t.Errorf("owner status = %v; want pX total 2, pY total 1 (no stranger)", status)
+	// Every session in the project, whoever submitted it — the stranger's run in
+	// pX is pX's (018). All four are still submitted, so all four are running.
+	if status["pX"].Total != 3 || status["pY"].Total != 1 {
+		t.Errorf("status = %v; want pX total 3 (including the stranger), pY total 1", status)
 	}
-	if status["pX"].Running != 2 || status["pX"].Latest != PhaseSubmitted {
-		t.Errorf("pX status = %+v; want running 2, latest submitted", status["pX"])
+	if status["pX"].Running != 3 || status["pX"].Latest != PhaseSubmitted {
+		t.Errorf("pX status = %+v; want running 3, latest submitted", status["pX"])
+	}
+	if status["pX"].LatestAt.IsZero() {
+		t.Error("pX LatestAt is zero; want the newest session's update time")
+	}
+	// A project nobody asked about is not summarised, so a list pays for the page
+	// it is showing and not for the table.
+	if _, ok := status["pZ"]; ok {
+		t.Error("pZ summarised; want only the projects asked for")
 	}
 }
 

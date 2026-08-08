@@ -48,10 +48,16 @@ type Store interface {
 	// of one project (006g). An unknown project yields no rows, never an error;
 	// the caller's ownership of the project is checked against the project store.
 	ListByProject(ctx context.Context, projectID string) ([]Job, error)
-	// StatusByProject returns, for one owner, a summary of each of their
-	// projects' sessions — the total, how many are still running, and the newest
-	// session's phase — so the project list shows status at a glance in one query.
-	StatusByProject(ctx context.Context, owner string) (map[string]ProjectStatus, error)
+	// StatusByProjects summarises the sessions of each named project — the total,
+	// how many are still running, the newest session's phase, and when one last
+	// changed — so a project list shows status at a glance in one query.
+	//
+	// It is scoped by project, not by principal (018). Scoping by the caller
+	// counted only the sessions they submitted, so a project a collaborator had
+	// run in reported one count to its owner and another to that collaborator;
+	// merging the two lists put those two answers side by side. A project's
+	// sessions are the project's, whoever started them.
+	StatusByProjects(ctx context.Context, ids []string) (map[string]ProjectStatus, error)
 	// Cancel stops a non-terminal session, moving it to failed with a "cancelled"
 	// cause, and returns the resulting job. It is idempotent: cancelling an
 	// already-terminal session returns it unchanged. It never routes through the

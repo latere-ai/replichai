@@ -57,7 +57,7 @@ type JobStore interface {
 	Get(ctx context.Context, id string) (job.Job, error)
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
-	StatusByProject(ctx context.Context, owner string) (map[string]job.ProjectStatus, error)
+	StatusByProjects(ctx context.Context, ids []string) (map[string]job.ProjectStatus, error)
 }
 
 // Canceler stops a running session. It is the worker (one process, one
@@ -81,6 +81,8 @@ type ProjectStore interface {
 	Get(ctx context.Context, id string) (project.Project, error)
 	ListByOwner(ctx context.Context, owner string) ([]project.Project, error)
 	ListPublic(ctx context.Context) ([]project.Project, error)
+	// ModifiedAt is this store's half of a project's modified time (018).
+	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
 	Delete(ctx context.Context, id string) error
 	SetPublic(ctx context.Context, id string, s project.SignOff) error
 	// SetPrivate withdraws a publication (006o), recording the retraction without

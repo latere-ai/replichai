@@ -114,7 +114,6 @@ func TestOperatorRoutesAreGated(t *testing.T) {
 		"DELETE /projects/{id}/papers",
 		"POST /projects/{id}/sessions",
 		"GET /projects",
-		"GET /shared",
 		"GET /public",
 		"GET /projects/{id}",
 		"GET /jobs/{id}",

@@ -1018,7 +1018,7 @@ func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 	}
 
 	// Collaborator: invited by the owner, then may view the private project and
-	// its sessions, and finds it under "shared with me".
+	// its sessions, and finds it in their own project list (018).
 	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"collab@x.com"}`, owner); w.Code != http.StatusNoContent {
 		t.Fatalf("invite: %d", w.Code)
 	}
@@ -1027,15 +1027,95 @@ func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 		t.Error("a collaborator must see the private project and its sessions")
 	}
 	var shared []ProjectView
-	_ = json.Unmarshal(doAs(t, h, "GET", "/shared", "", collab).Body.Bytes(), &shared)
+	_ = json.Unmarshal(doAs(t, h, "GET", "/projects", "", collab).Body.Bytes(), &shared)
 	if len(shared) != 1 || shared[0].ID != p.ID {
-		t.Errorf("collaborator /shared = %+v, want the one project", shared)
+		t.Errorf("collaborator /projects = %+v, want the one project", shared)
 	}
-	// A stranger's "shared with me" is empty.
+	// A stranger's list is empty.
 	var none []ProjectView
-	_ = json.Unmarshal(doAs(t, h, "GET", "/shared", "", stranger).Body.Bytes(), &none)
+	_ = json.Unmarshal(doAs(t, h, "GET", "/projects", "", stranger).Body.Bytes(), &none)
 	if len(none) != 0 {
-		t.Errorf("stranger /shared = %+v, want empty", none)
+		t.Errorf("stranger /projects = %+v, want empty", none)
+	}
+}
+
+// 018: the merged list is one list — the caller's own projects and the ones they
+// were invited to, each named by its owner, newest-modified first — and it
+// counts a project's sessions the same way for both, whoever started them.
+func TestProjectListMergesOwnedAndShared(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	ctx := context.Background()
+
+	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
+	collab := Identity{Sub: "collab-sub", Email: "collab@x.com"}
+	if _, err := d.Profiles.Save(ctx, profile.Profile{
+		Principal: owner.Sub, DisplayName: "Ada Lovelace", Handle: "ada", Public: true,
+	}); err != nil {
+		t.Fatalf("save owner profile: %v", err)
+	}
+
+	theirs, _ := d.Projects.Create(ctx, owner.Sub, "Theirs")
+	if w := doAs(t, h, "POST", "/projects/"+theirs.ID+"/members", `{"email":"collab@x.com"}`, owner); w.Code != http.StatusNoContent {
+		t.Fatalf("invite: %d", w.Code)
+	}
+	// A membership counts once it is bound, which login is what does.
+	if _, err := d.Members.(access.Membership).BindAll(ctx, access.Principal{Sub: collab.Sub, Email: collab.Email}); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	mine, _ := d.Projects.Create(ctx, collab.Sub, "Mine")
+	// A session the collaborator ran inside the owner's project: it belongs to the
+	// project, so both of them must be told the same count.
+	if _, err := d.Jobs.Enqueue(ctx, job.Submission{
+		Principal: collab.Sub, Ref: "r1", Kind: job.KindAudit, Project: theirs.ID, PaperKey: "arxiv:1",
+	}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	list := func(id Identity) []ProjectView {
+		var out []ProjectView
+		w := doAs(t, h, "GET", "/projects", "", id)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /projects as %s = %d", id.Sub, w.Code)
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+
+	got := list(collab)
+	if len(got) != 2 {
+		t.Fatalf("collaborator list = %d projects, want 2 (their own and the shared one)", len(got))
+	}
+	byID := map[string]ProjectView{}
+	for _, v := range got {
+		byID[v.ID] = v
+	}
+	// Newest-modified first: the shared project's session was enqueued last.
+	if got[0].ID != theirs.ID {
+		t.Errorf("first row = %q, want the just-worked-in project %q", got[0].Title, theirs.Title)
+	}
+	if byID[theirs.ID].SessionCount != 1 || byID[mine.ID].SessionCount != 0 {
+		t.Errorf("session counts = %d/%d, want 1/0", byID[theirs.ID].SessionCount, byID[mine.ID].SessionCount)
+	}
+	if n := byID[theirs.ID].ModifiedAt; !n.After(theirs.CreatedAt) {
+		t.Errorf("modified_at = %v, want later than created_at %v", n, theirs.CreatedAt)
+	}
+	// The owner is named through their profile, and never by their address.
+	if v := byID[theirs.ID]; v.OwnerName != "Ada Lovelace" || v.OwnerHandle != "ada" {
+		t.Errorf("owner = %q/%q, want Ada Lovelace/ada", v.OwnerName, v.OwnerHandle)
+	}
+	if body := doAs(t, h, "GET", "/projects", "", collab).Body.String(); strings.Contains(body, owner.Email) {
+		t.Errorf("the list carries the owner's address: %s", body)
+	}
+	// The owner reads the same count for the session their collaborator ran.
+	for _, v := range list(owner) {
+		if v.ID == theirs.ID && v.SessionCount != 1 {
+			t.Errorf("owner reads session_count %d, want the same 1 the collaborator reads", v.SessionCount)
+		}
+	}
+	// The old split surface is gone rather than left beside the merged one.
+	if w := doAs(t, h, "GET", "/shared", "", collab); w.Code != http.StatusNotFound {
+		t.Errorf("GET /shared = %d, want 404", w.Code)
 	}
 }
 

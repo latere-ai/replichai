@@ -163,6 +163,35 @@ func (s *PGStore) ListPublic(ctx context.Context) ([]Project, error) {
 	return out, rows.Err()
 }
 
+// ModifiedAt returns each named project's creation-or-newest-paper time, in one
+// query. The LEFT JOIN is what makes a project with no papers answer its
+// creation time rather than dropping out of the result.
+func (s *PGStore) ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error) {
+	if len(ids) == 0 {
+		return map[string]time.Time{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id, GREATEST(p.created_at, COALESCE(MAX(pp.added_at), p.created_at))
+		FROM projects p
+		LEFT JOIN project_papers pp ON pp.project_id = p.id
+		WHERE p.id = ANY($1)
+		GROUP BY p.id, p.created_at`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var id string
+		var at time.Time
+		if err := rows.Scan(&id, &at); err != nil {
+			return nil, err
+		}
+		out[id] = at
+	}
+	return out, rows.Err()
+}
+
 // Delete removes a project by id, idempotently.
 func (s *PGStore) Delete(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)
