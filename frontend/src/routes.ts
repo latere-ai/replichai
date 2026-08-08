@@ -9,7 +9,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // session's paper reference are records that can change, so they are filled in by
 // the screen that fetched them and are absent from the path. Only ids travel in
 // the URL.
-export type ProjectTab = 'sessions' | 'verdict' | 'artifacts' | 'people'
+export type ProjectTab = 'sessions' | 'verdict' | 'people'
+
+// A verdict and a repository belong to the session that produced them, so both
+// are addressed under the session rather than the project (015). A project holds
+// papers and a paper has sessions; there is no such thing as "the project's
+// repository" to browse.
+export type SessionTab = 'transcript' | 'verdict' | 'artifacts'
 
 export type View =
   | { name: 'projects' }
@@ -19,7 +25,7 @@ export type View =
   | { name: 'admin' }
   | { name: 'profile'; handle: string }
   | { name: 'project'; id: string; title?: string; tab?: ProjectTab }
-  | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string }
+  | { name: 'session'; jobId: string; projectId: string; ref?: string; projectTitle?: string; tab?: SessionTab }
 
 // The registry and the console are not at /public and /admin because the API
 // owns both roots: Go's mux matches them before the SPA fallback, so a browser
@@ -33,19 +39,25 @@ const SCREENS: Record<string, View> = {
   '/console': { name: 'admin' },
 }
 
-const TABS: ProjectTab[] = ['sessions', 'verdict', 'artifacts', 'people']
+const TABS: ProjectTab[] = ['sessions', 'verdict', 'people']
 
 const isTab = (s: string): s is ProjectTab => (TABS as string[]).includes(s)
 
+const SESSION_TABS: SessionTab[] = ['transcript', 'verdict', 'artifacts']
+
+const isSessionTab = (s: string): s is SessionTab => (SESSION_TABS as string[]).includes(s)
+
 // pathOf is the address a view lives at. The sessions tab is the project's own
 // path rather than /p/{id}/sessions, so the link somebody shares of a project is
-// the same one an invitation mail already carries.
+// the same one an invitation mail already carries. A session's transcript
+// follows the same rule for the same reason: it is where a session opens, and
+// the links to one already sent point at the bare path.
 export function pathOf(view: View): string {
   switch (view.name) {
     case 'project':
       return `/p/${view.id}` + (view.tab && view.tab !== 'sessions' ? `/${view.tab}` : '')
     case 'session':
-      return `/p/${view.projectId}/s/${view.jobId}`
+      return `/p/${view.projectId}/s/${view.jobId}` + (view.tab && view.tab !== 'transcript' ? `/${view.tab}` : '')
     case 'profile':
       return `/u/${view.handle}`
     default: {
@@ -72,8 +84,16 @@ export function viewOf(pathname: string): View {
   const profile = /^\/u\/([^/?#]+)$/.exec(path)
   if (profile) return { name: 'profile', handle: decodeURIComponent(profile[1]).toLowerCase() }
 
-  const session = /^\/p\/([A-Za-z0-9_-]+)\/s\/([A-Za-z0-9_-]+)$/.exec(path)
-  if (session) return { name: 'session', projectId: session[1], jobId: session[2] }
+  // A session, and a tab if the segment after it names one. A segment that names
+  // none is discarded the same way a project's is: the reader addressed a real
+  // session, and the unreadable part of the address is the only part worth
+  // dropping.
+  const session = /^\/p\/([A-Za-z0-9_-]+)\/s\/([A-Za-z0-9_-]+)(?:\/([a-z]+))?$/.exec(path)
+  if (session) {
+    const tab = session[3]
+    const at = { name: 'session', projectId: session[1], jobId: session[2] } as const
+    return tab && isSessionTab(tab) ? { ...at, tab } : at
+  }
 
   // A project, and a tab if the segment after it names one. A segment that names
   // no tab — a typo, or a session link cut short at /p/{id}/s — still identifies
