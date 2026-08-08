@@ -53,6 +53,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [013](013-the-address-bar-is-the-state.md) gives every screen a URL. Navigation was one `useState` and the address bar never moved, so a reload started over at the dashboard, no screen could be linked to, and Back left the app. The path is the state now — one `pathOf`/`viewOf` bijection over the `View` union, so a screen cannot exist without an address — and history follows one default: push when the path changes, replace when it does not. The registry and the console live at `/registry` and `/console` because the API owns `/public` and `/admin`; `/p/{id}` and `/u/{handle}` keep the meaning 006p's mail and 006r's pages already published.
 
+**Built:** [015](015-a-verdict-belongs-to-a-session.md) puts a verdict and a repository back on the session that produced them. The project's Artifacts and Verdict tabs read `sessions.find((s) => s.repo_name)` — the newest session anywhere in the project with a repository — and showed it under an address that named the project, so on a project holding two papers the second hid the first and one paper's reproduction was reachable by nothing. That line is 012's split left standing in the two screens that report results; the same root cause named the project after the wrong paper. Both panes moved to `/p/{id}/s/{jobId}/{verdict,artifacts}`, the project's artifacts tab is gone (a project has as many repositories as published sessions), its verdict tab became the read across papers it was pretending to be, and sessions nest under the paper they are runs of. `repo_name` stopped standing in for success: it marks that publishing *began*, and `publishing → failed` is legal.
+
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
@@ -151,7 +153,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 014b | [Job-state writes are required](014b-job-state-writes-are-required.md) | built | 006b, 011, 014a |
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
 | 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | built | 006c, 006e, 013 |
-| 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | draft | 012, 013, 006f, 006s |
+| 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | built | 012, 013, 006f, 006s |
 | 016 | [A paper that is not published yet](016-a-paper-that-is-not-published-yet.md) | deferred (ideation) | 001, 006d, 012, 007b, 008 |
 
 ## The three tracks
