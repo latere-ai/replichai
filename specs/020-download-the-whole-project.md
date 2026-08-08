@@ -1,0 +1,65 @@
+# 020 — Download the whole project
+
+**Status:** designed.
+
+**Scope:** one action that hands a reader everything a project produced, as a single archive. Adds `GET /projects/{id}/archive`, streamed as a zip built from each session's committed tree, and the button that calls it.
+
+**Depends on:** [006f](006f-taking-a-reproduction-out.md) (the repository a session publishes), [005](005-transcript.md) (the transcript inside it), [015](015-a-verdict-belongs-to-a-session.md) (a verdict belongs to a session, so the archive is organised by session), [018](018-one-list-of-projects.md) (the row the button sits on).
+
+## Problem
+
+A project's output is a set of repositories, one per published session, and the app already proxies them file by file: `GET /jobs/{id}/artifacts` lists a tree, `GET /jobs/{id}/artifact?path=` returns one file (`handlers.go:1705`, `:1729`). That pass-through exists because the repositories are usually private, so a reader with legitimate access cannot simply clone them.
+
+Which means there is no way to get the work out. A project with three sessions and forty files each is a hundred and twenty clicks, and the reader ends up with a hundred and twenty loose files and no record of which session each came from. For a product whose argument is that a verdict should be checkable, "take the evidence away and check it" is a strange thing to make hard.
+
+## Decisions
+
+**One archive per project, organised by session.** 015 established that a verdict and a repository belong to the session that produced them, and a project holds several papers. So the archive's top level is sessions, not files:
+
+```
+<project-title>/
+  MANIFEST.txt          what this is, which project, when, which sessions
+  sessions/
+    <job-id>/
+      <the session's committed tree, verbatim>
+```
+
+A flat merge would collide two sessions' `REPRODUCIBILITY.md` and lose the very distinction 015 spent a spec restoring.
+
+**It is streamed, not built.** The handler writes into `archive/zip` over the `ResponseWriter` as it walks. A project's repositories can be large, and buffering one in memory to learn its size before sending is a memory cost paid for nothing — nobody needs a `Content-Length` here.
+
+**Which means the status code is committed before the work is done, so failures go inside the archive.** Once the first byte is written the response is a 200 whatever happens next. A session whose forge read fails is recorded as a line in `MANIFEST.txt` under `ERRORS`, and the archive still contains everything that did read. The alternative — abort mid-stream and leave the reader a truncated zip with a 200 — is the one outcome worth engineering against, because a truncated archive is silently incomplete and a noted one is not.
+
+**View rights, not ownership.** The gate is `mayViewProject`, the same predicate every other project-scoped read consults. A collaborator can download the project they work in; a reader of a public project can download what was published. Ownership is not the question anywhere else in this app and is not the question here.
+
+**Sessions with no repository are skipped, and said so.** A session that never reached publishing has nothing committed. It gets a `MANIFEST.txt` line rather than an empty directory, so the archive's contents and the project's session list can be reconciled.
+
+**Committed trees only.** The transcript and `replication.json` are already committed into the repository by the finalize step, so they come along without a second code path. Nothing is fetched from outside the forge to build this — the archive is exactly the evidence the project published, which is the property that makes it worth downloading.
+
+**One project at a time.** No bulk export across projects. The unit of work is the project, and an all-projects archive is a different feature with a different failure mode (one bad project poisoning a large download).
+
+## API
+
+```
+GET /projects/{id}/archive
+→ 200 application/zip
+  Content-Disposition: attachment; filename="<slug>.zip"
+→ 403/404 through mayViewProject
+→ 409 no_artifacts   when no session in the project has a repository
+```
+
+The 409 is the one refusal that can be decided before the first byte: it is read off the session list, and it is worth a real status because "this project has produced nothing yet" is a different thing from "here is an empty zip".
+
+## Acceptance criteria
+
+1. `GET /projects/{id}/archive` returns a zip whose entries are `sessions/{job-id}/{path}` for every file in every session's committed tree.
+2. The archive contains a `MANIFEST.txt` naming the project, the time, and one line per session, including the sessions that were skipped and the reads that failed.
+3. A project where no session has a repository answers 409 `no_artifacts` with no body.
+4. A collaborator and a public reader both succeed; a stranger on a private project gets 404.
+5. A forge read that fails for one session still produces a zip containing the other sessions, with the failure recorded under `ERRORS`.
+6. The Projects row's download button fetches the archive and the browser saves it.
+7. A test opens the returned bytes with `archive/zip` and asserts the entry names — a zip that only *looks* like one is the failure mode a byte-count assertion misses.
+
+## Not in scope
+
+Bulk export across projects; a background job with an email when it is ready; resumable downloads; including a git history (the archive is a tree, not a clone); tar.gz; per-session download buttons.
