@@ -43,6 +43,12 @@ export type Job = {
   // project is charged when it ends.
   cost?: number
   status?: { State: string; Usage: Usage }
+  // The paper this session targeted, as the offline key project_papers is keyed
+  // on (012). It is what joins a run to the paper it is a run of.
+  paper_key?: string
+  // Set as the publishing phase opens, not when it succeeds — a session that
+  // failed while publishing carries one too. `isGradeable` in papers.ts is the
+  // test for a result; this field alone is not.
   repo_name?: string
   error?: string
   created_at?: string
