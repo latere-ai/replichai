@@ -51,6 +51,7 @@ const projects = [
     created_at: ago(90 * 86_400_000),
     modified_at: ago(3 * 3_600_000),
     session_count: 2,
+    published_sessions: 2,
     running: 0,
     latest_phase: 'done',
   },
@@ -61,9 +62,12 @@ const projects = [
     visibility: 'private',
     created_at: ago(120 * 86_400_000),
     modified_at: ago(2 * 86_400_000),
+    // Ran three times and published none of them: a session count is not an
+    // artifact count, so this row must offer no download at all.
     session_count: 3,
+    published_sessions: 0,
     running: 0,
-    latest_phase: 'done',
+    latest_phase: 'failed',
   },
 ]
 
@@ -157,6 +161,13 @@ try {
   }
   if (theirs && !/hour/.test(theirs.modified)) fail(`the shared project reads "${theirs.modified}", want an age in hours`)
   if (mine && !/day/.test(mine.modified)) fail(`your own project reads "${mine.modified}", want an age in days`)
+  // The download sits on the project that has something to hand over, not the
+  // one whose sessions all failed before publishing.
+  const downloadRow = await page.evaluate(() => {
+    const a = document.querySelector('[data-test="download-project"]')
+    return a ? a.closest('.row').querySelector('.row-title').textContent.trim() : ''
+  })
+  if (downloadRow !== projects[0].title) fail(`the download is on "${downloadRow}", want the project with published sessions`)
 
   // The tiles count what the list now shows, not the owned half of it.
   const stats = await page.evaluate(() => [...document.querySelectorAll('.stat .stat-value')].map((e) => e.textContent.trim()))
@@ -169,7 +180,7 @@ try {
   const downloads = await page.evaluate(() =>
     [...document.querySelectorAll('[data-test="download-project"]')].map((a) => ({ tag: a.tagName, href: a.getAttribute('href') })),
   )
-  if (downloads.length !== 2) fail(`${downloads.length} rows offer a download; both projects have sessions`)
+  if (downloads.length !== 1) fail(`${downloads.length} rows offer a download; only the one with a published session may`)
   for (const d of downloads) {
     if (d.tag !== 'A') fail(`the download is a <${d.tag}>; it has to be a link for the browser to save the file`)
     if (!/^\/projects\/[^/]+\/archive$/.test(d.href)) fail(`the download points at ${d.href}, want the project's archive`)

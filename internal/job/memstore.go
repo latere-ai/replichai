@@ -235,6 +235,9 @@ func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string
 		if !j.Phase.Terminal() {
 			st.Running++
 		}
+		if j.RepoName != "" {
+			st.Published++
+		}
 		if at, ok := latestAt[j.ProjectID]; !ok || !j.CreatedAt.Before(at) {
 			st.Latest = j.Phase // st already carries the prior latest; update only when newer
 			latestAt[j.ProjectID] = j.CreatedAt

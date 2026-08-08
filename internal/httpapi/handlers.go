@@ -801,9 +801,15 @@ func nonEmpty(in []string) []string {
 // glance without a per-project read on the client.
 type ProjectView struct {
 	project.Project
-	SessionCount int    `json:"session_count"`
-	Running      int    `json:"running"`
-	LatestPhase  string `json:"latest_phase,omitempty"`
+	SessionCount int `json:"session_count"`
+	Running      int `json:"running"`
+	// PublishedSessions is how many of them committed a repository — the exact
+	// condition GET /projects/{id}/archive answers 409 no_artifacts on (020). The
+	// client cannot work it out: a session count says nothing about whether any
+	// of them published, so without this the download offers itself on a project
+	// that has nothing to hand over.
+	PublishedSessions int    `json:"published_sessions"`
+	LatestPhase       string `json:"latest_phase,omitempty"`
 	// SignerHandle is where the signer's name links (006r). It is resolved on
 	// every read from the signer's profile as it is *now*, and deliberately not
 	// snapshotted onto the project: a stored handle would be a second, staler
@@ -914,12 +920,13 @@ func (rt *Router) projectViews(ctx context.Context, projects []project.Project) 
 	for _, p := range projects {
 		st := status[p.ID]
 		v := ProjectView{
-			Project:      p,
-			SessionCount: st.Total,
-			Running:      st.Running,
-			LatestPhase:  string(st.Latest),
-			SignerHandle: rt.signerHandle(ctx, p),
-			ModifiedAt:   later(later(p.CreatedAt, modified[p.ID]), st.LatestAt),
+			Project:           p,
+			SessionCount:      st.Total,
+			Running:           st.Running,
+			PublishedSessions: st.Published,
+			LatestPhase:       string(st.Latest),
+			SignerHandle:      rt.signerHandle(ctx, p),
+			ModifiedAt:        later(later(p.CreatedAt, modified[p.ID]), st.LatestAt),
 		}
 		v.OwnerName, v.OwnerHandle = rt.owner(ctx, p.Owner)
 		out = append(out, v)
@@ -1662,7 +1669,6 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
 
 // ProjectDetail is one project with its sessions, newest first.
 type ProjectDetail struct {

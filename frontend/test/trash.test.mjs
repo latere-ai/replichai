@@ -148,13 +148,22 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('[data-test="project-rows"] .row').length === 1)
   if (!calls.includes(`DELETE /projects/${project.id}`)) fail(`the confirmation did not call DELETE; calls: ${calls.join(', ')}`)
 
-  // The trash is reachable from the rail, and holds what was removed.
+  // The trash is reachable from the rail, at the bottom of it — where work goes,
+  // apart from the destinations where work is done. A count of clickable nav
+  // rows would pass on one sitting directly under "Public registry", so this
+  // measures.
   const railTrash = await page.evaluate(() => {
     const btn = [...document.querySelectorAll('.rail .nav-btn')].find((b) => b.textContent.trim() === 'Trash')
-    if (btn) btn.click()
-    return !!btn
+    if (!btn) return null
+    const nav = document.querySelector('.rail-nav')
+    const above = [...document.querySelectorAll('.rail .nav-btn')].filter((b) => b !== btn).pop()
+    const at = { gapBelow: nav.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom, gapAbove: btn.getBoundingClientRect().top - above.getBoundingClientRect().bottom }
+    btn.click()
+    return at
   })
   if (!railTrash) fail('the rail has no Trash destination')
+  else if (railTrash.gapBelow > 30) fail(`the Trash row sits ${Math.round(railTrash.gapBelow)}px above the rail's foot, want it at the bottom`)
+  else if (railTrash.gapAbove < 20) fail(`the Trash row is ${Math.round(railTrash.gapAbove)}px below the destination above it, want it set apart`)
   await page.waitForSelector('[data-test="trash-rows"] .row')
   if (new URL(page.url()).pathname !== '/trash') fail(`the trash lives at ${new URL(page.url()).pathname}, want /trash`)
   const inTrash = await page.evaluate(() => {

@@ -36,8 +36,18 @@ import (
 // whose forge read fails is recorded in the archive's own MANIFEST.txt instead.
 // A truncated zip with a 200 is silently incomplete; a noted one is not.
 func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForRead(w, r)
-	if !ok {
+	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	// Hidden, not refused — getProject's rule rather than the older member
+	// routes': whether a stranger's project exists is not a stranger's business,
+	// and a route added now should not inherit that leak. The predicate is the
+	// same one every other project-scoped read consults, so a public project is
+	// open to any reader and a private one to its members.
+	if !rt.mayViewProject(r, proj) {
+		writeError(w, http.StatusNotFound, "not_found")
 		return
 	}
 	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
