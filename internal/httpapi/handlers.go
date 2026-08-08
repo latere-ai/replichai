@@ -83,7 +83,6 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
-	rt.gatedHandle("GET", "/shared", rt.listShared)
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
@@ -800,67 +799,159 @@ type ProjectView struct {
 	// private after publishing keeps their attestation intact and loses the
 	// link, which is correct — the record was never the profile.
 	SignerHandle string `json:"signer_handle,omitempty"`
+	// The owner, as a reader can read them (018). Project.Owner is an opaque OIDC
+	// subject, which named nobody in a list that now has an Owner column.
+	//
+	// Both are resolved per read from the owner's profile, for the same reason
+	// SignerHandle is: they are a view of who somebody is now, and a stored copy
+	// would go stale against the profile that is the actual record. OwnerHandle
+	// is set only when that profile is public, so it is safe to link.
+	//
+	// Neither is ever the owner's address. A project stores its signer's email
+	// already redacted so a full one never reaches a client; putting the owner's
+	// on every row a collaborator can read would undo that on a wider surface.
+	OwnerName   string `json:"owner_name,omitempty"`
+	OwnerHandle string `json:"owner_handle,omitempty"`
+	// ModifiedAt is when this project last changed: the newest of its creation,
+	// its papers' additions, and its sessions' updates (018). Derived on every
+	// read — see project.Store.ModifiedAt for why it is not a column.
+	ModifiedAt time.Time `json:"modified_at,omitempty"`
 }
 
-// listProjects reports the caller's own projects, newest first, each with a
-// session summary. The scope is the authenticated principal alone.
+// listProjects reports every project the caller may work in — their own and the
+// ones they were invited to — as one list, newest-modified first (018).
+//
+// It is one list because ownership is a column, not a place: a project used to
+// move between two tabs when somebody else happened to create it, so finding
+// work meant first remembering who had.
 func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
-	owner := principal(r)
-	projects, err := rt.projects.ListByOwner(r.Context(), owner)
+	id, _ := IdentityFrom(r)
+	projects, err := rt.projects.ListByOwner(r.Context(), id.Sub)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	status, err := rt.jobs.StatusByProject(r.Context(), owner)
+	seen := make(map[string]bool, len(projects))
+	for _, p := range projects {
+		seen[p.ID] = true
+	}
+	if rt.members != nil {
+		ids, err := rt.members.Projects(r.Context(), id.Sub)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "list_failed")
+			return
+		}
+		for _, pid := range ids {
+			if seen[pid] {
+				// An owner is seeded as their own project's lead, so the membership
+				// store answers with projects ListByOwner already returned.
+				continue
+			}
+			p, err := rt.projects.Get(r.Context(), pid)
+			if err != nil {
+				continue // a membership whose project is gone is skipped, not fatal
+			}
+			seen[pid] = true
+			projects = append(projects, p)
+		}
+	}
+	views, err := rt.projectViews(r.Context(), projects)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
+	}
+	writeJSON(w, http.StatusOK, views)
+}
+
+// projectViews decorates a set of projects for a list: the session summary, the
+// modified time, and who owns them — three reads for the whole page rather than
+// three per row.
+//
+// The result is newest-modified first, because that is the column the list is
+// now sorted by and a displayed order nobody can see is one the reader has to
+// sort by eye.
+//
+// A summary that could not be read fails the list rather than rendering a zero.
+// "0 sessions" is a claim about the project, and a list quietly making a false
+// one is worse than a list that says it could not load.
+func (rt *Router) projectViews(ctx context.Context, projects []project.Project) ([]ProjectView, error) {
+	ids := make([]string, 0, len(projects))
+	for _, p := range projects {
+		ids = append(ids, p.ID)
+	}
+	status, err := rt.jobs.StatusByProjects(ctx, ids)
+	if err != nil {
+		log.Printf("projects: summarising sessions: %v", err)
+		return nil, err
+	}
+	modified, err := rt.projects.ModifiedAt(ctx, ids)
+	if err != nil {
+		log.Printf("projects: reading modified times: %v", err)
+		return nil, err
 	}
 	out := make([]ProjectView, 0, len(projects))
 	for _, p := range projects {
 		st := status[p.ID]
-		out = append(out, ProjectView{Project: p, SessionCount: st.Total, Running: st.Running, LatestPhase: string(st.Latest)})
+		v := ProjectView{
+			Project:      p,
+			SessionCount: st.Total,
+			Running:      st.Running,
+			LatestPhase:  string(st.Latest),
+			SignerHandle: rt.signerHandle(ctx, p),
+			ModifiedAt:   later(later(p.CreatedAt, modified[p.ID]), st.LatestAt),
+		}
+		v.OwnerName, v.OwnerHandle = rt.owner(ctx, p.Owner)
+		out = append(out, v)
 	}
-	writeJSON(w, http.StatusOK, out)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ModifiedAt.After(out[j].ModifiedAt) })
+	return out, nil
 }
 
-// summarize builds a project's session summary from its sessions (for lists
-// where the sessions are already loaded — shared and public projects).
-func summarize(sessions []job.Job) ProjectView {
-	v := ProjectView{SessionCount: len(sessions)}
-	for i, s := range sessions {
-		if s.Phase != job.PhaseDone && s.Phase != job.PhaseFailed {
-			v.Running++
-		}
-		if i == 0 {
-			v.LatestPhase = string(s.Phase) // sessions are newest-first
-		}
+// later is the newer of two times.
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
 	}
-	return v
+	return a
 }
 
-// listPublic is the public zone: every public project, newest first, each
-// carrying its initiator (the owning principal), so any signed-in user can
-// browse what others have published (006f).
+// owner names a project's owner for a list: their profile's display name, and
+// their handle when that profile is public. Both empty for somebody who has
+// saved no profile — the client renders that as a dash rather than an opaque
+// subject, which named nobody anyway.
+func (rt *Router) owner(ctx context.Context, principal string) (name, handle string) {
+	if rt.profiles == nil || principal == "" {
+		return "", ""
+	}
+	if p, err := rt.profiles.Get(ctx, principal); err == nil {
+		name = p.DisplayName
+	}
+	if h, ok, err := rt.profiles.PrincipalHandle(ctx, principal); err == nil && ok {
+		handle = h
+		if name == "" {
+			name = h
+		}
+	}
+	return name, handle
+}
+
+// listPublic is the public zone: every public project, newest-modified first,
+// each carrying its initiator, so any signed-in user can browse what others have
+// published (006f). It decorates through the same path the caller's own list
+// does — the zone lists other people's projects and had the identical problem of
+// naming an owner nobody could read.
 func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 	projects, err := rt.projects.ListPublic(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	out := make([]ProjectView, 0, len(projects))
-	for _, p := range projects {
-		v := ProjectView{Project: p}
-		if sessions, err := rt.jobs.ListByProject(r.Context(), p.ID); err == nil {
-			v = summarize(sessions)
-			v.Project = p
-		}
-		// The zone names a project by its signer, so it links to them too when
-		// they have a page.
-		v.SignerHandle = rt.signerHandle(r.Context(), p)
-		out = append(out, v)
+	views, err := rt.projectViews(r.Context(), projects)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed")
+		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, views)
 }
 
 // getProfile returns the caller's researcher profile (006n) — the zero profile
@@ -1372,41 +1463,6 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// listShared is the "shared with me" surface: projects the caller is a
-// collaborator on (not their own), each with a session count.
-func (rt *Router) listShared(w http.ResponseWriter, r *http.Request) {
-	id, _ := IdentityFrom(r)
-	ids, err := rt.members.Projects(r.Context(), id.Sub)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_failed")
-		return
-	}
-	out := make([]ProjectView, 0, len(ids))
-	for _, pid := range ids {
-		p, err := rt.projects.Get(r.Context(), pid)
-		if err != nil {
-			continue // a membership whose project is gone is skipped, not fatal
-		}
-		if p.Owner == id.Sub {
-			// An owner is their own project's lead, so it comes back from the
-			// membership store like any other. "Shared with me" means somebody
-			// else's; their own are already the list next to it.
-			continue
-		}
-		v := ProjectView{Project: p}
-		if sessions, err := rt.jobs.ListByProject(r.Context(), pid); err == nil {
-			v = summarize(sessions)
-			v.Project = p
-		}
-		// Same rule as the public zone: a project named by its signer links to
-		// them when they have a page. Usually empty here — a shared project is
-		// typically private and unsigned — but the two lists must not answer the
-		// same question differently.
-		v.SignerHandle = rt.signerHandle(r.Context(), p)
-		out = append(out, v)
-	}
-	writeJSON(w, http.StatusOK, out)
-}
 
 // ProjectDetail is one project with its sessions, newest first.
 type ProjectDetail struct {

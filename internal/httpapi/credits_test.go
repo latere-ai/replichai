@@ -390,23 +390,24 @@ func TestCreateSeedsMembershipEvenWithNothingRunning(t *testing.T) {
 	}
 }
 
-// "Shared with me" means somebody else's. An owner is their own project's lead,
-// so it comes back from the membership store like any other membership — and
-// every project now seeds one, including those opened by a bare submit.
-func TestSharedWithMeExcludesYourOwn(t *testing.T) {
+// An owner is their own project's lead, so it comes back from the membership
+// store like any other membership — and every project seeds one, including those
+// opened by a bare submit. The merged list (018) walks both the owned projects
+// and the memberships, so that has to produce one row, not two.
+func TestProjectListDoesNotRepeatYourOwn(t *testing.T) {
 	_, rt, ledger := creditDeps(t)
 	topUp(t, ledger, payer, 10*credit.Dollar)
 
 	createHolding(t, rt, payer, "https://arxiv.org/abs/2301.03711")
 
 	w := httptest.NewRecorder()
-	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/shared", "", payer.Sub, payer.Email))
-	var shared []ProjectView
-	if err := json.Unmarshal(w.Body.Bytes(), &shared); err != nil {
+	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/projects", "", payer.Sub, payer.Email))
+	var list []ProjectView
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(shared) != 0 {
-		t.Errorf("shared = %+v, want nothing — those are the owner's own projects", shared)
+	if len(list) != 1 {
+		t.Errorf("list = %+v, want the one project exactly once", list)
 	}
 }
 

@@ -159,6 +159,27 @@ func (s *MemStore) ListPublic(_ context.Context) ([]Project, error) {
 	return out, nil
 }
 
+// ModifiedAt returns each named project's creation-or-newest-paper time.
+func (s *MemStore) ModifiedAt(_ context.Context, ids []string) (map[string]time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]time.Time, len(ids))
+	for _, id := range ids {
+		p, ok := s.projects[id]
+		if !ok {
+			continue
+		}
+		at := p.CreatedAt
+		for _, pp := range s.papers[id] {
+			if pp.AddedAt.After(at) {
+				at = pp.AddedAt
+			}
+		}
+		out[id] = at
+	}
+	return out, nil
+}
+
 // Delete removes a project by id, and its papers with it, idempotently.
 func (s *MemStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()

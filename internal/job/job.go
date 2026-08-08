@@ -143,11 +143,18 @@ func (j Job) withCost() Job {
 const CancelCause = "cancelled"
 
 // ProjectStatus summarises a project's sessions for the list view: the total,
-// how many are still running, and the newest session's phase.
+// how many are still running, the newest session's phase, and when any of them
+// last changed.
+//
+// LatestAt is the newest UpdatedAt across the project's sessions — half of what
+// 018 derives a project's modified time from. It is the session's *update*, not
+// its creation, because a run that finished an hour ago changed the project an
+// hour ago.
 type ProjectStatus struct {
-	Total   int   `json:"total"`
-	Running int   `json:"running"`
-	Latest  Phase `json:"latest"`
+	Total    int       `json:"total"`
+	Running  int       `json:"running"`
+	Latest   Phase     `json:"latest"`
+	LatestAt time.Time `json:"latest_at,omitempty"`
 }
 
 // Job is the durable record of one submission.

@@ -313,16 +313,20 @@ func (s *PGStore) ListByProject(ctx context.Context, projectID string) ([]Job, e
 	return out, rows.Err()
 }
 
-// StatusByProject summarises an owner's sessions grouped by project, in one
-// query. The running filter uses the same terminal set as Phase.Terminal, so the
-// in-memory and Postgres stores agree.
-func (s *PGStore) StatusByProject(ctx context.Context, owner string) (map[string]ProjectStatus, error) {
+// StatusByProjects summarises the named projects' sessions in one query. The
+// running filter uses the same terminal set as Phase.Terminal, so the in-memory
+// and Postgres stores agree.
+func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[string]ProjectStatus, error) {
+	if len(ids) == 0 {
+		return map[string]ProjectStatus{}, nil
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT project_id,
 			COUNT(*) AS total,
 			COUNT(*) FILTER (WHERE phase NOT IN ('done','failed')) AS running,
-			(array_agg(phase ORDER BY created_at DESC, id DESC))[1] AS latest
-		FROM jobs WHERE principal = $1 GROUP BY project_id`, owner)
+			(array_agg(phase ORDER BY created_at DESC, id DESC))[1] AS latest,
+			MAX(updated_at) AS latest_at
+		FROM jobs WHERE project_id = ANY($1) GROUP BY project_id`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +335,7 @@ func (s *PGStore) StatusByProject(ctx context.Context, owner string) (map[string
 	for rows.Next() {
 		var id string
 		var st ProjectStatus
-		if err := rows.Scan(&id, &st.Total, &st.Running, &st.Latest); err != nil {
+		if err := rows.Scan(&id, &st.Total, &st.Running, &st.Latest, &st.LatestAt); err != nil {
 			return nil, err
 		}
 		out[id] = st

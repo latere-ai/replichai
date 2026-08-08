@@ -168,6 +168,15 @@ type Store interface {
 	// ListPublic returns every public project, newest first — the public zone's
 	// read surface, across all owners.
 	ListPublic(ctx context.Context) ([]Project, error)
+	// ModifiedAt returns, for each named project, the newest of its creation and
+	// its papers' additions — this store's half of a project's modified time
+	// (018). The other half is the newest session update, which lives in the job
+	// store; the handler takes the later of the two.
+	//
+	// It is derived on every read rather than kept in a column, so there is no
+	// write site to forget: a rename, an added paper, a publish, a withdrawal and
+	// a credit move would each have had to remember to touch one.
+	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
 	// Delete removes a project by id, and the papers it holds with it.
 	// Idempotent: deleting a missing project is not an error.
 	Delete(ctx context.Context, id string) error

@@ -198,8 +198,12 @@ func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, er
 	return out, nil
 }
 
-// StatusByProject summarises an owner's sessions grouped by project.
-func (s *MemStore) StatusByProject(_ context.Context, owner string) (map[string]ProjectStatus, error) {
+// StatusByProjects summarises the sessions of each named project.
+func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string]ProjectStatus, error) {
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := map[string]ProjectStatus{}
@@ -207,7 +211,7 @@ func (s *MemStore) StatusByProject(_ context.Context, owner string) (map[string]
 	// s.order is oldest-first; the last non-before wins as the newest.
 	for _, id := range s.order {
 		j := s.jobs[id]
-		if j.Principal != owner {
+		if !want[j.ProjectID] {
 			continue
 		}
 		st := out[j.ProjectID]
@@ -218,6 +222,9 @@ func (s *MemStore) StatusByProject(_ context.Context, owner string) (map[string]
 		if at, ok := latestAt[j.ProjectID]; !ok || !j.CreatedAt.Before(at) {
 			st.Latest = j.Phase // st already carries the prior latest; update only when newer
 			latestAt[j.ProjectID] = j.CreatedAt
+		}
+		if j.UpdatedAt.After(st.LatestAt) {
+			st.LatestAt = j.UpdatedAt
 		}
 		out[j.ProjectID] = st
 	}
