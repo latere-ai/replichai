@@ -13,7 +13,6 @@ export type I18n = ReturnType<typeof useI18n>
 const strings: Record<Lang, Record<string, string>> = {
   en: {
     // auth
-    tagline: 'Audit the reproducibility of a research paper.',
     // The landing (017). The claim is a question because that is the question
     // the product answers, and the lead says what it does that nothing else in
     // the field does: it runs the paper. The three points are the inner/outer
