@@ -2421,8 +2421,40 @@ input.submit-input {
 .err {
   color: var(--err);
 }
+.warn {
+  color: var(--warn);
+}
 .small {
   font-size: 12px;
+}
+/* A button that sits inside a row rather than under a form. */
+.btn.small {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+/* A state a screen is in, said at the top of it with the way out on the same
+   line — a project in the trash keeps its address, so it has to explain itself
+   to whoever followed the link (019). */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-raised);
+  font-size: 13px;
+}
+.banner.warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+}
+/* The trash is where work goes, not a place work is done, so it sits apart from
+   the destinations above it and is pushed to the foot of the rail. */
+.rail-group-foot {
+  margin-top: auto;
 }
 /* An empty list is a state, not a failure: a muted glyph and a sentence, so the
    card reads as "nothing here yet" rather than "something did not load". */

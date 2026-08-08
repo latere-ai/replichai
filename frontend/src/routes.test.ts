@@ -7,6 +7,7 @@ import { pathOf, viewOf, type View } from './routes'
 const table: [string, View][] = [
   ['/', { name: 'projects' }],
   ['/registry', { name: 'public' }],
+  ['/trash', { name: 'trash' }],
   ['/new', { name: 'submit' }],
   ['/settings', { name: 'settings' }],
   ['/console', { name: 'admin' }],

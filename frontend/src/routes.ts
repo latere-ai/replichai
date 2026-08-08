@@ -19,6 +19,7 @@ export type SessionTab = 'transcript' | 'verdict' | 'artifacts'
 
 export type View =
   | { name: 'projects' }
+  | { name: 'trash' }
   | { name: 'public' }
   | { name: 'submit' }
   | { name: 'settings' }
@@ -34,6 +35,7 @@ export type View =
 const SCREENS: Record<string, View> = {
   '/': { name: 'projects' },
   '/registry': { name: 'public' },
+  '/trash': { name: 'trash' },
   '/new': { name: 'submit' },
   '/settings': { name: 'settings' },
   '/console': { name: 'admin' },

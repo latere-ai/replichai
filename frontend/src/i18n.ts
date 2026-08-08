@@ -143,6 +143,38 @@ const strings: Record<Lang, Record<string, string>> = {
     ownerYou: 'You',
     ownerUnknown: '—',
     noProjects: 'No projects yet. Start a new audit to open one.',
+    // The trash (019). Two steps, because the dangerous one has to be
+    // deliberate: the row action is reversible and says so, and the words that
+    // matter on the permanent one are what it does *not* remove — the
+    // repositories close, they are not destroyed.
+    navTrash: 'Trash',
+    trashIntro:
+      'Projects you removed. They are out of your list and nobody else can reach them, and everything they hold is still here until you delete them for good.',
+    noTrash: 'Nothing in the trash.',
+    colDeleted: 'Deleted',
+    trashProject: 'Move to trash',
+    trashTitle: 'Move this project to the trash?',
+    trashBody:
+      'It leaves your list and your collaborators’ lists. Its papers, sessions, and results stay exactly as they are, and you can restore it from the trash at any time.',
+    trashPublicNote: 'This project is public. Moving it to the trash withdraws the publication and closes its repositories, and the retraction is recorded.',
+    trashConfirm: 'Move to trash',
+    trashing: 'Moving…',
+    errSessionsRunning: 'A session is still running in this project. Stop it first.',
+    trashFailed: 'Couldn’t move this project to the trash. Try again in a moment.',
+    restore: 'Restore',
+    restoring: 'Restoring…',
+    restoreFailed: 'Couldn’t restore this project. Try again in a moment.',
+    purge: 'Delete permanently',
+    purgeTitle: 'Delete this project for good?',
+    purgeBody:
+      'The project, its papers, and every session it holds are removed from replichai and cannot be brought back.',
+    purgeKeepsRepos:
+      'The GitHub repositories its sessions published are closed, not destroyed. A reproduction the agent wrote is evidence; what this removes is replichai’s record of it.',
+    purgeConfirm: 'Delete permanently',
+    purging: 'Deleting…',
+    errCreditsRemaining: 'This project still holds credits. Take them back first, then delete it.',
+    purgeFailed: 'Couldn’t delete this project. Try again in a moment.',
+    trashedBanner: 'This project is in the trash. Nothing can be changed or started here until you restore it.',
     sessionCount: '{n} session(s)',
     private: 'Private',
     public: 'Public',
