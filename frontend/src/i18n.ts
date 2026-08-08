@@ -14,6 +14,27 @@ const strings: Record<Lang, Record<string, string>> = {
   en: {
     // auth
     tagline: 'Audit the reproducibility of a research paper.',
+    // The landing (017). The claim is a question because that is the question
+    // the product answers, and the lead says what it does that nothing else in
+    // the field does: it runs the paper. The three points are the inner/outer
+    // boundary — the thing worth putting in front of somebody before they have
+    // an account — and the card promises only what 006q made true, that signing
+    // in is open and a session is what spends.
+    landingClaim: 'Does the paper actually reproduce?',
+    landingLead:
+      'Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart.',
+    landingInnerTitle: 'The inner loop',
+    landingInnerBody:
+      'The algorithm, model, or analysis pipeline. Implemented, run, and published as its own repository with the agent’s own commit history.',
+    landingOuterTitle: 'The outer loop',
+    landingOuterBody:
+      'The study that validates it with people. Named, bounded, and never simulated — pretending otherwise is the most common way reproducibility claims go wrong.',
+    landingVerdictTitle: 'The verdict',
+    landingVerdictBody:
+      'Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number.',
+    signInTitle: 'Sign in',
+    signInBody: 'Signing in is open and costs nothing. A session is what spends, and only when you start one.',
+    signInNote: 'Built for human-computer interaction research.',
     signInWith: 'Sign in with latere',
     authUnavailableTitle: 'Replichai is unavailable',
     authUnavailableBody: 'We couldn’t check your session. You may be offline, or the service may be temporarily unavailable.',
