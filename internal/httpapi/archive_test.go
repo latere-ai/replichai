@@ -134,8 +134,9 @@ func TestArchiveFollowsViewRights(t *testing.T) {
 	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/archive", "", collab); w.Code != http.StatusOK {
 		t.Errorf("a collaborator's download = %d, want 200", w.Code)
 	}
-	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/archive", "", stranger); w.Code == http.StatusOK {
-		t.Error("a stranger downloaded a private project's archive")
+	// Hidden rather than refused: a 403 tells a stranger the project exists.
+	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/archive", "", stranger); w.Code != http.StatusNotFound {
+		t.Errorf("a stranger's download of a private project = %d, want 404", w.Code)
 	}
 
 	// Public: anyone signed in reads it, so anyone signed in may take it away.
@@ -145,6 +146,42 @@ func TestArchiveFollowsViewRights(t *testing.T) {
 	}
 	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/archive", "", stranger); w.Code != http.StatusOK {
 		t.Errorf("a public project's archive = %d for a signed-in reader, want 200", w.Code)
+	}
+}
+
+// The download offers itself on exactly the projects the archive can serve. A
+// session count says nothing about whether any session published — repo_name
+// marks that publishing began, and a project whose every session failed before
+// that has sessions and no artifacts — so the list carries its own count.
+func TestPublishedSessionCountMatchesWhatTheArchiveServes(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	ctx := context.Background()
+	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
+
+	empty, _ := d.Projects.Create(ctx, owner.Sub, "Ran, never published")
+	if _, err := d.Jobs.Enqueue(ctx, job.Submission{
+		Principal: owner.Sub, Ref: "ref", Kind: job.KindAudit, Project: empty.ID, PaperKey: "arxiv:9",
+	}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	full, _ := d.Projects.Create(ctx, owner.Sub, "Published")
+	_ = publishInto(t, d.Jobs, owner.Sub, full.ID, "r1")
+
+	byID := map[string]ProjectView{}
+	for _, v := range listOf(t, h, "/projects", owner) {
+		byID[v.ID] = v
+	}
+	if v := byID[empty.ID]; v.SessionCount != 1 || v.PublishedSessions != 0 {
+		t.Errorf("a project that ran but never published reports %d/%d sessions/published, want 1/0", v.SessionCount, v.PublishedSessions)
+	}
+	if v := byID[full.ID]; v.PublishedSessions != 1 {
+		t.Errorf("a published project reports %d published sessions, want 1", v.PublishedSessions)
+	}
+	// And the count agrees with the endpoint: zero published is exactly what the
+	// archive refuses, so the button and the handler cannot disagree.
+	if w := doAs(t, h, "GET", "/projects/"+empty.ID+"/archive", "", owner); errorCode(w.Body.Bytes()) != "no_artifacts" {
+		t.Errorf("the archive of a project with no published session = %d/%q, want no_artifacts", w.Code, errorCode(w.Body.Bytes()))
 	}
 }
 

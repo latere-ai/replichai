@@ -135,6 +135,11 @@ export type ProjectView = Project & {
   // Neither is ever an email address.
   owner_name?: string
   owner_handle?: string
+  // How many of its sessions committed a repository — what the archive has
+  // anything to put in (020). It is the exact condition the download endpoint
+  // refuses on, so the button and the handler cannot disagree: a session count
+  // says nothing about whether any session published.
+  published_sessions?: number
   // When this project last changed — the newest of its creation, its papers, and
   // its sessions. Derived server-side on every read, and what the list sorts on.
   modified_at?: string

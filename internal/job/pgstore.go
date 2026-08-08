@@ -331,6 +331,7 @@ func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[strin
 			COUNT(*) AS total,
 			COUNT(*) FILTER (WHERE phase NOT IN ('done','failed')) AS running,
 			(array_agg(phase ORDER BY created_at DESC, id DESC))[1] AS latest,
+			COUNT(*) FILTER (WHERE repo_name <> '') AS published,
 			MAX(updated_at) AS latest_at
 		FROM jobs WHERE project_id = ANY($1) GROUP BY project_id`, ids)
 	if err != nil {
@@ -341,7 +342,7 @@ func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[strin
 	for rows.Next() {
 		var id string
 		var st ProjectStatus
-		if err := rows.Scan(&id, &st.Total, &st.Running, &st.Latest, &st.LatestAt); err != nil {
+		if err := rows.Scan(&id, &st.Total, &st.Running, &st.Latest, &st.Published, &st.LatestAt); err != nil {
 			return nil, err
 		}
 		out[id] = st

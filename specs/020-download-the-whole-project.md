@@ -8,6 +8,10 @@ Three things came out of the build. **The download is an anchor, not a fetch.** 
 
 **Sessions are archived oldest first**, which is the reverse of `ListByProject`. A list of sessions is useful newest-first; an archive reads in the order the work happened.
 
+Two corrections came from review. The download button was gated on `session_count > 0` while the handler refuses on *no session having a repository* — different conditions, and since the download is a top-level navigation, a project whose sessions all failed before publishing would have replaced the app with a JSON error body. `ProjectStatus` gained a `Published` count (`COUNT(*) FILTER (WHERE repo_name <> '')`), surfaced as `published_sessions`, so the button's condition and the handler's are the same one. And a stranger on a private project now gets 404 rather than `projectForRead`'s 403 — the rule 019 adopted for the same reason, that whether a stranger's project exists is not a stranger's business.
+
+The stream depends on there being no `WriteTimeout`: `cmd/server` sets only `ReadHeaderTimeout` and the ingress allows 3600s, which is what SSE already needs. A `WriteTimeout` added later would cut a large archive mid-body and hand the reader a truncated zip with a 200 — the one failure the `ERRORS` section cannot report, because it arrives after the manifest is written.
+
 **Scope:** one action that hands a reader everything a project produced, as a single archive. Adds `GET /projects/{id}/archive`, streamed as a zip built from each session's committed tree, and the button that calls it.
 
 **Depends on:** [006f](006f-taking-a-reproduction-out.md) (the repository a session publishes), [005](005-transcript.md) (the transcript inside it), [015](015-a-verdict-belongs-to-a-session.md) (a verdict belongs to a session, so the archive is organised by session), [018](018-one-list-of-projects.md) (the row the button sits on).

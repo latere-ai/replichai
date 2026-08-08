@@ -151,10 +151,15 @@ const CancelCause = "cancelled"
 // its creation, because a run that finished an hour ago changed the project an
 // hour ago.
 type ProjectStatus struct {
-	Total    int       `json:"total"`
-	Running  int       `json:"running"`
-	Latest   Phase     `json:"latest"`
-	LatestAt time.Time `json:"latest_at,omitempty"`
+	Total   int   `json:"total"`
+	Running int   `json:"running"`
+	Latest  Phase `json:"latest"`
+	// Published is how many of them committed a repository — what the project
+	// archive has anything to put in it (020). It is not derivable from Total or
+	// from the phase: RepoName marks that publishing *began*, and a project whose
+	// every session failed before that has sessions and no artifacts.
+	Published int       `json:"published"`
+	LatestAt  time.Time `json:"latest_at,omitempty"`
 }
 
 // Job is the durable record of one submission.
