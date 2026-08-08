@@ -145,11 +145,13 @@ try {
 
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   // Navigation is state, not a router: projects -> project -> session.
-  const openFirstRow = () => page.evaluate(() => document.querySelector('.row')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+  const openRow = (sel) => page.evaluate((s) => document.querySelector(s)?.dispatchEvent(new MouseEvent('click', { bubbles: true })), sel)
   await page.waitForSelector('.row')
-  await openFirstRow()
-  await page.waitForSelector('.row')
-  await openFirstRow()
+  await openRow('.row')
+  // A session row, not the paper it is a run of: on the project screen both are
+  // `.row`, and only a session's carries a phase badge (015).
+  await page.waitForSelector('.row:has(.phase-slot)')
+  await openRow('.row:has(.phase-slot)')
   await page.waitForSelector('.event')
   // Let the entrance animation finish, so no card is measured mid-transform.
   await new Promise((r) => setTimeout(r, 800))

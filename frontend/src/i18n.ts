@@ -201,6 +201,10 @@ const strings: Record<Lang, Record<string, string>> = {
     verdict: 'Verdict',
     artifacts: 'Artifacts',
     noVerdict: 'No published session yet — the verdict appears once a session finishes.',
+    // A run whose paper is no longer on the project: a paper that has never been
+    // run can be removed, and the run it once had stays.
+    otherSessions: 'Sessions of papers no longer on this project',
+    verdictUnread: 'Verdict unavailable',
     noArtifacts: 'No artifacts committed yet.',
     selectArtifact: 'Select a file to view it.',
     artifactError: 'Couldn’t open this file. Try again in a moment.',

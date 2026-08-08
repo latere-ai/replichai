@@ -34,10 +34,38 @@ if (!CHROME || !require('node:fs').existsSync(CHROME)) {
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
 const PROJECT = 'proj-1'
-const JOB = 'job-1'
+const JOB = 'job-a'
+const JOB_B = 'job-b'
 const project = { id: PROJECT, owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
-const job = { id: JOB, kind: 'replicate', ref: 'arxiv:2301.03711', phase: 'done', created_at: at(0), phase_at: { submitted: at(0), done: at(9000) } }
-const paper = { key: 'pap-1', ref: 'arxiv:2301.03711', title: 'Walk This Beam', sessions: 1 }
+
+// Two papers, each with its own published session (012, 015). This is the shape
+// the reported defect needed: the project's artifacts and verdict tabs picked
+// the newest session with a repository and showed it under the project's own
+// name, so paper B hid paper A entirely.
+const run = (id, key, ref, repo) => ({
+  id,
+  kind: 'replicate',
+  ref,
+  phase: 'done',
+  paper_key: key,
+  repo_name: repo,
+  created_at: at(0),
+  phase_at: { submitted: at(0), done: at(9000) },
+})
+const job = run(JOB, 'pap-a', 'arxiv:2301.03711', 'open-hai/walk-this-beam')
+const jobB = run(JOB_B, 'pap-b', 'arxiv:2401.00002', 'open-hai/retention-under-load')
+const paper = { key: 'pap-a', ref: job.ref, title: 'Walk This Beam', sessions: 1 }
+const paperB = { key: 'pap-b', ref: jobB.ref, title: 'Retention Under Load', sessions: 1 }
+
+// Each session's own repository and its own grade. If any screen reads one
+// session's files under the other's paper, these two lists are what says so.
+const filesOf = { [JOB]: ['README.md', 'beam-results.csv'], [JOB_B]: ['README.md', 'retention-results.csv'] }
+// The grader's own vocabulary (internal/provider/enum.go), so the tones and
+// icons under test are the ones a real manifest produces. On screen a grade is
+// read the way a person would say it, not as the snake_case identifier the
+// record keeps.
+const verdictOf = { [JOB]: 'passed', [JOB_B]: 'needs_revision' }
+const shownAs = { passed: 'Passed', needs_revision: 'Needs revision' }
 
 // A second project, so the screen can be asked to show one project after
 // another: every piece of its state belongs to one project, and it is remounted
@@ -57,14 +85,17 @@ const routes = [
   // what the screen renders rather than by the request that fetched it.
   [
     /^\/projects\/[^/]+$/,
-    (id) => ({ project: { ...project, id, title: titleOf(id) }, sessions: id === OTHER ? [] : [job], papers: [paper], may_submit: true }),
+    (id) => ({ project: { ...project, id, title: titleOf(id) }, sessions: id === OTHER ? [] : [jobB, job], may_submit: true }),
   ],
-  [/^\/projects\/[^/]+\/papers$/, [paper]],
+  [/^\/projects\/([^/]+)\/papers$/, (id) => (id === OTHER ? [] : [paper, paperB])],
   [/^\/projects\/[^/]+\/members$/, []],
-  [/^\/jobs\/[^/]+$/, job],
+  [/^\/jobs\/([^/]+)$/, (id) => (id === JOB_B ? jobB : job)],
   [/^\/jobs\/[^/]+\/transcript$/, { events: [{ role: 'user', kind: 'message', content: 'Reproduce this paper.', time: at(0) }], usage: null, live: false }],
-  [/^\/jobs\/[^/]+\/reproduction$/, { id: JOB, repo: 'r', title: 't', verdict: 'partial', can_publish: false }],
-  [/^\/jobs\/[^/]+\/artifacts$/, { files: [] }],
+  [
+    /^\/jobs\/([^/]+)\/reproduction$/,
+    (id) => ({ id, repo: `open-hai/${id}`, title: 't', verdict: verdictOf[id] ?? 'partial', review: 'clear', can_publish: false }),
+  ],
+  [/^\/jobs\/([^/]+)\/artifacts$/, (id) => ({ files: filesOf[id] ?? [] })],
   [/^\/(public|shared)$/, []],
   [/^\/admin\//, []],
 ]
@@ -97,6 +128,13 @@ try {
       if (u.pathname === '/me' && meUnavailable) {
         return req.respond({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'unavailable' }) })
       }
+      // One committed file, named after the session it belongs to — so a pane
+      // showing the wrong session's file is visible in the rendered text, not
+      // only in the list beside it.
+      if (u.pathname.endsWith('/artifact')) {
+        const id = u.pathname.split('/')[2]
+        return req.respond({ status: 200, contentType: 'text/plain', body: `# ${id} ${u.searchParams.get('path')}` })
+      }
       const hit = routes.find(([re]) => re.test(u.pathname))
       if (hit) {
         // A route body may be a function of the id in the path, for the two
@@ -118,8 +156,12 @@ try {
   // Which screen is up, read off the DOM rather than off the app's own state.
   const screen = () =>
     page.evaluate(() => {
-      if (document.querySelector('.tx-stream')) return 'session'
-      if (document.querySelector('.detail-tabs')) return 'project:' + (document.querySelector('.detail-tabs .tab.on')?.textContent?.trim() ?? '?')
+      // Both screens carry a tab strip now (015), so a session is told by its
+      // own container rather than by the transcript happening to be open.
+      const tabOn = (root) => root.querySelector('.tab.on')?.textContent?.trim() ?? '?'
+      const session = document.querySelector('.session-head .detail-tabs')
+      if (session) return 'session:' + tabOn(session)
+      if (document.querySelector('.detail-tabs')) return 'project:' + tabOn(document.querySelector('.detail-tabs'))
       if (document.querySelector('.screen-title')) return 'screen:' + document.querySelector('.screen-title').textContent.trim()
       if (document.querySelector('.auth-card')) return 'signin'
       return 'unknown'
@@ -134,6 +176,73 @@ try {
   await page.click('.row')
   await page.waitForSelector('.detail-tabs')
   if ((await path()) !== `/p/${PROJECT}`) fail(`opening a project left the address at ${await path()}, want /p/${PROJECT}`)
+
+  // The reported defect, end to end (015). Two papers, each with a published
+  // session: the artifacts of each must be the artifacts of *that* run. The old
+  // project-level tab showed whichever session was newest, under an address that
+  // named the project — so paper A's reproduction was in the product and
+  // reachable by nothing.
+  const filesShown = () => page.evaluate(() => [...document.querySelectorAll('.file-row .row-title')].map((e) => e.textContent.trim()))
+  for (const [id, want] of [
+    [JOB, filesOf[JOB]],
+    [JOB_B, filesOf[JOB_B]],
+  ]) {
+    await page.goto(`${BASE}/p/${PROJECT}/s/${id}/artifacts`, { waitUntil: 'networkidle0' })
+    await page.waitForSelector('.file-row')
+    const got = await filesShown()
+    if (JSON.stringify(got) !== JSON.stringify(want)) fail(`session ${id} listed ${JSON.stringify(got)}, want ${JSON.stringify(want)}`)
+    // And the pane renders that session's file, not a neighbour's.
+    const body = await page.evaluate(() => document.querySelector('.markdown-body, .event-io')?.textContent ?? '')
+    if (!body.includes(id)) fail(`the artifact pane of session ${id} rendered ${JSON.stringify(body.slice(0, 60))}`)
+    if ((await screen()) !== 'session:Artifacts') fail(`${await path()} rendered ${await screen()}`)
+  }
+
+  // Each session's verdict is its own, too.
+  for (const id of [JOB, JOB_B]) {
+    await page.goto(`${BASE}/p/${PROJECT}/s/${id}/verdict`, { waitUntil: 'networkidle0' })
+    await page.waitForSelector('.verdict-line')
+    const said = await page.evaluate(() => document.querySelector('.verdict-line')?.textContent?.trim() ?? '')
+    const want = shownAs[verdictOf[id]]
+    if (!said.includes(want)) fail(`session ${id} showed the verdict ${JSON.stringify(said)}, want ${want}`)
+  }
+
+  // The session's tabs are places: clicking one moves the address, and Back
+  // returns to the pane it came from.
+  await page.goto(`${BASE}/p/${PROJECT}/s/${JOB}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.tx-stream')
+  await page.evaluate(() => [...document.querySelectorAll('.detail-tabs .tab')].find((b) => /artifacts/i.test(b.textContent))?.click())
+  await new Promise((r) => setTimeout(r, 300))
+  if ((await path()) !== `/p/${PROJECT}/s/${JOB}/artifacts`) fail(`the session artifacts tab left the address at ${await path()}`)
+  await page.goBack({ waitUntil: 'domcontentloaded' })
+  await new Promise((r) => setTimeout(r, 400))
+  if ((await path()) !== `/p/${PROJECT}/s/${JOB}`) fail(`Back from a session tab went to ${await path()}`)
+
+  // The project's own artifacts tab is gone: there is no project-wide repository
+  // to browse. The address falls back to the project, as any stray segment does.
+  await page.goto(`${BASE}/p/${PROJECT}/artifacts`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.detail-tabs')
+  if ((await path()) !== `/p/${PROJECT}`) fail(`the retired project artifacts address left the reader at ${await path()}`)
+
+  // The project's verdict tab reads across papers: one row per graded session,
+  // each naming its paper.
+  await page.goto(`${BASE}/p/${PROJECT}/verdict`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.verdict-cell')
+  await new Promise((r) => setTimeout(r, 300))
+  const board = await page.evaluate(() => [...document.querySelectorAll('.rows > .row')].map((r) => r.textContent))
+  if (board.length !== 2) fail(`the project verdict view has ${board.length} rows, want one per graded session`)
+  for (const p of [paper, paperB]) {
+    if (!board.some((r) => r.includes(p.title))) fail(`the project verdict view does not name ${p.title}: ${JSON.stringify(board)}`)
+  }
+  for (const v of Object.values(verdictOf)) {
+    if (!board.some((r) => r.includes(shownAs[v]))) fail(`the project verdict view does not report ${v}: ${JSON.stringify(board)}`)
+  }
+  // And a row opens that session's own verdict.
+  await page.evaluate(() => document.querySelector('.rows > .row')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+  await new Promise((r) => setTimeout(r, 400))
+  if (!/\/s\/[^/]+\/verdict$/.test(await path())) fail(`a verdict row opened ${await path()}`)
+
+  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.detail-tabs')
 
   // A tab is shareable state, so it is in the address too.
   await page.evaluate(() => [...document.querySelectorAll('.detail-tabs .tab')].find((b) => /verdict/i.test(b.textContent))?.click())
