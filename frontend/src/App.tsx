@@ -1781,7 +1781,11 @@ function ProjectScreen({
     onCreditsSpent()
   }, [refresh, onCreditsSpent])
 
-  const isOwner = project != null && project.owner === me.principal
+  // What an owner may do here. A project in the trash is read-only (019): the
+  // server refuses every write on one, so an owner control still on screen is a
+  // button that can only fail. The banner above says as much; this is the half
+  // that makes it true.
+  const isOwner = project != null && project.owner === me.principal && !project.deleted_at
   // What this project is, joined: every session under the paper it is a run of.
   // Nothing here derives one session for the project — a project holds papers,
   // and a verdict and a repository belong to the session that produced them.
@@ -1847,7 +1851,9 @@ function ProjectScreen({
         )}
         {tab === 'sessions' && (
           <div className="stack">
-            {credits && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
+            {/* Money cannot move in or out of a trashed project either, so the
+                card that moves it goes with the rest of the owner controls. */}
+            {credits && !project.deleted_at && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
             <PapersCard
               i18n={i18n}
               me={me}

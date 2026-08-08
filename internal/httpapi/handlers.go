@@ -1154,27 +1154,11 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "withdraw_failed")
 		return
 	}
-	// The forge follows, best-effort: the project is already private in-app, and a
-	// forge outage must not strand an owner mid-withdrawal. Every repository the
-	// project owns is closed, not only those the publish flipped — nothing records
-	// which those were, and closing an already-closed repository costs nothing.
-	// The repositories come from the sessions directly rather than from
-	// clearedForPublish, because a project is often withdrawn precisely because
-	// its tree stopped being clear, and that must not be what keeps the repository
-	// open.
-	if rt.repoPub != nil {
-		sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
-		if err != nil {
-			log.Printf("withdraw: project %s sessions unreadable, repositories left as they are: %v", proj.ID, err)
-		}
-		for _, s := range sessions {
-			if s.RepoName == "" {
-				continue
-			}
-			if err := rt.repoPub.SetPrivate(r.Context(), repoName(s.RepoName)); err != nil {
-				log.Printf("withdraw: repo %s not closed: %v", s.RepoName, err)
-			}
-		}
+	// The forge follows, best-effort.
+	if sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID); err != nil {
+		log.Printf("withdraw: project %s sessions unreadable, repositories left as they are: %v", proj.ID, err)
+	} else {
+		rt.closeRepos(r.Context(), sessions)
 	}
 	updated, _ := rt.projects.Get(r.Context(), proj.ID)
 	writeJSON(w, http.StatusOK, updated)
@@ -1499,10 +1483,19 @@ func (rt *Router) purgeProject(w http.ResponseWriter, r *http.Request, proj proj
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// closeRepos makes every repository a project's sessions published private,
-// best-effort. A forge that refuses is logged and not fatal: the record in this
-// app has already changed, and failing the call would leave the two disagreeing
-// in the other direction.
+// closeRepos makes every repository a project's sessions published private.
+//
+// Best-effort on purpose: the project is already private in this app, and a
+// forge outage must not strand an owner mid-withdrawal. Every repository the
+// project owns is closed, not only those a publish flipped — nothing records
+// which those were, and closing an already-closed repository costs nothing. The
+// repositories come from the sessions directly rather than from
+// clearedForPublish, because a project is often withdrawn precisely because its
+// tree stopped being clear, and that must not be what keeps the repository open.
+//
+// One helper for both ways a publication ends — a withdrawal (006o) and a
+// delete (019) — because they close exactly the same set for exactly the same
+// reasons, and two copies would drift.
 func (rt *Router) closeRepos(ctx context.Context, sessions []job.Job) {
 	if rt.repoPub == nil {
 		return
@@ -1544,6 +1537,16 @@ func (rt *Router) listTrash(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
+	// projectViews sorts on the modified time, which is the column the projects
+	// list shows. This screen shows the deleted time, so it sorts on that: a
+	// project trashed today belongs at the top however long ago it was last
+	// worked in.
+	sort.SliceStable(views, func(i, j int) bool {
+		if views[i].DeletedAt == nil || views[j].DeletedAt == nil {
+			return views[j].DeletedAt == nil
+		}
+		return views[i].DeletedAt.After(*views[j].DeletedAt)
+	})
 	writeJSON(w, http.StatusOK, views)
 }
 

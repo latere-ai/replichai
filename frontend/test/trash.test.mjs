@@ -89,6 +89,18 @@ try {
     if (path === '/projects/trash') return json(trashed ? [{ ...project, deleted_at: ago(1000) }] : [])
     if (path === '/projects') return json(trashed ? [theirs] : [project, theirs])
     if (path === '/public') return json([])
+    if (path === `/projects/${project.id}` && req.method() === 'GET') {
+      // The project screen behind a trashed project's address: still its
+      // owner's to read, and read-only.
+      return json({
+        project: trashed ? { ...project, deleted_at: ago(1000) } : project,
+        sessions: [],
+        may_submit: !trashed,
+        credits: { balance: 0, available: 0, start_reserve: 5_000_000, may_reclaim: true },
+      })
+    }
+    if (path === `/projects/${project.id}/papers`) return json([])
+    if (path === `/projects/${project.id}/members`) return json([])
     if (path === `/projects/${project.id}` && req.method() === 'DELETE') {
       if (u.searchParams.get('purge') === '1') {
         trashed = false
@@ -162,9 +174,27 @@ try {
   await page.keyboard.press('Escape')
   await page.waitForFunction(() => !document.querySelector('.modal-backdrop'))
 
-  // Restore puts it back where it was.
-  await page.click('[data-test="restore"]')
-  await page.waitForFunction(() => document.querySelectorAll('[data-test="trash-rows"] .row').length === 0)
+  // A trashed project keeps its address (013), and the screen behind it has to
+  // explain itself and offer nothing that can only fail: every owner control is
+  // gone, and the way back is on the banner.
+  await page.goto(`${BASE}/p/${project.id}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('[data-test="trashed-banner"]')
+  const detail = await page.evaluate(() => ({
+    banner: document.querySelector('[data-test="trashed-banner"]').textContent,
+    // The rename pencil would 409 and reject unhandled; the People tab, the
+    // publish panel and the credits card all route through the same refusal.
+    rename: document.querySelectorAll('.detail-title-row button[aria-label], .detail-title-row .icon-btn').length,
+    tabs: [...document.querySelectorAll('.detail-tabs button')].map((b) => b.textContent.trim()),
+    credits: document.querySelectorAll('.stack .card .eyebrow').length,
+  }))
+  if (!/in the trash/i.test(detail.banner)) fail('the project screen does not say the project is in the trash')
+  if (detail.rename) fail('the rename control is still on a trashed project, and every write there is refused')
+  if (detail.tabs.includes('Collaborators')) fail('the People tab is still offered on a trashed project')
+
+  // Restore puts it back where it was — from the banner, which is where a reader
+  // who followed a link is standing.
+  await page.click('[data-test="trashed-banner"] [data-test="restore"]')
+  await page.waitForFunction(() => !document.querySelector('[data-test="trashed-banner"]'))
   if (!calls.includes(`POST /projects/${project.id}/restore`)) fail('Restore did not call the restore endpoint')
 
   if (!process.exitCode) console.log('ok: a project goes to the trash through the app’s own dialog, and comes back')
