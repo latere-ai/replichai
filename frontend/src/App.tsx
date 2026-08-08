@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Lockup, Mark, Wordmark } from './brand'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
   addMember,
@@ -197,7 +198,7 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
     return (
       <div className="auth-center">
         <div className="auth-card">
-          <Logo big />
+          <Mark size={40} className="auth-logo" />
           <h2>{t('profileNotFound')}</h2>
           <p>{t('profileNotFoundBody')}</p>
           <a className="btn ghost" href="/" style={{ justifyContent: 'center' }}>
@@ -246,7 +247,7 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
     <div className="screen" style={{ maxWidth: 720, margin: '0 auto' }}>
       <div className="screen-head">
         <a className="btn ghost" href="/">
-          <Ico name="globe" size={13} /> replichai
+          <Ico name="globe" size={13} /> <Wordmark />
         </a>
       </div>
       <div className="stack">
@@ -300,21 +301,44 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
 
 /* ─── Auth screens ─── */
 
-function Logo({ big }: { big?: boolean }) {
-  return <div className={big ? 'auth-logo' : 'rail-logo'}>r</div>
-}
-
+// The landing is the only screen a visitor sees before they have an account, so
+// it carries the argument as well as the way in (017). The two failure screens
+// below it deliberately keep the plain centred card: somebody whose session just
+// broke is not an audience for a pitch.
 function SignIn({ i18n, next }: { i18n: I18n; next?: string }) {
   const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
+  const points = [
+    { key: 'Inner', open: false },
+    { key: 'Outer', open: true },
+    { key: 'Verdict', open: false },
+  ] as const
   return (
-    <div className="auth-center">
-      <div className="auth-card">
-        <Logo big />
-        <h2>replichai</h2>
-        <p>{i18n.t('tagline')}</p>
-        <a className="btn lg" href={href} style={{ justifyContent: 'center' }}>
-          {i18n.t('signInWith')}
-        </a>
+    <div className="landing">
+      <div className="landing-brand">
+        <Lockup size={26} className="landing-lockup" />
+        <h1>{i18n.t('landingClaim')}</h1>
+        <p className="landing-lead">{i18n.t('landingLead')}</p>
+      </div>
+      <div className="landing-auth">
+        <div className="auth-card">
+          <Mark size={34} />
+          <div className="stack" style={{ gap: 8 }}>
+            <h2>{i18n.t('signInTitle')}</h2>
+            <p>{i18n.t('signInBody')}</p>
+          </div>
+          <a className="btn lg" href={href} style={{ justifyContent: 'center' }}>
+            {i18n.t('signInWith')}
+          </a>
+          <div className="landing-note">{i18n.t('signInNote')}</div>
+        </div>
+      </div>
+      <div className="landing-points">
+        {points.map((p) => (
+          <div key={p.key} className={p.open ? 'landing-point open' : 'landing-point'}>
+            <h2>{i18n.t(`landing${p.key}Title`)}</h2>
+            <p>{i18n.t(`landing${p.key}Body`)}</p>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -324,7 +348,7 @@ function AuthUnavailable({ i18n, onRetry }: { i18n: I18n; onRetry: () => void })
   return (
     <div className="auth-center">
       <div className="auth-card">
-        <Logo big />
+        <Mark size={40} className="auth-logo" />
         <h2>{i18n.t('authUnavailableTitle')}</h2>
         <p>{i18n.t('authUnavailableBody')}</p>
         <button className="btn lg" onClick={onRetry} style={{ justifyContent: 'center' }}>
@@ -339,7 +363,7 @@ function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
   return (
     <div className="auth-center">
       <div className="auth-card">
-        <Logo big />
+        <Mark size={40} className="auth-logo" />
         <h2>{i18n.t('noAccessTitle')}</h2>
         <p>{i18n.t('noAccessBody', { email })}</p>
         {/* Signing out clears a session minted before sign-in was opened, and
@@ -436,8 +460,8 @@ function Shell({
     <div className="shell">
       <nav className={folded ? 'rail rail-fold' : 'rail'}>
         <div className="rail-head">
-          <Logo />
-          <span className="rail-name">replichai</span>
+          <Mark size={22} className="rail-logo" />
+          <Wordmark className="rail-name" />
           <span className="rail-beta">BETA</span>
           {/* The one control that must stay reachable in both states, so it is
               the only thing the head keeps when the rail folds. */}

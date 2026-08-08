@@ -311,24 +311,45 @@ textarea {
 .rail-fold .rail-foot {
   padding: 10px 8px;
 }
-.rail-logo {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: linear-gradient(150deg, var(--brand), var(--pub));
-  display: flex;
+/* The identity. The mark owns its colour rather than inheriting currentColor:
+   it means the same thing in the rail, on the landing, and in a browser tab,
+   so it may not be restyled by whatever it sits inside. Two rings — the inner
+   loop closes because a machine can re-run it, the outer one does not because
+   the study it stands for is never simulated. */
+.mark {
+  flex: 0 0 auto;
+  display: block;
+}
+.mark-outer {
+  stroke: var(--brand);
+  opacity: 0.5;
+}
+.mark-inner {
+  stroke: var(--brand);
+}
+/* The name, with a hairline gap at its own seam: replic + hai. The tracking is
+   tightened and the seam gives a fraction of it back, so the break is felt at
+   any size without ever reading as a typo. */
+.wordmark {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.wordmark-seam {
+  margin-left: 0.055em;
+}
+.lockup {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 14px;
-  color: #fff;
+  gap: 0.42em;
   line-height: 1;
-  box-shadow: 0 1px 6px var(--brand-line);
+}
+/* Kept as a hook, not as a look: the fold rule hides it, and the SVG carries
+   its own size. */
+.rail-logo {
+  flex: 0 0 auto;
 }
 .rail-name {
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 14px;
 }
 .rail-beta {
   margin-left: auto;
@@ -2233,19 +2254,7 @@ input.submit-input {
   text-align: center;
 }
 .auth-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  background: linear-gradient(150deg, var(--brand), var(--pub));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 25px;
-  color: #fff;
   margin: 0 auto;
-  box-shadow: 0 6px 22px var(--brand-line);
 }
 .auth-card h2 {
   margin: 0;
@@ -2258,6 +2267,125 @@ input.submit-input {
   font-size: 13px;
   color: var(--fg-2);
   line-height: 1.6;
+}
+
+/* The landing (017). Two columns: the argument on the left, the way in on the
+   right. The grid is declared by area rather than by source order because the
+   one-column fallback has to reorder — the sign-in card moves above the three
+   points, so a phone gets the button without scrolling past the case for it. */
+.landing {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-content: center;
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+  grid-template-areas:
+    'brand auth'
+    'points auth';
+  align-items: center;
+  column-gap: 72px;
+  row-gap: 34px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 48px 32px;
+}
+.landing-brand {
+  grid-area: brand;
+  align-self: end;
+}
+.landing-points {
+  grid-area: points;
+  align-self: start;
+}
+.landing-auth {
+  grid-area: auth;
+}
+.landing-lockup {
+  color: var(--fg-1);
+  font-size: 17px;
+  margin-bottom: 26px;
+}
+.landing h1 {
+  margin: 0 0 16px;
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  max-width: 13ch;
+}
+.landing-lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fg-2);
+  max-width: 52ch;
+}
+/* Three rows, each a claim the product actually makes. The rule on the left is
+   the mark's own boundary, restated at text scale: solid where the work is
+   mechanical, dashed where it is not. */
+.landing-points {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.landing-point {
+  padding-left: 16px;
+  border-left: 2px solid var(--brand);
+}
+.landing-point.open {
+  border-left: 2px dashed var(--brand);
+}
+.landing-point h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg-1);
+}
+.landing-point p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-2);
+  max-width: 46ch;
+}
+.landing .auth-card {
+  max-width: none;
+  text-align: left;
+  gap: 16px;
+  box-shadow: var(--shadow-pop);
+}
+.landing .auth-card h2 {
+  font-size: 20px;
+}
+.landing-note {
+  font-size: 12px;
+  color: var(--fg-3);
+  line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+  .landing {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'brand'
+      'auth'
+      'points';
+    row-gap: 28px;
+    padding: 40px 22px;
+    align-content: start;
+  }
+  .landing-brand,
+  .landing-points {
+    align-self: auto;
+  }
+  .landing h1 {
+    font-size: 30px;
+    max-width: none;
+  }
+  .landing-lockup {
+    margin-bottom: 18px;
+  }
 }
 
 .err {
