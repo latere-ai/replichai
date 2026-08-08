@@ -1,6 +1,12 @@
 # 020 — Download the whole project
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `internal/httpapi/archive.go` streams `GET /projects/{id}/archive` through `archive/zip` straight to the `ResponseWriter`; `archive_test.go` opens the returned bytes with `archive/zip` and asserts the entry names, the manifest, the 409, the view-rights gate, and the recorded failure. The projects list carries the download.
+
+Three things came out of the build. **The download is an anchor, not a fetch.** A `fetch` would buffer the whole archive in the tab before saving it, which is the memory cost the streaming server side exists to avoid — so `archiveUrl` returns a URL and the row renders an `<a>`, and the browser test asserts the tag rather than only the href.
+
+**The filename needed its own rule.** `Content-Disposition` is a quoted header and a project title is free text, so a title is reduced to `[A-Za-z0-9._-]`, capped at 80 characters, and falls back to `project-{id}` when nothing survives — an untitled project still downloads.
+
+**Sessions are archived oldest first**, which is the reverse of `ListByProject`. A list of sessions is useful newest-first; an archive reads in the order the work happened.
 
 **Scope:** one action that hands a reader everything a project produced, as a single archive. Adds `GET /projects/{id}/archive`, streamed as a zip built from each session's committed tree, and the button that calls it.
 

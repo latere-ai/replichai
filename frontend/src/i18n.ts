@@ -147,6 +147,8 @@ const strings: Record<Lang, Record<string, string>> = {
     // deliberate: the row action is reversible and says so, and the words that
     // matter on the permanent one are what it does *not* remove — the
     // repositories close, they are not destroyed.
+    download: 'Download everything',
+    downloadHint: 'One archive of every file this project’s sessions committed, one folder per session.',
     navTrash: 'Trash',
     trashIntro:
       'Projects you removed. They are out of your list and nobody else can reach them, and everything they hold is still here until you delete them for good.',

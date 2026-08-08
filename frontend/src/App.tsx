@@ -3,6 +3,7 @@ import { LatereMark, Lockup, Mark, Wordmark } from './brand'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
   addMember,
+  archiveUrl,
   artifactUrl,
   cancelSession,
   createProject,
@@ -764,6 +765,22 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                 <ModifiedCell i18n={i18n} at={p.modified_at} />
                 <StatusBadge i18n={i18n} p={p} />
                 <VisibilityBadge i18n={i18n} visibility={p.visibility} />
+                {/* An anchor, not a fetch: the browser's own download is what
+                    should handle a body this size, and a project with no
+                    published session has nothing to hand over (020). */}
+                {p.session_count > 0 && (
+                  <Tip text={t('download')}>
+                    <a
+                      className="icon-btn"
+                      href={archiveUrl(p.id)}
+                      aria-label={t('download')}
+                      data-test="download-project"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Ico name="download" size={13} />
+                    </a>
+                  </Tip>
+                )}
                 {/* Only on what you own: removing a project you were invited to
                     is not a thing that should be possible. */}
                 {p.owner === me.principal && (
