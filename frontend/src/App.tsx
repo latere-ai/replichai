@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { Lockup, Mark, Wordmark } from './brand'
+import { LatereMark, Lockup, Mark, Wordmark } from './brand'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
   addMember,
@@ -327,6 +327,9 @@ function SignIn({ i18n, next }: { i18n: I18n; next?: string }) {
             <p>{i18n.t('signInBody')}</p>
           </div>
           <a className="btn lg" href={href} style={{ justifyContent: 'center' }}>
+            {/* The provider's own mark, so the button looks like where it goes.
+                No space between the two: `.btn` already sets the gap. */}
+            <LatereMark height={12} />
             {i18n.t('signInWith')}
           </a>
           <div className="landing-note">{i18n.t('signInNote')}</div>

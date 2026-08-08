@@ -207,6 +207,23 @@ try {
     await page.waitForSelector('.landing')
     const href = await page.evaluate(() => document.querySelector('.landing-auth .btn').getAttribute('href'))
     if (href !== '/login?next=%2Fp%2Fproj-1') fail(`signed out at /p/proj-1 the button points at ${href}; the deep link has to survive the round trip`)
+    // The button carries the provider's mark, painted in the button's own ink.
+    // A mark that inherited a colour from somewhere else would be invisible on
+    // the brand fill and nothing else here would notice.
+    const provider = await page.evaluate(() => {
+      const svg = document.querySelector('.landing-auth .btn svg')
+      if (!svg) return null
+      const r = svg.getBoundingClientRect()
+      const btn = getComputedStyle(document.querySelector('.landing-auth .btn'))
+      return { w: r.width, h: r.height, fill: getComputedStyle(svg).fill, ink: btn.color, bg: btn.backgroundColor, paths: svg.querySelectorAll('path').length }
+    })
+    if (!provider) fail('the sign-in button lost the latere mark')
+    else {
+      if (provider.paths < 6) fail(`the latere mark draws ${provider.paths} paths; the canonical one has six`)
+      if (provider.h < 8 || provider.w < 12) fail(`the latere mark is ${provider.w}×${provider.h}px, too small to read`)
+      if (provider.fill !== provider.ink) fail(`the latere mark is filled ${provider.fill} but the button's ink is ${provider.ink}`)
+      if (provider.fill === provider.bg) fail('the latere mark is filled in the button background and cannot be seen')
+    }
     await page.close()
   }
 
