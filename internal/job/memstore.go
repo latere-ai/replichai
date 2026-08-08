@@ -198,6 +198,22 @@ func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, er
 	return out, nil
 }
 
+// DeleteByProject removes every session belonging to a project.
+func (s *MemStore) DeleteByProject(_ context.Context, projectID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := s.order[:0]
+	for _, id := range s.order {
+		if s.jobs[id].ProjectID == projectID {
+			delete(s.jobs, id)
+			continue
+		}
+		kept = append(kept, id)
+	}
+	s.order = kept
+	return nil
+}
+
 // StatusByProjects summarises the sessions of each named project.
 func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string]ProjectStatus, error) {
 	want := make(map[string]bool, len(ids))

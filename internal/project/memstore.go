@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -62,17 +63,60 @@ func (s *MemStore) Get(_ context.Context, id string) (Project, error) {
 	return p, nil
 }
 
-// ListByOwner returns an owner's projects, newest first.
+// ListByOwner returns an owner's projects, newest first, excluding the trash.
 func (s *MemStore) ListByOwner(_ context.Context, owner string) ([]Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Project
 	for i := len(s.order) - 1; i >= 0; i-- {
-		if p := s.projects[s.order[i]]; p.Owner == owner {
+		if p := s.projects[s.order[i]]; p.Owner == owner && !p.Trashed() {
 			out = append(out, p)
 		}
 	}
 	return out, nil
+}
+
+// ListTrashed returns an owner's trashed projects, newest-trashed first.
+func (s *MemStore) ListTrashed(_ context.Context, owner string) ([]Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Project
+	for _, id := range s.order {
+		if p := s.projects[id]; p.Owner == owner && p.Trashed() {
+			out = append(out, p)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].DeletedAt.After(*out[j].DeletedAt) })
+	return out, nil
+}
+
+// Trash moves a project to the trash, keeping the first timestamp.
+func (s *MemStore) Trash(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if !p.Trashed() {
+		now := s.clock()
+		p.DeletedAt = &now
+		s.projects[id] = p
+	}
+	return nil
+}
+
+// Restore takes a project back out of the trash.
+func (s *MemStore) Restore(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	p.DeletedAt = nil
+	s.projects[id] = p
+	return nil
 }
 
 // SetTitle updates a project's title, ignoring a missing project.
@@ -152,7 +196,7 @@ func (s *MemStore) ListPublic(_ context.Context) ([]Project, error) {
 	defer s.mu.Unlock()
 	var out []Project
 	for i := len(s.order) - 1; i >= 0; i-- {
-		if p := s.projects[s.order[i]]; p.Visibility == VisibilityPublic {
+		if p := s.projects[s.order[i]]; p.Visibility == VisibilityPublic && !p.Trashed() {
 			out = append(out, p)
 		}
 	}

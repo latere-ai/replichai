@@ -30,7 +30,7 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 // projectColumns is the column list every read selects, in scan order.
 const projectColumns = `id, owner, title, visibility, credit_cap, created_at, signed_off_by, signed_off_at, attestation_version,
 	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email,
-	withdrawn_at, withdrawn_by, withdrawn_reason`
+	withdrawn_at, withdrawn_by, withdrawn_reason, deleted_at`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
@@ -39,7 +39,7 @@ func scanProject(row pgx.Row) (Project, error) {
 		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion,
 		&p.SignedOffName, &p.SignedOffInstitution, &p.SignedOffContact,
 		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail,
-		&p.WithdrawnAt, &p.WithdrawnBy, &p.WithdrawnReason)
+		&p.WithdrawnAt, &p.WithdrawnBy, &p.WithdrawnReason, &p.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -71,9 +71,47 @@ func (s *PGStore) Get(ctx context.Context, id string) (Project, error) {
 	return scanProject(s.pool.QueryRow(ctx, `SELECT `+projectColumns+` FROM projects WHERE id = $1`, id))
 }
 
-// ListByOwner returns an owner's projects, newest first.
+// ListByOwner returns an owner's projects, newest first, excluding the trash.
 func (s *PGStore) ListByOwner(ctx context.Context, owner string) ([]Project, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects WHERE owner = $1 ORDER BY created_at DESC, id DESC`, owner)
+	return s.list(ctx, `WHERE owner = $1 AND deleted_at IS NULL ORDER BY created_at DESC, id DESC`, owner)
+}
+
+// ListTrashed returns an owner's trashed projects, newest-trashed first.
+func (s *PGStore) ListTrashed(ctx context.Context, owner string) ([]Project, error) {
+	return s.list(ctx, `WHERE owner = $1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC, id DESC`, owner)
+}
+
+// Trash moves a project to the trash. The NULL predicate keeps the first
+// timestamp, so a repeated call cannot rewrite the moment it left the list —
+// which costs one extra read to tell "already trashed" from "not there".
+func (s *PGStore) Trash(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE projects SET deleted_at=$2 WHERE id=$1 AND deleted_at IS NULL`, id, s.clock())
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		if _, err := s.Get(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Restore takes a project back out of the trash.
+func (s *PGStore) Restore(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE projects SET deleted_at=NULL WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// list runs one project read with a shared column list and scan.
+func (s *PGStore) list(ctx context.Context, where string, args ...any) ([]Project, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,22 +183,9 @@ func (s *PGStore) SetPrivate(ctx context.Context, id string, w Withdrawal) error
 	return nil
 }
 
-// ListPublic returns every public project, newest first.
+// ListPublic returns every public project, newest first, excluding the trash.
 func (s *PGStore) ListPublic(ctx context.Context) ([]Project, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects WHERE visibility='public' ORDER BY created_at DESC, id DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Project
-	for rows.Next() {
-		p, err := scanProject(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
+	return s.list(ctx, `WHERE visibility='public' AND deleted_at IS NULL ORDER BY created_at DESC, id DESC`)
 }
 
 // ModifiedAt returns each named project's creation-or-newest-paper time, in one

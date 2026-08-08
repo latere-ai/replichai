@@ -48,6 +48,11 @@ type Store interface {
 	// of one project (006g). An unknown project yields no rows, never an error;
 	// the caller's ownership of the project is checked against the project store.
 	ListByProject(ctx context.Context, projectID string) ([]Job, error)
+	// DeleteByProject removes every session belonging to a project — what a
+	// permanent project delete has to do before the project row goes, since
+	// jobs.project_id references it and the foreign key does not cascade (019).
+	// Idempotent: a project with no sessions is not an error.
+	DeleteByProject(ctx context.Context, projectID string) error
 	// StatusByProjects summarises the sessions of each named project — the total,
 	// how many are still running, the newest session's phase, and when one last
 	// changed — so a project list shows status at a glance in one query.

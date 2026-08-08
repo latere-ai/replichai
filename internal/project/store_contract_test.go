@@ -168,6 +168,97 @@ func runStoreContract(t *testing.T, s Store) {
 
 	runPaperContract(t, s)
 	runModifiedContract(t, s)
+	runTrashContract(t, s)
+}
+
+// runTrashContract asserts what the trash must do (019): a trashed project
+// leaves every list, stays readable by id, keeps the moment it left, and comes
+// back whole.
+func runTrashContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	p, err := s.Create(ctx, "tidy-owner", "Thrown away")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.SetPublic(ctx, p.ID, SignOff{By: "tidy-owner", AttestationVersion: "v2", Contact: "a@b.c"}); err != nil {
+		t.Fatalf("SetPublic: %v", err)
+	}
+	if err := s.Trash(ctx, p.ID); err != nil {
+		t.Fatalf("Trash: %v", err)
+	}
+
+	// Gone from both lists a reader reaches it through.
+	if mine, err := s.ListByOwner(ctx, "tidy-owner"); err != nil || containsID(mine, p.ID) {
+		t.Errorf("a trashed project is still in its owner's list (%v)", err)
+	}
+	if pub, err := s.ListPublic(ctx); err != nil || containsID(pub, p.ID) {
+		t.Errorf("a trashed project is still in the public zone (%v)", err)
+	}
+	// Still readable by id: restore, purge, and the owner's read-only view all
+	// need it to answer.
+	got, err := s.Get(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("Get of a trashed project: %v", err)
+	}
+	if !got.Trashed() {
+		t.Error("Get of a trashed project does not report it trashed")
+	}
+	trashed, err := s.ListTrashed(ctx, "tidy-owner")
+	if err != nil || !containsID(trashed, p.ID) {
+		t.Errorf("ListTrashed = %v, %v; want the project", trashed, err)
+	}
+	// Somebody else's trash is not yours.
+	if other, err := s.ListTrashed(ctx, "stranger"); err != nil || len(other) != 0 {
+		t.Errorf("ListTrashed for a stranger = %v, %v; want nothing", other, err)
+	}
+
+	// Trashing again keeps the first moment: a repeated call must not rewrite
+	// when the project actually left the list.
+	first := *got.DeletedAt
+	if err := s.Trash(ctx, p.ID); err != nil {
+		t.Fatalf("repeated Trash: %v", err)
+	}
+	again, _ := s.Get(ctx, p.ID)
+	if !again.DeletedAt.Equal(first) {
+		t.Errorf("a repeated Trash moved the timestamp from %v to %v", first, *again.DeletedAt)
+	}
+
+	// Restore brings it back, with everything it carried.
+	if err := s.Restore(ctx, p.ID); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	back, _ := s.Get(ctx, p.ID)
+	if back.Trashed() {
+		t.Error("Restore left the project trashed")
+	}
+	if back.Visibility != VisibilityPublic || back.SignedOffBy != "tidy-owner" {
+		t.Errorf("Restore did not return the project whole: %+v", back)
+	}
+	if mine, _ := s.ListByOwner(ctx, "tidy-owner"); !containsID(mine, p.ID) {
+		t.Error("a restored project is not back in its owner's list")
+	}
+	if err := s.Restore(ctx, p.ID); err != nil {
+		t.Errorf("idempotent Restore: %v", err)
+	}
+
+	// Neither acts on a project that is not there.
+	if err := s.Trash(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Trash of a missing project = %v, want ErrNotFound", err)
+	}
+	if err := s.Restore(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Restore of a missing project = %v, want ErrNotFound", err)
+	}
+}
+
+func containsID(ps []Project, id string) bool {
+	for _, p := range ps {
+		if p.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // runModifiedContract asserts what a project's modified time must do (018): it

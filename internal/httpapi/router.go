@@ -58,6 +58,9 @@ type JobStore interface {
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
 	StatusByProjects(ctx context.Context, ids []string) (map[string]job.ProjectStatus, error)
+	// DeleteByProject removes a project's sessions — what a permanent project
+	// delete does before the project row goes (019).
+	DeleteByProject(ctx context.Context, projectID string) error
 }
 
 // Canceler stops a running session. It is the worker (one process, one
@@ -81,6 +84,11 @@ type ProjectStore interface {
 	Get(ctx context.Context, id string) (project.Project, error)
 	ListByOwner(ctx context.Context, owner string) ([]project.Project, error)
 	ListPublic(ctx context.Context) ([]project.Project, error)
+	// The trash (019): move a project out of every list, take it back, and read
+	// what is in there.
+	Trash(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ListTrashed(ctx context.Context, owner string) ([]project.Project, error)
 	// ModifiedAt is this store's half of a project's modified time (018).
 	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
 	Delete(ctx context.Context, id string) error
