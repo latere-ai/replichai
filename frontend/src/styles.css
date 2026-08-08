@@ -807,6 +807,47 @@ h1.screen-title {
   white-space: nowrap;
   font-weight: 500;
 }
+/* A paper and the sessions that are runs of it (015). The group draws the top
+   border so its rows read as one block; the runs are indented and quieter, so
+   the paper stays the thing the eye lands on. */
+.paper-group {
+  border-top: 1px solid var(--border);
+}
+.rows > .paper-group:first-child {
+  border-top: none;
+}
+.paper-group > .row {
+  border-top: none;
+}
+.row-nested {
+  padding-left: 30px;
+  background: var(--bg-sunken, transparent);
+}
+.row-nested::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  width: 1px;
+  height: 100%;
+  background: var(--border);
+}
+.row-nested {
+  position: relative;
+}
+.group-head {
+  padding: 11px 14px;
+  font-size: 11.5px;
+  color: var(--fg-3);
+}
+/* The verdict word, right-aligned so a column of them reads down the page. */
+.verdict-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-weight: 600;
+  font-size: 13px;
+}
 .row-mono {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1486,6 +1527,11 @@ input.submit-input {
   display: flex;
   flex-direction: column;
   animation: om-fade-up 0.3s var(--ease-fluid) both;
+}
+/* The session's own header — back, what it is a run of, and its three panes
+   (015). It sits in the .tx flex column, which grows its children by default. */
+.session-head {
+  flex: none;
 }
 .tx-head {
   flex: none;

@@ -90,7 +90,8 @@ import {
   type Span,
 } from './transcript'
 import { Ico, type IconName } from './icons'
-import { useRouter, type Navigate, type ProjectTab, type View } from './routes'
+import { useRouter, type Navigate, type ProjectTab, type SessionTab, type View } from './routes'
+import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
 import { useSidebar } from './sidebar'
@@ -403,8 +404,8 @@ function Shell({
   const { t } = i18n
   const setView = navigate
   const openProject = (id: string, title?: string, tab?: ProjectTab) => setView({ name: 'project', id, title, tab })
-  const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string) =>
-    setView({ name: 'session', jobId, projectId, ref, projectTitle })
+  const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string, tab?: SessionTab) =>
+    setView({ name: 'session', jobId, projectId, ref, projectTitle, tab })
 
   // A session reached by its own link knows its project's id from the path and
   // its title from nowhere — the job carries the paper, not the project. The
@@ -538,7 +539,7 @@ function Shell({
             onTitle={(title) =>
               setView((now) => (now.name === 'project' && now.title !== title ? { ...now, title } : now), { replace: true })
             }
-            onOpenSession={(jobId, ref, title) => openSession(jobId, view.id, ref, title)}
+            onOpenSession={(jobId, ref, title, tab) => openSession(jobId, view.id, ref, title, tab)}
             onCreditsSpent={refreshMe}
           />
         )}
@@ -547,6 +548,10 @@ function Shell({
             key={view.jobId}
             i18n={i18n}
             jobId={view.jobId}
+            tab={view.tab ?? 'transcript'}
+            // A session's tab is a place, like a project's: the verdict and the
+            // artifacts of one run are each a thing worth linking to.
+            onTab={(tab) => setView((now) => (now.name === 'session' ? { ...now, tab } : now))}
             // A session reached by its own link does not know its paper until the
             // job is fetched; the breadcrumb's leaf is filled in from what the
             // screen loaded.
@@ -1473,16 +1478,21 @@ function ProjectScreen({
   tab: ProjectTab
   onTab: (tab: ProjectTab, correction?: boolean) => void
   onTitle: (title: string) => void
-  onOpenSession: (jobId: string, ref: string, projectTitle: string) => void
+  onOpenSession: (jobId: string, ref: string, projectTitle: string, tab?: SessionTab) => void
   onCreditsSpent: () => void
 }) {
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
   const [sessions, setSessions] = useState<Job[] | null>(null)
+  const [papers, setPapers] = useState<ProjectPaper[] | null>(null)
   const [maySubmit, setMaySubmit] = useState(false)
   const [credits, setCredits] = useState<ProjectCredits | null>(null)
   const [signerHandle, setSignerHandle] = useState('')
 
+  // Papers and sessions are read together and by one component, because the
+  // screen renders them joined (015). Fetched separately they are two clocks:
+  // a paper just started would read "1 session" over an empty list until
+  // whichever refresh landed second.
   const refresh = useCallback(() => {
     getProject(id)
       .then((d) => {
@@ -1493,6 +1503,9 @@ function ProjectScreen({
         setSignerHandle(d.signer_handle ?? '')
       })
       .catch(() => setSessions([]))
+    listPapers(id)
+      .then(setPapers)
+      .catch(() => setPapers([]))
   }, [id])
   useEffect(() => {
     refresh()
@@ -1505,9 +1518,10 @@ function ProjectScreen({
   }, [refresh, onCreditsSpent])
 
   const isOwner = project != null && project.owner === me.principal
-  // The latest published session (with a repository) backs the verdict and
-  // artifact views; sessions are newest-first.
-  const published = (sessions ?? []).find((s) => s.repo_name) ?? null
+  // What this project is, joined: every session under the paper it is a run of.
+  // Nothing here derives one session for the project — a project holds papers,
+  // and a verdict and a repository belong to the session that produced them.
+  const grouped = useMemo(() => groupByPaper(papers ?? [], sessions ?? []), [papers, sessions])
 
   // The breadcrumb's leaf, once it is known: on a link followed from outside, the
   // shell has the id and nothing to name it with.
@@ -1543,7 +1557,6 @@ function ProjectScreen({
         <div className="detail-tabs">
           <Tab on={tab === 'sessions'} onClick={() => onTab('sessions')} icon="layers" label={t('projectSessions')} />
           <Tab on={tab === 'verdict'} onClick={() => onTab('verdict')} icon="gauge" label={t('verdict')} />
-          <Tab on={tab === 'artifacts'} onClick={() => onTab('artifacts')} icon="package" label={t('artifacts')} />
           {isOwner && <Tab on={tab === 'people'} onClick={() => onTab('people')} icon="users" label={t('members')} />}
         </div>
       </div>
@@ -1552,23 +1565,21 @@ function ProjectScreen({
         {tab === 'sessions' && (
           <div className="stack">
             {credits && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
-            <PapersCard i18n={i18n} me={me} project={project} credits={credits ?? undefined} mayWork={maySubmit} onChanged={onSpent} />
-            <div className="card">
-              <CardHead label={t('projectSessions')} icon="layers" tone="var(--run)" />
-              {sessions === null || sessions.length === 0 ? (
-                <Empty icon="beaker" text={t('noSessions')} />
-              ) : (
-                <div className="rows">
-                  {sessions.map((s) => (
-                    <SessionRow key={s.id} i18n={i18n} job={s} onOpen={() => onOpenSession(s.id, s.ref, project.title)} onChanged={refresh} />
-                  ))}
-                </div>
-              )}
-            </div>
+            <PapersCard
+              i18n={i18n}
+              me={me}
+              project={project}
+              grouped={grouped}
+              loading={papers === null}
+              credits={credits ?? undefined}
+              mayWork={maySubmit}
+              onOpenSession={(s) => onOpenSession(s.id, s.ref, project.title)}
+              onChanged={onSpent}
+              onRefresh={refresh}
+            />
           </div>
         )}
-        {tab === 'verdict' && <VerdictTab i18n={i18n} session={published} />}
-        {tab === 'artifacts' && <ArtifactsTab i18n={i18n} session={published} />}
+        {tab === 'verdict' && <ProjectVerdicts i18n={i18n} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />}
         {tab === 'people' && isOwner && (
           <div className="detail-grid">
             <div className="stack">
@@ -1584,6 +1595,16 @@ function ProjectScreen({
       </div>
     </div>
   )
+}
+
+// verdictLabel reads a grade the way a person would. The grader's own names are
+// snake_case identifiers (`needs_revision`, internal/provider/enum.go), and the
+// manifest carries them verbatim — which is right for the record and wrong on
+// screen, where "Needs_revision" reads as a leaked field name.
+function verdictLabel(v: string) {
+  if (!v) return ''
+  const words = v.replace(/_/g, ' ')
+  return words[0].toUpperCase() + words.slice(1)
 }
 
 // verdictTone maps a manifest verdict to a semantic colour, and verdictIcon to
@@ -1602,25 +1623,26 @@ function verdictIcon(v: string): IconName {
   return 'info'
 }
 
-// VerdictTab shows the latest published session's manifest verdict and metadata —
-// real data only. Per-component scorecards are not something the backend
-// produces, so they are not shown.
-function VerdictTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
+// SessionVerdict shows one session's manifest verdict and metadata — real data
+// only. Per-component scorecards are not something the backend produces, so they
+// are not shown.
+//
+// It takes a job id rather than picking a session out of a project (015): a
+// verdict is a property of the run that was graded, and there is no reading of
+// "the project's verdict" that does not have to guess which run was meant.
+function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [repro, setRepro] = useState<Reproduction | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'none'>('loading')
   useEffect(() => {
-    if (!session) {
-      setState('none')
-      return
-    }
-    getReproduction(session.id)
+    setState('loading')
+    getReproduction(jobId)
       .then((r) => {
         setRepro(r)
         setState('ready')
       })
       .catch(() => setState('none'))
-  }, [session])
+  }, [jobId])
 
   if (state === 'none')
     return (
@@ -1639,7 +1661,7 @@ function VerdictTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
         <span className="verdict-ico">
           <Ico name={verdictIcon(repro.verdict)} size={20} w={2.4} />
         </span>
-        {repro.verdict ? repro.verdict[0].toUpperCase() + repro.verdict.slice(1) : t('noVerdict')}
+        {verdictLabel(repro.verdict) || t('noVerdict')}
       </div>
       <div className="usage-rows">
         {repro.created && (
@@ -1685,33 +1707,35 @@ function fileIcon(path: string): IconName {
   return 'fileText'
 }
 
-// ArtifactsTab is the in-app file browser over the reproduction repository — a
-// forge pass-through that works even when the repository stays private. Files
-// render properly: markdown formatted, code highlighted, images inline.
-function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
+// SessionArtifacts is the in-app file browser over one session's reproduction
+// repository — a forge pass-through that works even when the repository stays
+// private. Files render properly: markdown formatted, code highlighted, images
+// inline.
+//
+// The repository belongs to the session that published it. A project has as many
+// as it has published sessions, which is why the project-level version of this
+// browser is gone rather than taught to choose between them (015).
+function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [files, setFiles] = useState<string[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!session) {
-      setFiles([])
-      return
-    }
-    listArtifacts(session.id)
+    setFiles(null)
+    listArtifacts(jobId)
       .then((r) => {
         const list = r.files ?? []
         setFiles(list)
         setSel(list.find((f) => /readme/i.test(f)) ?? list[0] ?? null)
       })
       .catch(() => setFiles([]))
-  }, [session])
+  }, [jobId])
 
   if (files === null) return <div className="center-load">…</div>
-  if (files.length === 0 || !session)
+  if (files.length === 0)
     return (
       <div className="card">
-        <Empty icon="package" text={session ? t('noArtifacts') : t('noVerdict')} />
+        <Empty icon="package" text={t('noArtifacts')} />
       </div>
     )
 
@@ -1733,7 +1757,7 @@ function ArtifactsTab({ i18n, session }: { i18n: I18n; session: Job | null }) {
       {sel ? (
         <FileView
           i18n={i18n}
-          jobId={session.id}
+          jobId={jobId}
           path={sel}
           onNavigate={(target) => {
             // A relative link resolves to a repository path; follow it in-app when
@@ -1994,43 +2018,53 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n;
   )
 }
 
-// PapersCard is what a project is about, and where a run is started (012).
+// PapersCard is what a project is about, and where a run is started (012) —
+// each paper carrying the sessions that are runs of it (015).
 //
 // It is the answer to two questions that used to be one. Adding a paper says
 // what this project means to reproduce and costs nothing; starting a session
 // runs it and spends. Fusing them is what made creating a project an act that
 // could be refused for money — and made a paper whose only run failed disappear
 // from the project it belonged to.
+//
+// The sessions were a flat list beside this card until 015, which is what let a
+// run float free of the paper it was a run of. They are nested now, so the
+// screen reads the way the records do.
 function PapersCard({
   i18n,
   me,
   project,
+  grouped,
+  loading,
   credits,
   mayWork,
+  onOpenSession,
   onChanged,
+  onRefresh,
 }: {
   i18n: I18n
   me: Me
   project: Project
+  grouped: Grouped
+  loading: boolean
   credits?: ProjectCredits
   // Whether this caller may work here — owner or collaborator. Reading is not
   // working: a public project's papers are what it is *about*, and the public
   // zone exists so a visitor can check that. Adding one and starting a run are
   // the parts that need a role.
   mayWork: boolean
+  onOpenSession: (job: Job) => void
+  // Something was spent, so the wallet is re-read too.
   onChanged: () => void
+  // Papers and sessions moved; re-read them without touching the wallet.
+  onRefresh: () => void
 }) {
   const { t } = i18n
-  const [papers, setPapers] = useState<ProjectPaper[] | null>(null)
   const [url, setUrl] = useState('')
   const [adding, setAdding] = useState(false)
   const [busyKey, setBusyKey] = useState('')
   const [err, setErr] = useState('')
-
-  const refresh = useCallback(() => {
-    listPapers(project.id).then(setPapers).catch(() => setPapers([]))
-  }, [project.id])
-  useEffect(refresh, [refresh])
+  const refresh = onRefresh
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -2108,40 +2142,131 @@ function PapersCard({
         )}
       </div>
       )}
-      {papers === null ? null : papers.length === 0 ? (
+      {loading ? null : grouped.papers.length === 0 && grouped.other.length === 0 ? (
         <Empty icon="fileText" text={t('projectNoPapers')} />
       ) : (
         <div className="rows">
-          {papers.map((p) => (
-            <div className="row" key={p.key}>
-              <span className="row-title">{p.title || t('paperUntitled')}</span>
-              <span className="muted small mono">{p.ref}</span>
-              <span className="muted small">
-                {p.sessions > 0 ? t('paperSessions', { n: String(p.sessions) }) : t('paperNeverRun')}
-              </span>
-              {mayWork && p.sessions === 0 && (
-                <Tip text={t('removePaper')}>
-                  <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => remove(p.key)}>
-                    <Ico name="x" size={13} w={1.9} />
-                  </button>
-                </Tip>
-              )}
-              {mayWork &&
-                (short ? (
-                  <Tip text={shortWhy}>
-                    <button className="btn sm" disabled>
-                      <Ico name="sparkles" size={12} /> {t('startSession')}
+          {grouped.papers.map((g) => (
+            <div className="paper-group" key={g.paper.key}>
+              <div className="row">
+                <span className="row-title">{g.paper.title || t('paperUntitled')}</span>
+                <span className="muted small mono">{g.paper.ref}</span>
+                {/* The count is the length of what this row lists. The server
+                    sends one too, but it is the input to the never-remove-a-run
+                    rule (012), not a second answer to the same question. */}
+                <span className="muted small">
+                  {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
+                </span>
+                {mayWork && g.sessions.length === 0 && (
+                  <Tip text={t('removePaper')}>
+                    <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => remove(g.paper.key)}>
+                      <Ico name="x" size={13} w={1.9} />
                     </button>
                   </Tip>
-                ) : (
-                  <button className="btn sm" disabled={!!busyKey} onClick={() => start(p.key)}>
-                    <Ico name="sparkles" size={12} /> {busyKey === p.key ? t('startingSession') : t('startSession')}
-                  </button>
-                ))}
+                )}
+                {mayWork &&
+                  (short ? (
+                    <Tip text={shortWhy}>
+                      <button className="btn sm" disabled>
+                        <Ico name="sparkles" size={12} /> {t('startSession')}
+                      </button>
+                    </Tip>
+                  ) : (
+                    <button className="btn sm" disabled={!!busyKey} onClick={() => start(g.paper.key)}>
+                      <Ico name="sparkles" size={12} /> {busyKey === g.paper.key ? t('startingSession') : t('startSession')}
+                    </button>
+                  ))}
+              </div>
+              {g.sessions.map((s) => (
+                <SessionRow key={s.id} i18n={i18n} job={s} nested onOpen={() => onOpenSession(s)} onChanged={refresh} />
+              ))}
             </div>
           ))}
+          {/* A run whose paper the project no longer holds. A paper with no runs
+              can be removed, and a job's key is a string rather than a
+              reference, so a session can outlive the row it started from. It is
+              still a run this project paid for. */}
+          {grouped.other.length > 0 && (
+            <div className="paper-group">
+              {/* A label, not a row: nothing here is a paper to start or open. */}
+              <div className="group-head">{t('otherSessions')}</div>
+              {grouped.other.map((s) => (
+                <SessionRow key={s.id} i18n={i18n} job={s} nested onOpen={() => onOpenSession(s)} onChanged={refresh} />
+              ))}
+            </div>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ProjectVerdicts is what a project found: every session that finished with a
+// repository, under the paper it is a run of, each row opening that session's
+// own verdict (015).
+//
+// It is the read across papers that the deleted project-level verdict tab was
+// pretending to be. That one picked the newest session with a repository and
+// showed it under the project's name — so a project's second paper hid its
+// first, and a run that failed while publishing could be presented as the
+// result. Here every graded run has a row and reads its own manifest.
+function ProjectVerdicts({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Grouped; onOpen: (job: Job) => void }) {
+  const { t } = i18n
+  const rows = useMemo(() => gradeable(grouped), [grouped])
+  if (rows.length === 0)
+    return (
+      <div className="card">
+        <Empty icon="gauge" text={t('noVerdict')} />
+      </div>
+    )
+  return (
+    <div className="card">
+      <CardHead label={t('verdict')} icon="gauge" tone="var(--ok)" />
+      <div className="rows">
+        {rows.map(({ paper, session }) => (
+          <VerdictRow key={session.id} i18n={i18n} paper={paper} job={session} onOpen={() => onOpen(session)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// VerdictRow reads one session's manifest. Each row fetches its own, so a slow
+// forge delays a row rather than the page, and a repository that cannot be read
+// says so where it is rather than emptying the view.
+function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGroup['paper']; job: Job; onOpen: () => void }) {
+  const { t } = i18n
+  const [repro, setRepro] = useState<Reproduction | null>(null)
+  const [missing, setMissing] = useState(false)
+  useEffect(() => {
+    let live = true
+    getReproduction(job.id)
+      .then((r) => live && setRepro(r))
+      .catch(() => live && setMissing(true))
+    return () => {
+      live = false
+    }
+  }, [job.id])
+  const tone = repro ? verdictTone(repro.verdict) : 'var(--fg-3)'
+  return (
+    <div className="row file-row" onClick={onOpen}>
+      <span className="row-title">{paper.title || paper.ref}</span>
+      <span className="muted small">{job.created_at ? new Date(job.created_at).toLocaleDateString() : ''}</span>
+      {repro?.review && <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review}</Pill>}
+      <span className="verdict-cell" style={{ color: tone }}>
+        {repro ? (
+          <>
+            <Ico name={verdictIcon(repro.verdict)} size={14} w={2.2} />
+            {verdictLabel(repro.verdict) || t('noVerdict')}
+          </>
+        ) : missing ? (
+          <>
+            <Ico name="alert" size={13} /> {t('verdictUnread')}
+          </>
+        ) : (
+          '…'
+        )}
+      </span>
     </div>
   )
 }
@@ -2175,7 +2300,20 @@ function StatusBadge({ i18n, p }: { i18n: I18n; p: ProjectView }) {
 // "stopped" rather than a bare "failed".
 const isStopped = (j: Job) => j.phase === 'failed' && !!j.error && /cancel|stopped|restart/i.test(j.error)
 
-function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; onOpen: () => void; onChanged: () => void }) {
+function SessionRow({
+  i18n,
+  job,
+  nested,
+  onOpen,
+  onChanged,
+}: {
+  i18n: I18n
+  job: Job
+  // Indented under the paper it is a run of, rather than standing on its own.
+  nested?: boolean
+  onOpen: () => void
+  onChanged: () => void
+}) {
   const { t } = i18n
   const [j, setJob] = useState<Job>(job)
   // Asking to stop is remembered for as long as the session takes to settle, so
@@ -2214,7 +2352,7 @@ function SessionRow({ i18n, job, onOpen, onChanged }: { i18n: I18n; job: Job; on
   const stopped = isStopped(j)
   const phaseTxt = stopped ? t('stopped') : phaseLabel(t, j.phase)
   return (
-    <div className="row" onClick={onOpen}>
+    <div className={nested ? 'row row-nested' : 'row'} onClick={onOpen}>
       <span className="phase-slot">
         <Pill
           tone={stopped ? 'neutral' : phaseTone(j.phase)}
@@ -2743,22 +2881,74 @@ const gradeKinds = new Set([
   'outcome_evaluation_end',
 ])
 
+// SessionScreen is one replication session, and everything it produced: the
+// transcript of the run, the verdict it was graded to, and the repository it
+// published. All three are the session's, which is why all three are addressed
+// under it (015) — a project holds papers and a paper has runs, so there is no
+// level above this one at which "the verdict" or "the repository" names one
+// thing.
 function SessionScreen({
   i18n,
   jobId,
+  tab,
+  onTab,
   onLoaded,
   onBack,
 }: {
   i18n: I18n
   jobId: string
+  tab: SessionTab
+  onTab: (tab: SessionTab) => void
   // The paper this session is about, reported once the job is read — a session
   // opened by its own link has nothing else to name it with.
   onLoaded: (ref: string) => void
   onBack: () => void
 }) {
   const { t } = i18n
-  const [tr, setTr] = useState<Transcript | null>(null)
   const [job, setJob] = useState<Job | null>(null)
+
+  // The job is watched here rather than in the transcript, because all three
+  // panes are about it and only one of them is open at a time.
+  useEffect(() => {
+    getJob(jobId).then(setJob).catch(() => {})
+    return watchJob(jobId, setJob)
+  }, [jobId])
+  useEffect(() => {
+    if (job?.ref) onLoaded(job.ref)
+  }, [job?.ref, onLoaded])
+
+  return (
+    <div className="tx">
+      <div className="detail-head session-head">
+        <div className="detail-title-row" style={{ alignItems: 'center', gap: 10 }}>
+          <Tip text={t('back')}>
+            <button className="icon-btn" onClick={onBack} aria-label={t('back')}>
+              <Ico name="chevronLeft" size={14} w={2} />
+            </button>
+          </Tip>
+          <span className="row-mono row-title">{job?.ref ?? '…'}</span>
+        </div>
+        <div className="detail-tabs">
+          <Tab on={tab === 'transcript'} onClick={() => onTab('transcript')} icon="layers" label={t('transcript')} />
+          <Tab on={tab === 'verdict'} onClick={() => onTab('verdict')} icon="gauge" label={t('verdict')} />
+          <Tab on={tab === 'artifacts'} onClick={() => onTab('artifacts')} icon="package" label={t('artifacts')} />
+        </div>
+      </div>
+      {tab === 'transcript' ? (
+        <SessionTranscript i18n={i18n} jobId={jobId} job={job} />
+      ) : (
+        <div className="screen" style={{ animation: 'none', overflowY: 'auto' }}>
+          {tab === 'verdict' ? <SessionVerdict i18n={i18n} jobId={jobId} /> : <SessionArtifacts i18n={i18n} jobId={jobId} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// SessionTranscript is the run's trajectory in its own time (006s).
+function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; job: Job | null }) {
+  const { t } = i18n
+  const [tr, setTr] = useState<Transcript | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_ready' | 'error'>('loading')
   const [hidePlumbing, setHidePlumbing] = useState(true)
   const [off, setOff] = useState<Set<string>>(new Set())
@@ -2772,19 +2962,13 @@ function SessionScreen({
   const [sel, setSel] = useState<number | null>(null)
   const streamRef = useRef<HTMLElement>(null)
 
-  // Watch the job: its phase_at feeds the timeline, and its terminal phase tells
-  // the transcript poll when to stop chasing a run that will never publish.
-  const jobRef = useRef<Job | null>(null)
+  // The job's phase_at feeds the timeline, and its terminal phase tells the
+  // transcript poll when to stop chasing a run that will never publish. Read
+  // through a ref so the poll does not restart on every observation.
+  const jobRef = useRef<Job | null>(job)
   useEffect(() => {
     jobRef.current = job
   }, [job])
-  useEffect(() => {
-    getJob(jobId).then(setJob).catch(() => {})
-    return watchJob(jobId, setJob)
-  }, [jobId])
-  useEffect(() => {
-    if (job?.ref) onLoaded(job.ref)
-  }, [job?.ref, onLoaded])
 
   // Poll the transcript. While the run is live (or not yet ready but still in
   // flight) keep re-fetching so an in-flight session's trajectory streams in
@@ -2822,14 +3006,6 @@ function SessionScreen({
     }
   }, [jobId])
 
-  const backBtn = (
-    <Tip text={t('back')}>
-      <button className="icon-btn" onClick={onBack} aria-label={t('back')}>
-        <Ico name="chevronLeft" size={14} w={2} />
-      </button>
-    </Tip>
-  )
-
   // The span the scrubber draws: the session's extent, widened to cover its
   // events. A transcript whose events carry no timestamps and a session with no
   // recorded phases leave no clock at all, and the lifecycle strip stands in.
@@ -2858,17 +3034,17 @@ function SessionScreen({
     // wait, rather than the "not ready" dead-end reserved for terminal misses.
     const waitingLive = state === 'not_ready' && job && !terminal(job.phase)
     return (
-      <div className="tx">
-        <div className="tx-head">
-          {backBtn}
-          <span className="tx-head-ref">{t('transcript')}</span>
-          {waitingLive && <span className="live-dot">{t('liveStreaming')}</span>}
-        </div>
+      <>
+        {waitingLive && (
+          <div className="tx-head">
+            <span className="live-dot">{t('liveStreaming')}</span>
+          </div>
+        )}
         {job && <Timeline i18n={i18n} job={job} />}
         <div className="center-load">
           {waitingLive ? t('transcriptWaitingLive') : state === 'not_ready' ? t('transcriptNotReady') : state === 'error' ? t('transcriptError') : '…'}
         </div>
-      </div>
+      </>
     )
   }
 
@@ -2886,9 +3062,8 @@ function SessionScreen({
   const picked = sel !== null ? visible[sel] : undefined
 
   return (
-    <div className="tx">
+    <>
       <div className="tx-head">
-        {backBtn}
         <div className="tx-head-meta">
           <span className="tx-head-ref">
             {t('transcript')}
@@ -3018,7 +3193,7 @@ function SessionScreen({
           </div>
         </aside>
       </div>
-    </div>
+    </>
   )
 }
 
