@@ -89,6 +89,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/projects/trash", rt.listTrash)
 	rt.gatedHandle("DELETE", "/projects/{id}", rt.trashProject)
 	rt.gatedHandle("POST", "/projects/{id}/restore", rt.restoreProject)
+	rt.gatedHandle("GET", "/projects/{id}/archive", rt.archiveProject)
 	rt.gatedHandle("GET", "/public", rt.listPublic)
 	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
