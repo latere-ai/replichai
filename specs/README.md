@@ -155,6 +155,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | built | 006c, 006e, 013 |
 | 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | built | 012, 013, 006f, 006s |
 | 016 | [A paper that is not published yet](016-a-paper-that-is-not-published-yet.md) | deferred (ideation) | 001, 006d, 012, 007b, 008 |
+| 017 | [The first screen](017-the-first-screen.md) | designed | 006e, 006q, 013 |
 
 ## The three tracks
 
