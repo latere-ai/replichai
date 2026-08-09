@@ -23,6 +23,17 @@ flowchart LR
 
 **Released availability is a store fact, supplied to the gate.** Whether the platform holds a paper's released data is a `Dataset` row of `released` provenance for that instrument ([023a](023a-experiments-persisted-and-dispatched.md)), never a field on `instrument.json` — [007c](007c-the-synthetic-pilot.md) is explicit that the audit reads the paper, not a deployment's holdings. The server reads the row and passes `releasedAvailable` to `GateModelCohort`; the gate, not the caller, decides. `released` re-analysis is gated on the same fact, because it too has nothing to run without the data.
 
+```mermaid
+flowchart TD
+  paper["the paper"] -->|"audit reads (never holdings)"| inst["instrument.json<br/>protocol.reported"]
+  store[("experiment.Store<br/>dataset rows")] -->|"releasedAvailable<br/>= a released row exists?"| gate
+  inst --> gate{"GateModelCohort<br/>(inst, releasedAvailable)"}
+  gate -->|pass| run["synthetic:model / released run"]
+  gate -->|fail| refuse["refused — reason named<br/>generated + uploaded still run"]
+```
+
+*The two inputs to the gate come from different places on purpose: what the paper claims is declared by the audit; what data this deployment holds is a store fact. `instrument.json` must never assert holdings it cannot verify.*
+
 **The gate is server-side, and the refusal names the reason.** A request to bind `synthetic:model` or `released` where the data is not held is refused at [023b](023b-the-experiment-http-surface.md)'s route with a reason a person can act on — "the paper's released data is not held," not a generic `403`. [023c](023c-running-an-experiment-from-the-app.md)'s disabled options become enabled exactly when the gate would pass, so the screen and the server never disagree.
 
 **A model cohort's result is a statement about the model.** `Compare` is reused — comparing a cohort's statistics against `protocol.reported` is the right arithmetic — but the rendering reads as calibration: how close a model cohort came to what people did, which measures the cohort and never the paper. The `Source` on the `Comparison` distinguishes it from a `released` re-analysis, which reads as recomputing the paper. Same numbers, different subject, per [007c](007c-the-synthetic-pilot.md).

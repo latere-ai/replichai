@@ -39,6 +39,31 @@ flowchart LR
 
 **No new execution substrate, no new trust posture.** Every leaf reuses what exists: the job lifecycle ([006b](006b-job-model-and-persistence.md)), the provider sandbox with a read-only mount ([006f](006f-taking-a-reproduction-out.md), [007b](007b-experiments-over-instruments.md)), the fail-closed access gate ([006c](006c-identity-and-access.md)), and the SSE stream the audit already uses. This chain adds surfaces, not machinery.
 
+**And it preserves the one boundary the track is built on.** The audit writes `verdict` and `rate`; no experiment ever does, and — the stronger half — `internal/audit` never imports `internal/experiment`, so a cohort cannot inform a verdict by any side door. This chain adds an executor and its surfaces on the outer-loop side of that wall and touches nothing on the audit side.
+
+```mermaid
+flowchart LR
+  subgraph inner["inner loop"]
+    A["internal/audit<br/>→ verdict, rate"]
+  end
+  subgraph outer["outer loop (this chain wires the surfaces)"]
+    E["internal/experiment<br/>runner · cohorts · compare"]
+  end
+  M["internal/method"]
+  P["internal/provider"]
+  I["internal/instrument<br/>schema only"]
+  PUB["internal/publish"]
+  A --> M
+  A --> P
+  A --> I
+  E --> I
+  E --> P
+  E --> PUB
+  A -. "never imports<br/>(import-graph test)" .-> E
+```
+
+*The firewall is one-way and compiler-adjacent: the dashed edge is the one a test asserts never appears. Re-auditing a paper yields the same verdict whether a thousand cohorts ran against its instrument or none.*
+
 ## The leaves
 
 | Child | Scope | Depends on |
