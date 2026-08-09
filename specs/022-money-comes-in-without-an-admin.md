@@ -255,7 +255,9 @@ Three secrets, injected like every other (010): `STRIPE_SECRET_KEY`, `STRIPE_WEB
 - The admin console shows outstanding sold-liability (`Σ wallet balances + Σ pot balances`) as one micro-USD number. A test asserts it equals the fold over the ledger.
 - Every new behavior is covered by an e2e test through the HTTP surface with a fake payment adapter that emits the webhooks the real Stripe would; coverage of the new code stays above the project bar.
 
-## Deliberately not here
+## Out of scope (deliberately not here)
+
+Everything below is **explicitly excluded from this spec** — not forgotten, not "maybe later without deciding". Each names *why* it is out, and the ones that will need doing later (VAT especially) say so and become their own spec. If a change would add any of these, it belongs in a different spec, not this one.
 
 - **Automated vendor top-up.** The non-goal above; auto-reload on the Anthropic account plus the solvency read replace it.
 - **A margin multiplier in the rate card.** Rejected in favor of the purchase spread, to keep session cost reconcilable against vendor rates.
