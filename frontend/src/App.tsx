@@ -113,7 +113,7 @@ import {
   type Span,
 } from './transcript'
 import { Ico, type IconName } from './icons'
-import { useRouter, type Navigate, type ProjectTab, type SessionTab, type View } from './routes'
+import { useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
@@ -550,6 +550,16 @@ function Shell({
               on={view.name === 'trash'}
               onClick={() => setView({ name: 'trash' })}
             />
+            {/* Settings sits with Trash at the foot: personal chrome, not a
+                workspace destination. Active on any of its sub-tabs (024a). */}
+            <NavItem
+              label={t('navSettings')}
+              icon="settings"
+              tone="var(--fg-3)"
+              folded={folded}
+              on={view.name === 'settings'}
+              onClick={() => setView({ name: 'settings' })}
+            />
           </div>
         </div>
         <div className="rail-foot">
@@ -592,7 +602,7 @@ function Shell({
             }}
           />
         )}
-        {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} />}
+        {view.name === 'settings' && <SettingsScreen i18n={i18n} me={me} theme={theme} tab={view.tab} navigate={setView} />}
         {view.name === 'admin' && <AdminScreen i18n={i18n} onCreditsChanged={refreshMe} />}
         {view.name === 'project' && (
           <ProjectScreen
@@ -657,6 +667,12 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
   return (
     <div className="crumb">
       <button onClick={() => setView(rootView)}>{root()}</button>
+      {view.name === 'settings' && view.tab && view.tab !== 'account' && (
+        <>
+          <span className="sep">/</span>
+          <span className="leaf">{view.tab === 'profile' ? t('settingsProfile') : t('settingsCredits')}</span>
+        </>
+      )}
       {view.name === 'project' && view.title && (
         <>
           <span className="sep">/</span>
@@ -1293,44 +1309,97 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
 
 /* ─── Settings ─── */
 
-function SettingsScreen({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme> }) {
+// SettingsScreen is one screen with three sub-tabs, each a real path (024a):
+// Account is what you are on the platform, Profile is what you publish as, and
+// Credits is what you have to spend. Switching a tab navigates, so Back returns
+// to the previous tab and a link opens on the tab it names.
+function SettingsScreen({
+  i18n,
+  me,
+  theme,
+  tab,
+  navigate,
+}: {
+  i18n: I18n
+  me: Me
+  theme: ReturnType<typeof useTheme>
+  tab?: SettingsTab
+  navigate: Navigate
+}) {
   const { t } = i18n
+  const cur: SettingsTab = tab ?? 'account'
+  const tabs: { k: SettingsTab; label: string }[] = [
+    { k: 'account', label: t('settingsAccount') },
+    { k: 'profile', label: t('settingsProfile') },
+    { k: 'credits', label: t('settingsCredits') },
+  ]
   return (
     <div className="screen">
       <div className="screen-head">
         <h1 className="screen-title">{t('settings')}</h1>
       </div>
+      <div className="detail-tabs" style={{ marginBottom: 18 }}>
+        {tabs.map((tb) => (
+          <button key={tb.k} className={'tab' + (cur === tb.k ? ' on' : '')} onClick={() => navigate({ name: 'settings', tab: tb.k })}>
+            {tb.label}
+          </button>
+        ))}
+      </div>
       <div className="stack" style={{ maxWidth: 520 }}>
-        <div className="card card-pad stack">
-          <div className="profile-head">
-            <Avatar me={me} size={44} />
-            <div className="profile-id">
-              <div className="profile-name">{me.name ?? me.email}</div>
-              {me.name && <div className="profile-email">{me.email}</div>}
-            </div>
-          </div>
-          <div className="usage-rows">
-            <div className="usage-line">
-              <Ico name="key" size={13} style={{ color: 'var(--brand)' }} />
-              {t('access')}
-              <span className="v">
-                <TierPill i18n={i18n} tier={me.tier} />
-              </span>
-            </div>
-            {me.credits && <WalletStatement i18n={i18n} balance={me.credits.wallet} />}
-            <div className="usage-line">
-              <Ico name={theme.theme === 'dark' ? 'moon' : 'sun'} size={13} style={{ color: 'var(--warn)' }} />
-              {t('theme')}
-              <span className="v">
-                <ThemeSwitcher i18n={i18n} theme={theme} />
-              </span>
-            </div>
-          </div>
-          <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
-            <Ico name="logOut" size={13} /> {t('signOut')}
-          </a>
+        {cur === 'account' && <AccountCard i18n={i18n} me={me} theme={theme} />}
+        {cur === 'profile' && <ProfileCard i18n={i18n} />}
+        {cur === 'credits' && <CreditsCard i18n={i18n} me={me} />}
+      </div>
+    </div>
+  )
+}
+
+// AccountCard is identity, access, appearance, and the way out — what you are on
+// the platform, kept apart from what you publish as (Profile) and what you have
+// to spend (Credits).
+function AccountCard({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme> }) {
+  const { t } = i18n
+  return (
+    <div className="card card-pad stack">
+      <div className="profile-head">
+        <Avatar me={me} size={44} />
+        <div className="profile-id">
+          <div className="profile-name">{me.name ?? me.email}</div>
+          {me.name && <div className="profile-email">{me.email}</div>}
         </div>
-        <ProfileCard i18n={i18n} />
+      </div>
+      <div className="usage-rows">
+        <div className="usage-line">
+          <Ico name="key" size={13} style={{ color: 'var(--brand)' }} />
+          {t('access')}
+          <span className="v">
+            <TierPill i18n={i18n} tier={me.tier} />
+          </span>
+        </div>
+        <div className="usage-line">
+          <Ico name={theme.theme === 'dark' ? 'moon' : 'sun'} size={13} style={{ color: 'var(--warn)' }} />
+          {t('theme')}
+          <span className="v">
+            <ThemeSwitcher i18n={i18n} theme={theme} />
+          </span>
+        </div>
+      </div>
+      <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
+        <Ico name="logOut" size={13} /> {t('signOut')}
+      </a>
+    </div>
+  )
+}
+
+// CreditsCard is the wallet balance and its statement — the one place a person
+// reads their own number and can see where it came from. 024b makes each move
+// name its project; the statement itself is unchanged here.
+function CreditsCard({ i18n, me }: { i18n: I18n; me: Me }) {
+  const { t } = i18n
+  return (
+    <div className="card card-pad stack">
+      <div className="usage-rows">
+        {me.credits ? <WalletStatement i18n={i18n} balance={me.credits.wallet} /> : <div className="usage-line muted small">{t('statementEmpty')}</div>}
       </div>
     </div>
   )
