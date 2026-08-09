@@ -22,17 +22,8 @@ import (
 // that does not sell credits still boots and runs unmetered.
 type Adapter struct {
 	webhookSecret string
-	taxCode       string
 	configured    bool
 }
-
-// defaultTaxCode labels a top-up as a general electronically-supplied service.
-// Stripe requires a product tax code when Managed Payments is on (the default on
-// new accounts); this satisfies that. It does NOT enable tax *calculation* —
-// that is a separate automatic_tax flag we do not set (VAT is deferred to its
-// own spec). Overridable with STRIPE_TAX_CODE once an accountant picks the exact
-// code for the jurisdiction.
-const defaultTaxCode = "txcd_10000000"
 
 var _ payment.Provider = (*Adapter)(nil)
 
@@ -49,11 +40,7 @@ func New() *Adapter {
 	// The app talks to one Stripe account, so the process-global key is the
 	// account key. Set once, at construction.
 	stripe.Key = secret
-	taxCode := os.Getenv("STRIPE_TAX_CODE")
-	if taxCode == "" {
-		taxCode = defaultTaxCode
-	}
-	return &Adapter{webhookSecret: whsec, taxCode: taxCode, configured: true}
+	return &Adapter{webhookSecret: whsec, configured: true}
 }
 
 // CreateCheckout opens a hosted Checkout Session in USD for the amount the
@@ -72,13 +59,21 @@ func (a *Adapter) CreateCheckout(_ context.Context, p payment.CheckoutParams) (s
 				Currency:   stripe.String(string(stripe.CurrencyUSD)),
 				UnitAmount: stripe.Int64(p.AmountMinor),
 				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-					Name:    stripe.String("replichai credits"),
-					TaxCode: stripe.String(a.taxCode),
+					Name: stripe.String("replichai credits"),
 				},
 			},
 			Quantity: stripe.Int64(1),
 		}},
+		// VAT is deferred to its own spec (024). Keep the charge equal to exactly
+		// what the app quoted before the redirect: turn off automatic tax, and
+		// turn off Managed Payments (default-on for new accounts) — it otherwise
+		// requires a product tax code and adds tax on top of the total. When 024
+		// lands, this reverses: automatic_tax on, a real tax code, invoices.
+		AutomaticTax: &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(false)},
 	}
+	// No typed field for Managed Payments in this SDK version; the exact param is
+	// the one Stripe's own error names.
+	params.AddExtra("managed_payments[enabled]", "false")
 	params.AddMetadata("email", p.Email)
 	for k, v := range p.Meta {
 		params.AddMetadata(k, v)
