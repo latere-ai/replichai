@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/anthropics/anthropic-sdk-go v1.59.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/stripe/stripe-go/v82 v82.5.1
 	golang.org/x/oauth2 v0.36.0
 	latere.ai/x/pkg v0.39.0
 )
