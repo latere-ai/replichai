@@ -53,7 +53,7 @@ func (s *PGStore) Entries(ctx context.Context, h Holder, limit int) ([]Entry, er
 		limit = defaultEntryLimit
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, holder, amount, kind, COALESCE(job_id, ''), actor, created_at
+		SELECT id, holder, amount, kind, COALESCE(job_id, ''), COALESCE(project_id, ''), COALESCE(project_name, ''), actor, created_at
 		FROM credit_entries WHERE holder = $1
 		ORDER BY created_at DESC, id DESC
 		LIMIT $2`, string(h), limit)
@@ -64,7 +64,7 @@ func (s *PGStore) Entries(ctx context.Context, h Holder, limit int) ([]Entry, er
 	out := []Entry{}
 	for rows.Next() {
 		var e Entry
-		if err := rows.Scan(&e.ID, &e.Holder, &e.Amount, &e.Kind, &e.JobID, &e.Actor, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Holder, &e.Amount, &e.Kind, &e.JobID, &e.ProjectID, &e.ProjectName, &e.Actor, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -91,25 +91,25 @@ func (s *PGStore) Topup(ctx context.Context, byAdmin access.Principal, email str
 }
 
 // Allocate moves credits from the caller's wallet into a project's pot.
-func (s *PGStore) Allocate(ctx context.Context, by access.Principal, project string, amount int64) error {
+func (s *PGStore) Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {
 		return err
 	}
 	if err := requireRole(ctx, s.members, by, project, access.RoleCollaborator); err != nil {
 		return err
 	}
-	return s.transfer(ctx, Wallet(by.Email), Pot(project), amount, KindAllocate, by.Email)
+	return s.transfer(ctx, Wallet(by.Email), Pot(project), amount, KindAllocate, by.Email, project, projectName)
 }
 
 // Reclaim moves credits from a project's pot back to the caller's wallet.
-func (s *PGStore) Reclaim(ctx context.Context, by access.Principal, project string, amount int64) error {
+func (s *PGStore) Reclaim(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {
 		return err
 	}
 	if err := requireRole(ctx, s.members, by, project, access.RoleLead); err != nil {
 		return err
 	}
-	return s.transfer(ctx, Pot(project), Wallet(by.Email), amount, KindReclaim, by.Email)
+	return s.transfer(ctx, Pot(project), Wallet(by.Email), amount, KindReclaim, by.Email, project, projectName)
 }
 
 // transfer writes both sides of a move in one transaction, after checking the
@@ -124,7 +124,7 @@ func (s *PGStore) Reclaim(ctx context.Context, by access.Principal, project stri
 //
 // The source is checked against its *available* balance, so credits already
 // held for a running session cannot be reclaimed out from under it.
-func (s *PGStore) transfer(ctx context.Context, from, to Holder, amount int64, kind Kind, actor string) error {
+func (s *PGStore) transfer(ctx context.Context, from, to Holder, amount int64, kind Kind, actor, projectID, projectName string) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, string(from)); err != nil {
 			return err
@@ -136,10 +136,10 @@ func (s *PGStore) transfer(ctx context.Context, from, to Holder, amount int64, k
 		if have < amount {
 			return ErrInsufficient
 		}
-		if err := s.insertTx(ctx, tx, Entry{Holder: from, Amount: -amount, Kind: kind, Actor: actor}); err != nil {
+		if err := s.insertTx(ctx, tx, Entry{Holder: from, Amount: -amount, Kind: kind, Actor: actor, ProjectID: projectID, ProjectName: projectName}); err != nil {
 			return err
 		}
-		return s.insertTx(ctx, tx, Entry{Holder: to, Amount: amount, Kind: kind, Actor: actor})
+		return s.insertTx(ctx, tx, Entry{Holder: to, Amount: amount, Kind: kind, Actor: actor, ProjectID: projectID, ProjectName: projectName})
 	})
 }
 
@@ -158,21 +158,28 @@ func (s *PGStore) insertTx(ctx context.Context, tx pgx.Tx, e Entry) error {
 	if e.JobID != "" {
 		jobID = &e.JobID
 	}
+	var projectID, projectName *string
+	if e.ProjectID != "" {
+		projectID = &e.ProjectID
+	}
+	if e.ProjectName != "" {
+		projectName = &e.ProjectName
+	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO credit_entries (id, holder, amount, kind, job_id, actor, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		id, string(e.Holder), e.Amount, string(e.Kind), jobID, e.Actor, e.CreatedAt)
+		INSERT INTO credit_entries (id, holder, amount, kind, job_id, project_id, project_name, actor, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		id, string(e.Holder), e.Amount, string(e.Kind), jobID, projectID, projectName, e.Actor, e.CreatedAt)
 	return err
 }
 
 // Fund moves credits from an email's wallet into a project's pot, with no
 // membership check — see creationOps for why the create path cannot ask that
 // question.
-func (s *PGStore) Fund(ctx context.Context, email, project string, amount int64) error {
+func (s *PGStore) Fund(ctx context.Context, email, project, projectName string, amount int64) error {
 	if err := checkMove(email, project, amount); err != nil {
 		return err
 	}
-	return s.transfer(ctx, Wallet(email), Pot(project), amount, KindAllocate, normalizeEmail(email))
+	return s.transfer(ctx, Wallet(email), Pot(project), amount, KindAllocate, normalizeEmail(email), project, projectName)
 }
 
 // Unwind returns everything a project's pot can still commit to an email's
@@ -195,9 +202,10 @@ func (s *PGStore) Unwind(ctx context.Context, project, email string) error {
 		if amount <= 0 {
 			return nil
 		}
-		if err := s.insertTx(ctx, tx, Entry{Holder: from, Amount: -amount, Kind: KindReclaim, Actor: ActorSystem}); err != nil {
+		// Torn down, so no name to snapshot; the id keeps the two sides agreeing.
+		if err := s.insertTx(ctx, tx, Entry{Holder: from, Amount: -amount, Kind: KindReclaim, Actor: ActorSystem, ProjectID: project}); err != nil {
 			return err
 		}
-		return s.insertTx(ctx, tx, Entry{Holder: to, Amount: amount, Kind: KindReclaim, Actor: ActorSystem})
+		return s.insertTx(ctx, tx, Entry{Holder: to, Amount: amount, Kind: KindReclaim, Actor: ActorSystem, ProjectID: project})
 	})
 }

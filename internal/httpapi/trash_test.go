@@ -261,7 +261,7 @@ func TestPurgeGuardsAndCascade(t *testing.T) {
 	// Funded: the money has to be accounted for before the container holding it
 	// can be forgotten.
 	topUp(t, ledger, payer, 10*credit.Dollar)
-	if err := ledger.Allocate(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, p.ID, 5*credit.Dollar); err != nil {
+	if err := ledger.Allocate(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, p.ID, p.Title, 5*credit.Dollar); err != nil {
 		t.Fatalf("allocate: %v", err)
 	}
 	got = doAs(t, h, "DELETE", "/projects/"+p.ID+"?purge=1", "", payer)
@@ -272,7 +272,7 @@ func TestPurgeGuardsAndCascade(t *testing.T) {
 		t.Fatalf("the refused purge removed the project: %v", err)
 	}
 
-	if err := ledger.Reclaim(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, p.ID, 5*credit.Dollar); err != nil {
+	if err := ledger.Reclaim(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, p.ID, p.Title, 5*credit.Dollar); err != nil {
 		t.Fatalf("reclaim: %v", err)
 	}
 	if w := doAs(t, h, "DELETE", "/projects/"+p.ID+"?purge=1", "", payer); w.Code != http.StatusNoContent {

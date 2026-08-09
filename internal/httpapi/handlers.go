@@ -638,8 +638,19 @@ func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner
 // ledger exists to prevent, so the surface that shows a number also shows the
 // entries that produced it.
 type Wallet struct {
-	Balance int64          `json:"balance"`
-	Entries []credit.Entry `json:"entries"`
+	Balance int64         `json:"balance"`
+	Entries []walletEntry `json:"entries"`
+}
+
+// walletEntry is a ledger entry as the statement reads it: the durable row, plus
+// whether the project it names still exists (024b). project_alive is the
+// server's answer, not the ledger's — the ledger keeps no foreign key to a
+// project, so only a surface that can see the projects table can say whether a
+// trashed row still exists to link to or a purged one is gone. Absent (false)
+// on every entry that names no project, and on one whose project was purged.
+type walletEntry struct {
+	credit.Entry
+	ProjectAlive bool `json:"project_alive,omitempty"`
 }
 
 // myCredits reports the caller's own wallet. Always their own — there is no
@@ -661,7 +672,26 @@ func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "credits_read_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, Wallet{Balance: balance, Entries: entries})
+	// A row that names a project gets a liveness bit so the client can link a
+	// project that still exists and show a purged one as plain text. Resolved
+	// once per distinct project — a statement names few — and never fatal: a
+	// read that fails leaves the row unlinked rather than the wallet unreadable.
+	alive := map[string]bool{}
+	out := make([]walletEntry, len(entries))
+	for i, e := range entries {
+		we := walletEntry{Entry: e}
+		if e.ProjectID != "" {
+			live, seen := alive[e.ProjectID]
+			if !seen {
+				_, gerr := rt.projects.Get(r.Context(), e.ProjectID)
+				live = gerr == nil
+				alive[e.ProjectID] = live
+			}
+			we.ProjectAlive = live
+		}
+		out[i] = we
+	}
+	writeJSON(w, http.StatusOK, Wallet{Balance: balance, Entries: out})
 }
 
 // allocateCredits moves credits from the caller's wallet into a project's pot.
@@ -716,9 +746,9 @@ func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool)
 	id, _ := IdentityFrom(r)
 	p := access.Principal{Sub: id.Sub, Email: id.Email}
 	if back {
-		err = rt.credits.Reclaim(r.Context(), p, proj.ID, body.Amount)
+		err = rt.credits.Reclaim(r.Context(), p, proj.ID, proj.Title, body.Amount)
 	} else {
-		err = rt.credits.Allocate(r.Context(), p, proj.ID, body.Amount)
+		err = rt.credits.Allocate(r.Context(), p, proj.ID, proj.Title, body.Amount)
 	}
 	switch {
 	case err == nil:

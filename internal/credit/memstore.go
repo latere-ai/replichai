@@ -96,7 +96,7 @@ func (s *MemStore) Topup(ctx context.Context, byAdmin access.Principal, email st
 }
 
 // Allocate moves credits from the caller's wallet into a project's pot.
-func (s *MemStore) Allocate(ctx context.Context, by access.Principal, project string, amount int64) error {
+func (s *MemStore) Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {
 		return err
 	}
@@ -108,11 +108,11 @@ func (s *MemStore) Allocate(ctx context.Context, by access.Principal, project st
 	if s.sum(Wallet(by.Email), true) < amount {
 		return ErrInsufficient
 	}
-	return s.transfer(Wallet(by.Email), Pot(project), amount, KindAllocate, by.Email)
+	return s.transfer(Wallet(by.Email), Pot(project), amount, KindAllocate, by.Email, project, projectName)
 }
 
 // Reclaim moves credits from a project's pot back to the caller's wallet.
-func (s *MemStore) Reclaim(ctx context.Context, by access.Principal, project string, amount int64) error {
+func (s *MemStore) Reclaim(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {
 		return err
 	}
@@ -126,16 +126,17 @@ func (s *MemStore) Reclaim(ctx context.Context, by access.Principal, project str
 	if s.sum(Pot(project), true) < amount {
 		return ErrInsufficient
 	}
-	return s.transfer(Pot(project), Wallet(by.Email), amount, KindReclaim, by.Email)
+	return s.transfer(Pot(project), Wallet(by.Email), amount, KindReclaim, by.Email, project, projectName)
 }
 
 // transfer writes both sides of a move. Under the same lock, so a reader never
-// sees money in neither place.
-func (s *MemStore) transfer(from, to Holder, amount int64, kind Kind, actor string) error {
-	if err := s.append(Entry{Holder: from, Amount: -amount, Kind: kind, Actor: actor}); err != nil {
+// sees money in neither place. projectID/projectName are stamped on both sides
+// so the wallet side and the pot side agree on the project (024b).
+func (s *MemStore) transfer(from, to Holder, amount int64, kind Kind, actor, projectID, projectName string) error {
+	if err := s.append(Entry{Holder: from, Amount: -amount, Kind: kind, Actor: actor, ProjectID: projectID, ProjectName: projectName}); err != nil {
 		return err
 	}
-	return s.append(Entry{Holder: to, Amount: amount, Kind: kind, Actor: actor})
+	return s.append(Entry{Holder: to, Amount: amount, Kind: kind, Actor: actor, ProjectID: projectID, ProjectName: projectName})
 }
 
 // append records one entry. The caller holds the lock.
@@ -191,7 +192,7 @@ func requireRole(ctx context.Context, members Members, p access.Principal, proje
 // Fund moves credits from an email's wallet into a project's pot, with no
 // membership check — see creationOps for why the create path cannot ask that
 // question.
-func (s *MemStore) Fund(_ context.Context, email, project string, amount int64) error {
+func (s *MemStore) Fund(_ context.Context, email, project, projectName string, amount int64) error {
 	if err := checkMove(email, project, amount); err != nil {
 		return err
 	}
@@ -200,7 +201,7 @@ func (s *MemStore) Fund(_ context.Context, email, project string, amount int64) 
 	if s.sum(Wallet(email), true) < amount {
 		return ErrInsufficient
 	}
-	return s.transfer(Wallet(email), Pot(project), amount, KindAllocate, email)
+	return s.transfer(Wallet(email), Pot(project), amount, KindAllocate, email, project, projectName)
 }
 
 // Unwind returns everything a project's pot can still commit to an email's
@@ -215,5 +216,7 @@ func (s *MemStore) Unwind(_ context.Context, project, email string) error {
 	if amount <= 0 {
 		return nil
 	}
-	return s.transfer(Pot(project), Wallet(email), amount, KindReclaim, ActorSystem)
+	// The project is being torn down, so there is no name worth snapshotting and
+	// nothing to link to; the id is stamped so the two sides still agree.
+	return s.transfer(Pot(project), Wallet(email), amount, KindReclaim, ActorSystem, project, "")
 }

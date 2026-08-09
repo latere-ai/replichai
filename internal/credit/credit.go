@@ -138,6 +138,13 @@ type Entry struct {
 	// JobID is the session an entry is about, on hold, release, charge and
 	// adjust; empty on the others.
 	JobID string `json:"job_id,omitempty"`
+	// ProjectID and ProjectName name the project an allocate or reclaim moved
+	// credits to or from; empty on every other kind. ProjectName is a snapshot
+	// taken at the moment of the move, not a reference — it is what lets a
+	// purged project still read in the history, the same reason the ledger
+	// keeps holder and job_id as opaque strings it will never resolve (024b).
+	ProjectID   string `json:"project_id,omitempty"`
+	ProjectName string `json:"project_name,omitempty"`
 	// Actor is who caused this entry — the admin who granted, the member who
 	// allocated, or the system, when settlement did.
 	Actor     string    `json:"actor"`
@@ -183,14 +190,15 @@ type Store interface {
 	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error
 	// Allocate moves credits from the caller's wallet into a project's pot. Any
 	// member of the project may fund it. Both sides are one transaction: money
-	// is never in neither place.
-	Allocate(ctx context.Context, by access.Principal, project string, amount int64) error
+	// is never in neither place. projectName is snapshotted onto both entries so
+	// the statement can name the project even after it is purged (024b).
+	Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error
 	// Reclaim moves credits from a project's pot back to the caller's wallet.
 	// Leads only: the pot is fungible and does not remember who funded it, so
 	// reclaiming is a lead's authority over the project's money rather than a
 	// refund of one's own. An invitation to collaborate is not the ability to
-	// empty the funding.
-	Reclaim(ctx context.Context, by access.Principal, project string, amount int64) error
+	// empty the funding. projectName is snapshotted onto both entries (024b).
+	Reclaim(ctx context.Context, by access.Principal, project, projectName string, amount int64) error
 
 	creationOps
 }
@@ -248,8 +256,8 @@ func checkMove(email, project string, amount int64) error {
 type creationOps interface {
 	// Fund moves credits from an email's wallet into a project's pot in the
 	// request that creates that project. Insufficient funds is ErrInsufficient,
-	// exactly as for Allocate.
-	Fund(ctx context.Context, email, project string, amount int64) error
+	// exactly as for Allocate. projectName is snapshotted like Allocate's (024b).
+	Fund(ctx context.Context, email, project, projectName string, amount int64) error
 	// Unwind returns everything a project's pot can still commit to an email's
 	// wallet, as the system — the compensating move for a create that was
 	// refused after its pot was funded. Without it the allocation would sit in

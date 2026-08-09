@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import { ledgerKindLabel } from './App'
-import { ApiError } from './api'
+import { ledgerKindLabel, ledgerLabel } from './App'
+import { ApiError, type LedgerEntry } from './api'
 import { creditMoveErrLabel, emptyWallet, startErrLabel } from './errors'
 import { formatUSD, MICRO, parseUSD, toDollars } from './money'
 
@@ -96,4 +96,24 @@ test('a wallet statement names only the kinds a wallet can hold', () => {
   for (const kind of ['hold', 'release', 'charge', 'adjust'] as const) {
     expect(ledgerKindLabel(t, kind)).toBe('ledgerOther')
   }
+})
+
+// A move that captured a project names it (024b). The three cases are the whole
+// point: a live project links, a purged one reads as plain text but still names
+// itself, and a pre-024b move that never captured a project keeps the old label.
+const entry = (e: Partial<LedgerEntry>): LedgerEntry => ({ id: 'e', holder: 'user:a@b', amount: -1, kind: 'allocate', actor: 'a@b', created_at: '2026-08-09', ...e })
+
+test('an allocate to a live project links to it', () => {
+  const label = ledgerLabel(t, entry({ kind: 'allocate', project_id: 'p1', project_name: 'Smith et al.', project_alive: true }))
+  expect(label).toEqual({ kind: 'project', prefix: 'ledgerAllocateTo', name: 'Smith et al.', href: '/p/p1' })
+})
+
+test('a reclaim from a purged project names it as plain text, no link', () => {
+  const label = ledgerLabel(t, entry({ kind: 'reclaim', amount: 1, project_id: 'p1', project_name: 'Smith et al.', project_alive: false }))
+  expect(label).toEqual({ kind: 'project', prefix: 'ledgerReclaimFrom', name: 'Smith et al.', href: undefined })
+})
+
+test('a pre-024b move with no captured project keeps the generic label', () => {
+  expect(ledgerLabel(t, entry({ kind: 'allocate' }))).toEqual({ kind: 'plain', text: 'ledgerAllocate' })
+  expect(ledgerLabel(t, entry({ kind: 'topup', amount: 1 }))).toEqual({ kind: 'plain', text: 'ledgerTopup' })
 })

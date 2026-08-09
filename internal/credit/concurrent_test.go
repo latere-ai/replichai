@@ -55,7 +55,7 @@ func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 			for range tries {
 				wg.Go(func() {
 					<-start
-					err := s.Allocate(ctx, lead, "p1", each)
+					err := s.Allocate(ctx, lead, "p1", "P1", each)
 					mu.Lock()
 					defer mu.Unlock()
 					switch {
@@ -105,7 +105,7 @@ func TestPGStoreSettlesOnceUnderConcurrency(t *testing.T) {
 	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
-	if err := s.Allocate(ctx, lead, "p1", 10*Dollar); err != nil {
+	if err := s.Allocate(ctx, lead, "p1", "P1", 10*Dollar); err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
 	writeHold(t, s, Pot("p1"), "job-1", 3*Dollar)
