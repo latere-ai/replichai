@@ -138,6 +138,16 @@ func (s *PGStore) EntryByExternalRef(ctx context.Context, ref string) (Entry, bo
 	return e, true, nil
 }
 
+// TotalOutstanding sums every holder's settled balance — wallets and pots, less
+// open holds — the credits sold and not yet delivered as compute.
+func (s *PGStore) TotalOutstanding(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(amount), 0) FROM credit_entries WHERE kind NOT IN ('hold','release')`,
+	).Scan(&n)
+	return n, err
+}
+
 // Allocate moves credits from the caller's wallet into a project's pot.
 func (s *PGStore) Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {
