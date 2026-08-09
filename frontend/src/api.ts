@@ -16,6 +16,9 @@ export type Me = {
   email?: string
   tier?: string
   credits?: Credits
+  // frozen is view-only mode: a negative wallet with no admin override (022d).
+  // The banner and the disabled spend controls read this one field.
+  frozen?: boolean
   // Display claims from the IdP (006m): both optional, both purely cosmetic —
   // the email stays the identifier everything binds on.
   name?: string
@@ -540,6 +543,9 @@ export type GrantView = {
   granted_by?: string
   granted_at?: string
   wallet: number
+  // frozen is whether this account is in view-only mode: a negative wallet with
+  // no admin override (022d), derived the same way the gate derives it.
+  frozen?: boolean
 }
 
 export type PlatformSettings = {
@@ -561,7 +567,21 @@ export type ModelRates = { model: string; input: number; output: number; cache_r
 
 export type RateCard = { models: ModelRates[] }
 
-export const listGrants = () => fetch('/admin/access').then(json<GrantView[]>)
+// listGrants returns the people table. With negativeOnly it returns just the
+// accounts that owe — the debts an operator acts on (022d).
+export const listGrants = (negativeOnly = false) =>
+  fetch('/admin/access' + (negativeOnly ? '?filter=negative' : '')).then(json<GrantView[]>)
+
+// unfreezeAccount grants a one-shot override so a negative-wallet account may
+// work again; refreezeAccount clears it (022d). getSolvency reads the platform's
+// outstanding sold-liability — Σ wallets + Σ pots — the operator watches.
+export const unfreezeAccount = (email: string) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}/unfreeze`, { method: 'POST' }).then(json<{ email: string; overridden: boolean }>)
+
+export const refreezeAccount = (email: string) =>
+  fetch(`/admin/access/${encodeURIComponent(email)}/unfreeze`, { method: 'DELETE' }).then(json<{ email: string; overridden: boolean }>)
+
+export const getSolvency = () => fetch('/admin/solvency').then(json<{ outstanding_micro: number }>)
 
 // grantAccess seeds or promotes by email. The person need not have signed in:
 // the grant binds to them on first login.

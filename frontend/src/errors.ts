@@ -79,6 +79,7 @@ export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
   if (status === 409 || code === 'active_session') return t('activeSession')
+  if (code === 'account_frozen') return t('errFrozen')
   if (status === 402 || code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
   if (status === 404) return t('errPaperGone')
   return t('startFailed')
