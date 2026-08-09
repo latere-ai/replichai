@@ -275,7 +275,6 @@ const strings: Record<Lang, Record<string, string>> = {
     // The findings (021b). The rate never appears without the decomposition it
     // summarises, because the rubric is explicit that the per-component table is
     // the result and the rate is a derived footnote to it.
-    findingsSummary: 'What the run found',
     boundary: 'Inner / outer boundary',
     claim: 'Claim',
     loop: 'Loop',
@@ -320,7 +319,6 @@ const strings: Record<Lang, Record<string, string>> = {
     critLicense: 'License',
     critPreregistration: 'Preregistration',
     critSupplement: 'Supplementary artifacts',
-    repositoryTitle: 'Reproduction repository',
     redistribution: 'Redistribution',
     methodDigest: 'Method digest',
     repository: 'Repository',

@@ -2871,8 +2871,12 @@ function PapersCard({
 // showed one paper's reproduction under another paper's name. Each card names
 // the session it read and links to it.
 function LatestFindings({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Grouped; onOpen: (job: Job) => void }) {
+  // `done` and a repository, not "terminal and a repository". RepoName marks
+  // that publishing *began* and `publishing → failed` is legal (015), so a
+  // paper whose newest session reached publishing and then died would select
+  // that session, find no findings on it, and hide the graded run underneath.
   const cards = grouped.papers
-    .map((g) => ({ paper: g.paper, job: g.sessions.find((s) => s.repo_name && terminal(s.phase)) }))
+    .map((g) => ({ paper: g.paper, job: g.sessions.find((s) => s.phase === 'done' && !!s.repo_name) }))
     .filter((c): c is { paper: PaperGroup['paper']; job: Job } => !!c.job)
   if (cards.length === 0) return null
   return (

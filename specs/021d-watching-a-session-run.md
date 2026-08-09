@@ -1,6 +1,12 @@
 # 021d — Watching a session run
 
-**Status:** designed.
+**Status:** built as a revision of this spec, not as it was written. **Most of what it specifies already existed and was not built here.**
+
+The premise was wrong. `getSessionTranscript` (`internal/httpapi/handlers.go`) already reads the backend's live event stream for a non-terminal session by its observed run id, returns `live: true`, and the viewer already polls on that flag, marks the stream live, and counts its events (006h/006s). Criteria 1, 2, 3, 5 and the Go half of 7 describe a relay that ships today. Writing them here was a failure to read the code before designing over it.
+
+What was actually missing, and what landed: **a running row said nothing about how long it had been running.** It showed a pulsing phase pill and a cost and no duration, so the one question a reader has about an in-flight run — how long has this been spending — had no answer on the screen. `frontend/src/when.ts` gained `elapsed`, with tests, and `SessionRow` renders it while the session is live, ticking once a second and holding no timer when the row is terminal.
+
+`elapsed` is deliberately not `relativeTime` with different words. An age rounds down to one unit, so a run 89 minutes in reads "an hour ago" — the wrong question answered imprecisely on a row that is still charging.
 
 **Scope:** make a running session watchable. The server polls the provider's transcript for a live run and relays new events onto the SSE stream the frontend already consumes; the session screen renders them through the existing viewer and converges on the committed transcript when the run finalizes; the Sessions list shows a running session's elapsed time, spend, and event count, and opens the live view when clicked.
 
@@ -28,13 +34,15 @@ That is worse than an inconvenience. A run that has gone wrong — stuck on a do
 
 ## Acceptance criteria
 
-1. While a job runs and a subscriber is attached, new provider events reach the SSE stream, each exactly once, in order.
-2. With no subscriber, no transcript fetch is issued for that job.
-3. A backend that returns a shorter list than before does not cause a re-emit or a panic.
-4. The session screen renders relayed events through the same parser as the committed transcript, with a live strip carrying elapsed, spend, and event count.
-5. When the run finalizes, the screen shows the committed transcript and its timeline without the reader reloading.
-6. A running row in the Sessions list shows elapsed and spend and opens the live view.
-7. A browser test drives 4–6 against a mocked stream, and fails without the change. Go tests cover 1–3 against the `memory` provider.
+Struck through are the ones 006h/006s already satisfied before this spec was written. They are kept rather than deleted, because the record of a spec that specified existing behaviour is worth more than a tidy list.
+
+1. ~~While a job runs, new provider events reach the client.~~ Already true: the transcript route reads the live stream by run id.
+2. ~~No fetch is issued for an unwatched job.~~ Already true: the read is request-driven, so nothing polls unless a reader is looking.
+3. ~~A shorter event list does not re-emit or panic.~~ Not applicable: there is no relay holding a position, because there is no relay.
+4. ~~The live view renders through the same parser as the committed transcript.~~ Already true, with a live marker and an event count.
+5. ~~The screen converges on the committed transcript without a reload.~~ Already true: the viewer stops polling when `live` goes false.
+6. **A running row in the Sessions list shows how long it has been running, and opens the live view.** The second half was already true; the first is what landed here.
+7. `elapsed` is unit-tested at its edges — under a minute, under an hour, over an hour, an unparseable start, and a clock that runs backwards — and does not round the minutes away where `relativeTime` would.
 
 ## Not in scope
 
