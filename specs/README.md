@@ -180,7 +180,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | designed | 011, 006c, 006k, 010 |
 | 022a | [The idempotent paid top-up](022a-the-idempotent-paid-topup.md) | built | 011 |
 | 022b | [Checkout and the webhook](022b-checkout-and-the-webhook.md) | built | 022a |
-| 022c | [Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) | validated | 022b |
+| 022c | [Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) | built | 022b |
 | 022d | [The freeze, server-side](022d-a-negative-wallet-is-frozen.md) | validated | 022c |
 | 022e | [Buying credits](022e-buying-credits.md) | validated | 022b |
 | 022f | [The frozen account, in the UI](022f-the-frozen-account-in-the-ui.md) | validated | 022c, 022d, 022e |
