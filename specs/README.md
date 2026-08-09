@@ -63,7 +63,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built:** [020](020-download-the-whole-project.md) gives a project one download. The app proxies committed files one at a time because the repositories are usually private, which meant there was no way to get the work out: a project with three sessions and forty files each was a hundred and twenty clicks and a hundred and twenty loose files with no record of which session each came from. `GET /projects/{id}/archive` streams a zip organised by session — `sessions/{job-id}/…`, because 015 established that a repository belongs to the session that produced it and a flat merge would collide two sessions' files. The status code is committed before the walk finishes, so a forge read that fails is recorded in the archive's own `MANIFEST.txt` rather than truncating the download silently. The gate is view rights, not ownership: a collaborator takes away the project they work in, and a reader takes away what was published.
 
-**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
+**Designed, not built — the outer loop as a product:** [023](023-the-outer-loop-as-a-product.md) wires the built experiment engine to a person. The engine (007b/007c) and the job seam (`KindExperiment`) exist; nothing user-facing reaches them. The chain fills exactly the "still open in the server" gap below — [023a](023a-experiments-persisted-and-dispatched.md) the Postgres stores and the dispatching runner (and it keys an experiment to the *session* that produced its instrument, not the project — 015's rule), [023b](023b-the-experiment-http-surface.md) the authenticated routes, [023c](023c-running-an-experiment-from-the-app.md) the screen. It ships the two sources with live input first — `synthetic:generated` and `uploaded` — and [023d](023d-ground-truth-for-a-cohort.md) enables `synthetic:model` and `released` behind the held-released-data gate. A census of every published `instrument.json` found 0/26 servable components and 0/3 papers' released data held, so hosting (007d) and the ground-truth sources are blocked on *corpus* — a paper to reproduce, not code to write.
+
+**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c product halves land as the [023](023-the-outer-loop-as-a-product.md) chain. 006c's forge-account link lands with its consumer, 006f.
 
 **Designed, not built — money comes in without an admin:** [022](022-money-comes-in-without-an-admin.md) adds the front door 011 left locked. A person buys credits into their own wallet with a card: a Stripe hosted Checkout session creates the charge, a signed webhook is the one thing that posts the credit, and the ledger dedupes that post on an `external_ref` so a retried delivery cannot double it. Margin is a visible spread at purchase (you pay $20, your wallet gains $18), which keeps the rate card raw so a session's cost still reconciles against vendor rates. Refunds are a negative `adjust` and may take a wallet negative; coupling a customer payment to the platform's own Anthropic account is a stated non-goal, replaced by a solvency number on the console. Supersedes only 011's closing line — admin top-up stays as the way a grant or comp enters a wallet.
 
@@ -176,6 +178,11 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 021d | [Watching a session run](021d-watching-a-session-run.md) | built (revised down) | 006a, 006s, 005, 011 |
 | 021e | [The project rail](021e-the-project-rail.md) | built | 021a, 021d, 018, 006n, 011 |
 | 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | designed | 011, 006c, 006k, 010 |
+| 023 | [The outer loop, as a product](023-the-outer-loop-as-a-product.md) | draft | 007b, 007c, 006b, 015 |
+| 023a | [Experiments persisted and dispatched](023a-experiments-persisted-and-dispatched.md) | draft | 007b, 007c, 006b, 015 |
+| 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
+| 023c | [Running an experiment from the app](023c-running-an-experiment-from-the-app.md) | draft | 023b, 006e, 013, 021 |
+| 023d | [Ground truth for a cohort](023d-ground-truth-for-a-cohort.md) | draft | 023c, 007c |
 
 ## The three tracks
 
@@ -204,6 +211,6 @@ Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, a
 
 **Production is provisioned** ([010](010-deployment-and-release.md)): `replichai.latere.ai` DNS, the `replichai` database and its secret (terraform, applied), the k8s kustomize manifests (`deploy/prod` in the `latere` namespace), and the CI/release pipeline — a `v*` tag builds, deploys to prod, and smokes. Prod is **fail-closed**: with no login yet it admits nobody, and the release smoke fails if the dev bypass ever reaches production.
 
-Still open in the server: the experiment `Kind` in `job.Runner` (the dispatch is there; the experiment callee is 007b's server wiring), the Postgres stores for 007b/007c, and reading a transcript through `ReproReader`.
+Still open in the server: the experiment `Kind` in `job.Runner` (the dispatch is there; the experiment callee is 007b's server wiring), the Postgres stores for 007b/007c, and reading a transcript through `ReproReader`. The first two are now scoped as the [023](023-the-outer-loop-as-a-product.md) chain — [023a](023a-experiments-persisted-and-dispatched.md) fills them, [023b](023b-the-experiment-http-surface.md)/[023c](023c-running-an-experiment-from-the-app.md) put a person in front of them.
 
 Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.

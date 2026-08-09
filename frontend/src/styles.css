@@ -289,6 +289,28 @@ textarea {
   background: var(--bg-raised);
   color: var(--fg-1);
 }
+/* Folded, the fold control is the mark itself — the brand stays present in the
+   56px rail, and pointing at it swaps in the expand chevron so the click still
+   reads as "open the rail". */
+.rail-fold .rail-fold-btn {
+  width: 34px;
+  height: 34px;
+}
+.rail-fold-btn .fold-mark,
+.rail-fold-btn .fold-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rail-fold-btn .fold-chev {
+  display: none;
+}
+.rail-fold-btn:hover .fold-mark {
+  display: none;
+}
+.rail-fold-btn:hover .fold-chev {
+  display: inline-flex;
+}
 
 /* ── Folded rail ──
    Every destination stays clickable at its icon; only the words go. The labels
@@ -745,7 +767,6 @@ h1.screen-title {
   margin-bottom: 20px;
 }
 .stat {
-  position: relative;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 11px;
@@ -753,18 +774,10 @@ h1.screen-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  overflow: hidden;
 }
-/* A hairline of the card's own tone along the top edge — enough to tell two
-   stat cards apart at a glance without painting the whole card. */
-.stat::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: currentColor;
-  opacity: 0.75;
-}
+/* The card's tone lives on the icon tile, not a bar across the top edge — the
+   same contained-colour rule the transcript cards follow. A soft inset ring
+   gives the tile enough definition to tell two stats apart at a glance. */
 .stat-ico {
   width: 34px;
   height: 34px;
@@ -773,7 +786,8 @@ h1.screen-title {
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: color-mix(in srgb, currentColor 13%, transparent);
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
 }
 .stat-body {
   display: flex;
