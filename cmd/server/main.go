@@ -224,11 +224,20 @@ func run() error {
 func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
-	mux.HandleFunc("GET /me", webauth.Me(acc, me))
+	// /me reports whether the account is frozen (022d), over the same predicate
+	// the gate enforces. Nil when there is no ledger, so an offline run reports no
+	// frozen field and never dereferences a missing store.
+	var frozenFn webauth.FrozenFunc
+	if credits != nil {
+		frozenFn = func(ctx context.Context, email string) (bool, error) {
+			return webauth.Frozen(ctx, credits, acc, email)
+		}
+	}
+	mux.HandleFunc("GET /me", webauth.Me(acc, me, frozenFn))
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps)))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc)))
 
 	// The freeze gate sits inside the auth middleware (identity is already on the
 	// request) and outside the mux, so every mutating request from a

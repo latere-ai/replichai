@@ -269,10 +269,15 @@ type Credits struct {
 // entirely, which is what an offline unmetered run wants.
 type CreditsFunc func(ctx context.Context, principalSub, email string) (Credits, error)
 
+// FrozenFunc reports whether an account is in view-only mode (022d). Injected
+// for the same reason CreditsFunc is; nil leaves the field off /me, so the
+// frontend renders no banner when this deployment sells no credits.
+type FrozenFunc func(ctx context.Context, email string) (bool, error)
+
 // Me reports the current identity and its resolved tier. It sits OUTSIDE the
 // gate and always answers 200: an ungranted principal gets tier "none", which is
 // how the frontend learns to render the not-invited screen.
-func Me(acc access.Access, credits CreditsFunc) http.HandlerFunc {
+func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := httpapi.IdentityFrom(r)
 		if !ok || id.Sub == "" {
@@ -302,6 +307,15 @@ func Me(acc access.Access, credits CreditsFunc) http.HandlerFunc {
 				body["credits"] = c
 			} else {
 				log.Printf("me: reading credits for %s: %v", id.Sub, err)
+			}
+		}
+		// Frozen rides along so the frontend can render the view-only banner and
+		// disable the spend controls, over the same predicate the gate enforces.
+		if frozen != nil && tier.Granted() {
+			if f, err := frozen(r.Context(), id.Email); err == nil {
+				body["frozen"] = f
+			} else {
+				log.Printf("me: reading frozen for %s: %v", id.Sub, err)
 			}
 		}
 		writeJSON(w, http.StatusOK, body)

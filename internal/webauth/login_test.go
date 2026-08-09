@@ -371,7 +371,7 @@ func TestMiddlewareSetsIdentityFromSession(t *testing.T) {
 func TestMeReportsTier(t *testing.T) {
 	store := access.NewMemStore()
 	_ = store.SeedAdmin(context.Background(), "admin@example.com")
-	me := Me(store, nil)
+	me := Me(store, nil, nil)
 
 	call := func(id *httpapi.Identity) map[string]any {
 		r := httptest.NewRequest("GET", "/me", nil)

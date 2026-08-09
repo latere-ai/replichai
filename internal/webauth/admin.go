@@ -22,10 +22,11 @@ import (
 // enforcement is server-side even if the route were reached without the tier
 // guard.
 type Admin struct {
-	access   access.Access
-	platform platform.Store
-	credits  credit.Store
-	projects ProjectCaps
+	access    access.Access
+	platform  platform.Store
+	credits   credit.Store
+	projects  ProjectCaps
+	overrides access.FreezeOverrides
 }
 
 // ProjectCaps is the sliver of the project store this console writes: one
@@ -39,6 +40,12 @@ type ProjectCaps interface {
 // route answers 503 and every project runs against the platform default.
 func WithProjectCaps(p ProjectCaps) func(*Admin) {
 	return func(a *Admin) { a.projects = p }
+}
+
+// WithOverrides enables the freeze list and the unfreeze action (022d). Without
+// it those routes answer 503 and the people table cannot report a frozen state.
+func WithOverrides(ov access.FreezeOverrides) func(*Admin) {
+	return func(a *Admin) { a.overrides = ov }
 }
 
 // NewAdmin builds the admin handlers. A nil platform store disables the
@@ -69,6 +76,8 @@ func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Ad
 		{httpapi.Route{Method: "GET", Pattern: "/admin/settings"}, a.Settings},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/settings"}, a.SetSettings},
 		{httpapi.Route{Method: "GET", Pattern: "/admin/solvency"}, a.Solvency},
+		{httpapi.Route{Method: "POST", Pattern: "/admin/access/{email}/unfreeze"}, a.Unfreeze},
+		{httpapi.Route{Method: "DELETE", Pattern: "/admin/access/{email}/unfreeze"}, a.Refreeze},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/projects/{id}/cap"}, a.SetProjectCap},
 	}
 	out := make([]httpapi.Route, 0, len(routes))
@@ -92,9 +101,15 @@ type GrantView struct {
 	// before deciding who needs a top-up. It is keyed by email, so it is
 	// readable for somebody who has never signed in.
 	Wallet int64 `json:"wallet"`
+	// Frozen is whether this account is in view-only mode: a negative wallet with
+	// no admin override in force (022d). Derived the same way the gate derives it,
+	// so the table and the gate cannot disagree.
+	Frozen bool `json:"frozen"`
 }
 
-// List returns every grant, with its wallet balance merged in.
+// List returns every grant, with its wallet balance and frozen state merged in.
+// With ?filter=negative it returns only the accounts that owe — the debts an
+// operator acts on — so finding them is not a scan down the balance column.
 func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 	caller := principalFrom(r)
 	grants, err := a.access.List(r.Context(), caller)
@@ -102,6 +117,7 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
+	negativeOnly := r.URL.Query().Get("filter") == "negative"
 	out := make([]GrantView, 0, len(grants))
 	for _, g := range grants {
 		v := GrantView{
@@ -122,9 +138,49 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 				log.Printf("admin: reading the wallet for %s: %v", g.Email, err)
 			}
 		}
+		if negativeOnly && v.Wallet >= 0 {
+			continue
+		}
+		// Frozen is the gate's own predicate: negative wallet, no override.
+		if v.Wallet < 0 && a.overrides != nil {
+			if active, err := a.overrides.OverrideActive(r.Context(), g.Email); err == nil {
+				v.Frozen = !active
+			}
+		}
 		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// Unfreeze grants a one-shot freeze override so a negative-wallet account may
+// work again (022d). It is recorded state naming the admin; the override retires
+// itself when the wallet returns to solvent, so it forgives this debt only.
+func (a *Admin) Unfreeze(w http.ResponseWriter, r *http.Request) {
+	if a.overrides == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_override_store")
+		return
+	}
+	email := r.PathValue("email")
+	if err := a.overrides.GrantOverride(r.Context(), principalFrom(r), email); err != nil {
+		writeAdminError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"email": email, "overridden": true})
+}
+
+// Refreeze clears a still-standing override, re-freezing a negative account an
+// admin had waived. The inverse of Unfreeze, for a decision reconsidered.
+func (a *Admin) Refreeze(w http.ResponseWriter, r *http.Request) {
+	if a.overrides == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_override_store")
+		return
+	}
+	email := r.PathValue("email")
+	if err := a.overrides.ClearOverride(r.Context(), email); err != nil {
+		writeAdminError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"email": email, "overridden": false})
 }
 
 // Settings reads the platform policy row.
