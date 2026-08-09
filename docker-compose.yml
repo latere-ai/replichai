@@ -36,6 +36,13 @@ services:
       DATABASE_URL: postgres://replichai:replichai@postgres:5432/replichai?sslmode=disable
       PROVIDER: ${PROVIDER:-memory}
       REPLICHAI_API_KEY: ${REPLICHAI_API_KEY:-}
+      # Card payments (022b). Substituted from .env; unset selects a refusing
+      # adapter, so a clone without Stripe keys still boots and runs unmetered.
+      # The publishable key is unused by the backend (hosted Checkout redirects,
+      # so the browser never talks to Stripe directly) — carried for parity.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       DEV: "true"
       # The container binds all interfaces (:8080), so the loopback-only dev
       # bypass needs this explicit override; never set it in production.
