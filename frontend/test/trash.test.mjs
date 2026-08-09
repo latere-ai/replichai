@@ -148,22 +148,33 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('[data-test="project-rows"] .row').length === 1)
   if (!calls.includes(`DELETE /projects/${project.id}`)) fail(`the confirmation did not call DELETE; calls: ${calls.join(', ')}`)
 
-  // The trash is reachable from the rail, at the bottom of it — where work goes,
-  // apart from the destinations where work is done. A count of clickable nav
-  // rows would pass on one sitting directly under "Public registry", so this
-  // measures.
+  // Trash and Settings are the rail's foot group — where work goes and personal
+  // chrome live, apart from the destinations where work is done (024a). The
+  // group is pinned to the bottom, Settings sits under Trash, and the pair is set
+  // apart from the destinations above. A count of clickable rows would pass on
+  // ones sitting directly under "Public registry", so this measures.
   const railTrash = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('.rail .nav-btn')].find((b) => b.textContent.trim() === 'Trash')
-    if (!btn) return null
+    const btns = [...document.querySelectorAll('.rail .nav-btn')]
+    const trash = btns.find((b) => b.textContent.trim() === 'Trash')
+    const settings = btns.find((b) => b.textContent.trim() === 'Settings')
+    if (!trash || !settings) return null
     const nav = document.querySelector('.rail-nav')
-    const above = [...document.querySelectorAll('.rail .nav-btn')].filter((b) => b !== btn).pop()
-    const at = { gapBelow: nav.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom, gapAbove: btn.getBoundingClientRect().top - above.getBoundingClientRect().bottom }
-    btn.click()
+    const above = btns[btns.indexOf(trash) - 1] // the last workspace/platform destination
+    const at = {
+      // Settings is the foot's bottom-most row, pinned to the rail's foot.
+      footGapBelow: nav.getBoundingClientRect().bottom - settings.getBoundingClientRect().bottom,
+      // Trash sits directly above Settings, both in the foot group.
+      trashToSettings: settings.getBoundingClientRect().top - trash.getBoundingClientRect().bottom,
+      // The foot group is set apart from the destinations above it.
+      gapAbove: trash.getBoundingClientRect().top - above.getBoundingClientRect().bottom,
+    }
+    trash.click()
     return at
   })
-  if (!railTrash) fail('the rail has no Trash destination')
-  else if (railTrash.gapBelow > 30) fail(`the Trash row sits ${Math.round(railTrash.gapBelow)}px above the rail's foot, want it at the bottom`)
-  else if (railTrash.gapAbove < 20) fail(`the Trash row is ${Math.round(railTrash.gapAbove)}px below the destination above it, want it set apart`)
+  if (!railTrash) fail('the rail is missing its Trash or Settings destination')
+  else if (railTrash.footGapBelow > 30) fail(`the foot group sits ${Math.round(railTrash.footGapBelow)}px above the rail's foot, want it at the bottom`)
+  else if (railTrash.trashToSettings > 20) fail(`Trash and Settings are ${Math.round(railTrash.trashToSettings)}px apart, want them adjacent in the foot group`)
+  else if (railTrash.gapAbove < 20) fail(`the foot group is ${Math.round(railTrash.gapAbove)}px below the destination above it, want it set apart`)
   await page.waitForSelector('[data-test="trash-rows"] .row')
   if (new URL(page.url()).pathname !== '/trash') fail(`the trash lives at ${new URL(page.url()).pathname}, want /trash`)
   const inTrash = await page.evaluate(() => {

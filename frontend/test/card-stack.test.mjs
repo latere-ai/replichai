@@ -2,16 +2,17 @@
 //
 // The bug it guards: a screen that renders two cards as siblings must put them
 // in a `.stack`, which is the one place the 16px gap between cards is written.
-// Settings and the public researcher page dropped the wrapper and hung both
-// cards straight off `.screen`, which is a plain block — so the account card and
-// the researcher-profile card sat edge to edge with their 1px borders touching,
-// reading as one mis-drawn box rather than two cards.
+// The public researcher page dropped the wrapper and hung both cards straight
+// off `.screen`, which is a plain block — so the identity card and the
+// signed-work card sat edge to edge with their 1px borders touching, reading as
+// one mis-drawn box rather than two cards. (Settings had the same defect until
+// 024a split it into one-card-per-tab, so it no longer stacks two siblings.)
 //
 // "The cards exist" passes against the broken code, and so does "the second card
 // starts below the first". The discriminating measurement is the distance
 // between the first card's bottom edge and the second card's top edge: zero when
-// the wrapper is missing, a full gap when it is there. Both screens are
-// URL-addressable, so the test loads each directly with the API mocked. Run it
+// the wrapper is missing, a full gap when it is there. The screen is
+// URL-addressable, so the test loads it directly with the API mocked. Run it
 // with `bun run test:browser`.
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -120,15 +121,8 @@ try {
     return m
   }
 
-  // The report: the settings screen's account card against the researcher
-  // profile below it.
-  await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle0' })
-  await page.waitForSelector('.screen .card')
-  await new Promise((r) => setTimeout(r, 400)) // let the entrance animation settle
-  await gaps('settings', 2)
-
-  // The same defect, on the page a signed-out reader sees: identity above,
-  // signed work below.
+  // The defect, on the page a signed-out reader sees: identity above, signed
+  // work below. (Settings no longer stacks two cards since 024a tabbed it.)
   await page.goto(`${BASE}/u/tester`, { waitUntil: 'networkidle0' })
   await page.waitForSelector('.screen .card')
   await new Promise((r) => setTimeout(r, 400))
