@@ -1951,27 +1951,20 @@ input.submit-input {
 .modal > * {
   flex: none;
 }
-/* Every event carries its kind's tone on the left edge — the stream is read by
-   scrolling, and a colour band is what makes a tool call findable in it. */
+/* Every event carries its kind's tone on the kind label — the stream is read by
+   scrolling, and a small tinted chip is what makes a tool call findable in it
+   without painting an edge down every card. */
 .event {
   position: relative;
   display: grid;
   grid-template-columns: 74px 1fr;
   gap: 12px;
   border-radius: 10px;
-  padding: 10px 12px 10px 15px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
   overflow: hidden;
   animation: om-fade-up 0.34s var(--ease-fluid) both;
-}
-.event::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--fg-3);
-  opacity: 0.5;
 }
 /* A card is a seek target and an inspector trigger, so it reads as a control. */
 .event {
@@ -2003,42 +1996,38 @@ input.submit-input {
   font: 400 9.5px/1 var(--font-mono);
   color: var(--fg-3);
 }
+/* The kind, as a soft chip in its own tone. The fill is the current colour at
+   low alpha, so setting the text colour per kind tints the whole chip — one
+   rule, five kinds. The default (an unclassified event) stays a neutral grey. */
 .event-kind {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  align-self: flex-start;
+  padding: 3px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, currentColor 14%, transparent);
   font: 600 9px/1 var(--font-mono);
   letter-spacing: 0.09em;
   color: var(--fg-3);
   text-transform: uppercase;
 }
+.event.message .event-kind {
+  color: var(--brand);
+}
 .event.thinking {
   border-style: dashed;
   background: transparent;
 }
-.event.thinking::before {
-  background: var(--pub);
-}
 .event.thinking .event-kind {
   color: var(--pub);
-}
-.event.message::before {
-  background: var(--brand);
 }
 .event.grade {
   border-color: color-mix(in srgb, var(--run) 40%, transparent);
   background: color-mix(in srgb, var(--run) 5%, var(--bg-surface));
 }
-.event.grade::before {
-  background: var(--run);
-  opacity: 1;
-}
 .event.grade .event-kind {
   color: var(--run);
-}
-.event.tool::before {
-  background: var(--warn);
-  opacity: 1;
 }
 .event.tool .event-kind {
   color: var(--warn);
