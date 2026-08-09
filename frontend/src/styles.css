@@ -2763,3 +2763,178 @@ input.submit-input {
   font-size: 11px;
   letter-spacing: 0.02em;
 }
+
+/* ─── The findings (021b) ───────────────────────────────────────────────────
+   The verdict and its summary lead; the per-component table is the result. The
+   rate never appears without the decomposition beside it, which is why the two
+   live in one flex row that cannot be split by a layout change. */
+.findings-head {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.findings-verdict {
+  flex: none;
+  width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.findings-word {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.findings-summary {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--fg-2);
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+.findings-decomp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.findings-rate {
+  font: 600 17px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+/* Verified and partial are painted; blocked is the track left showing, so the
+   eye reads it as work not done rather than as a third result. */
+.decomp-bar {
+  display: flex;
+  width: 96px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-raised);
+}
+.decomp-bar > span {
+  display: block;
+  height: 100%;
+}
+
+.grid-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.grid-table th {
+  text-align: left;
+  padding: 9px 14px;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.13em;
+  color: var(--fg-3);
+}
+.grid-table td {
+  padding: 11px 14px;
+  vertical-align: top;
+  border-top: 1px solid var(--border);
+}
+/* An outer row is muted as well as labelled. The rule this product defends has
+   to be visible without reading the column. */
+.grid-table tr.row-outer td,
+.grid-table tr.row-outer .claim-text {
+  color: var(--fg-3);
+}
+.claim-text {
+  font-size: 13px;
+  color: var(--fg-1);
+  line-height: 1.45;
+}
+.loop-pill {
+  display: inline-block;
+  padding: 3px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  color: inherit;
+}
+
+/* A mismatch prints both numbers, because an outcome alone cannot say that a
+   run reproduced a claim and still found the paper's figure wrong. */
+.mismatch {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+}
+.mismatch-kind {
+  font: 600 9.5px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+.mismatch b {
+  color: var(--fg-1);
+  font-weight: 600;
+}
+
+.unresolved-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+}
+.decision {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-strong);
+}
+
+/* What the authors released (021c). A dead link and nothing published never
+   share a tone, so the dot is the whole distinction at a glance. */
+.release-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--border);
+}
+.release-where {
+  font: 500 12.5px/1.35 var(--font-mono);
+  width: 168px;
+  flex: none;
+  color: var(--fg-2);
+}
+.release-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.score-row {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 12.5px;
+}
+.score-mark {
+  font-family: var(--font-mono);
+  width: 12px;
+  flex: none;
+}
+
+@media (max-width: 820px) {
+  .findings-head {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .findings-verdict {
+    width: auto;
+  }
+}
