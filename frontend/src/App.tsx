@@ -117,7 +117,7 @@ import { useRouter, type Navigate, type ProjectTab, type SessionTab, type View }
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
-import { absoluteTime, relativeTime } from './when'
+import { absoluteTime, elapsed, relativeTime } from './when'
 import { useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
 
@@ -2953,6 +2953,16 @@ function SessionRow({
     if (!terminal(job.phase)) return watchJob(job.id, show)
   }, [job, show])
   useEffect(() => setStopAsked(false), [job.id])
+  // The clock the elapsed reading is drawn against. A running row re-renders on
+  // its own once a second; a settled one holds no interval, so a list of
+  // finished sessions costs nothing to leave open.
+  const [tick, setTick] = useState(() => Date.now())
+  const running = !terminal(j.phase)
+  useEffect(() => {
+    if (!running) return
+    const h = setInterval(() => setTick(Date.now()), 1000)
+    return () => clearInterval(h)
+  }, [running])
 
   const stopping = stopPending(j.phase, stopAsked)
   const stop = async (e: React.MouseEvent) => {
@@ -2988,6 +2998,15 @@ function SessionRow({
         </Pill>
       </span>
       <span className="row-mono row-title">{j.ref}</span>
+      {/* How long it has been going, for a row that is still going (021d). A
+          run costs money for as long as it runs, so the minutes are the thing
+          the reader is actually watching — an age ("an hour ago") answers a
+          different question and rounds the minutes away. */}
+      {!terminal(j.phase) && (
+        <Tip text={t('runningForTitle')}>
+          <span className="muted small tabular">{elapsed(j.created_at, tick)}</span>
+        </Tip>
+      )}
       {!!j.cost && (
         <Tip text={terminal(j.phase) ? t('sessionCostTitle') : t('sessionCostRunningTitle')}>
           <span className="muted small tabular">{formatUSD(j.cost)}</span>

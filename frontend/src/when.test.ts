@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { absoluteTime, relativeTime } from './when'
+import { absoluteTime, elapsed, relativeTime } from './when'
 
 const now = Date.parse('2026-08-08T12:00:00Z')
 const ago = (ms: number) => new Date(now - ms).toISOString()
@@ -37,5 +37,29 @@ describe('absoluteTime', () => {
     expect(absoluteTime(iso)).toBe(new Date(Date.parse(iso)).toLocaleString())
     expect(absoluteTime(undefined)).toBe('')
     expect(absoluteTime('nope')).toBe('')
+  })
+})
+
+describe('elapsed', () => {
+  it('keeps the minutes a running session is measured in', () => {
+    const start = '2026-08-08T10:00:00Z'
+    const at = (ms: number) => Date.parse(start) + ms
+    expect(elapsed(start, at(12_000))).toBe('12s')
+    expect(elapsed(start, at(34 * 60_000))).toBe('34m')
+    expect(elapsed(start, at(107 * 60_000))).toBe('1h 47m')
+    expect(elapsed(start, at(60 * 60_000))).toBe('1h 0m')
+  })
+
+  // An age would have rounded this to "1 hour ago" — the wrong question,
+  // answered imprecisely, on a row that is still spending.
+  it('does not round away the minutes relativeTime drops', () => {
+    const start = '2026-08-08T10:00:00Z'
+    expect(elapsed(start, Date.parse(start) + 89 * 60_000)).toBe('1h 29m')
+  })
+
+  it('is empty for a session with no recorded start, and never negative', () => {
+    expect(elapsed(undefined)).toBe('')
+    expect(elapsed('nonsense')).toBe('')
+    expect(elapsed('2026-08-08T10:00:00Z', Date.parse('2026-08-08T09:59:50Z'))).toBe('0s')
   })
 })
