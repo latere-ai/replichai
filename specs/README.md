@@ -169,8 +169,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 020 | [Download the whole project](020-download-the-whole-project.md) | built | 006f, 005, 015, 018 |
 | 021 | [What the run actually found](021-what-the-run-actually-found.md) | designed | 002, 005, 007a, 011, 015, 018 |
 | 021a | [The findings as data](021a-the-findings-as-data.md) | built | 021, 007a, 002, 006i |
-| 021b | [A verdict that reads like one](021b-a-verdict-that-reads-like-one.md) | designed | 021a, 015, 006s |
-| 021c | [What the authors released](021c-what-the-authors-released.md) | designed | 021a, 015, 002 |
+| 021b | [A verdict that reads like one](021b-a-verdict-that-reads-like-one.md) | built | 021a, 015, 006s |
+| 021c | [What the authors released](021c-what-the-authors-released.md) | built | 021a, 015, 002 |
 | 021d | [Watching a session run](021d-watching-a-session-run.md) | designed | 006a, 006s, 005, 011 |
 | 021e | [The project rail](021e-the-project-rail.md) | designed | 021a, 021d, 018, 006n, 011 |
 

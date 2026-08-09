@@ -1,6 +1,8 @@
 # 021b — A verdict that reads like one
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `frontend/src/findings.ts` owns the schema's client shape and the three questions asked of it (11 unit tests); `SessionFindings`, `MismatchLine` and `Decomposition` render the pane; `frontend/test/findings.test.mjs` drives it in Chrome. The assertions were mutation-checked rather than only stash-checked: letting outer claims into `unresolved` and dropping the mismatch rule each produce a specific, correct failure.
+
+One thing came out of the build. **The manifest's grade and the findings' verdict are different vocabularies** — `passed`/`failed` against `reproducible`/`partial`/`not_reproducible` — so the existing `verdictTone` became `manifestTone` and the findings got their own. Folding them into one function would have made one of the two lie.
 
 **Scope:** the session's Verdict pane, rebuilt on [021a](021a-the-findings-as-data.md)'s data — the verdict card and its summary, the inner/outer boundary table, a section for what did not reproduce or did not match, and the decisions the paper left unwritten. Carries the app-wide palette retune as its first commit.
 
