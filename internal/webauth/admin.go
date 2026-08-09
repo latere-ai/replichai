@@ -68,6 +68,7 @@ func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Ad
 		{httpapi.Route{Method: "POST", Pattern: "/admin/access/{email}/credits"}, a.Topup},
 		{httpapi.Route{Method: "GET", Pattern: "/admin/settings"}, a.Settings},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/settings"}, a.SetSettings},
+		{httpapi.Route{Method: "GET", Pattern: "/admin/solvency"}, a.Solvency},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/projects/{id}/cap"}, a.SetProjectCap},
 	}
 	out := make([]httpapi.Route, 0, len(routes))
@@ -193,6 +194,25 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s, _ := a.platform.Settings(r.Context())
 	writeJSON(w, http.StatusOK, s)
+}
+
+// Solvency reports outstanding sold-liability: the sum of every wallet and pot
+// balance — credits the platform has sold and not yet delivered as compute
+// (022c). An operator watches it against what the vendor account holds and tops
+// the vendor up when it needs it; it is the read that replaces coupling a
+// customer payment to a vendor top-up.
+func (a *Admin) Solvency(w http.ResponseWriter, r *http.Request) {
+	if a.credits == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_credits_store")
+		return
+	}
+	total, err := a.credits.TotalOutstanding(r.Context())
+	if err != nil {
+		log.Printf("admin: read solvency: %v", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "solvency_read_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"outstanding_micro": total})
 }
 
 // Topup adds credits to one person's wallet — the only way money enters the

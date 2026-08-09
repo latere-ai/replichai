@@ -83,6 +83,41 @@ func TestEveryAdminRouteRefusesTheUnauthenticated(t *testing.T) {
 	}
 }
 
+// 022c: the solvency read reports outstanding sold-liability — the fold over
+// every wallet and pot — so an operator can watch it against the vendor account.
+func TestSolvencyReportsOutstandingLiability(t *testing.T) {
+	ctx := context.Background()
+	acc := access.NewMemStore()
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if err := acc.SeedAdmin(ctx, admin.Email); err != nil {
+		t.Fatalf("SeedAdmin: %v", err)
+	}
+	ledger := credit.NewMemStore(nil, nil)
+	if err := ledger.TopupPaid(ctx, "u1@x.io", 18_700_000, "pi_1", "stripe:pi_1"); err != nil {
+		t.Fatalf("TopupPaid: %v", err)
+	}
+	if err := ledger.TopupPaid(ctx, "u2@x.io", 5_000_000, "pi_2", "stripe:pi_2"); err != nil {
+		t.Fatalf("TopupPaid: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), ledger))
+
+	r := httptest.NewRequest("GET", "/admin/solvency", nil)
+	r = r.WithContext(identityCtx(r, admin))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("solvency = %d, want 200 (%s)", w.Code, w.Body)
+	}
+	var got struct {
+		Outstanding int64 `json:"outstanding_micro"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || got.Outstanding != 23_700_000 {
+		t.Fatalf("outstanding = %d (%v), want the sum of the two top-ups 23700000", got.Outstanding, err)
+	}
+}
+
 // 006k AC2/AC5/AC7, in 011's terms: an admin drives the whole console — read
 // the policy, write it, put credits in somebody's wallet, and see the balance
 // in the people table.

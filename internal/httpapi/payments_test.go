@@ -124,3 +124,44 @@ func TestStripeWebhookCreditsOnceAndRefusesABadSignature(t *testing.T) {
 		t.Fatalf("balance = %d, want 18700000 credited exactly once", bal())
 	}
 }
+
+// A refund claws back the exact micro-USD the purchase credited (not a fresh
+// conversion), keyed on its own id so it dedupes independently — the wallet may
+// go negative, and a retried refund does not over-claw.
+func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	deliver := func(v payment.Event) int {
+		body, _ := json.Marshal(v)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
+		r.Header.Set("Stripe-Signature", "whsec")
+		rt.Handler().ServeHTTP(w, r)
+		return w.Code
+	}
+	bal := func() int64 {
+		n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email))
+		return n
+	}
+
+	// A purchase credits $18.70.
+	if code := deliver(payment.Event{Kind: payment.EventCheckoutCompleted, Email: payer.Email, PaymentIntent: "pi_1", Meta: map[string]string{"credited_micro": "18700000"}}); code != http.StatusOK {
+		t.Fatalf("purchase = %d, want 200", code)
+	}
+	// The refund names the purchase by its payment_intent and carries its own id.
+	refund := payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_1", RefundID: "re_1"}
+	if code := deliver(refund); code != http.StatusOK {
+		t.Fatalf("refund = %d, want 200", code)
+	}
+	if code := deliver(refund); code != http.StatusOK { // retried delivery
+		t.Fatalf("retried refund = %d, want 200", code)
+	}
+	if bal() != 0 {
+		t.Fatalf("balance after one refund = %d, want 0 (the credit reversed exactly once)", bal())
+	}
+
+	// A refund for a purchase this ledger never recorded is acknowledged and
+	// dropped — not retried, not a crash.
+	if code := deliver(payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_unknown", RefundID: "re_x"}); code != http.StatusOK {
+		t.Fatalf("refund of unknown purchase = %d, want 200", code)
+	}
+}
