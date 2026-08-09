@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'bun:test'
+import { parseUSD, stepDollars, typedDollars } from './money'
+
+describe('typedDollars', () => {
+  it('keeps a value on its way to being typed', () => {
+    expect(typedDollars('12')).toBe('12')
+    // Not a number yet, and it has to survive: it is the keystroke before 12.5.
+    expect(typedDollars('12.')).toBe('12.')
+    expect(typedDollars('12.5')).toBe('12.5')
+    expect(typedDollars('12.50')).toBe('12.50')
+  })
+
+  it('allows one point and two places, and no more', () => {
+    expect(typedDollars('12.5.7')).toBe('12.57')
+    expect(typedDollars('12.567')).toBe('12.56')
+    expect(typedDollars('.5')).toBe('.5')
+  })
+
+  it('drops anything that is not a number', () => {
+    expect(typedDollars('$12.50')).toBe('12.50')
+    expect(typedDollars('12 usd')).toBe('12')
+    expect(typedDollars('abc')).toBe('')
+    expect(typedDollars('-5')).toBe('5')
+  })
+
+  // The defect this exists for: a money field that strips the point can only
+  // ever allocate whole dollars.
+  it('lets cents be typed at all', () => {
+    expect(typedDollars('16.82')).toBe('16.82')
+    expect(parseUSD(typedDollars('16.82'))).toBe(16_820_000)
+  })
+})
+
+describe('stepDollars', () => {
+  it('steps from the value, keeping its cents', () => {
+    expect(stepDollars('16.82', 1)).toBe('17.82')
+    expect(stepDollars('16.82', -1)).toBe('15.82')
+  })
+
+  it('steps from the floor when the field holds no number', () => {
+    expect(stepDollars('', 1, 0)).toBe('1')
+    expect(stepDollars('.', 1, 5)).toBe('6')
+  })
+
+  it('does not print cents it does not have', () => {
+    expect(stepDollars('16', 1)).toBe('17')
+  })
+
+  it('holds the floor and the ceiling', () => {
+    expect(stepDollars('0.5', -1, 0)).toBe('0')
+    expect(stepDollars('99', 1, 0, 99)).toBe('99')
+  })
+
+  // Floating point: 0.1 + 0.2 must not reach a field as 0.30000000000000004.
+  it('never leaks a floating-point tail', () => {
+    expect(stepDollars('0.1', 0.2)).toBe('0.3')
+  })
+})

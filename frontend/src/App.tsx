@@ -1950,15 +1950,11 @@ function ProjectScreen({
           </div>
         )}
         {tab === 'sessions' && (
-          <div className="stack">
-            {/* Money cannot move in or out of a trashed project either, so the
-                card that moves it goes with the rest of the owner controls. */}
-            {credits && !project.deleted_at && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
-            {/* One card per paper that has a graded session (021e). Not "the
-                project's rate": a project holds papers and only a session has
-                findings, so a single figure on the project would be the exact
-                claim 015 was written to remove. */}
-            <LatestFindings i18n={i18n} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />
+          // The work on the left, the standing facts on the right. Stacked, the
+          // credits card ran the full width of the screen to show two numbers
+          // and a stepper, and pushed the sessions — the reason the tab exists —
+          // below the fold.
+          <div className="detail-grid">
             <PapersCard
               i18n={i18n}
               me={me}
@@ -1971,6 +1967,16 @@ function ProjectScreen({
               onChanged={onSpent}
               onRefresh={refresh}
             />
+            <div className="stack">
+              {/* Money cannot move in or out of a trashed project either, so the
+                  card that moves it goes with the rest of the owner controls. */}
+              {credits && !project.deleted_at && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
+              {/* One card per paper that has a graded session (021e). Not "the
+                  project's rate": a project holds papers and only a session has
+                  findings, so a single figure on the project would be the exact
+                  claim 015 was written to remove. */}
+              <LatestFindings i18n={i18n} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />
+            </div>
           </div>
         )}
         {tab === 'verdict' && <ProjectVerdicts i18n={i18n} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />}
@@ -2694,12 +2700,15 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n;
           {t('creditsBalance')}
           <span className="v tabular">{formatUSD(credits.balance)}</span>
         </div>
-        <Tip text={t('creditsAvailableTitle')}>
-          <div className="usage-line">
-            {t('creditsAvailable')}
-            <span className="v tabular">{formatUSD(credits.available)}</span>
-          </div>
-        </Tip>
+        {/* data-tip rather than a <Tip> wrapper: Tip wraps its child in a
+            <span>, and an inline wrapper around a block row collapses that row
+            to its content — which is why this value sat against its label while
+            the one above it was flush right. TipHost reads the attribute off any
+            element, so a row that cannot take a wrapper does not need one. */}
+        <div className="usage-line" data-tip={t('creditsAvailableTitle')}>
+          {t('creditsAvailable')}
+          <span className="v tabular">{formatUSD(credits.available)}</span>
+        </div>
       </div>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
         {short ? t('creditsShort', { reserve: formatUSD(credits.start_reserve) }) : t('creditsEnough', { reserve: formatUSD(credits.start_reserve) })}

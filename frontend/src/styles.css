@@ -1465,6 +1465,11 @@ input.text.amount-input {
   gap: 8px;
   padding: 12px 14px;
   border-top: 1px solid var(--border);
+  /* These rows live in a 340px rail as well as in a full-width card, and three
+     controls do not fit in the narrow one. Wrapping is what keeps the third
+     reachable instead of clipped at the card's edge. */
+  flex-wrap: wrap;
+  align-items: center;
 }
 input.text {
   height: 32px;
@@ -2175,6 +2180,13 @@ input.submit-input {
 }
 .usage-line:last-child {
   border-bottom: none;
+}
+/* A tooltip wrapper is a <span>, and an inline box around a block row collapses
+   that row to its content — the value then sits against its label while the row
+   above it is flush right. Call sites use `data-tip` directly, and this keeps a
+   wrapper from reintroducing it. */
+.usage-rows > .tip {
+  display: block;
 }
 .usage-line .v {
   margin-left: auto;
@@ -2920,11 +2932,12 @@ input.submit-input {
 }
 
 /* The sessions tab's rail (021e). One card per paper with a graded session,
-   flowing rather than fixed: a project holding four papers is four cards, and a
-   column sized for one would make three of them invisible. */
+   stacked in the rail column. It stays a grid rather than a flex stack so the
+   same component can flow into more than one column if it is ever placed
+   somewhere wider than the rail. */
 .findings-rail {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 12px;
 }
 

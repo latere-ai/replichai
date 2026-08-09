@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { stepDollars, typedDollars } from './money'
 import { createPortal } from 'react-dom'
 import { Ico, type IconName } from './icons'
 
@@ -242,15 +243,14 @@ export function NumberField({
   ariaLabel?: string
   autoFocus?: boolean
 }) {
-  const n = Number.parseInt(value, 10)
-  const step = (by: number) => {
-    const base = Number.isInteger(n) ? n : min
-    const next = Math.min(max ?? Number.MAX_SAFE_INTEGER, Math.max(min, base + by))
-    onChange(String(next))
-  }
+  // Every field this draws holds money, and money has cents. It used to strip
+  // the decimal point, so a project could only ever be allocated whole dollars
+  // and a $16.82 balance could not be moved back in one go.
+  const n = Number.parseFloat(value)
+  const step = (by: number) => onChange(stepDollars(value, by, min, max))
   return (
     <div className="numf" style={{ width }}>
-      <button type="button" className="numf-step" aria-label="−" onClick={() => step(-1)} disabled={Number.isInteger(n) && n <= min}>
+      <button type="button" className="numf-step" aria-label="−" onClick={() => step(-1)} disabled={Number.isFinite(n) && n <= min}>
         <Ico name="minus" size={12} w={2.2} />
       </button>
       <input
@@ -258,11 +258,13 @@ export function NumberField({
         aria-label={ariaLabel}
         autoFocus={autoFocus}
         className="numf-input tabular"
-        inputMode="numeric"
+        inputMode="decimal"
         value={value}
-        // Digits only: a text box that accepts letters would need a second
-        // validation story the field does not have.
-        onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ''))}
+        // Digits and one decimal point, at most two places. Shaping the value as
+        // it is typed rather than validating it afterwards is what lets "12." —
+        // not a number, and the keystroke before 12.50 — survive long enough to
+        // become one.
+        onChange={(e) => onChange(typedDollars(e.target.value))}
         onKeyDown={(e) => {
           if (e.key === 'ArrowUp') {
             e.preventDefault()
