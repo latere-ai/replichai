@@ -25,6 +25,33 @@ func (c *capture) Send(_ context.Context, to, subject, htmlBody string) error {
 	return nil
 }
 
+// The freeze notice says the account is on hold and links to the wallet where a
+// top-up lifts it (022d). A nil Notifier is silent, so a deployment with no mail
+// still runs.
+func TestAccountFrozenLinksToTheWalletAndIsSilentWhenUnwired(t *testing.T) {
+	tx := &capture{}
+	n := New(tx, "https://replichai.latere.ai/")
+
+	if err := n.AccountFrozen(ctx, "debtor@x.com"); err != nil {
+		t.Fatalf("AccountFrozen: %v", err)
+	}
+	if tx.to != "debtor@x.com" {
+		t.Errorf("to = %q", tx.to)
+	}
+	if !strings.Contains(tx.subject, "on hold") {
+		t.Errorf("subject = %q, want it to say the account is on hold", tx.subject)
+	}
+	if !strings.Contains(tx.body, "https://replichai.latere.ai/wallet") {
+		t.Errorf("body = %q, want a link to the wallet", tx.body)
+	}
+
+	// A nil Notifier reports success and sends nothing.
+	var nilN *Notifier
+	if err := nilN.AccountFrozen(ctx, "debtor@x.com"); err != nil {
+		t.Errorf("nil Notifier: %v", err)
+	}
+}
+
 // The link must be one a browser can open. /projects/{id} is the gated JSON
 // API, so an invitation pointing there hands the reader {"error":...} — which
 // is what shipped in v0.4.1 and is why this asserts the path, not just that

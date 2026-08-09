@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/notify"
 	"github.com/latere-ai/replichai/internal/payment"
 	"github.com/latere-ai/replichai/internal/platform"
 )
@@ -147,9 +148,20 @@ func (rt *Router) reversePurchase(r *http.Request, ev payment.Event) int {
 		log.Printf("stripe webhook: refund for an unknown or unreversable purchase (pi=%q ref=%q)", ev.PaymentIntent, ev.RefundID)
 		return http.StatusOK
 	}
+	// Whether this reversal is the one that puts the account in the red: read the
+	// balance before, so the freeze email is sent once, on the crossing, and not
+	// again on a further refund of an already-negative wallet.
+	before, _ := rt.credits.Balance(r.Context(), orig.Holder)
 	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.RefundID, "stripe:refund:"+ev.RefundID); err != nil {
 		log.Printf("stripe webhook: refund for %s: %v", email, err)
 		return http.StatusInternalServerError
+	}
+	if before >= 0 && rt.notifier != nil {
+		if after, err := rt.credits.Balance(r.Context(), orig.Holder); err == nil && after < 0 {
+			if err := rt.notifier.AccountFrozen(r.Context(), email); err != nil {
+				notify.LogFailure("account_frozen", email, err)
+			}
+		}
 	}
 	return http.StatusOK
 }

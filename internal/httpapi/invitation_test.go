@@ -12,10 +12,11 @@ import (
 // fakeNotifier records what the platform tried to tell somebody, and can fail
 // on demand.
 type fakeNotifier struct {
-	mu    sync.Mutex
-	sent  []sentInvitation
-	err   error
-	calls int
+	mu     sync.Mutex
+	sent   []sentInvitation
+	frozen []string // emails told their account is frozen (022d)
+	err    error
+	calls  int
 }
 
 type sentInvitation struct{ to, projectID, projectName, inviter string }
@@ -29,6 +30,22 @@ func (f *fakeNotifier) ProjectInvitation(_ context.Context, to, projectID, proje
 	}
 	f.sent = append(f.sent, sentInvitation{to, projectID, projectName, inviter})
 	return nil
+}
+
+func (f *fakeNotifier) AccountFrozen(_ context.Context, to string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.frozen = append(f.frozen, to)
+	return nil
+}
+
+func (f *fakeNotifier) frozenSends() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.frozen...)
 }
 
 func (f *fakeNotifier) last() (sentInvitation, int) {

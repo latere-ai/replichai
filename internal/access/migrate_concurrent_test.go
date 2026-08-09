@@ -30,7 +30,7 @@ func TestConcurrentMigratorsDoNotCollide(t *testing.T) {
 	// From empty, so every version is applied under contention rather than
 	// skipped by an already-recorded row.
 	for _, stmt := range []string{
-		`DROP TABLE IF EXISTS access_grants, project_members, forge_links, access_migrations CASCADE`,
+		`DROP TABLE IF EXISTS access_grants, project_members, forge_links, freeze_overrides, access_migrations CASCADE`,
 	} {
 		if _, err := pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("reset: %v", err)

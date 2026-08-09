@@ -60,6 +60,44 @@ func (n *Notifier) ProjectInvitation(ctx context.Context, to, projectID, project
 	return n.tx.Send(ctx, to, subject, body)
 }
 
+// AccountFrozen tells someone their account is in view-only mode after a
+// clawed-back payment, and that a top-up lifts it (022d).
+//
+// A chargeback lands when nobody is looking at the app, so this email — not the
+// in-app banner — is what turns a silent debt into an action. Like the
+// invitation, the error is returned only for logging, and a nil Notifier is
+// silently successful.
+func (n *Notifier) AccountFrozen(ctx context.Context, to string) error {
+	if n == nil || n.tx == nil {
+		return nil
+	}
+	subject, body := renderAccountFrozen(n.walletURL())
+	return n.tx.Send(ctx, to, subject, body)
+}
+
+// walletURL is where a reader tops up — the app's wallet screen, not an API path.
+func (n *Notifier) walletURL() string {
+	return n.baseURL + "/wallet"
+}
+
+// renderAccountFrozen builds the freeze notice. The only interpolated value is
+// the app's own wallet URL, escaped here at the one place it is composed.
+func renderAccountFrozen(walletURL string) (subject, htmlBody string) {
+	subject = "Your replichai account is on hold"
+	htmlBody = fmt.Sprintf(
+		`<p>A recent payment was refunded or charged back, so your replichai `+
+			`account balance is now negative and the account is in <strong>view-only</strong> mode: `+
+			`you can still see your projects and download your work, but you cannot start `+
+			`new sessions until the balance is settled.</p>`+
+			`<p>Topping up clears the hold automatically:</p>`+
+			`<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;`+
+			`text-decoration:none;border-radius:6px;font-weight:bold;">Top up your account</a></p>`+
+			`<p>If you think this is a mistake, reply to this email and we will look into it.</p>`,
+		html.EscapeString(walletURL),
+	)
+	return subject, htmlBody
+}
+
 // projectURL is where a project lives *for a reader of a message* — the app's
 // deep link, not the API's.
 //
