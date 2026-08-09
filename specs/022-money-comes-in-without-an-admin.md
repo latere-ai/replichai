@@ -154,9 +154,52 @@ Two rules make it trustworthy:
 Stripe can claw money back after the credit is spent — a refund or a chargeback lands days later, when the wallet has already been allocated into a project and burned. The ledger already has the shape for this: `KindAdjust`, *"either sign … deliberately not unique per session."* A refund posts a **negative `adjust`** to the wallet, `external_ref = <refund/dispute id>` (a *different* id from the purchase, so it dedupes independently and does not collide with the topup it reverses):
 
 - The wallet **may go negative**, and a negative wallet **cannot allocate** — `Allocate` already refuses a move larger than available (`ErrInsufficient`), and a negative available refuses every move. The person cannot spend money that was taken back.
-- We **do not** reach into project pots or claw back holds. Money already moved into a pot and possibly spent is gone; the negative wallet is the record that the person owes it, and reconciling that is an operator decision, not an automated reversal. This spec **defines the policy and stops there** — building a dunning or collections flow is out of scope, and saying so keeps "refunds are handled" from being read as "refunds are chased."
+- We **do not** reach into project pots or claw back holds. Money already moved into a pot and possibly spent is gone; the negative wallet is the record that the person owes it. But the record is not the end of it — a negative wallet **freezes the account** (next decision), because a debt nobody acts on is exactly the cash-flow leak this spec exists to close.
 
 Handling `charge.refunded` / `charge.dispute.created` in the same signed webhook is the minimum; the full lifecycle is a breakdown leaf.
+
+### A negative wallet freezes the account, and only a top-up thaws it
+
+Recording the debt is not enough: a clawed-back user whose wallet reads −$18 has already cost the platform $18 of real compute, and nothing should let them cost more before they make it good. So a negative wallet puts the account into **view-only mode**.
+
+**Frozen is derived, not a stored flag** — the ledger's own rule (011). An account is frozen when `Balance(wallet) < 0` **and** no admin override is active; there is no `frozen` column to drift. This makes the state self-healing in both directions: the moment a top-up brings the balance to `≥ 0`, the account thaws on the next request, with nothing to remember to clear.
+
+**The freeze is enforced server-side, and the banner only mirrors it.** A frozen account may issue **reads** (every `GET`: browse projects, sessions, transcripts, and *download the project archive* — the work they already produced is theirs to retrieve) but no **writes**: every mutating request is refused `402 account_frozen`, with two deliberate exceptions — `POST /me/credits/checkout` (the one escape hatch) and sign-out. Starting a session, creating a project, allocating, renaming, editing a profile: all refused. The rule is one middleware keyed on the caller's wallet, at the same narrow point 006q's gate lives, so a frozen user calling the API directly is refused exactly as the UI is. The frontend reads the same balance, shows a banner explaining the freeze and the top-up that lifts it, and renders every spend/create control disabled — UX over a gate that does not depend on it.
+
+**A top-up is always allowed, and thaws by arithmetic.** The escape hatch cannot itself be frozen, or the account is a roach motel. A purchase posts its `topup`, the balance crosses to `≥ 0`, and the next request is unfrozen — no separate "unfreeze" call, because freezing was never a stored act to undo.
+
+**An admin may override a freeze, and the override is one-shot.** A lead sorting out a chargeback with a customer they trust may keep working; an admin unfreezes them from the console **while still negative**. The override is recorded state (actor, when — the shape 006q's revocation already uses), and it is **cleared the moment the wallet returns to `≥ 0`** (the top-up that would have thawed it anyway retires it). So the waiver covers *this* debt only: a later chargeback drives the wallet negative again and re-freezes, a fresh decision rather than a standing exemption. `frozen = Balance < 0 AND no override active`, and the override does not outlive the debt it forgave.
+
+**They are told, not left to discover it.** When the freezing `adjust` posts, `internal/notify` (006p) emails the person: what happened, that the account is view-only, and that a top-up lifts it. A chargeback lands when nobody is looking at the app, so the email — not the banner — is what turns a silent debt into an action.
+
+The whole lifecycle, and why no state is stored:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Normal
+    Normal --> Frozen: refund/chargeback adjust<br/>drives wallet < 0
+    Frozen --> Normal: top-up brings balance ≥ 0<br/>(override, if any, cleared)
+    Frozen --> Waived: admin unfreeze<br/>(one-shot override)
+    Waived --> Waived: further debit,<br/>still < 0 (override survives)
+    Waived --> Normal: top-up brings balance ≥ 0<br/>(override cleared)
+    note right of Frozen
+        reads allowed (incl. archive)
+        writes refused 402, except
+        POST /me/credits/checkout
+    end note
+```
+
+`Normal` and `Frozen` are the same predicate read two ways — `Balance < 0 && no override` — so there is no transition to *perform*, only a balance that crosses zero. `Waived` is the one stored fact (the override), and it is retired at the zero-crossing, which is why an admin's mercy never outlives the debt it forgave.
+
+### The admin sees who owes, and decides
+
+The console's people table already lists every grant with its wallet balance merged in (`GET /admin/access` → `GrantView.Wallet`). This spec extends that one view rather than building a second:
+
+- **A frozen flag on each row**, derived the same way the gate derives it (`Wallet < 0 && no override`), so the table shows *normal / frozen / banned* as three visible states.
+- **A filter to the accounts that owe** — the negative-wallet rows — so an operator can find every debt in one place instead of scanning balances.
+- **An unfreeze action** (`POST /admin/access/{email}/unfreeze`) that records the one-shot override above, and its inverse if an admin wants to re-freeze a still-negative account they had waived.
+
+This is the collections surface, deliberately small: it makes the debt *visible* and *actionable by a human*, and stops there. It does not auto-retry cards, dun on a schedule, or escalate — those stay operator judgment, which is the right altitude for something that will happen rarely and always wants a person's read.
 
 ### Non-goal: a customer's payment does not top up the Anthropic account
 
@@ -179,6 +222,12 @@ Three secrets, injected like every other (010): `STRIPE_SECRET_KEY`, `STRIPE_WEB
 - A webhook with a **bad or missing signature** posts nothing and returns `400`. A test tampers with the payload and asserts no entry and no `200`.
 - The credited amount is derived **only** from the server-verified event/metadata, never from a redirect query parameter. A test hits the return URL with an inflated `amount` param and asserts the wallet is unchanged.
 - A `charge.refunded` webhook posts a negative `KindAdjust` to the wallet with the refund's own `external_ref`; the wallet may go negative; a negative-available wallet's `Allocate` is refused `ErrInsufficient`. Tests cover the post, the negative balance, and the refused allocation.
+- **A negative-wallet account is frozen:** every mutating request (start session, create project, allocate, rename, edit profile) is refused `402 account_frozen`, while every `GET` — including the project archive download — still succeeds. Tests drive a wallet negative and assert a representative write is refused and a representative read (and the archive) still work.
+- **A top-up thaws it:** after a purchase brings the balance to `≥ 0`, the same write that was refused now succeeds, with no separate unfreeze call. A test asserts the transition on the next request.
+- **`POST /me/credits/checkout` is never frozen:** a frozen account can still reach Checkout. A test asserts the escape hatch is exempt from the gate.
+- **An admin override thaws a still-negative account, and is one-shot:** `POST /admin/access/{email}/unfreeze` lets a negative account write again; a later `adjust` that drops it further stays writable, but once a top-up returns it to `≥ 0` the override is cleared, so the next negative re-freezes. Tests cover the override, its survival across a further debit, and its clearing on return to positive.
+- **The freeze emails the person once**, via `internal/notify`, when the freezing `adjust` posts. A test asserts one notification with the reason and the top-up remedy.
+- **The admin people table shows and filters the debt:** each row carries a derived `frozen` flag (`Wallet < 0 && no override`), and the list can filter to negative-wallet accounts. Tests assert the flag matches the gate and the filter returns exactly the owing accounts.
 - With no Stripe keys configured, `POST /me/credits/checkout` returns "payments not configured" (not a panic), admin top-up still works, and the app still boots and runs unmetered.
 - The admin console shows outstanding sold-liability (`Σ wallet balances + Σ pot balances`) as one micro-USD number. A test asserts it equals the fold over the ledger.
 - Every new behavior is covered by an e2e test through the HTTP surface with a fake payment adapter that emits the webhooks the real Stripe would; coverage of the new code stays above the project bar.
@@ -189,7 +238,8 @@ Three secrets, injected like every other (010): `STRIPE_SECRET_KEY`, `STRIPE_WEB
 - **A margin multiplier in the rate card.** Rejected in favor of the purchase spread, to keep session cost reconcilable against vendor rates.
 - **Invoices, receipts, tax/VAT, and Stripe Tax.** A purchased-credit statement line exists in the wallet (011); a compliant invoice/receipt document is its own spec if a jurisdiction requires one.
 - **Subscriptions, auto-recharge of a user's wallet, and saved-card management** beyond what Link offers inside Checkout. Top-up is one-shot here.
-- **Dunning / collections on a negative wallet.** The negative balance is recorded; chasing it is an operator action, not code in this spec.
+- **Automated dunning beyond the freeze.** The account freeze, the admin freeze-list, and the one email are in scope (they are what protects cash flow). Card-retry schedules, escalating reminder sequences, and handoff to a collections service are not — a chargeback-after-spend is rare and always wants a human's read.
+- **Recovering a negative project *pot*.** The freeze acts on a negative *wallet* (a clawed-back payment), which is a clean account→person mapping. A pot taken negative by a session overrun (011's overdraft floor bounds but permits it) is a real cash-flow leak this spec does **not** close: a pot is fungible and can have several lead funders, so "whose wallet is charged for the shortfall" has no clean answer here. Recovering an overrun pot from its leads is its own later spec — named so the gap is deliberate, not forgotten.
 - **Per-cell rate-card or spread editors.** Both are typed values on the settings row 006k/011 already render; a wrong cell mis-prices until noticed, which is the same accepted risk 011 states.
 - **Currency other than USD.** The ledger holds micro-USD and no notion of conversion (011); Checkout charges USD.
 
@@ -200,7 +250,7 @@ Every decision in this spec is chosen, not deferred. The four that were briefly 
 1. **Vendor coupling — no.** A payment credits only the wallet; the Anthropic account is funded by its own console auto-reload, and the solvency read is how an operator knows when. A customer payment never funds the vendor directly (it would put Stripe in the serving path, and there is no vendor API for it). This is the non-goal above.
 2. **Idempotency key — `payment_intent`.** It is the canonical "this money moved" id and survives a retried payment on one Checkout session, so one purchase maps to exactly one credit. The checkout_session id is only used to correlate the create call with its return.
 3. **Ledger seam — a new `TopupPaid` method**, not a widened `Topup`. It keeps `ErrNotAdmin` meaning what it says and records `actor = stripe:pi_…` so the statement tells a purchase from a grant.
-4. **Refund — a negative `KindAdjust`, wallet may go negative.** No claw-back from pots (011's pot is fungible), no collections engine; the negative balance records the debt and cannot allocate.
+4. **Refund — a negative `KindAdjust`, wallet may go negative, and negative *freezes* the account.** No claw-back from pots (011's pot is fungible). A negative wallet is view-only: every write is refused `402 account_frozen` except the top-up that thaws it, an admin may grant a one-shot override cleared on return to positive, and the console's people table shows and filters the debt. Freeze trigger is the **wallet only** (a chargeback), not a negative pot — that gap is a named deferred spec.
 5. **Unconfigured — no-op that refuses.** No Stripe keys ⇒ the app still boots and runs unmetered, admin top-up still works, and only the checkout route returns "payments not configured".
 6. **Minimum purchase — free-entry above a public floor** (e.g. $5), not fixed packs, so the fixed fee cannot dominate a tiny top-up.
 7. **Spread — percentage plus a fixed term** (`2.9% + $0.30`-shaped), so small and large purchases each cover their real cost.
@@ -208,8 +258,9 @@ Every decision in this spec is chosen, not deferred. The four that were briefly 
 
 ## Suggested breakdown
 
-Three implementation-ready leaves, in dependency order:
+Four implementation-ready leaves, in dependency order:
 
 - **022a — the ledger seam and the idempotent post.** Migration `v2` (`external_ref` + unique index), `TopupPaid`/refund-`adjust` on both stores with contract tests, the `ON CONFLICT` dedupe, and the payment **port** with a memory adapter. No Stripe, no HTTP — the money-safety core, fully tested offline. Highest risk, so it lands first and alone.
 - **022b — Checkout, the webhook, and the modal.** The Stripe adapter behind the port, `POST /me/credits/checkout`, the signed `POST /webhooks/stripe` mounted outside the tier guard, the spread snapshot, and the top-up modal wired to the `402`. The visible half.
 - **022c — refunds and the solvency read.** `charge.refunded` / dispute handling to the negative-`adjust` policy, and the sold-liability number on the admin console.
+- **022d — the account freeze.** The server-side gate (`402 account_frozen` on every mutating request bar top-up and sign-out), thaw-by-arithmetic, the one-shot admin override (`/admin/access/{email}/unfreeze`, cleared on return to positive), the freeze email via `notify`, the frozen flag + negative filter on the admin people table, and the frontend banner + disabled controls. Depends on 022c (the negative wallet it reacts to).
