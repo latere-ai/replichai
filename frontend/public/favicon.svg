@@ -4,6 +4,6 @@
        in vlag's azure. Drawn on transparency so it reads on a light or a dark
        browser tab alike; the same six dashes and ring geometry `src/brand.tsx`
        draws. -->
-  <circle cx="16" cy="16" r="12.33" fill="none" stroke="#a9373b" stroke-opacity="0.9" stroke-width="2.6" stroke-dasharray="8.0 4.92" />
+  <circle cx="16" cy="16" r="12.33" fill="none" stroke="#a9373b" stroke-width="2.6" stroke-dasharray="8.0 4.92" />
   <circle cx="16" cy="16" r="6.67" fill="none" stroke="#2369bd" stroke-width="3.5" />
 </svg>
