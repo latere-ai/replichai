@@ -18,7 +18,17 @@ type MemStore struct {
 	principalEmail map[string]string
 	// links[principalSub][forge] = proven login.
 	links map[string]map[string]string
-	clock func() time.Time
+	// overrides holds active freeze overrides, keyed by normalized email (022d).
+	// A cleared override is deleted rather than kept, which the FreezeOverrides
+	// interface cannot tell apart from the Postgres store's soft clear.
+	overrides map[string]freezeGrant
+	clock     func() time.Time
+}
+
+// freezeGrant is one active override: who granted it and when.
+type freezeGrant struct {
+	grantedBy string
+	grantedAt time.Time
 }
 
 // MemOption configures a MemStore.
@@ -33,6 +43,7 @@ func NewMemStore(opts ...MemOption) *MemStore {
 		grants:         map[string]Grant{},
 		principalEmail: map[string]string{},
 		links:          map[string]map[string]string{},
+		overrides:      map[string]freezeGrant{},
 		clock:          time.Now,
 	}
 	for _, opt := range opts {
@@ -141,6 +152,34 @@ func (s *MemStore) Grant(ctx context.Context, byAdmin Principal, email string, t
 
 // Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
 // records rather than deletes.
+// OverrideActive reports whether an uncleared freeze override is in force.
+func (s *MemStore) OverrideActive(_ context.Context, email string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.overrides[normalizeEmail(email)]
+	return ok, nil
+}
+
+// GrantOverride records a freeze override for email, naming the admin.
+func (s *MemStore) GrantOverride(_ context.Context, byAdmin Principal, email string) error {
+	e := normalizeEmail(email)
+	if e == "" {
+		return ErrNoEmail
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.overrides[e] = freezeGrant{grantedBy: byAdmin.Email, grantedAt: s.clock().UTC()}
+	return nil
+}
+
+// ClearOverride retires the freeze override for email, if any.
+func (s *MemStore) ClearOverride(_ context.Context, email string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.overrides, normalizeEmail(email))
+	return nil
+}
+
 func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err

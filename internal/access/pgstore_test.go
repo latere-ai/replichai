@@ -24,7 +24,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	for _, tbl := range []string{"access_grants", "project_members", "forge_links"} {
+	for _, tbl := range []string{"access_grants", "project_members", "forge_links", "freeze_overrides"} {
 		if _, err := pool.Exec(ctx, "TRUNCATE "+tbl); err != nil {
 			t.Fatalf("truncate %s: %v", tbl, err)
 		}
@@ -96,4 +96,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	// And the grant contract, namespaced so it does not collide with the rows
 	// this test already wrote.
 	storeContract(t, acc, "pg")
+
+	// The freeze-override contract, against the same real store (022d).
+	runFreezeContract(t, acc)
 }

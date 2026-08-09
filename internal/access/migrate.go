@@ -54,6 +54,20 @@ UPDATE access_grants SET tier = 1 WHERE tier = 2;
 ALTER TABLE access_grants ADD COLUMN revoked_at TIMESTAMPTZ;
 ALTER TABLE access_grants ADD COLUMN revoked_by TEXT NOT NULL DEFAULT '';
 `},
+	{4, `
+-- An admin's decision to let a negative-wallet account keep working despite its
+-- debt (022d), beside revocation because it is the same shape: recorded state an
+-- admin sets, keyed by email. Unlike revocation it is retired — cleared_at set
+-- when the wallet recovers — so a later chargeback re-freezes as a fresh
+-- decision. It is not in the credit ledger because the ledger is append-only and
+-- this is a fact that gets taken back.
+CREATE TABLE freeze_overrides (
+	email      TEXT PRIMARY KEY,
+	granted_by TEXT NOT NULL,
+	granted_at TIMESTAMPTZ NOT NULL,
+	cleared_at TIMESTAMPTZ            -- NULL while the override is in force
+);
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
