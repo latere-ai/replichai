@@ -204,19 +204,14 @@ The whole lifecycle, and why no state is stored:
 ```mermaid
 stateDiagram-v2
     [*] --> Normal
-    Normal --> Frozen: refund/chargeback adjust<br/>drives wallet < 0
-    Frozen --> Normal: top-up brings balance ≥ 0<br/>(override, if any, cleared)
-    Frozen --> Waived: admin unfreeze<br/>(one-shot override)
-    Waived --> Waived: further debit,<br/>still < 0 (override survives)
-    Waived --> Normal: top-up brings balance ≥ 0<br/>(override cleared)
-    note right of Frozen
-        reads allowed (incl. archive)
-        writes refused 402, except
-        POST /me/credits/checkout
-    end note
+    Normal --> Frozen: wallet < 0
+    Frozen --> Normal: top-up ≥ 0
+    Frozen --> Waived: admin unfreeze
+    Waived --> Waived: debit, still < 0
+    Waived --> Normal: top-up ≥ 0
 ```
 
-`Normal` and `Frozen` are the same predicate read two ways — `Balance < 0 && no override` — so there is no transition to *perform*, only a balance that crosses zero. `Waived` is the one stored fact (the override), and it is retired at the zero-crossing, which is why an admin's mercy never outlives the debt it forgave.
+Three states, but only one is stored. `Normal` and `Frozen` are the same predicate read two ways — `Balance < 0 && no override` — so there is no transition to *perform*, only a balance crossing zero (a chargeback into `Frozen`, a top-up back to `Normal`). While `Frozen`, reads still work — including the archive download — and every write is refused `402` except the top-up that thaws it. `Waived` is the one fact an admin writes: a one-shot override that survives further debits but is **retired at the zero-crossing**, so an admin's mercy never outlives the debt it forgave.
 
 ### The admin sees who owes, and decides
 
