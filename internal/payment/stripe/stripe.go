@@ -118,9 +118,39 @@ func (a *Adapter) ParseWebhook(payload []byte, sigHeader string) (payment.Event,
 			PaymentIntent: pi,
 			Meta:          s.Metadata,
 		}, nil
+	case "charge.refunded":
+		// Minimal fields, parsed by hand rather than through the SDK's expandable
+		// types, so a version bump cannot change the shape underneath us. The
+		// payment_intent finds the original purchase; the refund id is this
+		// reversal's own idempotency key.
+		var c struct {
+			ID            string `json:"id"`
+			PaymentIntent string `json:"payment_intent"`
+			Refunds       struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			} `json:"refunds"`
+		}
+		if err := json.Unmarshal(event.Data.Raw, &c); err != nil {
+			return payment.Event{}, err
+		}
+		ref := c.ID
+		if n := len(c.Refunds.Data); n > 0 {
+			ref = c.Refunds.Data[n-1].ID
+		}
+		return payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: c.PaymentIntent, RefundID: ref}, nil
+	case "charge.dispute.created":
+		var d struct {
+			ID            string `json:"id"`
+			PaymentIntent string `json:"payment_intent"`
+		}
+		if err := json.Unmarshal(event.Data.Raw, &d); err != nil {
+			return payment.Event{}, err
+		}
+		return payment.Event{Kind: payment.EventDisputeCreated, PaymentIntent: d.PaymentIntent, RefundID: d.ID}, nil
 	default:
-		// Refund and dispute kinds (022c) pass through by name; everything else
-		// is carried as-is for the handler to ignore.
+		// Everything else is carried as-is for the handler to ignore.
 		return payment.Event{Kind: payment.EventKind(event.Type)}, nil
 	}
 }
