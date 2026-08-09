@@ -31,6 +31,31 @@ flowchart TD
 
 **Progress reuses the audit's stream; results reuse the read surface.** An experiment job emits phase progress on the same SSE stream a submitted paper already streams to `done` ([006a](006a-http-api-and-streaming.md)) — the client watches an experiment exactly as it watches an audit. The result read returns the `Outcome` and serves `PILOT.md` and the comparison from the `ArtifactStore`, so no new streaming or artifact machinery is introduced.
 
+```mermaid
+sequenceDiagram
+  actor R as Researcher
+  participant API as httpapi
+  participant S as experiment.Store
+  participant W as job worker
+  R->>API: POST .../datasets (file)
+  API->>API: validate vs analysis.input
+  alt column mismatch
+    API-->>R: 422, names the column
+  else valid
+    API->>S: store bytes + checksum
+    API-->>R: 201
+  end
+  R->>API: POST .../experiments {source, dataset?, cohort?}
+  API->>S: create experiment + enqueue KindExperiment
+  API-->>R: 201, experiment id
+  W->>S: claim job, run, write outcome
+  W-->>R: phases over SSE
+  R->>API: GET .../experiments/:id
+  API-->>R: outcome, PILOT.md, comparison (carries cohort_kind)
+```
+
+*Validation happens in the server round-trip, before any sandbox exists — a malformed dataset is a named-column error, never a failed run.*
+
 **The synthetic label survives the API.** Every experiment response carries `cohort_kind`, and a `synthetic` result is served as `PILOT.md`, never `RESULTS.md` — [007c](007c-the-synthetic-pilot.md)'s criterion 5 tested at the one boundary that leaves the server. An API response a reader could mistake for evidence about people is the failure this route is written to prevent.
 
 ## Acceptance criteria

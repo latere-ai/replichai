@@ -31,6 +31,25 @@ flowchart LR
 
 **Watching an experiment reuses watching an audit.** The run view subscribes to the same SSE stream the session screen already uses ([021d](021d-watching-a-session-run.md)), so phases and progress render through the existing component. Nothing new is built for streaming; an experiment simply is another kind of job to watch.
 
+```mermaid
+stateDiagram-v2
+  [*] --> picking
+  picking --> configuring : choose source
+  configuring --> uploading : uploaded — send file
+  uploading --> configuring : 422 — fix the named column
+  configuring --> running : start
+  running --> result : done
+  running --> result : failed — a finding about the instrument
+  result --> [*]
+  note left of picking
+    synthetic:model and released
+    appear here, disabled, with
+    the reason stated
+  end note
+```
+
+*The screen's states mirror the server's: a validation `422` returns the researcher to configuring with the column named, and a `failed` run still reaches a result, because a pipeline that did not run is itself a finding.*
+
 **A synthetic result is unmistakable on screen.** The result view renders a `synthetic` outcome as a pilot — titled `PILOT.md`, opening with what it does not establish, and never using the vocabulary of a finding about people. A comparison from a synthetic cohort reads as "how close a model cohort came," a `released` one as re-analysis; the label drives the copy, per [007c](007c-the-synthetic-pilot.md). No control implies a synthetic run tested a claim about the world.
 
 **In-app widgets, per the house rule.** The source picker, the disabled-with-reason options, the file field, and any tooltip are the app's own components, portalled where they must overlay — no browser-native `select`, `prompt`, or `title` tooltip, consistent with the project's frontend convention.
