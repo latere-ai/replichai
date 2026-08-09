@@ -781,7 +781,20 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
         ) : projects.length === 0 ? (
           <Empty icon="folder" text={t('noProjects')} />
         ) : (
-          <div className="rows" data-test="project-rows">
+          <div className="rows project-list" data-test="project-rows">
+            {/* The header is a row of the same grid, not a table head: one
+                template governs both, so a column cannot be renamed in one place
+                and widened in another. */}
+            <div className="project-head" aria-hidden="true">
+              <span className="eyebrow">{t('colPaper')}</span>
+              <span className="eyebrow">{t('colOwner')}</span>
+              <span className="eyebrow">{t('colModified')}</span>
+              <span className="eyebrow">{t('colStatus')}</span>
+              <span className="eyebrow">{t('colVisibility')}</span>
+              <span />
+              <span />
+              <span />
+            </div>
             {projects.map((p) => (
               <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
                 <div className="row-main">
@@ -790,15 +803,23 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                 </div>
                 <OwnerCell i18n={i18n} me={me} p={p} />
                 <ModifiedCell i18n={i18n} at={p.modified_at} />
-                <StatusBadge i18n={i18n} p={p} />
-                <VisibilityBadge i18n={i18n} visibility={p.visibility} />
+                {/* Each badge gets its own cell rather than sizing the column
+                    itself. A badge is as wide as its word — "1 RUNNING" against
+                    "DONE" — and letting that width set the column is what pushed
+                    every cell to its left out of line, row by row. */}
+                <span className="row-cell">
+                  <StatusBadge i18n={i18n} p={p} />
+                </span>
+                <span className="row-cell">
+                  <VisibilityBadge i18n={i18n} visibility={p.visibility} />
+                </span>
                 {/* An anchor, not a fetch: the browser's own download is what
                     should handle a body this size. The condition is the server's
                     own — a project whose sessions all failed before publishing
                     has sessions and nothing to hand over, and the download is a
                     top-level navigation, so reaching its refusal would replace
                     the app with a JSON body (020). */}
-                {(p.published_sessions ?? 0) > 0 && (
+                {(p.published_sessions ?? 0) > 0 ? (
                   <Tip text={t('download')}>
                     <a
                       className="icon-btn"
@@ -810,10 +831,12 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                       <Ico name="download" size={13} />
                     </a>
                   </Tip>
+                ) : (
+                  <span className="row-slot" />
                 )}
                 {/* Only on what you own: removing a project you were invited to
                     is not a thing that should be possible. */}
-                {p.owner === me.principal && (
+                {p.owner === me.principal ? (
                   <Tip text={t('trashProject')}>
                     <button
                       className="icon-btn danger"
@@ -827,6 +850,8 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                       <Ico name="trash" size={13} />
                     </button>
                   </Tip>
+                ) : (
+                  <span className="row-slot" />
                 )}
                 <Ico name="chevronRight" size={15} className="chev" />
               </div>

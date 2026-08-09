@@ -186,6 +186,54 @@ try {
     if (!/^\/projects\/[^/]+\/archive$/.test(d.href)) fail(`the download points at ${d.href}, want the project's archive`)
   }
 
+  // The columns have to be columns. A flex row sizes every cell to its own
+  // content, so a "1 RUNNING" badge is wider than a "DONE" one and every cell to
+  // its left starts somewhere different — which is what a list of eight projects
+  // looked like. Geometry is the only way to see it: the text is identical
+  // whether or not it lines up.
+  const cols = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('[data-test="project-rows"] .row')]
+    const head = document.querySelector('[data-test="project-rows"] .project-head')
+    const left = (el) => (el ? Math.round(el.getBoundingClientRect().left) : null)
+    const cells = (row) => [
+      left(row.querySelector('.row-main')),
+      left(row.querySelector('[data-test="owner"]')),
+      left(row.querySelector('[data-test="modified"]')),
+      left(row.children[3]),
+      left(row.children[4]),
+    ]
+    return {
+      rows: rows.map(cells),
+      // The header is drawn from the same grid template, so its labels sit over
+      // the cells they name rather than merely near them.
+      head: head ? [...head.children].slice(0, 5).map((c) => left(c)) : null,
+      labels: head ? [...head.children].slice(0, 5).map((c) => c.textContent.trim()) : null,
+    }
+  })
+
+  if (!cols.head) fail('the projects list has no column headings')
+  else {
+    if (cols.labels.some((l) => !l)) fail(`a column has no name: ${JSON.stringify(cols.labels)}`)
+    for (const row of cols.rows) {
+      row.forEach((x, i) => {
+        if (x === null) return
+        if (Math.abs(x - cols.head[i]) > 1) {
+          fail(`column ${cols.labels[i]} starts at ${x} in a row but its heading at ${cols.head[i]}`)
+        }
+      })
+    }
+  }
+  // Every row agrees with every other row, which is the reported defect.
+  for (let i = 1; i < cols.rows.length; i++) {
+    cols.rows[i].forEach((x, c) => {
+      const first = cols.rows[0][c]
+      if (x === null || first === null) return
+      if (Math.abs(x - first) > 1) {
+        fail(`column ${cols.labels?.[c] ?? c} starts at ${first} in the first row and ${x} in row ${i + 1}`)
+      }
+    })
+  }
+
   // Narrow enough and the two context columns fold away; the row's identity does
   // not. A column that squeezes the title out is worse than one that leaves.
   await page.setViewport({ width: 640, height: 900 })
@@ -194,7 +242,7 @@ try {
   if (narrow.some((r) => r.ownerShown)) fail('the Owner column still takes space on a narrow screen')
   if (narrow.some((r) => !r.title)) fail('a row lost its title on a narrow screen')
 
-  if (!process.exitCode) console.log('ok: the projects list is one list, owned and shared together')
+  if (!process.exitCode) console.log('ok: the projects list is one list, in named columns that line up')
 } finally {
   if (browser) await browser.close()
   vite.kill()
