@@ -1,6 +1,8 @@
 # 022a — The idempotent paid top-up
 
-**Status:** validated — ready to build. Leaf of [022](022-money-comes-in-without-an-admin.md).
+**Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Migration **v3** (`external_ref` + the partial unique index, mirroring `credit_entries_one_charge`), `Entry.ExternalRef` threaded through the single insert and the statement scan, `ErrNoRef`, and `TopupPaid`/`RefundPaid`/`EntryByExternalRef` on the `Store` interface and both stores — idempotent via `insertPaidTx`'s `ON CONFLICT (external_ref) WHERE external_ref IS NOT NULL DO NOTHING` on Postgres and a ref scan under the lock in memory. `internal/payment` holds the `Provider` port, its `Event`/`CheckoutParams` shapes, `ErrUnconfigured`, and a `MemProvider` fake. The contract test gained `TestPGStoreAndMemStorePostPaidEntriesIdempotently` (credit once on a retried ref, negative-allowed refunds, independent dedupe, `EntryByExternalRef`), green against the in-memory store **and real Postgres 16**; the whole module builds, vets, and tests clean. Commits `e70666b` (ledger) and `605cc8b` (port).
+
+**One deviation from the sketch:** `RefundPaid` takes a **positive magnitude** and posts `-amount`, so it reuses `ErrNotPositive` with the package's one meaning of "an amount must be positive," rather than the draft's negative-amount signature. 022c calls it with the original purchase's (positive) credited amount.
 
 **Scope:** the money-safety core, offline. One ledger migration (an `external_ref` column and its partial unique index), two store methods a webhook will later call — a `topup` posted by a payment rather than an admin, and a negative `adjust` for a refund — each **idempotent on `external_ref`**, and a minimal payment **port** with a memory adapter so the HTTP leaf can depend on an interface, not the Stripe client. No Stripe SDK, no HTTP, no frontend.
 
@@ -37,7 +39,7 @@ Give the ledger a place to record a payment provider's reference and to refuse a
    // RefundPaid reverses a purchase: a negative adjust, idempotent on ref.
    RefundPaid(ctx context.Context, email string, amount int64, ref, actor string) error
    ```
-   Posts a negative `KindAdjust` (per 011 — **not** a new kind), `ExternalRef=ref`. Validates `amount < 0` (`ErrNotPositive` otherwise), non-empty ref. Same idempotency. The wallet **may go negative** — that is the point; no floor here.
+   `amount` is a **positive magnitude**; the entry posted is `-amount`, a `KindAdjust` (per 011 — **not** a new kind), `ExternalRef=ref`. Validates `amount > 0` (`ErrNotPositive` otherwise) and a non-empty ref, via the shared `checkPaid`. Same idempotency. The wallet **may go negative** — that is the point; no floor here.
 
 6. **`EntryByExternalRef`** on the `Store` interface and both impls:
    ```go
