@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -63,6 +64,14 @@ type Store interface {
 	// merging the two lists put those two answers side by side. A project's
 	// sessions are the project's, whoever started them.
 	StatusByProjects(ctx context.Context, ids []string) (map[string]ProjectStatus, error)
+	// SpendSince sums what each named project's sessions cost from `since`
+	// onwards, in micro-USD (021e).
+	//
+	// The window is on when a session last changed, not when it started: a run
+	// that began five weeks ago and settled yesterday spent yesterday's money. A
+	// session still running counts what it has burned so far, because the wallet
+	// has already committed it.
+	SpendSince(ctx context.Context, ids []string, since time.Time) (map[string]int64, error)
 	// Cancel stops a non-terminal session, moving it to failed with a "cancelled"
 	// cause, and returns the resulting job. It is idempotent: cancelling an
 	// already-terminal session returns it unchanged. It never routes through the

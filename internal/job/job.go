@@ -160,6 +160,11 @@ type ProjectStatus struct {
 	// every session failed before that has sessions and no artifacts.
 	Published int       `json:"published"`
 	LatestAt  time.Time `json:"latest_at,omitempty"`
+	// Spend is what the project's sessions cost inside the caller's window, in
+	// micro-USD (021e). It is summed in Go rather than in SQL because cost is
+	// derived from usage against the rate card the session carries, and a second
+	// implementation of the pricing in SQL is a second answer to what a run cost.
+	Spend int64 `json:"spend"`
 }
 
 // Job is the durable record of one submission.

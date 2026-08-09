@@ -801,6 +801,11 @@ func nonEmpty(in []string) []string {
 // ProjectView is a project in a list, carrying a session summary so the list
 // shows status (how many sessions, how many running, the newest phase) at a
 // glance without a per-project read on the client.
+// SpendWindowDays is how far back the projects screen's spend tile looks. A
+// window needs a stated edge or the number means nothing; thirty days is the
+// one the tile is labelled with, so the two cannot drift.
+const SpendWindowDays = 30
+
 type ProjectView struct {
 	project.Project
 	SessionCount int `json:"session_count"`
@@ -812,6 +817,12 @@ type ProjectView struct {
 	// that has nothing to hand over.
 	PublishedSessions int    `json:"published_sessions"`
 	LatestPhase       string `json:"latest_phase,omitempty"`
+	// Spend30d is what this project's sessions cost in the last thirty days, in
+	// micro-USD (021e). The window is on when a session last changed, not when
+	// it started, so a run that began five weeks ago and settled yesterday spent
+	// yesterday's money; a session still running counts what it has burned so
+	// far, because the wallet has already committed it.
+	Spend30d int64 `json:"spend_30d"`
 	// SignerHandle is where the signer's name links (006r). It is resolved on
 	// every read from the signer's profile as it is *now*, and deliberately not
 	// snapshotted onto the project: a stored handle would be a second, staler
@@ -918,6 +929,15 @@ func (rt *Router) projectViews(ctx context.Context, projects []project.Project) 
 		log.Printf("projects: reading modified times: %v", err)
 		return nil, err
 	}
+	// Spend is the one summary that may fail softly. A missing session count is
+	// a false claim about the project; a missing spend figure renders as a dash,
+	// which claims nothing, and refusing the whole list because a cost could not
+	// be summed would take the reader's projects away over a number.
+	spend, err := rt.jobs.SpendSince(ctx, ids, time.Now().AddDate(0, 0, -SpendWindowDays))
+	if err != nil {
+		log.Printf("projects: summing spend: %v", err)
+		spend = nil
+	}
 	out := make([]ProjectView, 0, len(projects))
 	for _, p := range projects {
 		st := status[p.ID]
@@ -927,6 +947,7 @@ func (rt *Router) projectViews(ctx context.Context, projects []project.Project) 
 			Running:           st.Running,
 			PublishedSessions: st.Published,
 			LatestPhase:       string(st.Latest),
+			Spend30d:          spend[p.ID],
 			SignerHandle:      rt.signerHandle(ctx, p),
 			ModifiedAt:        later(later(p.CreatedAt, modified[p.ID]), st.LatestAt),
 		}

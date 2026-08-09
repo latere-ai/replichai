@@ -58,6 +58,8 @@ type JobStore interface {
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
 	StatusByProjects(ctx context.Context, ids []string) (map[string]job.ProjectStatus, error)
+	// SpendSince sums each project's session costs inside a window (021e).
+	SpendSince(ctx context.Context, ids []string, since time.Time) (map[string]int64, error)
 	// DeleteByProject removes a project's sessions — what a permanent project
 	// delete does before the project row goes (019).
 	DeleteByProject(ctx context.Context, projectID string) error

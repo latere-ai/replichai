@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -214,6 +215,49 @@ func runProjectJoinContract(t *testing.T, s Store) {
 	// it is showing and not for the table.
 	if _, ok := status["pZ"]; ok {
 		t.Error("pZ summarised; want only the projects asked for")
+	}
+
+	runSpendWindowContract(t, s)
+}
+
+// runSpendWindowContract asserts the window both stores must agree on (021e).
+// The edges are the whole point: the window is on when a session last changed,
+// so a long run that settled inside it counts and a short one that settled
+// before it does not.
+func runSpendWindowContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	// Every session enqueued above updated just now, so a window opening in the
+	// past holds all of them and one opening in the future holds none. That is
+	// the assertion that catches a store filtering on created_at, or on the
+	// wrong side of the comparison.
+	all, err := s.SpendSince(ctx, []string{"pX", "pY"}, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("SpendSince: %v", err)
+	}
+	none, err := s.SpendSince(ctx, []string{"pX", "pY"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("SpendSince: %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("a window that has not opened yet reported spend: %v", none)
+	}
+	// Nothing has run, so nothing has been spent — but the projects inside the
+	// window must be summable without erroring, and must not appear with a
+	// fabricated non-zero.
+	for _, id := range []string{"pX", "pY"} {
+		if all[id] != 0 {
+			t.Errorf("%s spent %d before any session ran", id, all[id])
+		}
+	}
+
+	// A project nobody asked about is never summed.
+	if _, ok := all["pZ"]; ok {
+		t.Error("pZ summed; want only the projects asked for")
+	}
+	if got, err := s.SpendSince(ctx, nil, time.Now().Add(-24*time.Hour)); err != nil || len(got) != 0 {
+		t.Errorf("SpendSince(nil) = %v, %v; want an empty map and no error", got, err)
 	}
 }
 

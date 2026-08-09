@@ -127,6 +127,10 @@ export type PublicSigned = { id: string; title: string; signed_off_at?: string }
 export type ProjectView = Project & {
   session_count: number
   running: number
+  // What this project's sessions cost in the last thirty days, in micro-USD
+  // (021e). Windowed on when a session last changed, so a long run that settled
+  // recently counts; a running one counts what it has burned so far.
+  spend_30d?: number
   latest_phase?: string
   signer_handle?: string
   // Who owns it, as a reader can read them (018). `owner` is an opaque OIDC
