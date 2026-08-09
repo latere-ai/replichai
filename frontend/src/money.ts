@@ -37,3 +37,33 @@ export function parseUSD(text: string): number | null {
 export function toDollars(micro: number): string {
   return String(micro / MICRO)
 }
+
+// typedDollars keeps what somebody is typing into a money field typeable.
+//
+// It is not parseUSD: that reads a finished value, this shapes an in-progress
+// one, and the two have opposite obligations. "12." is not a number, but a
+// person on their way to "12.50" must be allowed to have typed it, so this
+// returns strings parseUSD will reject and lets the caller's validity check
+// decide when to enable the button.
+//
+// The rules are the ones a currency has: digits, at most one point, and at most
+// two places after it — the ledger holds micro-dollars, but nobody allocates
+// tenths of a cent, and a field that accepts them invites a rounding surprise
+// between what was typed and what was charged.
+export function typedDollars(text: string): string {
+  const cleaned = text.replace(/[^0-9.]/g, '')
+  const [whole, ...rest] = cleaned.split('.')
+  if (rest.length === 0) return whole
+  return whole + '.' + rest.join('').slice(0, 2)
+}
+
+// stepDollars moves a money field by `by`, from `from` when it holds a number
+// and from `min` when it does not — so a step out of an empty field lands on the
+// floor rather than on NaN. The result carries cents only when it has any: a
+// field showing "17" after a step from "16" should not read "17.00".
+export function stepDollars(from: string, by: number, min = 0, max?: number): string {
+  const n = Number.parseFloat(from)
+  const base = Number.isFinite(n) ? n : min
+  const next = Math.min(max ?? Number.MAX_SAFE_INTEGER, Math.max(min, base + by))
+  return String(Math.round(next * 100) / 100)
+}
