@@ -673,9 +673,12 @@ func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A row that names a project gets a liveness bit so the client can link a
-	// project that still exists and show a purged one as plain text. Resolved
-	// once per distinct project — a statement names few — and never fatal: a
-	// read that fails leaves the row unlinked rather than the wallet unreadable.
+	// project that still exists and show a purged one as plain text. "Alive"
+	// means the caller can actually open it — a project they were removed from,
+	// or one whose owner is not them and has been trashed, would 404 or 403 at
+	// /p/{id}, so it reads as plain text rather than a link that dead-ends.
+	// Resolved once per distinct project — a statement names few — and never
+	// fatal: a read that fails leaves the row unlinked, not the wallet unread.
 	alive := map[string]bool{}
 	out := make([]walletEntry, len(entries))
 	for i, e := range entries {
@@ -683,8 +686,8 @@ func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 		if e.ProjectID != "" {
 			live, seen := alive[e.ProjectID]
 			if !seen {
-				_, gerr := rt.projects.Get(r.Context(), e.ProjectID)
-				live = gerr == nil
+				proj, gerr := rt.projects.Get(r.Context(), e.ProjectID)
+				live = gerr == nil && rt.mayViewProject(r, proj)
 				alive[e.ProjectID] = live
 			}
 			we.ProjectAlive = live
