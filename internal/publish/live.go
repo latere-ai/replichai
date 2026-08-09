@@ -4,16 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 // IdentityFile records the resolved paper identity in a published repository, so
 // the finalize step reads it from here rather than re-resolving over the slow,
 // rate-limited paper source. It matches the CLI's recorded location.
 const IdentityFile = ".replichai/paper.json"
+
+// FindingsFile is the agent-authored verdict.json (021a) and UnverifiedFile is
+// the agent's own record of what it could not confirm — the right place to say
+// that its findings could not be read, because that is exactly what that file
+// is for.
+const (
+	FindingsFile   = "verdict.json"
+	UnverifiedFile = "UNVERIFIED.md"
+)
 
 // LiveForge is the read+write seam for finalizing a live-mount reproduction: the
 // agent has already committed its own work into the mounted repository, and
@@ -49,6 +60,10 @@ type FinalizeReport struct {
 	TranscriptFiles     int
 	TranscriptEvents    int
 	TranscriptLeaks     []TranscriptLeak
+	// Findings reports whether verdict.json was present and valid (021a).
+	// FindingProblems carries why not, and is what UNVERIFIED.md records.
+	Findings        bool
+	FindingProblems []string
 }
 
 // RecordIdentity writes the resolved paper identity into the repository, so a
@@ -116,7 +131,15 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 		}
 	}
 
+	// The agent's findings are read, validated, and recorded — never enforced.
+	// A run whose verdict.json is missing or malformed still publishes; what
+	// changes is that the manifest says so and UNVERIFIED.md gains the reason.
+	findings, problems := readFindings(ctx, forge, owner, name)
+	rep.Findings = findings
+	rep.FindingProblems = problems
+
 	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), redist)
+	manifest.Findings = &Findings{Present: findings, Problems: problems}
 	committed, err := commitManifestIfChanged(ctx, forge, owner, name, manifest)
 	if err != nil {
 		return rep, err
@@ -134,7 +157,88 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 		rep.TranscriptFiles = len(transcriptFiles)
 		rep.TranscriptEvents = len(events)
 	}
+
+	if !findings {
+		if err := noteUnverified(ctx, forge, owner, name, problems); err != nil {
+			return rep, err
+		}
+	}
 	return rep, nil
+}
+
+// readFindings reads verdict.json from the committed tree and validates it.
+// It reports whether usable findings are present, and if not, why — an absent
+// file, unparseable JSON, or the specific schema problems, each phrased so the
+// reason survives into the manifest and into UNVERIFIED.md unchanged.
+func readFindings(ctx context.Context, forge LiveForge, owner, name string) (bool, []string) {
+	raw, present, err := forge.GetFileContent(ctx, owner, name, FindingsFile)
+	if err != nil {
+		return false, []string{"could not be read: " + err.Error()}
+	}
+	if !present {
+		return false, []string{"the run did not write " + FindingsFile}
+	}
+	problems, err := verdict.Validate(raw)
+	if err != nil {
+		return false, []string{err.Error()}
+	}
+	if len(problems) == 0 {
+		return true, nil
+	}
+	out := make([]string, 0, len(problems))
+	for _, p := range problems {
+		out = append(out, p.String())
+	}
+	return false, out
+}
+
+// noteUnverified appends the reason the findings could not be read to the
+// agent's own UNVERIFIED.md, under a heading that names the system as the
+// author — the file is the agent's, and a system line inside it has to be
+// attributable or it reads as something the agent claimed.
+func noteUnverified(ctx context.Context, forge LiveForge, owner, name string, problems []string) error {
+	existing, _, err := forge.GetFileContent(ctx, owner, name, UnverifiedFile)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", UnverifiedFile, err)
+	}
+	// Re-finalizing must not stack the same note. The previous system section is
+	// removed before the current one is appended, so the file converges rather
+	// than growing a paragraph per finalize.
+	body := strings.TrimRight(withoutFindingsNote(string(existing)), "\n")
+
+	var b strings.Builder
+	if body != "" {
+		b.WriteString(body)
+		b.WriteString("\n\n")
+	}
+	b.WriteString(findingsHeading + "\n\n")
+	b.WriteString("`" + FindingsFile + "` could not be read, so this reproduction's boundary table, hidden decisions, and scorecard exist only as prose in this repository:\n\n")
+	for _, p := range problems {
+		b.WriteString("- " + p + "\n")
+	}
+	next := b.String()
+	if next == string(existing) {
+		return nil // already says exactly this
+	}
+	if err := forge.PutFile(ctx, owner, name, UnverifiedFile,
+		"chore: record that the findings could not be read", []byte(next)); err != nil {
+		return fmt.Errorf("record unverified findings: %w", err)
+	}
+	return nil
+}
+
+// findingsHeading marks the system's own section inside the agent's file. It is
+// attributed because a system line in an agent-authored document otherwise
+// reads as something the agent claimed.
+const findingsHeading = "## Findings not recorded as data (system)"
+
+// withoutFindingsNote drops a previously written system section, which runs to
+// the end of the file — it is always appended last.
+func withoutFindingsNote(s string) string {
+	if i := strings.Index(s, findingsHeading); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // commitManifestIfChanged writes replication.json only when it is new or

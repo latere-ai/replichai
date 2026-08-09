@@ -3,11 +3,13 @@ package publish
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 // fakeLiveForge is an in-memory repository standing in for the github client, so
@@ -186,5 +188,157 @@ func TestRecordAndReadIdentity(t *testing.T) {
 	// An absent identity reads back not-ok, not an error.
 	if _, ok, err := RecordedIdentity(context.Background(), newFakeForge(nil), "o", "n"); ok || err != nil {
 		t.Errorf("absent identity should be ok=false err=nil, got ok=%v err=%v", ok, err)
+	}
+}
+
+// ── findings (021a) ──────────────────────────────────────────────────────────
+
+// goodFindings is a verdict.json that validates, so each test below can break
+// exactly one thing about it.
+func goodFindings(t *testing.T) []byte {
+	t.Helper()
+	v := verdict.Verdict{
+		Schema:     verdict.Schema,
+		Verdict:    verdict.Partial,
+		Summary:    "The classifier retrains and matches within 1.8 pp.",
+		GradedAt:   time.Date(2026, 7, 14, 10, 41, 0, 0, time.UTC),
+		Components: verdict.Components{Verified: 1, Blocked: 1, Total: 2},
+		Boundary: []verdict.Claim{
+			{Claim: "Accuracy 91.4%", Loop: verdict.Inner, Outcome: verdict.Verified, Citation: "§6.1", Evidence: "89.6% retrained"},
+			{Claim: "Latency under 40 ms", Loop: verdict.Inner, Outcome: verdict.Blocked, Citation: "§6.3", Evidence: "needs the authors' tablet"},
+			{Claim: "Preferred by participants", Loop: verdict.Outer, Outcome: verdict.NotScored, Citation: "§7", Evidence: "human study"},
+		},
+		Decisions: []verdict.Decision{{Question: "Window length?", Where: "§4", Assumed: "250 ms", Sensitivity: "±0.4 pp"}},
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal findings: %v", err)
+	}
+	return raw
+}
+
+// A valid verdict.json is recorded on the manifest and leaves UNVERIFIED.md
+// alone — the agent's file is not touched when there is nothing to say.
+func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", FindingsFile})
+	forge.files[FindingsFile] = goodFindings(t)
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if !rep.Findings {
+		t.Fatalf("valid findings reported as unusable: %v", rep.FindingProblems)
+	}
+	var m Manifest
+	if err := json.Unmarshal(forge.files[ManifestFile], &m); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	if m.Findings == nil || !m.Findings.Present || len(m.Findings.Problems) != 0 {
+		t.Fatalf("manifest findings = %+v, want present with no problems", m.Findings)
+	}
+	if _, ok := forge.files[UnverifiedFile]; ok {
+		t.Error("a run with readable findings wrote to UNVERIFIED.md")
+	}
+}
+
+// The load-bearing decision: a missing file is recorded and the run still
+// publishes. The manifest is the system's word and must not depend on the
+// agent's JSON.
+func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
+	forge := newFakeForge([]string{"README.md"})
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("a missing verdict.json aborted the publish: %v", err)
+	}
+	if rep.Findings {
+		t.Fatal("absent findings reported as present")
+	}
+	if !rep.ManifestCommitted {
+		t.Error("the manifest was not committed")
+	}
+	var m Manifest
+	_ = json.Unmarshal(forge.files[ManifestFile], &m)
+	if m.Findings == nil || m.Findings.Present || len(m.Findings.Problems) == 0 {
+		t.Fatalf("manifest findings = %+v, want absent with a reason", m.Findings)
+	}
+	note := string(forge.files[UnverifiedFile])
+	if !strings.Contains(note, FindingsFile) || !strings.Contains(note, "(system)") {
+		t.Errorf("UNVERIFIED.md does not attribute the note to the system: %q", note)
+	}
+}
+
+// An invalid file records the specific schema problems, not "invalid".
+func TestFinalizeLiveInvalidFindingsRecordsTheProblems(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", FindingsFile})
+	var v verdict.Verdict
+	_ = json.Unmarshal(goodFindings(t), &v)
+	v.Boundary[2].Outcome = verdict.Verified // an outer-loop claim, scored
+	raw, _ := json.Marshal(v)
+	forge.files[FindingsFile] = raw
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("invalid findings aborted the publish: %v", err)
+	}
+	if rep.Findings {
+		t.Fatal("an invalid verdict.json was accepted")
+	}
+	joined := strings.Join(rep.FindingProblems, "\n")
+	if !strings.Contains(joined, "boundary[2].outcome") {
+		t.Errorf("problems do not name the offending field: %q", joined)
+	}
+	if !strings.Contains(string(forge.files[UnverifiedFile]), "boundary[2].outcome") {
+		t.Error("UNVERIFIED.md does not carry the specific problem")
+	}
+}
+
+// Prose in the file is a parse failure, not a panic, and is recorded as one.
+func TestFinalizeLiveNonJSONFindings(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", FindingsFile})
+	forge.files[FindingsFile] = []byte("# Reproducibility\n\nPartially reproducible.\n")
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if rep.Findings || len(rep.FindingProblems) == 0 {
+		t.Fatalf("markdown was accepted as findings: %+v", rep)
+	}
+}
+
+// Re-finalizing must converge: the note is rewritten, never stacked.
+func TestFinalizeLiveDoesNotStackTheUnverifiedNote(t *testing.T) {
+	forge := newFakeForge([]string{"README.md"})
+	forge.files[UnverifiedFile] = []byte("# Unverified\n\n- The dataset link 404s.\n")
+
+	run := func() string {
+		if _, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+			testID, "sha256:abcd", provider.GradePassed, nil, fixedNow()); err != nil {
+			t.Fatalf("FinalizeLive: %v", err)
+		}
+		return string(forge.files[UnverifiedFile])
+	}
+	first := run()
+	before := forge.puts
+	second := run()
+
+	if first != second {
+		t.Errorf("re-finalize changed UNVERIFIED.md:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+	if forge.puts != before {
+		t.Errorf("re-finalize rewrote UNVERIFIED.md (%d extra puts)", forge.puts-before)
+	}
+	if strings.Count(second, findingsHeading) != 1 {
+		t.Errorf("the system note appears %d times", strings.Count(second, findingsHeading))
+	}
+	// The agent's own content survives beside it.
+	if !strings.Contains(second, "The dataset link 404s.") {
+		t.Error("appending the note destroyed the agent's own UNVERIFIED.md content")
 	}
 }

@@ -17,6 +17,11 @@ import (
 )
 
 // SchemaVersion is the manifest schema this package writes and 003 reads.
+//
+// It stayed at 1 when Findings was added (021a). The field is optional and
+// additive, no reader gates on the number, and 002 pins this shape — bumping it
+// would have rewritten every published manifest on its next finalize to signal
+// a change no reader could act on.
 const SchemaVersion = 1
 
 // Manifest is replication.json — the record every published repository carries
@@ -27,6 +32,20 @@ type Manifest struct {
 	Paper          ManifestPaper  `json:"paper"`
 	Reproduction   Reproduction   `json:"reproduction"`
 	Redistribution Redistribution `json:"redistribution"`
+	Findings       *Findings      `json:"findings,omitempty"`
+}
+
+// Findings records what the system made of the agent's verdict.json (021a). It
+// is deliberately a record and not a gate: the findings are the agent's claim,
+// the transcript is the evidence, and the manifest is the system's word. Making
+// the system's word depend on the agent's JSON parsing would invert all three,
+// so a missing or invalid file is written down here and the run still publishes.
+//
+// A nil Findings means the manifest predates 021a, which is not the same as a
+// run that had no findings — that one carries Present: false and a reason.
+type Findings struct {
+	Present  bool     `json:"present"`
+	Problems []string `json:"problems,omitempty"` // why it could not be read, when it could not
 }
 
 // ManifestPaper is the paper's identity, straight from paper.Identity (001).

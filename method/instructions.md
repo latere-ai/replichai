@@ -22,7 +22,8 @@ Your value is in placing that boundary precisely and defending it. A component b
 5. **Implement the inner loop.** Write real code in `src/`. Install what you need with pip. Run it at least once — a smoke test on synthetic or small public data is enough when the paper's own data is unavailable. Record the exact command and its real output.
 6. **Score open science.** Code, data, license, preregistration, supplementary artifacts — each with a verified URL or an explicit "none found, searched X, Y, Z".
 7. **Write the verdict.** Lead with a per-component reproduction table — each inner-loop component marked *reproduced*, *partial*, or *blocked*, with the evidence or the specific blocker. That table is the result, because how many components an inner loop has is itself a judgment, and the same paper honestly slices into different counts. If you also give an overall rate, derive it from the table and say plainly that it depends on your decomposition; never present it as a number comparable to other papers or other runs.
-8. **Declare the instrument.** Write `instrument.json` — the machine-readable form of what your reports already say in prose. It is what lets the analysis you wrote be re-run on new data later. Its schema and rules are below.
+8. **Record the findings as data.** Write `verdict.json` — the same boundary table, hidden decisions, and open-science scorecard your reports state in prose, in machine-readable form, so a reader gets the finding rather than a file to go and read. Its schema and rules are below.
+9. **Declare the instrument.** Write `instrument.json` — the machine-readable form of what your reports already say in prose. It is what lets the analysis you wrote be re-run on new data later. Its schema and rules are below.
 
 ## Output — write a repo to {{OUTPUT_DIR}}
 
@@ -33,7 +34,34 @@ Your value is in placing that boundary precisely and defending it. A component b
 | `src/` | Your best-effort inner-loop implementation, runnable |
 | `UNVERIFIED.md` | Everything you could not confirm, each with its specific blocker |
 | `SOURCES.md` | The paper's identity (title, authors, venue, DOI) and every artifact search you performed, with its result |
+| `verdict.json` | The verdict, the boundary table, the hidden decisions, the open-science scorecard, and what the authors released — the same content as `REPRODUCIBILITY.md` and `SOURCES.md`, as data. See below |
 | `instrument.json` | The declared study protocol, the analysis entrypoint contract, and the servability assessment — see below |
+
+## The findings — `verdict.json`
+
+Everything below is content you have already written in `REPRODUCIBILITY.md` and `SOURCES.md`. This file is the same content as data, so it can be read without a human opening a markdown file. If the two ever disagree, the markdown is wrong: fix it.
+
+```json
+{
+  "schema": 1,
+  "verdict": "partial",
+  "summary": "One paragraph: what reproduced, what did not, and what the outer loop means here.",
+  "graded_at": "2026-07-14T10:41:00Z",
+  "components": { "verified": 8, "partial": 2, "blocked": 3, "total": 13 },
+  "boundary":  [ ... ],
+  "decisions": [ ... ],
+  "scorecard": [ ... ],
+  "released":  [ ... ]
+}
+```
+
+- **`verdict`** — `reproducible`, `partial`, or `not_reproducible`. About the inner loop, always.
+- **`components`** — the counts your per-component table produces. `verified + partial + blocked` must equal `total`, and `total` must equal the number of **inner**-loop rows in `boundary`. These travel with any rate you give, so the decomposition it summarises is never out of sight.
+- **`boundary`** — one row per component, `{ "claim", "loop", "outcome", "evidence", "citation" }`. `loop` is `inner` or `outer`. `outcome` is `verified`, `partial`, or `blocked` for an inner-loop claim, and **always** `not_scored` for an outer-loop one — you never score the study with human participants, and a file that does is rejected. `evidence` is the evidence or the specific blocker. `citation` is the section, figure, or table, on the same terms as criterion 6.
+- **A mismatch is not an outcome.** When your observation disagrees with the paper, add `"mismatch": { "kind", "reported", "observed", "delta" }` to that row — *including on a row you marked verified*. `kind` is `numeric` (a number differs), `ordering` (a ranking or direction differs), `contradiction` (the paper disagrees with itself), or `typo` (a plain error in the paper). Reproducing 89.6% against a reported 91.4% is verified **and** a numeric mismatch of −1.8 pp. Recording only the outcome would hide the one thing an author most needs to know.
+- **`decisions`** — one per hidden decision, `{ "question", "where", "assumed", "sensitivity" }`. All four are required; an assumption with no stated sensitivity is a risk you took and did not report.
+- **`scorecard`** — exactly one row for each of `code`, `data`, `license`, `preregistration`, `supplement`: `{ "criterion", "found", "url", "searched" }`. When `found` is true, `url` is the address you actually fetched. When it is false, `searched` lists the places you looked.
+- **`released`** — one row per place you searched for the **authors'** artifacts: `{ "where", "what", "result", "url" }`. `result` is `found`, `partial`, `none` (nothing was ever published there), or `dead` (something was published and no longer resolves). Those last two are different findings and must not be collapsed — a dead link is something the authors can still fix.
 
 ## The instrument — `instrument.json`
 
