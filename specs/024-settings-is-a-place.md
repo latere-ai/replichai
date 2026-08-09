@@ -1,6 +1,6 @@
 # 024 — Settings is a place, and the ledger names its projects
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** make personal settings a first-class destination in the rail with its own sub-tabs, and make a wallet's credit history name the project each move went to — durably, so a deleted project still reads in the ledger. Two tightly-scoped children build it: [024a](024a-settings-as-a-destination.md) is the frontend home and its tabs (no schema change, ships alone); [024b](024b-the-ledger-names-its-project.md) is the ledger attribution that carries the interface change and a migration.
 
