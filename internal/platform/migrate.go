@@ -100,6 +100,16 @@ ALTER TABLE platform_settings ADD COLUMN rate_card JSONB NOT NULL DEFAULT '%s'::
 -- cannot begin anything until it is topped up.
 ALTER TABLE platform_settings ADD COLUMN overdraft_cap BIGINT NOT NULL DEFAULT %d;
 `, DefaultOverdraftCap)},
+	{6, fmt.Sprintf(`
+-- The purchase spread and the minimum top-up (022b). The spread is where the
+-- platform takes its margin — at the till, so the rate card stays raw and a
+-- session's cost still reconciles against vendor rates. Percentage plus a fixed
+-- cut, mirroring a card processor's own fee, so a small top-up still covers its
+-- cost. Seeded with sensible defaults an admin then tunes.
+ALTER TABLE platform_settings ADD COLUMN spread_bps BIGINT NOT NULL DEFAULT %d;
+ALTER TABLE platform_settings ADD COLUMN spread_fixed_micro BIGINT NOT NULL DEFAULT %d;
+ALTER TABLE platform_settings ADD COLUMN min_topup_micro BIGINT NOT NULL DEFAULT %d;
+`, DefaultSpreadBps, DefaultSpreadFixedMicro, DefaultMinTopupMicro)},
 }
 
 // defaultCardJSON renders the seeded price list for the migration. It is
