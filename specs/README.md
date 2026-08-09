@@ -179,9 +179,11 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 021e | [The project rail](021e-the-project-rail.md) | built | 021a, 021d, 018, 006n, 011 |
 | 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | designed | 011, 006c, 006k, 010 |
 | 022a | [The idempotent paid top-up](022a-the-idempotent-paid-topup.md) | built | 011 |
-| 022b | [Checkout, the webhook, and the top-up modal](022b-checkout-and-the-top-up-modal.md) | validated | 022a |
+| 022b | [Checkout and the webhook](022b-checkout-and-the-webhook.md) | validated | 022a |
 | 022c | [Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) | validated | 022b |
-| 022d | [A negative wallet is frozen](022d-a-negative-wallet-is-frozen.md) | validated | 022c |
+| 022d | [The freeze, server-side](022d-a-negative-wallet-is-frozen.md) | validated | 022c |
+| 022e | [Buying credits](022e-buying-credits.md) | validated | 022b |
+| 022f | [The frozen account, in the UI](022f-the-frozen-account-in-the-ui.md) | validated | 022c, 022d, 022e |
 | 023 | [The outer loop, as a product](023-the-outer-loop-as-a-product.md) | draft | 007b, 007c, 006b, 015 |
 | 023a | [Experiments persisted and dispatched](023a-experiments-persisted-and-dispatched.md) | draft | 007b, 007c, 006b, 015 |
 | 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
