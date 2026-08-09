@@ -230,6 +230,13 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	// added without the tier guard fails 006k AC1 rather than shipping open.
 	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps)))
 
+	// The freeze gate sits inside the auth middleware (identity is already on the
+	// request) and outside the mux, so every mutating request from a
+	// negative-wallet account is refused before any handler runs (022d). Adding
+	// /login and /logout to mux below still works: the gate holds the mux by
+	// reference and dispatches at request time.
+	guarded := webauth.FreezeGate(credits, acc)(mux)
+
 	if dev {
 		// The dev bypass has no login moment, so the bind sign-in performs runs
 		// once at startup for the synthetic principal instead.
@@ -245,7 +252,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 		mux.HandleFunc("GET /logout", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, baseURL+"/", http.StatusFound)
 		})
-		return webauth.DevMiddleware(devSub, devEmail)(mux), nil
+		return webauth.DevMiddleware(devSub, devEmail)(guarded), nil
 	}
 
 	login, err := buildLogin(ctx, acc, baseURL)
@@ -256,7 +263,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	mux.HandleFunc("GET /login", login.HandleLogin)
 	mux.HandleFunc("GET /callback", login.HandleCallback)
 	mux.HandleFunc("GET /logout", login.HandleLogout)
-	return login.Middleware(mux), nil
+	return login.Middleware(guarded), nil
 }
 
 // buildLogin constructs the OIDC login from the AUTH_* environment. A missing
@@ -301,6 +308,7 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 // the in-memory and Postgres implementations.
 type accessStore interface {
 	access.Access
+	access.FreezeOverrides
 	SeedGrant(ctx context.Context, email string, tier access.Tier) error
 }
 
