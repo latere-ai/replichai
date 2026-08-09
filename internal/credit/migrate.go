@@ -57,6 +57,18 @@ CREATE INDEX credit_entries_job ON credit_entries (job_id) WHERE job_id IS NOT N
 ALTER TABLE credit_entries ADD COLUMN project_id TEXT;
 ALTER TABLE credit_entries ADD COLUMN project_name TEXT;
 `},
+	{3, `
+-- A payment provider's reference for an entry money entered or left through:
+-- the Stripe payment_intent on a purchased top-up, the refund or dispute id on
+-- a clawed-back one (022a). It is how a retried webhook is deduped — the insert
+-- itself refuses a second row for the same reference, so a balance that is a
+-- fold cannot double. Null on every internally-moved entry (allocate, hold,
+-- charge…): the partial index ignores them, so the uniqueness binds only where
+-- an outside system's id is the idempotency key. The same shape as the
+-- exactly-once charge index above.
+ALTER TABLE credit_entries ADD COLUMN external_ref TEXT;
+CREATE UNIQUE INDEX credit_entries_external_ref ON credit_entries (external_ref) WHERE external_ref IS NOT NULL;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

@@ -3,6 +3,7 @@ package credit
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,6 +94,62 @@ func (s *MemStore) Topup(ctx context.Context, byAdmin access.Principal, email st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.append(Entry{Holder: Wallet(email), Amount: amount, Kind: KindTopup, Actor: byAdmin.Email})
+}
+
+// TopupPaid posts a purchased credit into a wallet, idempotent on ref. No
+// principal: authority came from a verified webhook signature, upstream.
+func (s *MemStore) TopupPaid(_ context.Context, email string, credited int64, ref, actor string) error {
+	if err := checkPaid(email, credited, ref); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hasRef(ref) {
+		return nil
+	}
+	return s.append(Entry{Holder: Wallet(email), Amount: credited, Kind: KindTopup, Actor: actor, ExternalRef: ref})
+}
+
+// RefundPaid reverses a purchase with a negative adjust, idempotent on ref. The
+// wallet may go negative — the debt a clawed-back purchase leaves.
+func (s *MemStore) RefundPaid(_ context.Context, email string, amount int64, ref, actor string) error {
+	if err := checkPaid(email, amount, ref); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hasRef(ref) {
+		return nil
+	}
+	return s.append(Entry{Holder: Wallet(email), Amount: -amount, Kind: KindAdjust, Actor: actor, ExternalRef: ref})
+}
+
+// hasRef reports whether an entry with this external reference already exists.
+// The caller holds the lock. It is the mem store's idempotency, mirroring the
+// partial unique index the Postgres one leans on.
+func (s *MemStore) hasRef(ref string) bool {
+	for _, e := range s.entries {
+		if e.ExternalRef == ref {
+			return true
+		}
+	}
+	return false
+}
+
+// EntryByExternalRef finds the entry carrying ref. The reference is unique, so
+// there is at most one.
+func (s *MemStore) EntryByExternalRef(_ context.Context, ref string) (Entry, bool, error) {
+	if strings.TrimSpace(ref) == "" {
+		return Entry{}, false, ErrNoRef
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.entries {
+		if e.ExternalRef == ref {
+			return e, true, nil
+		}
+	}
+	return Entry{}, false, nil
 }
 
 // Allocate moves credits from the caller's wallet into a project's pot.
