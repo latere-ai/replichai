@@ -58,7 +58,6 @@ const strings: Record<Lang, Record<string, string>> = {
     navSettings: 'Settings',
     settingsAccount: 'Account',
     settingsProfile: 'Profile',
-    settingsCredits: 'Credits',
     access: 'Access',
     loading: 'Loading…',
     // platform admin (006k)
@@ -103,6 +102,7 @@ const strings: Record<Lang, Record<string, string>> = {
     // buying credits (022e)
     navWallet: 'Wallet',
     walletHeading: 'Your wallet',
+    walletDesc: 'Credits you buy and spend. A session draws on the project you allocate to, not on the wallet directly.',
     topUp: 'Top up',
     topUpTitle: 'Top up your wallet',
     topUpBody: 'How much credit to buy, in US dollars (minimum {min}). You pay by card; EU customers are shown the amount in euros at checkout.',

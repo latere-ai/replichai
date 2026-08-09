@@ -12,7 +12,6 @@ const table: [string, View][] = [
   ['/wallet', { name: 'wallet' }],
   ['/settings', { name: 'settings' }],
   ['/settings/profile', { name: 'settings', tab: 'profile' }],
-  ['/settings/credits', { name: 'settings', tab: 'credits' }],
   ['/console', { name: 'admin' }],
   ['/u/ada-lovelace', { name: 'profile', handle: 'ada-lovelace' }],
   ['/p/4fbff44c3323f724ea8c9ed5d5ecdbca', { name: 'project', id: '4fbff44c3323f724ea8c9ed5d5ecdbca' }],
