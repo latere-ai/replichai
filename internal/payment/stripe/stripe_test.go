@@ -77,6 +77,26 @@ func TestParseWebhookIgnoresAnUnpaidOrOtherEvent(t *testing.T) {
 	}
 }
 
+// A refund and a dispute reduce to events carrying the original purchase's
+// payment_intent (to find what to reverse) and their own id (the reversal's
+// idempotency key), so 022c can claw the credit back exactly once.
+func TestParseWebhookReducesRefundsAndDisputes(t *testing.T) {
+	a := &Adapter{webhookSecret: "whsec_test", configured: true}
+
+	refund := []byte(`{"type":"charge.refunded","data":{"object":{` +
+		`"id":"ch_1","payment_intent":"pi_1","refunds":{"data":[{"id":"re_1"}]}}}}`)
+	if e, err := a.ParseWebhook(refund, sign(refund, "whsec_test", time.Now().Unix())); err != nil ||
+		e.Kind != payment.EventChargeRefunded || e.PaymentIntent != "pi_1" || e.RefundID != "re_1" {
+		t.Fatalf("refund reduced to %+v, %v; want the pi and refund id", e, err)
+	}
+
+	dispute := []byte(`{"type":"charge.dispute.created","data":{"object":{"id":"dp_1","payment_intent":"pi_1"}}}`)
+	if e, err := a.ParseWebhook(dispute, sign(dispute, "whsec_test", time.Now().Unix())); err != nil ||
+		e.Kind != payment.EventDisputeCreated || e.PaymentIntent != "pi_1" || e.RefundID != "dp_1" {
+		t.Fatalf("dispute reduced to %+v, %v; want the pi and dispute id", e, err)
+	}
+}
+
 func TestUnconfiguredAdapterRefuses(t *testing.T) {
 	a := &Adapter{} // no keys
 	if _, err := a.CreateCheckout(context.Background(), payment.CheckoutParams{AmountMinor: 2000}); !errors.Is(err, payment.ErrUnconfigured) {
