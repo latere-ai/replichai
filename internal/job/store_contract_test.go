@@ -379,7 +379,10 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
-	runProjectJoinContract(t, NewPGStore(pool))
+	// Priced like the in-memory side: the join contract ends in the spend
+	// window, which asserts that usage reaches the project total. A store with
+	// no card prices every session at 0 and the assertion could never hold.
+	runProjectJoinContract(t, NewPGStore(pool, WithPGRates(fixedCard(testCard))))
 	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
