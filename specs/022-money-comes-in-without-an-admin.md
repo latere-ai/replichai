@@ -81,7 +81,7 @@ sequenceDiagram
     end
 ```
 
-The `par` block is the point: the redirect and the webhook race, in either order, and only the lower branch credits the wallet. If the redirect wins, the re-read simply shows the old balance until the webhook lands.
+The `par` block is the point: the redirect and the webhook race, in either order, and only the lower branch credits the wallet. If the redirect wins, the re-read simply shows the old balance until the webhook lands — so the return page **polls `/me/credits` briefly** (a few reads over a few seconds) and the new balance appears on its own the moment the webhook posts, falling back to a "payment received — your credits will appear shortly" line if the poll window closes first. This is perceived latency only; correctness never depends on the redirect.
 
 `POST /webhooks/stripe` **mounts outside the tier guard** (006c): Stripe is not a signed-in principal and carries no `TierUser`. Its authentication is the signature, not the session cookie. This is the one route in the app whose caller is a machine, and getting it out from under `RequireTier` is a deliberate seam, not an oversight — stated here so a later refactor that "tidies up" by moving all routes under one guard does not silently start rejecting every payment.
 
@@ -135,10 +135,10 @@ The `actor` field then does real work in the wallet statement 011 built: a grant
 
 **The spread lives at the till, not in the rate card.** 011's rate card is raw vendor pricing, and its own text leans on that: an unknown model is charged *"at the highest rate the card holds,"* and a session's cost is meant to reconcile against Anthropic's published rates. Baking a margin multiplier into that card would quietly break the reconciliation — every session would cost more than the vendor charges, for a reason invisible on the session. So the margin is a purchase spread instead: **you pay $20 and your wallet gains $18** (or whatever the spread resolves to). The rate card stays honest, the session cost still matches the vendor, and the place the platform takes its cut is the one place a customer expects one — the moment of sale.
 
-The spread is a platform-settings number beside the rate card (006k), in basis points, admin-editable like everything else there:
+The spread is a platform-settings pair beside the rate card (006k), admin-editable like everything else there: a **percentage plus a fixed per-purchase amount** — `spread_bps` and `spread_fixed_micro` — shaped to mirror Stripe's own `2.9% + $0.30`, so a $5 top-up and a $500 top-up each cover the real cost of taking them. A percentage alone under-covers the fixed per-charge fee at the low end, which is the whole reason the fixed term exists:
 
 ```
-credited_micro = paid_micro − round(paid_micro × spread_bps / 10_000)
+credited_micro = paid_micro − round(paid_micro × spread_bps / 10_000) − spread_fixed_micro
 paid_micro     = amount_cents × 10_000            # cents → micro-USD, exact
 ```
 
@@ -147,7 +147,7 @@ Two rules make it trustworthy:
 - **The credited amount is shown before the charge.** The modal states *"$18.00 in credits for $20.00"* using a public spread, so nobody is surprised at the statement. `GET /me/credits` (or a small quote endpoint) exposes the spread so the client can compute it without a round-trip per keystroke.
 - **The spread is snapshotted onto the Checkout session at create time**, in its metadata, exactly as 011 snapshots the rate card onto the job at enqueue and for the same reason: an admin editing the spread while a payment is in flight must not change what a paid session credits. The webhook reads the snapshotted spread from the session metadata, not the live settings row.
 
-Fixed packs versus a free-entry amount is a UI choice left to the breakdown; the spread math is identical either way. A minimum purchase (a spread on $1 is dwarfed by Stripe's fixed `$0.30`) is an open question below.
+**Purchasing is free-entry above a floor.** A person types any amount at or above a **minimum** (a platform-settings number, e.g. $5), rather than choosing from fixed packs — the floor is what keeps Stripe's fixed `$0.30` from dwarfing a $1 top-up, and it lives beside the spread so an operator tunes both together. The floor is public, so the modal can refuse a too-small amount before it ever reaches Stripe.
 
 ### A refund is a correcting entry, and a wallet may go negative
 
@@ -193,12 +193,18 @@ Three secrets, injected like every other (010): `STRIPE_SECRET_KEY`, `STRIPE_WEB
 - **Per-cell rate-card or spread editors.** Both are typed values on the settings row 006k/011 already render; a wrong cell mis-prices until noticed, which is the same accepted risk 011 states.
 - **Currency other than USD.** The ledger holds micro-USD and no notion of conversion (011); Checkout charges USD.
 
-## Open questions (for the breakdown to close)
+## Settled (were open; decided before the breakdown)
 
-1. **Minimum purchase.** Stripe's fixed `$0.30` per charge makes tiny top-ups a loss even before the percentage. A floor (e.g. $5 minimum) or pack-only purchasing closes it. Decide floor vs. free-entry.
-2. **Spread shape.** Percentage-only, or percentage plus a fixed per-purchase amount that mirrors Stripe's own `2.9% + $0.30`? The latter tracks cost more honestly at small amounts; the former is simpler to display.
-3. **Idempotency key: payment_intent vs. checkout_session id.** Both are stable; the payment_intent survives a session that is retried, the checkout_session is what the webhook names first. Pick one and state why.
-4. **Return-page freshness.** The webhook may lag the redirect. Does the return page poll the wallet briefly, or just show "processing — your credits will appear shortly"? Affects perceived latency, not correctness.
+Every decision in this spec is chosen, not deferred. The four that were briefly open are recorded here with the choice and the reason, so the breakdown inherits them rather than re-litigating them:
+
+1. **Vendor coupling — no.** A payment credits only the wallet; the Anthropic account is funded by its own console auto-reload, and the solvency read is how an operator knows when. A customer payment never funds the vendor directly (it would put Stripe in the serving path, and there is no vendor API for it). This is the non-goal above.
+2. **Idempotency key — `payment_intent`.** It is the canonical "this money moved" id and survives a retried payment on one Checkout session, so one purchase maps to exactly one credit. The checkout_session id is only used to correlate the create call with its return.
+3. **Ledger seam — a new `TopupPaid` method**, not a widened `Topup`. It keeps `ErrNotAdmin` meaning what it says and records `actor = stripe:pi_…` so the statement tells a purchase from a grant.
+4. **Refund — a negative `KindAdjust`, wallet may go negative.** No claw-back from pots (011's pot is fungible), no collections engine; the negative balance records the debt and cannot allocate.
+5. **Unconfigured — no-op that refuses.** No Stripe keys ⇒ the app still boots and runs unmetered, admin top-up still works, and only the checkout route returns "payments not configured".
+6. **Minimum purchase — free-entry above a public floor** (e.g. $5), not fixed packs, so the fixed fee cannot dominate a tiny top-up.
+7. **Spread — percentage plus a fixed term** (`2.9% + $0.30`-shaped), so small and large purchases each cover their real cost.
+8. **Return page — poll `/me/credits` briefly**, falling back to a "credits will appear shortly" line; perceived latency only.
 
 ## Suggested breakdown
 
