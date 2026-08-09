@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { ApiError, type CreatedProject } from './api'
-import { addPaperErrLabel, createOutcome, generic, refusal, removePaperErrLabel, sessionFailureText, startErrLabel } from './errors'
+import { addPaperErrLabel, checkoutErrLabel, createOutcome, generic, refusal, removePaperErrLabel, sessionFailureText, startErrLabel } from './errors'
 import { MICRO } from './money'
 
 // The helpers take a translate function, so asserting the key is what matters
@@ -56,9 +56,18 @@ test('a refused start names the one thing that went wrong', () => {
   expect(startErrLabel(t, new ApiError(409, 'active_session'), funded)).toBe('activeSession')
   expect(startErrLabel(t, new ApiError(402, 'no_credits'), funded)).toBe('errNoCredits')
   expect(startErrLabel(t, new ApiError(402, 'no_credits'), wallet)).toBe('errNoCreditsAtAll')
+  // A frozen account is a distinct refusal from an empty one — different remedy.
+  expect(startErrLabel(t, new ApiError(402, 'account_frozen'), funded)).toBe('errFrozen')
   expect(startErrLabel(t, new ApiError(404, 'paper_not_found'), funded)).toBe('errPaperGone')
   expect(startErrLabel(t, new ApiError(500, ''), funded)).toBe('startFailed')
   expect(startErrLabel(t, new TypeError('Failed to fetch'), funded)).toBe('errOffline')
+})
+
+test('a refused top-up names why', () => {
+  expect(checkoutErrLabel(t, new ApiError(501, 'payments_unconfigured'))).toBe('errPaymentsOff')
+  expect(checkoutErrLabel(t, new ApiError(400, 'below_min'))).toBe('errBelowMin')
+  expect(checkoutErrLabel(t, new ApiError(502, 'checkout_failed'))).toBe('checkoutFailed')
+  expect(checkoutErrLabel(t, new TypeError('Failed to fetch'))).toBe('errOffline')
 })
 
 // Adding a paper costs nothing, so none of its refusals are about money.
