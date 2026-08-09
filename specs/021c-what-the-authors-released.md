@@ -1,6 +1,6 @@
 # 021c — What the authors released
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `ReleasedByAuthors` renders above the file browser, `none` and `dead` are toned apart and asserted to be, the scorecard renders all five criteria with the fetched URL or the places searched, and a session without findings renders the browser alone. Covered by `frontend/test/findings.test.mjs` alongside 021b, since both panes read one file and a single mocked session exercises both.
 
 **Scope:** the session's Artifacts pane gains a section above the file browser: every place the run searched for the authors' own artifacts, what it found, and the result. Reads [021a](021a-the-findings-as-data.md)'s `Released` and `Scorecard`.
 
