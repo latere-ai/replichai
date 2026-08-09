@@ -288,20 +288,26 @@ Every decision in this spec is chosen, not deferred. The four that were briefly 
 
 ## Task Breakdown
 
-Four implementation-ready leaves. They stack — each builds on the last — so the order is the dependency order, and 022a (the money-safety core, offline) lands first and alone because it is the highest-risk piece.
+Six implementation-ready leaves, split along one seam: a **backend chain** that carries the money (022a→022d), and two **frontend** leaves over it. The backend is sequential — each consumes the one before — and lands first because it is where the risk and the tests live; the frontend mirrors a server-side guarantee it does not depend on.
 
 | Child spec | Depends on | Effort | Status |
 |---|---|---|---|
-| [022a — The idempotent paid top-up](022a-the-idempotent-paid-topup.md) — migration v3 (`external_ref` + partial unique index), `TopupPaid`/`RefundPaid` idempotent on ref, `EntryByExternalRef`, the payment port + mem adapter. No Stripe, no HTTP. | 011 | medium | validated |
-| [022b — Checkout, the webhook, and the modal](022b-checkout-and-the-top-up-modal.md) — the Stripe adapter, `POST /me/credits/checkout` (usd/eur), the signed `POST /stripe/webhook` (`openHandle`), the spread snapshot, EUR→USD from the balance transaction, the top-up modal + `/wallet` poll. | 022a | large | validated |
-| [022c — Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) — `charge.refunded`/dispute → negative `adjust` reversing the credited USD, and `Σ wallets + Σ pots` on the console. | 022b | small | validated |
-| [022d — A negative wallet is frozen](022d-a-negative-wallet-is-frozen.md) — the override store, `FreezeGate`, thaw-by-arithmetic, the one-shot admin override + freeze-list, the freeze email, the banner + disabled controls. | 022c | large | validated |
+| [022a — The idempotent paid top-up](022a-the-idempotent-paid-topup.md) — migration v3 (`external_ref` + partial unique index), `TopupPaid`/`RefundPaid` idempotent on ref, `EntryByExternalRef`, the payment port + mem adapter. | 011 | medium | **built** |
+| [022b — Checkout and the webhook](022b-checkout-and-the-webhook.md) — the Stripe adapter, `POST /me/credits/checkout` (usd/eur), the signed `POST /stripe/webhook`, the spread snapshot, EUR→USD from the balance transaction, the quote fields. Backend. | 022a | medium | validated |
+| [022c — Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) — `charge.refunded`/dispute → negative `adjust` reversing the credited USD, and the `Σ wallets + Σ pots` read. Backend. | 022b | small | validated |
+| [022d — The freeze, server-side](022d-a-negative-wallet-is-frozen.md) — the override store, `FreezeGate`, thaw-by-arithmetic, the one-shot admin unfreeze + freeze-list, the freeze email, `frozen` on `GET /me`. Backend. | 022c | medium | validated |
+| [022e — Buying credits](022e-buying-credits.md) — the `TopUpModal`, `startCheckout`, the 402 *Top up* trigger, the `/wallet` route + post-checkout poll. Frontend. | 022b | medium | validated |
+| [022f — The frozen account, in the UI](022f-the-frozen-account-in-the-ui.md) — the frozen banner + disabled controls, and the console's freeze state, negative filter, unfreeze button, and solvency figure. Frontend. | 022c, 022d, 022e | medium | validated |
 
 ```mermaid
 graph LR
-  A[022a idempotent paid top-up] --> B[022b checkout + webhook + modal]
+  A[022a paid top-up] --> B[022b checkout + webhook]
   B --> C[022c refunds + solvency]
-  C --> D[022d account freeze]
+  C --> D[022d freeze, server-side]
+  B --> E[022e buying credits · UI]
+  C --> F[022f frozen account · UI]
+  D --> F
+  E --> F
 ```
 
-**Order:** strictly sequential — 022a → 022b → 022c → 022d. There is little to parallelise because each leaf consumes the one before (the webhook 022b builds is what 022c extends; the negative wallet 022c produces is what 022d freezes on). Start 022a now; 011 is complete.
+**Order:** build the backend chain in order — 022a (done) → 022b → 022c → 022d. **022e can start as soon as 022b lands** (it needs only the checkout route), in parallel with 022c/022d. **022f is last**, gathering the freeze state (022d), the solvency read (022c), and 022e's modal into the UI.
