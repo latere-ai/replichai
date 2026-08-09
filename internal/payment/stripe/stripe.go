@@ -22,8 +22,17 @@ import (
 // that does not sell credits still boots and runs unmetered.
 type Adapter struct {
 	webhookSecret string
+	taxCode       string
 	configured    bool
 }
+
+// defaultTaxCode labels a top-up as a general electronically-supplied service.
+// Stripe requires a product tax code when Managed Payments is on (the default on
+// new accounts); this satisfies that. It does NOT enable tax *calculation* —
+// that is a separate automatic_tax flag we do not set (VAT is deferred to its
+// own spec). Overridable with STRIPE_TAX_CODE once an accountant picks the exact
+// code for the jurisdiction.
+const defaultTaxCode = "txcd_10000000"
 
 var _ payment.Provider = (*Adapter)(nil)
 
@@ -40,7 +49,11 @@ func New() *Adapter {
 	// The app talks to one Stripe account, so the process-global key is the
 	// account key. Set once, at construction.
 	stripe.Key = secret
-	return &Adapter{webhookSecret: whsec, configured: true}
+	taxCode := os.Getenv("STRIPE_TAX_CODE")
+	if taxCode == "" {
+		taxCode = defaultTaxCode
+	}
+	return &Adapter{webhookSecret: whsec, taxCode: taxCode, configured: true}
 }
 
 // CreateCheckout opens a hosted Checkout Session in USD for the amount the
@@ -59,7 +72,8 @@ func (a *Adapter) CreateCheckout(_ context.Context, p payment.CheckoutParams) (s
 				Currency:   stripe.String(string(stripe.CurrencyUSD)),
 				UnitAmount: stripe.Int64(p.AmountMinor),
 				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-					Name: stripe.String("replichai credits"),
+					Name:    stripe.String("replichai credits"),
+					TaxCode: stripe.String(a.taxCode),
 				},
 			},
 			Quantity: stripe.Int64(1),
