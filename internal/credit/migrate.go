@@ -48,6 +48,15 @@ CREATE UNIQUE INDEX credit_entries_one_charge ON credit_entries (job_id) WHERE k
 -- Settlement finds a session's open hold by its job; so does the watchdog.
 CREATE INDEX credit_entries_job ON credit_entries (job_id) WHERE job_id IS NOT NULL;
 `},
+	{2, `
+-- The project an allocate or reclaim moved credits to or from, and a snapshot
+-- of its name at that moment (024b). Additive over live rows: both nullable, so
+-- every entry written before this reads as having no project and falls back to
+-- the generic label. No foreign key — the ledger outlives the project, which is
+-- the whole point of snapshotting the name rather than joining for it.
+ALTER TABLE credit_entries ADD COLUMN project_id TEXT;
+ALTER TABLE credit_entries ADD COLUMN project_name TEXT;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

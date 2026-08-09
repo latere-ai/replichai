@@ -82,14 +82,14 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// Any member may fund a project; a stranger may not.
-	if err := s.Allocate(ctx, outlaw, "p1", 1*Dollar); !errors.Is(err, ErrNotMember) {
+	if err := s.Allocate(ctx, outlaw, "p1", "Project One", 1*Dollar); !errors.Is(err, ErrNotMember) {
 		t.Fatalf("stranger allocating: want ErrNotMember, got %v", err)
 	}
 	// Nor may a member spend money they do not have.
-	if err := s.Allocate(ctx, mate, "p1", 1*Dollar); !errors.Is(err, ErrInsufficient) {
+	if err := s.Allocate(ctx, mate, "p1", "Project One", 1*Dollar); !errors.Is(err, ErrInsufficient) {
 		t.Fatalf("allocating an empty wallet: want ErrInsufficient, got %v", err)
 	}
-	if err := s.Allocate(ctx, lead, "p1", 4*Dollar); err != nil {
+	if err := s.Allocate(ctx, lead, "p1", "Project One", 4*Dollar); err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
 	// Both sides moved, and neither invented money.
@@ -106,14 +106,14 @@ func runStoreContract(t *testing.T, s Store) {
 	if err := s.Topup(ctx, admin, mate.Email, 2*Dollar); err != nil {
 		t.Fatalf("Topup mate: %v", err)
 	}
-	if err := s.Allocate(ctx, mate, "p1", 2*Dollar); err != nil {
+	if err := s.Allocate(ctx, mate, "p1", "Project One", 2*Dollar); err != nil {
 		t.Fatalf("collaborator Allocate: %v", err)
 	}
-	if err := s.Reclaim(ctx, mate, "p1", 1*Dollar); !errors.Is(err, ErrNotLead) {
+	if err := s.Reclaim(ctx, mate, "p1", "Project One", 1*Dollar); !errors.Is(err, ErrNotLead) {
 		t.Fatalf("collaborator reclaiming: want ErrNotLead, got %v", err)
 	}
 	// And a lead may reclaim what somebody else funded — the model as decided.
-	if err := s.Reclaim(ctx, lead, "p1", 6*Dollar); err != nil {
+	if err := s.Reclaim(ctx, lead, "p1", "Project One", 6*Dollar); err != nil {
 		t.Fatalf("Reclaim: %v", err)
 	}
 	if n, _ := s.Balance(ctx, Pot("p1")); n != 0 {
@@ -124,17 +124,17 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 	// Overdrawing a pot is refused, not allowed to go negative: only a session
 	// that has already run may take a pot below zero.
-	if err := s.Reclaim(ctx, lead, "p1", 1*Micro); !errors.Is(err, ErrInsufficient) {
+	if err := s.Reclaim(ctx, lead, "p1", "Project One", 1*Micro); !errors.Is(err, ErrInsufficient) {
 		t.Fatalf("reclaiming an empty pot: want ErrInsufficient, got %v", err)
 	}
 
 	// Fund is the create path's move: no membership, because the server has just
 	// made this project for this caller and has not written a membership row it
 	// would then have to read back. It still cannot conjure money.
-	if err := s.Fund(ctx, mate.Email, "fresh", 1*Dollar); !errors.Is(err, ErrInsufficient) {
+	if err := s.Fund(ctx, mate.Email, "fresh", "Fresh Project", 1*Dollar); !errors.Is(err, ErrInsufficient) {
 		t.Fatalf("funding from an empty wallet: want ErrInsufficient, got %v", err)
 	}
-	if err := s.Fund(ctx, lead.Email, "fresh", 3*Dollar); err != nil {
+	if err := s.Fund(ctx, lead.Email, "fresh", "Fresh Project", 3*Dollar); err != nil {
 		t.Fatalf("Fund: %v", err)
 	}
 	if n, _ := s.Balance(ctx, Pot("fresh")); n != 3*Dollar {
@@ -173,6 +173,12 @@ func runStoreContract(t *testing.T, s Store) {
 		sum += e.Amount
 		if e.ID == "" || e.Actor == "" || e.CreatedAt.IsZero() {
 			t.Fatalf("entry %+v is missing its identity, actor or time", e)
+		}
+		// Every move against p1's pot was an allocate or a reclaim, and both
+		// snapshot the project onto both sides. A store that drops the snapshot
+		// fails here rather than in a UI that has no name to show (024b).
+		if e.ProjectID != "p1" || e.ProjectName != "Project One" {
+			t.Fatalf("entry %+v lost its project snapshot; want id=p1 name=%q", e, "Project One")
 		}
 	}
 	if sum != 0 {
@@ -219,7 +225,7 @@ func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
 				t.Fatalf("Topup: %v", err)
 			}
-			if err := s.Allocate(ctx, lead, "p1", 10*Dollar); err != nil {
+			if err := s.Allocate(ctx, lead, "p1", "Project One", 10*Dollar); err != nil {
 				t.Fatalf("Allocate: %v", err)
 			}
 			writeHold(t, s, Pot("p1"), "job-1", 3*Dollar)
@@ -233,7 +239,7 @@ func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 				t.Errorf("available under a hold = %d, want %d", n, 7*Dollar)
 			}
 			// And the held money cannot be reclaimed out from under the session.
-			if err := s.Reclaim(ctx, lead, "p1", 8*Dollar); !errors.Is(err, ErrInsufficient) {
+			if err := s.Reclaim(ctx, lead, "p1", "Project One", 8*Dollar); !errors.Is(err, ErrInsufficient) {
 				t.Errorf("reclaiming into a hold: want ErrInsufficient, got %v", err)
 			}
 
@@ -374,7 +380,7 @@ func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
 				t.Fatalf("Topup: %v", err)
 			}
-			if err := s.Allocate(ctx, lead, "p1", 10*Dollar); err != nil {
+			if err := s.Allocate(ctx, lead, "p1", "Project One", 10*Dollar); err != nil {
 				t.Fatalf("Allocate: %v", err)
 			}
 			writeHold(t, s, Pot("p1"), "job-1", 3*Dollar)

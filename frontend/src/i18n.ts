@@ -140,6 +140,10 @@ const strings: Record<Lang, Record<string, string>> = {
     ledgerAllocate: 'Allocated to a project',
     ledgerReclaim: 'Taken back from a project',
     ledgerOther: 'Adjustment',
+    // The named forms (024b): a prefix the project name follows, linked when the
+    // project still exists and plain text once it is purged.
+    ledgerAllocateTo: 'Allocated to',
+    ledgerReclaimFrom: 'Taken back from',
     // The merged list (018). Ownership is a column, not a place to look, so the
     // owner of your own project is "You" — the common row, and the one nobody
     // should have to read a name to recognise.

@@ -176,6 +176,13 @@ export type LedgerEntry = {
   amount: number
   kind: 'topup' | 'allocate' | 'reclaim' | 'hold' | 'release' | 'charge' | 'adjust'
   job_id?: string
+  // The project an allocate or reclaim moved credits to or from (024b).
+  // project_name is a snapshot taken at the move, so it still reads after the
+  // project is purged; project_alive is the server's answer to whether the
+  // project still exists — true links to it, false shows the name as plain text.
+  project_id?: string
+  project_name?: string
+  project_alive?: boolean
   actor: string
   created_at: string
 }

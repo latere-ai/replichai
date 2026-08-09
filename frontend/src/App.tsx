@@ -2689,15 +2689,33 @@ function WalletStatement({ i18n, balance }: { i18n: I18n; balance: number }) {
         ) : entries.length === 0 ? (
           <div className="usage-line muted small">{t('statementEmpty')}</div>
         ) : (
-          entries.map((e) => (
-            <div className="usage-line" key={e.id}>
-              <span className="muted small">{ledgerKindLabel(t, e.kind)}</span>
-              <span className="v">
-                <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
-                <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
-              </span>
-            </div>
-          ))
+          entries.map((e) => {
+            const label = ledgerLabel(t, e)
+            return (
+              <div className="usage-line" key={e.id}>
+                <span className="muted small">
+                  {label.kind === 'plain' ? (
+                    label.text
+                  ) : (
+                    <>
+                      {label.prefix}{' '}
+                      {label.href ? (
+                        <a className="link" href={label.href}>
+                          {label.name}
+                        </a>
+                      ) : (
+                        <span style={{ color: 'var(--fg-2)' }}>{label.name}</span>
+                      )}
+                    </>
+                  )}
+                </span>
+                <span className="v">
+                  <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
+                  <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
+                </span>
+              </div>
+            )
+          })
         ))}
     </>
   )
@@ -2712,6 +2730,25 @@ export function ledgerKindLabel(t: I18n['t'], kind: LedgerEntry['kind']): string
   if (kind === 'allocate') return t('ledgerAllocate')
   if (kind === 'reclaim') return t('ledgerReclaim')
   return t('ledgerOther')
+}
+
+// ledgerLabel names one statement row (024b). An allocate or reclaim that
+// carries a project snapshot names it — a link while the project still exists, a
+// plain name once it is purged. Every other kind, and a pre-024b move that never
+// captured a project, falls back to the neutral kind label so an old statement
+// still reads.
+export type LedgerLabel = { kind: 'plain'; text: string } | { kind: 'project'; prefix: string; name: string; href?: string }
+
+export function ledgerLabel(t: I18n['t'], e: LedgerEntry): LedgerLabel {
+  if ((e.kind === 'allocate' || e.kind === 'reclaim') && e.project_name) {
+    return {
+      kind: 'project',
+      prefix: e.kind === 'allocate' ? t('ledgerAllocateTo') : t('ledgerReclaimFrom'),
+      name: e.project_name,
+      href: e.project_alive && e.project_id ? `/p/${e.project_id}` : undefined,
+    }
+  }
+  return { kind: 'plain', text: ledgerKindLabel(t, e.kind) }
 }
 
 // WalletPill shows what this person has to spend, next to the button that
