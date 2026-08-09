@@ -1,6 +1,8 @@
 # 022f — The frozen account, in the UI
 
-**Status:** validated — ready to build. Leaf of [022](022-money-comes-in-without-an-admin.md). Frontend (`frontend/src`).
+**Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Frontend (`frontend/src`). `Me.frozen` and `GrantView.frozen` ride the existing `/me` and `/admin/access` reads; a global `banner warn` (`frozen-banner`) appears when `me.frozen`, carrying a Top up button that opens 022e's one modal (`setTopUp` in `Shell`); the "New project" and per-paper "Start" controls are disabled with a tooltip while frozen, and the server's `402 account_frozen` maps to a distinct `errFrozen` message everywhere else. The admin console gained the outstanding-liability figure (`GET /admin/solvency`), an "Only owing" filter, a `Frozen` badge per row, and Unfreeze / Re-freeze buttons (`unfreezeAccount`/`refreezeAccount`). Typecheck clean, production build green, 120 frontend tests pass (incl. the `account_frozen` and checkout-error mappings).
+
+**One deviation:** the *allocate* control on the project-credits card is **not** explicitly disabled while frozen — a frozen wallet is negative, so `Allocate` is refused by the ledger independently and the refusal shows its message. The two controls that matter for *new* spend (New project, Start session) are disabled; the allocate refusal is left to the server, to avoid threading `me` into a card that does not otherwise take it.
 
 **Scope:** the freeze made visible, on both sides. For the frozen person: a global banner and disabled spend/create controls, whose only way out is the top-up modal. For the operator: the admin console's per-account state (normal/frozen/banned), a filter to the accounts that owe, an unfreeze button, and the sold-liability figure.
 
