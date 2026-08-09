@@ -28,6 +28,8 @@ import {
   getFindings,
   getMe,
   getWallet,
+  startCheckout,
+  type Wallet,
   reclaimCredits,
   getProfile,
   getPublicProfile,
@@ -90,12 +92,13 @@ import {
   refusal,
   sessionFailureText,
   startErrLabel,
+  checkoutErrLabel,
   addPaperErrLabel,
   removePaperErrLabel,
   trashErrLabel,
   purgeErrLabel,
 } from './errors'
-import { formatUSD, parseUSD, toDollars } from './money'
+import { creditedMicro, formatUSD, parseUSD, toDollars } from './money'
 import {
   clockOf,
   compactTokens,
@@ -453,6 +456,9 @@ function Shell({
 }) {
   const { t } = i18n
   const setView = navigate
+  // The top-up modal's open-state lives here, so the wallet pill, the wallet
+  // screen, and later the frozen banner (022f) all open the one dialog.
+  const [topUp, setTopUp] = useState(false)
   const openProject = (id: string, title?: string, tab?: ProjectTab) => setView({ name: 'project', id, title, tab })
   const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string, tab?: SessionTab) =>
     setView({ name: 'session', jobId, projectId, ref, projectTitle, tab })
@@ -553,6 +559,14 @@ function Shell({
             {/* Settings sits with Trash at the foot: personal chrome, not a
                 workspace destination. Active on any of its sub-tabs (024a). */}
             <NavItem
+              label={t('navWallet')}
+              icon="wallet"
+              tone="var(--fg-3)"
+              folded={folded}
+              on={view.name === 'wallet'}
+              onClick={() => setView({ name: 'wallet' })}
+            />
+            <NavItem
               label={t('navSettings')}
               icon="settings"
               tone="var(--fg-3)"
@@ -583,7 +597,7 @@ function Shell({
           <Breadcrumb i18n={i18n} view={view} setView={setView} />
           <div className="topbar-actions">
             <ThemeSwitcher i18n={i18n} theme={theme} compact />
-            <WalletPill i18n={i18n} credits={me.credits} />
+            <WalletPill i18n={i18n} credits={me.credits} onTopUp={() => setTopUp(true)} />
             <button className="btn" onClick={() => setView({ name: 'submit' })}>
               <Ico name="plus" size={13} w={2.2} /> {t('newProject')}
             </button>
@@ -591,6 +605,7 @@ function Shell({
         </header>
 
         {view.name === 'projects' && <ProjectsScreen i18n={i18n} me={me} onOpen={openProject} />}
+        {view.name === 'wallet' && <WalletScreen i18n={i18n} me={me} refreshMe={refreshMe} onTopUp={() => setTopUp(true)} />}
         {view.name === 'trash' && <TrashScreen i18n={i18n} me={me} />}
         {view.name === 'public' && <PublicScreen i18n={i18n} onOpen={openProject} />}
         {view.name === 'submit' && (
@@ -644,6 +659,7 @@ function Shell({
           />
         )}
       </div>
+      {topUp && <TopUpModal i18n={i18n} onClose={() => setTopUp(false)} />}
     </div>
   )
 }
@@ -2757,20 +2773,151 @@ export function ledgerLabel(t: I18n['t'], e: LedgerEntry): LedgerLabel {
 // A brand-new account and one that has spent down read differently. Most
 // people's first sight of this pill is at zero, and it has to say they have
 // none *yet* and how to get some, rather than implying they lost something.
-function WalletPill({ i18n, credits }: { i18n: I18n; credits?: Credits }) {
+function WalletPill({ i18n, credits, onTopUp }: { i18n: I18n; credits?: Credits; onTopUp?: () => void }) {
   const { t } = i18n
   if (!credits) return null
   const empty = credits.wallet <= 0
   // Not enough left to open one more session is a warning; nothing at all is an
   // error; the rest is just a number.
   const state = empty ? ' out' : credits.wallet < credits.start_reserve ? ' low' : ''
+  const inner = (
+    <>
+      <Ico name={empty ? 'alert' : 'wallet'} size={12} />
+      {empty ? t('walletEmpty') : formatUSD(credits.wallet)}
+    </>
+  )
   return (
-    <Tip text={empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(credits.start_reserve) })}>
-      <span className={'quota-pill' + state}>
-        <Ico name={empty ? 'alert' : 'wallet'} size={12} />
-        {empty ? t('walletEmpty') : formatUSD(credits.wallet)}
-      </span>
+    <Tip text={onTopUp ? t('topUp') : empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(credits.start_reserve) })}>
+      {onTopUp ? (
+        // The balance is the way to buy more: click it to top up. A button rather
+        // than a span, with the pill's own look kept (only the font a button does
+        // not inherit needs restoring).
+        <button type="button" className={'quota-pill' + state} style={{ font: 'inherit', cursor: 'pointer' }} onClick={onTopUp} aria-label={t('topUp')}>
+          {inner}
+        </button>
+      ) : (
+        <span className={'quota-pill' + state}>{inner}</span>
+      )}
     </Tip>
+  )
+}
+
+// TopUpModal buys credits. It reads the spread and floor from the wallet so it
+// can quote what a payment will land — "$18.70 in credits for $20.00" — before
+// sending the person to the processor. The webhook, not the return from that
+// page, is what actually credits (022b); this only opens the payment, and the
+// wallet screen re-reads the balance when they come back.
+function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
+  const { t } = i18n
+  const [amount, setAmount] = useState('')
+  const [wallet, setWallet] = useState<Wallet | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    getWallet()
+      .then(setWallet)
+      .catch(() => setErr(t('errOffline')))
+  }, [t])
+
+  const parsed = parseUSD(amount)
+  const min = wallet?.min_topup_micro ?? 0
+  const belowMin = parsed !== null && parsed > 0 && parsed < min
+  const valid = parsed !== null && parsed > 0 && parsed >= min
+  const credited = valid && wallet ? creditedMicro(parsed, wallet.spread_bps, wallet.spread_fixed_micro) : null
+
+  const go = async () => {
+    if (!valid || busy || parsed === null) return
+    setBusy(true)
+    setErr('')
+    try {
+      const { url } = await startCheckout(parsed)
+      window.location.href = url
+    } catch (e) {
+      setErr(checkoutErrLabel(t, e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      title={t('topUpTitle')}
+      icon="wallet"
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose}>
+            {t('cancel')}
+          </button>
+          <button className="btn" disabled={!valid || busy} onClick={go}>
+            {t('topUpContinue')}
+          </button>
+        </>
+      }
+    >
+      <p className="muted small" style={{ margin: 0, lineHeight: 1.6 }}>
+        {t('topUpBody', { min: formatUSD(min) })}
+      </p>
+      <div className="field-row">
+        <NumberField value={amount} onChange={setAmount} min={0} ariaLabel={t('topUpAmount')} autoFocus />
+      </div>
+      {credited !== null && parsed !== null && (
+        <p className="muted small" style={{ margin: 0 }}>
+          {t('topUpQuote', { credited: formatUSD(credited), paid: formatUSD(parsed) })}
+        </p>
+      )}
+      {belowMin && <span className="err small">{t('topUpMin', { min: formatUSD(min) })}</span>}
+      {err && (
+        <span className="err small">
+          <Ico name="alert" size={13} /> {err}
+        </span>
+      )}
+    </Modal>
+  )
+}
+
+// WalletScreen is the person's own money: the statement, a way to buy more, and
+// the landing the processor returns to. On a return marked ?checkout=success the
+// balance may lag the webhook, so it re-reads /me a few times over a few seconds
+// and the bought credits appear on their own (022e).
+function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; refreshMe: () => void; onTopUp: () => void }) {
+  const { t } = i18n
+  const returned = new URLSearchParams(window.location.search).get('checkout') === 'success'
+  const [polling, setPolling] = useState(returned)
+
+  useEffect(() => {
+    if (!returned) return
+    let n = 0
+    const id = setInterval(() => {
+      refreshMe()
+      if (++n >= 5) {
+        clearInterval(id)
+        setPolling(false)
+      }
+    }, 1500)
+    return () => clearInterval(id)
+  }, [returned, refreshMe])
+
+  const credits = me.credits
+  return (
+    <div className="stack">
+      <div className="card card-pad stack">
+        <span className="eyebrow eyebrow-ico">
+          <Ico name="wallet" size={12} /> {t('walletHeading')}
+        </span>
+        <div className="usage-line">
+          {t('creditsBalance')}
+          <span className="v tabular">{formatUSD(credits ? credits.wallet : 0)}</span>
+        </div>
+        {polling && <p className="muted small" style={{ margin: 0 }}>{t('topUpProcessing')}</p>}
+        <div className="field-row">
+          <button className="btn" onClick={onTopUp}>
+            <Ico name="plus" size={13} w={2.2} /> {t('topUp')}
+          </button>
+        </div>
+      </div>
+      {credits && <WalletStatement i18n={i18n} balance={credits.wallet} />}
+    </div>
   )
 }
 
