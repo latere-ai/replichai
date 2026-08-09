@@ -2,6 +2,21 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { LatereMark, Lockup, Mark, Wordmark } from './brand'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
+  CRITERIA,
+  outcomeTone,
+  rate,
+  releaseTone,
+  scoreOf,
+  unresolved,
+  verdictTone,
+  type ClaimOutcome,
+  type Components,
+  type Criterion,
+  type Findings,
+  type Mismatch,
+  type ReleaseResult,
+} from './findings'
+import {
   addMember,
   archiveUrl,
   artifactUrl,
@@ -10,6 +25,7 @@ import {
   getArtifact,
   getJob,
   allocateCredits,
+  getFindings,
   getMe,
   getWallet,
   reclaimCredits,
@@ -1916,10 +1932,13 @@ function verdictLabel(v: string) {
   return words[0].toUpperCase() + words.slice(1)
 }
 
-// verdictTone maps a manifest verdict to a semantic colour, and verdictIcon to
-// the matching glyph — a passed reproduction and a failed one should not need
-// the word read to be told apart.
-function verdictTone(v: string) {
+// manifestTone maps the *manifest's* grade to a semantic colour, and verdictIcon
+// to the matching glyph — a passed reproduction and a failed one should not need
+// the word read to be told apart. The findings' own verdict has its own tone in
+// `findings.ts`: they are different vocabularies (passed/failed against
+// reproducible/partial/not_reproducible) and folding them would make one of the
+// two lie.
+function manifestTone(v: string) {
   const s = v.toLowerCase()
   if (s.includes('pass')) return 'var(--ok)'
   if (s.includes('fail') || s.includes('not')) return 'var(--err)'
@@ -1943,6 +1962,13 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [repro, setRepro] = useState<Reproduction | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'none'>('loading')
+  // The findings are fetched beside the manifest and never gate it: a session
+  // can have a verdict with no findings (it predates the file, or its file was
+  // refused), and that pane still has something true to show. `why` keeps the
+  // two absences apart, because "the run wrote nothing" and "the system refused
+  // what it wrote" are different facts about the run.
+  const [findings, setFindings] = useState<Findings | null>(null)
+  const [why, setWhy] = useState<'none' | 'invalid' | null>(null)
   useEffect(() => {
     setState('loading')
     getReproduction(jobId)
@@ -1952,6 +1978,13 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
       })
       .catch(() => setState('none'))
   }, [jobId])
+  useEffect(() => {
+    setFindings(null)
+    setWhy(null)
+    getFindings(jobId)
+      .then(setFindings)
+      .catch((e) => setWhy(e?.status === 422 ? 'invalid' : 'none'))
+  }, [jobId])
 
   if (state === 'none')
     return (
@@ -1960,8 +1993,8 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
       </div>
     )
   if (state === 'loading' || !repro) return <div className="center-load">…</div>
-  const tone = verdictTone(repro.verdict)
-  return (
+  const tone = manifestTone(repro.verdict)
+  const manifest = (
     <div className="card card-pad stack" style={{ maxWidth: 720 }}>
       <span className="eyebrow eyebrow-ico" style={{ color: tone }}>
         <Ico name="gauge" size={12} /> {t('verdict')}
@@ -2005,6 +2038,193 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
       </div>
     </div>
   )
+
+  // Findings first when there are any: the per-component table is the result,
+  // and the manifest card below it is the system's record about the run rather
+  // than about the paper. Without findings the pane says which absence it is
+  // instead of rendering an empty table, which would read as a paper that had
+  // no boundary.
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      {findings ? (
+        <SessionFindings i18n={i18n} findings={findings} />
+      ) : (
+        why && (
+          <div className="card card-pad small muted" style={{ maxWidth: 720 }}>
+            {t(why === 'invalid' ? 'findingsInvalid' : 'noFindings')}
+          </div>
+        )
+      )}
+      {manifest}
+    </div>
+  )
+}
+
+// SessionFindings renders one run's verdict.json (021b): the summary first, then
+// the per-component table the rubric calls the result, then what did not
+// reproduce, then the decisions the paper left unwritten.
+//
+// The rate is never rendered alone. It appears beside its decomposition
+// everywhere, because a rate depends on how the paper was sliced and the rubric
+// forbids reading it as a decomposition-independent measurement.
+function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings }) {
+  const { t } = i18n
+  const f = findings
+  const open = unresolved(f)
+  const r = rate(f.components)
+  const outcomeLabel = (o: ClaimOutcome) =>
+    o === 'verified' ? t('outVerified') : o === 'partial' ? t('outPartial') : o === 'blocked' ? t('outBlocked') : t('outNotScored')
+
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="card card-pad findings-head">
+        <div className="findings-verdict">
+          <span className="eyebrow">{t('verdict')}</span>
+          <div className="findings-word" style={{ color: verdictTone(f.verdict) }}>
+            {verdictLabel(f.verdict)}
+          </div>
+          <div className="mono small muted">
+            {t('graded')} {new Date(f.graded_at).toLocaleDateString()}
+          </div>
+        </div>
+        <div className="stack" style={{ gap: 12, minWidth: 0 }}>
+          <p className="findings-summary">{f.summary}</p>
+          {/* The decomposition and the rate, one line, never apart. */}
+          <div className="findings-decomp">
+            <span className="eyebrow">{t('innerLoopRate')}</span>
+            {r !== null && <span className="findings-rate">{r.toFixed(2)}</span>}
+            <Decomposition c={f.components} />
+            <span className="small muted">
+              {t('componentsOf', {
+                verified: String(f.components.verified),
+                partial: String(f.components.partial),
+                blocked: String(f.components.blocked),
+                total: String(f.components.total),
+              })}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <span className="eyebrow">{t('boundary')}</span>
+        </div>
+        <table className="grid-table">
+          <thead>
+            <tr>
+              <th>{t('claim')}</th>
+              <th style={{ width: 92 }}>{t('loop')}</th>
+              <th style={{ width: 118 }}>{t('outcome')}</th>
+              <th style={{ width: '34%' }}>{t('evidenceOrBlocker')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {f.boundary.map((c, i) => (
+              // An outer row is muted as well as labelled: the one rule this
+              // product defends has to be visible without reading the column.
+              <tr key={i} className={c.loop === 'outer' ? 'row-outer' : undefined}>
+                <td>
+                  <div className="claim-text">{c.claim}</div>
+                  <div className="mono small muted">{c.citation}</div>
+                </td>
+                <td>
+                  <span className="loop-pill">{c.loop === 'inner' ? t('loopInner') : t('loopOuter')}</span>
+                </td>
+                <td className="mono small" style={{ color: outcomeTone(c.outcome), letterSpacing: '0.08em', fontWeight: 600 }}>
+                  {outcomeLabel(c.outcome)}
+                </td>
+                <td className="small muted">
+                  {c.evidence}
+                  {c.mismatch && <MismatchLine i18n={i18n} m={c.mismatch} />}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <span className="eyebrow">{t('unresolved')}</span>
+          <span className="small muted" style={{ marginLeft: 'auto' }}>{t('unresolvedHint')}</span>
+        </div>
+        {open.length === 0 ? (
+          <div className="card-pad small muted">{t('unresolvedNone')}</div>
+        ) : (
+          <div className="stack" style={{ gap: 0 }}>
+            {open.map((c, i) => (
+              <div key={i} className="unresolved-row">
+                <span className="mono small" style={{ color: outcomeTone(c.outcome), fontWeight: 600, letterSpacing: '0.08em', width: 84, flex: 'none' }}>
+                  {outcomeLabel(c.outcome)}
+                </span>
+                <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+                  <span className="claim-text">{c.claim}</span>
+                  <span className="small muted">{c.evidence}</span>
+                  {c.mismatch && <MismatchLine i18n={i18n} m={c.mismatch} />}
+                </div>
+                <span className="mono small muted" style={{ marginLeft: 'auto' }}>{c.citation}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {!!f.decisions?.length && (
+        <div className="card card-pad stack" style={{ gap: 14 }}>
+          <span className="eyebrow">{t('decisions')}</span>
+          {f.decisions.map((d, i) => (
+            <div key={i} className="decision">
+              <div className="claim-text">{d.question}</div>
+              <div className="small muted">
+                {t('decisionWhere')}: {d.where}
+              </div>
+              <div className="small">
+                {t('decisionAssumed')}: {d.assumed}
+              </div>
+              <div className="small muted">
+                {t('decisionSensitivity')}: {d.sensitivity}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// MismatchLine prints both numbers. An outcome alone cannot say that a run
+// reproduced a claim and still found the paper's figure wrong.
+function MismatchLine({ i18n, m }: { i18n: I18n; m: Mismatch }) {
+  const { t } = i18n
+  const kind =
+    m.kind === 'numeric' ? t('mismatchNumeric')
+      : m.kind === 'ordering' ? t('mismatchOrdering')
+        : m.kind === 'contradiction' ? t('mismatchContradiction')
+          : t('mismatchTypo')
+  return (
+    <div className="mismatch">
+      <span className="mismatch-kind">{kind}</span>
+      <span className="mono small">
+        {t('reportedIs')} <b>{m.reported}</b> · {t('observedIs')} <b>{m.observed}</b>
+        {m.delta ? ` · ${m.delta}` : ''}
+      </span>
+    </div>
+  )
+}
+
+// Decomposition is the stacked bar behind the rate — verified, partial, blocked.
+// A blocked share is drawn as an empty track rather than a colour, so the eye
+// reads it as work not done rather than as a fourth result.
+function Decomposition({ c }: { c: Components }) {
+  if (!c || c.total <= 0) return null
+  const pct = (n: number) => `${(n / c.total) * 100}%`
+  return (
+    <span className="decomp-bar" aria-hidden="true">
+      <span style={{ width: pct(c.verified), background: 'var(--ok)' }} />
+      <span style={{ width: pct(c.partial), background: 'var(--warn)' }} />
+    </span>
+  )
 }
 
 // fileIcon names a repository file by what it is, reusing the same kinds the
@@ -2028,6 +2248,10 @@ function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [files, setFiles] = useState<string[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
+  // What the authors released comes from the same findings file the verdict pane
+  // reads (021c). A run without it renders the browser alone rather than an
+  // empty "nothing released" table, which would be a claim the run never made.
+  const [findings, setFindings] = useState<Findings | null>(null)
 
   useEffect(() => {
     setFiles(null)
@@ -2039,16 +2263,20 @@ function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
       })
       .catch(() => setFiles([]))
   }, [jobId])
+  useEffect(() => {
+    setFindings(null)
+    getFindings(jobId).then(setFindings).catch(() => setFindings(null))
+  }, [jobId])
 
   if (files === null) return <div className="center-load">…</div>
-  if (files.length === 0)
+  if (files.length === 0 && !findings)
     return (
       <div className="card">
         <Empty icon="package" text={t('noArtifacts')} />
       </div>
     )
 
-  return (
+  const browser = (
     <div className="detail-grid" style={{ gridTemplateColumns: '260px 1fr' }}>
       <div className="card" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
         <CardHead label={t('artifacts')} icon="package" tone="var(--warn)" />
@@ -2077,6 +2305,93 @@ function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
       ) : (
         <div className="card card-pad">
           <Empty icon="fileText" text={t('selectArtifact')} />
+        </div>
+      )}
+    </div>
+  )
+
+  // Authors first, then the reproduction. The order is the argument: the
+  // reproduction exists because of what was and was not released, and reading
+  // the repository first inverts that.
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      {findings && <ReleasedByAuthors i18n={i18n} findings={findings} />}
+      {files.length > 0 && browser}
+    </div>
+  )
+}
+
+// ReleasedByAuthors is what the run found when it went looking for the paper's
+// own artifacts, and the five-criterion scorecard beside it (021c).
+function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings }) {
+  const { t } = i18n
+  const released = findings.released ?? []
+  const scores = findings.scorecard ?? []
+  if (!released.length && !scores.length) return null
+  const label = (r: ReleaseResult) =>
+    r === 'found' ? t('resFound') : r === 'partial' ? t('resPartial') : r === 'dead' ? t('resDead') : t('resNone')
+  const critLabel: Record<Criterion, string> = {
+    code: t('critCode'),
+    data: t('critData'),
+    license: t('critLicense'),
+    preregistration: t('critPreregistration'),
+    supplement: t('critSupplement'),
+  }
+
+  return (
+    <div className="detail-grid" style={{ gridTemplateColumns: '1fr 300px', alignItems: 'start' }}>
+      {!!released.length && (
+        <div className="card">
+          <div className="card-head">
+            <span className="eyebrow">{t('releasedTitle')}</span>
+            <span className="small muted" style={{ marginLeft: 'auto' }}>{t('releasedHint')}</span>
+          </div>
+          {released.map((r, i) => (
+            <div key={i} className="release-row">
+              <span className="release-dot" style={{ background: releaseTone(r.result) }} />
+              <span className="release-where">{r.where}</span>
+              <span className="small" style={{ flex: 1, minWidth: 0 }}>
+                {r.url ? (
+                  <a className="link" href={r.url} target="_blank" rel="noreferrer">
+                    {r.what || r.url}
+                  </a>
+                ) : (
+                  r.what
+                )}
+              </span>
+              <span className="mono small" style={{ color: releaseTone(r.result), fontWeight: 600, letterSpacing: '0.08em' }}>
+                {label(r.result)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!!scores.length && (
+        <div className="card card-pad stack" style={{ gap: 10 }}>
+          <span className="eyebrow">{t('scorecard')}</span>
+          {CRITERIA.map((c) => {
+            const sc = scoreOf(findings, c)
+            if (!sc) return null
+            return (
+              <div key={c} className="stack" style={{ gap: 2 }}>
+                <div className="score-row">
+                  <span className="score-mark" style={{ color: sc.found ? 'var(--ok)' : 'var(--err)' }}>{sc.found ? '✓' : '✕'}</span>
+                  <span style={{ color: 'var(--fg-2)' }}>{critLabel[c]}</span>
+                </div>
+                {sc.found && sc.url && (
+                  <a className="link mono small" style={{ paddingLeft: 21 }} href={sc.url} target="_blank" rel="noreferrer">
+                    {sc.url}
+                  </a>
+                )}
+                {/* Not found is only a finding when it says where it looked. */}
+                {!sc.found && !!sc.searched?.length && (
+                  <span className="small muted" style={{ paddingLeft: 21 }}>
+                    {t('searchedIn')}: {sc.searched.join(', ')}
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -2556,7 +2871,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
       live = false
     }
   }, [job.id])
-  const tone = repro ? verdictTone(repro.verdict) : 'var(--fg-3)'
+  const tone = repro ? manifestTone(repro.verdict) : 'var(--fg-3)'
   return (
     <div className="row file-row" onClick={onOpen}>
       <span className="row-title">{paper.title || paper.ref}</span>

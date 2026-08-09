@@ -1,5 +1,6 @@
 // The API client. Every call is same-origin, so the session cookie (or the dev
 // bypass) rides along automatically.
+import type { Findings } from './findings'
 import { terminal } from './session-stop'
 
 // Credits is what this person has to spend (011), in micro-USD. The wallet is
@@ -478,6 +479,14 @@ export const getTranscript = (id: string) => fetch(`/jobs/${id}/transcript`).the
 // repository file tree; getArtifact one file's text — the in-app pass-through
 // that works even when the underlying repository stays private.
 export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`).then(json<Reproduction>)
+
+// getFindings returns the run's own verdict.json (021a) — the boundary table,
+// the decisions, the scorecard, and what the authors released. It is a separate
+// call from getReproduction on purpose: that one is the system's manifest, this
+// one is the agent's claims, and a session that has one may not have the other.
+// A run without findings answers 404, which surfaces as an ApiError the pane
+// turns into a stated reason rather than an empty table.
+export const getFindings = (id: string) => fetch(`/jobs/${id}/verdict`).then(json<Findings>)
 export const listArtifacts = (id: string) => fetch(`/jobs/${id}/artifacts`).then(json<{ files: string[] }>)
 export const artifactUrl = (id: string, path: string) => `/jobs/${id}/artifact?path=${encodeURIComponent(path)}`
 export const getArtifact = (id: string, path: string) =>
