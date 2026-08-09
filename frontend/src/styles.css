@@ -23,14 +23,16 @@
   --bg-raised: #f4f4f3;
   --bg-code: rgba(0, 0, 0, 0.045);
 
-  /* The brand hue: indigo, one step warmer than the running blue so the two
-     never read as the same signal. */
-  --brand: #4f46e5;
-  --brand-hover: #4338ca;
+  /* The brand hue: seaborn's vlag's cool pole — a clear azure. It carries what
+     the operator acts on (buttons, links, the current page). Its warm twin —
+     vlag's crimson — is spent on danger and failure through --err, so the two
+     poles split the work: blue is "go", red is "careful". */
+  --brand: #2369bd;
+  --brand-hover: #1d5aa1;
   --brand-fg: #ffffff;
-  --brand-soft: rgba(79, 70, 229, 0.1);
-  --brand-line: rgba(79, 70, 229, 0.28);
-  --brand-ring: rgba(79, 70, 229, 0.3);
+  --brand-soft: rgba(35, 105, 189, 0.1);
+  --brand-line: rgba(35, 105, 189, 0.28);
+  --brand-ring: rgba(35, 105, 189, 0.3);
 
   --fg-1: #0c0a09;
   --fg-2: #5c5b58;
@@ -49,8 +51,8 @@
      taken to a usable contrast on paper rather than the dark values reused. */
   --ok: #3f7a55;
   --warn: #96631f;
-  --run: #3a4ed1;
-  --err: #a83a38;
+  --run: #0f766e;
+  --err: #a9373b;
   --pub: #6b4fa8;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
@@ -69,33 +71,40 @@
 }
 
 :root[data-theme='dark'] {
-  --bg: #0a0a0c;
-  --bg-deep: #050506;
-  --bg-surface: #131316;
-  --bg-raised: #1c1c21;
+  /* Lifted off pure black. The old base was #0a0a0c with #fafafa text — near
+     the maximum contrast a screen can throw, which reads as glare in a dark
+     room rather than clarity. The surfaces rise into a soft charcoal and the
+     ink drops just below white, so the page carries the same hierarchy at a
+     contrast the eye can sit with. */
+  --bg: #17171b;
+  --bg-deep: #101013;
+  --bg-surface: #1f1f25;
+  --bg-raised: #2a2a32;
   --bg-code: rgba(255, 255, 255, 0.055);
 
-  --brand: #8b83f8;
-  --brand-hover: #a79ffb;
-  --brand-fg: #0b0a16;
-  --brand-soft: rgba(139, 131, 248, 0.16);
-  --brand-line: rgba(139, 131, 248, 0.4);
-  --brand-ring: rgba(139, 131, 248, 0.42);
+  /* The azure lifted to a lighter sky so it reads as the accent, not a bruise,
+     against the charcoal. */
+  --brand: #6fa3e6;
+  --brand-hover: #8fb8ec;
+  --brand-fg: #0a1524;
+  --brand-soft: rgba(111, 163, 230, 0.16);
+  --brand-line: rgba(111, 163, 230, 0.4);
+  --brand-ring: rgba(111, 163, 230, 0.42);
 
-  --fg-1: #fafafa;
-  --fg-2: #b4b4bd;
-  --fg-3: #80808b;
+  --fg-1: #e9e9ef;
+  --fg-2: #a8a8b4;
+  --fg-3: #7c7c88;
 
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.15);
 
   --ok: #8fb894;
   --warn: #e0bb8c;
-  --run: #96a5ec;
-  --err: #e0716f;
+  --run: #45b8ab;
+  --err: #db8385;
   --pub: #b9a6e6;
 
-  --shadow-pop: 0 14px 38px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 14px 38px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.38);
 }
 
 * {
@@ -326,12 +335,17 @@ textarea {
   flex: 0 0 auto;
   display: block;
 }
+/* The mark reads vlag's two poles as its two loops. The outer ring — the study
+   with people, never simulated — takes the cool azure (the brand pole); the
+   inner ring — the part a machine re-runs — takes the warm crimson (vlag's
+   other pole, which --err also carries). The colour is the meaning, so the two
+   never swap. */
 .mark-outer {
   stroke: var(--brand);
-  opacity: 0.5;
+  opacity: 0.9;
 }
 .mark-inner {
-  stroke: var(--brand);
+  stroke: var(--err);
 }
 /* The name, with a hairline gap at its own seam: replic + hai. The tracking is
    tightened and the seam gives a fraction of it back, so the break is felt at
