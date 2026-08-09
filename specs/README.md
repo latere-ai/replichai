@@ -178,6 +178,10 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 021d | [Watching a session run](021d-watching-a-session-run.md) | built (revised down) | 006a, 006s, 005, 011 |
 | 021e | [The project rail](021e-the-project-rail.md) | built | 021a, 021d, 018, 006n, 011 |
 | 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | designed | 011, 006c, 006k, 010 |
+| 022a | [The idempotent paid top-up](022a-the-idempotent-paid-topup.md) | validated | 011 |
+| 022b | [Checkout, the webhook, and the top-up modal](022b-checkout-and-the-top-up-modal.md) | validated | 022a |
+| 022c | [Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) | validated | 022b |
+| 022d | [A negative wallet is frozen](022d-a-negative-wallet-is-frozen.md) | validated | 022c |
 | 023 | [The outer loop, as a product](023-the-outer-loop-as-a-product.md) | draft | 007b, 007c, 006b, 015 |
 | 023a | [Experiments persisted and dispatched](023a-experiments-persisted-and-dispatched.md) | draft | 007b, 007c, 006b, 015 |
 | 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
