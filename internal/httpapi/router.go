@@ -350,6 +350,13 @@ func writeError(w http.ResponseWriter, status int, code string) {
 	writeJSON(w, status, map[string]string{"error": code})
 }
 
+// writeJSONError writes a machine-readable code alongside the specifics — used
+// where "it did not validate" is not enough for the reader to act on, and the
+// list of what failed is the useful part (021a's findings).
+func writeJSONError(w http.ResponseWriter, status int, code string, detail []string) {
+	writeJSON(w, status, map[string]any{"error": code, "problems": detail})
+}
+
 // WriteError writes a machine-readable error code, for middleware (006c's tier
 // guard) that refuses a request before the handler runs.
 func WriteError(w http.ResponseWriter, status int, code string) {

@@ -19,6 +19,7 @@ import (
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 // Identity is the authenticated caller as the auth middleware (006c) resolved
@@ -106,6 +107,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 	rt.gatedHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
 	rt.gatedHandle("GET", "/jobs/{id}/reproduction", rt.getSessionReproduction)
+	rt.gatedHandle("GET", "/jobs/{id}/verdict", rt.getSessionFindings)
 	rt.gatedHandle("GET", "/jobs/{id}/artifacts", rt.listSessionArtifacts)
 	rt.gatedHandle("GET", "/jobs/{id}/artifact", rt.getSessionArtifact)
 
@@ -1967,6 +1969,58 @@ func (rt *Router) getSessionReproduction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, repro)
+}
+
+// getSessionFindings serves the session's verdict.json — the boundary table, the
+// hidden decisions, the scorecard, and what the authors released (021a).
+//
+// It is deliberately not folded into /jobs/{id}/reproduction. That route is the
+// manifest, the manifest is the system's word, and these are the agent's claims;
+// mixing them would blur the line the attestation model rests on.
+//
+// A session with no findings is a 404 with a reason, not an empty body: a run
+// that predates the file and a run whose file failed validation are different
+// facts, and a reader is told which.
+func (rt *Router) getSessionFindings(w http.ResponseWriter, r *http.Request) {
+	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if j.RepoName == "" {
+		writeError(w, http.StatusConflict, "not_ready")
+		return
+	}
+	raw, err := rt.repro.Artifact(r.Context(), repoName(j.RepoName), verdict.File)
+	if err != nil {
+		if errors.Is(err, ErrReproNotFound) {
+			writeError(w, http.StatusNotFound, "no_findings")
+			return
+		}
+		writeReadError(w, err)
+		return
+	}
+	problems, err := verdict.Validate(raw)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "findings_unreadable")
+		return
+	}
+	if len(problems) > 0 {
+		// The same refusal finalize made, made again on read: a file that does
+		// not validate is not served as if it did, and the reason travels so the
+		// pane can say which rule it broke rather than "unavailable".
+		msgs := make([]string, 0, len(problems))
+		for _, p := range problems {
+			msgs = append(msgs, p.String())
+		}
+		writeJSONError(w, http.StatusUnprocessableEntity, "findings_invalid", msgs)
+		return
+	}
+	v, err := verdict.Parse(raw)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "findings_unreadable")
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 // listSessionArtifacts serves the session's repository file tree — the in-app

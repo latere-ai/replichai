@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/job"
@@ -17,6 +18,7 @@ import (
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 // allowAll is a permissive gate for testing the handlers behind the gate.
@@ -49,7 +51,10 @@ func publishable(t *testing.T, d Deps, principal, handle string) {
 	}
 }
 
-type fakeRepro struct{ getErr, transcriptErr error }
+type fakeRepro struct {
+	getErr, transcriptErr error
+	findings              []byte // verdict.json, when the test supplies one (021a)
+}
 
 func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 	if f.getErr != nil {
@@ -74,6 +79,14 @@ func (f *fakeRepro) Files(_ context.Context, id string) ([]string, error) {
 func (f *fakeRepro) Artifact(_ context.Context, id, path string) ([]byte, error) {
 	if id != "r1" || path == "missing" {
 		return nil, ErrReproNotFound
+	}
+	// verdict.json is served as whatever the test set, so the findings route can
+	// be driven against a valid file, an invalid one, and an absent one (021a).
+	if path == verdict.File {
+		if f.findings == nil {
+			return nil, ErrReproNotFound
+		}
+		return f.findings, nil
 	}
 	return []byte("content of " + path), nil
 }
@@ -1625,5 +1638,128 @@ func TestReadingPapersFollowsTheProjectsVisibility(t *testing.T) {
 	}
 	if w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "stranger"); w.Code != http.StatusForbidden {
 		t.Errorf("stranger starts in a public project: status %d, want 403", w.Code)
+	}
+}
+
+// ── the findings route (021a) ────────────────────────────────────────────────
+
+// validFindings is a verdict.json that passes the schema, so each case below
+// changes exactly one thing about it.
+func validFindings(t *testing.T) []byte {
+	t.Helper()
+	v := verdict.Verdict{
+		Schema:     verdict.Schema,
+		Verdict:    verdict.Partial,
+		Summary:    "Retrains and matches within 1.8 pp.",
+		GradedAt:   time.Date(2026, 7, 14, 10, 41, 0, 0, time.UTC),
+		Components: verdict.Components{Verified: 1, Blocked: 1, Total: 2},
+		Boundary: []verdict.Claim{
+			{Claim: "Accuracy 91.4%", Loop: verdict.Inner, Outcome: verdict.Verified, Citation: "§6.1", Evidence: "89.6% retrained",
+				Mismatch: &verdict.Mismatch{Kind: verdict.Numeric, Reported: "91.4%", Observed: "89.6%", Delta: "-1.8 pp"}},
+			{Claim: "Latency under 40 ms", Loop: verdict.Inner, Outcome: verdict.Blocked, Citation: "§6.3", Evidence: "needs the authors' tablet"},
+			{Claim: "Preferred by participants", Loop: verdict.Outer, Outcome: verdict.NotScored, Citation: "§7", Evidence: "human study"},
+		},
+		Decisions: []verdict.Decision{{Question: "Window length?", Where: "§4", Assumed: "250 ms", Sensitivity: "±0.4 pp"}},
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return raw
+}
+
+func TestSessionFindings(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Reproductions.(*fakeRepro).findings = validFindings(t)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("findings = %d %s", w.Code, w.Body.String())
+	}
+	var got verdict.Verdict
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Verdict != verdict.Partial || len(got.Boundary) != 3 {
+		t.Fatalf("findings = %+v", got)
+	}
+	// The mismatch survives the round trip: it is the one field a reader cannot
+	// reconstruct from the outcome.
+	if got.Boundary[0].Mismatch == nil || got.Boundary[0].Mismatch.Observed != "89.6%" {
+		t.Errorf("mismatch lost: %+v", got.Boundary[0])
+	}
+	// Scoped like every other session read.
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "stranger"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger = %d, want 404", w.Code)
+	}
+}
+
+// A run that never wrote the file is a 404 with a reason, not an empty object
+// that a pane would render as a paper with no boundary.
+func TestSessionFindingsAbsent(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "me")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("absent findings = %d, want 404", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "no_findings") {
+		t.Errorf("body = %q, want a reason", w.Body.String())
+	}
+}
+
+// An invalid file is refused on read exactly as finalize refused it, and the
+// specific problems travel so the pane can say which rule it broke.
+func TestSessionFindingsInvalid(t *testing.T) {
+	d := testDeps(allowAll)
+	var v verdict.Verdict
+	_ = json.Unmarshal(validFindings(t), &v)
+	v.Boundary[2].Outcome = verdict.Verified // an outer-loop claim, scored
+	raw, _ := json.Marshal(v)
+	d.Reproductions.(*fakeRepro).findings = raw
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "me")
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid findings = %d, want 422", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "boundary[2].outcome") {
+		t.Errorf("body does not name the offending field: %s", w.Body.String())
+	}
+}
+
+// Prose in the file is a 404, not a 500 and not a panic.
+func TestSessionFindingsNotJSON(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Reproductions.(*fakeRepro).findings = []byte("# Reproducibility\n")
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
+
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "me"); w.Code != http.StatusNotFound {
+		t.Fatalf("markdown findings = %d, want 404", w.Code)
+	}
+}
+
+// A session that has not begun publishing has no repository to read from.
+func TestSessionFindingsNotReady(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	ctx := context.Background()
+	p, err := d.Projects.Create(ctx, "me", "t")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	j, err := d.Jobs.Enqueue(ctx, job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	if w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "me"); w.Code != http.StatusConflict {
+		t.Fatalf("unpublished session = %d, want 409", w.Code)
 	}
 }
