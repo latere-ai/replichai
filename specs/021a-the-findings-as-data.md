@@ -1,6 +1,8 @@
 # 021a — The findings as data
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds except the schema bump, which was deliberately not done. `internal/verdict` owns the schema, `Parse`, `Validate` and the filename, with 15 contract tests; `method/rubric.md` gained criterion 7 and `method/instructions.md` a step, a deliverable row, and the schema section; `publish.FinalizeLive` records the result on the manifest and in `UNVERIFIED.md`; `GET /jobs/{id}/verdict` serves it. The Go suite is green.
+
+Three things came out of the build. **The manifest schema stayed at 1**: the `findings` block is additive and optional, no reader gates on the number, and 002 pins the shape — bumping it would have rewritten every published manifest on its next finalize to signal a change no reader could act on. **The `UNVERIFIED.md` note has to converge**, which the first version did not: a re-finalize appended a second identical section and `TestFinalizeLiveIdempotentManifest` caught it, so the writer now replaces its own previous section and writes nothing when the text is already identical. And **the filename lives in `internal/verdict`, not `internal/publish`** — `httpapi` may not import the engine (`TestNoEngineImports`), and `publish` transitively does, so the constant moved to the schema package where a reader that knows the shape can also learn the name.
 
 **Scope:** `verdict.json` — the reproduction's findings as a validated artifact. A new `internal/verdict` package (schema, parse, validate), a new `method/rubric.md` criterion asking the agent for it, verification at finalize that records rather than blocks, and `GET /jobs/{id}/verdict` so the panes can read it. No frontend.
 
