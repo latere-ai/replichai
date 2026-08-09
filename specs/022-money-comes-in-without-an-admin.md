@@ -89,7 +89,7 @@ The `par` block is the point: the redirect and the webhook race, in either order
 
 Stripe retries webhook deliveries by design, and a network hiccup can deliver the same `checkout.session.completed` twice. The current ledger has no defense: a balance is a fold over entries, so two `topup` rows silently double the money. The fix is a unique reference on the entry, and the *insert* — not a read-then-insert check — is what dedupes, for exactly the reason 011 gives for holding inside the enqueue transaction: a check on a second connection races the write it is trying to protect.
 
-Migration `v2` of the credit schema:
+Migration `v3` of the credit schema (v1 is the ledger, v2 added `project_id`/`project_name`):
 
 ```sql
 ALTER TABLE credit_entries ADD COLUMN external_ref TEXT;
@@ -286,11 +286,22 @@ Every decision in this spec is chosen, not deferred. The four that were briefly 
 10. **FX — Stripe's rate, not ours.** A EUR charge is converted to the micro-USD it credits using the exchange rate on that charge's balance transaction. No platform-set rate to maintain, no FX risk beyond the single transaction. The wallet displays USD; the statement line shows the euros paid beside the dollars credited.
 11. **VAT — flagged, deferred, urgent.** EUR *payment* ships here; EU-consumer *tax* handling (Stripe Tax + OSS) is its own spec, to be resolved with an accountant before selling to EU consumers. This spec is not tax-compliant on its own.
 
-## Suggested breakdown
+## Task Breakdown
 
-Four implementation-ready leaves, in dependency order:
+Four implementation-ready leaves. They stack — each builds on the last — so the order is the dependency order, and 022a (the money-safety core, offline) lands first and alone because it is the highest-risk piece.
 
-- **022a — the ledger seam and the idempotent post.** Migration `v2` (`external_ref` + unique index), `TopupPaid`/refund-`adjust` on both stores with contract tests, the `ON CONFLICT` dedupe, and the payment **port** with a memory adapter. No Stripe, no HTTP — the money-safety core, fully tested offline. Highest risk, so it lands first and alone.
-- **022b — Checkout, the webhook, and the modal.** The Stripe adapter behind the port, `POST /me/credits/checkout` (with the `usd`/`eur` currency allow-list), the signed `POST /webhooks/stripe` mounted outside the tier guard, the spread snapshot, the EUR→USD credit read from the charge's balance-transaction rate, and the top-up modal wired to the `402`. The visible half.
-- **022c — refunds and the solvency read.** `charge.refunded` / dispute handling to the negative-`adjust` policy, and the sold-liability number on the admin console.
-- **022d — the account freeze.** The server-side gate (`402 account_frozen` on every mutating request bar top-up and sign-out), thaw-by-arithmetic, the one-shot admin override (`/admin/access/{email}/unfreeze`, cleared on return to positive), the freeze email via `notify`, the frozen flag + negative filter on the admin people table, and the frontend banner + disabled controls. Depends on 022c (the negative wallet it reacts to).
+| Child spec | Depends on | Effort | Status |
+|---|---|---|---|
+| [022a — The idempotent paid top-up](022a-the-idempotent-paid-topup.md) — migration v3 (`external_ref` + partial unique index), `TopupPaid`/`RefundPaid` idempotent on ref, `EntryByExternalRef`, the payment port + mem adapter. No Stripe, no HTTP. | 011 | medium | validated |
+| [022b — Checkout, the webhook, and the modal](022b-checkout-and-the-top-up-modal.md) — the Stripe adapter, `POST /me/credits/checkout` (usd/eur), the signed `POST /stripe/webhook` (`openHandle`), the spread snapshot, EUR→USD from the balance transaction, the top-up modal + `/wallet` poll. | 022a | large | validated |
+| [022c — Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) — `charge.refunded`/dispute → negative `adjust` reversing the credited USD, and `Σ wallets + Σ pots` on the console. | 022b | small | validated |
+| [022d — A negative wallet is frozen](022d-a-negative-wallet-is-frozen.md) — the override store, `FreezeGate`, thaw-by-arithmetic, the one-shot admin override + freeze-list, the freeze email, the banner + disabled controls. | 022c | large | validated |
+
+```mermaid
+graph LR
+  A[022a idempotent paid top-up] --> B[022b checkout + webhook + modal]
+  B --> C[022c refunds + solvency]
+  C --> D[022d account freeze]
+```
+
+**Order:** strictly sequential — 022a → 022b → 022c → 022d. There is little to parallelise because each leaf consumes the one before (the webhook 022b builds is what 022c extends; the negative wallet 022c produces is what 022d freezes on). Start 022a now; 011 is complete.
