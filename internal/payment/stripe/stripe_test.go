@@ -43,10 +43,28 @@ func TestParseWebhookVerifiesAndReducesAPaidCheckout(t *testing.T) {
 	}
 }
 
+// An async EU payment method (SEPA/iDEAL/Bancontact) leaves `completed` unpaid
+// and confirms later with `async_payment_succeeded`; the paid async event must
+// credit, so those top-ups are not silently lost.
+func TestParseWebhookCreditsAnAsyncPayment(t *testing.T) {
+	a := &Adapter{webhookSecret: "whsec_test", configured: true}
+	async := []byte(`{"type":"checkout.session.async_payment_succeeded","data":{"object":{` +
+		`"payment_status":"paid","payment_intent":"pi_async",` +
+		`"metadata":{"email":"eu@latere.ai","credited_micro":"18700000"}}}}`)
+	e, err := a.ParseWebhook(async, sign(async, "whsec_test", time.Now().Unix()))
+	if err != nil {
+		t.Fatalf("ParseWebhook: %v", err)
+	}
+	if e.Kind != payment.EventCheckoutCompleted || e.PaymentIntent != "pi_async" || e.Meta["credited_micro"] != "18700000" {
+		t.Fatalf("async payment reduced to %+v; want a crediting event", e)
+	}
+}
+
 func TestParseWebhookIgnoresAnUnpaidOrOtherEvent(t *testing.T) {
 	a := &Adapter{webhookSecret: "whsec_test", configured: true}
 
-	// Completed but not paid: a benign Event the handler will not credit.
+	// Completed but not paid — an async method still pending: a benign Event the
+	// handler will not credit until async_payment_succeeded arrives.
 	unpaid := []byte(`{"type":"checkout.session.completed","data":{"object":{"payment_status":"unpaid","metadata":{"email":"x@y.z"}}}}`)
 	if e, err := a.ParseWebhook(unpaid, sign(unpaid, "whsec_test", time.Now().Unix())); err != nil || e.Kind == payment.EventCheckoutCompleted {
 		t.Fatalf("unpaid session reduced to %+v, %v; want a non-crediting event", e, err)
