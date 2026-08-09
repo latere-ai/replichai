@@ -129,6 +129,41 @@ func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) 
 	return err
 }
 
+// OverrideActive reports whether an uncleared freeze override is in force for
+// email (022d). No admin check: it is a read the gate makes on every request.
+func (s *PGAccess) OverrideActive(ctx context.Context, email string) (bool, error) {
+	var active bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM freeze_overrides WHERE email=$1 AND cleared_at IS NULL)`,
+		normalizeEmail(email)).Scan(&active)
+	return active, err
+}
+
+// GrantOverride records a freeze override, (re)activating it. The upsert clears
+// any prior cleared_at, so granting after a clear starts a fresh override.
+func (s *PGAccess) GrantOverride(ctx context.Context, byAdmin Principal, email string) error {
+	e := normalizeEmail(email)
+	if e == "" {
+		return ErrNoEmail
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO freeze_overrides (email, granted_by, granted_at, cleared_at)
+		VALUES ($1,$2,$3,NULL)
+		ON CONFLICT (email) DO UPDATE SET granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at, cleared_at=NULL`,
+		e, byAdmin.Email, s.clock().UTC())
+	return err
+}
+
+// ClearOverride retires the override for email, if one is in force. It records
+// the clear rather than deleting the row, so the audit trail of who was waived
+// and when survives.
+func (s *PGAccess) ClearOverride(ctx context.Context, email string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE freeze_overrides SET cleared_at=$2 WHERE email=$1 AND cleared_at IS NULL`,
+		normalizeEmail(email), s.clock().UTC())
+	return err
+}
+
 // SelfGrant admits a principal who has just proven their identity (006q).
 //
 // One statement, so two concurrent sign-ins cannot both insert: the conflict
