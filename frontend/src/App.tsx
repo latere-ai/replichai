@@ -492,7 +492,18 @@ function Shell({
           {/* The one control that must stay reachable in both states, so it is
               the only thing the head keeps when the rail folds. */}
           <button className="rail-fold-btn" aria-expanded={!folded} aria-label={foldLabel} data-tip={foldLabel} data-tip-side="right" onClick={toggleRail}>
-            <Ico name={folded ? 'chevronRight' : 'chevronLeft'} size={14} w={2.2} />
+            {folded ? (
+              <>
+                <span className="fold-mark">
+                  <Mark size={22} />
+                </span>
+                <span className="fold-chev">
+                  <Ico name="chevronRight" size={14} w={2.2} />
+                </span>
+              </>
+            ) : (
+              <Ico name="chevronLeft" size={14} w={2.2} />
+            )}
           </button>
         </div>
         <div className="rail-nav">
