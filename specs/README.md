@@ -183,9 +183,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
 | 023c | [Running an experiment from the app](023c-running-an-experiment-from-the-app.md) | draft | 023b, 006e, 013, 021 |
 | 023d | [Ground truth for a cohort](023d-ground-truth-for-a-cohort.md) | draft | 023c, 007c |
-| 024 | [Settings is a place, and the ledger names its projects](024-settings-is-a-place.md) | draft | 013, 011, 018, 019 |
+| 024 | [Settings is a place, and the ledger names its projects](024-settings-is-a-place.md) | built | 013, 011, 018, 019 |
 | 024a | [Settings as a destination, with sub-tabs](024a-settings-as-a-destination.md) | built | 013 |
-| 024b | [The ledger names its project](024b-the-ledger-names-its-project.md) | draft | 024a, 011, 019 |
+| 024b | [The ledger names its project](024b-the-ledger-names-its-project.md) | built | 024a, 011, 019 |
 
 ## The three tracks
 

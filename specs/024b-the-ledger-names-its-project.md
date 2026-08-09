@@ -1,6 +1,6 @@
 # 024b — The ledger names its project
 
-**Status:** draft. A child of [024](024-settings-is-a-place.md).
+**Status:** built. A child of [024](024-settings-is-a-place.md).
 
 **Scope:** make a wallet's `allocate` and `reclaim` entries name the project they moved credits to or from, and link to it while it exists. The name is snapshotted onto the entry at the moment of the move, so a project that is later purged still reads in the history. Carries the `credit.Store` interface change, a new additive migration on `credit_entries`, and the wallet-statement rendering. Forward-only.
 
