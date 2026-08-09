@@ -161,6 +161,17 @@ export function creditMoveErrLabel(t: T, e: unknown): string {
   return t('errMoveFailed')
 }
 
+// checkoutErrLabel names why starting a top-up was refused. Payments being
+// unconfigured is a deployment state, not the person's fault; a below-floor
+// amount is caught client-side, but the server is the backstop.
+export function checkoutErrLabel(t: T, e: unknown): string {
+  const { code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (code === 'payments_unconfigured') return t('errPaymentsOff')
+  if (code === 'below_min') return t('errBelowMin')
+  return t('checkoutFailed')
+}
+
 // profileErrorText maps a server validation code to the message for the field
 // that is wrong, so a refusal points somewhere rather than saying "invalid".
 export function profileErrorText(t: T, code: string): string {
