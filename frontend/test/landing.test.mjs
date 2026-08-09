@@ -130,7 +130,7 @@ try {
       if (mark.outerStroke === 'none' || mark.outerOpacity < 0.2) fail(`the mark's outer ring does not paint (stroke: ${mark.outerStroke}, opacity: ${mark.outerOpacity})`)
       if (!mark.dashed) fail('the outer loop is not drawn open; a closed outer ring claims the study is re-runnable')
       if (/Instrument Serif/.test(mark.font)) fail(`the wordmark asks for ${mark.font}, which the app does not ship`)
-      if (mark.word !== 'replichai') fail(`the wordmark reads "${mark.word}"`)
+      if (mark.word !== 'ReplicHAI') fail(`the wordmark reads "${mark.word}"`)
       if (!mark.seam) fail('the wordmark lost its seam')
     }
     await page.close()
