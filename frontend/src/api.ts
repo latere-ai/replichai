@@ -168,7 +168,17 @@ export type ProjectCredits = { balance: number; available: number; start_reserve
 // Wallet is one person's own credits and the entries that produced them. The
 // statement is the point: a balance nobody can account for is what the ledger
 // exists to prevent.
-export type Wallet = { balance: number; entries: LedgerEntry[] }
+//
+// The spread and floor ride along so the top-up modal can quote a credit and
+// refuse a too-small amount before the processor is ever called (022b/022e).
+// They are zero on a deployment that sells no credits.
+export type Wallet = {
+  balance: number
+  entries: LedgerEntry[]
+  spread_bps: number
+  spread_fixed_micro: number
+  min_topup_micro: number
+}
 
 export type LedgerEntry = {
   id: string
@@ -188,6 +198,17 @@ export type LedgerEntry = {
 }
 
 export const getWallet = () => fetch('/me/credits').then(json<Wallet>)
+
+// startCheckout opens a hosted payment page for a top-up of amountMicro (USD)
+// and returns its URL for the browser to follow. The webhook — not the return
+// from that page — is what credits the wallet (022b), so the client's only job
+// is to send the person to pay and then re-read the balance when they come back.
+export const startCheckout = (amountMicro: number) =>
+  fetch('/me/credits/checkout', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount_micro: amountMicro }),
+  }).then(json<{ url: string }>)
 
 // allocateCredits moves credits from your wallet into a project's pot; any
 // member may. reclaimCredits moves them back, and only a lead may — the pot

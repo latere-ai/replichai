@@ -27,6 +27,7 @@ export type View =
   | { name: 'trash' }
   | { name: 'public' }
   | { name: 'submit' }
+  | { name: 'wallet' }
   | { name: 'settings'; tab?: SettingsTab }
   | { name: 'admin' }
   | { name: 'profile'; handle: string }
@@ -42,6 +43,7 @@ const SCREENS: Record<string, View> = {
   '/registry': { name: 'public' },
   '/trash': { name: 'trash' },
   '/new': { name: 'submit' },
+  '/wallet': { name: 'wallet' },
   '/settings': { name: 'settings' },
   '/console': { name: 'admin' },
 }

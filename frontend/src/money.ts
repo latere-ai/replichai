@@ -38,6 +38,19 @@ export function toDollars(micro: number): string {
   return String(micro / MICRO)
 }
 
+// creditedMicro is what a gross top-up lands in a wallet after the purchase
+// spread (022b): the same arithmetic the server applies at checkout, so the
+// modal's quote is exactly what the webhook will credit. It snaps to whole cents
+// (the processor's unit) first, then takes the percentage and the fixed cut, and
+// never returns less than zero.
+export function creditedMicro(grossMicro: number, spreadBps: number, spreadFixedMicro: number): number {
+  const perCent = MICRO / 100 // 10_000 micro-USD to a cent
+  const cents = Math.floor(grossMicro / perCent)
+  const gross = cents * perCent
+  const cut = Math.round((gross * spreadBps) / 10_000)
+  return Math.max(0, gross - cut - spreadFixedMicro)
+}
+
 // typedDollars keeps what somebody is typing into a money field typeable.
 //
 // It is not parseUSD: that reads a finished value, this shapes an in-progress

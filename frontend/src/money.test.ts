@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'bun:test'
-import { parseUSD, stepDollars, typedDollars } from './money'
+import { creditedMicro, parseUSD, stepDollars, typedDollars } from './money'
+
+describe('creditedMicro', () => {
+  it('applies the percentage and fixed spread, matching the server', () => {
+    // $20.00 gross, 5% + $0.30 → $1.00 + $0.30 off → $18.70, exactly what the
+    // server's platform.Settings.Credited computes.
+    expect(creditedMicro(20_000_000, 500, 300_000)).toBe(18_700_000)
+  })
+
+  it('never credits below zero', () => {
+    // A gross the fixed cut exceeds: a purchase does not create a debt.
+    expect(creditedMicro(100_000, 0, 1_000_000)).toBe(0)
+  })
+
+  it('snaps to whole cents before pricing', () => {
+    // Sub-cent micro-USD is dropped, the processor's unit being the cent.
+    expect(creditedMicro(20_005_000, 0, 0)).toBe(20_000_000)
+  })
+
+  it('credits the whole gross with no spread', () => {
+    expect(creditedMicro(20_000_000, 0, 0)).toBe(20_000_000)
+  })
+})
 
 describe('typedDollars', () => {
   it('keeps a value on its way to being typed', () => {

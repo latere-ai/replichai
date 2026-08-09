@@ -9,6 +9,7 @@ const table: [string, View][] = [
   ['/registry', { name: 'public' }],
   ['/trash', { name: 'trash' }],
   ['/new', { name: 'submit' }],
+  ['/wallet', { name: 'wallet' }],
   ['/settings', { name: 'settings' }],
   ['/settings/profile', { name: 'settings', tab: 'profile' }],
   ['/settings/credits', { name: 'settings', tab: 'credits' }],
