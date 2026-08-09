@@ -18,6 +18,27 @@ There is also a question this spec answers by **not** building it. The prompt th
 
 ## Decisions
 
+Where money enters, what the platform keeps, and the one place it does *not* flow — the map the decisions below fill in:
+
+```mermaid
+flowchart LR
+    Admin[Admin grant] -- topup --> W[Wallet<br/>user:email]
+    Card[Card via Stripe] -- topup, minus spread --> W
+    W -- allocate --> Pot[Project pot<br/>project:id]
+    Pot -- hold then charge --> Run[Session cost]
+    Run -- burns --> Vendor[Anthropic account]
+
+    Spread[Spread = platform margin] -. covers .-> Fees[Stripe fees + compute + storage]
+    Card -. margin .-> Spread
+
+    Sold["Solvency read<br/>Σ wallets + Σ pots"] -. operator watches .-> Vendor
+    Reload[Anthropic auto-reload] --> Vendor
+
+    Card -. no automated transfer .-x Vendor
+```
+
+Two doors post `topup` into a wallet (admin grant, card purchase); only a pot is ever spent; the card door keeps a spread; and the dashed **✗** edge is the non-goal — a customer payment never funds the vendor account directly. `auto-reload` funds it, and the solvency read is how an operator knows when.
+
 ### A purchase is a webhook-posted entry, never a redirect-confirmed one
 
 The money-moving fact is **the webhook**, `checkout.session.completed` (with its `payment_status: paid`), verified against the endpoint signing secret. The browser's return from Checkout is a UX event only: it navigates the user back and re-reads their wallet, and it may arrive before, after, or never relative to the webhook. Nothing about the credit is decided from a redirect query parameter, because a redirect parameter is client-supplied and the amount credited must come from the Stripe event object the server verified. This is the instruction-source boundary applied to money: the browser is data, the signed webhook is the instruction.
@@ -33,6 +54,35 @@ POST /webhooks/stripe        (Stripe → us)  → verify signature, on
                                               post the topup, return 200
 ```
 
+The two paths are independent, and the webhook — not the redirect — is what moves money. This is the whole flow:
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant API as httpapi
+    participant S as Stripe
+    participant L as credit ledger
+
+    U->>API: POST /me/credits/checkout {amount_usd}
+    API->>API: snapshot spread onto session metadata
+    API->>S: create Checkout Session
+    S-->>API: hosted URL
+    API-->>U: { url }
+    U->>S: redirect, pays on Stripe-hosted page
+
+    par UX path (data only)
+        S-->>U: redirect back to /wallet?topup=…
+        U->>API: GET /me/credits (re-read wallet)
+    and Money path (source of truth)
+        S->>API: POST /webhooks/stripe (checkout.session.completed)
+        API->>API: verify signature
+        API->>L: TopupPaid, external_ref = payment_intent
+        API-->>S: 200
+    end
+```
+
+The `par` block is the point: the redirect and the webhook race, in either order, and only the lower branch credits the wallet. If the redirect wins, the re-read simply shows the old balance until the webhook lands.
+
 `POST /webhooks/stripe` **mounts outside the tier guard** (006c): Stripe is not a signed-in principal and carries no `TierUser`. Its authentication is the signature, not the session cookie. This is the one route in the app whose caller is a machine, and getting it out from under `RequireTier` is a deliberate seam, not an oversight — stated here so a later refactor that "tidies up" by moving all routes under one guard does not silently start rejecting every payment.
 
 ### The credit is posted at most once, and the ledger insert is what guarantees it
@@ -47,7 +97,22 @@ CREATE UNIQUE INDEX credit_entries_external_ref
   ON credit_entries (external_ref) WHERE external_ref IS NOT NULL;
 ```
 
-A purchased `topup` carries `external_ref = <stripe payment_intent id>`; the insert is `ON CONFLICT (external_ref) DO NOTHING`. A duplicate delivery hits the index, inserts nothing, and the webhook still returns `200` so Stripe stops retrying. At-most-once insert over a folded balance is exactly-once crediting, with no stored counter to drift. Every other entry (`allocate`, `hold`, `charge`, an admin `topup`) leaves `external_ref` NULL, and the partial index ignores them — the column is dead weight for internal moves and load-bearing only where an outside system's identifier is the idempotency key.
+A purchased `topup` carries `external_ref = <stripe payment_intent id>`; the insert is `ON CONFLICT (external_ref) DO NOTHING`. Both the first delivery and every retry take the same path and end at `200` — only the first inserts a row:
+
+```mermaid
+flowchart TD
+    A[webhook delivery] --> B{signature valid?}
+    B -- no --> E[400, post nothing]
+    B -- yes --> C["INSERT topup ... ON CONFLICT external_ref DO NOTHING"]
+    C --> D{row inserted?}
+    D -- yes, first time --> F[wallet credited once]
+    D -- no, duplicate --> G[no-op]
+    F --> H[return 200]
+    G --> H
+    H --> I[Stripe stops retrying]
+```
+
+A duplicate delivery hits the index, inserts nothing, and the webhook still returns `200` so Stripe stops retrying. At-most-once insert over a folded balance is exactly-once crediting, with no stored counter to drift. Every other entry (`allocate`, `hold`, `charge`, an admin `topup`) leaves `external_ref` NULL, and the partial index ignores them — the column is dead weight for internal moves and load-bearing only where an outside system's identifier is the idempotency key.
 
 This is the single highest-risk part of the spec. It is also the smallest: one column, one index, one `ON CONFLICT`.
 
