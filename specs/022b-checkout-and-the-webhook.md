@@ -4,6 +4,8 @@
 
 **Two things the build settled:** the webhook is signature-verified with `IgnoreAPIVersionMismatch: true` — it reads only stable fields, so a webhook endpoint on a different API version than the pinned SDK must not crash crediting; and the checkout request is `{amount_micro}` snapped to whole cents, with the credited amount computed from the spread at create and carried in metadata, so the webhook never recomputes.
 
+**Hardening (follow-up, commit `aa22f0c`):** the adapter also credits on `checkout.session.async_payment_succeeded`, because EU methods (SEPA Direct Debit, iDEAL, Bancontact) leave `completed` unpaid and confirm asynchronously — the ledger's payment_intent dedupe keeps the two events for one purchase crediting once. **The webhook endpoint must subscribe to** `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and (022c) `charge.refunded`, `charge.dispute.created`. Deferred: an idempotency key on session *creation* (needs a client nonce — lands with 022e); auto receipts (a Stripe dashboard toggle, not code).
+
 **Scope:** the server half of a purchase. The Stripe adapter behind 022a's port, a signed-in `POST /me/credits/checkout` (an amount in USD, the spread applied and snapshotted at create), and the signed `POST /stripe/webhook` that credits on `checkout.session.completed`, plus the wiring and the quote fields the modal will read. All Go, provable with the `MemProvider` fake; no frontend, no refund handling, no freeze.
 
 **Depends on:** [022a](022a-the-idempotent-paid-topup.md) (the `payment.Provider` port, `TopupPaid`, `external_ref` idempotency).
