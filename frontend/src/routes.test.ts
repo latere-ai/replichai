@@ -10,6 +10,8 @@ const table: [string, View][] = [
   ['/trash', { name: 'trash' }],
   ['/new', { name: 'submit' }],
   ['/settings', { name: 'settings' }],
+  ['/settings/profile', { name: 'settings', tab: 'profile' }],
+  ['/settings/credits', { name: 'settings', tab: 'credits' }],
   ['/console', { name: 'admin' }],
   ['/u/ada-lovelace', { name: 'profile', handle: 'ada-lovelace' }],
   ['/p/4fbff44c3323f724ea8c9ed5d5ecdbca', { name: 'project', id: '4fbff44c3323f724ea8c9ed5d5ecdbca' }],
@@ -40,6 +42,14 @@ test('the sessions tab is the project path itself', () => {
 test('the transcript tab is the session path itself', () => {
   expect(pathOf({ name: 'session', projectId: 'abc', jobId: 'j1', tab: 'transcript' })).toBe('/p/abc/s/j1')
   expect(viewOf('/p/abc/s/j1')).toEqual({ name: 'session', projectId: 'abc', jobId: 'j1' })
+})
+
+// The account tab is settings' own bare path, and a segment that names no tab is
+// dropped to it — the same rule a project's unknown tab follows (024a).
+test('the account tab is the settings path itself, and an unknown tab drops to it', () => {
+  expect(pathOf({ name: 'settings', tab: 'account' })).toBe('/settings')
+  expect(viewOf('/settings')).toEqual({ name: 'settings' })
+  expect(viewOf('/settings/nonsense')).toEqual({ name: 'settings' })
 })
 
 // A project has no repository of its own to browse — there are as many as it has

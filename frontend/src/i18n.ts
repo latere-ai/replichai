@@ -55,6 +55,10 @@ const strings: Record<Lang, Record<string, string>> = {
     foldSidebar: 'Collapse sidebar',
     unfoldSidebar: 'Expand sidebar',
     settings: 'Settings',
+    navSettings: 'Settings',
+    settingsAccount: 'Account',
+    settingsProfile: 'Profile',
+    settingsCredits: 'Credits',
     access: 'Access',
     loading: 'Loading…',
     // platform admin (006k)

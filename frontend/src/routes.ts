@@ -17,12 +17,17 @@ export type ProjectTab = 'sessions' | 'verdict' | 'people'
 // repository" to browse.
 export type SessionTab = 'transcript' | 'verdict' | 'artifacts'
 
+// The settings screen is one view with three sub-tabs, each a real path
+// (/settings, /settings/profile, /settings/credits). 'account' is the default
+// and omitted from the address, exactly as 'sessions' is for a project (024a).
+export type SettingsTab = 'account' | 'profile' | 'credits'
+
 export type View =
   | { name: 'projects' }
   | { name: 'trash' }
   | { name: 'public' }
   | { name: 'submit' }
-  | { name: 'settings' }
+  | { name: 'settings'; tab?: SettingsTab }
   | { name: 'admin' }
   | { name: 'profile'; handle: string }
   | { name: 'project'; id: string; title?: string; tab?: ProjectTab }
@@ -49,6 +54,12 @@ const SESSION_TABS: SessionTab[] = ['transcript', 'verdict', 'artifacts']
 
 const isSessionTab = (s: string): s is SessionTab => (SESSION_TABS as string[]).includes(s)
 
+// The non-default settings tabs, the ones that earn a path segment. 'account' is
+// the bare /settings and never appears here, so the reverse-lookup stays single.
+const SETTINGS_TABS: SettingsTab[] = ['profile', 'credits']
+
+const isSettingsTab = (s: string): s is SettingsTab => (SETTINGS_TABS as string[]).includes(s)
+
 // pathOf is the address a view lives at. The sessions tab is the project's own
 // path rather than /p/{id}/sessions, so the link somebody shares of a project is
 // the same one an invitation mail already carries. A session's transcript
@@ -60,6 +71,10 @@ export function pathOf(view: View): string {
       return `/p/${view.id}` + (view.tab && view.tab !== 'sessions' ? `/${view.tab}` : '')
     case 'session':
       return `/p/${view.projectId}/s/${view.jobId}` + (view.tab && view.tab !== 'transcript' ? `/${view.tab}` : '')
+    case 'settings':
+      // 'account' is the default and stays the bare /settings, so SCREENS holds
+      // one path for the name and the reverse-lookup below never sees a tab.
+      return '/settings' + (view.tab && view.tab !== 'account' ? `/${view.tab}` : '')
     case 'profile':
       return `/u/${view.handle}`
     default: {
@@ -85,6 +100,16 @@ export function viewOf(pathname: string): View {
   // kept here now that the address bar is read in one place.
   const profile = /^\/u\/([^/?#]+)$/.exec(path)
   if (profile) return { name: 'profile', handle: decodeURIComponent(profile[1]).toLowerCase() }
+
+  // Settings, and a tab if the segment after it names one. A segment that names
+  // no tab — 'account' (the bare path's own tab) or a typo — resolves to the
+  // bare settings view, and useRouter corrects the address, the same rule a
+  // project's unknown tab follows.
+  const settings = /^\/settings\/([a-z]+)$/.exec(path)
+  if (settings) {
+    const tab = settings[1]
+    return isSettingsTab(tab) ? { name: 'settings', tab } : { name: 'settings' }
+  }
 
   // A session, and a tab if the segment after it names one. A segment that names
   // none is discarded the same way a project's is: the reader addressed a real
