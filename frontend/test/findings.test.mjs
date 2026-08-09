@@ -245,6 +245,32 @@ try {
   }
   if (!read.unresolved.some((r) => /latency/i.test(r))) fail('the blocked claim is not listed as unresolved')
 
+  // One verdict word on the screen, and it is the paper's. The manifest's grade
+  // is the rubric's judgement of the *run* — a careful audit of a paper that
+  // does not reproduce passes it — so heading both "Verdict" put two verdicts on
+  // one paper and invited the reader to take "Passed" as "it reproduced".
+  const verdicts = await page.evaluate(() => {
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
+    const record = document.querySelector('[data-test="run-record"]')
+    return {
+      words: [...document.querySelectorAll('.findings-word')].map((e) => txt(e)),
+      record: txt(record),
+      // The run record must still carry the facts only it has.
+      hasReview: /clear/i.test(txt(record) || ''),
+      hasRepo: !!record?.querySelector('a[href*="github.com"]'),
+      hasGrade: /passed/i.test(txt(record) || ''),
+    }
+  })
+  if (verdicts.words.length !== 1) fail(`the pane shows ${verdicts.words.length} verdict headlines, want one — the paper's`)
+  if (!/partial/i.test(verdicts.words[0] || '')) fail(`the headline is ${verdicts.words[0]}, want the paper's verdict`)
+  if (!verdicts.record) fail('the run record is gone; the redistribution review and the repository live there')
+  else {
+    if (/^\s*verdict/i.test(verdicts.record)) fail('the run record still calls itself a verdict')
+    if (!verdicts.hasGrade) fail('the run record dropped the rubric grade instead of demoting it')
+    if (!verdicts.hasReview) fail('the run record lost the redistribution review')
+    if (!verdicts.hasRepo) fail('the run record lost the repository link')
+  }
+
   if (read.decisions.length !== 1) fail(`the decisions section rendered ${read.decisions.length} entries`)
   else if (!/250 ms/.test(read.decisions[0]) || !/±0.4 pp/.test(read.decisions[0])) {
     fail(`a decision does not carry both its assumption and its sensitivity: ${read.decisions[0]}`)

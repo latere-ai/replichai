@@ -67,6 +67,31 @@ const filesOf = { [JOB]: ['README.md', 'beam-results.csv'], [JOB_B]: ['README.md
 const verdictOf = { [JOB]: 'passed', [JOB_B]: 'needs_revision' }
 const shownAs = { passed: 'Passed', needs_revision: 'Needs revision' }
 
+// Each session's own findings, so the project's verdict list can be asked to
+// keep one paper's verdict off another paper's row. The two words differ from
+// the grades above on purpose: a grade judges the run against the rubric, a
+// verdict judges the paper, and this test now asserts both are shown where they
+// belong rather than one standing in for the other.
+const findingsOf = {
+  [JOB]: {
+    schema: 1,
+    verdict: 'reproducible',
+    summary: 'It reproduces.',
+    graded_at: at(0),
+    components: { verified: 3, partial: 0, blocked: 0, total: 3 },
+    boundary: [{ claim: 'a', loop: 'inner', outcome: 'verified', evidence: 'e', citation: '§1' }],
+  },
+  [JOB_B]: {
+    schema: 1,
+    verdict: 'not_reproducible',
+    summary: 'It does not.',
+    graded_at: at(0),
+    components: { verified: 0, partial: 0, blocked: 2, total: 2 },
+    boundary: [{ claim: 'b', loop: 'inner', outcome: 'blocked', evidence: 'blocked', citation: '§2' }],
+  },
+}
+const verdictShownAs = { [JOB]: 'Reproducible', [JOB_B]: 'Not reproducible' }
+
 // A second project, so the screen can be asked to show one project after
 // another: every piece of its state belongs to one project, and it is remounted
 // per id rather than reused.
@@ -96,6 +121,7 @@ const routes = [
     (id) => ({ id, repo: `open-hai/${id}`, title: 't', verdict: verdictOf[id] ?? 'partial', review: 'clear', can_publish: false }),
   ],
   [/^\/jobs\/([^/]+)\/artifacts$/, (id) => ({ files: filesOf[id] ?? [] })],
+  [/^\/jobs\/([^/]+)\/verdict$/, (id) => findingsOf[id] ?? null],
   [/^\/(public|shared)$/, []],
   [/^\/admin\//, []],
 ]
@@ -197,13 +223,16 @@ try {
     if ((await screen()) !== 'session:Artifacts') fail(`${await path()} rendered ${await screen()}`)
   }
 
-  // Each session's verdict is its own, too.
+  // Each session's record is its own, too. The grade lives on the run record
+  // rather than under a "Verdict" heading now — it is the rubric's judgement of
+  // the run, not the paper's verdict — but the invariant 015 wrote this for is
+  // unchanged: one session's pane must never show another's.
   for (const id of [JOB, JOB_B]) {
     await page.goto(`${BASE}/p/${PROJECT}/s/${id}/verdict`, { waitUntil: 'networkidle0' })
-    await page.waitForSelector('.verdict-line')
-    const said = await page.evaluate(() => document.querySelector('.verdict-line')?.textContent?.trim() ?? '')
+    await page.waitForSelector('[data-test="run-record"]')
+    const said = await page.evaluate(() => document.querySelector('[data-test="run-record"]')?.textContent?.trim() ?? '')
     const want = shownAs[verdictOf[id]]
-    if (!said.includes(want)) fail(`session ${id} showed the verdict ${JSON.stringify(said)}, want ${want}`)
+    if (!said.includes(want)) fail(`session ${id} showed the grade ${JSON.stringify(said)}, want ${want}`)
   }
 
   // The session's tabs are places: clicking one moves the address, and Back
@@ -233,8 +262,10 @@ try {
   for (const p of [paper, paperB]) {
     if (!board.some((r) => r.includes(p.title))) fail(`the project verdict view does not name ${p.title}: ${JSON.stringify(board)}`)
   }
-  for (const v of Object.values(verdictOf)) {
-    if (!board.some((r) => r.includes(shownAs[v]))) fail(`the project verdict view does not report ${v}: ${JSON.stringify(board)}`)
+  // Each row carries its own paper's verdict, not the grade of the run that
+  // produced it and not the other paper's verdict.
+  for (const [id, want] of Object.entries(verdictShownAs)) {
+    if (!board.some((r) => r.includes(want))) fail(`the project verdict view does not report ${id} as ${want}: ${JSON.stringify(board)}`)
   }
   // And a row opens that session's own verdict.
   await page.evaluate(() => document.querySelector('.rows > .row')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))

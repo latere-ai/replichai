@@ -2063,18 +2063,31 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
     )
   if (state === 'loading' || !repro) return <div className="center-load">…</div>
   const tone = manifestTone(repro.verdict)
+  // The run's record, which is not the paper's verdict and never was.
+  //
+  // `repro.verdict` is the grader's judgement of the *run* against the method's
+  // rubric — passed, needs_revision, exhausted, failed. The findings' verdict is
+  // about the *paper* — reproducible, partial, not_reproducible. Both used to be
+  // headed "Verdict", which put two verdict words on one screen for one paper
+  // and invited the reader to take the grader's "Passed" as a statement that the
+  // paper reproduced. It is not: a well-executed audit of a paper that does not
+  // reproduce passes the rubric.
+  //
+  // So the paper's verdict is the only headline, and this becomes what it is —
+  // the record of the run that produced it, with the rubric grade as one row.
   const manifest = (
-    <div className="card card-pad stack" style={{ maxWidth: 720 }}>
-      <span className="eyebrow eyebrow-ico" style={{ color: tone }}>
-        <Ico name="gauge" size={12} /> {t('verdict')}
+    <div className="card card-pad stack" style={{ maxWidth: 720 }} data-test="run-record">
+      <span className="eyebrow eyebrow-ico">
+        <Ico name="shieldCheck" size={12} /> {t('runRecord')}
       </span>
-      <div className="verdict-line" style={{ color: tone }}>
-        <span className="verdict-ico">
-          <Ico name={verdictIcon(repro.verdict)} size={20} w={2.4} />
-        </span>
-        {verdictLabel(repro.verdict) || t('noVerdict')}
-      </div>
       <div className="usage-rows">
+        <div className="usage-line">
+          <Ico name={verdictIcon(repro.verdict)} size={13} style={{ color: tone }} />
+          {t('methodCheck')}
+          <span className="v" style={{ color: tone }}>
+            {verdictLabel(repro.verdict) || '—'}
+          </span>
+        </div>
         {repro.created && (
           <div className="usage-line">
             <Ico name="clock" size={13} style={{ color: 'var(--fg-3)' }} />
@@ -3035,37 +3048,57 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   const { t } = i18n
   const [repro, setRepro] = useState<Reproduction | null>(null)
   const [missing, setMissing] = useState(false)
+  // The paper's verdict, when the run recorded one. The manifest's grade is the
+  // rubric's judgement of the run, so a list about papers must not print it in
+  // the column a reader reads as "did this reproduce" — that was the same
+  // conflation the session pane had, one level up.
+  const [findings, setFindings] = useState<Findings | null>(null)
   useEffect(() => {
     let live = true
     getReproduction(job.id)
       .then((r) => live && setRepro(r))
       .catch(() => live && setMissing(true))
+    getFindings(job.id)
+      .then((f) => live && setFindings(f))
+      .catch(() => live && setFindings(null))
     return () => {
       live = false
     }
   }, [job.id])
-  const tone = repro ? manifestTone(repro.verdict) : 'var(--fg-3)'
+  const tone = findings ? verdictTone(findings.verdict) : 'var(--fg-3)'
   return (
     <div className="row file-row" onClick={onOpen}>
       <span className="row-title">{paper.title || paper.ref}</span>
       <span className="muted small">{job.created_at ? new Date(job.created_at).toLocaleDateString() : ''}</span>
       {repro?.review && <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review}</Pill>}
-      <span className="verdict-cell" style={{ color: tone }}>
-        {repro ? (
+      <span className="verdict-cell" style={{ color: tone }} data-test="paper-verdict">
+        {findings ? (
           <>
-            <Ico name={verdictIcon(repro.verdict)} size={14} w={2.2} />
-            {verdictLabel(repro.verdict) || t('noVerdict')}
+            {verdictLabel(findings.verdict)}
+            <span className="muted small tabular">{decompositionOf(findings)}</span>
           </>
         ) : missing ? (
           <>
             <Ico name="alert" size={13} /> {t('verdictUnread')}
           </>
+        ) : repro ? (
+          // The run finished and recorded no findings, so this paper has no
+          // verdict — saying so is the finding, and printing the rubric grade
+          // here would answer a question nobody asked.
+          <span className="muted small">{t('noVerdictRecorded')}</span>
         ) : (
           '…'
         )}
       </span>
     </div>
   )
+}
+
+// decompositionOf is the counts the verdict word summarises, so a row never
+// carries a judgement without the slicing it came from.
+function decompositionOf(f: Findings): string {
+  const c = f.components
+  return c?.total ? `${c.verified}/${c.total}` : ''
 }
 
 // StatusBadge shows a project's session status at a glance: how many are

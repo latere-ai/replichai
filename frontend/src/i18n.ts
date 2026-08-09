@@ -152,12 +152,12 @@ const strings: Record<Lang, Record<string, string>> = {
     // matter on the permanent one are what it does *not* remove — the
     // repositories close, they are not destroyed.
     download: 'Download everything',
-    downloadHint: 'One archive of every file this project’s sessions committed, one folder per session.',
+
     navTrash: 'Trash',
     trashIntro:
       'Projects you removed. They are out of your list and nobody else can reach them, and everything they hold is still here until you delete them for good.',
     noTrash: 'Nothing in the trash.',
-    colDeleted: 'Deleted',
+
     trashProject: 'Move to trash',
     trashTitle: 'Move this project to the trash?',
     trashBody:
@@ -243,7 +243,7 @@ const strings: Record<Lang, Record<string, string>> = {
     cancel: 'Cancel',
     // project detail
     projectSessions: 'Sessions',
-    noSessions: 'No sessions yet.',
+
     runningN: '{n} running',
     stop: 'Stop',
     stopping: 'Stopping…',
@@ -271,6 +271,13 @@ const strings: Record<Lang, Record<string, string>> = {
     selectArtifact: 'Select a file to view it.',
     artifactError: 'Couldn’t open this file. Try again in a moment.',
     graded: 'Graded',
+    // Two different judgements, and conflating them was the defect: the run's
+    // grade says whether the audit met the method's bar, the paper's verdict
+    // says whether it reproduced. A careful audit of a paper that does not
+    // reproduce passes the first and fails the second.
+    runRecord: 'The run',
+    methodCheck: 'Method check',
+    noVerdictRecorded: 'No verdict recorded',
     latestSessionInner: 'Latest session · inner loop',
     ofComponents: 'of {n} components',
     openVerdict: 'Open the verdict',
@@ -461,7 +468,7 @@ const strings: Record<Lang, Record<string, string>> = {
     liveStreaming: 'live',
     transcriptWaitingLive: 'Waiting for the agent to emit its first events…',
     // tiers + phases
-    tierNone: 'none',
+
     tierUser: 'user',
     tierAdmin: 'admin',
     'phase.submitted': 'submitted',
