@@ -121,7 +121,7 @@ func TestSafePicture(t *testing.T) {
 // reports them for an ungranted principal too — the not-invited screen greets a
 // person.
 func TestMeReportsDisplayClaims(t *testing.T) {
-	me := Me(access.NewMemStore(), nil)
+	me := Me(access.NewMemStore(), nil, nil)
 
 	t.Run("ungranted principal still gets a name", func(t *testing.T) {
 		r := httptest.NewRequest("GET", "/me", nil)

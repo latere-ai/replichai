@@ -118,6 +118,78 @@ func TestSolvencyReportsOutstandingLiability(t *testing.T) {
 	}
 }
 
+// 022d: the people table reports a frozen state, filters to the accounts that
+// owe, and an admin unfreezes one — granting the override that thaws it.
+func TestAdminFreezeListAndUnfreeze(t *testing.T) {
+	ctx := context.Background()
+	acc := access.NewMemStore()
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if err := acc.SeedAdmin(ctx, admin.Email); err != nil {
+		t.Fatalf("SeedAdmin: %v", err)
+	}
+	for _, e := range []string{"debtor@example.com", "solvent@example.com"} {
+		if err := acc.Grant(ctx, admin, e, access.TierUser); err != nil {
+			t.Fatalf("Grant %s: %v", e, err)
+		}
+	}
+	ledger := credit.NewMemStore(nil, nil)
+	// Drive the debtor to -$2.
+	_ = ledger.TopupPaid(ctx, "debtor@example.com", 5*credit.Dollar, "pi", "a")
+	_ = ledger.RefundPaid(ctx, "debtor@example.com", 7*credit.Dollar, "re", "a")
+
+	mux := http.NewServeMux()
+	MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), ledger, WithOverrides(acc)))
+
+	list := func(path string) map[string]GrantView {
+		r := httptest.NewRequest("GET", path, nil)
+		r = r.WithContext(identityCtx(r, admin))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d (%s)", path, w.Code, w.Body)
+		}
+		var rows []GrantView
+		if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		by := map[string]GrantView{}
+		for _, v := range rows {
+			by[v.Email] = v
+		}
+		return by
+	}
+
+	// The debtor reads frozen; the solvent account does not.
+	all := list("/admin/access")
+	if !all["debtor@example.com"].Frozen {
+		t.Fatalf("debtor should read frozen: %+v", all["debtor@example.com"])
+	}
+	if all["solvent@example.com"].Frozen {
+		t.Fatalf("solvent account should not read frozen")
+	}
+
+	// The negative filter returns only the account that owes.
+	neg := list("/admin/access?filter=negative")
+	if len(neg) != 1 {
+		t.Fatalf("filter=negative returned %d rows, want just the debtor", len(neg))
+	}
+
+	// Unfreezing grants an override, and the debtor stops reading frozen.
+	r := httptest.NewRequest("POST", "/admin/access/debtor@example.com/unfreeze", nil)
+	r = r.WithContext(identityCtx(r, admin))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("unfreeze = %d (%s)", w.Code, w.Body)
+	}
+	if list("/admin/access")["debtor@example.com"].Frozen {
+		t.Fatalf("after unfreeze the debtor should not read frozen")
+	}
+	if active, _ := acc.OverrideActive(ctx, "debtor@example.com"); !active {
+		t.Fatalf("unfreeze should have recorded an override")
+	}
+}
+
 // 006k AC2/AC5/AC7, in 011's terms: an admin drives the whole console — read
 // the policy, write it, put credits in somebody's wallet, and see the balance
 // in the people table.
