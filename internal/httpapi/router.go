@@ -17,10 +17,20 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/payment"
+	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 )
+
+// TopupPolicy supplies the purchase spread and floor the checkout route applies
+// and the wallet surfaces for the top-up modal (022b). Satisfied by
+// platform.Store; a narrow read so the router does not take the whole policy
+// store to price one purchase.
+type TopupPolicy interface {
+	Settings(ctx context.Context) (platform.Settings, error)
+}
 
 // Route is one registered endpoint, method and pattern, so the gated set is
 // enumerable for 006c's test.
@@ -244,6 +254,15 @@ type Deps struct {
 	// Reserve is how much a new project is funded with when the request names
 	// no amount — the same number the enqueue gate will then ask it for.
 	Reserve credit.Reserve
+	// Payments opens a hosted checkout and verifies its webhook (022b). Nil
+	// leaves the checkout route reporting payments_unconfigured — a deployment
+	// that does not sell credits still runs.
+	Payments payment.Provider
+	// Platform supplies the purchase spread and floor. Nil leaves the checkout
+	// route and the wallet quote at zero, which an offline run wants.
+	Platform TopupPolicy
+	// BaseURL is where the app lives, for the checkout return URLs (022b).
+	BaseURL string
 	// Notifier reaches somebody who is not looking at the app (006p). Nil sends
 	// nothing, which is what a deployment with no mail configured does.
 	Notifier Notifier
@@ -276,6 +295,9 @@ type Router struct {
 	notifier    Notifier
 	credits     credit.Store
 	reserve     credit.Reserve
+	payments    payment.Provider
+	policy      TopupPolicy
+	baseURL     string
 	sseInterval time.Duration
 	spa         http.Handler
 	// bg tracks work scheduled to outlive the request that started it — title
@@ -297,7 +319,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }

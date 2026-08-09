@@ -74,6 +74,10 @@ func (rt *Router) routes() {
 	// A researcher's page is readable by anyone, signed in or not (006r) — the
 	// same openness the public zone has, for the person behind it.
 	rt.openHandle("GET", "/profiles/{handle}", rt.publicProfile)
+	// The payment processor's webhook carries no session cookie; its signature is
+	// its authentication (022b). It sits outside the operator gate deliberately —
+	// still enumerated in OpenRoutes, so the choice is visible, not accidental.
+	rt.openHandle("POST", "/stripe/webhook", rt.stripeWebhook)
 	rt.gatedHandle("GET", "/me/profile", rt.getProfile)
 	rt.gatedHandle("PATCH", "/me/profile", rt.saveProfile)
 	rt.gatedHandle("POST", "/resolve", rt.resolvePaper)
@@ -96,6 +100,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
 	rt.gatedHandle("POST", "/projects/{id}/private", rt.withdrawProject)
 	rt.gatedHandle("GET", "/me/credits", rt.myCredits)
+	rt.gatedHandle("POST", "/me/credits/checkout", rt.startCheckout)
 	rt.gatedHandle("POST", "/projects/{id}/credits", rt.allocateCredits)
 	rt.gatedHandle("POST", "/projects/{id}/credits/reclaim", rt.reclaimCredits)
 	rt.gatedHandle("GET", "/projects/{id}/members", rt.listMembers)
@@ -640,6 +645,12 @@ func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner
 type Wallet struct {
 	Balance int64         `json:"balance"`
 	Entries []walletEntry `json:"entries"`
+	// The purchase policy the top-up modal reads (022b): the spread it applies to
+	// show "you'll get $Y", and the floor below which it refuses before the
+	// processor is ever called. Zero when this deployment sells no credits.
+	SpreadBps        int64 `json:"spread_bps"`
+	SpreadFixedMicro int64 `json:"spread_fixed_micro"`
+	MinTopupMicro    int64 `json:"min_topup_micro"`
 }
 
 // walletEntry is a ledger entry as the statement reads it: the durable row, plus
@@ -694,7 +705,16 @@ func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 		}
 		out[i] = we
 	}
-	writeJSON(w, http.StatusOK, Wallet{Balance: balance, Entries: out})
+	wallet := Wallet{Balance: balance, Entries: out}
+	// The purchase policy rides along so the top-up modal can quote a credit and
+	// enforce the floor client-side. A failed read leaves it zero rather than
+	// failing the wallet, which is about the balance, not the sale.
+	if rt.policy != nil {
+		if set, err := rt.policy.Settings(r.Context()); err == nil {
+			wallet.SpreadBps, wallet.SpreadFixedMicro, wallet.MinTopupMicro = set.SpreadBps, set.SpreadFixedMicro, set.MinTopupMicro
+		}
+	}
+	writeJSON(w, http.StatusOK, wallet)
 }
 
 // allocateCredits moves credits from the caller's wallet into a project's pot.
