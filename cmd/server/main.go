@@ -37,6 +37,7 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/notify"
+	"github.com/latere-ai/replichai/internal/payment/stripe"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
@@ -171,6 +172,11 @@ func run() error {
 		return err
 	}
 
+	// The payment processor reads its keys from the environment; with none it is
+	// a refusing adapter, so the checkout route reports payments_unconfigured and
+	// the rest of the app runs unmetered (022b).
+	payments := stripe.New()
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
 		Projects:      projectStore,
@@ -184,6 +190,9 @@ func run() error {
 		Gate:          webauth.Gate(accessStore),
 		Credits:       st.credits,
 		Reserve:       platform.StartReserve(st.platform),
+		Payments:      payments,
+		Platform:      st.platform,
+		BaseURL:       baseURL,
 		Notifier:      notifier,
 		SPA:           spaHandler,
 	})
