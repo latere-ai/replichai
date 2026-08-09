@@ -341,7 +341,6 @@ textarea {
    cool azure (the brand pole). The colour is the meaning, so the two never swap. */
 .mark-outer {
   stroke: var(--err);
-  opacity: 0.9;
 }
 .mark-inner {
   stroke: var(--brand);

@@ -33,7 +33,7 @@ const mark = (px, { tile = false, segments = 6, radius = 0 } = {}) => {
   const innerInk = tile ? '#ffffff' : '#2369bd'
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${px} ${px}" width="${px}" height="${px}">
     ${tile ? `<rect width="${px}" height="${px}" rx="${radius}" fill="#2369bd"/>` : ''}
-    <circle cx="${px / 2}" cy="${px / 2}" r="${10.4 * s}" fill="none" stroke="${outerInk}" stroke-opacity="${tile ? 0.55 : 0.9}" stroke-width="${2.3 * s}" stroke-dasharray="${dash} ${seg - dash}"/>
+    <circle cx="${px / 2}" cy="${px / 2}" r="${10.4 * s}" fill="none" stroke="${outerInk}" stroke-opacity="${tile ? 0.55 : 1}" stroke-width="${2.3 * s}" stroke-dasharray="${dash} ${seg - dash}"/>
     <circle cx="${px / 2}" cy="${px / 2}" r="${5.6 * s}" fill="none" stroke="${innerInk}" stroke-width="${3.1 * s}"/>
   </svg>`
 }
