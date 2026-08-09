@@ -29,7 +29,7 @@ A wallet-side `allocate` entry stores no project reference. `transfer(from, to, 
 - A pre-migration `allocate` row still renders, with the generic `Allocated to a project` label.
 - `store_contract_test.go` fails a store that does not persist `ProjectID`/`ProjectName` on allocate and reclaim.
 - The migration applies additively over a database holding existing `credit_entries` rows, leaving them intact with empty project columns.
-- `credits.test.ts` covers the three render cases (linked, plain-text, legacy). zh and en both carry the new `ledgerAllocateTo`/`ledgerReclaimFrom` strings.
+- `credits.test.ts` covers the three render cases (linked, plain-text, legacy). The new `ledgerAllocateTo`/`ledgerReclaimFrom` strings are added to the `en` locale — the app is English-only today (`Lang = 'en'`), so there is no second locale to keep in step yet.
 
 ## Leaves out
 
