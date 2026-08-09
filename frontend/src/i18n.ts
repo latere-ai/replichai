@@ -35,7 +35,7 @@ const strings: Record<Lang, Record<string, string>> = {
     signInBody: 'Signing in is open and costs nothing. A session is what spends, and only when you start one.',
     signInNote: 'Built for human-computer interaction research.',
     signInWith: 'Sign in with latere',
-    authUnavailableTitle: 'Replichai is unavailable',
+    authUnavailableTitle: 'ReplicHAI is unavailable',
     authUnavailableBody: 'We couldn’t check your session. You may be offline, or the service may be temporarily unavailable.',
     retry: 'Try again',
     // Sign-in is open (006q), so this screen is no longer "wait for an admin".

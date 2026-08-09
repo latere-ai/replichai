@@ -32,14 +32,14 @@ export function Mark({ size = 24, className }: { size?: number; className?: stri
 }
 
 // Wordmark sets the name as one word with a hairline gap at its own seam:
-// `replic` (replication) and `hai` (human–AI, the lineage the `open-hai` forge
+// `Replic` (replication) and `HAI` (human–AI, the lineage the `open-hai` forge
 // account already carries). The seam is spacing, not colour — the stylesheet
 // spends the brand hue on what the operator can act on, and a two-tone wordmark
 // would spend it on decoration instead.
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={className ? `wordmark ${className}` : 'wordmark'}>
-      replic<span className="wordmark-seam">hai</span>
+      Replic<span className="wordmark-seam">HAI</span>
     </span>
   )
 }
