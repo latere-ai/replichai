@@ -349,7 +349,23 @@ func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 			if n, _ := s.Balance(ctx, w); n != -2*Dollar {
 				t.Fatalf("wallet after over-refund = %d, want %d (negative allowed)", n, -2*Dollar)
 			}
+
+			// The solvency read is the fold over every holder; here only this
+			// wallet holds anything, and it holds what its balance says — a refund
+			// taking it negative counts against outstanding liability, correctly.
+			if n, _ := s.TotalOutstanding(ctx); n != -2*Dollar {
+				t.Fatalf("TotalOutstanding = %d, want %d (the one wallet's balance)", n, -2*Dollar)
+			}
 		})
+	}
+}
+
+func TestWalletEmailInvertsWallet(t *testing.T) {
+	if got, ok := WalletEmail(Wallet("Person@Latere.ai ")); !ok || got != "person@latere.ai" {
+		t.Fatalf("WalletEmail(Wallet(...)) = %q, %v; want the normalised email", got, ok)
+	}
+	if _, ok := WalletEmail(Pot("p1")); ok {
+		t.Fatalf("WalletEmail(Pot) reported a wallet; a pot is not one")
 	}
 }
 

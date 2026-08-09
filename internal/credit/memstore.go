@@ -152,6 +152,21 @@ func (s *MemStore) EntryByExternalRef(_ context.Context, ref string) (Entry, boo
 	return Entry{}, false, nil
 }
 
+// TotalOutstanding sums every holder's settled balance — wallets and pots, less
+// open holds — the credits sold and not yet delivered as compute.
+func (s *MemStore) TotalOutstanding(context.Context) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var n int64
+	for _, e := range s.entries {
+		if e.Kind.commits() {
+			continue
+		}
+		n += e.Amount
+	}
+	return n, nil
+}
+
 // Allocate moves credits from the caller's wallet into a project's pot.
 func (s *MemStore) Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {

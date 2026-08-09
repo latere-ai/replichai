@@ -95,6 +95,20 @@ func Wallet(email string) Holder { return Holder("user:" + normalizeEmail(email)
 // Pot is one project's holder key.
 func Pot(projectID string) Holder { return Holder("project:" + strings.TrimSpace(projectID)) }
 
+// walletPrefix is the namespace a wallet holder carries.
+const walletPrefix = "user:"
+
+// WalletEmail is the inverse of Wallet: the email a wallet holder is keyed by,
+// and whether h is a wallet at all (a pot is not). A refund reversing a purchase
+// has the entry and needs the person to post the reversal against (022c).
+func WalletEmail(h Holder) (string, bool) {
+	s := string(h)
+	if !strings.HasPrefix(s, walletPrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(s, walletPrefix), true
+}
+
 // Kind is what an entry records.
 type Kind string
 
@@ -212,6 +226,12 @@ type Store interface {
 	// EntryByExternalRef finds the entry carrying ref, if any. A refund uses it to
 	// reverse a purchase by the exact micro-USD it credited (022c).
 	EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error)
+	// TotalOutstanding is every credit the platform has sold and not yet
+	// delivered as compute: the sum over every holder, wallets and pots, less
+	// open holds. It is the solvency number an operator watches against what the
+	// vendor account holds (022c) — the read that replaces coupling a customer
+	// payment to a vendor top-up.
+	TotalOutstanding(ctx context.Context) (int64, error)
 	// Allocate moves credits from the caller's wallet into a project's pot. Any
 	// member of the project may fund it. Both sides are one transaction: money
 	// is never in neither place. projectName is snapshotted onto both entries so
