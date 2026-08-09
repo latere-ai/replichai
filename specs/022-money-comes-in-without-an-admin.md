@@ -2,7 +2,7 @@
 
 **Status:** designed, not built. A design to refine into implementation leaves (a suggested breakdown is at the foot).
 
-**Scope:** let a person buy credits into their own wallet with a card, so an admin is no longer the only way money exists. A Stripe **hosted Checkout** session creates the charge; a signed **webhook** is the one thing that posts the credit; the ledger dedupes the post on an external reference so a retried delivery cannot double it; a **spread** at purchase leaves margin for fees and overhead; a European may **pay in EUR** while the credit stays micro-USD, converted once at Stripe's own rate; a **refund** is a correcting ledger entry, not a reversal engine; and a **negative wallet freezes the account** until it is topped back up. Adds one migration (an `external_ref` column and its unique index), a payment port with a Stripe adapter, three routes (`POST /me/credits/checkout`, `POST /webhooks/stripe`, and a solvency read for the console), and the top-up modal the `402` already promises.
+**Scope:** let a person buy credits into their own wallet with a card, so an admin is no longer the only way money exists. A Stripe **hosted Checkout** session creates the charge; a signed **webhook** is the one thing that posts the credit; the ledger dedupes the post on an external reference so a retried delivery cannot double it; a **spread** at purchase leaves margin for fees and overhead; the checkout is created in **USD** while an EU customer pays the euro equivalent via Stripe Adaptive Pricing (no code, no FX read); a **refund** is a correcting ledger entry, not a reversal engine; and a **negative wallet freezes the account** until it is topped back up. Adds one migration (an `external_ref` column and its unique index), a payment port with a Stripe adapter, three routes (`POST /me/credits/checkout`, `POST /webhooks/stripe`, and a solvency read for the console), and the top-up modal the `402` already promises.
 
 **Depends on:** [011](011-what-a-session-costs.md) (the ledger, `KindTopup`, micro-USD, the wallet the credit lands in and the `402 no_credits` that sends a person to buy some), [006c](006c-identity-and-access.md) (the signed-in email a wallet is keyed by, and the tier guard the webhook must sit *outside* of), [006k](006k-the-platform-admin-console.md) (platform settings, where the spread lives beside the rate card it complements), [010](010-deployment-and-release.md) (the secret the Stripe keys need, and the public ingress path the webhook needs reachable).
 
@@ -151,28 +151,27 @@ Two rules make it trustworthy:
 
 **Purchasing is free-entry above a floor.** A person types any amount at or above a **minimum** (a platform-settings number, e.g. $5 / €5), rather than choosing from fixed packs — the floor is what keeps Stripe's fixed per-charge fee from dwarfing a tiny top-up, and it lives beside the spread so an operator tunes both together. The floor is public and per-currency, so the modal can refuse a too-small amount before it ever reaches Stripe.
 
-### Paying in EUR, crediting in USD — Stripe decides the rate
+### Charging in USD, presenting EUR — the ledger never learns what EUR is
 
-A credit is prepaid **USD** compute: Anthropic bills USD, the rate card is USD, and a session's cost reconciles against USD vendor rates (011). So the ledger stays micro-USD end to end, and **EUR is a presentment currency at Checkout and nowhere else** — a European funds a USD credit balance by paying euros. 011's *"no conversion, no EUR-denominated balances, no FX"* holds for every stored balance; the only conversion in the system happens once, at the moment of a EUR purchase, and it is **Stripe's conversion, not ours**.
+A credit is prepaid **USD** compute: Anthropic bills USD, the rate card is USD, and a session's cost reconciles against USD vendor rates (011). So the ledger stays micro-USD end to end, and **the checkout is always created in USD** — the amount of credit the person is buying. A European sees and pays the euro equivalent through Stripe's **Adaptive Pricing**, a dashboard setting that presents and collects the local currency while the amount *we* transact is USD. EUR is therefore a presentment concern that lives entirely in Stripe's configuration, and **not one line of this system charges, reads, or converts EUR.**
 
-The customer picks a round **EUR** amount (or a round USD one); the Checkout session is created in that currency. On `checkout.session.completed`, the webhook resolves the charge to its **balance transaction**, which carries the exchange rate Stripe applied and the amount in the platform's settlement currency. From it we take the charge's **USD value** and feed it to the spread as `gross_micro` above. We never invent, store, or refresh an FX rate: Stripe tells us how much USD the euros are worth, on that charge, at that instant.
+This is a correction of an earlier idea — "charge EUR, and read the USD back from Stripe's balance transaction." That only works if the platform's Stripe account *settles* in USD; a EUR-settling account (the likely case) never yields a USD figure that way. Charging in USD sidesteps the settlement question entirely: the USD we grant is the USD we put on the session, known at create, with **no balance-transaction read and no FX rate to manage**.
 
 ```
-customer pays €20  ──►  Stripe charge (currency: eur)
-                        balance_transaction.exchange_rate  (Stripe's, on this charge)
-                   ──►  gross_micro = USD-equivalent of €20
-                   ──►  credited_micro = gross_micro − spread
-wallet shows a USD balance; the statement line records both:
-   "purchased $21.06 in credits for €20.00"   (actor = stripe:pi_…)
+person buys $20 of credits  ──►  Checkout session, currency=usd, $20.00
+   (Stripe Adaptive Pricing shows an EU customer ≈ €18.50 to pay)
+credited_micro = 20$ − spread  ──►  stored in the session metadata at create
+on checkout.session.completed  ──►  TopupPaid(email, credited_micro, payment_intent)
+wallet shows a USD balance; the statement line reads:
+   "purchased $19.10 in credits for $20.00"   (actor = stripe:pi_…)
 ```
 
-Three consequences, stated so they are decisions not surprises:
+Two consequences, stated so they are decisions not surprises:
 
-- **The wallet is displayed in USD**, because a credit buys USD compute. The euro paid is not lost — it is on the statement line beside the dollars credited — but the balance is one honest number in the unit sessions are priced in.
-- **The credited USD is not round** (€20 → ~$21.06 before spread). That is correct: the customer chose the euro figure, and the dollar value is whatever Stripe's rate makes it.
-- **Stripe's currency-conversion fee eats into margin.** A EUR charge that settles to a USD balance costs a conversion fee on top of the card fee, so the `spread_bps` an operator sets must cover it; the fixed-plus-percentage shape already exists to absorb exactly this, and the number is admin-tunable per the rate an operator actually sees on their Stripe dashboard.
+- **The person picks the credit amount in USD** and the wallet is USD, because a credit buys USD compute. An EU customer is shown the euro they will pay at Stripe's page; that euro figure is Stripe's to compute and never touches the ledger.
+- **The spread is applied at create, not in the webhook** — `credited_micro` is computed from the snapshotted spread when the session is made and carried in its metadata, so an admin editing the spread mid-flight cannot change what an in-flight session credits, and the webhook is a trivial "read the metadata, post it".
 
-Supported currencies are a small allow-list (`usd`, `eur`) carried on the checkout request; the rate card, the pots, the holds, the charges, and the reserve are untouched — none of them learn what EUR is. **This is not tax handling.** Selling digital credits to EU consumers triggers EU VAT (charge at the buyer's country rate, remit via OSS), which this spec deliberately does not do — see the named deferred spec below, to be resolved with an accountant before EU-consumer sales.
+The rate card, the pots, the holds, the charges, and the reserve are untouched — none of them learn what EUR is. **This is not tax handling.** Selling digital credits to EU consumers triggers EU VAT (charge at the buyer's country rate, remit via OSS), which this spec deliberately does not do — see the named deferred spec below, to be resolved with an accountant before EU-consumer sales.
 
 ### A refund is a correcting entry, and a wallet may go negative
 
@@ -240,7 +239,7 @@ Three secrets, injected like every other (010): `STRIPE_SECRET_KEY`, `STRIPE_WEB
 
 - A signed-in person with an empty wallet opens the top-up modal (reached from the `402 no_credits` path 011 built), sees *"$X in credits for $Y"* computed from the public spread, and is redirected to a Stripe-hosted Checkout page.
 - On successful payment, a `checkout.session.completed` webhook posts one `KindTopup` entry to that person's wallet, `external_ref = <payment_intent>`, `actor = stripe:<payment_intent>`, `amount = credited_micro` derived from the **snapshotted** spread — and the wallet balance reflects it on next read.
-- **A EUR purchase credits the USD-equivalent from Stripe's own rate:** a €X Checkout charge results in a micro-USD credit computed from the charge's balance-transaction exchange rate (no platform-set rate), and the statement line records both the euros paid and the dollars credited. A test drives a EUR charge through the fake adapter with a known exchange rate and asserts the credited micro-USD matches `gross_micro − spread`.
+- **The checkout is created in USD and the webhook credits the metadata amount:** `startCheckout` computes `credited_micro = gross − spread` and stores it on the session; the webhook posts exactly that. A test asserts the metadata amount and that the credit matches it. EUR presentment is Adaptive Pricing (Stripe config), exercised by no code path here.
 - Delivering the **same** webhook event twice results in **one** ledger entry and a `200` both times (the unique `external_ref` index + `ON CONFLICT DO NOTHING`). A test posts the identical event twice and asserts the balance moved once.
 - A webhook with a **bad or missing signature** posts nothing and returns `400`. A test tampers with the payload and asserts no entry and no `200`.
 - The credited amount is derived **only** from the server-verified event/metadata, never from a redirect query parameter. A test hits the return URL with an inflated `amount` param and asserts the wallet is unchanged.
@@ -268,7 +267,7 @@ Everything below is **explicitly excluded from this spec** — not forgotten, no
 - **Per-cell rate-card or spread editors.** Both are typed values on the settings row 006k/011 already render; a wrong cell mis-prices until noticed, which is the same accepted risk 011 states.
 - **EU VAT on EUR (or any) consumer sales — named, and now urgent.** Charging a EU consumer means charging VAT at the buyer's country rate and remitting it (OSS), and issuing a compliant invoice. This spec adds EUR *payment* but no *tax* handling, so it is not tax-compliant for EU-consumer sales on its own. Stripe Tax can automate the calculation; the registration (OSS number) and the "who is a consumer vs a business" logic need an accountant's input. Its own spec, to land before EU consumers are sold to — flagged here so shipping EUR is not mistaken for being ready to sell.
 - **A ledger denominated in anything but micro-USD.** EUR is presentment only; no stored balance is ever in EUR, and the one conversion is Stripe's, at purchase. Multi-currency balances and conversion-at-spend stay out (they would reopen 011's core).
-- **Currencies beyond USD and EUR.** The checkout allow-list is `usd`/`eur`; adding GBP, etc. is a one-line list change plus a floor per currency, deferred until asked for.
+- **Charging in a currency other than USD.** The checkout is always USD; any other currency the customer sees is Stripe Adaptive Pricing presentment. Actually transacting in another currency (and the settlement/FX that entails) is deferred until asked for.
 
 ## Settled (were open; decided before the breakdown)
 
@@ -282,8 +281,8 @@ Every decision in this spec is chosen, not deferred. The four that were briefly 
 6. **Minimum purchase — free-entry above a public floor** (e.g. $5), not fixed packs, so the fixed fee cannot dominate a tiny top-up.
 7. **Spread — percentage plus a fixed term** (`2.9% + $0.30`-shaped), so small and large purchases each cover their real cost, including a EUR charge's currency-conversion fee.
 8. **Return page — poll `/me/credits` briefly**, falling back to a "credits will appear shortly" line; perceived latency only.
-9. **EUR — presentment only, credits stay micro-USD.** A credit is prepaid USD compute, so the ledger is untouched; EUR lives only at Checkout. Supported currencies are a `usd`/`eur` allow-list on the checkout request.
-10. **FX — Stripe's rate, not ours.** A EUR charge is converted to the micro-USD it credits using the exchange rate on that charge's balance transaction. No platform-set rate to maintain, no FX risk beyond the single transaction. The wallet displays USD; the statement line shows the euros paid beside the dollars credited.
+9. **EUR — presentment only, and entirely in Stripe's config.** A credit is prepaid USD compute, so the checkout is always created in USD; an EU customer pays the euro equivalent via Stripe **Adaptive Pricing** (a dashboard toggle). No code charges, reads, or converts EUR. This corrects the earlier "charge EUR" idea, which would have required USD settlement on the Stripe account.
+10. **The credited USD is decided at create, not from an FX read.** `credited_micro = gross − spread` is computed when the session is made and carried in its metadata (the spread snapshot); the webhook reads it. No balance-transaction read, no platform-set or Stripe FX rate on the crediting path.
 11. **VAT — flagged, deferred, urgent.** EUR *payment* ships here; EU-consumer *tax* handling (Stripe Tax + OSS) is its own spec, to be resolved with an accountant before selling to EU consumers. This spec is not tax-compliant on its own.
 
 ## Task Breakdown
@@ -293,7 +292,7 @@ Six implementation-ready leaves, split along one seam: a **backend chain** that 
 | Child spec | Depends on | Effort | Status |
 |---|---|---|---|
 | [022a — The idempotent paid top-up](022a-the-idempotent-paid-topup.md) — migration v3 (`external_ref` + partial unique index), `TopupPaid`/`RefundPaid` idempotent on ref, `EntryByExternalRef`, the payment port + mem adapter. | 011 | medium | **built** |
-| [022b — Checkout and the webhook](022b-checkout-and-the-webhook.md) — the Stripe adapter, `POST /me/credits/checkout` (usd/eur), the signed `POST /stripe/webhook`, the spread snapshot, EUR→USD from the balance transaction, the quote fields. Backend. | 022a | medium | validated |
+| [022b — Checkout and the webhook](022b-checkout-and-the-webhook.md) — the Stripe adapter, `POST /me/credits/checkout` (USD), the signed `POST /stripe/webhook`, the spread applied and snapshotted into session metadata at create, the quote fields. EUR is Adaptive Pricing (Stripe config). Backend. | 022a | medium | validated |
 | [022c — Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) — `charge.refunded`/dispute → negative `adjust` reversing the credited USD, and the `Σ wallets + Σ pots` read. Backend. | 022b | small | validated |
 | [022d — The freeze, server-side](022d-a-negative-wallet-is-frozen.md) — the override store, `FreezeGate`, thaw-by-arithmetic, the one-shot admin unfreeze + freeze-list, the freeze email, `frozen` on `GET /me`. Backend. | 022c | medium | validated |
 | [022e — Buying credits](022e-buying-credits.md) — the `TopUpModal`, `startCheckout`, the 402 *Top up* trigger, the `/wallet` route + post-checkout poll. Frontend. | 022b | medium | validated |
