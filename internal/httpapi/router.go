@@ -185,6 +185,9 @@ type MembershipStore interface {
 // against a fake, and so a deployment can wire nothing at all.
 type Notifier interface {
 	ProjectInvitation(ctx context.Context, to, projectID, projectName, inviter string) error
+	// AccountFrozen tells a person a clawed-back payment put their account in
+	// view-only mode, and that a top-up lifts it (022d).
+	AccountFrozen(ctx context.Context, to string) error
 }
 
 // RepoPublisher flips a forge repository's visibility — the optional half of the

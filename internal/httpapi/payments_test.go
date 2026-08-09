@@ -165,3 +165,46 @@ func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
 		t.Fatalf("refund of unknown purchase = %d, want 200", code)
 	}
 }
+
+// The freeze email is sent once, on the reversal that first takes the wallet
+// negative — a chargeback of a credit already spent — and not again on a further
+// refund of an already-frozen account.
+func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
+	ctx := context.Background()
+	d, _, ledger, _ := paymentsDeps(t)
+	nf := &fakeNotifier{}
+	d.Notifier = nf
+	rt := NewRouter(d)
+	deliver := func(v payment.Event) {
+		body, _ := json.Marshal(v)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
+		r.Header.Set("Stripe-Signature", "whsec")
+		rt.Handler().ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("webhook %s = %d (%s)", v.Kind, w.Code, w.Body)
+		}
+	}
+	purchase := func(pi string, credited int64) {
+		deliver(payment.Event{Kind: payment.EventCheckoutCompleted, Email: payer.Email, PaymentIntent: pi, Meta: map[string]string{"credited_micro": itoa(credited)}})
+	}
+
+	// $5 bought and committed to a project, so the wallet is back at 0 and the
+	// refund of that purchase will take it negative — the real crossing.
+	purchase("pi_1", 5*credit.Dollar)
+	if err := ledger.Fund(ctx, payer.Email, "proj-1", "P", 5*credit.Dollar); err != nil {
+		t.Fatalf("Fund: %v", err)
+	}
+	deliver(payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_1", RefundID: "re_1"})
+	if got := nf.frozenSends(); len(got) != 1 || got[0] != payer.Email {
+		t.Fatalf("after the crossing, freeze emails = %v; want one to the payer", got)
+	}
+
+	// A second purchase (unspent) then its refund drops the wallet further but
+	// does not email again — the account was already frozen.
+	purchase("pi_2", 2*credit.Dollar)
+	deliver(payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_2", RefundID: "re_2"})
+	if got := nf.frozenSends(); len(got) != 1 {
+		t.Fatalf("a further refund of an already-frozen account emailed again: %v", got)
+	}
+}
