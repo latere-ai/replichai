@@ -17,10 +17,11 @@ export type ProjectTab = 'sessions' | 'verdict' | 'people'
 // repository" to browse.
 export type SessionTab = 'transcript' | 'verdict' | 'artifacts'
 
-// The settings screen is one view with three sub-tabs, each a real path
-// (/settings, /settings/profile, /settings/credits). 'account' is the default
-// and omitted from the address, exactly as 'sessions' is for a project (024a).
-export type SettingsTab = 'account' | 'profile' | 'credits'
+// The settings screen is one view with two sub-tabs, each a real path
+// (/settings, /settings/profile). 'account' is the default and omitted from the
+// address, exactly as 'sessions' is for a project (024a). Credits moved to the
+// dedicated /wallet screen (022e), so there is no /settings/credits.
+export type SettingsTab = 'account' | 'profile'
 
 export type View =
   | { name: 'projects' }
@@ -58,7 +59,7 @@ const isSessionTab = (s: string): s is SessionTab => (SESSION_TABS as string[]).
 
 // The non-default settings tabs, the ones that earn a path segment. 'account' is
 // the bare /settings and never appears here, so the reverse-lookup stays single.
-const SETTINGS_TABS: SettingsTab[] = ['profile', 'credits']
+const SETTINGS_TABS: SettingsTab[] = ['profile']
 
 const isSettingsTab = (s: string): s is SettingsTab => (SETTINGS_TABS as string[]).includes(s)
 

@@ -688,20 +688,22 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
         ? t('navTrash')
         : view.name === 'submit'
           ? t('newProject')
-          : view.name === 'settings'
-            ? t('settings')
-            : view.name === 'admin'
-              ? t('navAdmin')
-              : t('navProjects')
+          : view.name === 'wallet'
+            ? t('navWallet')
+            : view.name === 'settings'
+              ? t('settings')
+              : view.name === 'admin'
+                ? t('navAdmin')
+                : t('navProjects')
   const rootView: View =
     view.name === 'public' ? { name: 'public' } : view.name === 'trash' ? { name: 'trash' } : { name: 'projects' }
   return (
     <div className="crumb">
       <button onClick={() => setView(rootView)}>{root()}</button>
-      {view.name === 'settings' && view.tab && view.tab !== 'account' && (
+      {view.name === 'settings' && view.tab === 'profile' && (
         <>
           <span className="sep">/</span>
-          <span className="leaf">{view.tab === 'profile' ? t('settingsProfile') : t('settingsCredits')}</span>
+          <span className="leaf">{t('settingsProfile')}</span>
         </>
       )}
       {view.name === 'project' && view.title && (
@@ -1362,7 +1364,6 @@ function SettingsScreen({
   const tabs: { k: SettingsTab; label: string }[] = [
     { k: 'account', label: t('settingsAccount') },
     { k: 'profile', label: t('settingsProfile') },
-    { k: 'credits', label: t('settingsCredits') },
   ]
   return (
     <div className="screen">
@@ -1379,7 +1380,6 @@ function SettingsScreen({
       <div className="stack" style={{ maxWidth: 520 }}>
         {cur === 'account' && <AccountCard i18n={i18n} me={me} theme={theme} />}
         {cur === 'profile' && <ProfileCard i18n={i18n} />}
-        {cur === 'credits' && <CreditsCard i18n={i18n} me={me} />}
       </div>
     </div>
   )
@@ -1425,17 +1425,6 @@ function AccountCard({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnTyp
 // CreditsCard is the wallet balance and its statement — the one place a person
 // reads their own number and can see where it came from. 024b makes each move
 // name its project; the statement itself is unchanged here.
-function CreditsCard({ i18n, me }: { i18n: I18n; me: Me }) {
-  const { t } = i18n
-  return (
-    <div className="card card-pad stack">
-      <div className="usage-rows">
-        {me.credits ? <WalletStatement i18n={i18n} balance={me.credits.wallet} /> : <div className="usage-line muted small">{t('statementEmpty')}</div>}
-      </div>
-    </div>
-  )
-}
-
 // ProfileCard edits the researcher identity a sign-off is published under
 // (006n). It is a default, not the record: what a published project reports is
 // the snapshot taken when it was signed, so editing here changes nothing that is
@@ -2975,23 +2964,32 @@ function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; re
 
   const credits = me.credits
   return (
-    <div className="stack">
-      <div className="card card-pad stack">
-        <span className="eyebrow eyebrow-ico">
-          <Ico name="wallet" size={12} /> {t('walletHeading')}
-        </span>
-        <div className="usage-line">
-          {t('creditsBalance')}
-          <span className="v tabular">{formatUSD(credits ? credits.wallet : 0)}</span>
-        </div>
-        {polling && <p className="muted small" style={{ margin: 0 }}>{t('topUpProcessing')}</p>}
-        <div className="field-row">
-          <button className="btn" onClick={onTopUp}>
-            <Ico name="plus" size={13} w={2.2} /> {t('topUp')}
-          </button>
+    <div className="screen">
+      <div className="screen-head">
+        <h1 className="screen-title">{t('walletHeading')}</h1>
+        <p className="screen-desc">{t('walletDesc')}</p>
+      </div>
+      <div className="stack" style={{ maxWidth: 520 }}>
+        <div className="card card-pad stack">
+          <div className="usage-rows">
+            {credits ? (
+              <WalletStatement i18n={i18n} balance={credits.wallet} />
+            ) : (
+              <div className="usage-line muted small">{t('statementEmpty')}</div>
+            )}
+          </div>
+          {polling && (
+            <p className="muted small" style={{ margin: 0 }}>
+              {t('topUpProcessing')}
+            </p>
+          )}
+          <div className="field-row">
+            <button className="btn" onClick={onTopUp}>
+              <Ico name="plus" size={13} w={2.2} /> {t('topUp')}
+            </button>
+          </div>
         </div>
       </div>
-      {credits && <WalletStatement i18n={i18n} balance={credits.wallet} />}
     </div>
   )
 }
