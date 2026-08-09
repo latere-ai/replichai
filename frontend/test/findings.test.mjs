@@ -50,10 +50,27 @@ const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const PROJECT = 'proj-1'
 const GRADED = 'job-graded' // has findings
 const BARE = 'job-bare' // published, no findings
+const DIED = 'job-died' // reached publishing and then failed: has a repo, was never graded
+const REFUSED = 'job-refused' // wrote findings the system refused: a 422, not a 404
 
 const project = { id: PROJECT, owner: 'p', title: 'Posture-Aware Pen+Touch', visibility: 'private', created_at: at(0) }
 const paper = { key: 'doi:10.1145/3654777.3676417', ref: '10.1145/3654777.3676417', title: 'Sensing Posture-Aware Pen+Touch Interaction on Tablets', sessions: 2 }
-const sessionOf = (id) => ({ id, project_id: PROJECT, paper_key: paper.key, ref: paper.ref, phase: 'done', repo_name: `open-hai/${id}`, created_at: at(0), updated_at: at(6e6), cost: 3842 })
+const sessionOf = (id) => ({
+  id,
+  project_id: PROJECT,
+  paper_key: paper.key,
+  ref: paper.ref,
+  // The one that died carries a repository and a failure. RepoName marks that
+  // publishing began, not that it finished, and `failed` is terminal — so a
+  // rail keyed on "terminal and has a repo" picks this one and hides the run
+  // that actually produced findings.
+  phase: id === DIED ? 'failed' : 'done',
+  error: id === DIED ? 'publish: forge refused the commit' : undefined,
+  repo_name: `open-hai/${id}`,
+  created_at: at(0),
+  updated_at: at(6e6),
+  cost: 3842,
+})
 
 // One findings file exercising every rule the panes have to respect: a verified
 // claim that still disagrees with the paper, a blocked one, and an outer one.
@@ -94,7 +111,9 @@ const routes = [
   [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
   [/^\/me\/profile$/, {}],
   [/^\/projects$/, [{ ...project, session_count: 2, running: 0, latest_phase: 'done', published_sessions: 2, spend_30d: 4_210_000 }]],
-  [/^\/projects\/[^/]+$/, { project, sessions: [sessionOf(GRADED), sessionOf(BARE)], papers: [paper], may_submit: true, role: 'owner' }],
+  // Newest first, as the job store returns them: the failed publish is the most
+  // recent session of this paper.
+  [/^\/projects\/[^/]+$/, { project, sessions: [sessionOf(DIED), sessionOf(GRADED), sessionOf(BARE)], papers: [paper], may_submit: true, role: 'owner' }],
   [/^\/projects\/[^/]+\/papers$/, [paper]],
   [/^\/projects\/[^/]+\/members$/, []],
   [/^\/projects\/[^/]+\/credits$/, { wallet: 20, start_reserve: 5 }],
@@ -129,6 +148,15 @@ try {
       // the case the panes have to state rather than render as emptiness.
       if (/^\/jobs\/[^/]+\/verdict$/.test(u.pathname)) {
         const id = u.pathname.split('/')[2]
+        // A run whose file failed validation is a different fact from one that
+        // never wrote a file, and the pane has to say which.
+        if (id === REFUSED) {
+          return req.respond({
+            status: 422,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'findings_invalid', problems: ['boundary[2].outcome: an outer-loop claim is verified'] }),
+          })
+        }
         if (id !== GRADED) return req.respond({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'no_findings' }) })
         return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(findings) })
       }
@@ -233,6 +261,21 @@ try {
   if (bare.table) fail('a session with no findings rendered a boundary table')
   if (!/recorded no findings as data/i.test(bare.body)) fail('a session with no findings does not say why')
 
+  /* ── The verdict pane, with findings the system refused ── */
+
+  await page.goto(`${BASE}/p/${PROJECT}/s/${REFUSED}/verdict`, { waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 500))
+  const refused = await page.evaluate(() => ({
+    table: !!document.querySelector('.grid-table'),
+    body: document.body.textContent.replace(/\s+/g, ' '),
+  }))
+  if (refused.table) fail('a session whose findings were refused rendered a boundary table')
+  // A refusal and an absence are different facts about the run, and the pane
+  // must not report the second when the first happened.
+  if (!/wrote findings the system refused/i.test(refused.body)) {
+    fail('a refused findings file is reported as if the run had written nothing')
+  }
+
   /* ── The artifacts pane ── */
 
   await page.goto(`${BASE}/p/${PROJECT}/s/${GRADED}/artifacts`, { waitUntil: 'networkidle0' })
@@ -300,8 +343,10 @@ try {
     }
   })
 
-  // One card, because the project holds one paper with a graded session. A
-  // second paper would be a second card, never a single project-wide figure.
+  // One card, because the project holds one paper with a graded session — and
+  // it has to be the graded one, not the newer session that reached publishing
+  // and then failed. That session has a repository and is terminal, so a rail
+  // keyed on those two facts renders nothing here while findings exist.
   if (rail.cards.length !== 1) fail(`the rail rendered ${rail.cards.length} cards, want one per graded paper`)
   else {
     const c = rail.cards[0]

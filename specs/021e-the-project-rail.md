@@ -1,6 +1,8 @@
 # 021e — The project rail
 
-**Status:** designed.
+**Status:** built. The rail renders one `LATEST SESSION · INNER LOOP` card per paper with a graded session, `Publish…` sits on the project header, and `SPEND · LAST 30 DAYS` reads a server-computed windowed aggregate. `job.Store.SpendSince` is implemented in both stores with a contract test that was mutation-checked two ways — a store filtering on `created_at` and one summing zero each produce their own named failure.
+
+Two things came out of the build. **The rail's predicate had to be `done` and a repository, not *terminal* and a repository.** `RepoName` marks that publishing began and `publishing → failed` is legal (015), so the first version selected a newer session that had died mid-publish, found no findings on it, and rendered nothing while a graded run sat underneath. The browser test now carries exactly that fixture. And **the spend contract test was initially vacuous** — every session in it was freshly enqueued with no usage, so it asserted `0 == 0` and would have passed against a store that summed nothing; it now observes real usage through a priced card and asserts a session created before the window and updated inside it still counts.
 
 **Scope:** the Sessions tab gains the right rail the operator design gives it — the latest session's inner-loop decomposition per paper, the open-science scorecard, and the collaborators — plus `Publish…` on the project header and a `SPEND · LAST 30 DAYS` tile on the projects screen.
 

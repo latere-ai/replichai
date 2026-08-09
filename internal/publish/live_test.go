@@ -231,6 +231,12 @@ func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 	if !rep.Findings {
 		t.Fatalf("valid findings reported as unusable: %v", rep.FindingProblems)
 	}
+	// verdict.json must not read as third-party data. If it did, every new
+	// reproduction would come out review != "clear" and become unpublishable —
+	// a product-wide block introduced by adding a file.
+	if len(rep.Leaked) != 0 {
+		t.Fatalf("the findings file tripped the redistribution gate: %v", rep.Leaked)
+	}
 	var m Manifest
 	if err := json.Unmarshal(forge.files[ManifestFile], &m); err != nil {
 		t.Fatalf("manifest: %v", err)

@@ -252,6 +252,40 @@ func runSpendWindowContract(t *testing.T, s Store) {
 		}
 	}
 
+	// Cost has to actually flow: usage against the session's rate card, through
+	// the same withCost the row rendering uses. Without this the whole contract
+	// is 0 == 0 and a store that summed nothing would pass.
+	spent, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-paid", Kind: KindAudit, Project: "pZ"})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	before := time.Now()
+	if err := s.Observe(ctx, spent.ID, provider.RunStatus{Usage: provider.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000}}); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	paid, err := s.SpendSince(ctx, []string{"pZ"}, before.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("SpendSince: %v", err)
+	}
+	if paid["pZ"] <= 0 {
+		t.Fatalf("a session that burned two million tokens summed to %d; usage is not reaching the total", paid["pZ"])
+	}
+
+	// The window is on when a session last *changed*, not when it started. This
+	// is the assertion a store filtering on created_at fails: the session was
+	// created before `mid` and updated after it, so it must still be counted.
+	mid := time.Now()
+	if err := s.Advance(ctx, spent.ID, PhaseResolving, nil); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	late, err := s.SpendSince(ctx, []string{"pZ"}, mid)
+	if err != nil {
+		t.Fatalf("SpendSince: %v", err)
+	}
+	if late["pZ"] != paid["pZ"] {
+		t.Errorf("a session created before the window and updated inside it summed to %d, want %d — the filter is on created_at, not updated_at", late["pZ"], paid["pZ"])
+	}
+
 	// A project nobody asked about is never summed.
 	if _, ok := all["pZ"]; ok {
 		t.Error("pZ summed; want only the projects asked for")
@@ -312,7 +346,7 @@ func runClaimContention(t *testing.T, s Store) {
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewMemStore())
 	runGuardContract(t, NewMemStore())
-	runProjectJoinContract(t, NewMemStore())
+	runProjectJoinContract(t, NewMemStore(WithRates(fixedCard(testCard))))
 	runClaimContention(t, NewMemStore())
 }
 
