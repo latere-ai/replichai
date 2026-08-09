@@ -336,16 +336,15 @@ textarea {
   display: block;
 }
 /* The mark reads vlag's two poles as its two loops. The outer ring — the study
-   with people, never simulated — takes the cool azure (the brand pole); the
-   inner ring — the part a machine re-runs — takes the warm crimson (vlag's
-   other pole, which --err also carries). The colour is the meaning, so the two
-   never swap. */
+   with people, never simulated — takes the warm crimson (vlag's warm pole, which
+   --err also carries); the inner ring — the part a machine re-runs — takes the
+   cool azure (the brand pole). The colour is the meaning, so the two never swap. */
 .mark-outer {
-  stroke: var(--brand);
+  stroke: var(--err);
   opacity: 0.9;
 }
 .mark-inner {
-  stroke: var(--err);
+  stroke: var(--brand);
 }
 /* The name, with a hairline gap at its own seam: replic + hai. The tracking is
    tightened and the seam gives a fraction of it back, so the break is felt at

@@ -27,10 +27,10 @@ const mark = (px, { tile = false, segments = 6, radius = 0 } = {}) => {
   const seg = c / segments
   const dash = seg * 0.62
   // Two-tone off a tile: white rings on an azure tile for the home-screen icon;
-  // vlag's two poles — azure outer, crimson inner — on transparency everywhere
+  // vlag's two poles — crimson outer, azure inner — on transparency everywhere
   // else, matching the in-app mark.
-  const outerInk = tile ? '#ffffff' : '#2369bd'
-  const innerInk = tile ? '#ffffff' : '#a9373b'
+  const outerInk = tile ? '#ffffff' : '#a9373b'
+  const innerInk = tile ? '#ffffff' : '#2369bd'
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${px} ${px}" width="${px}" height="${px}">
     ${tile ? `<rect width="${px}" height="${px}" rx="${radius}" fill="#2369bd"/>` : ''}
     <circle cx="${px / 2}" cy="${px / 2}" r="${10.4 * s}" fill="none" stroke="${outerInk}" stroke-opacity="${tile ? 0.55 : 0.9}" stroke-width="${2.3 * s}" stroke-dasharray="${dash} ${seg - dash}"/>
