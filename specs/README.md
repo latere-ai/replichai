@@ -65,6 +65,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c Postgres stores and the experiment HTTP surface land with 006g/006e. 006c's forge-account link lands with its consumer, 006f.
 
+**Designed, not built — money comes in without an admin:** [022](022-money-comes-in-without-an-admin.md) adds the front door 011 left locked. A person buys credits into their own wallet with a card: a Stripe hosted Checkout session creates the charge, a signed webhook is the one thing that posts the credit, and the ledger dedupes that post on an `external_ref` so a retried delivery cannot double it. Margin is a visible spread at purchase (you pay $20, your wallet gains $18), which keeps the rate card raw so a session's cost still reconciles against vendor rates. Refunds are a negative `adjust` and may take a wallet negative; coupling a customer payment to the platform's own Anthropic account is a stated non-goal, replaced by a solvency number on the console. Supersedes only 011's closing line — admin top-up stays as the way a grant or comp enters a wallet.
+
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
 ## Architecture at a glance
@@ -173,6 +175,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 021c | [What the authors released](021c-what-the-authors-released.md) | built | 021a, 015, 002 |
 | 021d | [Watching a session run](021d-watching-a-session-run.md) | built (revised down) | 006a, 006s, 005, 011 |
 | 021e | [The project rail](021e-the-project-rail.md) | built | 021a, 021d, 018, 006n, 011 |
+| 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | designed | 011, 006c, 006k, 010 |
 
 ## The three tracks
 
