@@ -46,12 +46,15 @@ func (s *PGStore) requireAdmin(ctx context.Context, p access.Principal) error {
 // query yields the conservative default rather than unlimited, and returns the
 // error alongside so the caller can log it.
 func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
-	fallback := Settings{StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard()}
+	fallback := Settings{
+		StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard(),
+		SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
+	}
 	var out Settings
 	var card []byte
 	err := s.pool.QueryRow(ctx,
-		`SELECT start_reserve, overdraft_cap, rate_card, updated_by, updated_at FROM platform_settings WHERE id = 1`,
-	).Scan(&out.StartReserve, &out.OverdraftCap, &card, &out.UpdatedBy, &out.UpdatedAt)
+		`SELECT start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, updated_by, updated_at FROM platform_settings WHERE id = 1`,
+	).Scan(&out.StartReserve, &out.OverdraftCap, &card, &out.SpreadBps, &out.SpreadFixedMicro, &out.MinTopupMicro, &out.UpdatedBy, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fallback, nil
 	}
@@ -83,14 +86,17 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 		return err
 	}
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, updated_by, updated_at)
-		VALUES (1, $1, $2, $3, $4, $5)
+		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, updated_by, updated_at)
+		VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (id) DO UPDATE
-		SET start_reserve = EXCLUDED.start_reserve,
-		    overdraft_cap = EXCLUDED.overdraft_cap,
-		    rate_card     = EXCLUDED.rate_card,
-		    updated_by    = EXCLUDED.updated_by,
-		    updated_at    = EXCLUDED.updated_at`,
-		next.StartReserve, next.OverdraftCap, card, byAdmin.Email, s.clock().UTC())
+		SET start_reserve      = EXCLUDED.start_reserve,
+		    overdraft_cap      = EXCLUDED.overdraft_cap,
+		    rate_card          = EXCLUDED.rate_card,
+		    spread_bps         = EXCLUDED.spread_bps,
+		    spread_fixed_micro = EXCLUDED.spread_fixed_micro,
+		    min_topup_micro    = EXCLUDED.min_topup_micro,
+		    updated_by         = EXCLUDED.updated_by,
+		    updated_at         = EXCLUDED.updated_at`,
+		next.StartReserve, next.OverdraftCap, card, next.SpreadBps, next.SpreadFixedMicro, next.MinTopupMicro, byAdmin.Email, s.clock().UTC())
 	return err
 }

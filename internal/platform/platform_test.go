@@ -53,6 +53,11 @@ func contract(t *testing.T, s Store) {
 	if got.StartReserve != DefaultStartReserve {
 		t.Errorf("seeded reserve = %d, want %d", got.StartReserve, DefaultStartReserve)
 	}
+	// The purchase spread and floor are seeded with their defaults too, so a
+	// fresh deployment can price a top-up before an admin touches anything.
+	if got.SpreadBps != DefaultSpreadBps || got.SpreadFixedMicro != DefaultSpreadFixedMicro || got.MinTopupMicro != DefaultMinTopupMicro {
+		t.Errorf("seeded spread = {bps:%d fixed:%d min:%d}, want the defaults", got.SpreadBps, got.SpreadFixedMicro, got.MinTopupMicro)
+	}
 
 	// Policy is admin-only, re-checked in the store rather than trusted to the
 	// route guard.
@@ -80,9 +85,46 @@ func contract(t *testing.T, s Store) {
 		t.Errorf("negative reserve: want ErrNegative, got %v", err)
 	}
 
+	// The purchase spread and floor round-trip, and a negative one is refused.
+	if err := s.SetSettings(ctx, admin, Settings{
+		StartReserve: DefaultStartReserve, SpreadBps: 400, SpreadFixedMicro: 250_000, MinTopupMicro: 3 * credit.Dollar,
+	}); err != nil {
+		t.Fatalf("SetSettings spread: %v", err)
+	}
+	got, err = s.Settings(ctx)
+	if err != nil {
+		t.Fatalf("Settings: %v", err)
+	}
+	if got.SpreadBps != 400 || got.SpreadFixedMicro != 250_000 || got.MinTopupMicro != 3*credit.Dollar {
+		t.Errorf("spread round-trip = {bps:%d fixed:%d min:%d}, want {400 250000 %d}", got.SpreadBps, got.SpreadFixedMicro, got.MinTopupMicro, 3*credit.Dollar)
+	}
+	if err := s.SetSettings(ctx, admin, Settings{SpreadBps: -1}); !errors.Is(err, ErrNegative) {
+		t.Errorf("negative spread: want ErrNegative, got %v", err)
+	}
+
 	// Restore, so a shared database is left as the next test expects it.
-	if err := s.SetSettings(ctx, admin, Settings{StartReserve: DefaultStartReserve}); err != nil {
+	if err := s.SetSettings(ctx, admin, Settings{
+		StartReserve: DefaultStartReserve, SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
+	}); err != nil {
 		t.Fatalf("restore: %v", err)
+	}
+}
+
+// Credited applies the purchase spread — the percentage cut and the fixed cut —
+// and never returns less than zero.
+func TestCreditedAppliesTheSpread(t *testing.T) {
+	// $20.00 gross, 5% + $0.30 → $1.00 + $0.30 off → $18.70 credited.
+	s := Settings{SpreadBps: 500, SpreadFixedMicro: 300_000}
+	if got, want := s.Credited(20*credit.Dollar), int64(20*credit.Dollar-1*credit.Dollar-300_000); got != want {
+		t.Errorf("Credited($20) = %d, want %d", got, want)
+	}
+	// A gross the fixed cut exceeds credits zero, never a negative wallet from a purchase.
+	if got := (Settings{SpreadFixedMicro: 1 * credit.Dollar}).Credited(100_000); got != 0 {
+		t.Errorf("Credited below the fixed cut = %d, want 0", got)
+	}
+	// No spread credits the whole gross.
+	if got := (Settings{}).Credited(20 * credit.Dollar); got != 20*credit.Dollar {
+		t.Errorf("Credited with no spread = %d, want the gross", got)
 	}
 }
 

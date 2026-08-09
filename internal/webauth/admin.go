@@ -155,18 +155,37 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		// member could read is an allowance they would plan around (011).
 		OverdraftCap int64        `json:"overdraft_cap"`
 		Rates        *credit.Card `json:"rates"`
+		// The purchase spread and floor (022b), pointers so an omitted field
+		// keeps the one in force rather than zeroing it — a console that edits
+		// only the reserve must not wipe the margin.
+		SpreadBps        *int64 `json:"spread_bps"`
+		SpreadFixedMicro *int64 `json:"spread_fixed_micro"`
+		MinTopupMicro    *int64 `json:"min_topup_micro"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
 	next := platform.Settings{StartReserve: body.StartReserve, OverdraftCap: body.OverdraftCap}
+	// An omitted card, spread, or floor keeps the value in force, so a partial
+	// edit never silently wipes a setting it did not touch.
+	current, currentErr := a.platform.Settings(r.Context())
 	if body.Rates != nil {
 		next.Rates = *body.Rates
-	} else if current, err := a.platform.Settings(r.Context()); err == nil {
-		// A console that only edits the reserve must not silently wipe the
-		// price list, so an omitted card keeps the one in force.
+	} else if currentErr == nil {
 		next.Rates = current.Rates
+	}
+	next.SpreadBps = current.SpreadBps
+	next.SpreadFixedMicro = current.SpreadFixedMicro
+	next.MinTopupMicro = current.MinTopupMicro
+	if body.SpreadBps != nil {
+		next.SpreadBps = *body.SpreadBps
+	}
+	if body.SpreadFixedMicro != nil {
+		next.SpreadFixedMicro = *body.SpreadFixedMicro
+	}
+	if body.MinTopupMicro != nil {
+		next.MinTopupMicro = *body.MinTopupMicro
 	}
 	if err := a.platform.SetSettings(r.Context(), principalFrom(r), next); err != nil {
 		writeAdminError(w, err)

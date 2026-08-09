@@ -55,6 +55,21 @@ const DefaultStartReserve = 10 * credit.Dollar
 // plans around it.
 const DefaultOverdraftCap = 200 * credit.Dollar
 
+// The purchase-spread defaults (022b). The spread is where the platform takes
+// its margin — at the till, so the rate card stays raw and a session's cost
+// still reconciles against vendor rates. The shape is a percentage plus a fixed
+// cut, mirroring a card processor's own `2.9% + $0.30`, so a small top-up still
+// covers its fixed cost. All admin-tunable; these are only the seed.
+const (
+	// DefaultSpreadBps is the percentage cut at purchase, in basis points (5%).
+	DefaultSpreadBps = 500
+	// DefaultSpreadFixedMicro is the fixed cut per purchase, in micro-USD ($0.30).
+	DefaultSpreadFixedMicro = 300_000
+	// DefaultMinTopupMicro is the smallest purchase allowed, in micro-USD ($5):
+	// below it the processor's fixed fee dwarfs the amount.
+	DefaultMinTopupMicro = 5 * credit.Dollar
+)
+
 // Errors this package returns.
 var (
 	// ErrNotAdmin reports a settings write by a non-admin.
@@ -77,9 +92,33 @@ type Settings struct {
 	// Rates is what each model's tokens cost. It is policy rather than a
 	// constant because a vendor's prices move: a compiled-in list makes every
 	// price change a redeploy, and a silent mispricing until then.
-	Rates     credit.Card `json:"rates"`
-	UpdatedBy string      `json:"updated_by,omitempty"`
-	UpdatedAt time.Time   `json:"updated_at,omitzero"`
+	Rates credit.Card `json:"rates"`
+	// SpreadBps and SpreadFixedMicro are the purchase spread (022b): a top-up of
+	// gross micro-USD credits gross − gross×SpreadBps/10_000 − SpreadFixedMicro.
+	// The margin lives here, at the till, so the rate card above stays raw.
+	SpreadBps        int64 `json:"spread_bps"`
+	SpreadFixedMicro int64 `json:"spread_fixed_micro"`
+	// MinTopupMicro is the smallest purchase allowed, in micro-USD, below which
+	// the processor's fixed fee dwarfs the amount. It is public, so the client
+	// can refuse a too-small amount before it ever reaches the processor.
+	MinTopupMicro int64     `json:"min_topup_micro"`
+	UpdatedBy     string    `json:"updated_by,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitzero"`
+}
+
+// Credited is what a gross top-up of grossMicro micro-USD lands in a wallet
+// after the purchase spread — the percentage cut and the fixed cut, both taken
+// at the moment of sale so the rate card stays raw (011/022b). Computed at
+// checkout create and snapshotted onto the session, so an admin editing the
+// spread mid-flight cannot change what an in-flight purchase credits. Never
+// negative.
+func (s Settings) Credited(grossMicro int64) int64 {
+	cut := (grossMicro*s.SpreadBps + 5_000) / 10_000 // round half up
+	credited := grossMicro - cut - s.SpreadFixedMicro
+	if credited < 0 {
+		return 0
+	}
+	return credited
 }
 
 // Authority answers what a caller may do. Satisfied by access.Access, so this
@@ -136,7 +175,8 @@ func StartReserve(s Store) credit.Reserve {
 
 // validate rejects a settings value that cannot mean anything.
 func (s Settings) validate() error {
-	if s.StartReserve < 0 || s.OverdraftCap < 0 {
+	if s.StartReserve < 0 || s.OverdraftCap < 0 ||
+		s.SpreadBps < 0 || s.SpreadFixedMicro < 0 || s.MinTopupMicro < 0 {
 		return ErrNegative
 	}
 	return nil
