@@ -292,7 +292,7 @@ Six implementation-ready leaves, split along one seam: a **backend chain** that 
 | Child spec | Depends on | Effort | Status |
 |---|---|---|---|
 | [022a — The idempotent paid top-up](022a-the-idempotent-paid-topup.md) — migration v3 (`external_ref` + partial unique index), `TopupPaid`/`RefundPaid` idempotent on ref, `EntryByExternalRef`, the payment port + mem adapter. | 011 | medium | **built** |
-| [022b — Checkout and the webhook](022b-checkout-and-the-webhook.md) — the Stripe adapter, `POST /me/credits/checkout` (USD), the signed `POST /stripe/webhook`, the spread applied and snapshotted into session metadata at create, the quote fields. EUR is Adaptive Pricing (Stripe config). Backend. | 022a | medium | validated |
+| [022b — Checkout and the webhook](022b-checkout-and-the-webhook.md) — the Stripe adapter, `POST /me/credits/checkout` (USD), the signed `POST /stripe/webhook`, the spread applied and snapshotted into session metadata at create, the quote fields. EUR is Adaptive Pricing (Stripe config). Backend. | 022a | medium | **built** |
 | [022c — Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) — `charge.refunded`/dispute → negative `adjust` reversing the credited USD, and the `Σ wallets + Σ pots` read. Backend. | 022b | small | validated |
 | [022d — The freeze, server-side](022d-a-negative-wallet-is-frozen.md) — the override store, `FreezeGate`, thaw-by-arithmetic, the one-shot admin unfreeze + freeze-list, the freeze email, `frozen` on `GET /me`. Backend. | 022c | medium | validated |
 | [022e — Buying credits](022e-buying-credits.md) — the `TopUpModal`, `startCheckout`, the 402 *Top up* trigger, the `/wallet` route + post-checkout poll. Frontend. | 022b | medium | validated |
