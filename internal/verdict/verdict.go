@@ -36,6 +36,11 @@ import (
 // Schema is the version this package reads and writes.
 const Schema = 1
 
+// File is where the findings live in a reproduction repository. It sits with
+// the schema rather than with the publisher because a reader that knows the
+// shape needs the name too, and the HTTP layer may not import the engine.
+const File = "verdict.json"
+
 // Outcome is the run's overall answer about the inner loop.
 type Outcome string
 

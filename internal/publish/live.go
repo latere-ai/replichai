@@ -22,7 +22,7 @@ const IdentityFile = ".replichai/paper.json"
 // that its findings could not be read, because that is exactly what that file
 // is for.
 const (
-	FindingsFile   = "verdict.json"
+	FindingsFile   = verdict.File
 	UnverifiedFile = "UNVERIFIED.md"
 )
 
