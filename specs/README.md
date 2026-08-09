@@ -167,6 +167,12 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 018 | [One list of projects](018-one-list-of-projects.md) | built | 006g, 006f, 006r, 013 |
 | 019 | [A project can be thrown away](019-a-project-can-be-thrown-away.md) | built | 006g, 006o, 011, 013, 018 |
 | 020 | [Download the whole project](020-download-the-whole-project.md) | built | 006f, 005, 015, 018 |
+| 021 | [What the run actually found](021-what-the-run-actually-found.md) | designed | 002, 005, 007a, 011, 015, 018 |
+| 021a | [The findings as data](021a-the-findings-as-data.md) | designed | 021, 007a, 002, 006i |
+| 021b | [A verdict that reads like one](021b-a-verdict-that-reads-like-one.md) | designed | 021a, 015, 006s |
+| 021c | [What the authors released](021c-what-the-authors-released.md) | designed | 021a, 015, 002 |
+| 021d | [Watching a session run](021d-watching-a-session-run.md) | designed | 006a, 006s, 005, 011 |
+| 021e | [The project rail](021e-the-project-rail.md) | designed | 021a, 021d, 018, 006n, 011 |
 
 ## The three tracks
 
