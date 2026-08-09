@@ -28,7 +28,10 @@ import {
   getFindings,
   getMe,
   getWallet,
+  getSolvency,
   startCheckout,
+  unfreezeAccount,
+  refreezeAccount,
   type Wallet,
   reclaimCredits,
   getProfile,
@@ -598,11 +601,23 @@ function Shell({
           <div className="topbar-actions">
             <ThemeSwitcher i18n={i18n} theme={theme} compact />
             <WalletPill i18n={i18n} credits={me.credits} onTopUp={() => setTopUp(true)} />
-            <button className="btn" onClick={() => setView({ name: 'submit' })}>
+            <button className="btn" disabled={me.frozen} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => setView({ name: 'submit' })}>
               <Ico name="plus" size={13} w={2.2} /> {t('newProject')}
             </button>
           </div>
         </header>
+
+        {/* A clawed-back payment left the wallet negative: the account is
+            view-only until it is topped back up (022d/022f). */}
+        {me.frozen && (
+          <div className="banner warn" data-test="frozen-banner">
+            <Ico name="alert" size={14} />
+            <span style={{ flex: 1 }}>{t('frozenBanner')}</span>
+            <button className="btn ghost small" onClick={() => setTopUp(true)}>
+              <Ico name="wallet" size={13} /> {t('topUp')}
+            </button>
+          </div>
+        )}
 
         {view.name === 'projects' && <ProjectsScreen i18n={i18n} me={me} onOpen={openProject} />}
         {view.name === 'wallet' && <WalletScreen i18n={i18n} me={me} refreshMe={refreshMe} onTopUp={() => setTopUp(true)} />}
@@ -1566,6 +1581,7 @@ function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged:
   const { t } = i18n
   const [people, setPeople] = useState<GrantView[] | null>(null)
   const [settings, setSettings] = useState<PlatformSettings | null>(null)
+  const [solvency, setSolvency] = useState<number | null>(null)
   const [err, setErr] = useState('')
 
   const refresh = useCallback(() => {
@@ -1575,6 +1591,9 @@ function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged:
     getPlatformSettings()
       .then(setSettings)
       .catch(() => setSettings(null))
+    getSolvency()
+      .then((s) => setSolvency(s.outstanding_micro))
+      .catch(() => setSolvency(null))
   }, [])
   useEffect(refresh, [refresh])
 
@@ -1597,6 +1616,14 @@ function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged:
       {err && <p className="err small">{err}</p>}
       <div className="stack" style={{ maxWidth: 720 }}>
         <PlatformPolicy i18n={i18n} settings={settings} onSave={(next) => run(() => setPlatformSettings(next))} />
+        {solvency !== null && (
+          <div className="card card-pad" data-tip={t('solvencyTitle')}>
+            <div className="usage-line">
+              {t('solvency')}
+              <span className="v tabular">{formatUSD(solvency)}</span>
+            </div>
+          </div>
+        )}
         <PeopleCard
           i18n={i18n}
           people={people}
@@ -1608,6 +1635,8 @@ function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged:
               onCreditsChanged()
             })
           }
+          onUnfreeze={(email) => run(() => unfreezeAccount(email))}
+          onRefreeze={(email) => run(() => refreezeAccount(email))}
         />
       </div>
     </div>
@@ -1728,16 +1757,22 @@ function PeopleCard({
   onGrant,
   onRevoke,
   onTopup,
+  onUnfreeze,
+  onRefreeze,
 }: {
   i18n: I18n
   people: GrantView[] | null
   onGrant: (email: string, tier: 'user' | 'admin') => void
   onRevoke: (email: string) => void
   onTopup: (email: string, amount: number) => void
+  onUnfreeze: (email: string) => void
+  onRefreeze: (email: string) => void
 }) {
   const { t } = i18n
   const [email, setEmail] = useState('')
   const [tier, setTier] = useState<'user' | 'admin'>('user')
+  // Show only the accounts that owe — the debts an operator acts on (022d).
+  const [owingOnly, setOwingOnly] = useState(false)
   // Which row's top-up is being edited. window.prompt would have drawn a
   // browser-owned box over the app; this is the app's own dialog.
   const [topping, setTopping] = useState<GrantView | null>(null)
@@ -1750,15 +1785,21 @@ function PeopleCard({
     setEmail('')
   }
 
+  const shown = people && owingOnly ? people.filter((p) => p.wallet < 0) : people
+
   return (
     <div className="card">
-      <CardHead label={t('people')} icon="users" tone="var(--brand)" />
-      {people === null ? (
+      <CardHead label={t('people')} icon="users" tone="var(--brand)">
+        <button className={'btn ghost sm' + (owingOnly ? ' active' : '')} style={{ marginLeft: 'auto' }} aria-pressed={owingOnly} onClick={() => setOwingOnly((v) => !v)}>
+          <Ico name="alert" size={12} /> {t('onlyOwing')}
+        </button>
+      </CardHead>
+      {shown === null ? (
         <div className="empty">{t('loading')}</div>
-      ) : people.length === 0 ? (
-        <Empty icon="userPlus" text={t('noGrants')} />
+      ) : shown.length === 0 ? (
+        <Empty icon="userPlus" text={owingOnly ? t('noOwing') : t('noGrants')} />
       ) : (
-        people.map((p) => (
+        shown.map((p) => (
           <div key={p.email} className="member-row">
             <Initials email={p.email} />
             <span className="member-email">{p.email}</span>
@@ -1768,9 +1809,24 @@ function PeopleCard({
                 {t('pending')}
               </Pill>
             )}
+            {p.frozen && (
+              <Pill tone="err" icon="alert">
+                {t('frozen')}
+              </Pill>
+            )}
             <Tip text={t('walletOf', { email: p.email })}>
               <span className="muted small mono tabular">{formatUSD(p.wallet)}</span>
             </Tip>
+            {p.wallet < 0 &&
+              (p.frozen ? (
+                <button className="btn ghost sm" data-tip={t('unfreezeTitle')} onClick={() => onUnfreeze(p.email)}>
+                  <Ico name="check" size={12} /> {t('unfreeze')}
+                </button>
+              ) : (
+                <button className="btn ghost sm" data-tip={t('refreezeTitle')} onClick={() => onRefreeze(p.email)}>
+                  <Ico name="alert" size={12} /> {t('refreeze')}
+                </button>
+              ))}
             <button className="btn ghost sm" onClick={() => setTopping(p)}>
               <Ico name="wallet" size={12} /> {t('topup')}
             </button>
@@ -3151,7 +3207,7 @@ function PapersCard({
                       </button>
                     </Tip>
                   ) : (
-                    <button className="btn sm" disabled={!!busyKey} onClick={() => start(g.paper.key)}>
+                    <button className="btn sm" disabled={!!busyKey || !!me.frozen} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => start(g.paper.key)}>
                       <Ico name="sparkles" size={12} /> {busyKey === g.paper.key ? t('startingSession') : t('startSession')}
                     </button>
                   ))}
