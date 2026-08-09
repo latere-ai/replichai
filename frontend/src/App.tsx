@@ -2858,9 +2858,14 @@ function WalletPill({ i18n, credits, onTopUp }: { i18n: I18n; credits?: Credits;
   )
 }
 
-// TopUpModal buys credits. It reads the spread and floor from the wallet so it
-// can quote what a payment will land — "$18.70 in credits for $20.00" — before
-// sending the person to the processor. The webhook, not the return from that
+// pctText renders basis points as a percentage a person reads: 500 → "5",
+// 290 → "2.9". No trailing ".0", because a whole percent should not wear cents.
+function pctText(bps: number): string {
+  return String(Math.round((bps / 100) * 10) / 10)
+}
+
+// TopUpModal buys credits. It shows exactly where the money goes — what you pay,
+// the fee, and the credits you get — before sending you to the processor. The webhook, not the return from that
 // page, is what actually credits (022b); this only opens the payment, and the
 // wallet screen re-reads the balance when they come back.
 function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
@@ -2880,7 +2885,10 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
   const min = wallet?.min_topup_micro ?? 0
   const belowMin = parsed !== null && parsed > 0 && parsed < min
   const valid = parsed !== null && parsed > 0 && parsed >= min
-  const credited = valid && wallet ? creditedMicro(parsed, wallet.spread_bps, wallet.spread_fixed_micro) : null
+  // The amount actually charged, snapped to whole cents — the same figure the
+  // fee and credit are computed from, so the three add up on screen.
+  const gross = parsed !== null ? Math.floor(parsed / 10_000) * 10_000 : 0
+  const credited = valid && wallet ? creditedMicro(gross, wallet.spread_bps, wallet.spread_fixed_micro) : null
 
   const go = async () => {
     if (!valid || busy || parsed === null) return
@@ -2917,10 +2925,21 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
       <div className="field-row">
         <NumberField value={amount} onChange={setAmount} min={0} ariaLabel={t('topUpAmount')} autoFocus />
       </div>
-      {credited !== null && parsed !== null && (
-        <p className="muted small" style={{ margin: 0 }}>
-          {t('topUpQuote', { credited: formatUSD(credited), paid: formatUSD(parsed) })}
-        </p>
+      {valid && wallet && credited !== null && parsed !== null && (
+        <div className="usage-rows" data-test="topup-quote">
+          <div className="usage-line">
+            {t('topUpPay')}
+            <span className="v tabular">{formatUSD(gross)}</span>
+          </div>
+          <div className="usage-line" data-tip={t('topUpFeeWhy')}>
+            {t('topUpFee', { pct: pctText(wallet.spread_bps), fixed: formatUSD(wallet.spread_fixed_micro) })}
+            <span className="v tabular">−{formatUSD(gross - credited)}</span>
+          </div>
+          <div className="usage-line" style={{ fontWeight: 600 }}>
+            {t('topUpGet')}
+            <span className="v tabular">{formatUSD(credited)}</span>
+          </div>
+        </div>
       )}
       {belowMin && <span className="err small">{t('topUpMin', { min: formatUSD(min) })}</span>}
       {err && (
