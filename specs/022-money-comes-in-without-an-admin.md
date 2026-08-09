@@ -1,6 +1,6 @@
 # 022 — Money comes in without an admin
 
-**Status:** designed, not built. A design to refine into implementation leaves (a suggested breakdown is at the foot).
+**Status:** built — all six leaves (022a–022f) shipped and tested (mem + real Postgres 16 for the backend; typecheck, production build, and 120 bun tests for the frontend). A person buys credits with a card, EU customers pay in euros via Stripe Adaptive Pricing, a signed webhook credits idempotently, refunds reverse the exact USD credited, and a negative wallet freezes the account view-only until it is topped back up. The Task Breakdown at the foot records each leaf. What stays out and is now the pressing follow-up: **EU VAT / invoicing** (a separate spec, Option A = Stripe Tax + Checkout invoicing, blocked on the operator's OSS registration and an accountant's classification), and **recovering a negative project pot** (a named deferred spec — this closes negative *wallets*, not overrun pots).
 
 **Scope:** let a person buy credits into their own wallet with a card, so an admin is no longer the only way money exists. A Stripe **hosted Checkout** session creates the charge; a signed **webhook** is the one thing that posts the credit; the ledger dedupes the post on an external reference so a retried delivery cannot double it; a **spread** at purchase leaves margin for fees and overhead; the checkout is created in **USD** while an EU customer pays the euro equivalent via Stripe Adaptive Pricing (no code, no FX read); a **refund** is a correcting ledger entry, not a reversal engine; and a **negative wallet freezes the account** until it is topped back up. Adds one migration (an `external_ref` column and its unique index), a payment port with a Stripe adapter, three routes (`POST /me/credits/checkout`, `POST /webhooks/stripe`, and a solvency read for the console), and the top-up modal the `402` already promises.
 
@@ -295,8 +295,8 @@ Six implementation-ready leaves, split along one seam: a **backend chain** that 
 | [022b — Checkout and the webhook](022b-checkout-and-the-webhook.md) — the Stripe adapter, `POST /me/credits/checkout` (USD), the signed `POST /stripe/webhook`, the spread applied and snapshotted into session metadata at create, the quote fields. EUR is Adaptive Pricing (Stripe config). Backend. | 022a | medium | **built** |
 | [022c — Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) — `charge.refunded`/dispute → negative `adjust` reversing the credited USD, and the `Σ wallets + Σ pots` read. Backend. | 022b | small | **built** |
 | [022d — The freeze, server-side](022d-a-negative-wallet-is-frozen.md) — the override store, `FreezeGate`, thaw-by-arithmetic, the one-shot admin unfreeze + freeze-list, the freeze email, `frozen` on `GET /me`. Backend. | 022c | medium | **built** |
-| [022e — Buying credits](022e-buying-credits.md) — the `TopUpModal`, `startCheckout`, the 402 *Top up* trigger, the `/wallet` route + post-checkout poll. Frontend. | 022b | medium | validated |
-| [022f — The frozen account, in the UI](022f-the-frozen-account-in-the-ui.md) — the frozen banner + disabled controls, and the console's freeze state, negative filter, unfreeze button, and solvency figure. Frontend. | 022c, 022d, 022e | medium | validated |
+| [022e — Buying credits](022e-buying-credits.md) — the `TopUpModal`, `startCheckout`, the 402 *Top up* trigger, the `/wallet` route + post-checkout poll. Frontend. | 022b | medium | **built** |
+| [022f — The frozen account, in the UI](022f-the-frozen-account-in-the-ui.md) — the frozen banner + disabled controls, and the console's freeze state, negative filter, unfreeze button, and solvency figure. Frontend. | 022c, 022d, 022e | medium | **built** |
 
 ```mermaid
 graph LR

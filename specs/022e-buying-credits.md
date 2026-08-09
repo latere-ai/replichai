@@ -1,6 +1,8 @@
 # 022e — Buying credits
 
-**Status:** validated — ready to build. Leaf of [022](022-money-comes-in-without-an-admin.md). Frontend (`frontend/src`).
+**Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Frontend (`frontend/src`). `api.startCheckout` posts `{amount_micro}` and returns the hosted URL; `money.creditedMicro` computes the quote with the same arithmetic the server applies (unit-tested to match); `TopUpModal` reads the spread/floor from `/me/credits`, shows the live "$Y in credits for $X" quote, refuses below the floor, and redirects to the processor; `WalletScreen` at `/wallet` shows the statement, a Top up button, and polls `/me` five times over ~7.5s on a `?checkout=success` return so the credit appears on its own. Typecheck clean, 119 frontend tests pass (incl. the new `creditedMicro` and route cases).
+
+**Two deviations, both from the 022b currency decision and the app's shape:** (1) **no USD/EUR toggle** — the checkout is USD-only and EU customers see euros via Stripe Adaptive Pricing, so the modal takes a USD amount, no currency picker. (2) **The trigger is the clickable wallet balance** in the top bar (available on every screen, including a project where a submit was refused) plus a `Wallet` nav item and the `/wallet` screen, rather than an inline button spliced into the `no_credits` error. The modal's open-state lives in `Shell` (`setTopUp`), so [022f](022f-the-frozen-account-in-the-ui.md)'s frozen banner reuses the one dialog.
 
 **Scope:** the payer's surface for a top-up. A `startCheckout` client call, a `TopUpModal` (USD/EUR toggle, live *"€X → $Y"* quote from the public spread), the *Top up* button that opens it from the `402 no_credits` path, a `/wallet` route that polls after returning from Stripe, and the `en` copy for all of it.
 
