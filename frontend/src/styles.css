@@ -2947,3 +2947,45 @@ input.submit-input {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 12px;
 }
+
+/* ─── The projects list, as columns ────────────────────────────────────────
+   A flex row sizes every cell to its own content, so the trailing badges —
+   "1 RUNNING" against "DONE", "PUBLIC" against "PRIVATE" — set where the cells
+   to their left begin, and no two rows lined up. One grid template, shared by
+   the header and every row, is what makes a column a column.
+
+   The two action slots are reserved rather than conditional: a row with nothing
+   to download would otherwise pull the next control into the download column. */
+.project-list {
+  --project-cols: minmax(0, 1fr) 132px 116px 116px 96px 30px 30px 15px;
+}
+.project-list > .row,
+.project-list > .project-head {
+  display: grid;
+  grid-template-columns: var(--project-cols);
+  align-items: center;
+  gap: var(--gap-row);
+}
+/* The header is deliberately not a `.row`: half the app's list behaviour hangs
+   off that class — the hover, the pointer, and every test that reads "the first
+   row" — and a heading is none of those things. */
+.project-head {
+  padding: 9px 14px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+}
+.row-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.row-slot {
+  display: block;
+  width: 30px;
+}
+
+@media (max-width: 760px) {
+  .project-list {
+    --project-cols: minmax(0, 1fr) 116px 96px 30px 30px 15px;
+  }
+}

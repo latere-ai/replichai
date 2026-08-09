@@ -138,8 +138,11 @@ const strings: Record<Lang, Record<string, string>> = {
     // The merged list (018). Ownership is a column, not a place to look, so the
     // owner of your own project is "You" — the common row, and the one nobody
     // should have to read a name to recognise.
+    colPaper: 'Paper',
     colOwner: 'Owner',
     colModified: 'Last modified',
+    colStatus: 'Status',
+    colVisibility: 'Visibility',
     ownerYou: 'You',
     ownerUnknown: '—',
     noProjects: 'No projects yet. Start a new audit to open one.',
