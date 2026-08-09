@@ -2989,3 +2989,17 @@ input.submit-input {
     --project-cols: minmax(0, 1fr) 116px 96px 30px 30px 15px;
   }
 }
+
+/* A card's own action, at its foot. A button parked beside one field reads as
+   that field's control — which is what put Save next to the overdraft floor
+   while it wrote the start reserve too. */
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-inline);
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.card-foot > .btn {
+  margin-left: auto;
+}
