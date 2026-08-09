@@ -267,6 +267,7 @@ const strings: Record<Lang, Record<string, string>> = {
     selectArtifact: 'Select a file to view it.',
     artifactError: 'Couldn’t open this file. Try again in a moment.',
     graded: 'Graded',
+    runningForTitle: 'How long this session has been running. It is charged for every minute of it.',
     // The findings (021b). The rate never appears without the decomposition it
     // summarises, because the rubric is explicit that the per-component table is
     // the result and the rate is a derived footnote to it.

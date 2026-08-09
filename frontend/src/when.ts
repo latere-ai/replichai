@@ -37,3 +37,21 @@ export function absoluteTime(iso: string | undefined): string {
 function plural(n: number, unit: string): string {
   return `${n} ${unit}${n === 1 ? '' : 's'} ago`
 }
+
+// elapsed renders how long a run has been going, for a row that is still going.
+//
+// It is not relativeTime with different words. An age answers "how stale is
+// this" and rounds down to one unit, so a run 89 minutes in reads "1 hour ago" —
+// which, on a session that is still burning credits, is the wrong question
+// answered imprecisely. A duration answers "how long has this been running" and
+// keeps the minutes, because the minutes are what the reader is watching.
+export function elapsed(iso: string | undefined, now: number = Date.now()): string {
+  const at = iso ? Date.parse(iso) : NaN
+  if (Number.isNaN(at)) return ''
+  const s = Math.max(0, Math.floor((now - at) / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m`
+}
