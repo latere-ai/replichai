@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/payment"
 	"github.com/latere-ai/replichai/internal/platform"
 )
@@ -92,20 +93,63 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_signature")
 		return
 	}
-	if ev.Kind == payment.EventCheckoutCompleted {
-		credited, perr := strconv.ParseInt(ev.Meta["credited_micro"], 10, 64)
-		if ev.Email == "" || perr != nil || credited <= 0 {
-			log.Printf("stripe webhook: unusable checkout metadata (email=%q credited=%q)", ev.Email, ev.Meta["credited_micro"])
-			w.WriteHeader(http.StatusOK) // nothing to post; do not make Stripe retry
+	switch ev.Kind {
+	case payment.EventCheckoutCompleted:
+		if code := rt.creditPurchase(r, ev); code != http.StatusOK {
+			writeError(w, code, "topup_failed") // let Stripe retry
 			return
 		}
-		if rt.credits != nil {
-			if err := rt.credits.TopupPaid(r.Context(), ev.Email, credited, ev.PaymentIntent, "stripe:"+ev.PaymentIntent); err != nil {
-				log.Printf("stripe webhook: topup for %s: %v", ev.Email, err)
-				writeError(w, http.StatusInternalServerError, "topup_failed") // let Stripe retry
-				return
-			}
+	case payment.EventChargeRefunded, payment.EventDisputeCreated:
+		if code := rt.reversePurchase(r, ev); code != http.StatusOK {
+			writeError(w, code, "refund_failed") // let Stripe retry
+			return
 		}
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// creditPurchase posts the wallet credit a paid checkout earned, from the
+// verified event's metadata. Returns 200 when there is nothing to post (so a
+// malformed event is acknowledged, not retried) or when the post succeeds, and
+// 500 only on a store error worth retrying.
+func (rt *Router) creditPurchase(r *http.Request, ev payment.Event) int {
+	credited, perr := strconv.ParseInt(ev.Meta["credited_micro"], 10, 64)
+	if ev.Email == "" || perr != nil || credited <= 0 {
+		log.Printf("stripe webhook: unusable checkout metadata (email=%q credited=%q)", ev.Email, ev.Meta["credited_micro"])
+		return http.StatusOK
+	}
+	if rt.credits == nil {
+		return http.StatusOK
+	}
+	if err := rt.credits.TopupPaid(r.Context(), ev.Email, credited, ev.PaymentIntent, "stripe:"+ev.PaymentIntent); err != nil {
+		log.Printf("stripe webhook: topup for %s: %v", ev.Email, err)
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
+}
+
+// reversePurchase claws back a refunded or disputed purchase: a negative adjust
+// of the *exact micro-USD the purchase credited* (the FX-drift rule — the USD
+// credited, not the euros paid), keyed on the reversal's own id so it dedupes
+// independently. A refund of a purchase this ledger never recorded is
+// acknowledged and dropped, not retried.
+func (rt *Router) reversePurchase(r *http.Request, ev payment.Event) int {
+	if rt.credits == nil {
+		return http.StatusOK
+	}
+	orig, ok, err := rt.credits.EntryByExternalRef(r.Context(), ev.PaymentIntent)
+	if err != nil {
+		log.Printf("stripe webhook: look up purchase %q: %v", ev.PaymentIntent, err)
+		return http.StatusInternalServerError
+	}
+	email, isWallet := credit.WalletEmail(orig.Holder)
+	if !ok || !isWallet || orig.Amount <= 0 || ev.RefundID == "" {
+		log.Printf("stripe webhook: refund for an unknown or unreversable purchase (pi=%q ref=%q)", ev.PaymentIntent, ev.RefundID)
+		return http.StatusOK
+	}
+	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.RefundID, "stripe:refund:"+ev.RefundID); err != nil {
+		log.Printf("stripe webhook: refund for %s: %v", email, err)
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
 }
