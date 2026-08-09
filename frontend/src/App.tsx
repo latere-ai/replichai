@@ -751,6 +751,11 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
 
   const projects = list ?? []
   const sessionTotal = projects.reduce((n, p) => n + p.session_count, 0)
+  // Spend may be absent when the server could not sum it — that renders as a
+  // dash, which claims nothing, rather than $0.00, which claims the month was
+  // free. `some` rather than a total-of-zero check: a real zero is a fact.
+  const spendKnown = projects.some((p) => p.spend_30d !== undefined)
+  const spend30d = projects.reduce((n, p) => n + (p.spend_30d ?? 0), 0)
 
   return (
     <div className="screen">
@@ -762,6 +767,12 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
       <div className="stat-grid">
         <Stat label={t('statProjects')} value={list === null ? '—' : projects.length} icon="folder" tone="var(--brand)" />
         <Stat label={t('statSessionsRun')} value={list === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
+        <Stat
+          label={t('statSpend30d')}
+          value={list === null || !spendKnown ? '—' : formatUSD(spend30d)}
+          icon="wallet"
+          tone="var(--warn)"
+        />
       </div>
 
       <div className="card">
@@ -1822,6 +1833,7 @@ function ProjectScreen({
   // button that can only fail. The banner above says as much; this is the half
   // that makes it true.
   const isOwner = project != null && project.owner === me.principal && !project.deleted_at
+  const [publishing, setPublishing] = useState(false)
   // What this project is, joined: every session under the paper it is a run of.
   // Nothing here derives one session for the project — a project holds papers,
   // and a verdict and a repository belong to the session that produced them.
@@ -1843,6 +1855,17 @@ function ProjectScreen({
 
   return (
     <div className="tx" style={{ overflowY: 'auto' }}>
+      {publishing && (
+        <PublishWizard
+          i18n={i18n}
+          projectID={id}
+          onClose={() => setPublishing(false)}
+          onPublished={() => {
+            setPublishing(false)
+            refresh()
+          }}
+        />
+      )}
       <div className="detail-head">
         <div className="detail-title-row">
           <div style={{ minWidth: 0 }}>
@@ -1857,6 +1880,15 @@ function ProjectScreen({
               </div>
             )}
           </div>
+          {/* Publishing is an act an operator looks for on the thing they are
+              publishing, not under Collaborators — where it lived because that
+              was the tab with room (021e). The card there keeps the sign-off
+              record and the wizard stays the one path through the decision. */}
+          {isOwner && project.visibility === 'private' && !project.deleted_at && (
+            <button className="btn" data-test="publish-project" onClick={() => setPublishing(true)}>
+              <Ico name="globe" size={13} /> {t('publishStart')}
+            </button>
+          )}
         </div>
         <div className="detail-tabs">
           <Tab on={tab === 'sessions'} onClick={() => onTab('sessions')} icon="layers" label={t('projectSessions')} />
@@ -1890,6 +1922,11 @@ function ProjectScreen({
             {/* Money cannot move in or out of a trashed project either, so the
                 card that moves it goes with the rest of the owner controls. */}
             {credits && !project.deleted_at && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
+            {/* One card per paper that has a graded session (021e). Not "the
+                project's rate": a project holds papers and only a session has
+                findings, so a single figure on the project would be the exact
+                claim 015 was written to remove. */}
+            <LatestFindings i18n={i18n} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />
             <PapersCard
               i18n={i18n}
               me={me}
@@ -2821,6 +2858,106 @@ function PapersCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// LatestFindings summarises the newest graded session of each paper the project
+// holds (021e) — its inner-loop decomposition and the open-science scorecard.
+//
+// It is per paper on purpose. The operator design puts one rate on the project
+// header, which is true only while a project holds one paper; ours hold many
+// (012), and 015 exists because two screens made exactly that assumption and
+// showed one paper's reproduction under another paper's name. Each card names
+// the session it read and links to it.
+function LatestFindings({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Grouped; onOpen: (job: Job) => void }) {
+  const cards = grouped.papers
+    .map((g) => ({ paper: g.paper, job: g.sessions.find((s) => s.repo_name && terminal(s.phase)) }))
+    .filter((c): c is { paper: PaperGroup['paper']; job: Job } => !!c.job)
+  if (cards.length === 0) return null
+  return (
+    <div className="findings-rail">
+      {cards.map((c) => (
+        <LatestFindingsCard key={c.paper.key} i18n={i18n} paper={c.paper} job={c.job} onOpen={() => onOpen(c.job)} />
+      ))}
+    </div>
+  )
+}
+
+// LatestFindingsCard reads one session's findings. A paper whose newest
+// published session has none renders nothing rather than a zeroed card: a
+// decomposition of nought components is not a finding about the paper.
+function LatestFindingsCard({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGroup['paper']; job: Job; onOpen: () => void }) {
+  const { t } = i18n
+  const [f, setF] = useState<Findings | null>(null)
+  useEffect(() => {
+    let live = true
+    getFindings(job.id)
+      .then((r) => live && setF(r))
+      .catch(() => live && setF(null))
+    return () => {
+      live = false
+    }
+  }, [job.id])
+  if (!f) return null
+  const r = rate(f.components)
+  const scores = f.scorecard ?? []
+  return (
+    <div className="card card-pad stack" style={{ gap: 12 }}>
+      <div className="stack" style={{ gap: 3 }}>
+        <span className="eyebrow">{t('latestSessionInner')}</span>
+        <span className="small muted" title={paper.title}>
+          {paper.title || paper.ref}
+        </span>
+      </div>
+      <div className="findings-decomp">
+        {r !== null && <span className="findings-rate" style={{ fontSize: 28 }}>{r.toFixed(2)}</span>}
+        <span className="small muted">{t('ofComponents', { n: String(f.components.total) })}</span>
+      </div>
+      <Decomposition c={f.components} />
+      <div className="stack" style={{ gap: 6 }}>
+        <CountLine tone="var(--ok)" label={t('outVerified')} n={f.components.verified} total={f.components.total} />
+        <CountLine tone="var(--warn)" label={t('outPartial')} n={f.components.partial} total={f.components.total} />
+        <CountLine tone="var(--fg-3)" label={t('outBlocked')} n={f.components.blocked} total={f.components.total} />
+      </div>
+      {scores.length > 0 && (
+        <div className="stack" style={{ gap: 7, paddingTop: 4, borderTop: '1px solid var(--border)' }}>
+          <span className="eyebrow">{t('scorecard')}</span>
+          {CRITERIA.map((c) => {
+            const sc = scoreOf(f, c)
+            if (!sc) return null
+            return (
+              <div key={c} className="score-row">
+                <span className="score-mark" style={{ color: sc.found ? 'var(--ok)' : 'var(--err)' }}>{sc.found ? '✓' : '✕'}</span>
+                <span style={{ color: 'var(--fg-2)' }}>{t(scoreKey(c))}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <button className="btn ghost sm" onClick={onOpen}>
+        <Ico name="gauge" size={12} /> {t('openVerdict')}
+      </button>
+    </div>
+  )
+}
+
+// scoreKey maps a criterion to its label key, so the rail and the artifacts
+// pane cannot end up naming the same criterion two different ways.
+const scoreKey = (c: Criterion) =>
+  c === 'code' ? 'critCode' : c === 'data' ? 'critData' : c === 'license' ? 'critLicense' : c === 'preregistration' ? 'critPreregistration' : 'critSupplement'
+
+// CountLine is one row of the decomposition legend: a swatch, a label, and the
+// count over its total — the total repeated on every line because the number
+// that matters is the share, not the count.
+function CountLine({ tone, label, n, total }: { tone: string; label: string; n: number; total: number }) {
+  return (
+    <div className="score-row">
+      <span style={{ width: 7, height: 7, borderRadius: 2, background: tone, flex: 'none' }} />
+      <span style={{ color: 'var(--fg-2)' }}>{label}</span>
+      <span className="mono small tabular" style={{ marginLeft: 'auto' }}>
+        {n} / {total}
+      </span>
     </div>
   )
 }

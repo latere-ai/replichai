@@ -52,8 +52,8 @@ const GRADED = 'job-graded' // has findings
 const BARE = 'job-bare' // published, no findings
 
 const project = { id: PROJECT, owner: 'p', title: 'Posture-Aware Pen+Touch', visibility: 'private', created_at: at(0) }
-const paper = { paper_key: 'doi:10.1145/3654777.3676417', ref: '10.1145/3654777.3676417', title: 'Sensing Posture-Aware Pen+Touch Interaction on Tablets' }
-const sessionOf = (id) => ({ id, project_id: PROJECT, paper_key: paper.paper_key, ref: paper.ref, phase: 'done', repo_name: `open-hai/${id}`, created_at: at(0), updated_at: at(6e6), cost: 3842 })
+const paper = { key: 'doi:10.1145/3654777.3676417', ref: '10.1145/3654777.3676417', title: 'Sensing Posture-Aware Pen+Touch Interaction on Tablets', sessions: 2 }
+const sessionOf = (id) => ({ id, project_id: PROJECT, paper_key: paper.key, ref: paper.ref, phase: 'done', repo_name: `open-hai/${id}`, created_at: at(0), updated_at: at(6e6), cost: 3842 })
 
 // One findings file exercising every rule the panes have to respect: a verified
 // claim that still disagrees with the paper, a blocked one, and an outer one.
@@ -93,7 +93,7 @@ const findings = {
 const routes = [
   [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
   [/^\/me\/profile$/, {}],
-  [/^\/projects$/, [{ ...project, session_count: 2, running: 0, latest_phase: 'done' }]],
+  [/^\/projects$/, [{ ...project, session_count: 2, running: 0, latest_phase: 'done', published_sessions: 2, spend_30d: 4_210_000 }]],
   [/^\/projects\/[^/]+$/, { project, sessions: [sessionOf(GRADED), sessionOf(BARE)], papers: [paper], may_submit: true, role: 'owner' }],
   [/^\/projects\/[^/]+\/papers$/, [paper]],
   [/^\/projects\/[^/]+\/members$/, []],
@@ -283,7 +283,52 @@ try {
   if (bareArt.released) fail('a session with no findings rendered a released list')
   if (!bareArt.browser) fail('a session with no findings lost its file browser')
 
-  if (!process.exitCode) console.log('PASS: findings panes')
+  /* ── The sessions tab's rail, and Publish… on the header (021e) ── */
+
+  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.findings-rail', { timeout: 15000 })
+  await new Promise((r) => setTimeout(r, 400))
+
+  const rail = await page.evaluate(() => {
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
+    const cards = [...document.querySelectorAll('.findings-rail > .card')].map((c) => txt(c))
+    const buttons = [...document.querySelectorAll('.detail-head button')].map((b) => txt(b))
+    return {
+      cards,
+      publish: !!document.querySelector('.detail-head [data-test="publish-project"]'),
+      elapsed: [...document.querySelectorAll('.row .tabular')].map((e) => txt(e)),
+    }
+  })
+
+  // One card, because the project holds one paper with a graded session. A
+  // second paper would be a second card, never a single project-wide figure.
+  if (rail.cards.length !== 1) fail(`the rail rendered ${rail.cards.length} cards, want one per graded paper`)
+  else {
+    const c = rail.cards[0]
+    for (const want of ['0.50', 'of 2 components', 'VERIFIED', 'BLOCKED']) {
+      if (!c.includes(want)) fail(`the rail card is missing ${want}: ${c}`)
+    }
+    if (!/Code|Data/.test(c)) fail(`the rail card carries no scorecard: ${c}`)
+  }
+  if (!rail.publish) fail('the project header offers no Publish… button')
+
+  /* ── The spend tile (021e) ── */
+
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.stat-grid', { timeout: 15000 })
+  await new Promise((r) => setTimeout(r, 300))
+  const tiles = await page.evaluate(() =>
+    [...document.querySelectorAll('.stat-grid > *')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()),
+  )
+  const spend = tiles.find((s) => /spend/i.test(s))
+  if (!spend) fail(`no spend tile among ${JSON.stringify(tiles)}`)
+  else {
+    if (!/30 days/i.test(spend)) fail(`the spend tile does not state its window: ${spend}`)
+    // The mocked project reports 4_210_000 micro-USD across the window.
+    if (!/\$4\.21/.test(spend)) fail(`the spend tile shows ${spend}, want the server's windowed sum`)
+  }
+
+  if (!process.exitCode) console.log('PASS: findings panes, rail, and spend tile')
 } catch (err) {
   fail(err.message)
 } finally {

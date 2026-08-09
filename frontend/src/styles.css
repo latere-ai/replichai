@@ -2938,3 +2938,12 @@ input.submit-input {
     width: auto;
   }
 }
+
+/* The sessions tab's rail (021e). One card per paper with a graded session,
+   flowing rather than fixed: a project holding four papers is four cards, and a
+   column sized for one would make three of them invisible. */
+.findings-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}

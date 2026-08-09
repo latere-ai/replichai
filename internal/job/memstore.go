@@ -215,6 +215,27 @@ func (s *MemStore) DeleteByProject(_ context.Context, projectID string) error {
 }
 
 // StatusByProjects summarises the sessions of each named project.
+// SpendSince sums each project's session costs from `since` onwards. Cost comes
+// from the same withCost the read paths use, so the tile and the row can never
+// disagree about what a session cost.
+func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) (map[string]int64, error) {
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]int64{}
+	for _, id := range s.order {
+		j := s.jobs[id]
+		if !want[j.ProjectID] || j.UpdatedAt.Before(since) {
+			continue
+		}
+		out[j.ProjectID] += j.withCost().Cost
+	}
+	return out, nil
+}
+
 func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string]ProjectStatus, error) {
 	want := make(map[string]bool, len(ids))
 	for _, id := range ids {

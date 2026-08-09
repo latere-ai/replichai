@@ -350,6 +350,33 @@ func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[strin
 	return out, rows.Err()
 }
 
+// SpendSince sums each project's session costs from `since` onwards.
+//
+// The rows are fetched and summed in Go rather than aggregated in SQL: cost is
+// derived from the usage in `status` against the `rate_card` the session
+// carries, and expressing that pricing a second time in SQL would be a second
+// answer to what a run cost. The window bounds the row count.
+func (s *PGStore) SpendSince(ctx context.Context, ids []string, since time.Time) (map[string]int64, error) {
+	if len(ids) == 0 {
+		return map[string]int64{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+
+		` FROM jobs WHERE project_id = ANY($1) AND updated_at >= $2`, ids, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[j.ProjectID] += j.withCost().Cost
+	}
+	return out, rows.Err()
+}
+
 // Cancel stops a non-terminal session with a guarded UPDATE — the WHERE clause
 // is the guard, so a stop wins from any active phase and never routes through
 // the phase machine. An already-terminal session is returned unchanged.
