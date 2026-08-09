@@ -63,6 +63,7 @@ const strings: Record<Lang, Record<string, string>> = {
     adminIntro:
       'Everyone who has signed in, at what tier, and what their wallet holds. Signing in is open: an account appears here on its first login, with no credits until you give it some. Grants and credits can both be seeded by email before anyone signs in, and bind when they do. Revoking bans an account — it stays listed so you can undo it.',
     platformPolicy: 'Platform policy',
+    savePolicy: 'Save policy',
     startReserve: 'Start reserve (USD)',
     overdraftCap: 'Overdraft floor (USD)',
     overdraftHint:

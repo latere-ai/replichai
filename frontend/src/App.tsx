@@ -1573,12 +1573,19 @@ function PlatformPolicy({
           {t('overdraftCap')}
         </label>
         <NumberField id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
-        <button className="btn" disabled={!dirty} onClick={save}>
-          <Ico name="check" size={13} w={2.2} /> {t('save')}
-        </button>
       </div>
       {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
-      {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
+      {/* One Save, at the foot of the card it saves. Beside the overdraft floor
+          it read as that field's control, and an admin who edited the start
+          reserve had no reason to believe the button below it applied — one
+          request writes both numbers, and the button has to sit where that is
+          what it looks like. */}
+      <div className="card-foot">
+        {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
+        <button className="btn" data-test="save-policy" disabled={!dirty} onClick={save}>
+          <Ico name="check" size={13} w={2.2} /> {t('savePolicy')}
+        </button>
+      </div>
     </div>
   )
 }

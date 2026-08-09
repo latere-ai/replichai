@@ -47,6 +47,9 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
 
+  // What the policy card actually wrote, so the test can check the request
+  // rather than the button's label.
+  let savedPolicy = null
   browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
   const page = await browser.newPage()
   await page.setViewport({ width: 1440, height: 900 })
@@ -59,7 +62,13 @@ try {
       wallet += JSON.parse(req.postData()).amount
       return json(req, { email: EMAIL, wallet })
     }
-    if (pathname === '/admin/settings') return json(req, { start_reserve: 5_000_000, overdraft_cap: 20_000_000, rates: { models: [] } })
+    if (pathname === '/admin/settings') {
+      if (req.method() === 'PUT' || req.method() === 'POST') {
+        savedPolicy = JSON.parse(req.postData())
+        return json(req, { ...savedPolicy, updated_by: EMAIL })
+      }
+      return json(req, { start_reserve: 5_000_000, overdraft_cap: 20_000_000, rates: { models: [] } })
+    }
     req.continue()
   })
 
@@ -77,7 +86,52 @@ try {
   // The same completed action must refresh the header without a reload.
   await page.waitForFunction(() => document.querySelector('.quota-pill')?.textContent.trim() === '$30.00')
 
-  if (!process.exitCode) console.log('ok: an admin self-top-up refreshes the header balance')
+  // The policy card saves the card, not the field its button happens to sit
+  // beside. One request writes both numbers, so a Save parked next to the
+  // overdraft floor told an admin editing the start reserve that their change
+  // was not covered. Position is the whole claim here, so it is asserted as
+  // geometry: below both fields, and the last control in the card.
+  const policy = await page.evaluate(() => {
+    const card = document.querySelector('[data-test="save-policy"]')?.closest('.card')
+    if (!card) return null
+    const btn = card.querySelector('[data-test="save-policy"]')
+    const rows = [...card.querySelectorAll('.field-row')]
+    const bottom = (el) => el.getBoundingClientRect().bottom
+    return {
+      fields: rows.length,
+      belowEveryField: rows.every((r) => btn.getBoundingClientRect().top >= bottom(r) - 1),
+      // Nothing may sit inside a field row with it: that is what made it read
+      // as one field's control.
+      insideAField: rows.some((r) => r.contains(btn)),
+      last: card.querySelectorAll('button, a').length > 0 && [...card.querySelectorAll('button')].pop() === btn,
+    }
+  })
+  if (!policy) fail('the platform policy card has no save control')
+  else {
+    if (policy.fields !== 2) fail(`the policy card shows ${policy.fields} fields, want the reserve and the floor`)
+    if (policy.insideAField) fail('Save sits inside a field row, so it reads as that one field\u2019s control')
+    if (!policy.belowEveryField) fail('Save is not below every field it writes')
+    if (!policy.last) fail('Save is not the card\u2019s final control')
+  }
+
+  // And it writes both numbers: editing only the reserve must still send the
+  // floor, or the "save the card" claim is a lie about what the request does.
+  await page.evaluate(() => {
+    const input = document.querySelector('#start-reserve')
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(input, '7')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await page.evaluate(() => document.querySelector('[data-test="save-policy"]')?.click())
+  await page.waitForFunction(() => true)
+  await new Promise((r) => setTimeout(r, 400))
+  if (!savedPolicy) fail('editing the start reserve and pressing Save sent nothing')
+  else {
+    if (savedPolicy.start_reserve !== 7_000_000) fail(`Save sent start_reserve ${savedPolicy.start_reserve}, want the edited 7_000_000`)
+    if (savedPolicy.overdraft_cap !== 20_000_000) fail(`Save dropped the overdraft floor (sent ${savedPolicy.overdraft_cap})`)
+  }
+
+  if (!process.exitCode) console.log('ok: an admin self-top-up refreshes the header balance, and the policy card saves the card')
 } catch (e) {
   fail(e.message)
 } finally {
