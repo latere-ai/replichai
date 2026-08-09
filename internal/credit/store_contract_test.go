@@ -255,6 +255,104 @@ func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 	}
 }
 
+// A purchased top-up and a refund post against a wallet with no principal — the
+// webhook that will call them has none — and they are idempotent on their
+// external reference, because Stripe retries a delivery and a balance that is a
+// fold would otherwise double. Both stores must agree: the enqueue gate and the
+// account freeze both read a wallet a payment moved.
+func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		make func(t *testing.T) (Store, func())
+	}{
+		{"mem", func(t *testing.T) (Store, func()) {
+			auth, members := testAuthority()
+			return NewMemStore(auth, members), func() {}
+		}},
+		{"postgres", func(t *testing.T) (Store, func()) {
+			pool := testPool(t)
+			auth, members := testAuthority()
+			return NewPGStore(pool, auth, members), pool.Close
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, done := tc.make(t)
+			defer done()
+			ctx := context.Background()
+			w := Wallet(lead.Email)
+
+			// Shape is refused the same way by both stores.
+			if err := s.TopupPaid(ctx, "  ", 5*Dollar, "pi_1", "stripe:pi_1"); !errors.Is(err, ErrNoEmail) {
+				t.Fatalf("blank email: want ErrNoEmail, got %v", err)
+			}
+			for _, bad := range []int64{0, -1} {
+				if err := s.TopupPaid(ctx, lead.Email, bad, "pi_x", "a"); !errors.Is(err, ErrNotPositive) {
+					t.Fatalf("TopupPaid of %d: want ErrNotPositive, got %v", bad, err)
+				}
+				if err := s.RefundPaid(ctx, lead.Email, bad, "re_x", "a"); !errors.Is(err, ErrNotPositive) {
+					t.Fatalf("RefundPaid of %d: want ErrNotPositive, got %v", bad, err)
+				}
+			}
+			if err := s.TopupPaid(ctx, lead.Email, 5*Dollar, "  ", "a"); !errors.Is(err, ErrNoRef) {
+				t.Fatalf("blank ref: want ErrNoRef, got %v", err)
+			}
+
+			// A purchase credits the wallet, with the payment recorded as the actor.
+			if err := s.TopupPaid(ctx, lead.Email, 18*Dollar, "pi_1", "stripe:pi_1"); err != nil {
+				t.Fatalf("TopupPaid: %v", err)
+			}
+			if n, _ := s.Balance(ctx, w); n != 18*Dollar {
+				t.Fatalf("after purchase = %d, want %d", n, 18*Dollar)
+			}
+
+			// A retried webhook delivers the same reference; the balance moves once.
+			if err := s.TopupPaid(ctx, lead.Email, 18*Dollar, "pi_1", "stripe:pi_1"); err != nil {
+				t.Fatalf("duplicate TopupPaid: %v", err)
+			}
+			if n, _ := s.Balance(ctx, w); n != 18*Dollar {
+				t.Fatalf("duplicate doubled the balance = %d, want %d", n, 18*Dollar)
+			}
+
+			// The entry is findable by its reference, and carries what it credited.
+			e, ok, err := s.EntryByExternalRef(ctx, "pi_1")
+			if err != nil || !ok {
+				t.Fatalf("EntryByExternalRef(pi_1) = %+v, %v, %v; want found", e, ok, err)
+			}
+			if e.Amount != 18*Dollar || e.Kind != KindTopup || e.Actor != "stripe:pi_1" {
+				t.Fatalf("found entry %+v; want +18$ topup by stripe:pi_1", e)
+			}
+			if _, found, _ := s.EntryByExternalRef(ctx, "nope"); found {
+				t.Fatalf("EntryByExternalRef(nope) reported found")
+			}
+
+			// A refund claws it back — a negative adjust on its own reference — and
+			// refunding twice is a no-op, so a retried dispute cannot over-claw.
+			if err := s.RefundPaid(ctx, lead.Email, 18*Dollar, "re_1", "stripe:refund:re_1"); err != nil {
+				t.Fatalf("RefundPaid: %v", err)
+			}
+			if err := s.RefundPaid(ctx, lead.Email, 18*Dollar, "re_1", "stripe:refund:re_1"); err != nil {
+				t.Fatalf("duplicate RefundPaid: %v", err)
+			}
+			if n, _ := s.Balance(ctx, w); n != 0 {
+				t.Fatalf("after one refund = %d, want 0 (idempotent)", n)
+			}
+
+			// A second, independent purchase and an over-refund each dedupe on their
+			// own reference, so a wallet can be driven negative — the debt this leaf
+			// records and 022d freezes on.
+			if err := s.TopupPaid(ctx, lead.Email, 5*Dollar, "pi_2", "stripe:pi_2"); err != nil {
+				t.Fatalf("second TopupPaid: %v", err)
+			}
+			if err := s.RefundPaid(ctx, lead.Email, 7*Dollar, "re_2", "stripe:refund:re_2"); err != nil {
+				t.Fatalf("second RefundPaid: %v", err)
+			}
+			if n, _ := s.Balance(ctx, w); n != -2*Dollar {
+				t.Fatalf("wallet after over-refund = %d, want %d (negative allowed)", n, -2*Dollar)
+			}
+		})
+	}
+}
+
 // writeHold and writeSettlement post the entries the enqueue gate and the
 // settlement will post once they exist, so the ledger's own invariants are
 // pinned before anything depends on them.

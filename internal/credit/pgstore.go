@@ -2,6 +2,8 @@ package credit
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -53,7 +55,7 @@ func (s *PGStore) Entries(ctx context.Context, h Holder, limit int) ([]Entry, er
 		limit = defaultEntryLimit
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, holder, amount, kind, COALESCE(job_id, ''), COALESCE(project_id, ''), COALESCE(project_name, ''), actor, created_at
+		SELECT id, holder, amount, kind, COALESCE(job_id, ''), COALESCE(project_id, ''), COALESCE(project_name, ''), actor, COALESCE(external_ref, ''), created_at
 		FROM credit_entries WHERE holder = $1
 		ORDER BY created_at DESC, id DESC
 		LIMIT $2`, string(h), limit)
@@ -64,7 +66,7 @@ func (s *PGStore) Entries(ctx context.Context, h Holder, limit int) ([]Entry, er
 	out := []Entry{}
 	for rows.Next() {
 		var e Entry
-		if err := rows.Scan(&e.ID, &e.Holder, &e.Amount, &e.Kind, &e.JobID, &e.ProjectID, &e.ProjectName, &e.Actor, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Holder, &e.Amount, &e.Kind, &e.JobID, &e.ProjectID, &e.ProjectName, &e.Actor, &e.ExternalRef, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -88,6 +90,52 @@ func (s *PGStore) Topup(ctx context.Context, byAdmin access.Principal, email str
 			Holder: Wallet(email), Amount: amount, Kind: KindTopup, Actor: byAdmin.Email,
 		})
 	})
+}
+
+// TopupPaid posts a purchased credit into a wallet, idempotent on ref. No
+// principal: authority came from a verified webhook signature, upstream.
+func (s *PGStore) TopupPaid(ctx context.Context, email string, credited int64, ref, actor string) error {
+	if err := checkPaid(email, credited, ref); err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		return s.insertPaidTx(ctx, tx, Entry{
+			Holder: Wallet(email), Amount: credited, Kind: KindTopup, Actor: actor, ExternalRef: ref,
+		})
+	})
+}
+
+// RefundPaid reverses a purchase with a negative adjust, idempotent on ref. The
+// wallet may go negative — the debt a clawed-back purchase leaves.
+func (s *PGStore) RefundPaid(ctx context.Context, email string, amount int64, ref, actor string) error {
+	if err := checkPaid(email, amount, ref); err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		return s.insertPaidTx(ctx, tx, Entry{
+			Holder: Wallet(email), Amount: -amount, Kind: KindAdjust, Actor: actor, ExternalRef: ref,
+		})
+	})
+}
+
+// EntryByExternalRef finds the entry carrying ref. The reference is unique, so
+// there is at most one.
+func (s *PGStore) EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error) {
+	if strings.TrimSpace(ref) == "" {
+		return Entry{}, false, ErrNoRef
+	}
+	var e Entry
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, holder, amount, kind, COALESCE(job_id, ''), COALESCE(project_id, ''), COALESCE(project_name, ''), actor, COALESCE(external_ref, ''), created_at
+		FROM credit_entries WHERE external_ref = $1 LIMIT 1`, ref).
+		Scan(&e.ID, &e.Holder, &e.Amount, &e.Kind, &e.JobID, &e.ProjectID, &e.ProjectName, &e.Actor, &e.ExternalRef, &e.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Entry{}, false, nil
+	}
+	if err != nil {
+		return Entry{}, false, err
+	}
+	return e, true, nil
 }
 
 // Allocate moves credits from the caller's wallet into a project's pot.
@@ -143,32 +191,65 @@ func (s *PGStore) transfer(ctx context.Context, from, to Holder, amount int64, k
 	})
 }
 
-// insertTx appends one entry inside a caller's transaction. Exported behaviour
-// lives on the store; this is the one INSERT, so a kind added later has one
-// place to be written.
-func (s *PGStore) insertTx(ctx context.Context, tx pgx.Tx, e Entry) error {
+// insertSQL is the one INSERT, so a kind added later has one place to be
+// written. insertPaidSQL is the same statement with the idempotency clause a
+// payment-referenced entry needs (see insertPaidTx).
+const (
+	insertSQL = `
+		INSERT INTO credit_entries (id, holder, amount, kind, job_id, project_id, project_name, actor, external_ref, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+	insertPaidSQL = insertSQL + `
+		ON CONFLICT (external_ref) WHERE external_ref IS NOT NULL DO NOTHING`
+)
+
+// insertArgs mints an id, defaults the clock, and nils the optional string
+// columns, so the two INSERT statements share one argument shape.
+func (s *PGStore) insertArgs(e Entry) ([]any, error) {
 	id, err := newID()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = s.clock().UTC()
 	}
-	var jobID *string
-	if e.JobID != "" {
-		jobID = &e.JobID
+	return []any{
+		id, string(e.Holder), e.Amount, string(e.Kind),
+		nilIfEmpty(e.JobID), nilIfEmpty(e.ProjectID), nilIfEmpty(e.ProjectName),
+		e.Actor, nilIfEmpty(e.ExternalRef), e.CreatedAt,
+	}, nil
+}
+
+// nilIfEmpty maps an empty snapshot string to a NULL column, so an absent
+// job/project/reference reads as NULL rather than "".
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
 	}
-	var projectID, projectName *string
-	if e.ProjectID != "" {
-		projectID = &e.ProjectID
+	return &s
+}
+
+// insertTx appends one entry inside a caller's transaction.
+func (s *PGStore) insertTx(ctx context.Context, tx pgx.Tx, e Entry) error {
+	args, err := s.insertArgs(e)
+	if err != nil {
+		return err
 	}
-	if e.ProjectName != "" {
-		projectName = &e.ProjectName
+	_, err = tx.Exec(ctx, insertSQL, args...)
+	return err
+}
+
+// insertPaidTx appends a payment-referenced entry, idempotently. A retried
+// webhook posts the same external_ref twice; the partial unique index turns the
+// second insert into a no-op, so a balance that is a fold cannot double. It is
+// the insert — not a read-then-insert check — that dedupes, because a check on a
+// second connection races the write it means to protect (011's rule for the
+// hold, applied to a payment).
+func (s *PGStore) insertPaidTx(ctx context.Context, tx pgx.Tx, e Entry) error {
+	args, err := s.insertArgs(e)
+	if err != nil {
+		return err
 	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO credit_entries (id, holder, amount, kind, job_id, project_id, project_name, actor, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		id, string(e.Holder), e.Amount, string(e.Kind), jobID, projectID, projectName, e.Actor, e.CreatedAt)
+	_, err = tx.Exec(ctx, insertPaidSQL, args...)
 	return err
 }
 

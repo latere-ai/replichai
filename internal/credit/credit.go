@@ -52,6 +52,10 @@ var (
 	ErrNoEmail = errors.New("a wallet needs an email")
 	// ErrNoProject reports a pot operation with no project to key on.
 	ErrNoProject = errors.New("a project pot needs a project")
+	// ErrNoRef reports a paid entry posted with no external reference. A purchase
+	// or refund must be idempotent, and the reference is what dedupes it, so a
+	// missing one is a programming error rather than a refusal.
+	ErrNoRef = errors.New("a paid entry needs an external reference")
 	// ErrNotPositive reports a move of zero or less. A negative allocation would
 	// be a reclaim without its permission check, which is the whole point of
 	// having two operations.
@@ -147,8 +151,14 @@ type Entry struct {
 	ProjectName string `json:"project_name,omitempty"`
 	// Actor is who caused this entry — the admin who granted, the member who
 	// allocated, or the system, when settlement did.
-	Actor     string    `json:"actor"`
-	CreatedAt time.Time `json:"created_at"`
+	Actor string `json:"actor"`
+	// ExternalRef is a payment provider's reference for an entry money entered or
+	// left through: a Stripe payment_intent on a purchased top-up, a refund or
+	// dispute id on a clawed-back one (022a). Empty on every internally-moved
+	// entry. It carries the ledger's idempotency: a unique index refuses a second
+	// row for the same reference, so a retried webhook cannot double a balance.
+	ExternalRef string    `json:"external_ref,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Actor for entries the system writes rather than a person: a hold taken at
@@ -188,6 +198,20 @@ type Store interface {
 	// Topup creates credits in one email's wallet. Platform admin only, which is
 	// how money exists at all until a payment provider posts the same entry.
 	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error
+	// TopupPaid posts a purchased credit into a wallet, idempotent on ref. It has
+	// no principal to check: authority came from a verified webhook signature,
+	// upstream (022a/022b). actor records the payment, e.g. "stripe:pi_123", so
+	// the statement tells a purchase from an admin grant. A second call with the
+	// same ref is a no-op — a retried webhook credits exactly once.
+	TopupPaid(ctx context.Context, email string, credited int64, ref, actor string) error
+	// RefundPaid reverses a purchase: a negative adjust of amount (a positive
+	// magnitude), idempotent on its own ref — the refund or dispute id, distinct
+	// from the purchase's, so it dedupes independently. The wallet may go
+	// negative; that is the debt a clawed-back purchase leaves (022a/022c).
+	RefundPaid(ctx context.Context, email string, amount int64, ref, actor string) error
+	// EntryByExternalRef finds the entry carrying ref, if any. A refund uses it to
+	// reverse a purchase by the exact micro-USD it credited (022c).
+	EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error)
 	// Allocate moves credits from the caller's wallet into a project's pot. Any
 	// member of the project may fund it. Both sides are one transaction: money
 	// is never in neither place. projectName is snapshotted onto both entries so
@@ -232,6 +256,23 @@ func checkMove(email, project string, amount int64) error {
 	}
 	if amount <= 0 {
 		return ErrNotPositive
+	}
+	return nil
+}
+
+// checkPaid validates a payment-referenced entry before it is posted, so both
+// stores refuse the same nonsense the same way. amount is a positive magnitude
+// (a refund negates it), and the reference is what makes the post idempotent, so
+// an empty one is a programming error rather than a refusal.
+func checkPaid(email string, amount int64, ref string) error {
+	if normalizeEmail(email) == "" {
+		return ErrNoEmail
+	}
+	if amount <= 0 {
+		return ErrNotPositive
+	}
+	if strings.TrimSpace(ref) == "" {
+		return ErrNoRef
 	}
 	return nil
 }
