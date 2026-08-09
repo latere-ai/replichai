@@ -93,13 +93,20 @@ func (a *Adapter) ParseWebhook(payload []byte, sigHeader string) (payment.Event,
 	if err != nil {
 		return payment.Event{}, payment.ErrBadSignature
 	}
-	if event.Type == "checkout.session.completed" {
+	switch event.Type {
+	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
 		var s stripe.CheckoutSession
 		if err := json.Unmarshal(event.Data.Raw, &s); err != nil {
 			return payment.Event{}, err
 		}
+		// A synchronous card pays immediately, so `completed` is `paid`. An async
+		// method — SEPA Direct Debit, iDEAL, Bancontact, the ones EU customers
+		// reach for — leaves `completed` unpaid and confirms later with
+		// `async_payment_succeeded`. We credit only a *paid* session, so the two
+		// events for one async purchase still credit exactly once: the ledger
+		// dedupes on the payment_intent, and the unpaid `completed` is ignored.
 		if s.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
-			return payment.Event{}, nil // completed but not paid: ignore
+			return payment.Event{}, nil
 		}
 		var pi string
 		if s.PaymentIntent != nil {
@@ -111,8 +118,9 @@ func (a *Adapter) ParseWebhook(payload []byte, sigHeader string) (payment.Event,
 			PaymentIntent: pi,
 			Meta:          s.Metadata,
 		}, nil
+	default:
+		// Refund and dispute kinds (022c) pass through by name; everything else
+		// is carried as-is for the handler to ignore.
+		return payment.Event{Kind: payment.EventKind(event.Type)}, nil
 	}
-	// Refund and dispute kinds (022c) pass through by name; everything else is
-	// carried as-is for the handler to ignore.
-	return payment.Event{Kind: payment.EventKind(event.Type)}, nil
 }
