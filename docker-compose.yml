@@ -43,10 +43,6 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      # Product tax code for the credit line item (Stripe requires one when
-      # Managed Payments is on). Labels only; enables no tax calculation. Unset
-      # uses the general electronically-supplied-services code.
-      STRIPE_TAX_CODE: ${STRIPE_TAX_CODE:-}
       DEV: "true"
       # The container binds all interfaces (:8080), so the loopback-only dev
       # bypass needs this explicit override; never set it in production.
