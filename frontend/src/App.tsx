@@ -497,7 +497,7 @@ function Shell({
         <div className="rail-head">
           <Mark size={22} className="rail-logo" />
           <Wordmark className="rail-name" />
-          <span className="rail-beta">BETA</span>
+          <span className="rail-beta">{t('beta')}</span>
           {/* The one control that must stay reachable in both states, so it is
               the only thing the head keeps when the rail folds. */}
           <button className="rail-fold-btn" aria-expanded={!folded} aria-label={foldLabel} data-tip={foldLabel} data-tip-side="right" onClick={toggleRail}>

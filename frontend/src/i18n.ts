@@ -103,6 +103,7 @@ const en = {
     errNoCredits: 'This project is out of credits \u2014 allocate more to it to keep going.',
     errNoCreditsAtAll: 'No credits yet \u2014 ask a platform admin to add some, or work in a project somebody else has funded.',
     // buying credits (022e)
+    beta: 'BETA',
     navWallet: 'Wallet',
     walletHeading: 'Your wallet',
     walletDesc: 'Credits you buy and spend. A session draws on the project you allocate to, not on the wallet directly.',
