@@ -2210,10 +2210,20 @@ input.submit-input {
   /* A value and a control beside it are two things, not one: 6px read as a
      collision the moment this slot held a button rather than a number. */
   gap: var(--gap-inline);
-  min-width: 0;
+  /* The value never shrinks and never wraps: a long label — a paper title on a
+     statement row — must push itself onto another line, not squeeze the amount
+     off the row until it clips to "$". */
+  flex: none;
+  white-space: nowrap;
   font: 500 12px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
+}
+/* Everything left of the value may shrink and wrap, so a long title wraps within
+   the space it has rather than shoving the amount out of the row. */
+.usage-line > :not(.v) {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .usage-line svg {
   flex: none;
