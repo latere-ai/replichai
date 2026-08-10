@@ -534,6 +534,16 @@ function Shell({
               on={view.name === 'public'}
               onClick={() => setView({ name: 'public' })}
             />
+            {/* The wallet is a primary destination — money you manage often — so
+                it lives with the workspace rather than buried by Settings. */}
+            <NavItem
+              label={t('navWallet')}
+              icon="wallet"
+              tone="var(--ok)"
+              folded={folded}
+              on={view.name === 'wallet'}
+              onClick={() => setView({ name: 'wallet' })}
+            />
           </div>
           {isAdmin(me) && (
             <div className="rail-group">
@@ -561,14 +571,6 @@ function Shell({
             />
             {/* Settings sits with Trash at the foot: personal chrome, not a
                 workspace destination. Active on any of its sub-tabs (024a). */}
-            <NavItem
-              label={t('navWallet')}
-              icon="wallet"
-              tone="var(--fg-3)"
-              folded={folded}
-              on={view.name === 'wallet'}
-              onClick={() => setView({ name: 'wallet' })}
-            />
             <NavItem
               label={t('navSettings')}
               icon="settings"
@@ -2705,83 +2707,6 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
   )
 }
 
-// WalletStatement is a balance and, on request, the entries that produced it.
-//
-// The statement is the point rather than a nicety: a balance nobody can account
-// for is exactly what the ledger exists to prevent, so the one place a person
-// reads their own number is the place that can show where it came from. Fetched
-// lazily — most visits to settings are not about money.
-function WalletStatement({ i18n, balance }: { i18n: I18n; balance: number }) {
-  const { t } = i18n
-  const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
-  const [open, setOpen] = useState(false)
-
-  // Keyed on the balance rather than fetched once: after an allocate the number
-  // above changes, and a statement still showing the pre-move entries would be
-  // a list that contradicts the total it is supposed to explain.
-  useEffect(() => {
-    if (!open) return
-    let live = true
-    getWallet()
-      .then((w) => live && setEntries(w.entries))
-      .catch(() => live && setEntries([]))
-    return () => {
-      live = false
-    }
-  }, [open, balance])
-
-  const reveal = () => setOpen((was) => !was)
-
-  return (
-    <>
-      <div className="usage-line">
-        <Ico name="wallet" size={13} style={{ color: 'var(--ok)' }} />
-        {t('statWallet')}
-        <span className="v tabular">
-          {formatUSD(balance)}
-          <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={reveal}>
-            {open ? t('statementHide') : t('statementShow')}
-          </button>
-        </span>
-      </div>
-      {open &&
-        (entries === null ? (
-          <div className="usage-line muted small">{t('loading')}</div>
-        ) : entries.length === 0 ? (
-          <div className="usage-line muted small">{t('statementEmpty')}</div>
-        ) : (
-          entries.map((e) => {
-            const label = ledgerLabel(t, e)
-            return (
-              <div className="usage-line" key={e.id}>
-                <span className="muted small">
-                  {label.kind === 'plain' ? (
-                    label.text
-                  ) : (
-                    <>
-                      {label.prefix}{' '}
-                      {label.href ? (
-                        <a className="link" href={label.href}>
-                          {label.name}
-                        </a>
-                      ) : (
-                        <span style={{ color: 'var(--fg-2)' }}>{label.name}</span>
-                      )}
-                    </>
-                  )}
-                </span>
-                <span className="v">
-                  <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
-                  <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
-                </span>
-              </div>
-            )
-          })
-        ))}
-    </>
-  )
-}
-
 // ledgerKindLabel names an entry in the reader's terms. A wallet only ever sees
 // three of the seven kinds — holds, releases and charges happen to a project's
 // pot, never to a person — so the rest fall through to a neutral label rather
@@ -2809,6 +2734,12 @@ export function ledgerLabel(t: I18n['t'], e: LedgerEntry): LedgerLabel {
       href: e.project_alive && e.project_id ? `/p/${e.project_id}` : undefined,
     }
   }
+  // A card payment names its source, not "an admin": the actor distinguishes a
+  // purchase (stripe:…) from an admin grant, and a refund (stripe:refund:…) from
+  // a manual correction (022b/022c).
+  const byCard = e.actor.startsWith('stripe:')
+  if (e.kind === 'topup') return { kind: 'plain', text: byCard ? t('ledgerCardTopup') : t('ledgerTopup') }
+  if (e.kind === 'adjust' && byCard) return { kind: 'plain', text: t('ledgerRefund') }
   return { kind: 'plain', text: ledgerKindLabel(t, e.kind) }
 }
 
@@ -2903,7 +2834,7 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
             {t('cancel')}
           </button>
           <button className="btn" disabled={!valid || busy} onClick={go}>
-            {t('topUpContinue')}
+            <Ico name="lock" size={13} /> {busy ? t('topUpRedirecting') : valid ? t('topUpPayCta', { total: formatUSD(gross) }) : t('topUpContinue')}
           </button>
         </>
       }
@@ -2963,33 +2894,104 @@ function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; re
   }, [returned, refreshMe])
 
   const credits = me.credits
+  const balance = credits ? credits.wallet : 0
   return (
     <div className="screen">
       <div className="screen-head">
         <h1 className="screen-title">{t('walletHeading')}</h1>
         <p className="screen-desc">{t('walletDesc')}</p>
       </div>
-      <div className="stack" style={{ maxWidth: 520 }}>
-        <div className="card card-pad stack">
-          <div className="usage-rows">
-            {credits ? (
-              <WalletStatement i18n={i18n} balance={credits.wallet} />
-            ) : (
-              <div className="usage-line muted small">{t('statementEmpty')}</div>
-            )}
+      <div className="stack" style={{ maxWidth: 560 }}>
+        <div className="card card-pad">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <div className="eyebrow eyebrow-ico">
+                <Ico name="wallet" size={12} /> {t('creditsBalance')}
+              </div>
+              <div className="tabular" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1.15, marginTop: 6 }}>{formatUSD(balance)}</div>
+            </div>
+            <button className="btn lg" onClick={onTopUp}>
+              <Ico name="wallet" size={15} w={2} /> {t('topUp')}
+            </button>
           </div>
           {polling && (
-            <p className="muted small" style={{ margin: 0 }}>
+            <p className="muted small" style={{ margin: '12px 0 0' }}>
               {t('topUpProcessing')}
             </p>
           )}
-          <div className="field-row">
-            <button className="btn" onClick={onTopUp}>
-              <Ico name="plus" size={13} w={2.2} /> {t('topUp')}
-            </button>
-          </div>
         </div>
+        {credits && <WalletActivity i18n={i18n} balance={balance} />}
       </div>
+    </div>
+  )
+}
+
+// WalletActivity is the wallet's history, shown rather than hidden behind a
+// toggle: the one place a person reads their own balance is where they read
+// where it came from. It stays light no matter how long the history grows —
+// bounded to a scroll region, and to the server's most recent entries.
+function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
+  const { t } = i18n
+  const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
+  // Re-read when the balance changes: a list still showing the pre-move entries
+  // would contradict the total it is supposed to explain.
+  useEffect(() => {
+    let live = true
+    getWallet()
+      .then((w) => live && setEntries(w.entries))
+      .catch(() => live && setEntries([]))
+    return () => {
+      live = false
+    }
+  }, [balance])
+
+  return (
+    <div className="card card-pad stack">
+      <span className="eyebrow eyebrow-ico">
+        <Ico name="clock" size={12} /> {t('walletActivity')}
+      </span>
+      {entries === null ? (
+        <div className="muted small">{t('loading')}</div>
+      ) : entries.length === 0 ? (
+        <div className="muted small">{t('statementEmpty')}</div>
+      ) : (
+        <>
+          <div className="usage-rows" style={{ maxHeight: 380, overflowY: 'auto' }}>
+            {entries.map((e) => {
+              const label = ledgerLabel(t, e)
+              return (
+                <div className="usage-line" key={e.id}>
+                  <span className="muted small">
+                    {label.kind === 'plain' ? (
+                      label.text
+                    ) : (
+                      <>
+                        {label.prefix}{' '}
+                        {label.href ? (
+                          <a className="link" href={label.href}>
+                            {label.name}
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--fg-2)' }}>{label.name}</span>
+                        )}
+                      </>
+                    )}
+                  </span>
+                  <span className="v">
+                    <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
+                    <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {entries.length >= 200 && (
+            <p className="muted small" style={{ margin: 0 }}>
+              {t('walletActivityCapped')}
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }

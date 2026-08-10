@@ -117,3 +117,11 @@ test('a pre-024b move with no captured project keeps the generic label', () => {
   expect(ledgerLabel(t, entry({ kind: 'allocate' }))).toEqual({ kind: 'plain', text: 'ledgerAllocate' })
   expect(ledgerLabel(t, entry({ kind: 'topup', amount: 1 }))).toEqual({ kind: 'plain', text: 'ledgerTopup' })
 })
+
+test('a card purchase and refund name their source, not an admin', () => {
+  // The actor distinguishes a Stripe purchase from an admin grant (022b/022c).
+  expect(ledgerLabel(t, entry({ kind: 'topup', amount: 1, actor: 'stripe:pi_1' }))).toEqual({ kind: 'plain', text: 'ledgerCardTopup' })
+  expect(ledgerLabel(t, entry({ kind: 'adjust', amount: -1, actor: 'stripe:refund:re_1' }))).toEqual({ kind: 'plain', text: 'ledgerRefund' })
+  // An admin grant still reads as an admin grant.
+  expect(ledgerLabel(t, entry({ kind: 'topup', amount: 1, actor: 'admin@x.io' }))).toEqual({ kind: 'plain', text: 'ledgerTopup' })
+})
