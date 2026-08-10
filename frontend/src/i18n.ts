@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react'
 
-// English only for now. The i18n scaffolding is kept so more languages can be
-// added later once the product stabilises: add the code to the Lang union and a
-// matching block to `strings`, and a language switcher becomes trivial again.
+// English only for now. To add a language: add its code to the Lang union and a
+// matching block to `strings`. Because a translation key is derived from the
+// English block below (TKey), TypeScript then *requires* the new block to
+// translate every string — a locale cannot ship half-done — and a language
+// switcher becomes a two-line change.
 export type Lang = 'en'
 
 // I18n is what a component needs to render text: the chosen language, a setter,
@@ -10,8 +12,9 @@ export type Lang = 'en'
 // error-copy module can type against it without importing the whole app.
 export type I18n = ReturnType<typeof useI18n>
 
-const strings: Record<Lang, Record<string, string>> = {
-  en: {
+// en is the source of truth: every key the product uses, in English. A new
+// locale is typed against its keys, so it cannot omit one.
+const en = {
     // auth
     // The landing (017). The claim is a question because that is the question
     // the product answers, and the lead says what it does that nothing else in
@@ -108,6 +111,12 @@ const strings: Record<Lang, Record<string, string>> = {
     topUpBody: 'How much credit to buy, in US dollars (minimum {min}). You pay by card; EU customers are shown the amount in euros at checkout.',
     topUpAmount: 'Amount in US dollars',
     topUpContinue: 'Continue to payment',
+    topUpPayCta: 'Pay {total}',
+    topUpRedirecting: 'Redirecting…',
+    walletActivity: 'Recent activity',
+    walletActivityCapped: 'Showing your most recent activity.',
+    ledgerCardTopup: 'Card top-up',
+    ledgerRefund: 'Refund',
     topUpPay: 'You pay',
     topUpFee: 'Fee ({pct}% + {fixed})',
     topUpFeeWhy: 'Covers card processing and platform costs. The rest becomes credits at their raw compute price.',
@@ -137,7 +146,7 @@ const strings: Record<Lang, Record<string, string>> = {
     creditsAvailableTitle:
       'What is still free to commit. It is lower than the balance while sessions are running \u2014 each holds the start reserve until it settles, which is why a project with credits can still refuse a new session.',
     creditsEnough: 'Enough to start a session. {reserve} is held while one runs, and what it does not spend comes back.',
-    creditsShort: 'Not enough to start a session \u2014 a project needs {reserve} available. Allocate more from your own credits.',
+    creditsShort: 'Not enough to start a session \u2014 this project needs {reserve} available. Allocate more from your wallet.',
     creditsAmount: 'Amount in US dollars',
     creditsAllocate: 'Allocate',
     creditsReclaim: 'Take back',
@@ -267,7 +276,7 @@ const strings: Record<Lang, Record<string, string>> = {
     startingSession: 'Starting…',
     startFailed: 'Couldn’t start this session. Try again in a moment.',
     errPaperGone: 'That paper is no longer on this project.',
-    startNeedsCredits: 'This project needs {reserve} available to start a session. Allocate credits above.',
+    startNeedsCredits: 'This project needs {reserve} available to start a session. Allocate credits to it from your wallet.',
     removePaperFailed: 'Couldn’t remove that paper. Try again in a moment.',
     errPaperHasSessions: 'This paper has been run, so it stays on the project.',
     errRemoveNotLead: 'Only a project lead can remove a paper.',
@@ -515,8 +524,15 @@ const strings: Record<Lang, Record<string, string>> = {
     'phase.publishing': 'publishing',
     'phase.done': 'done',
     'phase.failed': 'failed',
-  },
 }
+
+// TKey is every translation key, derived from the English block so a new locale
+// is checked to cover them all.
+export type TKey = keyof typeof en
+
+// strings holds every locale. Adding one — `zh: { … }` — is where TypeScript
+// enforces completeness against TKey.
+const strings: Record<Lang, Record<TKey, string>> = { en }
 
 // useI18n stores the chosen language in localStorage and returns a translate
 // function that interpolates {name} placeholders.
@@ -529,7 +545,11 @@ export function useI18n() {
   }, [])
   const t = useCallback(
     (key: string, vars?: Record<string, string>) => {
-      let s = strings[lang][key] ?? strings.en[key] ?? key
+      // Looked up by string, not TKey, so a dynamic key (a phase name built at
+      // runtime) still resolves; a missing key falls back to English, then to
+      // the key itself, so nothing renders blank.
+      const table = strings[lang] as Record<string, string>
+      let s = table[key] ?? (strings.en as Record<string, string>)[key] ?? key
       if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])
       return s
     },
