@@ -77,7 +77,10 @@ test('a field round-trips through the parser', () => {
 // sentence. One "that did not work" would tell somebody who mistyped an amount
 // the same thing it tells somebody who is not a lead.
 test('a refused credit move says which refusal it was', () => {
-  expect(creditMoveErrLabel(t, new ApiError(400, 'no_credits'))).toBe('errMoveInsufficient')
+  // no_credits means different things by direction: an allocate is short in the
+  // wallet (top up), a reclaim is held by a running session (wait to settle).
+  expect(creditMoveErrLabel(t, new ApiError(400, 'no_credits'))).toBe('errAllocateShort')
+  expect(creditMoveErrLabel(t, new ApiError(400, 'no_credits'), true)).toBe('errReclaimHeld')
   expect(creditMoveErrLabel(t, new ApiError(400, 'not_lead'))).toBe('errMoveNotLead')
   expect(creditMoveErrLabel(t, new ApiError(400, 'not_member'))).toBe('errMoveNotMember')
   expect(creditMoveErrLabel(t, new ApiError(400, 'bad_amount'))).toBe('errMoveAmount')
