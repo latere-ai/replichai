@@ -117,7 +117,7 @@ func renderEventMD(m *bytes.Buffer, e provider.Event) {
 		return
 	}
 
-	summary := e.Role + " · " + e.Kind
+	summary := string(e.Role) + " · " + string(e.Kind)
 	if e.Tool != "" {
 		summary += " · `" + e.Tool + "`"
 	}

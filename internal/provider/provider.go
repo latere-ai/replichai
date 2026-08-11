@@ -20,13 +20,38 @@ import (
 // happened during the run, translated to a neutral shape. Raw preserves the
 // backend's original event losslessly, so nothing is lost to the translation.
 type Event struct {
-	Role    string          `json:"role"`           // "agent" | "user" | "system"
-	Kind    string          `json:"kind"`           // "message" | "thinking" | "tool_use" | "tool_result" | ...
+	Role    Role            `json:"role"`
+	Kind    EventKind       `json:"kind"`
 	Tool    string          `json:"tool,omitempty"` // the tool for a tool_use, else empty
 	Content string          `json:"content,omitempty"`
 	Time    time.Time       `json:"time"`
 	Raw     json.RawMessage `json:"raw,omitempty"` // the backend's original event
 }
+
+// Role is who an event is attributed to. The set is closed: every backend event
+// is mapped to exactly one of these when it is translated.
+type Role string
+
+// The event roles.
+const (
+	RoleAgent  Role = "agent"
+	RoleUser   Role = "user"
+	RoleSystem Role = "system"
+)
+
+// EventKind is what an event is. The well-known kinds below are named so
+// callers compare against a constant rather than a bare string; the set is
+// deliberately open — a backend-native kind (e.g. "model_request_end") passes
+// through unchanged rather than being dropped or coerced.
+type EventKind string
+
+// The well-known event kinds. Others pass through as the backend names them.
+const (
+	KindMessage    EventKind = "message"
+	KindThinking   EventKind = "thinking"
+	KindToolUse    EventKind = "tool_use"
+	KindToolResult EventKind = "tool_result"
+)
 
 // ErrUnknownProvider is returned by Get for a name that is not registered.
 var ErrUnknownProvider = errors.New("unknown provider")

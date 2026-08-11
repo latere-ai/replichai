@@ -515,18 +515,18 @@ func compactJSON(raw json.RawMessage) string {
 
 // splitEventType turns a namespaced type like "agent.message" into a neutral
 // role and kind. Anything not agent- or user-scoped is the system's own record.
-func splitEventType(t string) (role, kind string) {
+func splitEventType(t string) (role provider.Role, kind provider.EventKind) {
 	prefix, rest, ok := strings.Cut(t, ".")
 	if !ok {
-		return "system", t
+		return provider.RoleSystem, provider.EventKind(t)
 	}
 	switch prefix {
 	case "agent":
-		return "agent", rest
+		return provider.RoleAgent, provider.EventKind(rest)
 	case "user":
-		return "user", rest
+		return provider.RoleUser, provider.EventKind(rest)
 	default:
-		return "system", rest
+		return provider.RoleSystem, provider.EventKind(rest)
 	}
 }
 
