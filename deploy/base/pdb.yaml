@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: replichai
+  labels:
+    app: replichai
+spec:
+  # Keep at least one pod serving through a voluntary disruption (a node drain,
+  # a cluster upgrade). With replicas: 2 this evicts one at a time rather than
+  # both at once. It does not constrain crashes or the rolling deploy — that is
+  # the Deployment's maxUnavailable: 0 — only the eviction API.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: replichai

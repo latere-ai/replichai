@@ -9,5 +9,6 @@ kind: Kustomization
 # :latest placeholder in deployment.yaml is only a default.
 resources:
   - deployment.yaml
+  - pdb.yaml
   - service.yaml
   - ingress.yaml
