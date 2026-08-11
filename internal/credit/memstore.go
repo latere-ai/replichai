@@ -60,6 +60,50 @@ func (s *MemStore) sum(h Holder, withHolds bool) int64 {
 	return n
 }
 
+// BalancesFor folds each requested holder in one pass. A holder with no entry is
+// omitted; the caller reads a missing key as zero.
+func (s *MemStore) BalancesFor(_ context.Context, holders []Holder) (map[Holder]int64, error) {
+	want := make(map[Holder]bool, len(holders))
+	for _, h := range holders {
+		want[h] = true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[Holder]int64, len(want))
+	for _, e := range s.entries {
+		if !want[e.Holder] || e.Kind.commits() {
+			continue
+		}
+		out[e.Holder] += e.Amount
+	}
+	return out, nil
+}
+
+// NegativeWallets returns every wallet in the red, most-owed first. Pots are
+// excluded — a negative pot is an overdraft, not a debt an account owes.
+func (s *MemStore) NegativeWallets(_ context.Context) ([]WalletBalance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bal := map[Holder]int64{}
+	for _, e := range s.entries {
+		if e.Kind.commits() {
+			continue
+		}
+		bal[e.Holder] += e.Amount
+	}
+	out := []WalletBalance{}
+	for h, n := range bal {
+		if n >= 0 {
+			continue
+		}
+		if email, ok := WalletEmail(h); ok {
+			out = append(out, WalletBalance{Email: email, Balance: n})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Balance < out[j].Balance })
+	return out, nil
+}
+
 // Entries lists a holder's ledger, newest first.
 func (s *MemStore) Entries(_ context.Context, h Holder, limit int) ([]Entry, error) {
 	if limit <= 0 {
