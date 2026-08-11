@@ -41,7 +41,7 @@ type Experiment struct {
 	// CohortModel — empty for a non-synthetic source. It is a required field on
 	// every synthetic experiment and becomes a NOT NULL column when 006b lands,
 	// so no synthetic result can reach a reader stripped of what it is.
-	CohortKind string `json:"cohort_kind,omitempty"`
+	CohortKind CohortKind `json:"cohort_kind,omitempty"`
 }
 
 // Dataset is an uploaded or collected file's record. Its bytes live in the

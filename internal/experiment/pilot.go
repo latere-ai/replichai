@@ -56,7 +56,7 @@ type PilotConfig struct {
 // into a path that reports findings about people (AC7). Kind is always set — a
 // pilot with no cohort_kind is never written.
 type Pilot struct {
-	Kind        string                            `json:"cohort_kind"` // the indelible label
+	Kind        CohortKind                        `json:"cohort_kind"` // the indelible label
 	Config      PilotConfig                       `json:"config"`
 	Data        CohortData                        `json:"-"` // the bytes; exported separately
 	Calibration *Comparison                       `json:"calibration,omitempty"`

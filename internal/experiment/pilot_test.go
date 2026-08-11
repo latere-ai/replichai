@@ -46,12 +46,12 @@ func TestLabelSurvivesEveryPath(t *testing.T) {
 	rec := Experiment{Source: SourceSynthetic, CohortKind: p.Kind}
 
 	paths := map[string]string{
-		"stored record (API/export source)": rec.CohortKind,
+		"stored record (API/export source)": string(rec.CohortKind),
 		"PILOT.md report":                   string(report),
 		"JSON export/API response":          string(export),
 	}
 	for name, out := range paths {
-		if !strings.Contains(out, CohortModel) {
+		if !strings.Contains(out, string(CohortModel)) {
 			t.Errorf("%s dropped the cohort_kind label", name)
 		}
 	}

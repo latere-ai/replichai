@@ -16,7 +16,7 @@ import (
 // mechanism. Collect emits data conforming to the instrument's analysis input,
 // so the instrument's own pipeline runs on it unchanged.
 type Cohort interface {
-	Kind() string
+	Kind() CohortKind
 	Collect(ctx context.Context, decl instrument.Instrument) (CohortData, error)
 }
 
@@ -48,7 +48,7 @@ type Generated struct {
 }
 
 // Kind identifies the cohort.
-func (Generated) Kind() string { return CohortGenerated }
+func (Generated) Kind() CohortKind { return CohortGenerated }
 
 // The two levels a categorical column is filled with, so a generated dataset
 // has a control and a treatment group to carry an effect between.
