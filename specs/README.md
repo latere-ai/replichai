@@ -69,6 +69,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built — money comes in without an admin:** [022](022-money-comes-in-without-an-admin.md) (six leaves, 022a–022f) adds the front door 011 left locked. A person buys credits into their own wallet with a card: a Stripe hosted Checkout session creates the charge, a signed webhook is the one thing that posts the credit, and the ledger dedupes that post on an `external_ref` so a retried delivery cannot double it. Margin is a visible spread at purchase (you pay $20, your wallet gains $18), which keeps the rate card raw so a session's cost still reconciles against vendor rates. The checkout is created in **USD** (a credit is prepaid USD compute) and an EU customer pays the euro equivalent via Stripe Adaptive Pricing — a dashboard toggle, so no code charges, reads, or converts EUR; EU-consumer VAT is a flagged, deferred spec. Refunds are a negative `adjust` and may take a wallet negative — and a negative wallet **freezes the account** into view-only mode (every write refused `402 account_frozen` bar the top-up that thaws it), with a one-shot admin override and a frozen/negative filter on the admin people table, so a chargeback-after-spend cannot quietly keep costing compute. Coupling a customer payment to the platform's own Anthropic account is a stated non-goal, replaced by a solvency number on the console. Supersedes only 011's closing line — admin top-up stays as the way a grant or comp enters a wallet.
 
+**Designed, not built — the money follow-ups 022 named:** [025](025-the-solvency-an-operator-can-act-on.md) turns the raw outstanding-liability number into a signal — a comparison against what the vendor account holds, and an alert before the platform is under-funded — while keeping vendor funding out of the platform (auto-reload, not a transfer). [026](026-the-people-table-at-scale.md) makes the admin people table hold a thousand-plus accounts: pagination, search, one aggregated balance query instead of the current N+1, and a server-side owing filter — without a stored balance or a user table until one is measured necessary. Both are beta-deferred: the current surfaces are fine at today's scale, and the specs exist so the fix is known before the numbers force it. Still owed and not yet specced: EU VAT/invoicing (blocked on the operator's OSS registration) and recovering a negative project *pot*.
+
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
 ## Architecture at a glance
@@ -192,6 +194,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 024 | [Settings is a place, and the ledger names its projects](024-settings-is-a-place.md) | built | 013, 011, 018, 019 |
 | 024a | [Settings as a destination, with sub-tabs](024a-settings-as-a-destination.md) | built | 013 |
 | 024b | [The ledger names its project](024b-the-ledger-names-its-project.md) | built | 024a, 011, 019 |
+| 025 | [The solvency an operator can act on](025-the-solvency-an-operator-can-act-on.md) | designed | 022c, 006k, 022d |
+| 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
 
 ## The three tracks
 
