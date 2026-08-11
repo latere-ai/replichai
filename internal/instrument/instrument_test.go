@@ -230,10 +230,10 @@ func TestDeriveAllServable(t *testing.T) {
 // revision can fix them all.
 func TestValidateIsExhaustive(t *testing.T) {
 	inst := validInstrument()
-	inst.Protocol.Reported[0].Citation = ""                          // one
-	inst.Analysis.Command = "python run.py in.csv"                   // two
+	inst.Protocol.Reported[0].Citation = ""                             // one
+	inst.Analysis.Command = "python run.py in.csv"                      // two
 	inst.Servability.Components[1].Failed = []Criterion{"invented_bar"} // three
-	inst.Servability.AllServable = true                              // four
+	inst.Servability.AllServable = true                                 // four
 
 	vs, err := Validate(marshal(t, inst))
 	if err != nil {
