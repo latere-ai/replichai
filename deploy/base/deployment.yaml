@@ -5,11 +5,15 @@ metadata:
   labels:
     app: replichai
 spec:
-  # One replica: a low-volume single-tenant beta. Jobs are durable in Postgres
-  # and a restart reaps anything a crash left mid-flight, so a brief rollout gap
-  # loses no work. Two workers still run inside the pod; a surge pod overlapping
-  # during a deploy is safe because Claim uses SELECT ... FOR UPDATE SKIP LOCKED.
-  replicas: 1
+  # Two replicas for availability: a single pod makes every deploy, node drain,
+  # or crash a moment of downtime. All state is in Postgres and the concurrency-
+  # critical paths are built for it — Claim uses SELECT ... FOR UPDATE SKIP
+  # LOCKED so two workers never take the same job, the enqueue/credit gate and
+  # settlement are advisory-locked and exactly-once, the Stripe webhook is
+  # idempotent, and cancel/live-stream carry no pod-local state (auth is a
+  # stateless cookie, so no session affinity is needed). The PodDisruptionBudget
+  # beside this keeps at least one pod through a voluntary disruption.
+  replicas: 2
   strategy:
     rollingUpdate:
       maxSurge: 1
