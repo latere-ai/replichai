@@ -49,8 +49,11 @@ const PROJECT = 'proj-1'
 const project = { id: PROJECT, owner: 'p', title: 'Point of no Undo', visibility: 'private', created_at: at(0) }
 const paper = { key: 'doi:x', ref: '10.1145/3654777.3676417', title: 'Point of no Undo', sessions: 1 }
 const job = { id: 'j1', project_id: PROJECT, paper_key: paper.key, ref: paper.ref, phase: 'done', repo_name: 'open-hai/x', created_at: at(1), updated_at: at(0), cost: 3_842_000 }
-// Short of the reserve, so the card shows its warning and both buttons.
-const credits = { balance: 16_820_000, available: 16_820_000, start_reserve: 20_000_000, may_reclaim: true }
+// A running session holds $10 of the balance, so available is below it — which
+// is when the second amount row appears (an identical available is now hidden as
+// a duplicate). Available is also under the reserve, so the warning and both
+// buttons show too.
+const credits = { balance: 16_820_000, available: 6_820_000, start_reserve: 20_000_000, may_reclaim: true }
 
 // What the allocate request actually carried, so the test checks the amount
 // that left rather than the digits on screen.
