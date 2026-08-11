@@ -25,7 +25,7 @@ func validModelPilot() Pilot {
 			{Metric: "pm_accuracy", Reported: "0.82", Recomputed: "0.79", Delta: "-0.03"},
 		}},
 		NotCovered: []instrument.ComponentServability{
-			{Component: "feed manipulation", Servable: false, Failed: []string{instrument.CriterionPageAdministrable}, Why: "elsewhere"},
+			{Component: "feed manipulation", Servable: false, Failed: []instrument.Criterion{instrument.CriterionPageAdministrable}, Why: "elsewhere"},
 		},
 	}
 }
