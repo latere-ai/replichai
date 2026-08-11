@@ -79,15 +79,18 @@ type Rate struct {
 // the review state. Under the fail-closed structural gate, ThirdPartyData is
 // true whenever any file was quarantined.
 type Redistribution struct {
-	ThirdPartyData bool   `json:"third_party_data"`
-	Review         string `json:"review"`
+	ThirdPartyData bool        `json:"third_party_data"`
+	Review         ReviewState `json:"review"`
 }
+
+// ReviewState is the outcome of the redistribution review.
+type ReviewState string
 
 // Review states for Redistribution.Review.
 const (
-	ReviewClear              = "clear"                // nothing was withheld
-	ReviewExcluded           = "excluded"             // third-party files were quarantined from the tree
-	ReviewSecretInTranscript = "secret_in_transcript" // a secret in the transcript bars the flip (005/009)
+	ReviewClear              ReviewState = "clear"                // nothing was withheld
+	ReviewExcluded           ReviewState = "excluded"             // third-party files were quarantined from the tree
+	ReviewSecretInTranscript ReviewState = "secret_in_transcript" // a secret in the transcript bars the flip (005/009)
 )
 
 // SameManifest reports whether two manifests are materially equal, ignoring the

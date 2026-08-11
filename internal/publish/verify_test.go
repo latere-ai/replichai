@@ -69,7 +69,7 @@ func TestRedistributionFromClassifiesEachBar(t *testing.T) {
 	cases := []struct {
 		treeClean, transcriptClean bool
 		wantData                   bool
-		wantReview                 string
+		wantReview                 ReviewState
 	}{
 		{true, true, false, ReviewClear},
 		{false, true, true, ReviewExcluded},

@@ -391,7 +391,7 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 		Verdict:      m.Reproduction.Verdict.String(), // the name ("passed"), not the uint8 code point
 		Created:      created,
 		MethodDigest: m.Reproduction.MethodDigest,
-		Review:       m.Redistribution.Review,
+		Review:       string(m.Redistribution.Review),
 		CanPublish:   m.Redistribution.Review == publish.ReviewClear,
 	}
 }
