@@ -10,17 +10,21 @@ import (
 // pilot — by construction it precedes a study and never is one — and everything
 // it produces is a claim about the instrument, never about the paper or about
 // people. Two sub-kinds, named as cohort kinds:
+
+// CohortKind is which synthetic cohort produced a pilot's data.
+type CohortKind string
+
 const (
 	// CohortGenerated is a deterministic data generator: it reads the protocol
 	// and emits conforming trial data from a recorded seed, with no model and no
 	// credential. It carries the shakedown and the positive control, the two uses
 	// that hold weight, and it is ungated because it claims nothing about a
 	// responder.
-	CohortGenerated = "synthetic:generated"
+	CohortGenerated CohortKind = "synthetic:generated"
 	// CohortModel is a model cohort: N sessions driven through the protocol,
 	// answering as instructed. Its only marginal claim over the generator is how
 	// a plausible responder behaves, so it is gated on ground truth.
-	CohortModel = "synthetic:model"
+	CohortModel CohortKind = "synthetic:model"
 )
 
 // Errors the model-cohort gate returns. Each is a server-side refusal at
