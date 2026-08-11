@@ -26,6 +26,7 @@ import {
   getJob,
   allocateCredits,
   getFindings,
+  errCode,
   getMe,
   getWallet,
   getSolvency,
@@ -657,6 +658,7 @@ function Shell({
             }
             onOpenSession={(jobId, ref, title, tab) => openSession(jobId, view.id, ref, title, tab)}
             onCreditsSpent={refreshMe}
+            onTopUp={() => setTopUp(true)}
           />
         )}
         {view.name === 'session' && (
@@ -1956,6 +1958,7 @@ function ProjectScreen({
   onTitle,
   onOpenSession,
   onCreditsSpent,
+  onTopUp,
 }: {
   i18n: I18n
   me: Me
@@ -1966,6 +1969,7 @@ function ProjectScreen({
   onTitle: (title: string) => void
   onOpenSession: (jobId: string, ref: string, projectTitle: string, tab?: SessionTab) => void
   onCreditsSpent: () => void
+  onTopUp: () => void
 }) {
   const { t } = i18n
   const [project, setProject] = useState<Project | null>(null)
@@ -2113,7 +2117,7 @@ function ProjectScreen({
             <div className="stack">
               {/* Money cannot move in or out of a trashed project either, so the
                   card that moves it goes with the rest of the owner controls. */}
-              {credits && !project.deleted_at && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} />}
+              {credits && !project.deleted_at && <ProjectCreditsCard i18n={i18n} projectID={id} credits={credits} onMoved={onSpent} onTopUp={onTopUp} />}
               {/* One card per paper that has a graded session (021e). Not "the
                   project's rate": a project holds papers and only a session has
                   findings, so a single figure on the project would be the exact
@@ -3032,26 +3036,35 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
 // — each holds the start reserve — and that difference is the whole reason a
 // project with credits can still refuse a submit. Showing only the balance would
 // make that refusal look like a bug.
-function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n; projectID: string; credits: ProjectCredits; onMoved: () => void }) {
+function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp }: { i18n: I18n; projectID: string; credits: ProjectCredits; onMoved: () => void; onTopUp: () => void }) {
   const { t } = i18n
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // Whether the last refusal was a short *wallet* on an allocate — the one an
+  // in-place top-up fixes. A reclaim held by a running session is not.
+  const [offerTopUp, setOfferTopUp] = useState(false)
 
   const parsed = parseUSD(amount)
   const valid = parsed !== null && parsed > 0
   const short = credits.available < credits.start_reserve
+  // What a running session is holding: the gap between the pot's balance and what
+  // is free to commit. Shown only when it exists, so two identical numbers do not
+  // read as a duplicate when nothing is running.
+  const held = credits.balance - credits.available
 
   const move = async (back: boolean) => {
     if (!valid || busy) return
     setBusy(true)
     setErr('')
+    setOfferTopUp(false)
     try {
       await (back ? reclaimCredits(projectID, parsed) : allocateCredits(projectID, parsed))
       setAmount('')
       onMoved()
     } catch (e) {
-      setErr(creditMoveErrLabel(t, e))
+      setErr(creditMoveErrLabel(t, e, back))
+      setOfferTopUp(!back && errCode(e) === 'no_credits')
     } finally {
       setBusy(false)
     }
@@ -3067,34 +3080,46 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved }: { i18n: I18n;
           {t('creditsBalance')}
           <span className="v tabular">{formatUSD(credits.balance)}</span>
         </div>
-        {/* data-tip rather than a <Tip> wrapper: Tip wraps its child in a
-            <span>, and an inline wrapper around a block row collapses that row
-            to its content — which is why this value sat against its label while
-            the one above it was flush right. TipHost reads the attribute off any
-            element, so a row that cannot take a wrapper does not need one. */}
-        <div className="usage-line" data-tip={t('creditsAvailableTitle')}>
-          {t('creditsAvailable')}
-          <span className="v tabular">{formatUSD(credits.available)}</span>
-        </div>
+        {/* The available row appears only when a running session is holding some
+            of the balance — otherwise it equals the balance and reads as a
+            confusing duplicate. data-tip rather than a <Tip> wrapper: an inline
+            wrapper around a block row collapses it to its content. */}
+        {held > 0 && (
+          <div className="usage-line" data-tip={t('creditsAvailableTitle')}>
+            {t('creditsAvailable')}
+            <span className="v tabular">{formatUSD(credits.available)}</span>
+          </div>
+        )}
       </div>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
         {short ? t('creditsShort', { reserve: formatUSD(credits.start_reserve) }) : t('creditsEnough', { reserve: formatUSD(credits.start_reserve) })}
       </p>
-      <div className="field-row">
+      {/* The amount on its own line, then the two actions side by side, so a
+          narrow card does not wrap "Take back" onto a lonely second row. */}
+      <div className="stack" style={{ gap: 8 }}>
         <NumberField value={amount} onChange={setAmount} min={0} ariaLabel={t('creditsAmount')} />
-        <button className="btn" disabled={!valid || busy} onClick={() => move(false)}>
-          <Ico name="plus" size={13} w={2.2} /> {t('creditsAllocate')}
-        </button>
-        {credits.may_reclaim && (
-          <button className="btn ghost" disabled={!valid || busy} onClick={() => move(true)}>
-            <Ico name="minus" size={13} w={2.2} /> {t('creditsReclaim')}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" style={{ flex: 1 }} disabled={!valid || busy} onClick={() => move(false)}>
+            <Ico name="plus" size={13} w={2.2} /> {t('creditsAllocate')}
           </button>
-        )}
+          {credits.may_reclaim && (
+            <button className="btn ghost" style={{ flex: 1 }} disabled={!valid || busy} onClick={() => move(true)}>
+              <Ico name="minus" size={13} w={2.2} /> {t('creditsReclaim')}
+            </button>
+          )}
+        </div>
       </div>
       {err && (
-        <span className="err small">
-          <Ico name="alert" size={13} /> {err}
-        </span>
+        <div className="stack" style={{ gap: 8 }}>
+          <span className="err small">
+            <Ico name="alert" size={13} /> {err}
+          </span>
+          {offerTopUp && (
+            <button className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={onTopUp}>
+              <Ico name="wallet" size={13} /> {t('topUpWallet')}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

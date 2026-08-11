@@ -151,11 +151,14 @@ export function sessionFailureText(t: T, cause: string): string {
 /* ─── everything else ─── */
 
 // creditMoveErrLabel names why a move between a wallet and a project pot was
-// refused. Each refusal has a different remedy, so each gets its own sentence.
-export function creditMoveErrLabel(t: T, e: unknown): string {
+// refused. `back` distinguishes the two shapes of "not enough": an allocate is
+// short because the *wallet* has too little (remedy: top up), a reclaim because
+// the pot's available is held by a running session (remedy: wait for it to
+// settle). Conflating them told a person to top up when they should wait.
+export function creditMoveErrLabel(t: T, e: unknown, back = false): string {
   const { code, offline } = refusal(e)
   if (offline) return t('errOffline')
-  if (code === 'no_credits') return t('errMoveInsufficient')
+  if (code === 'no_credits') return back ? t('errReclaimHeld') : t('errAllocateShort')
   if (code === 'not_lead') return t('errMoveNotLead')
   if (code === 'not_member') return t('errMoveNotMember')
   if (code === 'bad_amount') return t('errMoveAmount')
