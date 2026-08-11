@@ -92,6 +92,14 @@ type Holder string
 // email rule a grant follows (006c).
 func Wallet(email string) Holder { return Holder("user:" + normalizeEmail(email)) }
 
+// WalletBalance is one wallet's email and its settled balance in micro-USD — the
+// shape NegativeWallets returns, so the admin surface names the debtor and shows
+// what they owe without a second read.
+type WalletBalance struct {
+	Email   string
+	Balance int64
+}
+
 // Pot is one project's holder key.
 func Pot(projectID string) Holder { return Holder("project:" + strings.TrimSpace(projectID)) }
 
@@ -232,6 +240,18 @@ type Store interface {
 	// vendor account holds (022c) — the read that replaces coupling a customer
 	// payment to a vendor top-up.
 	TotalOutstanding(ctx context.Context) (int64, error)
+	// BalancesFor folds the settled balance of every given holder in one pass —
+	// the read the admin people table needs for a page of accounts without a
+	// query per row (026). It excludes holds exactly as Balance does, so the two
+	// cannot disagree. A holder with no ledger entry is omitted, not zero-valued:
+	// its balance is zero and the caller defaults a missing key to zero.
+	BalancesFor(ctx context.Context, holders []Holder) (map[Holder]int64, error)
+	// NegativeWallets returns every wallet whose settled balance is below zero —
+	// the accounts that owe, and freeze (022f) — from one predicate rather than a
+	// fold of every account. Pots are excluded: a project pot may sit negative
+	// legitimately (011's overdraft), which is not a debt an account holder owes.
+	// Most-owed first, so the operator sees the worst debt at the top.
+	NegativeWallets(ctx context.Context) ([]WalletBalance, error)
 	// Allocate moves credits from the caller's wallet into a project's pot. Any
 	// member of the project may fund it. Both sides are one transaction: money
 	// is never in neither place. projectName is snapshotted onto both entries so

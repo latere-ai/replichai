@@ -138,6 +138,62 @@ func (s *PGStore) EntryByExternalRef(ctx context.Context, ref string) (Entry, bo
 	return e, true, nil
 }
 
+// BalancesFor folds every requested holder in one aggregate query rather than a
+// SUM per row. A holder with no entry does not appear; the caller reads a
+// missing key as zero.
+func (s *PGStore) BalancesFor(ctx context.Context, holders []Holder) (map[Holder]int64, error) {
+	out := make(map[Holder]int64, len(holders))
+	if len(holders) == 0 {
+		return out, nil
+	}
+	keys := make([]string, len(holders))
+	for i, h := range holders {
+		keys[i] = string(h)
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT holder, COALESCE(SUM(amount), 0) FROM credit_entries
+		 WHERE holder = ANY($1) AND kind NOT IN ('hold','release') GROUP BY holder`, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var h string
+		var n int64
+		if err := rows.Scan(&h, &n); err != nil {
+			return nil, err
+		}
+		out[Holder(h)] = n
+	}
+	return out, rows.Err()
+}
+
+// NegativeWallets returns every wallet in the red in one predicate — a GROUP BY
+// with a HAVING over the fold — most-owed first. The 'user:' prefix keeps pots
+// out: a negative pot is a legitimate overdraft, not a debt an account owes.
+func (s *PGStore) NegativeWallets(ctx context.Context) ([]WalletBalance, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT holder, SUM(amount) AS bal FROM credit_entries
+		 WHERE kind NOT IN ('hold','release') AND holder LIKE 'user:%'
+		 GROUP BY holder HAVING SUM(amount) < 0 ORDER BY bal ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []WalletBalance{}
+	for rows.Next() {
+		var h string
+		var n int64
+		if err := rows.Scan(&h, &n); err != nil {
+			return nil, err
+		}
+		if email, ok := WalletEmail(Holder(h)); ok {
+			out = append(out, WalletBalance{Email: email, Balance: n})
+		}
+	}
+	return out, rows.Err()
+}
+
 // TotalOutstanding sums every holder's settled balance — wallets and pots, less
 // open holds — the credits sold and not yet delivered as compute.
 func (s *PGStore) TotalOutstanding(ctx context.Context) (int64, error) {

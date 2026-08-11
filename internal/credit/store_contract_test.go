@@ -184,6 +184,41 @@ func runStoreContract(t *testing.T, s Store) {
 	if sum != 0 {
 		t.Fatalf("statement sums to %d but the balance is 0 — the ledger disagrees with itself", sum)
 	}
+
+	// BalancesFor folds a batch of holders in one pass, and must agree with the
+	// per-holder Balance it replaces on the admin table. lead holds $12, mate $0.
+	batch, err := s.BalancesFor(ctx, []Holder{Wallet(lead.Email), Wallet(mate.Email), Pot("p1")})
+	if err != nil {
+		t.Fatalf("BalancesFor: %v", err)
+	}
+	if batch[Wallet(lead.Email)] != 12*Dollar {
+		t.Fatalf("BalancesFor lead = %d, want %d", batch[Wallet(lead.Email)], 12*Dollar)
+	}
+	if batch[Pot("p1")] != 0 {
+		t.Fatalf("BalancesFor pot p1 = %d, want 0", batch[Pot("p1")])
+	}
+	// An empty batch is not an error, and an unknown holder reads back as zero.
+	if empty, err := s.BalancesFor(ctx, nil); err != nil || len(empty) != 0 {
+		t.Fatalf("BalancesFor(nil) = %v, %v; want empty, nil", empty, err)
+	}
+
+	// A clawed-back purchase drives a wallet below zero — the debt a refund after
+	// spend leaves (022c). NegativeWallets must surface exactly that wallet, name
+	// its email (not the holder key), and leave the solvent alone. A negative pot
+	// would be an overdraft, not a debt, so pots must never appear here.
+	if err := s.RefundPaid(ctx, "debtor@latere.ai", 5*Dollar, "re-contract", "stripe:refund:re-contract"); err != nil {
+		t.Fatalf("RefundPaid: %v", err)
+	}
+	red, err := s.NegativeWallets(ctx)
+	if err != nil {
+		t.Fatalf("NegativeWallets: %v", err)
+	}
+	if len(red) != 1 {
+		t.Fatalf("NegativeWallets = %+v, want exactly the one debtor", red)
+	}
+	if red[0].Email != "debtor@latere.ai" || red[0].Balance != -5*Dollar {
+		t.Fatalf("NegativeWallets[0] = %+v, want debtor@latere.ai at -%d", red[0], 5*Dollar)
+	}
 }
 
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
