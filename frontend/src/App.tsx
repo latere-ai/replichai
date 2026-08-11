@@ -101,7 +101,7 @@ import {
   trashErrLabel,
   purgeErrLabel,
 } from './errors'
-import { creditedMicro, formatUSD, parseUSD, toDollars } from './money'
+import { creditedMicro, formatUSD, MICRO, parseUSD, toDollars } from './money'
 import {
   clockOf,
   compactTokens,
@@ -2788,10 +2788,15 @@ function pctText(bps: number): string {
 // the fee, and the credits you get — before sending you to the processor. The webhook, not the return from that
 // page, is what actually credits (022b); this only opens the payment, and the
 // wallet screen re-reads the balance when they come back.
+// The preset top-up amounts, in whole dollars. A person picks one or types their
+// own — a bare stepper made buying feel like filling a form, not a purchase.
+const TOPUP_PRESETS = [10, 25, 50, 100]
+
 function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
   const { t } = i18n
-  const [amount, setAmount] = useState('')
   const [wallet, setWallet] = useState<Wallet | null>(null)
+  const [choice, setChoice] = useState<number | 'other'>(25 * MICRO)
+  const [custom, setCustom] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -2801,21 +2806,21 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
       .catch(() => setErr(t('errOffline')))
   }, [t])
 
-  const parsed = parseUSD(amount)
   const min = wallet?.min_topup_micro ?? 0
-  const belowMin = parsed !== null && parsed > 0 && parsed < min
-  const valid = parsed !== null && parsed > 0 && parsed >= min
-  // The amount actually charged, snapped to whole cents — the same figure the
-  // fee and credit are computed from, so the three add up on screen.
-  const gross = parsed !== null ? Math.floor(parsed / 10_000) * 10_000 : 0
+  const raw = choice === 'other' ? parseUSD(custom) : choice
+  // The amount actually charged, snapped to whole cents — the figure the fee and
+  // the credit are both computed from, so the three add up on screen.
+  const gross = raw !== null ? Math.floor(raw / 10_000) * 10_000 : 0
+  const belowMin = choice === 'other' && raw !== null && raw > 0 && gross < min
+  const valid = gross > 0 && gross >= min
   const credited = valid && wallet ? creditedMicro(gross, wallet.spread_bps, wallet.spread_fixed_micro) : null
 
   const go = async () => {
-    if (!valid || busy || parsed === null) return
+    if (!valid || busy) return
     setBusy(true)
     setErr('')
     try {
-      const { url } = await startCheckout(parsed)
+      const { url } = await startCheckout(gross)
       window.location.href = url
     } catch (e) {
       setErr(checkoutErrLabel(t, e))
@@ -2839,14 +2844,30 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
         </>
       }
     >
-      <p className="muted small" style={{ margin: 0, lineHeight: 1.6 }}>
-        {t('topUpBody', { min: formatUSD(min) })}
+      <p className="muted small" style={{ margin: '0 0 12px', lineHeight: 1.6 }}>
+        {t('topUpChoose')}
       </p>
-      <div className="field-row">
-        <NumberField value={amount} onChange={setAmount} min={0} ariaLabel={t('topUpAmount')} autoFocus />
+      <div className="topup-presets">
+        {TOPUP_PRESETS.map((d) => {
+          const p = d * MICRO
+          return (
+            <button key={d} type="button" className={'topup-preset' + (choice === p ? ' on' : '')} aria-pressed={choice === p} onClick={() => setChoice(p)}>
+              {formatUSD(p)}
+            </button>
+          )
+        })}
+        <button type="button" className={'topup-preset' + (choice === 'other' ? ' on' : '')} aria-pressed={choice === 'other'} onClick={() => setChoice('other')}>
+          {t('topUpOther')}
+        </button>
       </div>
-      {valid && wallet && credited !== null && parsed !== null && (
-        <div className="usage-rows" data-test="topup-quote">
+      {choice === 'other' && (
+        <div className="field-row" style={{ marginTop: 10 }}>
+          <NumberField value={custom} onChange={setCustom} min={0} ariaLabel={t('topUpAmount')} autoFocus />
+          <span className="muted small">{t('topUpMinHint', { min: formatUSD(min) })}</span>
+        </div>
+      )}
+      {credited !== null && wallet && (
+        <div className="usage-rows" style={{ marginTop: 14 }} data-test="topup-quote">
           <div className="usage-line">
             {t('topUpPay')}
             <span className="v tabular">{formatUSD(gross)}</span>
@@ -2861,12 +2882,19 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
           </div>
         </div>
       )}
-      {belowMin && <span className="err small">{t('topUpMin', { min: formatUSD(min) })}</span>}
+      {belowMin && (
+        <span className="err small" style={{ marginTop: 8, display: 'inline-block' }}>
+          {t('topUpMin', { min: formatUSD(min) })}
+        </span>
+      )}
       {err && (
         <span className="err small">
           <Ico name="alert" size={13} /> {err}
         </span>
       )}
+      <p className="muted small" style={{ margin: '14px 0 0', lineHeight: 1.6 }}>
+        {t('topUpSecure')}
+      </p>
     </Modal>
   )
 }
