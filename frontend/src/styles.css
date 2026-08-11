@@ -2225,6 +2225,36 @@ input.submit-input {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Top-up preset amounts (022e): pick a common amount as a card, or "Other" to
+   type one. A stepper alone made buying feel like filling a form. */
+.topup-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+}
+.topup-preset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  color: var(--fg-1);
+  padding: 12px 14px;
+  font: 600 15px/1.1 inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.topup-preset:hover {
+  border-color: var(--border-strong);
+}
+.topup-preset.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 1px var(--brand-ring);
+}
 .usage-line svg {
   flex: none;
 }
