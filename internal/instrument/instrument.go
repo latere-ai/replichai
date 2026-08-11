@@ -50,8 +50,17 @@ type Protocol struct {
 type Measure struct {
 	Name  string `json:"name"`
 	Scale string `json:"scale,omitempty"` // units or response scale
-	Level string `json:"level,omitempty"` // "per_trial" | "per_participant"
+	Level Level  `json:"level,omitempty"` // the level a measure is recorded at
 }
+
+// Level is the level a measure is recorded at.
+type Level string
+
+// The recording levels a measure can carry.
+const (
+	PerTrial       Level = "per_trial"
+	PerParticipant Level = "per_participant"
+)
 
 // Reported is one of the paper's own headline statistics, carried so the rest
 // of the 007 track has ground truth to compare against: a released-source
@@ -97,11 +106,23 @@ type Schema struct {
 
 // Column is one expected input column.
 type Column struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`           // "number" | "integer" | "string" | "boolean" | "categorical"
-	Unit     string `json:"unit,omitempty"` // the unit, when the type has one
-	Required bool   `json:"required"`
+	Name     string     `json:"name"`
+	Type     ColumnType `json:"type"`           // the column's data type
+	Unit     string     `json:"unit,omitempty"` // the unit, when the type has one
+	Required bool       `json:"required"`
 }
+
+// ColumnType is the data type of an input column.
+type ColumnType string
+
+// The column data types a schema can declare.
+const (
+	ColumnNumber      ColumnType = "number"
+	ColumnInteger     ColumnType = "integer"
+	ColumnString      ColumnType = "string"
+	ColumnBoolean     ColumnType = "boolean"
+	ColumnCategorical ColumnType = "categorical"
+)
 
 // Check reports whether a dataset with the given column names satisfies the
 // schema: every required column must be present. The message names the first
@@ -132,16 +153,29 @@ type Servability struct {
 // A component is servable only if it fails no criterion; when it is not
 // servable, Failed enumerates which criteria it fails.
 type ComponentServability struct {
-	Component string   `json:"component"`
-	Servable  bool     `json:"servable"`
-	Failed    []string `json:"failed_criteria"` // drawn from Criteria
-	Why       string   `json:"why"`
+	Component string      `json:"component"`
+	Servable  bool        `json:"servable"`
+	Failed    []Criterion `json:"failed_criteria"` // drawn from Criteria
+	Why       string      `json:"why"`
 }
+
+// Criterion is one servability bar a component is judged against.
+type Criterion string
+
+// The servability criteria, keyed as they appear in failed_criteria.
+const (
+	CriterionSingleSession      Criterion = "single_session"      // one session, no follow-up
+	CriterionScreenBased        Criterion = "screen_based"        // no physical apparatus
+	CriterionNoExperimenter     Criterion = "no_experimenter"     // no experimenter or confederate in the loop
+	CriterionBrowserMeasures    Criterion = "browser_measures"    // every measure capturable in a browser
+	CriterionPageAdministrable  Criterion = "page_administrable"  // the manipulation is administrable by the page
+	CriterionApparatusRecovered Criterion = "apparatus_recovered" // the apparatus is recovered or fully specified
+)
 
 // Criteria is the closed list a component is judged servable against. A
 // component is servable only if it fails none of these; naming any criterion
 // outside this list is a schema violation, so the audit cannot invent a bar.
-var Criteria = []string{
+var Criteria = []Criterion{
 	CriterionSingleSession,
 	CriterionScreenBased,
 	CriterionNoExperimenter,
@@ -149,16 +183,6 @@ var Criteria = []string{
 	CriterionPageAdministrable,
 	CriterionApparatusRecovered,
 }
-
-// The servability criteria, keyed as they appear in failed_criteria.
-const (
-	CriterionSingleSession      = "single_session"      // one session, no follow-up
-	CriterionScreenBased        = "screen_based"        // no physical apparatus
-	CriterionNoExperimenter     = "no_experimenter"     // no experimenter or confederate in the loop
-	CriterionBrowserMeasures    = "browser_measures"    // every measure capturable in a browser
-	CriterionPageAdministrable  = "page_administrable"  // the manipulation is administrable by the page
-	CriterionApparatusRecovered = "apparatus_recovered" // the apparatus is recovered or fully specified
-)
 
 // DeriveAllServable is the roll-up: every component must be servable. Validate
 // checks a decoded Instrument's AllServable against this, so the audit's own
@@ -181,8 +205,8 @@ type Violation struct {
 
 func (v Violation) String() string { return v.Field + ": " + v.Message }
 
-var knownCriterion = func() map[string]bool {
-	m := make(map[string]bool, len(Criteria))
+var knownCriterion = func() map[Criterion]bool {
+	m := make(map[Criterion]bool, len(Criteria))
 	for _, c := range Criteria {
 		m[c] = true
 	}

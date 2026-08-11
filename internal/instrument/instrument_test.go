@@ -34,7 +34,7 @@ func validInstrument() Instrument {
 				{Component: "PM task", Servable: true},
 				{
 					Component: "feed manipulation", Servable: false,
-					Failed: []string{CriterionPageAdministrable},
+					Failed: []Criterion{CriterionPageAdministrable},
 					Why:    "participants spend ten minutes on their own feeds elsewhere",
 				},
 			},
@@ -175,7 +175,7 @@ func TestSchemaCheck(t *testing.T) {
 func TestServabilityConsistency(t *testing.T) {
 	t.Run("unknown criterion", func(t *testing.T) {
 		inst := validInstrument()
-		inst.Servability.Components[1].Failed = []string{"invented_bar"}
+		inst.Servability.Components[1].Failed = []Criterion{"invented_bar"}
 		vs, _ := Validate(marshal(t, inst))
 		if !violationOn(vs, "servability.components[1].failed_criteria") {
 			t.Fatalf("an unknown criterion should fail; got %v", vs)
@@ -185,7 +185,7 @@ func TestServabilityConsistency(t *testing.T) {
 	t.Run("servable but failed", func(t *testing.T) {
 		inst := validInstrument()
 		inst.Servability.Components[0].Servable = true
-		inst.Servability.Components[0].Failed = []string{CriterionScreenBased}
+		inst.Servability.Components[0].Failed = []Criterion{CriterionScreenBased}
 		vs, _ := Validate(marshal(t, inst))
 		if !violationOn(vs, "servability.components[0]") {
 			t.Fatalf("servable-with-failures should fail; got %v", vs)
@@ -217,7 +217,7 @@ func TestDeriveAllServable(t *testing.T) {
 	if !DeriveAllServable(all) {
 		t.Fatal("all servable should derive true")
 	}
-	mixed := []ComponentServability{{Servable: true}, {Servable: false, Failed: []string{CriterionScreenBased}, Why: "rig"}}
+	mixed := []ComponentServability{{Servable: true}, {Servable: false, Failed: []Criterion{CriterionScreenBased}, Why: "rig"}}
 	if DeriveAllServable(mixed) {
 		t.Fatal("a mixed set should derive false")
 	}
@@ -232,7 +232,7 @@ func TestValidateIsExhaustive(t *testing.T) {
 	inst := validInstrument()
 	inst.Protocol.Reported[0].Citation = ""                          // one
 	inst.Analysis.Command = "python run.py in.csv"                   // two
-	inst.Servability.Components[1].Failed = []string{"invented_bar"} // three
+	inst.Servability.Components[1].Failed = []Criterion{"invented_bar"} // three
 	inst.Servability.AllServable = true                              // four
 
 	vs, err := Validate(marshal(t, inst))
@@ -247,7 +247,7 @@ func TestValidateIsExhaustive(t *testing.T) {
 // The criteria list is closed and every constant is in it — a guard against a
 // new criterion constant being added without joining Criteria.
 func TestCriteriaClosed(t *testing.T) {
-	for _, c := range []string{
+	for _, c := range []Criterion{
 		CriterionSingleSession, CriterionScreenBased, CriterionNoExperimenter,
 		CriterionBrowserMeasures, CriterionPageAdministrable, CriterionApparatusRecovered,
 	} {

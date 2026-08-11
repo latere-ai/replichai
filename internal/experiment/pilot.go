@@ -126,8 +126,12 @@ func (p Pilot) Render() ([]byte, error) {
 		b.WriteString("## Components not covered\n\n")
 		b.WriteString("A model cohort cannot be driven through a component a page cannot serve, so these were skipped:\n\n")
 		for _, c := range p.NotCovered {
+			failed := make([]string, len(c.Failed))
+			for i, f := range c.Failed {
+				failed[i] = string(f)
+			}
 			fmt.Fprintf(&b, "- **%s** — not servable (%s): %s\n",
-				c.Component, strings.Join(c.Failed, ", "), c.Why)
+				c.Component, strings.Join(failed, ", "), c.Why)
 		}
 		b.WriteString("\n")
 	}

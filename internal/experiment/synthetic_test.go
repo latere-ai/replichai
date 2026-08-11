@@ -37,7 +37,7 @@ func caseTwoInstrument() Instrument {
 					{Component: "prospective-memory task", Servable: true},
 					{
 						Component: "feed manipulation", Servable: false,
-						Failed: []string{instrument.CriterionPageAdministrable},
+						Failed: []instrument.Criterion{instrument.CriterionPageAdministrable},
 						Why:    "participants spend ten minutes on their own feeds elsewhere",
 					},
 				},
