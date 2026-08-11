@@ -108,7 +108,7 @@ func EligibleForPublic(m Manifest) (bool, string) {
 		return false, "third-party data was withheld from this reproduction"
 	}
 	if m.Redistribution.Review != ReviewClear {
-		return false, "the redistribution review is not clear (" + m.Redistribution.Review + ")"
+		return false, "the redistribution review is not clear (" + string(m.Redistribution.Review) + ")"
 	}
 	return true, ""
 }
