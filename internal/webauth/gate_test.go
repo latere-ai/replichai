@@ -101,6 +101,11 @@ func TestRequireTier(t *testing.T) {
 // gate. There is no API to enumerate a ServeMux's patterns, so this asserts the
 // known operator routes appear in GatedRoutes — a route added without the gated
 // helper would be absent here and fail the test.
+//
+// The public reads left this list with 028: a project anyone may read is read
+// without an account. What remains here is what an account is *for* — writing,
+// spending, the caller's own lists, the live stream, and the member roll. The
+// open set itself is asserted whole in httpapi's own router test.
 func TestOperatorRoutesAreGated(t *testing.T) {
 	rt := httpapi.NewRouter(httpapi.Deps{Jobs: job.NewMemStore(), Reproductions: nil, Gate: Gate(access.NewMemStore())})
 	gated := map[string]bool{}
@@ -109,7 +114,6 @@ func TestOperatorRoutesAreGated(t *testing.T) {
 	}
 	for _, must := range []string{
 		"POST /projects",
-		"GET /projects/{id}/papers",
 		"POST /projects/{id}/papers",
 		"DELETE /projects/{id}/papers",
 		"POST /projects/{id}/sessions",
@@ -118,11 +122,11 @@ func TestOperatorRoutesAreGated(t *testing.T) {
 		"DELETE /projects/{id}",
 		"POST /projects/{id}/restore",
 		"GET /projects/{id}/archive",
-		"GET /public",
-		"GET /projects/{id}",
-		"GET /jobs/{id}",
+		"GET /jobs",
 		"GET /jobs/{id}/events",
-		"GET /jobs/{id}/transcript",
+		"POST /jobs/{id}/cancel",
+		"GET /projects/{id}/members",
+		"POST /projects/{id}/public",
 	} {
 		if !gated[must] {
 			t.Errorf("operator route %q is not behind the gate", must)

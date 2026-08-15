@@ -44,7 +44,10 @@ var (
 // Project is the durable record of one research container.
 type Project struct {
 	ID         string     `json:"id"`
-	Owner      string     `json:"owner"`      // the owning principal (006c)
+	// Owner is the owning principal (006c). It is omitted when empty because a
+	// reader with no stake in the project is served a Redacted copy, and an
+	// `"owner": ""` on that wire would be a claim about who owns it (028).
+	Owner      string     `json:"owner,omitempty"`
 	Title      string     `json:"title"`      // defaults from the first session's paper
 	Visibility Visibility `json:"visibility"` // private by default; the public flip is 006f
 	// CreditCap overrides the platform's overdraft floor for this project, in
@@ -90,6 +93,20 @@ type Project struct {
 	// and the permanent delete all have to read a trashed project, and a read that
 	// refused would leave them nothing to work with.
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+}
+
+// Redacted is the project as somebody with no stake in it reads it (028): the
+// work, without the principal who owns it. An opaque OIDC subject names nobody
+// to a stranger and identifies its holder to anybody who already knows one, so
+// a public reader gets the sign-off block — which was published deliberately,
+// under a name its signer chose — and not this.
+// The signing and withdrawing principals go with it, for the same reason and
+// with the same exception: the sign-off block's *name*, institution, and public
+// contact stay, because a signer chose to publish those, and the subject behind
+// them is not one of them.
+func (p Project) Redacted() Project {
+	p.Owner, p.SignedOffBy, p.WithdrawnBy = "", "", ""
+	return p
 }
 
 // Trashed reports whether this project is in the trash.
