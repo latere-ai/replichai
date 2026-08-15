@@ -185,6 +185,19 @@ func TestTheShippedMethodLoads(t *testing.T) {
 	if !strings.Contains(strings.ToLower(m.Instructions), "inner") {
 		t.Error("instructions should describe the inner/outer loop doctrine")
 	}
+	// The method is scoped by what makes the outer loop irreducible — human
+	// participants — not by one field that happens to have them. Naming a
+	// field here would tell the auditor a psychology or social-science paper
+	// is out of scope, which the product promises it is not.
+	lower := strings.ToLower(m.Instructions)
+	for _, field := range []string{"human-computer interaction", "hci"} {
+		if strings.Contains(lower, field) {
+			t.Errorf("instructions scope themselves to %q; the method is not field-specific", field)
+		}
+	}
+	if !strings.Contains(lower, "human participants") {
+		t.Error("instructions should scope themselves by human participants")
+	}
 	task, err := m.TaskFor("X")
 	if err != nil || !strings.Contains(task, "X") {
 		t.Errorf("shipped task template did not render: %q, %v", task, err)
