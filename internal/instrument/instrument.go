@@ -37,7 +37,7 @@ type Instrument struct {
 
 // Protocol is the extracted study design. Design and Trials are prose rather
 // than a study-design DSL on purpose: this schema covers only what the
-// servability criteria admit, not every design in HCI.
+// servability criteria admit, not every design a study with people can take.
 type Protocol struct {
 	Design   string     `json:"design"`   // between/within, factors and levels, counterbalancing
 	Trials   string     `json:"trials"`   // structure, counts, stimuli, timing

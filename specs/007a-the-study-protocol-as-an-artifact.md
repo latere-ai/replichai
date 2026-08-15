@@ -132,4 +132,4 @@ Field names are implementation's to settle; this fixes what must be declared. Th
 
 ## Out of scope
 
-Executing anything — running the analysis (007b), driving a cohort (007c), serving the page (007d). Writing the `study/` participant bundle, which needs the protocol schema this spec defines and is therefore 007d's. Inferring a protocol the paper does not describe: extraction reads the paper, and where the paper is silent the field is null. Any change to how the reproducibility rate is computed. A protocol schema general enough for every study design in HCI — this one covers what the servability criteria admit, and says so.
+Executing anything — running the analysis (007b), driving a cohort (007c), serving the page (007d). Writing the `study/` participant bundle, which needs the protocol schema this spec defines and is therefore 007d's. Inferring a protocol the paper does not describe: extraction reads the paper, and where the paper is silent the field is null. Any change to how the reproducibility rate is computed. A protocol schema general enough for every design a study with people can take — this one covers what the servability criteria admit, and says so.
