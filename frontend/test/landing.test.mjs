@@ -1,12 +1,16 @@
-// A browser regression test for the first screen (017).
+// A browser regression test for the first screen (017, rebuilt by 029).
 //
-// What it guards: the landing is a two-column grid whose one-column fallback
-// *reorders* — the sign-in card moves above the three points so a phone gets the
-// button without scrolling past the argument for it. That reordering is declared
-// in `grid-template-areas`, which means source order and painted order disagree
-// on purpose, and no unit test can tell you which one the reader gets. The same
-// goes for "the button is above the fold": it is a claim about computed
-// geometry at a named viewport.
+// What it guards: the landing is a page a researcher reads, and the way in never
+// leaves the screen. 017 guaranteed that with a fold — the sign-in button's box
+// above 900px — and a page that scrolls cannot keep that promise. The
+// replacement is stronger and length-independent: a sticky header, asserted at
+// the top of the page *and* at the bottom of it, on both viewports. Those two
+// assertions supersede 017's criteria 3 and 4.
+//
+// It also guards what a figure is for. Three of them carry the argument, and a
+// reader who has asked for less motion must get the finished state of each
+// rather than a frozen first frame — a claim about computed style that no unit
+// test can make.
 //
 // It also guards the mark. The one it replaced was the character `r` set in
 // `--font-serif: 'Instrument Serif'` — a font with no `@font-face` anywhere in
@@ -21,7 +25,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const puppeteer = (await import(require.resolve('puppeteer-core'))).default
 
-const PORT = 5197
+const PORT = 5233
 const BASE = `http://localhost:${PORT}`
 
 const asked = process.env.PUPPETEER_EXECUTABLE_PATH
@@ -150,71 +154,124 @@ try {
     await page.close()
   }
 
-  /* ── Two columns, and the button above the fold ── */
+  /* ── The way in is on screen at every scroll position ── */
+
+  for (const viewport of [DESKTOP, PHONE]) {
+    const page = await open({ authenticated: false }, { viewport })
+    await page.waitForSelector('.landing .lp-bar')
+    const seen = async (where) => {
+      const b = await box(page, '[data-test="lp-signin"]')
+      if (!b) return fail(`${where}: the header has no sign-in`)
+      if (b.top < 0 || b.bottom > viewport.height) fail(`at ${viewport.width}px, ${where}, the sign-in sits at ${b.top}–${b.bottom} outside the ${viewport.height}px viewport`)
+      if (b.width < 90) fail(`the sign-in is ${b.width}px wide at ${viewport.width}px`)
+    }
+    await seen('at the top')
+    // The page is long on purpose. The promise is that the way in survives that.
+    const scrolled = await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+      return document.documentElement.scrollHeight > window.innerHeight
+    })
+    if (!scrolled) fail(`at ${viewport.width}px the landing does not scroll; it is meant to be a page, not a card`)
+    await new Promise((r) => setTimeout(r, 120))
+    await seen('at the bottom')
+
+    // Nothing runs off the side at either width.
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+    if (wide) fail(`the landing scrolls sideways at ${viewport.width}px`)
+
+    // The argument is on the page, not merely in the DOM.
+    const copy = await page.evaluate(() => document.querySelector('.landing-lead').textContent.length)
+    if (copy < 120) fail(`the landing lead is ${copy} characters; the point of this screen is that it says what the product does`)
+    const pts = await page.evaluate(() => document.querySelectorAll('.landing-point').length)
+    if (pts !== 3) fail(`the landing shows ${pts} points, want the inner loop, the outer loop, and the verdict`)
+    const open_ = await page.evaluate(() => document.querySelectorAll('.landing-point.open').length)
+    if (open_ !== 1) fail(`${open_} points are drawn open; exactly one — the outer loop — is not re-runnable`)
+    await page.close()
+  }
+
+  /* ── The three figures ── */
+
+  {
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.lp-loop-svg')
+    // Every figure is on the page, and the loop figure paints in both rings.
+    const fig = await page.evaluate(() => {
+      const svg = document.querySelector('.lp-loop-svg')
+      const cs = (s) => getComputedStyle(document.querySelector(s))
+      return {
+        loop: svg?.tagName.toLowerCase(),
+        outer: cs('.lp-ring-outer').stroke,
+        inner: cs('.lp-ring-inner').stroke,
+        runnerAnim: cs('.lp-ring-runner').animationName,
+        steps: document.querySelectorAll('.lp-step').length,
+        parts: document.querySelectorAll('.lp-part').length,
+      }
+    })
+    if (fig.loop !== 'svg') fail('the loop figure is not an svg')
+    if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the colour as much as the dash`)
+    if (fig.runnerAnim === 'none') fail('nothing on the closed loop moves; the figure claims a re-run and shows a still')
+    if (fig.steps !== 4) fail(`the pipeline figure shows ${fig.steps} steps, want four`)
+    if (fig.parts !== 3) fail(`the anatomy figure shows ${fig.parts} parts, want claim, evidence, and verdict`)
+    await page.close()
+  }
+
+  /* ── Reduced motion gets the finished page, not a frozen first frame ── */
+
+  {
+    const page = await browser.newPage()
+    await page.setViewport(DESKTOP)
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+    await page.setRequestInterception(true)
+    page.on('request', (req) => {
+      const u = new URL(req.url())
+      if (u.origin === BASE && u.pathname === '/me') return req.respond({ status: 200, contentType: 'application/json', body: '{"authenticated":false}' })
+      req.continue()
+    })
+    await page.goto(BASE, { waitUntil: 'networkidle0' })
+    await page.waitForSelector('.lp-section')
+    const still = await page.evaluate(() => {
+      const bands = [...document.querySelectorAll('.lp-section, .lp-hero, .lp-step, .lp-part')]
+      return {
+        hidden: bands.filter((e) => +getComputedStyle(e).opacity < 0.99).length,
+        animated: bands.filter((e) => getComputedStyle(e).animationName !== 'none').length,
+        runner: getComputedStyle(document.querySelector('.lp-ring-runner')).animationName,
+      }
+    })
+    if (still.hidden) fail(`${still.hidden} parts of the landing are transparent under reduced motion; the resting state has to be the finished one`)
+    if (still.animated) fail(`${still.animated} bands still animate under reduced motion`)
+    if (still.runner !== 'none') fail('the loop runner still spins under reduced motion')
+    await page.close()
+  }
+
+  /* ── The registry is linked, now that it can be read signed out (028) ── */
 
   {
     const page = await open({ authenticated: false })
     await page.waitForSelector('.landing')
-    const brand = await box(page, '.landing-brand')
-    const auth = await box(page, '.landing-auth')
-    const points = await box(page, '.landing-points')
-    const btn = await box(page, '.landing-auth .btn')
-    if (!brand || !auth || !points || !btn) fail('the desktop landing is missing one of its three areas')
-    else {
-      if (auth.left < brand.right) fail(`at ${DESKTOP.width}px the sign-in card overlaps the copy (card starts at ${auth.left}, copy ends at ${brand.right})`)
-      if (points.left !== brand.left) fail(`the three points start at ${points.left}px but the copy above them at ${brand.left}px; they share a column`)
-      if (btn.bottom > DESKTOP.height) fail(`the sign-in button ends at ${btn.bottom}px, below the ${DESKTOP.height}px fold`)
-      if (btn.width < 200) fail(`the sign-in button is ${btn.width}px wide; it is the only action on the screen`)
-      // The argument has to be on the screen, not merely in the DOM.
-      const copy = await page.evaluate(() => document.querySelector('.landing-lead').textContent.length)
-      if (copy < 120) fail(`the landing lead is ${copy} characters; the point of this screen is that it says what the product does`)
-      const pts = await page.evaluate(() => document.querySelectorAll('.landing-point').length)
-      if (pts !== 3) fail(`the landing shows ${pts} points, want the inner loop, the outer loop, and the verdict`)
-      // One of them is the outer loop, and it is the one drawn open.
-      const open_ = await page.evaluate(() => document.querySelectorAll('.landing-point.open').length)
-      if (open_ !== 1) fail(`${open_} points are drawn open; exactly one — the outer loop — is not re-runnable`)
-    }
-    await page.close()
-  }
-
-  /* ── One column on a phone, reordered so the button stays reachable ── */
-
-  {
-    const page = await open({ authenticated: false }, { viewport: PHONE })
-    await page.waitForSelector('.landing')
-    const brand = await box(page, '.landing-brand')
-    const auth = await box(page, '.landing-auth')
-    const points = await box(page, '.landing-points')
-    const btn = await box(page, '.landing-auth .btn')
-    if (!brand || !auth || !points || !btn) fail('the phone landing is missing one of its three areas')
-    else {
-      if (Math.abs(auth.left - brand.left) > 1) fail(`at ${PHONE.width}px the landing is still two columns (card at ${auth.left}, copy at ${brand.left})`)
-      if (!(brand.top < auth.top && auth.top < points.top)) {
-        fail(`on a phone the order is brand@${brand.top} card@${auth.top} points@${points.top}; want brand, then the card, then the points`)
-      }
-      if (btn.bottom > PHONE.height) fail(`on a phone the sign-in button ends at ${btn.bottom}px, below the ${PHONE.height}px fold`)
-      // Nothing may run off the side: the card has a 340px minimum on desktop.
-      const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
-      if (wide) fail('the phone landing scrolls sideways')
-    }
+    const links = await page.evaluate(() => [...document.querySelectorAll('.landing a[href="/registry"]')].length)
+    if (!links) fail('the landing links nowhere; 028 opened the registry so that it could')
     await page.close()
   }
 
   /* ── The way in still works ── */
 
   {
-    const page = await open({ authenticated: false }, { path: '/p/proj-1' })
+    // A project address renders the app signed out since 028, so the landing's
+    // own round trip is asserted from an address that still needs an account —
+    // the public deep link is public-shell.test.mjs's to guard.
+    const page = await open({ authenticated: false }, { path: '/new' })
     await page.waitForSelector('.landing')
-    const href = await page.evaluate(() => document.querySelector('.landing-auth .btn').getAttribute('href'))
-    if (href !== '/login?next=%2Fp%2Fproj-1') fail(`signed out at /p/proj-1 the button points at ${href}; the deep link has to survive the round trip`)
+    const href = await page.evaluate(() => document.querySelector('[data-test="lp-signin"]').getAttribute('href'))
+    if (href !== '/login?next=%2Fnew') fail(`signed out at /new the button points at ${href}; the address has to survive the round trip`)
     // The button carries the provider's mark, painted in the button's own ink.
     // A mark that inherited a colour from somewhere else would be invisible on
     // the brand fill and nothing else here would notice.
     const provider = await page.evaluate(() => {
-      const svg = document.querySelector('.landing-auth .btn svg')
+      const btnEl = document.querySelector('[data-test="lp-signin"]')
+      const svg = btnEl?.querySelector('svg')
       if (!svg) return null
       const r = svg.getBoundingClientRect()
-      const btn = getComputedStyle(document.querySelector('.landing-auth .btn'))
+      const btn = getComputedStyle(btnEl)
       return { w: r.width, h: r.height, fill: getComputedStyle(svg).fill, ink: btn.color, bg: btn.backgroundColor, paths: svg.querySelectorAll('path').length }
     })
     if (!provider) fail('the sign-in button lost the latere mark')

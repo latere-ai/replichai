@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { LatereMark, Lockup, Mark, Wordmark } from './brand'
+import { LatereMark, Mark, Wordmark } from './brand'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
   CRITERIA,
@@ -120,6 +120,7 @@ import {
   type Span,
 } from './transcript'
 import { Ico, type IconName } from './icons'
+import { Landing } from './landing'
 import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
@@ -191,7 +192,7 @@ export default function App() {
   // address somebody can arrive at cold — an invitation mail pointing at a
   // project, a shared link to a session. Sign-in comes back to that address
   // rather than to the dashboard.
-  if (!me.authenticated && !isPublicView(view)) return <SignIn i18n={i18n} next={window.location.pathname} />
+  if (!me.authenticated && !isPublicView(view)) return <Landing i18n={i18n} next={window.location.pathname} />
   if (!me.authenticated) return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
   return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
@@ -336,52 +337,6 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
 }
 
 /* ─── Auth screens ─── */
-
-// The landing is the only screen a visitor sees before they have an account, so
-// it carries the argument as well as the way in (017). The two failure screens
-// below it deliberately keep the plain centred card: somebody whose session just
-// broke is not an audience for a pitch.
-function SignIn({ i18n, next }: { i18n: I18n; next?: string }) {
-  const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
-  const points = [
-    { key: 'Inner', open: false },
-    { key: 'Outer', open: true },
-    { key: 'Verdict', open: false },
-  ] as const
-  return (
-    <div className="landing">
-      <div className="landing-brand">
-        <Lockup size={26} className="landing-lockup" />
-        <h1>{i18n.t('landingClaim')}</h1>
-        <p className="landing-lead">{i18n.t('landingLead')}</p>
-      </div>
-      <div className="landing-auth">
-        <div className="auth-card">
-          <Mark size={34} />
-          <div className="stack" style={{ gap: 8 }}>
-            <h2>{i18n.t('signInTitle')}</h2>
-            <p>{i18n.t('signInBody')}</p>
-          </div>
-          <a className="btn lg" href={href} style={{ justifyContent: 'center' }}>
-            {/* The provider's own mark, so the button looks like where it goes.
-                No space between the two: `.btn` already sets the gap. */}
-            <LatereMark height={12} />
-            {i18n.t('signInWith')}
-          </a>
-          <div className="landing-note">{i18n.t('signInNote')}</div>
-        </div>
-      </div>
-      <div className="landing-points">
-        {points.map((p) => (
-          <div key={p.key} className={p.open ? 'landing-point open' : 'landing-point'}>
-            <h2>{i18n.t(`landing${p.key}Title`)}</h2>
-            <p>{i18n.t(`landing${p.key}Body`)}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function AuthUnavailable({ i18n, onRetry }: { i18n: I18n; onRetry: () => void }) {
   return (
