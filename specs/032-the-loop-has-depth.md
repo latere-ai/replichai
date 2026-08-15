@@ -2,7 +2,7 @@
 
 **Status:** built.
 
-**Scope:** replace the landing hero's flat two-circle diagram with one responsive, physically suggestive orbital instrument over an original editorial research-world image. Frontend only: SVG structure, one optimized image asset, pointer-driven perspective, CSS motion, and browser verification.
+**Scope:** replace the landing hero's flat two-circle diagram with one responsive, physically suggestive orbital instrument made only from geometry and light. Frontend only: SVG structure, pointer-driven perspective, CSS motion, and browser verification.
 
 **Depends on:** [029](029-the-landing-is-a-place.md) (the landing, its loop figure, and its reduced-motion contract), [017](017-the-first-screen.md) (the closed-inner/open-outer visual doctrine).
 
@@ -14,9 +14,9 @@ The improvement cannot trade meaning for spectacle. The inner loop must remain v
 
 ## Decisions
 
-**The figure becomes an orbital instrument, not a new logo.** `LoopFigure` keeps the same inner/outer-loop semantics and legend. A perspective stage holds an inline SVG whose planes are visibly tilted: the inner loop is a closed glass-like track with a luminous runner and a short wake; the outer loop is six separate capsules at a different inclination. A dim core, soft cast shadow, orbital nodes, and restrained highlights supply depth without WebGL.
+**The figure becomes an orbital instrument, not a new logo.** `LoopFigure` keeps the same inner/outer-loop semantics and legend. A perspective stage holds an inline SVG whose planes are visibly tilted: the inner loop is a closed glass-like track with a luminous runner and a short wake; the outer loop is six separate capsules at a different inclination. A soft cast shadow, restrained highlight, and two low-opacity colour fields supply depth without WebGL.
 
-**One physical image grounds the mechanism in research.** The hero figure uses an original, art-directed still life of papers, glass, graphite, and measuring tools as its backdrop. It contains no people, customers, logos, UI, or readable research claims, so it cannot be mistaken for evidence or a testimonial. A directional mask and blue/coral colour treatment let the animated instrument emerge from the photograph while the figure remains legible in both themes. The committed asset is a web-optimized WebP under 150 KB; it is decorative and has no alt text.
+**The mark gets one visual idea.** No photograph, framed card, central sphere, or second loop motif sits behind or inside it. Those elements compete with the inner/outer boundary instead of adding depth. Photography may appear elsewhere as its own editorial scene, but never underneath the explanatory mark. The stage itself has no visible edge; it dissolves into the page through light and shadow.
 
 **The two loops obey different physics.** The inner assembly rotates continuously at a steady rate: mechanical work can be re-run. The outer assembly precesses slowly in the opposite direction while its six gaps remain structural: a human study cannot be completed by the machine. Small nodes travel only on the closed inner track. No element crosses the boundary between the two planes.
 
@@ -30,13 +30,13 @@ The improvement cannot trade meaning for spectacle. The inner loop must remain v
 
 ## Acceptance criteria
 
-1. The hero renders one perspective stage containing a closed inner track, one luminous runner and wake, six physically separate outer segments, and at least three depth cues (core, cast shadow, highlights, or nodes).
+1. The hero renders one perspective stage containing a closed inner track, one luminous runner and wake, six physically separate outer segments, and at least three restrained depth cues (cast shadow, highlights, or colour fields).
 2. With ordinary motion preference, the inner and outer assemblies have different, non-`none` animations and the runner moves on the inner track; no outer segment animation changes the segment gaps.
 3. Moving the pointer across the figure changes bounded tilt custom properties without changing React state, and leaving restores the neutral pose.
 4. With `prefers-reduced-motion: reduce`, every element in the orbital figure computes to `animation-name: none`, the stage has no transform transition, and pointer movement leaves the neutral pose unchanged.
 5. At 1440×900 and 390×844, the figure fits without horizontal overflow; its inner and outer strokes paint in distinct colours in both light and dark themes.
-6. The original editorial backdrop loads at intrinsic width of at least 1200px, transfers under 150 KB, and remains decorative; the landing contains no invented customer or research claim.
-7. `frontend/test/landing.test.mjs` drives the figure, image load, pointer response, reduced-motion state, semantics, and both viewport sizes end to end; the new assertions fail against the flat figure.
+6. The orbital stage has no raster background, visible enclosing border, or central core; its silhouette is the two loops themselves.
+7. `frontend/test/landing.test.mjs` drives the figure, visual exclusions, pointer response, reduced-motion state, semantics, and both viewport sizes end to end; the new assertions fail against both the old flat figure and the rejected photographic composition.
 
 ## Not in scope
 
@@ -44,6 +44,6 @@ The compact product mark in `brand.tsx` stays flat and unchanged; a 22px rail ma
 
 ## Outcome
 
-Built as designed. `LoopFigure` now uses two independently animated SVG planes, six permanent outer segments, a closed glass inner track with runner and wake, core/shadow/highlight depth cues, and a `requestAnimationFrame`-bounded pointer tilt. The original research still life was generated specifically for this page, converted to a 96 KB WebP, and committed at `frontend/public/research-desk.webp`; no external asset or runtime dependency was added.
+Built, then corrected after visual review. `LoopFigure` uses two independently animated SVG planes, six permanent outer segments, a closed glass inner track with runner and wake, restrained shadow/highlight depth cues, and a `requestAnimationFrame`-bounded pointer tilt. The first build placed the instrument over an editorial photograph and added a central sphere inside a heavy rounded frame. That produced three competing focal systems and was rejected; the photograph, frame, and sphere were removed rather than tuned.
 
-The browser test was first extended against the old flat figure, where the missing perspective-stage assertion failed. It now verifies structure, distinct motion, the six gaps, pointer bounds and reset, the image's load/dimensions/transfer size, theme contrast, phone fit, and a completely static reduced-motion pose. The focused landing test, all 129 frontend unit tests, the production build, and the complete 16-file browser suite pass. Desktop, phone, and dark-theme renders were also inspected directly; no horizontal spill or illegible crop remained.
+The browser test was first extended against the old flat figure, where the missing perspective-stage assertion failed. It now verifies structure, distinct motion, the six gaps, pointer bounds and reset, the absence of raster/background clutter and a central core, theme contrast, phone fit, and a completely static reduced-motion pose.
