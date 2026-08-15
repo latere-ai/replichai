@@ -1,6 +1,6 @@
 # 031 — The model is a choice
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** the tier a session runs on, chosen by the person who starts it. One field on the submission, carried durably on the job, read by the runner; one route that prices the tiers; one control beside Start. Audit sessions only.
 
@@ -73,3 +73,11 @@ The tier is not remembered between sessions: a per-project default is a differen
 **A concrete model id as user input**, for the reason the first decision gives.
 
 **A second locale.** `Lang` is `'en'` only (`i18n.ts:8`) and `i18n-coverage.test.ts` keeps it honest; new keys go in the English block.
+
+## Outcome
+
+Built as designed, in six commits — the typed preference, the column, the runner, the boundary and its price route, the picker, and the pricing/gate assertions. Every acceptance criterion has a test; the two that could regress silently were checked against a deliberately reverted change and do fail without it (`TestServerRunsOnTheJobsChosenTier` on the runner wiring, `model-tier.test.mjs` on the request payload). The Postgres store contract was run against a real database, so migration 6 and the new column are exercised rather than assumed.
+
+Three things landed differently from the first draft, each recorded above with its reason: the domain type is `credit.Preference` rather than `credit.Tier`, because `access.Tier` already means what a principal may do and this package reads it; the picker is the existing `ui.tsx` `Select` on the papers card rather than a new split-button menu on Start, because reusing the app's one tested combobox beat writing a second overlay; and `GET /models` memoises for five minutes, which the design did not originally say and the implementation needed once `Covers` turned out to cost one backend round trip per tier.
+
+One thing the design did not anticipate: the client's dev proxy is a hand-written prefix list, and `api-proxy.test.ts` — written for exactly this — failed until `/models` was added to `vite.config.ts`. Worth noting because it is the second time that list has gone stale behind a new route.
