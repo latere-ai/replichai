@@ -73,8 +73,21 @@ const detail = {
   signer_handle: 'ada',
 }
 
+const session = {
+  id: 'job-1',
+  kind: 'audit',
+  project_id: 'pub-1',
+  ref: 'arxiv:2301.03711',
+  phase: 'done',
+  repo_name: 'open-hai/placebo',
+  created_at: ago(4 * 86_400_000),
+  updated_at: ago(2 * 86_400_000),
+}
+
 const routes = [
   [/^\/public$/, 200, [published]],
+  [/^\/jobs\/job-1$/, 200, session],
+  [/^\/jobs\/job-1\/transcript$/, 200, { events: [], usage: null, live: false }],
   [/^\/projects\/pub-1$/, 200, detail],
   [/^\/projects\/pub-1\/papers$/, 200, []],
   // Anything private reads as missing, which is the one answer the server gives
@@ -95,11 +108,14 @@ let browser
 // `path`.
 const open = async (me, path) => {
   const page = await browser.newPage()
+  const asked = []
+  page.asked = asked
   await page.setViewport({ width: 1440, height: 900 })
   await page.setRequestInterception(true)
   page.on('request', (req) => {
     const u = new URL(req.url())
     if (u.origin === BASE) {
+      asked.push(u.pathname)
       if (u.pathname === '/me') return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
       const hit = routes.find(([re]) => re.test(u.pathname))
       if (hit) return req.respond({ status: hit[1], contentType: 'application/json', body: JSON.stringify(hit[2]) })
@@ -171,6 +187,19 @@ try {
     if (got.people.some((tab) => /member|people/i.test(tab))) fail('a signed-out reader is offered the member roll')
     if (got.signIn !== '/login?next=%2Fp%2Fpub-1') fail(`the sign-in does not carry this address: ${got.signIn}`)
     if (!/registry/i.test(got.crumb)) fail(`the breadcrumb roots at "${got.crumb}", want the registry — the reader has no projects screen`)
+    await page.close()
+  }
+
+  /* ── A session under a published project ── */
+
+  {
+    const page = await open(SIGNED_OUT, '/p/pub-1/s/job-1')
+    await page.waitForSelector('.tx .detail-head')
+    // The live stream is an operator route and stays gated. Opened here it would
+    // be refused and reopened for as long as the page is up, so it must not be
+    // opened at all.
+    const streamed = page.asked.some((p) => p.endsWith('/events'))
+    if (streamed) fail(`a signed-out session screen opened the gated live stream: ${page.asked.join(' ')}`)
     await page.close()
   }
 
