@@ -2897,8 +2897,15 @@ input.submit-input {
   color: var(--fg-1);
 }
 .lp-card-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: var(--fg-2);
+}
+.lp-card-by svg {
+  flex: none;
+  color: var(--fg-3);
 }
 .lp-card-foot {
   display: inline-flex;
