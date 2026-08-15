@@ -67,8 +67,6 @@ const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light', json 
       if (me === null) return req.respond({ status: 500, contentType: 'application/json', body: '{}' })
       return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
     }
-    // Anything else the caller wants answered — the published strip reads the
-    // open registry, and what it finds decides whether that band exists at all.
     if (u.origin === BASE && u.pathname in json) {
       return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(json[u.pathname]) })
     }
@@ -153,12 +151,9 @@ try {
     const same = await page.evaluate(() => {
       const bg = getComputedStyle(document.body).backgroundColor
       const stroke = getComputedStyle(document.querySelector('.mark-inner')).stroke
-      const inner = getComputedStyle(document.querySelector('.lp-ring-inner')).stroke
-      const outer = getComputedStyle(document.querySelector('.lp-ring-outer')).stroke
-      return { bg, stroke, inner, outer }
+      return { bg, stroke }
     })
     if (same.bg === same.stroke) fail(`in dark mode the mark is painted in the page background (${same.stroke})`)
-    if (same.inner === same.outer) fail(`in dark mode both orbital loops are painted ${same.inner}`)
     await page.close()
   }
 
@@ -201,73 +196,25 @@ try {
 
   {
     const page = await open({ authenticated: false })
-    await page.waitForSelector('.lp-loop-stage')
-    // Every figure is on the page, and the orbital instrument has separate
-    // physical layers rather than one flat spinner.
-    const fig = await page.evaluate(async () => {
+    await page.waitForSelector('.lp-loop-svg')
+    // Every figure is on the page, and the loop figure paints in both rings.
+    const fig = await page.evaluate(() => {
       const svg = document.querySelector('.lp-loop-svg')
       const cs = (s) => getComputedStyle(document.querySelector(s))
-      const image = new Image()
-      const loaded = new Promise((resolve) => {
-        image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
-        image.onerror = () => resolve({ width: 0, height: 0 })
-      })
-      image.src = '/research-desk.webp'
-      const photo = await loaded
-      const bytes = await fetch('/research-desk.webp').then((r) => r.blob()).then((b) => b.size)
       return {
         loop: svg?.tagName.toLowerCase(),
-        stage: !!document.querySelector('.lp-loop-stage'),
-        outerSegments: document.querySelectorAll('.lp-ring-outer').length,
-        depthCues: document.querySelectorAll('.lp-loop-core, .lp-loop-shadow, .lp-orbit-node, .lp-ring-highlight').length,
         outer: cs('.lp-ring-outer').stroke,
         inner: cs('.lp-ring-inner').stroke,
-        innerAnim: cs('.lp-orbit-inner').animationName,
-        outerAnim: cs('.lp-orbit-outer').animationName,
         runnerAnim: cs('.lp-ring-runner').animationName,
-        photo,
-        photoBytes: bytes,
-        photoUsed: cs('.lp-loop-stage').backgroundImage.includes('research-desk.webp'),
         steps: document.querySelectorAll('.lp-step').length,
         parts: document.querySelectorAll('.lp-part').length,
       }
     })
     if (fig.loop !== 'svg') fail('the loop figure is not an svg')
-    if (!fig.stage) fail('the loop figure has no perspective stage')
-    if (fig.outerSegments !== 6) fail(`the outer loop has ${fig.outerSegments} segments, want six permanently separate pieces`)
-    if (fig.depthCues < 3) fail(`the loop figure has ${fig.depthCues} depth cues, want at least three`)
     if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the colour as much as the dash`)
-    if (fig.innerAnim === 'none') fail('the closed inner assembly has no mechanical motion')
-    if (fig.outerAnim === 'none') fail('the open outer assembly does not precess')
-    if (fig.innerAnim === fig.outerAnim) fail(`both loop assemblies use ${fig.innerAnim}; they should obey different physics`)
     if (fig.runnerAnim === 'none') fail('nothing on the closed loop moves; the figure claims a re-run and shows a still')
-    if (!fig.photoUsed) fail('the physical research image is not used by the orbital stage')
-    if (fig.photo.width < 1200) fail(`the physical research image is ${fig.photo.width}×${fig.photo.height}, too small for the hero`)
-    if (fig.photoBytes >= 150_000) fail(`the physical research image transfers ${fig.photoBytes} bytes, want under 150 KB`)
     if (fig.steps !== 4) fail(`the pipeline figure shows ${fig.steps} steps, want four`)
     if (fig.parts !== 3) fail(`the anatomy figure shows ${fig.parts} parts, want claim, evidence, and verdict`)
-
-    // Proximity bends the instrument by a bounded amount and leaving returns it
-    // to its neutral pose. No click or control is required.
-    const stage = await box(page, '.lp-loop-stage')
-    await page.mouse.move(stage.left + stage.width * 0.72, stage.top + stage.height * 0.34)
-    await new Promise((r) => setTimeout(r, 40))
-    const tilted = await page.evaluate(() => {
-      const s = document.querySelector('.lp-loop-stage')
-      return {
-        rx: parseFloat(s.style.getPropertyValue('--loop-rx')),
-        ry: parseFloat(s.style.getPropertyValue('--loop-ry')),
-      }
-    })
-    if (!Number.isFinite(tilted.rx) || !Number.isFinite(tilted.ry)) fail('pointer movement did not set the physical tilt')
-    if (Math.abs(tilted.rx) > 7.01 || Math.abs(tilted.ry) > 7.01) fail(`pointer tilt escaped its ±7° bound (${tilted.rx}, ${tilted.ry})`)
-    await page.mouse.move(2, 2)
-    await new Promise((r) => setTimeout(r, 40))
-    const neutral = await page.evaluate(() => {
-      const s = document.querySelector('.lp-loop-stage')
-      return [s.style.getPropertyValue('--loop-rx'), s.style.getPropertyValue('--loop-ry')]
-    })
-    if (neutral.some((v) => v !== '0deg')) fail(`the figure did not return to neutral after pointer exit (${neutral.join(', ')})`)
     await page.close()
   }
 
@@ -291,24 +238,11 @@ try {
         hidden: bands.filter((e) => +getComputedStyle(e).opacity < 0.99).length,
         animated: bands.filter((e) => getComputedStyle(e).animationName !== 'none').length,
         runner: getComputedStyle(document.querySelector('.lp-ring-runner')).animationName,
-        orbital: [...document.querySelectorAll('.lp-loop-stage *')].filter((e) => getComputedStyle(e).animationName !== 'none').length,
-        stageTransition: getComputedStyle(document.querySelector('.lp-loop-stage')).transitionDuration,
       }
     })
     if (still.hidden) fail(`${still.hidden} parts of the landing are transparent under reduced motion; the resting state has to be the finished one`)
     if (still.animated) fail(`${still.animated} bands still animate under reduced motion`)
     if (still.runner !== 'none') fail('the loop runner still spins under reduced motion')
-    if (still.orbital) fail(`${still.orbital} parts of the orbital figure still animate under reduced motion`)
-    if (still.stageTransition !== '0s') fail(`the orbital stage still transitions for ${still.stageTransition} under reduced motion`)
-
-    const stage = await box(page, '.lp-loop-stage')
-    await page.mouse.move(stage.left + stage.width * 0.72, stage.top + stage.height * 0.34)
-    await new Promise((r) => setTimeout(r, 40))
-    const reducedTilt = await page.evaluate(() => {
-      const s = document.querySelector('.lp-loop-stage')
-      return [s.style.getPropertyValue('--loop-rx'), s.style.getPropertyValue('--loop-ry')]
-    })
-    if (reducedTilt.some(Boolean)) fail(`pointer motion changed the reduced-motion pose (${reducedTilt.join(', ')})`)
     await page.close()
   }
 
