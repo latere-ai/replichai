@@ -25,7 +25,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const puppeteer = (await import(require.resolve('puppeteer-core'))).default
 
-const PORT = 5233
+const PORT = 5237
 const BASE = `http://localhost:${PORT}`
 
 const asked = process.env.PUPPETEER_EXECUTABLE_PATH
@@ -56,7 +56,7 @@ let browser
 // open serves one mocked `/me` and returns a page at `path`. `me` is the body
 // the mock answers with; passing null makes the call fail, which is the outage
 // case 014d distinguishes from being signed out.
-const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light' } = {}) => {
+const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light', json = {} } = {}) => {
   const page = await browser.newPage()
   await page.setViewport(viewport)
   await page.evaluateOnNewDocument((t) => localStorage.setItem('theme', t), theme)
@@ -66,6 +66,9 @@ const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light' } = {}
     if (u.origin === BASE && u.pathname === '/me') {
       if (me === null) return req.respond({ status: 500, contentType: 'application/json', body: '{}' })
       return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
+    }
+    if (u.origin === BASE && u.pathname in json) {
+      return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(json[u.pathname]) })
     }
     req.continue()
   })
@@ -240,6 +243,55 @@ try {
     if (still.hidden) fail(`${still.hidden} parts of the landing are transparent under reduced motion; the resting state has to be the finished one`)
     if (still.animated) fail(`${still.animated} bands still animate under reduced motion`)
     if (still.runner !== 'none') fail('the loop runner still spins under reduced motion')
+    await page.close()
+  }
+
+  /* ── The published strip is a band a reader can see ── */
+
+  {
+    // The strip renders only once its fetch lands, which is *after* the first
+    // paint — and every band on this page starts at the pre-reveal opacity. A
+    // reveal that was wired up on mount alone never observed this one, so the
+    // section was on the page, occupying its full height, and invisible.
+    const published = [
+      { id: 'a', title: 'Attention Is All You Need — decoder ablation', signed_off_name: 'Ada Lovelace', session_count: 3, visibility: 'public' },
+      { id: 'b', title: 'The Placebo Effect of Artificial Intelligence', signed_off_name: 'Grace Hopper', session_count: 1, visibility: 'public' },
+    ]
+    const page = await open({ authenticated: false }, { json: { '/public': published } })
+    await page.waitForSelector('[data-test="lp-strip"]')
+    const strip = await page.evaluate(async () => {
+      const band = document.querySelector('[data-test="lp-strip"]')
+      band.scrollIntoView()
+      await new Promise((r) => setTimeout(r, 900))
+      const seen = (e) => {
+        const cs = getComputedStyle(e)
+        const r = e.getBoundingClientRect()
+        return +cs.opacity > 0.9 && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0
+      }
+      const cards = [...document.querySelectorAll('.lp-card')]
+      return {
+        band: seen(band),
+        cards: cards.length,
+        painted: cards.filter(seen).length,
+        titles: cards.map((c) => c.querySelector('.lp-card-title')?.textContent.trim()),
+        links: cards.map((c) => c.getAttribute('href')),
+      }
+    })
+    if (!strip.band) fail('the published band is on the page and invisible')
+    if (strip.cards !== 2) fail(`the strip rendered ${strip.cards} cards for two published projects`)
+    if (strip.painted !== strip.cards) fail(`${strip.cards - strip.painted} of ${strip.cards} strip cards never became visible`)
+    if (!strip.titles.every(Boolean)) fail(`a strip card has no title: ${JSON.stringify(strip.titles)}`)
+    if (!strip.links.every((h) => h?.startsWith('/p/'))) fail(`a strip card links nowhere useful: ${JSON.stringify(strip.links)}`)
+    await page.close()
+  }
+
+  // An empty registry is not an empty band: the section is absent entirely,
+  // because a heading over nothing is a claim about a community.
+  {
+    const page = await open({ authenticated: false }, { json: { '/public': [] } })
+    await page.waitForSelector('.landing')
+    const there = await page.evaluate(() => !!document.querySelector('[data-test="lp-strip"]'))
+    if (there) fail('an empty registry still renders the published band')
     await page.close()
   }
 
