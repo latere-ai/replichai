@@ -200,6 +200,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 028 | [The registry opens](028-the-registry-opens.md) | built | 006f, 006r, 013, 017, 018, 021, 011 |
 | 029 | [The landing is a place](029-the-landing-is-a-place.md) | built | 028, 017, 013, 006q |
 | 030 | [The app on a phone](030-the-app-on-a-phone.md) | designed | 006e, 013, 017 |
+| 031 | [The model is a choice](031-the-model-is-a-choice.md) | designed | 011, 006b, 012, 006e |
 
 ## The three tracks
 
