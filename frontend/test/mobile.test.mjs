@@ -50,6 +50,9 @@ const fail = (msg) => {
 }
 
 const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true }
+// 360 is the common Android width, and the only one that reaches the drawer's
+// `max-width: 84vw` clamp.
+const NARROW = { width: 360, height: 780, isMobile: true, hasTouch: true }
 const DESKTOP = { width: 1440, height: 900 }
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
@@ -76,8 +79,10 @@ const job = {
   phase_at: { submitted: at(0), done: at(9000) },
 }
 
+const SIGNED_IN = { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 20, start_reserve: 5 } }
+const SIGNED_OUT = { authenticated: false }
+
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 20, start_reserve: 5 } }],
   [/^\/me\/profile$/, { handle: HANDLE, display_name: 'Ada Lovelace', institution: 'University of Somewhere', contact_email: ADDRESS }],
   [
     /^\/me\/credits$/,
@@ -164,12 +169,17 @@ const SCREENS = [
   ['session/artifacts', `/p/${PROJECT}/s/${JOB}/artifacts`],
 ]
 
+// The four views a signed-out reader is shown (`isPublicView`, 028): the
+// registry, a project in it, a session under that project, and a researcher's
+// page. Everything else is somebody's workspace and renders the landing.
+const PUBLIC_SCREENS = SCREENS.filter(([, path]) => path === '/registry' || path.startsWith('/p/') || path.startsWith('/u/'))
+
 const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
 let browser
 
 // open serves the mocked API and returns a page at `path`. `sidebar` seeds the
 // stored fold, which the phone must ignore and the desktop must obey.
-const open = async (path, { viewport = PHONE, sidebar } = {}) => {
+const open = async (path, { viewport = PHONE, sidebar, me = SIGNED_IN } = {}) => {
   const page = await browser.newPage()
   await page.setViewport(viewport)
   // The fold is always written, never left over: localStorage is shared by
@@ -188,6 +198,7 @@ const open = async (path, { viewport = PHONE, sidebar } = {}) => {
     if (u.origin === BASE) {
       if (u.pathname.endsWith('/artifact')) return req.respond({ status: 200, contentType: 'text/plain', body: '# a file\n\nOne line.\n' })
       if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
+      if (u.pathname === '/me') return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
       const hit = routes.find(([re]) => re.test(u.pathname))
       if (hit) {
         const body = typeof hit[1] === 'function' ? hit[1](u.pathname.split('/')[2]) : hit[1]
@@ -248,43 +259,55 @@ try {
 
   /* ── The rail leaves the flow, on every screen ── */
 
-  for (const [name, path] of SCREENS) {
-    const page = await open(path)
-    try {
-      // A session is its own full-height layout rather than a `.screen` pane.
-      await page.waitForSelector('.screen, .tx-body', { timeout: 15000 })
-    } catch {
-      fail(`${name}: ${path} rendered no screen`)
+  // sweep measures one reader at one width. The signed-out pass is not a
+  // formality: 028 gave the app a second shell — the rail's foot becomes a
+  // sign-in, and the topbar loses its controls — and a stranger opening a
+  // shared link on a phone is the likeliest mobile visit this app gets. The
+  // 264px drawer is a third width that foot has never been sized against.
+  const sweep = async (screens, { viewport, me, who }) => {
+    for (const [name, path] of screens) {
+      const page = await open(path, { viewport, me })
+      const label = `${who} ${name} @${viewport.width}`
+      try {
+        // A session is its own full-height layout rather than a `.screen` pane.
+        await page.waitForSelector('.screen, .tx-body', { timeout: 15000 })
+      } catch {
+        fail(`${label}: ${path} rendered no screen`)
+        await page.close()
+        continue
+      }
+      // Give the entry animation its 0.3s: a card mid-fade is mid-transform,
+      // and a transformed box measures where it is, not where it lands.
+      await new Promise((r) => setTimeout(r, 400))
+
+      // The public profile is a page for strangers and renders outside the shell.
+      const shell = await page.evaluate(() => !!document.querySelector('.shell'))
+      if (shell) {
+        const w = await page.evaluate(() => ({
+          main: Math.round(document.querySelector('.main').getBoundingClientRect().width),
+          railInFlow: document.querySelector('.rail').getBoundingClientRect().right > 0,
+        }))
+        if (w.main !== viewport.width) fail(`${label}: the content column is ${w.main}px of a ${viewport.width}px phone; the rail is still taking its 236`)
+        if (w.railInFlow) fail(`${label}: the rail is still on screen with the drawer closed`)
+      }
+
+      const sp = await spill(page, viewport.width)
+      if (sp.doc > 1) fail(`${label}: the document scrolls ${sp.doc}px sideways`)
+      for (const q of sp.panes) fail(`${label}: ${q} scrolls sideways — a pane hiding its own overflow is what made this invisible`)
+      for (const o of sp.over) fail(`${label}: ${o}, past the ${viewport.width}px edge`)
       await page.close()
-      continue
     }
-    // Give the entry animation its 0.3s: a card mid-fade is mid-transform, and
-    // a transformed box measures where it is, not where it lands.
-    await new Promise((r) => setTimeout(r, 400))
-
-    // The profile is a page for strangers and renders outside the shell.
-    const shell = await page.evaluate(() => !!document.querySelector('.shell'))
-    if (shell) {
-      const w = await page.evaluate(() => ({
-        main: Math.round(document.querySelector('.main').getBoundingClientRect().width),
-        railInFlow: document.querySelector('.rail').getBoundingClientRect().right > 0,
-      }))
-      if (w.main !== PHONE.width) fail(`${name}: the content column is ${w.main}px of a ${PHONE.width}px phone; the rail is still taking its 236`)
-      if (w.railInFlow) fail(`${name}: the rail is still on screen with the drawer closed`)
-    }
-
-    const s = await spill(page, PHONE.width)
-    if (s.doc > 1) fail(`${name}: the document scrolls ${s.doc}px sideways`)
-    for (const p of s.panes) fail(`${name}: ${p} scrolls sideways — a pane hiding its own overflow is what made this invisible`)
-    for (const o of s.over) fail(`${name}: ${o}, past the ${PHONE.width}px edge`)
-    await page.close()
   }
+
+  await sweep(SCREENS, { viewport: PHONE, me: SIGNED_IN, who: 'signed in' })
+  await sweep(SCREENS, { viewport: NARROW, me: SIGNED_IN, who: 'signed in' })
+  await sweep(PUBLIC_SCREENS, { viewport: PHONE, me: SIGNED_OUT, who: 'signed out' })
 
   /* ── The drawer opens, and everything closes it ── */
 
   {
     const page = await open('/')
-    await page.waitForSelector('.rail-open-btn')
+    await page.waitForSelector('.rail-open-btn', { visible: true })
     const isOpen = () => page.evaluate(() => document.querySelector('.rail').classList.contains('rail-open'))
     const railLeft = () => page.evaluate(() => Math.round(document.querySelector('.rail').getBoundingClientRect().left))
 
@@ -329,13 +352,50 @@ try {
     await page.close()
   }
 
+  /* ── The drawer works for a stranger too ── */
+
+  // 028 replaced the rail's foot with a sign-in when there is nobody to name.
+  // That foot was sized against a 236px column and a 56px folded rail; the
+  // drawer is a third width, and the way in must survive it.
+  {
+    const page = await open('/registry', { me: SIGNED_OUT })
+    await page.waitForSelector('.screen')
+    const bar = await page.waitForSelector('.rail-open-btn', { visible: true, timeout: 15000 }).then(() => true).catch(() => false)
+    await new Promise((r) => setTimeout(r, 400))
+    if (!bar) fail('signed out, a phone has no control that opens the drawer')
+    else {
+      await page.click('.rail-open-btn')
+      await new Promise((r) => setTimeout(r, 350))
+      const read = await page.evaluate((w) => {
+        const rail = document.querySelector('.rail').getBoundingClientRect()
+        const foot = document.querySelector('.rail-foot')
+        const f = foot?.getBoundingClientRect()
+        const wide = [...document.querySelectorAll('.rail *')]
+          .filter((e) => {
+            const r = e.getBoundingClientRect()
+            return r.width > 0 && r.right > rail.right + 1
+          })
+          .map((e) => (typeof e.className === 'string' ? e.className : e.tagName))
+        return { open: document.querySelector('.rail').classList.contains('rail-open'), left: Math.round(rail.left), footBottom: f ? Math.round(f.bottom) : null, h: w, wide: wide.slice(0, 3) }
+      }, PHONE.height)
+      if (!read.open) fail('signed out, the hamburger did not open the drawer')
+      if (read.left !== 0) fail(`signed out, the open drawer sits at x=${read.left}`)
+      if (read.footBottom !== null && read.footBottom > read.h) fail(`the drawer's foot ends at ${read.footBottom}px, below the ${read.h}px screen — that is where the sign-in lives`)
+      for (const c of read.wide) fail(`signed out, ${c} runs past the drawer's own right edge`)
+      // And the way in is reachable from it.
+      const href = await page.evaluate(() => document.querySelector('.rail-foot a[href^="/login"]')?.getAttribute('href') ?? null)
+      if (href === null) fail('the signed-out drawer offers no way in')
+    }
+    await page.close()
+  }
+
   /* ── The fold is a desktop preference, and the drawer is not it ── */
 
   {
     // A rail left folded on a laptop must not reach the phone as five unlabelled
     // icons: the drawer has room for the words.
     const page = await open('/', { sidebar: 'folded' })
-    await page.waitForSelector('.rail-open-btn')
+    await page.waitForSelector('.rail-open-btn', { visible: true })
     await page.click('.rail-open-btn')
     await new Promise((r) => setTimeout(r, 300))
     const read = await page.evaluate(() => ({
