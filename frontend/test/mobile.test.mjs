@@ -27,7 +27,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const puppeteer = (await import(require.resolve('puppeteer-core'))).default
 
-const PORT = 5199
+const PORT = 5241
 const BASE = `http://localhost:${PORT}`
 
 const asked = process.env.PUPPETEER_EXECUTABLE_PATH
