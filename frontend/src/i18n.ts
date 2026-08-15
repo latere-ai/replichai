@@ -36,7 +36,7 @@ const en = {
       'Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number.',
     signInTitle: 'Sign in',
     signInBody: 'Signing in is open and costs nothing. A session is what spends, and only when you start one.',
-    signInNote: 'Built for human-computer interaction research.',
+    signInNote: 'Built for research with human participants.',
     signInWith: 'Sign in with latere',
     authUnavailableTitle: 'ReplicHAI is unavailable',
     authUnavailableBody: 'We couldn’t check your session. You may be offline, or the service may be temporarily unavailable.',
