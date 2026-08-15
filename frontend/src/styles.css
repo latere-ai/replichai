@@ -2492,38 +2492,199 @@ input.submit-input {
   max-width: 46ch;
 }
 
-/* The two loops, at figure scale. The colours are the mark's own and mean the
-   same thing here: cool for the half a machine re-runs, warm for the study it
-   never simulates. */
+/* The two loops become one physical instrument. Cool glass carries the
+   mechanically re-runnable inner loop; warm metal carries the study the machine
+   names but never simulates. The photograph is an original still life, not a
+   customer or a claim, and the animated SVG remains the explanatory layer. */
 .lp-loop {
+  --loop-inner: var(--brand);
+  --loop-inner-dim: color-mix(in srgb, var(--brand) 42%, var(--bg));
+  --loop-inner-hot: color-mix(in srgb, var(--brand) 45%, white);
+  --loop-outer: var(--err);
+  --loop-outer-dim: color-mix(in srgb, var(--err) 52%, var(--bg));
+  --loop-outer-hot: color-mix(in srgb, var(--err) 58%, #ffb59e);
   margin: 0;
   display: grid;
   justify-items: center;
-  gap: 14px;
+  gap: 12px;
+  min-width: 0;
+}
+.lp-loop-stage {
+  --loop-rx: 0deg;
+  --loop-ry: 0deg;
+  position: relative;
+  isolation: isolate;
+  width: min(440px, 88vw);
+  aspect-ratio: 6 / 5;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--border));
+  border-radius: 34% 34% 42% 42% / 26% 26% 32% 32%;
+  background:
+    radial-gradient(circle at 68% 50%, transparent 0 25%, color-mix(in srgb, var(--bg-deep) 20%, transparent) 58%),
+    linear-gradient(100deg, color-mix(in srgb, var(--bg-deep) 85%, transparent) 0%, transparent 58%),
+    url('/research-desk.webp') 58% 50% / cover no-repeat;
+  box-shadow:
+    0 38px 80px color-mix(in srgb, var(--fg-1) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 24%, transparent),
+    inset 0 -30px 70px color-mix(in srgb, var(--bg-deep) 52%, transparent);
+  transform: perspective(820px) rotateX(calc(-3deg + var(--loop-rx))) rotateY(var(--loop-ry));
+  transform-style: preserve-3d;
+}
+.lp-loop-stage::before,
+.lp-loop-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.lp-loop-stage::before {
+  z-index: 1;
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--brand) 17%, transparent), transparent 42%),
+    linear-gradient(295deg, color-mix(in srgb, var(--err) 12%, transparent), transparent 46%);
+  mix-blend-mode: screen;
+}
+.lp-loop-stage::after {
+  z-index: 8;
+  border-radius: inherit;
+  box-shadow: inset 0 0 55px color-mix(in srgb, var(--bg-deep) 54%, transparent);
 }
 .lp-loop-svg {
-  width: min(340px, 78vw);
-  height: auto;
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   fill: none;
   stroke-linecap: round;
+  pointer-events: none;
+  overflow: visible;
+}
+.lp-outer-plane {
+  transform: translateZ(-12px) rotateX(57deg) rotateZ(-11deg) scale(1.12);
+  transform-origin: 50% 50%;
+}
+.lp-inner-plane {
+  z-index: 5;
+  transform: translateZ(28px) rotateX(66deg) rotateZ(9deg) scale(1.08);
+  transform-origin: 50% 50%;
+}
+.lp-orbit-outer,
+.lp-orbit-inner {
+  transform-box: view-box;
+  transform-origin: 180px 150px;
+}
+.lp-orbit-outer,
+.lp-orbit-inner,
+.lp-ring-runner,
+.lp-ring-wake {
+  will-change: transform, opacity, stroke-dashoffset;
 }
 .lp-ring-outer {
-  stroke: var(--err);
-  stroke-width: 5;
-  opacity: 0.75;
+  stroke: url('#lp-outer-metal');
+  stroke-width: 8;
+  opacity: 0.84;
+}
+.lp-ring-depth {
+  stroke: color-mix(in srgb, var(--brand) 30%, #07101d);
+  stroke-width: 18;
+  opacity: 0.42;
 }
 .lp-ring-inner {
-  stroke: var(--brand);
-  stroke-width: 7;
-  opacity: 0.28;
+  stroke: url('#lp-inner-glass');
+  stroke-width: 11;
+  opacity: 0.72;
+}
+.lp-ring-highlight {
+  stroke: color-mix(in srgb, white 72%, var(--brand));
+  stroke-width: 2.2;
+  opacity: 0.65;
+  transform: rotate(198deg);
+  transform-origin: 180px 150px;
+}
+.lp-ring-wake {
+  stroke: color-mix(in srgb, var(--brand) 52%, transparent);
+  stroke-width: 12;
+  opacity: 0.58;
+  transform: rotate(-90deg);
+  transform-origin: 180px 150px;
 }
 .lp-ring-runner {
-  stroke: var(--brand);
-  stroke-width: 7;
-  transform-origin: 120px 120px;
-  /* At rest the runner sits on the closed loop, which is a true picture of a run
-     that has finished. The animation below is what makes it one in progress. */
+  stroke: var(--loop-inner-hot);
+  stroke-width: 12;
+  filter: url('#lp-inner-glow');
+  transform-origin: 180px 150px;
   transform: rotate(-90deg);
+}
+.lp-orbit-node {
+  fill: var(--loop-inner-hot);
+  stroke: color-mix(in srgb, white 74%, var(--brand));
+  stroke-width: 1.5;
+  filter: url('#lp-inner-glow');
+}
+.lp-node-b {
+  opacity: 0.76;
+}
+.lp-node-c {
+  opacity: 0.48;
+}
+.lp-loop-shadow {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 64%;
+  width: 54%;
+  height: 21%;
+  border-radius: 50%;
+  background: color-mix(in srgb, #05070b 72%, transparent);
+  filter: blur(18px);
+  opacity: 0.76;
+  transform: translate3d(-50%, -50%, -32px) rotate(-4deg);
+}
+.lp-loop-aura {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  width: 64%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--brand) 25%, transparent), transparent 68%);
+  filter: blur(15px);
+  opacity: 0.85;
+  transform: translate3d(-50%, -50%, -4px);
+}
+.lp-loop-core {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 91px;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--brand) 42%, white);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 34%, color-mix(in srgb, white 40%, transparent), transparent 19%),
+    radial-gradient(circle, color-mix(in srgb, var(--brand) 18%, var(--bg-surface)) 0 34%, color-mix(in srgb, var(--bg-deep) 86%, transparent) 72%);
+  box-shadow:
+    inset 0 0 18px color-mix(in srgb, var(--brand) 24%, transparent),
+    0 0 32px color-mix(in srgb, var(--brand) 18%, transparent);
+  transform: translate3d(-50%, -50%, 10px);
+}
+.lp-core-ring {
+  position: absolute;
+  inset: 12px;
+  border: 1px solid color-mix(in srgb, var(--brand) 42%, transparent);
+  border-radius: 50%;
+}
+.lp-core-point {
+  width: 9px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--loop-inner-hot);
+  box-shadow: 0 0 18px 5px color-mix(in srgb, var(--brand) 45%, transparent);
 }
 .lp-loop-legend {
   display: flex;
@@ -2823,8 +2984,32 @@ input.submit-input {
 /* Motion, for readers who have not asked for less of it. Everything above is
    already the resting state, so this adds movement and never removes content. */
 @media (prefers-reduced-motion: no-preference) {
+  .lp-loop-stage {
+    transition: transform 0.24s var(--ease-fluid), box-shadow 0.24s ease;
+  }
+  .lp-loop-stage:hover {
+    box-shadow:
+      0 44px 92px color-mix(in srgb, var(--fg-1) 24%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 28%, transparent),
+      inset 0 -30px 70px color-mix(in srgb, var(--bg-deep) 50%, transparent);
+  }
+  .lp-orbit-inner {
+    animation: lp-inner-orbit 8.4s linear infinite;
+  }
+  .lp-orbit-outer {
+    animation: lp-outer-precess 18s linear infinite reverse;
+  }
   .lp-ring-runner {
-    animation: lp-run 4.2s linear infinite;
+    animation: lp-runner-flow 3.6s linear infinite;
+  }
+  .lp-ring-wake {
+    animation: lp-wake-flow 3.6s linear infinite;
+  }
+  .lp-core-point {
+    animation: lp-core-pulse 2.8s ease-in-out infinite;
+  }
+  .lp-loop-aura {
+    animation: lp-aura-breathe 5.6s ease-in-out infinite;
   }
   .lp-hero,
   .lp-section {
@@ -2854,12 +3039,61 @@ input.submit-input {
     transform: none;
   }
 }
-@keyframes lp-run {
+@keyframes lp-inner-orbit {
   from {
-    transform: rotate(-90deg);
+    transform: rotate(0deg);
   }
   to {
-    transform: rotate(270deg);
+    transform: rotate(360deg);
+  }
+}
+@keyframes lp-outer-precess {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes lp-runner-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -360;
+  }
+}
+@keyframes lp-wake-flow {
+  from {
+    stroke-dashoffset: 0;
+    opacity: 0.25;
+  }
+  45% {
+    opacity: 0.7;
+  }
+  to {
+    stroke-dashoffset: -360;
+    opacity: 0.25;
+  }
+}
+@keyframes lp-core-pulse {
+  0%, 100% {
+    transform: scale(0.78);
+    opacity: 0.62;
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+}
+@keyframes lp-aura-breathe {
+  0%, 100% {
+    transform: translate3d(-50%, -50%, -4px) scale(0.92);
+    opacity: 0.58;
+  }
+  50% {
+    transform: translate3d(-50%, -50%, -4px) scale(1.08);
+    opacity: 0.92;
   }
 }
 
