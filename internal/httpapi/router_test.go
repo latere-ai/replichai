@@ -777,8 +777,17 @@ func TestPublicZone(t *testing.T) {
 	w := do(t, h, "GET", "/public", "", "someone-else")
 	var zone []ProjectView
 	_ = json.Unmarshal(w.Body.Bytes(), &zone)
-	if w.Code != http.StatusOK || len(zone) != 1 || zone[0].ID != pub.ID || zone[0].Owner != "owner" {
-		t.Fatalf("public zone = %+v (status %d); want only the public project showing its owner", zone, w.Code)
+	if w.Code != http.StatusOK || len(zone) != 1 || zone[0].ID != pub.ID {
+		t.Fatalf("public zone = %+v (status %d); want only the public project", zone, w.Code)
+	}
+	// It names who published it by the name they chose (006r) and withholds the
+	// opaque subject behind that name (028) — a stranger reads the work, not the
+	// principal who owns it.
+	if zone[0].OwnerName != "Ada Lovelace" || zone[0].OwnerHandle != "ada" {
+		t.Errorf("public zone row does not name its publisher: %+v", zone[0])
+	}
+	if zone[0].Owner != "" {
+		t.Errorf("public zone row carries the owning principal %q", zone[0].Owner)
 	}
 	// A different user can open the public project…
 	if w := do(t, h, "GET", "/projects/"+pub.ID, "", "someone-else"); w.Code != http.StatusOK {
@@ -1616,9 +1625,11 @@ func TestReadingPapersFollowsTheProjectsVisibility(t *testing.T) {
 	h := NewRouter(d).Handler()
 	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "owner")
 
-	// Private: a stranger may not read it, and may not work in it either.
-	if w := do(t, h, "GET", "/projects/"+projectID+"/papers", "", "stranger"); w.Code != http.StatusForbidden {
-		t.Errorf("stranger reads a private project's papers: status %d, want 403", w.Code)
+	// Private: a stranger may not read it, and may not work in it either. It
+	// reads as missing rather than forbidden — since 028 the route is open, and a
+	// refusal would confirm to anybody walking ids that the project is there.
+	if w := do(t, h, "GET", "/projects/"+projectID+"/papers", "", "stranger"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger reads a private project's papers: status %d, want 404", w.Code)
 	}
 	if w := do(t, h, "GET", "/projects/nope/papers", "", "owner"); w.Code != http.StatusNotFound {
 		t.Errorf("papers of a missing project: status %d, want 404", w.Code)

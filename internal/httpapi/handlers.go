@@ -74,6 +74,24 @@ func (rt *Router) routes() {
 	// A researcher's page is readable by anyone, signed in or not (006r) — the
 	// same openness the public zone has, for the person behind it.
 	rt.openHandle("GET", "/profiles/{handle}", rt.publicProfile)
+	// The public zone, and everything a public project already permits anyone to
+	// read (028). mayViewProject has admitted any caller to a public project
+	// since 006f; until now the gate refused the request before it could. A
+	// reader with no stake gets a Redacted copy — see redaction, below.
+	//
+	// Deliberately still gated: GET /jobs (caller-scoped by construction),
+	// /jobs/{id}/events (a live stream nobody published needs), the member list
+	// (people who did not publish themselves), and the archive (a whole
+	// repository, streamed to an unauthenticated caller).
+	rt.openHandle("GET", "/public", rt.listPublic)
+	rt.openHandle("GET", "/projects/{id}", rt.getProject)
+	rt.openHandle("GET", "/projects/{id}/papers", rt.listProjectPapers)
+	rt.openHandle("GET", "/jobs/{id}", rt.getJob)
+	rt.openHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
+	rt.openHandle("GET", "/jobs/{id}/reproduction", rt.getSessionReproduction)
+	rt.openHandle("GET", "/jobs/{id}/verdict", rt.getSessionFindings)
+	rt.openHandle("GET", "/jobs/{id}/artifacts", rt.listSessionArtifacts)
+	rt.openHandle("GET", "/jobs/{id}/artifact", rt.getSessionArtifact)
 	// The payment processor's webhook carries no session cookie; its signature is
 	// its authentication (022b). It sits outside the operator gate deliberately —
 	// still enumerated in OpenRoutes, so the choice is visible, not accidental.
@@ -82,7 +100,6 @@ func (rt *Router) routes() {
 	rt.gatedHandle("PATCH", "/me/profile", rt.saveProfile)
 	rt.gatedHandle("POST", "/resolve", rt.resolvePaper)
 	rt.gatedHandle("POST", "/projects", rt.createProject)
-	rt.gatedHandle("GET", "/projects/{id}/papers", rt.listProjectPapers)
 	rt.gatedHandle("POST", "/projects/{id}/papers", rt.addProjectPaper)
 	rt.gatedHandle("DELETE", "/projects/{id}/papers", rt.removeProjectPaper)
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
@@ -95,8 +112,6 @@ func (rt *Router) routes() {
 	rt.gatedHandle("DELETE", "/projects/{id}", rt.trashProject)
 	rt.gatedHandle("POST", "/projects/{id}/restore", rt.restoreProject)
 	rt.gatedHandle("GET", "/projects/{id}/archive", rt.archiveProject)
-	rt.gatedHandle("GET", "/public", rt.listPublic)
-	rt.gatedHandle("GET", "/projects/{id}", rt.getProject)
 	rt.gatedHandle("POST", "/projects/{id}/public", rt.makeProjectPublic)
 	rt.gatedHandle("POST", "/projects/{id}/private", rt.withdrawProject)
 	rt.gatedHandle("GET", "/me/credits", rt.myCredits)
@@ -107,14 +122,8 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/members", rt.addMember)
 	rt.gatedHandle("DELETE", "/projects/{id}/members/{email}", rt.removeMember)
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
-	rt.gatedHandle("GET", "/jobs/{id}", rt.getJob)
 	rt.gatedHandle("POST", "/jobs/{id}/cancel", rt.cancelSession)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
-	rt.gatedHandle("GET", "/jobs/{id}/transcript", rt.getSessionTranscript)
-	rt.gatedHandle("GET", "/jobs/{id}/reproduction", rt.getSessionReproduction)
-	rt.gatedHandle("GET", "/jobs/{id}/verdict", rt.getSessionFindings)
-	rt.gatedHandle("GET", "/jobs/{id}/artifacts", rt.listSessionArtifacts)
-	rt.gatedHandle("GET", "/jobs/{id}/artifact", rt.getSessionArtifact)
 
 	// The frontend shell is public and serves any GET path not matched above,
 	// so a deep link loads the app and lets it route (006e). More specific API
@@ -363,17 +372,37 @@ func (rt *Router) projectForRead(w http.ResponseWriter, r *http.Request) (projec
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return project.Project{}, false
 	}
+	// Hidden, not refused — the same rule getProject follows. It mattered less
+	// while the route was gated; open (028), a 403 here would confirm to anybody
+	// walking ids that a private project exists.
 	if !rt.mayViewProject(r, proj) {
-		writeError(w, http.StatusForbidden, "not_owner")
+		writeError(w, http.StatusNotFound, "project_not_found")
 		return project.Project{}, false
 	}
 	return proj, true
+}
+
+// stakeIn reports whether this caller has a stake in a project — its owner or a
+// collaborator it was shared with. It is the one predicate every redaction keys
+// on (028), and the same one that already withholds the credit balance, so
+// "inside this project" has a single answer per request rather than one per
+// field. Note what it is not: reading a public project confers no stake, so a
+// signed-in stranger browsing the registry sees exactly what a signed-out one
+// does.
+func (rt *Router) stakeIn(r *http.Request, p project.Project) bool {
+	return rt.mayWorkInProject(r, p, principal(r))
 }
 
 // mayWorkInProject reports whether a caller may open a session in a project:
 // its owner, or a collaborator it was shared with. Reading a public project
 // does not confer this — spending a project's credits is not a read.
 func (rt *Router) mayWorkInProject(r *http.Request, p project.Project, sub string) bool {
+	// Nobody is not an owner and not a member. The read routes are open since
+	// 028, so this predicate now answers for unauthenticated callers too — and
+	// it decides both what may be written and what may be read of the money.
+	if sub == "" {
+		return false
+	}
 	if p.Owner == sub {
 		return true
 	}
@@ -875,7 +904,11 @@ type ProjectView struct {
 	// it started, so a run that began five weeks ago and settled yesterday spent
 	// yesterday's money; a session still running counts what it has burned so
 	// far, because the wallet has already committed it.
-	Spend30d int64 `json:"spend_30d"`
+	//
+	// It is a pointer because a reader with no stake in the project does not get
+	// it at all (028), and an absent figure must not read as a project that spent
+	// nothing. Nil is "not yours to know"; a zero is a fact.
+	Spend30d *int64 `json:"spend_30d,omitempty"`
 	// SignerHandle is where the signer's name links (006r). It is resolved on
 	// every read from the signer's profile as it is *now*, and deliberately not
 	// snapshotted onto the project: a stored handle would be a second, staler
@@ -948,7 +981,7 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 			projects = append(projects, p)
 		}
 	}
-	views, err := rt.projectViews(r.Context(), projects)
+	views, err := rt.projectViews(r, projects)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
@@ -967,7 +1000,13 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 // A summary that could not be read fails the list rather than rendering a zero.
 // "0 sessions" is a claim about the project, and a list quietly making a false
 // one is worse than a list that says it could not load.
-func (rt *Router) projectViews(ctx context.Context, projects []project.Project) ([]ProjectView, error) {
+//
+// It takes the request, not just its context, because the row a reader gets
+// depends on whether they have a stake in the project (028): the public zone
+// lists other people's work, and the owner's principal and the project's spend
+// are not part of what was published.
+func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]ProjectView, error) {
+	ctx := r.Context()
 	ids := make([]string, 0, len(projects))
 	for _, p := range projects {
 		ids = append(ids, p.ID)
@@ -994,16 +1033,30 @@ func (rt *Router) projectViews(ctx context.Context, projects []project.Project) 
 	out := make([]ProjectView, 0, len(projects))
 	for _, p := range projects {
 		st := status[p.ID]
+		stake := rt.stakeIn(r, p)
+		row := p
+		if !stake {
+			row = p.Redacted()
+		}
 		v := ProjectView{
-			Project:           p,
+			Project:           row,
 			SessionCount:      st.Total,
 			Running:           st.Running,
 			PublishedSessions: st.Published,
 			LatestPhase:       string(st.Latest),
-			Spend30d:          spend[p.ID],
 			SignerHandle:      rt.signerHandle(ctx, p),
 			ModifiedAt:        later(later(p.CreatedAt, modified[p.ID]), st.LatestAt),
 		}
+		// The spend is a pointer so absent and zero stay different things: a
+		// reader with no stake is told nothing, and one who spent nothing is told
+		// exactly that.
+		if stake {
+			n := spend[p.ID]
+			v.Spend30d = &n
+		}
+		// The owner's name and handle are resolved from p, not from the redacted
+		// row — a public reader still reads who published this, by the name they
+		// chose to publish under. It is the opaque subject that is withheld.
 		v.OwnerName, v.OwnerHandle = rt.owner(ctx, p.Owner)
 		out = append(out, v)
 	}
@@ -1050,7 +1103,7 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	views, err := rt.projectViews(r.Context(), projects)
+	views, err := rt.projectViews(r, projects)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
@@ -1616,7 +1669,7 @@ func (rt *Router) listTrash(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	views, err := rt.projectViews(r.Context(), projects)
+	views, err := rt.projectViews(r, projects)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
@@ -1746,10 +1799,46 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SessionView is a session as this reader may read it (028).
+//
+// The two fields shadow job.Job's own, at a shallower depth, so encoding/json
+// takes these and the embedded ones never reach the wire. Both are empty for a
+// reader with no stake in the session's project, and omitted rather than sent as
+// zero: a public reader is entitled to the evidence a published reproduction
+// rests on, and `"cost": 0` on a session that cost three dollars would be a
+// number this codebase does not put on a wire. For the owner and a collaborator
+// they carry what job.Job holds, including a genuine zero — a session that has
+// spent nothing yet says so.
+type SessionView struct {
+	job.Job
+	Principal string `json:"principal,omitempty"`
+	Cost      *int64 `json:"cost,omitempty"`
+}
+
+// sessionView projects one session for a reader, keeping the withheld fields
+// exactly when they have a stake in the project it belongs to.
+func sessionView(j job.Job, stake bool) SessionView {
+	v := SessionView{Job: j}
+	if stake {
+		cost := j.Cost
+		v.Principal, v.Cost = j.Principal, &cost
+	}
+	return v
+}
+
+// sessionViews is sessionView over a list.
+func sessionViews(js []job.Job, stake bool) []SessionView {
+	out := make([]SessionView, 0, len(js))
+	for _, j := range js {
+		out = append(out, sessionView(j, stake))
+	}
+	return out
+}
+
 // ProjectDetail is one project with its sessions, newest first.
 type ProjectDetail struct {
 	Project  project.Project `json:"project"`
-	Sessions []job.Job       `json:"sessions"`
+	Sessions []SessionView   `json:"sessions"`
 	// MaySubmit reports whether this caller may open a session here — its owner
 	// or a collaborator, never a stranger who reached it through the public zone
 	// (006l). The client cannot work this out: it does not know membership, and a
@@ -1836,9 +1925,19 @@ func (rt *Router) mayViewProject(r *http.Request, p project.Project) bool {
 	// predicate is documented as the decision everything below a project
 	// inherits, and a delete that left those readable would be a delete in name.
 	if p.Trashed() {
-		return p.Owner == id.Sub
+		return id.Sub != "" && p.Owner == id.Sub
 	}
-	if p.Visibility == project.VisibilityPublic || p.Owner == id.Sub {
+	if p.Visibility == project.VisibilityPublic {
+		return true
+	}
+	// An unauthenticated caller is nobody, and nobody owns nothing. Without this
+	// an anonymous read of a project whose owner column is empty would match on
+	// "" == "", and the reads this route set opened (028) are exactly where that
+	// would first be reachable from the internet.
+	if id.Sub == "" {
+		return false
+	}
+	if p.Owner == id.Sub {
 		return true
 	}
 	if rt.members == nil {
@@ -1853,17 +1952,25 @@ func (rt *Router) mayViewProject(r *http.Request, p project.Project) bool {
 // its project. It writes 404 and returns ok=false otherwise, hiding a session
 // the caller may not see rather than revealing that it exists.
 func (rt *Router) viewableSession(w http.ResponseWriter, r *http.Request, id string) (job.Job, bool) {
+	j, _, ok := rt.viewableSessionIn(w, r, id)
+	return j, ok
+}
+
+// viewableSessionIn is viewableSession, handing back the project as well — for
+// the one caller that has to decide what the reader may see of the session, not
+// just whether they may see it (028).
+func (rt *Router) viewableSessionIn(w http.ResponseWriter, r *http.Request, id string) (job.Job, project.Project, bool) {
 	j, err := rt.jobs.Get(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found")
-		return job.Job{}, false
+		return job.Job{}, project.Project{}, false
 	}
 	p, err := rt.projects.Get(r.Context(), j.ProjectID)
 	if err != nil || !rt.mayViewProject(r, p) {
 		writeError(w, http.StatusNotFound, "not_found")
-		return job.Job{}, false
+		return job.Job{}, project.Project{}, false
 	}
-	return j, true
+	return j, p, true
 }
 
 func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
@@ -1890,10 +1997,20 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	if sessions == nil {
 		sessions = []job.Job{}
 	}
+	// A reader with no stake reads the reproduction, not the wallet behind it
+	// (028): the project without its owning principal, and each session without
+	// who submitted it or what it cost. The redacted copy is the payload alone —
+	// every predicate below still runs against `proj`, which is the project as it
+	// actually is.
+	stake := rt.stakeIn(r, proj)
+	shown := proj
+	if !stake {
+		shown = proj.Redacted()
+	}
 	writeJSON(w, http.StatusOK, ProjectDetail{
-		Project:      proj,
-		Sessions:     sessions,
-		MaySubmit:    !proj.Trashed() && rt.mayWorkInProject(r, proj, principal(r)),
+		Project:      shown,
+		Sessions:     sessionViews(sessions, stake),
+		MaySubmit:    !proj.Trashed() && stake,
 		SignerHandle: rt.signerHandle(r.Context(), proj),
 		Credits:      rt.projectCredits(r, proj),
 	})
@@ -2253,11 +2370,11 @@ func attachUsage(events []provider.Event) ([]TranscriptEvent, provider.Usage, bo
 // getJob reports a session's status and phase, scoped to who may view its
 // project.
 func (rt *Router) getJob(w http.ResponseWriter, r *http.Request) {
-	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
+	j, proj, ok := rt.viewableSessionIn(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, j)
+	writeJSON(w, http.StatusOK, sessionView(j, rt.stakeIn(r, proj)))
 }
 
 // cancelSession stops a running session. Only the owner of the session's project
