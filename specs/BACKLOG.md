@@ -6,7 +6,7 @@ The MVP proves the loop on **single-study, machine-runnable-inner-loop papers** 
 
 ## 1. A paper is not one study
 
-The engine and the 007 series lean on *paper → an inner loop → a reproduction*. Real papers — HCI especially — often carry **multiple studies**: chained (Study 2's design depends on Study 1's finding) or parallel (several studies triangulating one claim). This assumption is load-bearing and currently unquestioned.
+The engine and the 007 series lean on *paper → an inner loop → a reproduction*. Real papers — across HCI, psychology, and the social sciences — often carry **multiple studies**: chained (Study 2's design depends on Study 1's finding) or parallel (several studies triangulating one claim). This assumption is load-bearing and currently unquestioned.
 
 Open questions:
 - **What is the unit?** Paper, study, or experiment? The project model (006) can already hold multiple runs — does a paper map to one project with *N* studies, or to *N* reproductions? A paper→study hierarchy likely has to appear somewhere in identity/registry keying.
