@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -22,6 +23,11 @@ type Submission struct {
 	// PaperKey is the offline paper identity (006g). When non-empty it keys the
 	// double-trigger guard.
 	PaperKey string
+	// Tier is the model tier the submitter chose for this session (031). Empty
+	// means they did not choose and the engine's default applies. It is carried
+	// onto the job rather than consumed here, because a restart resumes from the
+	// row and would otherwise put the run on a model nobody picked.
+	Tier credit.Preference
 }
 
 // Store is where jobs live. It is an interface so the HTTP layer (006a) and the

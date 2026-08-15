@@ -179,6 +179,16 @@ type Job struct {
 	Status    provider.RunStatus `json:"status"`              // latest observation while running
 	RepoName  string             `json:"repo_name,omitempty"` // set once publishing begins
 	Err       string             `json:"error,omitempty"`     // set with the failed phase
+	// Tier is the model tier this session runs on, chosen by whoever started it
+	// (031). Empty is not a missing value: it is a session nobody chose for —
+	// every run before the choice existed, and every caller that omits it — and
+	// Preference.OrDefault is where that resolves, once.
+	//
+	// It is durable rather than an argument to the run because Resume rebuilds
+	// the auditor from this row alone. A tier read only at Execute would hold
+	// until the first restart and then quietly revert to the default, on a
+	// session the owner is paying for.
+	Tier credit.Preference `json:"tier,omitempty"`
 	// Rates is the price list this session was admitted under, snapshotted at
 	// enqueue (011). Settlement prices from it rather than from whatever the
 	// admin console holds when the run ends, so the ceiling a run was measured

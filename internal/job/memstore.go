@@ -109,8 +109,8 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	now := s.clock()
 	j := Job{
 		ID: id, Kind: sub.Kind, Principal: sub.Principal, ProjectID: sub.Project, Ref: sub.Ref,
-		PaperKey: sub.PaperKey,
-		Phase:    PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
+		PaperKey: sub.PaperKey, Tier: sub.Tier,
+		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
 	s.mu.Lock()

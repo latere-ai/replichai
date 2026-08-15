@@ -71,6 +71,13 @@ ALTER TABLE jobs DROP COLUMN charged_to;
 -- it is finally charged come from different numbers.
 ALTER TABLE jobs ADD COLUMN rate_card JSONB NOT NULL DEFAULT '{}'::jsonb;
 `},
+	{6, `
+-- The model tier whoever started this session chose (031). Empty means nobody
+-- chose, and the engine's default applies — which is why existing rows are left
+-- empty rather than backfilled to 'best': a backfill would put a choice on the
+-- record that no one made, and the record is the product.
+ALTER TABLE jobs ADD COLUMN tier TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own
