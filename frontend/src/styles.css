@@ -3634,6 +3634,22 @@ input.submit-input {
     justify-content: flex-end;
   }
 
+  /* A file path is one long unbroken token and the header that names it is an
+     inline-flex row that does not wrap, so at 360 the path ran past the card.
+     The glyph keeps its place; the path breaks. */
+  .eyebrow-ico {
+    flex-wrap: wrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  /* The scrubber's legend is capped at 250px and does not shrink, which is
+     40px more than a 360px screen has to give it once the clock is beside it. */
+  .scrub-legend {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+
   /* ── Tables of numbers ──
      Read across, so they keep their columns and scroll inside their own box
      rather than stacking into something that is no longer a table. */
