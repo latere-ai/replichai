@@ -37,9 +37,13 @@ func (s *FSSource) List(_ context.Context) ([]string, error) {
 	return names, nil
 }
 
-// Manifest reads and parses one repository's replication.json.
+// Manifest reads and parses one repository's replication.json. A repository
+// that has none is ErrNoManifest — an unfinalized run, not a read failure.
 func (s *FSSource) Manifest(_ context.Context, repo string) (publish.Manifest, error) {
 	raw, err := os.ReadFile(filepath.Join(s.Root, repo, publish.ManifestFile))
+	if os.IsNotExist(err) {
+		return publish.Manifest{}, fmt.Errorf("%s: %w", repo, ErrNoManifest)
+	}
 	if err != nil {
 		return publish.Manifest{}, err
 	}

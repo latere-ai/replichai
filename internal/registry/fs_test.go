@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,6 +53,26 @@ func TestFSSourceReadsAndParses(t *testing.T) {
 	priors, err := r.Lookup(context.Background(), doiID("10.1145/x"))
 	if err != nil || len(priors) != 1 {
 		t.Errorf("Lookup over FSSource: %d priors, err=%v", len(priors), err)
+	}
+}
+
+// A repository with no manifest is ErrNoManifest, and a malformed one is not:
+// the first is a run that has not finalized, the second is a read that failed.
+// The publish gate reports the two differently, so the distinction has to be
+// made here rather than guessed from an error string.
+func TestFSSourceAbsentManifestIsNoManifest(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "unfinished"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeRepo(t, root, "repo-bad", []byte("{not json"))
+	src := NewFSSource(root)
+
+	if _, err := src.Manifest(context.Background(), "unfinished"); !errors.Is(err, ErrNoManifest) {
+		t.Errorf("no manifest: err = %v, want ErrNoManifest", err)
+	}
+	if _, err := src.Manifest(context.Background(), "repo-bad"); err == nil || errors.Is(err, ErrNoManifest) {
+		t.Errorf("malformed manifest: err = %v, want a read failure", err)
 	}
 }
 

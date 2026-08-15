@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
@@ -13,6 +16,7 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/publish"
+	"github.com/latere-ai/replichai/internal/registry"
 )
 
 // A server-side run waits on the backend session, not on a clock: an audit that
@@ -84,6 +88,38 @@ func TestToReproSecretInTranscriptCannotPublish(t *testing.T) {
 	}
 	if got := toRepro("x", m); got.CanPublish {
 		t.Errorf("a secret_in_transcript manifest must not be publishable; repro = %+v", got)
+	}
+}
+
+// errSource is a registry source whose Manifest fails with whatever the test
+// hands it — the seam between "this repository has no manifest yet" and "the
+// forge did not answer".
+type errSource struct {
+	registry.Source
+	err error
+}
+
+func (s errSource) Manifest(context.Context, string) (publish.Manifest, error) {
+	return publish.Manifest{}, s.err
+}
+
+// The reader must not disguise a read failure as a miss. It used to answer every
+// error with ErrReproNotFound, so a GitHub timeout reached the publish gate as
+// "this reproduction is not there" and reached the owner as "your reproduction
+// did not pass the redistribution check". Only a genuinely absent manifest — a
+// run that never finalized — is a miss.
+func TestRegistryReaderSeparatesAMissFromAReadFailure(t *testing.T) {
+	ctx := context.Background()
+
+	absent := &registryReader{source: errSource{err: fmt.Errorf("x: %w", registry.ErrNoManifest)}}
+	if _, err := absent.Get(ctx, "x"); !errors.Is(err, httpapi.ErrReproNotFound) {
+		t.Errorf("no manifest: err = %v, want ErrReproNotFound", err)
+	}
+
+	down := &registryReader{source: errSource{err: errors.New("github timed out")}}
+	_, err := down.Get(ctx, "x")
+	if err == nil || errors.Is(err, httpapi.ErrReproNotFound) {
+		t.Errorf("unreachable forge: err = %v, want the read failure itself", err)
 	}
 }
 

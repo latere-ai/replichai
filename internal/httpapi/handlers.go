@@ -1401,14 +1401,25 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 
 	// The project must have a published session whose manifest cleared the gate,
 	// and none that did not — a flagged tree bars the project from going public.
+	//
+	// A refusal names the sessions in the way and why, because every one of these
+	// has a different remedy and the owner cannot guess which they are looking
+	// at. They all share the 409: each is a statement about the state of the
+	// project, not about the request.
 	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
 		return
 	}
-	cleared, repos := rt.clearedForPublish(r.Context(), sessions)
-	if !cleared {
-		writeError(w, http.StatusConflict, "not_clear")
+	blockers, repos := rt.publishBlockers(r.Context(), sessions)
+	if len(blockers) > 0 {
+		writeBlockedError(w, http.StatusConflict, headlineBlock(blockers), blockers)
+		return
+	}
+	if len(repos) == 0 {
+		// Nothing ever reached the forge, so there is nothing to open. Not a
+		// redistribution verdict — no reproduction has been published yet.
+		writeBlockedError(w, http.StatusConflict, "nothing_published", nil)
 		return
 	}
 
@@ -1473,28 +1484,104 @@ func (rt *Router) signerIsPublic(ctx context.Context, principal string) bool {
 	return err == nil && ok
 }
 
-// clearedForPublish reports whether a project's published sessions may go public:
-// at least one has a manifest, and every one that does cleared 002's gate. It
-// returns the repositories (owner/name) to flip. A session with no repository
-// yet is ignored; a session whose manifest flags third-party data bars the flip.
-func (rt *Router) clearedForPublish(ctx context.Context, sessions []job.Job) (bool, []string) {
-	any := false
+// BlockReason is why one session stops its project from going public. A closed
+// set: each value is a different fact about the session, with a different thing
+// the owner does about it.
+type BlockReason string
+
+const (
+	// BlockUnfinished: the session has a repository but no manifest. The run
+	// never finalized — it failed, was cancelled, or is still going. Nothing is
+	// wrong with its content; there is no content yet.
+	BlockUnfinished BlockReason = "unfinished"
+	// BlockUnreadable: the manifest could not be read at all. A forge that did
+	// not answer is our problem, not the owner's, and it is temporary.
+	BlockUnreadable BlockReason = "unreadable"
+	// BlockNotClear: the manifest was read and 002's redistribution review is not
+	// clear. The only reason that is genuinely about what the reproduction
+	// contains; PublishBlocker.Review carries which review state it was.
+	BlockNotClear BlockReason = "not_clear"
+)
+
+// PublishBlocker names one session standing between a project and the public
+// flip, so the owner can be sent to it rather than told to go looking.
+//
+// Reason and Review are plain strings on the wire, projected from the typed
+// enums behind them — the wire is a boundary, not a place to re-declare a
+// domain.
+type PublishBlocker struct {
+	SessionID string `json:"session_id"`
+	Repo      string `json:"repo,omitempty"`
+	Ref       string `json:"ref,omitempty"` // the paper the session is a run of, for naming it on screen
+	Reason    string `json:"reason"`
+	Review    string `json:"review,omitempty"` // the manifest's redistribution review, when there was one to read
+}
+
+// headlineBlock picks the code for a refusal that lists several blockers: the
+// one the owner has to act on wins over the one they can only wait out. A
+// flagged tree needs a decision, an unfinished run needs time, and an unreadable
+// manifest needs nothing but a retry — so they rank in that order.
+func headlineBlock(blockers []PublishBlocker) string {
+	seen := map[BlockReason]bool{}
+	for _, b := range blockers {
+		seen[BlockReason(b.Reason)] = true
+	}
+	switch {
+	case seen[BlockNotClear]:
+		return "not_clear"
+	case seen[BlockUnfinished]:
+		return "sessions_unfinished"
+	default:
+		return "manifest_unreadable"
+	}
+}
+
+// publishBlockers reports what stops a project going public, and the
+// repositories to flip when nothing does.
+//
+// It reads every session rather than stopping at the first bad one. A project
+// with three blocked sessions used to refuse three times, naming nothing, so
+// fixing one bought the owner the identical refusal.
+//
+// A session with no repository is not a blocker — it never began publishing, so
+// there is nothing of it to make public. A project where *no* session has one
+// yields no blockers and no repositories, which is the caller's signal that
+// there is nothing to publish at all.
+func (rt *Router) publishBlockers(ctx context.Context, sessions []job.Job) ([]PublishBlocker, []string) {
+	var blockers []PublishBlocker
 	var repos []string
 	for _, s := range sessions {
 		if s.RepoName == "" {
 			continue
 		}
+		block := func(reason BlockReason, review string) {
+			blockers = append(blockers, PublishBlocker{
+				SessionID: s.ID,
+				Repo:      repoName(s.RepoName),
+				Ref:       s.Ref,
+				Reason:    string(reason),
+				Review:    review,
+			})
+		}
 		repro, err := rt.repro.Get(ctx, repoName(s.RepoName))
+		if errors.Is(err, ErrReproNotFound) {
+			block(BlockUnfinished, "")
+			continue
+		}
 		if err != nil {
-			return false, nil // cannot confirm clearance → refuse, fail-closed
+			// Fail closed, as before — but say that we could not read it, rather
+			// than reporting an unread manifest as a flagged one.
+			log.Printf("publish gate: manifest for %s unreadable: %v", s.RepoName, err)
+			block(BlockUnreadable, "")
+			continue
 		}
 		if !repro.CanPublish {
-			return false, nil
+			block(BlockNotClear, repro.Review)
+			continue
 		}
-		any = true
 		repos = append(repos, repoName(s.RepoName))
 	}
-	return any, repos
+	return blockers, repos
 }
 
 // ownedProject resolves a project and asserts the caller owns it, writing the

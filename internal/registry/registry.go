@@ -9,6 +9,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -21,6 +22,18 @@ import (
 
 // DefaultTTL is how long a derived snapshot is reused before refetching.
 const DefaultTTL = time.Minute
+
+// ErrNoManifest is what a Source returns for a repository that carries no
+// replication.json — a run that never finalized, which is the normal state of a
+// repository the agent is still committing into.
+//
+// It exists because the caller has to tell that apart from a forge that did not
+// answer. Both used to arrive as a bare error, and the publish gate read either
+// one as "this reproduction is contaminated" — telling an owner their tree was
+// flagged when the truth was that their run had not finished, or that GitHub
+// had blipped. A missing file and an unreachable forge are different facts and
+// only one of them is about the reproduction.
+var ErrNoManifest = errors.New("no manifest")
 
 // Source enumerates published reproductions and reads their files. A GitHub
 // source lists an organisation; a filesystem source reads a directory.
