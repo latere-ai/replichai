@@ -4,7 +4,7 @@ Audits the reproducibility of research papers.
 
 Give it a paper. It finds what the authors actually released, works out which parts of the work a machine can re-run and which parts need people, implements and runs the machine-runnable part, records every decision the paper left unwritten, and returns a verdict with a reproducibility rate you can decompose.
 
-Built for human-computer interaction research, where a paper almost always contains two loops:
+Built for research with human participants — human-computer interaction, psychology, social science, and anywhere else a finding rests on what people did. Such a paper almost always contains two loops:
 
 - an **inner loop** — the algorithm, model, system, or analysis pipeline, mechanically re-runnable;
 - an **outer loop** — the study that validates it with human participants.
