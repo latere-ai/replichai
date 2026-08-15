@@ -120,12 +120,12 @@ import {
   type Span,
 } from './transcript'
 import { Ico, type IconName } from './icons'
-import { useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
+import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
 import { absoluteTime, elapsed, relativeTime } from './when'
-import { useSidebar } from './sidebar'
+import { useDrawer, useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
 
 // signerOf names the person who published a project. The signer's recorded name
@@ -183,10 +183,16 @@ export default function App() {
 
   if (meUnavailable) return <AuthUnavailable i18n={i18n} onRetry={loadMe} />
   if (me === null) return <div className="center-load">…</div>
-  // Every screen is gated, and every one of them is an address somebody can
-  // arrive at cold — an invitation mail pointing at a project, a shared link to a
-  // session. Sign-in comes back to that address rather than to the dashboard.
-  if (!me.authenticated) return <SignIn i18n={i18n} next={window.location.pathname} />
+  // The registry and everything under it are readable signed out (028), and they
+  // render in the app's own frame rather than a preview of it — a reader who came
+  // from a paper is reading the work, not being shown a sample of a product.
+  //
+  // Every other screen still needs an account, and every one of them is an
+  // address somebody can arrive at cold — an invitation mail pointing at a
+  // project, a shared link to a session. Sign-in comes back to that address
+  // rather than to the dashboard.
+  if (!me.authenticated && !isPublicView(view)) return <SignIn i18n={i18n} next={window.location.pathname} />
+  if (!me.authenticated) return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
   return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
 }
@@ -460,6 +466,12 @@ function Shell({
 }) {
   const { t } = i18n
   const setView = navigate
+  // The same frame serves a reader with no account (028). What changes is what is
+  // in it: the destinations that need one are absent rather than disabled, and
+  // the rail's foot offers the way in where the account would be. Everything
+  // conditional below reads this one flag.
+  const signedIn = me.authenticated
+  const signInHref = `/login?next=${encodeURIComponent(window.location.pathname)}`
   // The top-up modal's open-state lives here, so the wallet pill, the wallet
   // screen, and later the frozen banner (022f) all open the one dialog.
   const [topUp, setTopUp] = useState(false)
@@ -492,9 +504,30 @@ function Shell({
   const { folded, toggle: toggleRail } = useSidebar()
   const foldLabel = folded ? t('unfoldSidebar') : t('foldSidebar')
 
+  // Below the phone breakpoint the rail is an overlay instead of a column, and
+  // this is what holds it open (030). It is not the fold and never persists —
+  // see `useDrawer`. Above the breakpoint `.rail-open` paints nothing, so the
+  // same markup serves both widths.
+  const drawer = useDrawer()
+  // Opening a destination dismisses the drawer, because on a phone it is
+  // covering the screen being navigated to. Every rail destination goes through
+  // `setView` (013), so wrapping it once covers all of them.
+  const goto = useCallback(
+    (v: View) => {
+      drawer.hide()
+      setView(v)
+    },
+    [drawer, setView],
+  )
+
   return (
     <div className="shell">
-      <nav className={folded ? 'rail rail-fold' : 'rail'}>
+      {/* The scrim is a sibling of the rail rather than a portal: it belongs to
+          the shell's own stacking context, which nothing here promotes, and it
+          has to sit under the rail and over the screen — an order a portal to
+          <body> would have to restate. */}
+      {drawer.open && <div className="rail-scrim" onClick={drawer.hide} />}
+      <nav className={'rail' + (folded ? ' rail-fold' : '') + (drawer.open ? ' rail-open' : '')}>
         <div className="rail-head">
           <Mark size={22} className="rail-logo" />
           <Wordmark className="rail-name" />
@@ -515,36 +548,49 @@ function Shell({
               <Ico name="chevronLeft" size={14} w={2.2} />
             )}
           </button>
+          {/* The drawer's own way out, at the same corner. It is a second
+              control rather than a second meaning for the one above, because
+              which one is showing has to be decided by the width alone: a
+              button that read the drawer's state would go dead on a window
+              resized back to desktop while the drawer was open. CSS shows
+              exactly one of the two, so there is no state to go stale. */}
+          <button className="rail-close-btn" aria-label={t('closeNav')} onClick={drawer.hide}>
+            <Ico name="x" size={16} w={2.2} />
+          </button>
         </div>
         <div className="rail-nav">
           <div className="rail-group">
-            <div className="eyebrow">{t('workspace')}</div>
-            <NavItem
-              label={t('navProjects')}
-              icon="folder"
-              tone="var(--brand)"
-              folded={folded}
-              on={view.name === 'projects' || view.name === 'project' || view.name === 'session'}
-              onClick={() => setView({ name: 'projects' })}
-            />
+            <div className="eyebrow">{signedIn ? t('workspace') : t('navPublic')}</div>
+            {signedIn && (
+              <NavItem
+                label={t('navProjects')}
+                icon="folder"
+                tone="var(--brand)"
+                folded={folded}
+                on={view.name === 'projects' || view.name === 'project' || view.name === 'session'}
+                onClick={() => goto({ name: 'projects' })}
+              />
+            )}
             <NavItem
               label={t('navPublic')}
               icon="globe"
               tone="var(--pub)"
               folded={folded}
-              on={view.name === 'public'}
-              onClick={() => setView({ name: 'public' })}
+              on={view.name === 'public' || (!signedIn && (view.name === 'project' || view.name === 'session'))}
+              onClick={() => goto({ name: 'public' })}
             />
             {/* The wallet is a primary destination — money you manage often — so
                 it lives with the workspace rather than buried by Settings. */}
-            <NavItem
-              label={t('navWallet')}
-              icon="wallet"
-              tone="var(--ok)"
-              folded={folded}
-              on={view.name === 'wallet'}
-              onClick={() => setView({ name: 'wallet' })}
-            />
+            {signedIn && (
+              <NavItem
+                label={t('navWallet')}
+                icon="wallet"
+                tone="var(--ok)"
+                folded={folded}
+                on={view.name === 'wallet'}
+                onClick={() => goto({ name: 'wallet' })}
+              />
+            )}
           </div>
           {isAdmin(me) && (
             <div className="rail-group">
@@ -555,58 +601,92 @@ function Shell({
                 tone="var(--warn)"
                 folded={folded}
                 on={view.name === 'admin'}
-                onClick={() => setView({ name: 'admin' })}
+                onClick={() => goto({ name: 'admin' })}
               />
             </div>
           )}
           {/* The trash sits on its own at the foot of the destinations: it is
               where work goes, not a place work is done. */}
-          <div className="rail-group rail-group-foot">
-            <NavItem
-              label={t('navTrash')}
-              icon="trash"
-              tone="var(--fg-3)"
-              folded={folded}
-              on={view.name === 'trash'}
-              onClick={() => setView({ name: 'trash' })}
-            />
-            {/* Settings sits with Trash at the foot: personal chrome, not a
-                workspace destination. Active on any of its sub-tabs (024a). */}
-            <NavItem
-              label={t('navSettings')}
-              icon="settings"
-              tone="var(--fg-3)"
-              folded={folded}
-              on={view.name === 'settings'}
-              onClick={() => setView({ name: 'settings' })}
-            />
-          </div>
+          {signedIn && (
+            <div className="rail-group rail-group-foot">
+              <NavItem
+                label={t('navTrash')}
+                icon="trash"
+                tone="var(--fg-3)"
+                folded={folded}
+                on={view.name === 'trash'}
+                onClick={() => goto({ name: 'trash' })}
+              />
+              {/* Settings sits with Trash at the foot: personal chrome, not a
+                  workspace destination. Active on any of its sub-tabs (024a). */}
+              <NavItem
+                label={t('navSettings')}
+                icon="settings"
+                tone="var(--fg-3)"
+                folded={folded}
+                on={view.name === 'settings'}
+                onClick={() => goto({ name: 'settings' })}
+              />
+            </div>
+          )}
         </div>
         <div className="rail-foot">
-          <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => setView({ name: 'settings' })}>
-            {/* Sized to the meta stack beside it (name + address + tier), not to
-                a default: a 26px square against three rows of text left the row
-                bottom-heavy and the card's right half empty. Folded there is no
-                stack, and 38px would not clear the rail's own padding. */}
-            <Avatar me={me} size={folded ? 30 : 38} />
-            <span className="user-meta">
-              {me.name && <span className="user-name">{me.name}</span>}
-              <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
-              <TierPill i18n={i18n} tier={me.tier} />
-            </span>
-          </button>
+          {signedIn ? (
+            <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => goto({ name: 'settings' })}>
+              {/* Sized to the meta stack beside it (name + address + tier), not to
+                  a default: a 26px square against three rows of text left the row
+                  bottom-heavy and the card's right half empty. Folded there is no
+                  stack, and 38px would not clear the rail's own padding. */}
+              <Avatar me={me} size={folded ? 30 : 38} />
+              <span className="user-meta">
+                {me.name && <span className="user-name">{me.name}</span>}
+                <span className={me.name ? 'user-email sub' : 'user-email'}>{me.email}</span>
+                <TierPill i18n={i18n} tier={me.tier} />
+              </span>
+            </button>
+          ) : (
+            /* Where the account would be, for somebody who has not got one. It is
+               an anchor, not a button: signing in leaves this origin and comes
+               back, and `next` carries where to (013). */
+            <a className="btn rail-signin" data-test="rail-signin" data-tip={folded ? t('signInTitle') : undefined} data-tip-side="right" href={signInHref}>
+              <LatereMark height={11} /> <span className="nav-label">{t('signInTitle')}</span>
+            </a>
+          )}
         </div>
       </nav>
 
       <div className="main">
         <header className="topbar">
-          <Breadcrumb i18n={i18n} view={view} setView={setView} />
+          {/* The way back to the rail once it has left the flow. It is in the
+              markup at every width and hidden by CSS above the breakpoint, so
+              the shell is one tree — and it leads the bar rather than joining
+              the controls on the right, because it is where the reader is, not
+              something to do here. */}
+          <button className="rail-open-btn" aria-label={t('openNav')} aria-expanded={drawer.open} onClick={drawer.show}>
+            <Ico name="menu" size={17} w={2} />
+          </button>
+          <Breadcrumb i18n={i18n} view={view} setView={setView} signedIn={signedIn} />
           <div className="topbar-actions">
             <ThemeSwitcher i18n={i18n} theme={theme} compact />
-            <WalletPill i18n={i18n} credits={me.credits} onTopUp={() => setTopUp(true)} />
-            <button className="btn" disabled={me.frozen} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => setView({ name: 'submit' })}>
-              <Ico name="plus" size={13} w={2.2} /> {t('newProject')}
-            </button>
+            {signedIn ? (
+              <>
+                <WalletPill i18n={i18n} credits={me.credits} onTopUp={() => setTopUp(true)} />
+                <button className="btn btn-topbar" disabled={me.frozen} aria-label={t('newProject')} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => setView({ name: 'submit' })}>
+                  {/* The label is a span so a phone can drop it and keep the plus.
+                      The button keeps its aria-label at every width, so what is lost
+                      is the reading, not the name. */}
+                  <Ico name="plus" size={13} w={2.2} /> <span className="btn-label">{t('newProject')}</span>
+                </button>
+              </>
+            ) : (
+              /* Reading is free and starting a session is not, so the bar offers
+                 the one act a reader here can take. It repeats the rail's foot on
+                 purpose: on a phone the rail is a drawer, and the way in must not
+                 be behind it. */
+              <a className="btn btn-topbar" data-test="topbar-signin" href={signInHref}>
+                <LatereMark height={11} /> <span className="btn-label">{t('signInTitle')}</span>
+              </a>
+            )}
           </div>
         </header>
 
@@ -683,10 +763,13 @@ function Shell({
   )
 }
 
-function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: (v: View) => void }) {
+function Breadcrumb({ i18n, view, setView, signedIn }: { i18n: I18n; view: View; setView: (v: View) => void; signedIn: boolean }) {
   const { t } = i18n
+  // Signed out there is one root, and it is the registry: a project reached from
+  // there belongs under it, and "Projects" would name a screen this reader has
+  // nothing in and cannot open.
   const root = () =>
-    view.name === 'public'
+    view.name === 'public' || !signedIn
       ? t('navPublic')
       : view.name === 'trash'
         ? t('navTrash')
@@ -700,7 +783,7 @@ function Breadcrumb({ i18n, view, setView }: { i18n: I18n; view: View; setView: 
                 ? t('navAdmin')
                 : t('navProjects')
   const rootView: View =
-    view.name === 'public' ? { name: 'public' } : view.name === 'trash' ? { name: 'trash' } : { name: 'projects' }
+    view.name === 'public' || !signedIn ? { name: 'public' } : view.name === 'trash' ? { name: 'trash' } : { name: 'projects' }
   return (
     <div className="crumb">
       <button onClick={() => setView(rootView)}>{root()}</button>
@@ -854,7 +937,10 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
               <span className="eyebrow">{t('colOwner')}</span>
               <span className="eyebrow">{t('colModified')}</span>
               <span className="eyebrow">{t('colStatus')}</span>
-              <span className="eyebrow">{t('colVisibility')}</span>
+              {/* Named so the phone can fold it away after the owner and the
+                  date, which is the order these stop being worth a column in
+                  (030). What a row *is* — its title and its phase — stays. */}
+              <span className="eyebrow row-visibility">{t('colVisibility')}</span>
               <span />
               <span />
               <span />
@@ -874,7 +960,7 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                 <span className="row-cell">
                   <StatusBadge i18n={i18n} p={p} />
                 </span>
-                <span className="row-cell">
+                <span className="row-cell row-visibility">
                   <VisibilityBadge i18n={i18n} visibility={p.visibility} />
                 </span>
                 {/* An anchor, not a fetch: the browser's own download is what
@@ -900,7 +986,7 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                 )}
                 {/* Only on what you own: removing a project you were invited to
                     is not a thing that should be possible. */}
-                {p.owner === me.principal ? (
+                {isMine(me, p.owner) ? (
                   <Tip text={t('trashProject')}>
                     <button
                       className="icon-btn danger"
@@ -1118,10 +1204,14 @@ function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
 // back to named nobody either.
 function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
   const { t } = i18n
-  const label = p.owner === me.principal ? t('ownerYou') : p.owner_name || t('ownerUnknown')
+  // Both sides can be absent — a reader with no stake is not sent the owning
+  // principal, and a signed-out reader has none of their own (028) — and two
+  // absences are not the same person.
+  const mine = isMine(me, p.owner)
+  const label = mine ? t('ownerYou') : p.owner_name || t('ownerUnknown')
   return (
     <div className="row-col row-owner" data-test="owner">
-      {p.owner_handle && p.owner !== me.principal ? (
+      {p.owner_handle && !mine ? (
         <a className="link" href={`/u/${p.owner_handle}`} onClick={(e) => e.stopPropagation()}>
           {label}
         </a>
@@ -1568,6 +1658,17 @@ export function isAdmin(me: Me): boolean {
   return me.tier === 'admin'
 }
 
+// isMine reports whether a project's owning principal is this reader's.
+//
+// Both sides are optional and both are absent at once on the screen this exists
+// for: signed out, `me.principal` is undefined and the server withholds `owner`
+// from a reader with no stake in the project (028) — so a bare `===` would make
+// every registry row the reader's own, and every public project look editable.
+// Two unknowns are not a match.
+export function isMine(me: Me, owner?: string): boolean {
+  return !!me.principal && !!owner && owner === me.principal
+}
+
 // AdminScreen is the console: who may sign in, at what tier, with how much
 // headroom, and the platform-wide default they draw from.
 function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged: () => void }) {
@@ -1949,6 +2050,34 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
   )
 }
 
+// NotReadable is what a project nobody here may read looks like. The server
+// answers one 404 for private, withdrawn, trashed, and never-existed alike (028),
+// so this screen claims none of them: it says the address is not public, and — to
+// a reader with no account — offers the sign-in that would settle it, carrying
+// this address so they land back on it.
+function NotReadable({ i18n, me }: { i18n: I18n; me: Me }) {
+  const { t } = i18n
+  return (
+    <div className="screen" data-test="not-readable">
+      <div className="card card-pad stack" style={{ maxWidth: 520, margin: '48px auto', textAlign: 'center', alignItems: 'center' }}>
+        <Ico name="globe" size={22} style={{ color: 'var(--fg-3)' }} />
+        <h2 style={{ margin: 0 }}>{t('notPublicTitle')}</h2>
+        <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
+          {me.authenticated ? t('notPublicBodyIn') : t('notPublicBody')}
+        </p>
+        {!me.authenticated && (
+          <a className="btn" data-test="not-readable-signin" href={`/login?next=${encodeURIComponent(window.location.pathname)}`}>
+            <LatereMark height={11} /> {t('signInTitle')}
+          </a>
+        )}
+        <a className="btn ghost" href="/registry">
+          <Ico name="globe" size={13} /> {t('browseRegistry')}
+        </a>
+      </div>
+    </div>
+  )
+}
+
 function ProjectScreen({
   i18n,
   me,
@@ -1978,6 +2107,11 @@ function ProjectScreen({
   const [maySubmit, setMaySubmit] = useState(false)
   const [credits, setCredits] = useState<ProjectCredits | null>(null)
   const [signerHandle, setSignerHandle] = useState('')
+  // A project this reader cannot see reads as missing, whether it is private,
+  // withdrawn, or never existed (028) — the server will not say which. Without
+  // this the screen waited on a fetch that had already failed and showed a
+  // loading ellipsis forever.
+  const [notReadable, setNotReadable] = useState(false)
 
   // Papers and sessions are read together and by one component, because the
   // screen renders them joined (015). Fetched separately they are two clocks:
@@ -1991,8 +2125,12 @@ function ProjectScreen({
         setMaySubmit(d.may_submit)
         setCredits(d.credits ?? null)
         setSignerHandle(d.signer_handle ?? '')
+        setNotReadable(false)
       })
-      .catch(() => setSessions([]))
+      .catch(() => {
+        setSessions([])
+        setNotReadable(true)
+      })
     listPapers(id)
       .then(setPapers)
       .catch(() => setPapers([]))
@@ -2011,7 +2149,7 @@ function ProjectScreen({
   // server refuses every write on one, so an owner control still on screen is a
   // button that can only fail. The banner above says as much; this is the half
   // that makes it true.
-  const isOwner = project != null && project.owner === me.principal && !project.deleted_at
+  const isOwner = project != null && isMine(me, project.owner) && !project.deleted_at
   const [publishing, setPublishing] = useState(false)
   // What this project is, joined: every session under the paper it is a run of.
   // Nothing here derives one session for the project — a project holds papers,
@@ -2030,6 +2168,7 @@ function ProjectScreen({
     if (tab === 'people' && project !== null && !isOwner) onTab('sessions', true)
   }, [tab, project, isOwner, onTab])
 
+  if (notReadable) return <NotReadable i18n={i18n} me={me} />
   if (project === null) return <div className="center-load">…</div>
 
   return (
@@ -2345,6 +2484,10 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
         <div className="card-head">
           <span className="eyebrow">{t('boundary')}</span>
         </div>
+        {/* Four columns read across, so on a phone the box scrolls sideways
+            rather than the table restacking into something that is no longer a
+            comparison (030). */}
+        <div className="grid-table-wrap">
         <table className="grid-table">
           <thead>
             <tr>
@@ -2377,6 +2520,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="card">

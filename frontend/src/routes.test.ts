@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { pathOf, viewOf, type View } from './routes'
+import { isPublicView, pathOf, viewOf, type View } from './routes'
 
 // Every screen, with the address it lives at. This table is the spec's route
 // table; if a screen is added without a URL, the round-trip test below is where
@@ -134,4 +134,27 @@ test('no screen is shadowed by an API prefix', async () => {
   const paths = table.map(([p]) => p)
   const shadowed = paths.filter((p) => prefixes.some((pre) => p === pre || p.startsWith(pre + '/')))
   expect(shadowed).toEqual([])
+})
+
+// 028: which addresses a reader with no account is shown, rather than sent to
+// the landing from. The list is exactly the four public things; everything else
+// is somebody's own workspace.
+test('the public views are the registry, a project, a session, and a profile', () => {
+  const open: View[] = [
+    { name: 'public' },
+    { name: 'project', id: 'p1' },
+    { name: 'session', jobId: 'j1', projectId: 'p1' },
+    { name: 'profile', handle: 'ada' },
+  ]
+  for (const v of open) expect(isPublicView(v)).toBe(true)
+
+  const closed: View[] = [
+    { name: 'projects' },
+    { name: 'trash' },
+    { name: 'submit' },
+    { name: 'wallet' },
+    { name: 'settings' },
+    { name: 'admin' },
+  ]
+  for (const v of closed) expect(isPublicView(v)).toBe(false)
 })

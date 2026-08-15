@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isAdmin, showsPicture } from './App'
+import { isAdmin, isMine, showsPicture } from './App'
 
 // 006k AC7: the Platform group renders only for an admin. Hiding it is a
 // courtesy — the routes are refused server-side either way.
@@ -26,4 +26,16 @@ test('showsPicture falls back to initials for anything but a loadable https URL'
   for (const p of ['javascript:alert(1)', 'data:image/png;base64,AAAA', 'http://auth.latere.ai/a.png', '/relative.png']) {
     expect(showsPicture(p, false)).toBe(false)
   }
+})
+
+// 028: signed out, `me.principal` is undefined and the server withholds `owner`
+// from a reader with no stake — so a bare `===` would report every registry row
+// as the reader's own, and paint a stranger's public project as editable.
+test('isMine never matches two absent principals', () => {
+  expect(isMine({ authenticated: false }, undefined)).toBe(false)
+  expect(isMine({ authenticated: false }, 'someone')).toBe(false)
+  expect(isMine({ authenticated: true, principal: 'me' }, undefined)).toBe(false)
+  expect(isMine({ authenticated: true, principal: 'me' }, '')).toBe(false)
+  expect(isMine({ authenticated: true, principal: 'me' }, 'someone')).toBe(false)
+  expect(isMine({ authenticated: true, principal: 'me' }, 'me')).toBe(true)
 })
