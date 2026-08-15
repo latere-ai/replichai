@@ -19,6 +19,7 @@ const api = [
   '/me',
   '/papers',
   '/jobs',
+  '/models',
   '/projects',
   '/profiles',
   '/public',
