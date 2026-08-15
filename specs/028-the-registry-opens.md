@@ -44,12 +44,20 @@ These stay gated, each for its own reason:
 | Field | Today | For a reader with no stake |
 |---|---|---|
 | `project.owner` | the raw OIDC sub | dropped |
+| `signed_off_by`, `withdrawn_by` | the signing and withdrawing subs | dropped |
 | `spend_30d` | micro-USD spent | dropped |
 | `job.principal` | the submitter's sub | dropped |
 | `job.cost` | micro-USD | dropped |
 | `credits` | already withheld | unchanged |
-| sign-off block, `signer_handle`, `owner_name`/`owner_handle` | published on purpose (006n, 006r) | kept |
+| `owner_name`/`owner_handle` | name always, handle when the profile is public | both, only when the profile is public |
+| sign-off block (name, institution, contact), `signer_handle` | published on purpose (006n, 006r) | kept |
 | phases, timings, verdict, transcript, artifacts | the reproduction | kept |
+
+An absent number and a zero are different claims, so neither is faked: `spend_30d` and a session's `cost` are pointers, omitted for a stranger and present — zero included — for somebody with a stake. `SessionView` shadows `job.Job`'s two withheld fields at a shallower depth rather than introducing a parallel session DTO.
+
+**A path that could leave the repository is refused at the edge.** `GET /jobs/{id}/artifact` takes `?path=` and the reader builds a forge URL from it, read under the platform's own credential. Gated, that URL was composed by admitted operators; open, by anybody. The handler accepts a repository-relative path only — no absolute path, no `.` or `..` segment, no backslash, and no percent sign, the last because the query decoder unescapes once and a surviving `%2e%2e` would be decoded again downstream.
+
+**A project a reader may not see reads as missing on every route under it.** `getProject` already answered 404; `projectForRead` — the papers list — answered 403, which confirms existence to anybody walking ids. It now answers 404 too. That changes the status a signed-in stranger gets, and matches what that route's own test comment always said the rule was.
 
 This changes what a *signed-in* stranger sees on the registry today — spend and an owner sub travel out of `projectViews` (`handlers.go:997-1008`) to anyone signed in. That is a leak being closed, not a feature being removed; no screen reads either field for somebody else's project.
 
@@ -68,8 +76,9 @@ The public views are `registry`, `project`, `session`, and `profile`. Every othe
 1. Signed out, `GET /public`, `GET /projects/{id}`, `GET /projects/{id}/papers` and the six `GET /jobs/{id}...` reads answer 200 for a public project, and 404 for a private one — with no session cookie at all.
 2. Signed out, `GET /jobs`, `GET /jobs/{id}/events`, `GET /projects/{id}/members` and `GET /projects/{id}/archive` are still refused by the gate.
 3. An anonymous caller does not read a project whose owner is the empty string, and does not match a membership row through an empty sub or empty email.
-4. For a reader who may not work in the project, the JSON of the registry list, the project, and each session carries no `owner`, `spend_30d`, `principal`, or `cost` — asserted on the serialised bytes, not on the struct. The owner and a member still see all four.
-5. The sign-off block, signer handle, session phases, verdict, transcript, and artifact list are unchanged for a public reader.
+4. For a reader who may not work in the project, the JSON of the registry list, the project, and each session carries no `owner`, `signed_off_by`, `spend_30d`, `principal`, or `cost` — asserted on the serialised bytes, not on the struct, against a session that genuinely cost something. The owner and a member still see all of them, a zero cost included.
+5. The sign-off block, signer handle, session phases, verdict, transcript, and artifact list are unchanged for a public reader; an owner whose profile is not public is not named on their public project's row.
+5a. `?path=` refuses an absolute path, a `..` segment, a backslash, and a percent-escaped `..`, and still serves a committed file in a subdirectory.
 6. `OpenRoutes` enumerates exactly the routes above; the router test asserts the set, so opening a tenth route is a decision somebody makes in this list rather than a line that slips in.
 7. In Chrome, signed out: `/registry` renders the app shell with the public rail and a Sign in button; a public `/p/{id}` and its session tabs render; `/wallet` renders the landing; a private `/p/{id}` renders the not-public screen whose sign-in link carries `next=/p/{id}`.
 8. Every string added is in `i18n.ts`.
