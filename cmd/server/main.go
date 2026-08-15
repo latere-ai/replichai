@@ -192,6 +192,7 @@ func run() error {
 		Reserve:       platform.StartReserve(st.platform),
 		Payments:      payments,
 		Platform:      st.platform,
+		Models:        prov,
 		BaseURL:       baseURL,
 		Notifier:      notifier,
 		SPA:           spaHandler,
