@@ -1,8 +1,18 @@
 # 030 — The app on a phone
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `frontend/src/sidebar.ts` gains `useDrawer` beside the untouched `useSidebar`; `App.tsx` carries the scrim, the hamburger, the drawer's own close, and one `goto` that dismisses the drawer as it navigates; `styles.css` gains a single `@media (max-width: 760px)` section, "The phone". `frontend/test/mobile.test.mjs` sweeps all 15 signed-in screens in Chrome and was verified to fail with the phone block removed — 154px of content on every screen, three panes scrolling sideways, and controls ending at x=579, which is the defect as first measured. The browser suite is green (14 files) and the 124 unit tests still pass.
 
-**Scope:** the signed-in shell and every screen inside it, at phone width. Turns the fixed 236px rail into an off-canvas drawer below one breakpoint, lets the topbar's controls fit, and unwraps the multi-column panes that are clipped at 390px. Frontend only: no route, no API, no schema, no new screen. The landing already has its phone layout ([017](017-the-first-screen.md)) and is not touched.
+Three things came out of the build, each a correction to a decision above.
+
+The head's control could not do two jobs. This spec said `.rail-fold-btn` would close the drawer below the breakpoint, which needs the code to know the width — and a window resized back to desktop with the drawer still open would have left that button dead. There are two controls now, and CSS shows exactly one, so there is no state to go stale.
+
+Shrinking `.topbar-actions` moved the overflow rather than removing it. Its children are `flex: none`, so the box measured 64px while the controls inside it still ran to 443. What gives is what the bar carries — the appearance switcher leaves, the button drops its label — and the crumb, which already ellipsizes, absorbs the rest.
+
+`overflow-wrap: anywhere` on a value slot broke text that fitted. `anywhere` lets the browser narrow a line box even where the word would have fitted, and the wallet's own statement rows came back as "8/3 /20 25" and "−$ 5. 00". `break-word` breaks only what cannot fit alone, which is the long address on a public profile and nothing else.
+
+The project list went further than "fold two more columns": at 390 the five remaining tracks left ~120px for a paper title and the headings collided above it, so the row became two lines and the heading went with the columns it was naming.
+
+**Scope:** the signed-in shell and every screen inside it, at phone width. Turns the fixed 236px rail into an off-canvas drawer below one breakpoint, lets the topbar's controls fit, and unwraps the multi-column panes that are clipped at 390px. Frontend only: no route, no API, no schema, no new screen. The landing has its own phone layout ([017](017-the-first-screen.md), rebuilt by [029](029-the-landing-is-a-place.md)) and is not touched.
 
 **Depends on:** [006e](006e-frontend.md) (the shell and the design tokens), [013](013-the-address-bar-is-the-state.md) (navigation is the address bar, so opening a destination is what closes the drawer), [017](017-the-first-screen.md) (the one screen that already answers a phone, and the pattern the rest follow).
 
