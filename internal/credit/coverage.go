@@ -9,10 +9,66 @@ type ModelResolver interface {
 	ResolveModel(ctx context.Context, pref string) (string, error)
 }
 
+// Preference is a model tier the engine asks for — the unit a session's cost is
+// chosen in. It is a named type over a closed set rather than a bare string
+// because it crosses a trust boundary: a person picks one before a run (031),
+// and the adapter passes anything it does not recognise straight through as a
+// literal model id, which a card cannot price at its real rate.
+//
+// It is not called Tier: access.Tier already means what a principal may do, and
+// this package reads that type. Preference is also the word the engine has used
+// since 004 — modelPref, WithModelPreference, ResolveModel(ctx, pref).
+type Preference string
+
+// The preferences the engine asks for. A backend maps each to one of its own
+// model families; what that costs is the card's business, not this list's.
+const (
+	PrefBest     Preference = "best"     // the most capable tier
+	PrefBalanced Preference = "balanced" // capability against cost
+	PrefFast     Preference = "fast"     // the cheapest and quickest
+)
+
+// DefaultPreference is what a session runs on when nobody chose. It is best
+// because that is what every session ran on before the choice existed, and a
+// default that silently moved existing work onto a cheaper model would be this
+// spec changing runs it was only meant to give a say over.
+const DefaultPreference = PrefBest
+
 // Preferences are the model tiers the engine asks for. Pricing checks against
 // these rather than against a vendor's catalogue: what a session costs depends
 // on which id a *preference* resolves to, not on what the catalogue contains.
-var Preferences = []string{"best", "balanced", "fast"}
+//
+// It is also the closed set the HTTP boundary validates a submitted choice
+// against, so the two cannot disagree about which tiers exist.
+var Preferences = []Preference{PrefBest, PrefBalanced, PrefFast}
+
+// Valid reports whether p is a preference the engine offers. The zero value is
+// not valid: "unset" is a distinct state from any tier, and only the caller
+// holding the field knows whether unset means take the default (a job that
+// predates the choice) or means the caller sent nothing at all.
+func (p Preference) Valid() bool {
+	for _, known := range Preferences {
+		if p == known {
+			return true
+		}
+	}
+	return false
+}
+
+// OrDefault resolves an unset preference to the default, so every reader of a
+// stored choice answers "which model" the same way and a row written before the
+// choice existed needs no backfill to be readable.
+func (p Preference) OrDefault() Preference {
+	if p == "" {
+		return DefaultPreference
+	}
+	return p
+}
+
+// String makes a Preference printable and, at the seams that still speak in
+// bare strings (the auditor's option, the adapter's resolver), explicit about
+// where the domain type is being projected out.
+func (p Preference) String() string { return string(p) }
 
 // Coverage is one preference checked against the card: what it resolves to, how
 // that would be billed, and whether the card names it.
@@ -23,7 +79,7 @@ var Preferences = []string{"best", "balanced", "fast"}
 // first run, not an error: refusing to start because a card is a release behind
 // would turn a billing imprecision into an outage.
 type Coverage struct {
-	Preference string `json:"preference"`
+	Preference Preference `json:"preference"`
 	Model      string `json:"model,omitempty"`
 	Named      bool   `json:"named"`
 	Rates      Rates  `json:"rates,omitzero"`
@@ -40,7 +96,9 @@ func (c Card) Covers(ctx context.Context, r ModelResolver) []Coverage {
 	out := make([]Coverage, 0, len(Preferences))
 	for _, pref := range Preferences {
 		cov := Coverage{Preference: pref}
-		model, err := r.ResolveModel(ctx, pref)
+		// Projected to a string at the seam: the resolver is the provider, and
+		// the provider does not import pricing.
+		model, err := r.ResolveModel(ctx, pref.String())
 		if err != nil {
 			cov.Err = err.Error()
 			out = append(out, cov)

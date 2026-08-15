@@ -31,7 +31,7 @@ func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 		"fast":     "claude-haiku-4-5-20251001",
 	})
 
-	byPref := map[string]Coverage{}
+	byPref := map[Preference]Coverage{}
 	for _, c := range cov {
 		byPref[c.Preference] = c
 	}
@@ -49,7 +49,7 @@ func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 	// "fast" resolved to a *dated snapshot* of a model the card names, which is
 	// that model and is priced as it — the production finding that made the
 	// snapshot rule exist. It must not read as a warning.
-	for _, pref := range []string{"balanced", "fast"} {
+	for _, pref := range []Preference{PrefBalanced, PrefFast} {
 		if !byPref[pref].Named {
 			t.Errorf("%s resolved to %q and was reported unpriceable by a card that covers it", pref, byPref[pref].Model)
 		}

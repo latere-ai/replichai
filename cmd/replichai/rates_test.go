@@ -30,7 +30,7 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	registerStub(t, "rates-dated", backend.URL)
 
 	out := runRatesJSON(t, "-provider", "rates-dated", "-json")
-	byPref := map[string]credit.Coverage{}
+	byPref := map[credit.Preference]credit.Coverage{}
 	for _, c := range out.Checks {
 		byPref[c.Preference] = c
 	}
@@ -48,7 +48,7 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 
 	// The two the card does name are exact, so a reader can tell the one
 	// finding apart from the noise.
-	for _, pref := range []string{"balanced", "fast"} {
+	for _, pref := range []credit.Preference{credit.PrefBalanced, credit.PrefFast} {
 		if c := byPref[pref]; !c.Named {
 			t.Errorf("%s resolved to %q and was reported inexact against a card that names it", pref, c.Model)
 		}
