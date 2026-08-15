@@ -2157,6 +2157,7 @@ function ProjectScreen({
             setPublishing(false)
             refresh()
           }}
+          onChanged={refresh}
           onOpenBlocker={openBlocker}
         />
       )}
@@ -4016,11 +4017,13 @@ function PublishPanel({
   i18n,
   projectID,
   onPublished,
+  onChanged,
   onOpenBlocker,
 }: {
   i18n: I18n
   projectID: string
   onPublished: () => void
+  onChanged?: () => void
   onOpenBlocker?: (b: PublishBlocker) => void
 }) {
   const { t } = i18n
@@ -4046,6 +4049,7 @@ function PublishPanel({
             setOpen(false)
             onPublished()
           }}
+          onChanged={onChanged}
           onOpenBlocker={onOpenBlocker}
         />
       )}
@@ -4062,12 +4066,18 @@ function PublishWizard({
   projectID,
   onClose,
   onPublished,
+  onChanged,
   onOpenBlocker,
 }: {
   i18n: I18n
   projectID: string
   onClose: () => void
   onPublished: () => void
+  // Something under this dialog changed, and the screen behind it is now stale
+  // (032). Deleting a blocker removes a session the project screen is listing;
+  // an owner who then closes the wizard instead of signing off again would
+  // otherwise be left clicking a row that is no longer there.
+  onChanged?: () => void
   // Where a named blocker is opened. Absent on a screen with no session to go to
   // — the refusal then still says what is wrong, it just cannot travel.
   onOpenBlocker?: (b: PublishBlocker) => void
@@ -4233,6 +4243,7 @@ function PublishWizard({
           onDeleted={(b) => {
             setBlockers((cur) => cur.filter((x) => x.session_id !== b.session_id))
             setErr('')
+            onChanged?.()
           }}
         />
       )}

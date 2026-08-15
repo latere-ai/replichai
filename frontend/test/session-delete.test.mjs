@@ -211,20 +211,33 @@ try {
   if (!deleted.has(STUCK)) fail('confirming the blocker delete did not call DELETE /jobs/{id}')
   if (deleted.has(GOOD)) fail('the delete removed the wrong session')
 
-  // The end state, which is the point: the next sign-off publishes. Asserting
-  // only that the row went away would pass on a list that never refetched.
+  // The screen *behind* the wizard is now stale, and this is the path that has
+  // no reload to hide it: the owner deletes a blocker and then closes the wizard
+  // instead of signing off again. Without a refresh on the delete, the project
+  // screen keeps listing a session that is gone, and opening it 404s. Asserted
+  // in place — a page.goto here would pass whether or not anything refetched.
+  await page.evaluate(() => document.querySelector('.modal-backdrop')?.click())
+  await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
+  await new Promise((r) => setTimeout(r, 500))
+  const stillShown = await page.$$eval('[data-test="delete-session"]', (b) => b.length)
+  if (stillShown !== 1) fail(`${stillShown} sessions on the project screen after closing the wizard, want only the one kept`)
+
+  // The end state, which is the point: a sign-off now publishes. Asserting only
+  // that the blocker row went away would pass on a list that never refetched.
+  await page.click('[data-test="publish-project"]')
+  await page.waitForSelector('.modal', { timeout: 5000 })
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /Continue/i.test(b.textContent))?.click())
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
+  await new Promise((r) => setTimeout(r, 150))
   await signOff()
   await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
   await new Promise((r) => setTimeout(r, 400))
 
   if (visibility !== 'public') fail(`the project is ${visibility} after the blocker was removed, want public`)
   if (!calls.includes(`DELETE /jobs/${STUCK}`)) fail(`no DELETE reached the server: ${JSON.stringify(calls.slice(-8))}`)
-
-  // And the deleted session is gone from the screen it was on.
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
-  await page.waitForSelector('.row', { timeout: 8000 })
-  const shown = await page.$$eval('[data-test="delete-session"]', (b) => b.length)
-  if (shown !== 1) fail(`${shown} sessions remain on the project screen, want the one that was kept`)
 
   if (!process.exitCode) console.log('PASS: an unfinished session can be deleted, and its project then publishes')
 } catch (err) {
