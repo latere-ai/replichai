@@ -194,9 +194,12 @@ func (s *PGStore) takeReserveTx(ctx context.Context, tx pgx.Tx, project, jobID s
 	return nil
 }
 
-// Get returns one job by id.
+// Get returns one job by id. A deleted session is ErrNotFound (032): this one
+// gate is what closes the per-session reads — the job, its transcript, verdict,
+// artifacts, event stream and cancel all resolve through here.
 func (s *PGStore) Get(ctx context.Context, id string) (Job, error) {
-	return scanJob(s.pool.QueryRow(ctx, `SELECT `+jobColumns+` FROM jobs WHERE id = $1`, id))
+	return scanJob(s.pool.QueryRow(ctx,
+		`SELECT `+jobColumns+` FROM jobs WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
 // Claim atomically takes the oldest submitted job into resolving. FOR UPDATE
@@ -279,7 +282,8 @@ func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunSta
 
 // ListByPrincipal returns a principal's jobs, newest first.
 func (s *PGStore) ListByPrincipal(ctx context.Context, principal string) ([]Job, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE principal = $1 ORDER BY created_at DESC, id DESC`, principal)
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+
+		` FROM jobs WHERE principal = $1 AND deleted_at IS NULL ORDER BY created_at DESC, id DESC`, principal)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +301,8 @@ func (s *PGStore) ListByPrincipal(ctx context.Context, principal string) ([]Job,
 
 // ListByProject returns a project's sessions, newest first.
 func (s *PGStore) ListByProject(ctx context.Context, projectID string) ([]Job, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE project_id = $1 ORDER BY created_at DESC, id DESC`, projectID)
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+
+		` FROM jobs WHERE project_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC, id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -319,6 +324,15 @@ func (s *PGStore) DeleteByProject(ctx context.Context, projectID string) error {
 	return err
 }
 
+// Delete marks one session deleted (032). Idempotent: the WHERE clause makes a
+// second call a no-op rather than a moved timestamp, so the record of when a
+// session left the app is the first answer and not the last.
+func (s *PGStore) Delete(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET deleted_at = $2 WHERE id = $1 AND deleted_at IS NULL`, id, s.clock())
+	return err
+}
+
 // StatusByProjects summarises the named projects' sessions in one query. The
 // running filter uses the same terminal set as Phase.Terminal, so the in-memory
 // and Postgres stores agree.
@@ -333,7 +347,7 @@ func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[strin
 			(array_agg(phase ORDER BY created_at DESC, id DESC))[1] AS latest,
 			COUNT(*) FILTER (WHERE repo_name <> '') AS published,
 			MAX(updated_at) AS latest_at
-		FROM jobs WHERE project_id = ANY($1) GROUP BY project_id`, ids)
+		FROM jobs WHERE project_id = ANY($1) AND deleted_at IS NULL GROUP BY project_id`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -356,6 +370,10 @@ func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[strin
 // derived from the usage in `status` against the `rate_card` the session
 // carries, and expressing that pricing a second time in SQL would be a second
 // answer to what a run cost. The window bounds the row count.
+//
+// Deleted sessions are counted, and that is the one read path where they are
+// (032). Their charge is still in the ledger; dropping it here would show an
+// owner one total in the rail and another in their wallet.
 func (s *PGStore) SpendSince(ctx context.Context, ids []string, since time.Time) (map[string]int64, error) {
 	if len(ids) == 0 {
 		return map[string]int64{}, nil

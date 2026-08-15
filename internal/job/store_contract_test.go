@@ -326,6 +326,97 @@ func runSpendWindowContract(t *testing.T, s Store) {
 	}
 }
 
+// runDeleteContract asserts what a soft-deleted session must and must not do
+// (032). The four hiding read paths are asserted one by one, because the bug
+// this guards is a store that filters three of them and leaves the fourth
+// handing a deleted session back — and the fourth is the one publishing reads.
+//
+// The asymmetry is asserted too: SpendSince keeps counting, because the ledger
+// still holds the charge.
+func runDeleteContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	kept, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "keep", Kind: KindAudit, Project: "pD"})
+	if err != nil {
+		t.Fatalf("enqueue keep: %v", err)
+	}
+	gone, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "gone", Kind: KindAudit, Project: "pD"})
+	if err != nil {
+		t.Fatalf("enqueue gone: %v", err)
+	}
+	// Only a terminal session is deletable in the product, so put it there — and
+	// the spend assertion below needs it settled anyway.
+	if err := s.Advance(ctx, gone.ID, PhaseFailed, func(j *Job) { j.Err = "publish failed" }); err != nil {
+		t.Fatalf("advance gone to failed: %v", err)
+	}
+
+	before, err := s.SpendSince(ctx, []string{"pD"}, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("SpendSince before: %v", err)
+	}
+
+	if err := s.Delete(ctx, gone.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	if _, err := s.Get(ctx, gone.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get(deleted) = %v; want ErrNotFound — the gate every per-session read resolves through", err)
+	}
+	if _, err := s.Get(ctx, kept.ID); err != nil {
+		t.Errorf("Get(kept) = %v; want the surviving session", err)
+	}
+	byProject, err := s.ListByProject(ctx, "pD")
+	if err != nil {
+		t.Fatalf("ListByProject: %v", err)
+	}
+	if len(byProject) != 1 || byProject[0].ID != kept.ID {
+		t.Errorf("ListByProject = %s; want only %s — this is the list publishing reads", first3(byProject), kept.ID)
+	}
+	byPrincipal, err := s.ListByPrincipal(ctx, "owner")
+	if err != nil {
+		t.Fatalf("ListByPrincipal: %v", err)
+	}
+	for _, j := range byPrincipal {
+		if j.ID == gone.ID {
+			t.Errorf("ListByPrincipal still holds %s; want it hidden", gone.ID)
+		}
+	}
+	status, err := s.StatusByProjects(ctx, []string{"pD"})
+	if err != nil {
+		t.Fatalf("StatusByProjects: %v", err)
+	}
+	if status["pD"].Total != 1 {
+		t.Errorf("pD total = %d; want 1 — a deleted session is not counted", status["pD"].Total)
+	}
+
+	// The one read that keeps it. Deleting a session does not un-spend its money.
+	after, err := s.SpendSince(ctx, []string{"pD"}, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("SpendSince after: %v", err)
+	}
+	if after["pD"] != before["pD"] {
+		t.Errorf("spend %d -> %d; want unchanged, the ledger still holds the charge", before["pD"], after["pD"])
+	}
+
+	// Idempotent, and a success on an id that was never here.
+	if err := s.Delete(ctx, gone.ID); err != nil {
+		t.Errorf("second Delete: %v; want a no-op", err)
+	}
+	if err := s.Delete(ctx, "no-such-session"); err != nil {
+		t.Errorf("Delete(missing): %v; want a success", err)
+	}
+
+	// The 019 purge takes the deleted row with the rest, so a purged project
+	// leaves nothing behind for a later delete to trip over.
+	if err := s.DeleteByProject(ctx, "pD"); err != nil {
+		t.Fatalf("DeleteByProject: %v", err)
+	}
+	if left, err := s.ListByProject(ctx, "pD"); err != nil || len(left) != 0 {
+		t.Errorf("after purge = %s, %v; want nothing", first3(left), err)
+	}
+}
+
 // first3 renders up to three ids, for a failure message.
 func first3(js []Job) string {
 	var ids []string
@@ -378,6 +469,7 @@ func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewMemStore())
 	runGuardContract(t, NewMemStore())
 	runProjectJoinContract(t, NewMemStore(WithRates(fixedCard(testCard))))
+	runDeleteContract(t, NewMemStore(WithRates(fixedCard(testCard))))
 	runClaimContention(t, NewMemStore())
 }
 
@@ -414,6 +506,10 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	// window, which asserts that usage reaches the project total. A store with
 	// no card prices every session at 0 and the assertion could never hold.
 	runProjectJoinContract(t, NewPGStore(pool, WithPGRates(fixedCard(testCard))))
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	runDeleteContract(t, NewPGStore(pool, WithPGRates(fixedCard(testCard))))
 	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}

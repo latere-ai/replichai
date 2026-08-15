@@ -19,7 +19,12 @@ type MemStore struct {
 	mu    sync.Mutex
 	jobs  map[string]Job
 	order []string // submission order, so Claim is FIFO
-	clock func() time.Time
+	// deleted holds the ids of sessions the owner threw away (032). It is a set
+	// beside the map rather than a field on Job for the same reason the Postgres
+	// side is a column nobody selects: a deleted session never leaves the store,
+	// so nothing downstream should be able to read a flag saying it did.
+	deleted map[string]bool
+	clock   func() time.Time
 	// credits and reserve are the enqueue gate (011). Both nil means unmetered,
 	// which is what an offline run and every test that is not about money want.
 	credits *credit.MemStore
@@ -89,7 +94,7 @@ func (s *MemStore) takeReserve(ctx context.Context, project, jobID string) error
 
 // NewMemStore builds an empty in-memory store.
 func NewMemStore(opts ...MemOption) *MemStore {
-	s := &MemStore{jobs: map[string]Job{}, clock: time.Now}
+	s := &MemStore{jobs: map[string]Job{}, deleted: map[string]bool{}, clock: time.Now}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -160,12 +165,14 @@ func (s *MemStore) snapshot(ctx context.Context) (credit.Card, error) {
 	return resolveCard(ctx, s.card)
 }
 
-// Get returns a copy of one job.
+// Get returns a copy of one job. A deleted session is ErrNotFound (032): this
+// one gate is what closes the per-session reads — the job, its transcript,
+// verdict, artifacts, event stream and cancel all resolve through here.
 func (s *MemStore) Get(_ context.Context, id string) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, ok := s.jobs[id]
-	if !ok {
+	if !ok || s.deleted[id] {
 		return Job{}, ErrNotFound
 	}
 	return cloneJob(j), nil
@@ -178,6 +185,9 @@ func (s *MemStore) ListByPrincipal(_ context.Context, principal string) ([]Job, 
 	var out []Job
 	// s.order is oldest-first; walk it in reverse for newest-first.
 	for i := len(s.order) - 1; i >= 0; i-- {
+		if s.deleted[s.order[i]] {
+			continue
+		}
 		if j := s.jobs[s.order[i]]; j.Principal == principal {
 			out = append(out, cloneJob(j))
 		}
@@ -191,6 +201,9 @@ func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, er
 	defer s.mu.Unlock()
 	var out []Job
 	for i := len(s.order) - 1; i >= 0; i-- {
+		if s.deleted[s.order[i]] {
+			continue
+		}
 		if j := s.jobs[s.order[i]]; j.ProjectID == projectID {
 			out = append(out, cloneJob(j))
 		}
@@ -206,6 +219,7 @@ func (s *MemStore) DeleteByProject(_ context.Context, projectID string) error {
 	for _, id := range s.order {
 		if s.jobs[id].ProjectID == projectID {
 			delete(s.jobs, id)
+			delete(s.deleted, id)
 			continue
 		}
 		kept = append(kept, id)
@@ -214,10 +228,24 @@ func (s *MemStore) DeleteByProject(_ context.Context, projectID string) error {
 	return nil
 }
 
+// Delete marks one session deleted (032). Idempotent, and a success on an id
+// that was never here — removal asks for an absence, and an absence is what the
+// caller gets either way.
+func (s *MemStore) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deleted[id] = true
+	return nil
+}
+
 // StatusByProjects summarises the sessions of each named project.
 // SpendSince sums each project's session costs from `since` onwards. Cost comes
 // from the same withCost the read paths use, so the tile and the row can never
 // disagree about what a session cost.
+//
+// Deleted sessions are counted, and that is the one read path where they are
+// (032). Their charge is still in the ledger; dropping it here would show an
+// owner one total in the rail and another in their wallet.
 func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) (map[string]int64, error) {
 	want := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -248,7 +276,7 @@ func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string
 	// s.order is oldest-first; the last non-before wins as the newest.
 	for _, id := range s.order {
 		j := s.jobs[id]
-		if !want[j.ProjectID] {
+		if !want[j.ProjectID] || s.deleted[id] {
 			continue
 		}
 		st := out[j.ProjectID]

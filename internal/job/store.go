@@ -58,8 +58,24 @@ type Store interface {
 	// DeleteByProject removes every session belonging to a project — what a
 	// permanent project delete has to do before the project row goes, since
 	// jobs.project_id references it and the foreign key does not cascade (019).
+	// It is the hard delete, and takes already-deleted sessions with the rest.
 	// Idempotent: a project with no sessions is not an error.
 	DeleteByProject(ctx context.Context, projectID string) error
+	// Delete removes one session from the app (032). It is a *soft* delete: the
+	// row stays, because credit_entries.job_id points at it and 019's rule is
+	// that removing something must not remove the record of what it cost. What
+	// changes is that Get, ListByProject, ListByPrincipal and StatusByProjects
+	// stop returning it — one gate in the store rather than a filter per caller,
+	// which is how a read path gets missed.
+	//
+	// SpendSince deliberately keeps counting it: the ledger still holds the
+	// charge, and a spend figure that dropped on delete would put two different
+	// totals in front of the same owner.
+	//
+	// Idempotent, and unconditional: whether a session is finished enough to be
+	// removed is the caller's decision, the same way 019 puts the running-session
+	// refusal in the handler and not in the project store.
+	Delete(ctx context.Context, id string) error
 	// StatusByProjects summarises the sessions of each named project — the total,
 	// how many are still running, the newest session's phase, and when one last
 	// changed — so a project list shows status at a glance in one query.
