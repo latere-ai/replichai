@@ -1,6 +1,6 @@
 # 032 — The loop has depth
 
-**Status:** built.
+**Status:** designed.
 
 **Scope:** replace the landing hero's flat two-circle diagram with one responsive, physically suggestive orbital instrument over an original editorial research-world image. Frontend only: SVG structure, one optimized image asset, pointer-driven perspective, CSS motion, and browser verification.
 
@@ -41,9 +41,3 @@ The improvement cannot trade meaning for spectacle. The inner loop must remain v
 ## Not in scope
 
 The compact product mark in `brand.tsx` stays flat and unchanged; a 22px rail mark cannot carry this depth legibly. The other landing figures, copy, page structure, routes, and API calls stay unchanged. There are no stock customer portraits, invented logos, sound, click interaction, scroll capture, device-orientation input, or full-page particle field.
-
-## Outcome
-
-Built as designed. `LoopFigure` now uses two independently animated SVG planes, six permanent outer segments, a closed glass inner track with runner and wake, core/shadow/highlight depth cues, and a `requestAnimationFrame`-bounded pointer tilt. The original research still life was generated specifically for this page, converted to a 96 KB WebP, and committed at `frontend/public/research-desk.webp`; no external asset or runtime dependency was added.
-
-The browser test was first extended against the old flat figure, where the missing perspective-stage assertion failed. It now verifies structure, distinct motion, the six gaps, pointer bounds and reset, the image's load/dimensions/transfer size, theme contrast, phone fit, and a completely static reduced-motion pose. The focused landing test, all 129 frontend unit tests, the production build, and the complete 16-file browser suite pass. Desktop, phone, and dark-theme renders were also inspected directly; no horizontal spill or illegible crop remained.
