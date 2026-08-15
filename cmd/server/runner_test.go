@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
@@ -18,9 +19,41 @@ import (
 // takes longer than any wall-clock bound is still a live session, and cutting it
 // marks a session failed while its agent goes on committing the reproduction.
 func TestServerRunsWaitWithoutADeadline(t *testing.T) {
-	a := audit.New(memory.New(), method.Method{}, auditOptions(func(provider.RunStatus) {})...)
+	a := audit.New(memory.New(), method.Method{}, auditOptions(&job.Job{}, func(provider.RunStatus) {})...)
 	if !a.Unbounded() {
 		t.Error("the server must wait on the session, not on a deadline")
+	}
+}
+
+// The session runs on the tier its owner chose (031).
+//
+// It asserts auditOptions rather than either call site on purpose: that is the
+// single wiring Execute and Resume both take, and it cannot be called without a
+// job, so the tier cannot be applied to the fresh path and forgotten on the
+// resumed one. Resume is the path that would regress silently — it rebuilds the
+// auditor from the job row alone, so a restart mid-run would otherwise move the
+// session onto the default model while the project goes on paying for it.
+func TestServerRunsOnTheJobsChosenTier(t *testing.T) {
+	optionsFor := func(j *job.Job) *audit.Auditor {
+		return audit.New(memory.New(), method.Method{}, auditOptions(j, func(provider.RunStatus) {})...)
+	}
+
+	for _, tc := range []struct {
+		name string
+		job  job.Job
+		want string
+	}{
+		{"a chosen tier", job.Job{Tier: credit.PrefFast}, "fast"},
+		{"the middle tier", job.Job{Tier: credit.PrefBalanced}, "balanced"},
+		// A session enqueued before the choice existed carries no tier, and must
+		// keep running on exactly what it always ran on.
+		{"no choice made", job.Job{}, "best"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := optionsFor(&tc.job).ModelPreference(); got != tc.want {
+				t.Errorf("auditor resolves models from %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
