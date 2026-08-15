@@ -2896,6 +2896,30 @@ input.submit-input {
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
   background: color-mix(in srgb, var(--warn) 9%, transparent);
 }
+/* A banner that belongs to a card rather than to a screen: it is one item in the
+   card's stack, so it drops the heading margin the screen-level one carries. */
+.banner.inline {
+  margin-bottom: 0;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+/* One session standing between a project and the public flip: what is wrong on
+   the left, the way to it on the right (031a). */
+.blocker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--warn) 7%, transparent);
+}
+.blocker-row .ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The trash is where work goes, not a place work is done, so it sits apart from
    the destinations above it and is pushed to the foot of the rail. */
 .rail-group-foot {

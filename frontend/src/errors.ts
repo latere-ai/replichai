@@ -13,7 +13,7 @@
 // sentence is how you end up telling somebody to top up a project that does not
 // exist yet.
 
-import { ApiError, type Credits, type CreatedProject, type PaperResult } from './api'
+import { ApiError, type Credits, type CreatedProject, type PaperResult, type PublishBlocker } from './api'
 import type { I18n } from './i18n'
 
 type T = I18n['t']
@@ -193,18 +193,54 @@ export function profileErrorText(t: T, code: string): string {
 }
 
 // publishErrText names why a publish was refused. The status is not enough on
-// its own: 409 covers both "this tree never cleared the redistribution check"
-// and "your profile is not public", and telling a signer the wrong one sends
-// them to fix something that is not broken.
+// its own: 409 covers every reason a project is not publishable yet, and telling
+// a signer the wrong one sends them to fix something that is not broken.
+//
+// The four project-state codes are four different facts about the sessions. Only
+// `not_clear` is about what a reproduction contains; reporting the others as
+// that one — which is what a single code for all of them did — accuses an owner
+// of committing third-party data when their run merely had not finished.
 export function publishErrText(t: T, e: unknown): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
   if (code === 'profile_not_public') return t('publishProfileRequired')
   if (code === 'not_clear') return t('publishNotClear')
+  if (code === 'nothing_published') return t('publishNothingPublished')
+  if (code === 'sessions_unfinished') return t('publishUnfinished')
+  if (code === 'manifest_unreadable') return t('publishUnreadable')
   if (code.startsWith('handle_') || code.startsWith('invalid_')) return profileErrorText(t, code)
-  if (status === 409) return t('publishNotClear')
+  // A 409 with no code names no cause. It used to fall back to the
+  // redistribution message, which is the same wrong accusation one layer up.
+  if (status === 409) return t('publishBlocked')
   if (status === 400) return profileErrorText(t, code)
   return t('publishError')
+}
+
+// publishBlockerText is the line on one blocking session: what is wrong with
+// this one, in the terms of the thing the reader will see when they open it.
+export function publishBlockerText(t: T, b: PublishBlocker): string {
+  if (b.reason === 'not_clear') {
+    // The review state is the specific finding, and the two are different
+    // problems: data that had to be withheld, or a credential in the transcript.
+    if (b.review === 'secret_in_transcript') return t('blockerSecret')
+    return t('blockerNotClear')
+  }
+  if (b.reason === 'unfinished') return t('blockerUnfinished')
+  return t('blockerUnreadable')
+}
+
+// publishBlockers reads the sessions a refusal named, empty when it named none.
+export function publishBlockers(e: unknown): PublishBlocker[] {
+  return e instanceof ApiError ? e.blockers : []
+}
+
+// blockerTab is where a blocking session is worth opening. A flagged manifest is
+// read on the verdict pane, which is where the redistribution review is shown.
+// An unfinished run has no manifest and so no verdict pane — sending a reader
+// there lands them on an absence — so it opens where its status is: the
+// transcript.
+export function blockerTab(b: PublishBlocker): 'verdict' | 'transcript' {
+  return b.reason === 'not_clear' ? 'verdict' : 'transcript'
 }
 
 // profileSaveErrText is profileErrorText with the offline case in front of it —

@@ -269,6 +269,21 @@ export type Reproduction = {
   can_publish: boolean
 }
 
+// PublishBlocker is one session standing between a project and the public flip.
+// A refusal carries the whole list, so the owner can be sent to the session
+// rather than told to go looking for it.
+//
+// reason is a closed set: 'not_clear' (the redistribution review flagged what
+// the run committed), 'unfinished' (the run has a repository but never wrote a
+// manifest), 'unreadable' (we could not read the manifest at all).
+export type PublishBlocker = {
+  session_id: string
+  repo?: string
+  ref?: string
+  reason: string
+  review?: string
+}
+
 // ApiError carries both halves of a refusal: the status, and the machine-
 // readable code the server put in the body.
 //
@@ -276,10 +291,14 @@ export type Reproduction = {
 // compares against. The code is what a caller needs when one status means more
 // than one thing — a 409 on the public flip is either an unclear tree or a
 // profile that is not public, and those want different remedies.
+//
+// blockers is the rest of the body, for the refusals that name what is in the
+// way. A code says what happened; this says where.
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code = '',
+    readonly blockers: PublishBlocker[] = [],
   ) {
     super(String(status))
   }
@@ -296,13 +315,15 @@ export function errCode(e: unknown): string {
 // stream.
 async function refusal(r: Response): Promise<ApiError> {
   let code = ''
+  let blockers: PublishBlocker[] = []
   try {
-    const body = (await r.json()) as { error?: string }
+    const body = (await r.json()) as { error?: string; blockers?: PublishBlocker[] }
     code = body?.error ?? ''
+    if (Array.isArray(body?.blockers)) blockers = body.blockers
   } catch {
     /* no body, or not JSON: the status is all we have */
   }
-  return new ApiError(r.status, code)
+  return new ApiError(r.status, code, blockers)
 }
 
 async function json<T>(r: Response): Promise<T> {
