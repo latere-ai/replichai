@@ -1,6 +1,16 @@
 # 032 — A session can be thrown away
 
-**Status:** ready.
+**Status:** built. Every acceptance criterion holds. `jobs.deleted_at` (migration 7, with two partial indexes on the live rows), `Delete` on the job store and the filter on the four read paths, under a new `runDeleteContract` in the shared contract tests; `DELETE /jobs/{id}` in `internal/httpapi` with `session_delete_test.go` covering the guards, the repository close and the unblocked publish. The frontend has the row action, its dialog, the blocker-row delete, and `frontend/test/session-delete.test.mjs`, which drives the blocker delete through to a public project. Both suites were verified to fail with the change reverted — the store contract by mutating the filter out of `ListByProject`, the browser test against the previous `App.tsx`. Go (including the Postgres contract), the 129 unit tests and the 17-file browser suite are green.
+
+Four things came out of the build.
+
+**Nothing observes the deleted row, so the soft delete needed no field on `Job`.** The plan assumed a `DeletedAt` on the struct mirroring `project.DeletedAt`. It is not there: no read path returns a deleted session, so a flag saying "this one is deleted" could only ever be read as `nil`. `deleted_at` is a column nobody selects, and the memory store keeps a set beside the map. The soft delete earns its keep entirely through `credit_entries.job_id` and the operator question *what was this charge for* — not through anything the app renders.
+
+**The `Get` gate was worth more than the four filters.** Filtering `Get` closes the job read, the transcript, the reproduction, the verdict, the artifacts, the event stream *and* cancel in one edit, because every one of them resolves a session through it. That is 019's `mayViewProject` lesson applied a layer down, and it is why the route needed no per-handler audit.
+
+**The blocker row could not use the dialog the session row uses.** `Modal` portals to `<body>` but registers its own Escape handler, and the blocker list lives inside the publish wizard's modal — a second one over it would have shared the key, so a single Escape would have closed both and taken the list of named blockers with it. The blocker row confirms inline instead. A related trap, caught before it shipped: a React portal still bubbles clicks through the React *tree*, so a dialog rendered inside the clickable session row would have opened the session on every click in it. The dialog is the card's, one for the list, the way `TrashDialog` already is.
+
+**Resume was asked for and is not here, deliberately.** A session stuck *in* `publishing` was already handled — `Worker.Reconcile` re-drives it at every boot and finalizing is idempotent — and a session that reached `failed` is terminal by the state machine's central invariant, with a re-run as the product's existing "try again". What was missing was never the verb for finishing a dead run; it was the verb for removing it.
 
 **Scope:** removing one session. An owner deletes a session that ended without a reproduction, from the session list or from the publish refusal that names it, and the project becomes publishable. Soft delete is a `deleted_at` column on `jobs` and a filter on four read paths; the session's repository is closed the way [019](019-a-project-can-be-thrown-away.md) closes one, not destroyed.
 
