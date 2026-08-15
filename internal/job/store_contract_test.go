@@ -109,9 +109,10 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("unknown principal: %d jobs, err %v; want 0, nil", len(none), err)
 	}
 
-	// The chosen model tier is durable (031). Resume rebuilds the auditor from
-	// the row and nothing else, so a tier that did not survive the write would
-	// put a restarted session on a model its owner never picked — and pay for it.
+	// The chosen model tier is durable (031). The worker that runs the session
+	// reads this row and nothing else — the submission is gone once Enqueue
+	// returns — so a tier that did not survive the write would reach no run at
+	// all, and the session would silently take the default its owner declined.
 	chosen, err := s.Enqueue(ctx, Submission{
 		Principal: "sub", Ref: "tiered", Kind: KindAudit, Project: "proj", Tier: credit.PrefFast,
 	})

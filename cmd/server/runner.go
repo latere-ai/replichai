@@ -175,10 +175,16 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 // sits committed in the mounted repository. Only a failed session, an operator
 // cancelling it, or a backend that stops answering altogether ends the wait.
 //
-// The tier comes from the job rather than from the submission, and it is applied
-// here rather than at either call site, because Execute and Resume must agree:
-// Resume has only this row to work from, and a tier applied to the fresh path
-// alone would move a restarted session onto a model its owner never chose.
+// The tier comes from the job because the job row is all the worker ever sees:
+// the submission is gone the moment Enqueue returns, and Execute may run in a
+// different process minutes later. Applying it here rather than at either call
+// site keeps one wiring for both paths, which cannot then disagree.
+//
+// On the resumed path it is inert, and deliberately passed anyway. Resume
+// rejoins a backend session that already exists, and a session's model was
+// fixed when it was created (the auditor resolves a model in Start, nowhere
+// else) — so there is nothing left to choose. Passing it costs nothing and
+// keeps the two paths one expression rather than two that must be kept in step.
 func auditOptions(j *job.Job, observe func(provider.RunStatus)) []audit.Option {
 	return []audit.Option{
 		audit.WithObserver(observe),

@@ -118,6 +118,32 @@ func TestModelsAreMemoised(t *testing.T) {
 	}
 }
 
+// An unpriced answer is not cached. A backend that timed out once would
+// otherwise pin blank prices in front of every caller for the whole TTL, which
+// turns one slow read into a five-minute outage of the number.
+func TestAFailedPricingIsNotCached(t *testing.T) {
+	r := &stubResolver{fail: true}
+	h := NewRouter(tierDeps(r)).Handler()
+
+	if tiers := readTiers(t, h); tiers[0].Model != "" {
+		t.Fatalf("expected an unpriced answer while the backend is failing, got %+v", tiers[0])
+	}
+	first := r.calls.Load()
+	if first == 0 {
+		t.Fatal("the failing backend was never asked")
+	}
+
+	// The backend comes back. The very next read must see it.
+	r.fail = false
+	tiers := readTiers(t, h)
+	if r.calls.Load() == first {
+		t.Fatal("a failed pricing was cached; the recovered backend is never asked again this TTL")
+	}
+	if tiers[0].Model != "claude-opus-5" || tiers[0].Input == 0 {
+		t.Errorf("after recovery the tiers are still unpriced: %+v", tiers[0])
+	}
+}
+
 // A deployment that cannot price the tiers still offers them. Taking the control
 // away because a backend is unreachable would lose the choice, not the number.
 func TestModelsListTiersWithoutABackend(t *testing.T) {
