@@ -755,6 +755,7 @@ function Shell({
             // screen loaded.
             onLoaded={(ref) => setView((now) => (now.name === 'session' && now.ref !== ref ? { ...now, ref } : now), { replace: true })}
             onBack={() => openProject(view.projectId, view.projectTitle)}
+            signedIn={signedIn}
           />
         )}
       </div>
@@ -4288,6 +4289,7 @@ function SessionScreen({
   onTab,
   onLoaded,
   onBack,
+  signedIn,
 }: {
   i18n: I18n
   jobId: string
@@ -4297,19 +4299,46 @@ function SessionScreen({
   // opened by its own link has nothing else to name it with.
   onLoaded: (ref: string) => void
   onBack: () => void
+  // Whether there is an account behind this reader, which decides whether the
+  // live stream is worth opening at all (028).
+  signedIn: boolean
 }) {
   const { t } = i18n
   const [job, setJob] = useState<Job | null>(null)
+  // A session under a project this reader may not see reads as missing — the one
+  // answer its project gives too (028).
+  const [notReadable, setNotReadable] = useState(false)
 
-  // The job is watched here rather than in the transcript, because all three
-  // panes are about it and only one of them is open at a time.
   useEffect(() => {
-    getJob(jobId).then(setJob).catch(() => {})
-    return watchJob(jobId, setJob)
+    let live = true
+    getJob(jobId)
+      .then((j) => {
+        if (!live) return
+        setJob(j)
+        setNotReadable(false)
+      })
+      .catch(() => live && setNotReadable(true))
+    return () => {
+      live = false
+    }
   }, [jobId])
+
+  // The run is watched here rather than in the transcript, because all three
+  // panes are about it and only one of them is open at a time.
+  //
+  // It watches only what there is to watch: the live stream is an operator route
+  // and stays gated (028), so for a reader with no account it is a connection
+  // that is refused and reopened for as long as the page is up — and a session
+  // that has finished has nothing left to send either.
+  useEffect(() => {
+    if (!signedIn || !job || terminal(job.phase)) return
+    return watchJob(jobId, setJob)
+  }, [signedIn, jobId, job])
   useEffect(() => {
     if (job?.ref) onLoaded(job.ref)
   }, [job?.ref, onLoaded])
+
+  if (notReadable) return <NotReadable i18n={i18n} me={{ authenticated: signedIn }} />
 
   return (
     <div className="tx">
