@@ -545,6 +545,18 @@ textarea {
   padding-left: 0;
   padding-right: 0;
 }
+/* The way in, where the account sits for everybody else (028). It fills the
+   rail's width unfolded and collapses to its mark when the rail does — the
+   label is the same `.nav-label` every destination uses, so one rule folds
+   them all. */
+.rail-signin {
+  width: 100%;
+  justify-content: center;
+}
+.rail-fold .rail-signin {
+  padding-left: 0;
+  padding-right: 0;
+}
 /* An avatar with no picture is not blank: the address seeds a hue, so the same
    person is the same colour in every list they appear in. */
 .user-avatar {
