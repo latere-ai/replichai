@@ -525,6 +525,122 @@ func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 	}
 }
 
+// refusedPublish posts a sign-off and reads back the refusal: its code and the
+// sessions it named. Every publish refusal below is asserted through this, so a
+// code that stops carrying its blockers fails a test rather than reaching a
+// reader as an unexplained "cannot publish".
+func refusedPublish(t *testing.T, h http.Handler, projectID string) (int, string, []PublishBlocker) {
+	t.Helper()
+	w := do(t, h, "POST", "/projects/"+projectID+"/public", signOff, "me")
+	var got struct {
+		Error    string           `json:"error"`
+		Blockers []PublishBlocker `json:"blockers"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("refusal body %q: %v", w.Body.String(), err)
+	}
+	return w.Code, got.Error, got.Blockers
+}
+
+// A refusal names every session in the way, not the first one. An owner who is
+// told "something is wrong" and fixes one blocker must not walk into the same
+// wall — so a project with two different blockers reports both, each with the
+// session to open and the reason it is blocked.
+func TestMakeProjectPublicNamesEveryBlocker(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	publishable(t, d, "me", "ada")
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	clear := publishInto(t, d.Jobs, "me", p.ID, "r1")        // cleared: not a blocker
+	flagged := publishInto(t, d.Jobs, "me", p.ID, "flagged") // review not clear
+	unfinished := publishInto(t, d.Jobs, "me", p.ID, "gone") // repository, no manifest
+
+	status, code, blockers := refusedPublish(t, h, p.ID)
+	if status != http.StatusConflict {
+		t.Fatalf("status %d, want 409", status)
+	}
+	// The flagged tree outranks the unfinished run: one needs a decision, the
+	// other only needs time.
+	if code != "not_clear" {
+		t.Errorf("code = %q, want not_clear", code)
+	}
+	reasons := map[string]string{}
+	for _, b := range blockers {
+		reasons[b.SessionID] = b.Reason
+	}
+	if len(blockers) != 2 {
+		t.Fatalf("blockers = %+v, want two", blockers)
+	}
+	if reasons[flagged.ID] != string(BlockNotClear) {
+		t.Errorf("flagged session reason = %q, want not_clear", reasons[flagged.ID])
+	}
+	if reasons[unfinished.ID] != string(BlockUnfinished) {
+		t.Errorf("unfinished session reason = %q, want unfinished", reasons[unfinished.ID])
+	}
+	if _, named := reasons[clear.ID]; named {
+		t.Errorf("the cleared session %s was reported as a blocker", clear.ID)
+	}
+	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Visibility != project.VisibilityPrivate {
+		t.Errorf("a blocked project must stay private")
+	}
+}
+
+// A run that never finalized is not a redistribution verdict. It has a
+// repository and no manifest, which used to be reported as a flagged tree —
+// sending the owner to look for third-party data that was never there.
+func TestMakeProjectPublicReportsUnfinishedSessions(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	publishable(t, d, "me", "ada")
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	j := publishInto(t, d.Jobs, "me", p.ID, "gone")
+
+	status, code, blockers := refusedPublish(t, h, p.ID)
+	if status != http.StatusConflict || code != "sessions_unfinished" {
+		t.Fatalf("status %d code %q, want 409 sessions_unfinished", status, code)
+	}
+	if len(blockers) != 1 || blockers[0].SessionID != j.ID || blockers[0].Reason != string(BlockUnfinished) {
+		t.Fatalf("blockers = %+v", blockers)
+	}
+}
+
+// A forge that will not answer is our failure and a temporary one. It must not
+// be reported as a reproduction that failed the redistribution check.
+func TestMakeProjectPublicReportsUnreadableManifest(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Reproductions = &fakeRepro{getErr: errors.New("github timed out")}
+	h := NewRouter(d).Handler()
+	publishable(t, d, "me", "ada")
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
+
+	status, code, blockers := refusedPublish(t, h, p.ID)
+	if status != http.StatusConflict || code != "manifest_unreadable" {
+		t.Fatalf("status %d code %q, want 409 manifest_unreadable", status, code)
+	}
+	if len(blockers) != 1 || blockers[0].Reason != string(BlockUnreadable) {
+		t.Fatalf("blockers = %+v", blockers)
+	}
+}
+
+// A project that has never published anything has nothing to make public. It is
+// not blocked by a session — there is no session with a repository at all — so
+// it reports that and names nobody.
+func TestMakeProjectPublicReportsNothingPublished(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	publishable(t, d, "me", "ada")
+	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
+
+	status, code, blockers := refusedPublish(t, h, p.ID)
+	if status != http.StatusConflict || code != "nothing_published" {
+		t.Fatalf("status %d code %q, want 409 nothing_published", status, code)
+	}
+	if len(blockers) != 0 {
+		t.Fatalf("blockers = %+v, want none", blockers)
+	}
+}
+
 // fakeRepoPub records which repositories were flipped public and which were
 // closed again. errOn names a repository whose flip fails, so a test can assert
 // that a forge failure does not fail the request.

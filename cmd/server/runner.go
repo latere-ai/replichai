@@ -347,11 +347,18 @@ func (p *forgePublisher) SetPrivate(ctx context.Context, repo string) error {
 // of visibility (006f), so there is no unscoped org-wide reproductions listing.
 type registryReader struct{ source registry.Source }
 
-// Get reads one reproduction by its repository id.
+// Get reads one reproduction by its repository id. A repository with no
+// manifest is a miss (the run has not finalized); anything else — the forge
+// down, a malformed file — is returned as itself and becomes a 500. Collapsing
+// the two, as this used to, told an owner their reproduction did not exist
+// whenever GitHub hiccuped, and told the publish gate the same thing.
 func (r *registryReader) Get(ctx context.Context, id string) (httpapi.Reproduction, error) {
 	m, err := r.source.Manifest(ctx, id)
-	if err != nil {
+	if errors.Is(err, registry.ErrNoManifest) {
 		return httpapi.Reproduction{}, httpapi.ErrReproNotFound
+	}
+	if err != nil {
+		return httpapi.Reproduction{}, err
 	}
 	return toRepro(id, m), nil
 }

@@ -35,7 +35,10 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 		return publish.Manifest{}, err
 	}
 	if !ok {
-		return publish.Manifest{}, fmt.Errorf("%s has no %s", repo, publish.ManifestFile)
+		// Genuinely absent, which a repository the agent has not finalized into
+		// is. Distinguished from the error above — the forge failing to answer —
+		// because the publish gate reports the two differently.
+		return publish.Manifest{}, fmt.Errorf("%s has no %s: %w", repo, publish.ManifestFile, ErrNoManifest)
 	}
 	var m publish.Manifest
 	if err := json.Unmarshal(raw, &m); err != nil {

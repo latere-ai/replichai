@@ -392,6 +392,15 @@ func writeJSONError(w http.ResponseWriter, status int, code string, detail []str
 	writeJSON(w, status, map[string]any{"error": code, "problems": detail})
 }
 
+// writeBlockedError refuses a publish and says which sessions stand in the way.
+// The code names the headline reason; the list is what the owner is sent to.
+func writeBlockedError(w http.ResponseWriter, status int, code string, blockers []PublishBlocker) {
+	if blockers == nil {
+		blockers = []PublishBlocker{}
+	}
+	writeJSON(w, status, map[string]any{"error": code, "blockers": blockers})
+}
+
 // WriteError writes a machine-readable error code, for middleware (006c's tier
 // guard) that refuses a request before the handler runs.
 func WriteError(w http.ResponseWriter, status int, code string) {
