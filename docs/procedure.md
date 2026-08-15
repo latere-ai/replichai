@@ -37,7 +37,7 @@ Getting this wrong in either direction ruins the verdict. Too much marked outer,
 
 ## 4. Enumerate the hidden decisions
 
-List the choices a reimplementation must make but the paper never states: hyperparameters, prompt text, model versions and snapshot dates, data filtering and splits, thresholds, tie-breaks, normalisation, seeds, stopping conditions, interface defaults.
+List the choices a reimplementation must make but the paper never states: hyperparameters, prompt text, model versions and snapshot dates, data filtering and splits, thresholds, tie-breaks, normalisation, seeds, stopping conditions, interface defaults, exclusion rules, scale scoring, covariates entered into a model.
 
 Each entry carries three things — where the paper leaves it open, what the reproduction assumed instead, and how sensitive the result is to that choice. The third is what makes the list useful: a dozen low-sensitivity gaps matter less than one high-sensitivity gap that silently decides the headline result.
 
