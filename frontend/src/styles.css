@@ -545,18 +545,6 @@ textarea {
   padding-left: 0;
   padding-right: 0;
 }
-/* The way in, where the account sits for everybody else (028). It fills the
-   rail's width unfolded and collapses to its mark when the rail does — the
-   label is the same `.nav-label` every destination uses, so one rule folds
-   them all. */
-.rail-signin {
-  width: 100%;
-  justify-content: center;
-}
-.rail-fold .rail-signin {
-  padding-left: 0;
-  padding-right: 0;
-}
 /* An avatar with no picture is not blank: the address seeds a hue, so the same
    person is the same colour in every list they appear in. */
 .user-avatar {
@@ -2427,42 +2415,59 @@ input.submit-input {
    right. The grid is declared by area rather than by source order because the
    one-column fallback has to reorder — the sign-in card moves above the three
    points, so a phone gets the button without scrolling past the case for it. */
+/* ── The landing (029) ──────────────────────────────────────────────────────
+   A place, not a door. 017 built this as a fold — two columns, the sign-in
+   guaranteed above 900px — and that guarantee cannot survive a page that
+   scrolls. The replacement is stronger and length-independent: the header is
+   sticky, so the way in is on screen at every scroll position.
+
+   Motion here is opt-in at the system level. Every animation lives inside the
+   no-preference query, and the *base* state is the resting one — a reader who
+   asked for less motion gets the finished page, not a frozen first frame. */
 .landing {
   min-height: 100vh;
-  display: grid;
-  align-content: center;
-  justify-content: center;
-  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
-  grid-template-areas:
-    'brand auth'
-    'points auth';
+  background: var(--bg);
+}
+.lp-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
   align-items: center;
-  column-gap: 72px;
-  row-gap: 34px;
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 48px 32px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 26px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
 }
-.landing-brand {
-  grid-area: brand;
-  align-self: end;
+.lp-bar-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
-.landing-points {
-  grid-area: points;
-  align-self: start;
-}
-.landing-auth {
-  grid-area: auth;
+.lp-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 .landing-lockup {
   color: var(--fg-1);
   font-size: 17px;
-  margin-bottom: 26px;
+}
+.lp-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  align-items: center;
+  gap: 48px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 76px 32px 68px;
 }
 .landing h1 {
   margin: 0 0 16px;
-  font-size: 40px;
-  line-height: 1.1;
+  font-size: 44px;
+  line-height: 1.08;
   font-weight: 600;
   letter-spacing: -0.035em;
   max-width: 13ch;
@@ -2474,23 +2479,114 @@ input.submit-input {
   color: var(--fg-2);
   max-width: 52ch;
 }
-/* Three rows, each a claim the product actually makes. The rule on the left is
-   the mark's own boundary, restated at text scale: solid where the work is
+.lp-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 26px 0 14px;
+}
+.landing-note {
+  font-size: 12px;
+  color: var(--fg-3);
+  line-height: 1.55;
+  max-width: 46ch;
+}
+
+/* The two loops, at figure scale. The colours are the mark's own and mean the
+   same thing here: cool for the half a machine re-runs, warm for the study it
+   never simulates. */
+.lp-loop {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+.lp-loop-svg {
+  width: min(340px, 78vw);
+  height: auto;
+  fill: none;
+  stroke-linecap: round;
+}
+.lp-ring-outer {
+  stroke: var(--err);
+  stroke-width: 5;
+  opacity: 0.75;
+}
+.lp-ring-inner {
+  stroke: var(--brand);
+  stroke-width: 7;
+  opacity: 0.28;
+}
+.lp-ring-runner {
+  stroke: var(--brand);
+  stroke-width: 7;
+  transform-origin: 120px 120px;
+  /* At rest the runner sits on the closed loop, which is a true picture of a run
+     that has finished. The animation below is what makes it one in progress. */
+  transform: rotate(-90deg);
+}
+.lp-loop-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.lp-legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.lp-swatch {
+  width: 22px;
+  height: 0;
+}
+.lp-swatch-inner {
+  border-top: 2px solid var(--brand);
+}
+.lp-swatch-outer {
+  border-top: 2px dashed var(--err);
+}
+
+/* Each band of the page: a heading, a caption, and the thing itself. */
+.lp-section {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 58px 32px;
+  border-top: 1px solid var(--border);
+}
+.lp-head h2 {
+  margin: 0 0 8px;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--fg-1);
+}
+.lp-head p {
+  margin: 0 0 30px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--fg-2);
+  max-width: 62ch;
+}
+
+/* Three columns, each a claim the product actually makes. The rule on the left
+   is the mark's own boundary, restated at text scale: solid where the work is
    mechanical, dashed where it is not. */
 .landing-points {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 26px;
 }
 .landing-point {
   padding-left: 16px;
   border-left: 2px solid var(--brand);
 }
 .landing-point.open {
-  border-left: 2px dashed var(--brand);
+  border-left: 2px dashed var(--err);
 }
 .landing-point h2 {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -2503,42 +2599,267 @@ input.submit-input {
   color: var(--fg-2);
   max-width: 46ch;
 }
-.landing .auth-card {
-  max-width: none;
-  text-align: left;
-  gap: 16px;
-  box-shadow: var(--shadow-pop);
+
+/* The four steps, each named by what it leaves behind. */
+.lp-pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
-.landing .auth-card h2 {
-  font-size: 20px;
+.lp-step {
+  position: relative;
+  padding: 18px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-raised);
 }
-.landing-note {
-  font-size: 12px;
-  color: var(--fg-3);
+/* The thread between the steps, drawn rather than implied: the reading order
+   made visible, pointing the way the eye already goes. */
+.lp-step + .lp-step::before {
+  content: '';
+  position: absolute;
+  left: -15px;
+  top: 34px;
+  width: 15px;
+  border-top: 1px dashed var(--border);
+}
+.lp-step-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  margin-bottom: 11px;
+}
+.lp-step h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.lp-step p {
+  margin: 0 0 12px;
+  font-size: 12.5px;
   line-height: 1.55;
+  color: var(--fg-2);
+}
+.lp-step-artifact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ok);
+}
+
+/* The verdict, pulled apart. Three bands, kept apart on purpose. */
+.lp-anatomy {
+  display: grid;
+  gap: 10px;
+}
+.lp-part {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 17px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-raised);
+}
+.lp-part-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+}
+/* Only the signed verdict takes the publish hue: it is the one band that says
+   somebody put their name to this. */
+.lp-part:last-child .lp-part-ico {
+  color: var(--pub);
+  border-color: var(--pub);
+}
+.lp-part h3 {
+  margin: 0 0 3px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.lp-part p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+.lp-part-by {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+/* Real published work, read from the open registry (028). Absent entirely when
+   there is none — a heading over nothing would be a claim about a community. */
+.lp-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.lp-card {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-raised);
+  text-decoration: none;
+  transition: border-color var(--dur-hover), transform var(--dur-hover);
+}
+.lp-card:hover {
+  border-color: var(--brand-line);
+  transform: translateY(-2px);
+}
+.lp-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fg-1);
+}
+.lp-card-by {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.lp-card-foot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--pub);
+}
+.lp-strip-more {
+  margin-top: 16px;
+}
+
+.lp-close {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 66px 32px 96px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.lp-close h2 {
+  margin: 0 0 10px;
+  font-size: 27px;
+  letter-spacing: -0.028em;
+  font-weight: 600;
+}
+.lp-close p {
+  margin: 0 auto;
+  max-width: 56ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--fg-2);
+}
+.lp-close .lp-cta {
+  justify-content: center;
+}
+.lp-close .landing-note {
+  margin: 0 auto;
 }
 
 @media (max-width: 900px) {
-  .landing {
+  .lp-hero {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'brand'
-      'auth'
-      'points';
-    row-gap: 28px;
-    padding: 40px 22px;
-    align-content: start;
-  }
-  .landing-brand,
-  .landing-points {
-    align-self: auto;
+    gap: 34px;
+    padding: 40px 22px 44px;
   }
   .landing h1 {
-    font-size: 30px;
+    font-size: 31px;
     max-width: none;
   }
-  .landing-lockup {
-    margin-bottom: 18px;
+  .lp-section,
+  .lp-close {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+  .landing-points,
+  .lp-pipeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp-step + .lp-step::before {
+    left: 24px;
+    top: -15px;
+    width: 0;
+    height: 15px;
+    border-top: none;
+    border-left: 1px dashed var(--border);
+  }
+  .lp-part {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .lp-part-by {
+    grid-column: 2;
+  }
+  .lp-bar {
+    padding: 10px 16px;
+  }
+  /* The registry link folds into the hero's own buttons on a phone; the bar
+     keeps the one action that must always be reachable. */
+  .lp-bar-registry {
+    display: none;
+  }
+}
+
+/* Motion, for readers who have not asked for less of it. Everything above is
+   already the resting state, so this adds movement and never removes content. */
+@media (prefers-reduced-motion: no-preference) {
+  .lp-ring-runner {
+    animation: lp-run 4.2s linear infinite;
+  }
+  .lp-hero,
+  .lp-section {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 0.55s ease, transform 0.55s ease;
+  }
+  .lp-hero.in,
+  .lp-section.in {
+    opacity: 1;
+    transform: none;
+  }
+  /* Inside a revealed band the parts arrive in reading order, one after the
+     next — the delay is the index the component set. */
+  .lp-step,
+  .lp-part,
+  .lp-card {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+    transition-delay: calc(var(--i, 0) * 90ms);
+  }
+  .in .lp-step,
+  .in .lp-part,
+  .in .lp-card {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lp-run {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(270deg);
   }
 }
 
