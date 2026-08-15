@@ -1,4 +1,4 @@
-// A browser regression test for a refused publish (031a).
+// A browser regression test for a refused publish (006f's gate, on screen).
 //
 // What it guards is that a refusal is actionable. The public flip used to answer
 // every unpublishable project with one sentence — "its reproduction did not pass
@@ -18,7 +18,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const puppeteer = (await import(require.resolve('puppeteer-core'))).default
 
-const PORT = 5209
+const PORT = 5251
 const BASE = `http://localhost:${PORT}`
 
 const asked = process.env.PUPPETEER_EXECUTABLE_PATH
