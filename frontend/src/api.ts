@@ -369,12 +369,34 @@ export const removePaper = (id: string, key: string) =>
 // startSession runs one paper the project holds. This is the call that spends:
 // it is refused 402 when the project's pot cannot cover the start reserve, and
 // 409 when that paper is already running.
-export const startSession = (id: string, paperKey: string) =>
+//
+// tier is the model the session runs on (031). Omitted means the caller did not
+// choose and the engine's default applies, which is what every call did before
+// the choice existed; a tier the server does not offer is refused 400.
+export const startSession = (id: string, paperKey: string, tier?: string) =>
   fetch(`/projects/${id}/sessions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ paper_key: paperKey }),
+    body: JSON.stringify(tier ? { paper_key: paperKey, tier } : { paper_key: paperKey }),
   }).then(json<{ job_id: string; project_id: string }>)
+
+// A model tier as the picker needs it: what it is, what it resolves to today,
+// and what that costs in micro-USD per million tokens. The rates are the
+// server's — the card is the platform's policy, and pricing a run in the client
+// would be a second answer to what it costs.
+export type ModelTier = {
+  tier: string
+  model?: string
+  input?: number
+  output?: number
+  named: boolean
+  error?: string
+}
+
+// listModels answers what each tier would run on and what it would cost. A
+// deployment with no backend still lists the tiers, without prices — the choice
+// is offerable without the number.
+export const listModels = () => fetch('/models').then(json<{ tiers: ModelTier[] }>)
 
 // createProject opens a named project holding its papers, with seeded
 // collaborators. It records and runs nothing, so it cannot be refused for money

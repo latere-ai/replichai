@@ -330,6 +330,18 @@ const en = {
     errPaperExists: 'This project already has that paper.',
     startSession: 'Start replication',
     startingSession: 'Starting…',
+    // The model tier a session runs on (031). The names say what the choice is
+    // *for* — capability against cost — rather than naming a vendor's model,
+    // which changes under the same tier on every release.
+    modelTier: 'Model',
+    modelTierHint: 'Which model the next session you start runs on. A cheaper tier spends the project’s credits more slowly.',
+    tierBest: 'Best',
+    tierBalanced: 'Balanced',
+    tierFast: 'Fast',
+    // The price of a tier, per million tokens in and out — the unit the rate
+    // card is kept in, so what is shown is what the run is billed from.
+    tierPrice: '{in} / {out} per Mtok',
+    errBadTier: 'That model tier isn’t offered. Pick one from the list.',
     startFailed: 'Couldn’t start this session. Try again in a moment.',
     errPaperGone: 'That paper is no longer on this project.',
     startNeedsCredits: 'This project needs {reserve} available to start a session. Allocate credits to it from your wallet.',

@@ -82,6 +82,10 @@ export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
   if (code === 'account_frozen') return t('errFrozen')
   if (status === 402 || code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
   if (status === 404) return t('errPaperGone')
+  // A tier the server does not offer (031). Reachable when the client's list is
+  // stale against a deployment that changed which tiers it serves, so it names
+  // the fix rather than reporting a generic failure.
+  if (code === 'bad_tier') return t('errBadTier')
   return t('startFailed')
 }
 

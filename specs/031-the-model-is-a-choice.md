@@ -41,7 +41,11 @@ It is `Preference` and not `Tier` for two reasons. `access.Tier` already means *
 
 **Prices come from the server or they do not appear.** A gated `GET /models` returns `Card.Covers` projected to the wire — one entry per tier with its resolved model, its per-Mtok input and output rates, and whether the card names it. The frontend renders those numbers and computes none of them: the card is the admin's policy, and a second implementation of it in TypeScript would be a second answer to what a run costs, which is the failure 011 built the snapshot to prevent. `Covers` calls `ResolveModel` once per tier, which is a backend round trip each, so the router memoises the whole answer for five minutes — a vendor's catalogue changes on release days, not per request, and an admin's price edit appearing within five minutes is acceptable where three network calls per page load is not.
 
-**The choice is a menu on the Start control, not a field on a form.** Start stays one tap at the default tier — the common case, and the flow 012 established — with a chevron beside it opening an in-app menu of the three tiers, each showing its model and its price, where choosing one starts the session immediately. It is a menu rather than a `<select>` because this app does not ship browser-native widgets, and it portals to the body like every other overlay. The tier is not remembered between sessions: a per-project default is a different decision with a different owner (below), and remembering a choice nobody was asked to make permanent is how a cheap tier silently becomes a project's policy.
+**The choice is one control on the papers card, and Start stays one tap.** The picker sits in the card's toolbar beside the add-paper form, showing each tier with its price, and applies to whichever paper you then press Start on — so the flow 012 established is unchanged and the common case costs no extra interaction.
+
+It is the existing `Select` from `ui.tsx` (a combobox over a portalled listbox, keyboard-driven, already the app's answer to not shipping browser-native widgets), not a new split-button-and-menu: one tested widget beats a second one that would have to re-solve placement, dismissal, and focus return. The price rides in the option's label rather than in a new `Option` field, so the shared component is reused and not reshaped for one caller. And it is one control rather than one per row, because three papers would otherwise mean three identical pickers for a choice nobody makes per paper.
+
+The tier is not remembered between sessions: a per-project default is a different decision with a different owner (below), and remembering a choice nobody was asked to make permanent is how a cheap tier silently becomes a project's policy.
 
 **Settlement is untouched.** The resolved model is already observed onto the job as `Status.Model` and priced from the snapshotted card at settlement (`job.go:126`). A fast-tier run is charged Haiku rates by the machinery that already exists, with no new pricing path — which is the reason this spec adds a tier and not a price.
 
@@ -54,7 +58,7 @@ It is `Preference` and not `Tier` for two reasons. `access.Tier` already means *
 5. `GET /models` returns one entry per tier with its model and per-Mtok rates from the platform card; a tier whose model the card does not name is still returned, priced at the dearest rates, and flagged as unnamed.
 6. A fast-tier run is settled at the card's Haiku rates and a best-tier run at its Opus rates, from the same snapshot, through the existing settlement path.
 7. The start reserve is identical for all three tiers — asserted explicitly, so nobody later reads this change as having tightened the gate.
-8. A browser test drives the control: the menu opens beside Start, lists three tiers with prices fetched from `GET /models`, and choosing one posts that tier. It fails without the change.
+8. A browser test drives the control: the picker sits on the papers card, lists three tiers with prices fetched from `GET /models`, and the tier chosen is the one `POST /projects/{id}/sessions` carries. It fails without the change.
 
 ## Not in scope
 
