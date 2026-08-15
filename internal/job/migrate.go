@@ -78,6 +78,17 @@ ALTER TABLE jobs ADD COLUMN rate_card JSONB NOT NULL DEFAULT '{}'::jsonb;
 -- record that no one made, and the record is the product.
 ALTER TABLE jobs ADD COLUMN tier TEXT NOT NULL DEFAULT '';
 `},
+	{7, `
+-- A session the owner threw away (032). Soft, like projects.deleted_at: the row
+-- is what credit_entries.job_id points at, and deleting a session must not
+-- delete the record of what it cost.
+ALTER TABLE jobs ADD COLUMN deleted_at TIMESTAMPTZ;
+-- Every read that hides deleted sessions is scoped by project or by principal
+-- and now carries "AND deleted_at IS NULL"; these are the indexes those scans
+-- read. Partial on the live rows, because the deleted ones are never selected.
+CREATE INDEX jobs_live_by_project ON jobs (project_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX jobs_live_by_principal ON jobs (principal, created_at DESC) WHERE deleted_at IS NULL;
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own
