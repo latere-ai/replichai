@@ -197,7 +197,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 025 | [The solvency an operator can act on](025-the-solvency-an-operator-can-act-on.md) | designed | 022c, 006k, 022d |
 | 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
 | 027 | [EU VAT, and the invoice that comes with it](027-eu-vat-and-the-invoice.md) | designed | 022b, 022c, 022e, 006k, 011 |
-| 028 | [The registry opens](028-the-registry-opens.md) | designed | 006f, 006r, 013, 017, 018, 021, 011 |
+| 028 | [The registry opens](028-the-registry-opens.md) | built | 006f, 006r, 013, 017, 018, 021, 011 |
 | 029 | [The landing is a place](029-the-landing-is-a-place.md) | designed | 028, 017, 013, 006q |
 | 030 | [The app on a phone](030-the-app-on-a-phone.md) | designed | 006e, 013, 017 |
 
