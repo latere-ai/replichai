@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { listPublic, type ProjectView } from './api'
 import { LatereMark, Lockup } from './brand'
@@ -22,10 +22,20 @@ import { Ico } from './icons'
 // does, and whether it does anything at all, is the stylesheet's business — so a
 // reader who asked for less motion gets the resting state from the start, with
 // no JavaScript branch to keep in step with the media query.
+//
+// It is a *callback* ref rather than an effect over a ref object, because a
+// section on this page can appear after the first render: the published strip
+// renders nothing until its fetch lands, so an effect that read `ref.current`
+// once on mount read null, never observed anything, and left the section at the
+// pre-reveal opacity forever — a band that was on the page and invisible. A
+// callback ref runs when the node attaches, whenever that is.
 function useReveal<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null)
-  useEffect(() => {
-    const el = ref.current
+  const io = useRef<IntersectionObserver | null>(null)
+  return useCallback((el: T | null) => {
+    io.current?.disconnect()
+    io.current = null
+    // React calls this with null when the node goes away; disconnecting above is
+    // the whole of that case.
     if (!el) return
     // A browser without the observer gets the finished state immediately, which
     // is the same thing reduced motion gets. The page is readable either way.
@@ -33,20 +43,19 @@ function useReveal<T extends HTMLElement>() {
       el.classList.add('in')
       return
     }
-    const io = new IntersectionObserver(
+    const obs = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           if (!e.isIntersecting) continue
           e.target.classList.add('in')
-          io.unobserve(e.target)
+          obs.unobserve(e.target)
         }
       },
       { rootMargin: '0px 0px -12% 0px' },
     )
-    io.observe(el)
-    return () => io.disconnect()
+    obs.observe(el)
+    io.current = obs
   }, [])
-  return ref
 }
 
 // Section is one band of the page: a heading, a caption, and whatever shows the
