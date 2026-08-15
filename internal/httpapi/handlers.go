@@ -124,6 +124,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("DELETE", "/projects/{id}/members/{email}", rt.removeMember)
 	rt.gatedHandle("GET", "/jobs", rt.listJobs)
 	rt.gatedHandle("POST", "/jobs/{id}/cancel", rt.cancelSession)
+	rt.gatedHandle("DELETE", "/jobs/{id}", rt.deleteSession)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 
 	// The frontend shell is public and serves any GET path not matched above,
@@ -2543,4 +2544,64 @@ func (rt *Router) cancelSession(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, _ := rt.jobs.Get(r.Context(), j.ID)
 	writeJSON(w, http.StatusOK, updated)
+}
+
+// deleteSession removes one session from the app (032).
+//
+// It exists because a session that began publishing and never finished holds a
+// repository with no manifest, and publishBlockers blocks on exactly that — so
+// until now a cancelled or failed run made its project unpublishable forever,
+// with no action anywhere in the product to clear it. This is that action.
+//
+// It is a soft delete and it closes the repository rather than destroying it:
+// 019's rule, unchanged here, is that a repository the agent authored is
+// evidence. What goes away is the project's claim on the run, not the run.
+func (rt *Router) deleteSession(w http.ResponseWriter, r *http.Request) {
+	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		// A session already deleted reads as missing, which is what makes a
+		// repeated delete a 404 rather than a second close of the repository.
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	proj, err := rt.projects.Get(r.Context(), j.ProjectID)
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	// The 019 rule, at session scale: a collaborator is refused, and whether a
+	// stranger's session exists is not a stranger's business. cancelSession
+	// answers 403 to both; a route added now does not inherit that leak.
+	if proj.Owner != principal(r) {
+		if !rt.mayViewProject(r, proj) {
+			writeError(w, http.StatusNotFound, "not_found")
+		} else {
+			writeError(w, http.StatusForbidden, "not_owner")
+		}
+		return
+	}
+	if proj.Trashed() {
+		writeError(w, http.StatusConflict, "project_trashed")
+		return
+	}
+	// A session in flight is not a corpse. This is what keeps the delete button
+	// on a blocker row from killing a publish that is merely slow: a session
+	// legitimately in the publishing phase raises the *identical* unfinished
+	// blocker as one that died there. Stop it first — POST /jobs/{id}/cancel.
+	if !j.Phase.Terminal() {
+		writeError(w, http.StatusConflict, "session_running")
+		return
+	}
+	// Close before deleting. The other order loses the repository name to a
+	// failed write and leaves an open repository nothing points at any more.
+	rt.closeRepos(r.Context(), []job.Job{j})
+	if err := rt.jobs.Delete(r.Context(), j.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "delete_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

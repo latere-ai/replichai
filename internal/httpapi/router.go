@@ -73,6 +73,10 @@ type JobStore interface {
 	// DeleteByProject removes a project's sessions — what a permanent project
 	// delete does before the project row goes (019).
 	DeleteByProject(ctx context.Context, projectID string) error
+	// Delete removes one session from the app, softly (032). It is what clears a
+	// run that began publishing and never finished, which is otherwise a
+	// permanent block on its project going public.
+	Delete(ctx context.Context, id string) error
 }
 
 // Canceler stops a running session. It is the worker (one process, one
