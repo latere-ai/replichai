@@ -2898,13 +2898,18 @@ input.submit-input {
 }
 .lp-card-by {
   display: inline-flex;
-  align-items: center;
+  /* Top-aligned, not centred: a signer's name wraps to two lines on a narrow
+     card, and a centred mark then floats between them instead of marking the
+     line it belongs to. */
+  align-items: flex-start;
   gap: 6px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--fg-2);
 }
 .lp-card-by svg {
   flex: none;
+  margin-top: 3px;
   color: var(--fg-3);
 }
 .lp-card-foot {
