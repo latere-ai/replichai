@@ -119,6 +119,16 @@ export function trashErrLabel(t: T, e: unknown): string {
   return t('trashFailed')
 }
 
+// deleteSessionErrLabel names why a session could not be removed (032). The one
+// refusal with a remedy is a session still in flight: it is not a dead run yet,
+// and the control that ends it is Stop, on the same row.
+export function deleteSessionErrLabel(t: T, e: unknown): string {
+  const { code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (code === 'session_running') return t('errSessionRunning')
+  return t('deleteSessionFailed')
+}
+
 // purgeErrLabel names why a project could not be removed for good. Credits in
 // the pot are the blocker with a remedy: take them back, then delete.
 export function purgeErrLabel(t: T, e: unknown): string {

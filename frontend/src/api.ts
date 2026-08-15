@@ -449,6 +449,15 @@ export const renameProject = (id: string, title: string) =>
 // job — failed with a "cancelled" cause.
 export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)
 
+// deleteSession removes one finished session from the app (032). Owner-only, and
+// refused 409 `session_running` while it is still in flight — stop it first.
+//
+// It is what clears a run that began publishing and never finished: such a run
+// holds a repository with no reproduction record, which blocks its whole project
+// from going public and can be resolved no other way. The repository itself is
+// made private, not destroyed.
+export const deleteSession = (id: string) => fetch(`/jobs/${id}`, { method: 'DELETE' }).then(ok)
+
 // listProjects returns every project the caller may work in — their own and the
 // ones they were invited to — newest-modified first, each with a session count
 // (018). The session cookie scopes the result server-side.

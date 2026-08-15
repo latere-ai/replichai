@@ -21,6 +21,7 @@ import {
   archiveUrl,
   artifactUrl,
   cancelSession,
+  deleteSession,
   createProject,
   getArtifact,
   getJob,
@@ -105,6 +106,7 @@ import {
   checkoutErrLabel,
   addPaperErrLabel,
   removePaperErrLabel,
+  deleteSessionErrLabel,
   trashErrLabel,
   purgeErrLabel,
 } from './errors'
@@ -3308,7 +3310,14 @@ function PapersCard({
   // and a per-project default is a decision with a different owner.
   const [tier, setTier] = useState('')
   const [tiers, setTiers] = useState<ModelTier[]>([])
+  // The session waiting on a delete confirmation (032). One dialog for the card
+  // rather than one per row, the way the projects list holds its trash dialog.
+  const [dropping, setDropping] = useState<Job | null>(null)
   const refresh = onRefresh
+  // Removing a session is the owner's alone — 019's rule, at session scale. The
+  // trashed clause matches the server, which refuses every write on a project in
+  // the trash.
+  const mayDelete = isMine(me, project.owner) && !project.deleted_at
 
   // The tiers and their prices come from the server. Read once per mount, and
   // only where somebody can actually start a run — a reader of a public project
@@ -3466,7 +3475,7 @@ function PapersCard({
                   ))}
               </div>
               {g.sessions.map((s) => (
-                <SessionRow key={s.id} i18n={i18n} job={s} nested onOpen={() => onOpenSession(s)} onChanged={refresh} />
+                <SessionRow key={s.id} i18n={i18n} job={s} nested canDelete={mayDelete} onOpen={() => onOpenSession(s)} onChanged={refresh} onDelete={setDropping} />
               ))}
             </div>
           ))}
@@ -3479,11 +3488,23 @@ function PapersCard({
               {/* A label, not a row: nothing here is a paper to start or open. */}
               <div className="group-head">{t('otherSessions')}</div>
               {grouped.other.map((s) => (
-                <SessionRow key={s.id} i18n={i18n} job={s} nested onOpen={() => onOpenSession(s)} onChanged={refresh} />
+                <SessionRow key={s.id} i18n={i18n} job={s} nested canDelete={mayDelete} onOpen={() => onOpenSession(s)} onChanged={refresh} onDelete={setDropping} />
               ))}
             </div>
           )}
         </div>
+      )}
+
+      {dropping && (
+        <DeleteSessionDialog
+          i18n={i18n}
+          job={dropping}
+          onClose={() => setDropping(null)}
+          onDone={() => {
+            setDropping(null)
+            refresh()
+          }}
+        />
       )}
     </div>
   )
@@ -3716,15 +3737,26 @@ function SessionRow({
   i18n,
   job,
   nested,
+  canDelete,
   onOpen,
   onChanged,
+  onDelete,
 }: {
   i18n: I18n
   job: Job
   // Indented under the paper it is a run of, rather than standing on its own.
   nested?: boolean
+  // Whether this reader may remove a finished session (032). The owner alone —
+  // the server refuses everybody else, and a button that always fails is worse
+  // than no button at all.
+  canDelete?: boolean
   onOpen: () => void
   onChanged: () => void
+  // Where a delete is confirmed. The dialog is the card's, not the row's: it is
+  // one dialog for the list rather than one per row, and — because Modal portals
+  // to <body> but a React portal still bubbles its clicks through the React
+  // tree — a dialog inside this row would open the session on every click in it.
+  onDelete?: (j: Job) => void
 }) {
   const { t } = i18n
   const [j, setJob] = useState<Job>(job)
@@ -3812,6 +3844,24 @@ function SessionRow({
           </a>
         </Tip>
       )}
+      {/* Removal, on a session that has finished (032). The condition is the
+          exact negation of Stop's, so a row offers one removal verb and never
+          two — and never the one the server is about to refuse. */}
+      {canDelete && onDelete && terminal(j.phase) && (
+        <Tip text={t('deleteSession')}>
+          <button
+            className="icon-btn danger"
+            aria-label={t('deleteSession')}
+            data-test="delete-session"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(j)
+            }}
+          >
+            <Ico name="trash" size={13} />
+          </button>
+        </Tip>
+      )}
       {/* One error slot. A stop that did not land is the newer news and the one
           the reader can act on, so it takes the slot while the session is still
           up; it is gone the moment the session settles, whoever settled it.
@@ -3838,6 +3888,53 @@ function SessionRow({
       </span>
       <Ico name="chevronRight" size={15} className="chev" />
     </div>
+  )
+}
+
+// The confirmation before a session leaves the project (032). It is the app's
+// own dialog, not window.confirm, for the reasons TrashDialog gives.
+//
+// What it has to say is what makes this different from the trash: the removal is
+// not reversible, because the way back is to run the paper again — a session is
+// one run, not a container of work. So the two things that survive it are worth
+// stating plainly: what it cost stays on the ledger, and the repository the
+// agent wrote stays on GitHub, closed rather than destroyed.
+function DeleteSessionDialog({ i18n, job, onClose, onDone }: { i18n: I18n; job: Job; onClose: () => void; onDone: () => void }) {
+  const { t } = i18n
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const go = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await deleteSession(job.id)
+      onDone()
+    } catch (e) {
+      setErr(deleteSessionErrLabel(t, e))
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal
+      title={t('deleteSessionTitle')}
+      icon="trash"
+      eyebrow={job.ref}
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>
+            {t('cancel')}
+          </button>
+          <button className="btn danger" onClick={go} disabled={busy} data-test="delete-session-confirm">
+            {busy ? t('deletingSession') : t('deleteSessionConfirm')}
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{t('deleteSessionBody')}</p>
+      {job.repo_name && <p className="muted small">{t('deleteSessionKeepsRepo')}</p>}
+      {err && <p className="err small">{err}</p>}
+    </Modal>
   )
 }
 
@@ -4124,7 +4221,21 @@ function PublishWizard({
           <Ico name="alert" size={13} /> {err}
         </p>
       )}
-      {blockers.length > 0 && <Blockers i18n={i18n} blockers={blockers} onOpen={onOpenBlocker} />}
+      {blockers.length > 0 && (
+        <Blockers
+          i18n={i18n}
+          blockers={blockers}
+          onOpen={onOpenBlocker}
+          // A deleted blocker leaves the list it was named in, and the refusal
+          // above it is stale the moment it does. The sign-off is not re-sent:
+          // the owner is still standing in step 3 with the affirmation checked,
+          // and re-attesting on their behalf is not this dialog's decision.
+          onDeleted={(b) => {
+            setBlockers((cur) => cur.filter((x) => x.session_id !== b.session_id))
+            setErr('')
+          }}
+        />
+      )}
     </Modal>
   )
 }
@@ -4135,7 +4246,20 @@ function PublishWizard({
 // The list is the point. The refusal used to be a single sentence about "the
 // reproduction", which named neither the session nor, when there were several,
 // how many more were behind it — so an owner fixed one and met the same wall.
-function Blockers({ i18n, blockers, onOpen }: { i18n: I18n; blockers: PublishBlocker[]; onOpen?: (b: PublishBlocker) => void }) {
+// An unfinished run is the one blocker with nothing to read and nothing to fix:
+// it has no manifest, so opening it lands the reader on an absence. The row
+// carries its own remedy instead (032).
+function Blockers({
+  i18n,
+  blockers,
+  onOpen,
+  onDeleted,
+}: {
+  i18n: I18n
+  blockers: PublishBlocker[]
+  onOpen?: (b: PublishBlocker) => void
+  onDeleted?: (b: PublishBlocker) => void
+}) {
   const { t } = i18n
   return (
     <div className="stack" style={{ gap: 8 }} data-test="publish-blockers">
@@ -4143,18 +4267,76 @@ function Blockers({ i18n, blockers, onOpen }: { i18n: I18n; blockers: PublishBlo
         <Ico name="alert" size={12} /> {t('publishBlockersTitle')}
       </span>
       {blockers.map((b) => (
-        <div key={b.session_id} className="blocker-row">
-          <div style={{ minWidth: 0 }}>
-            <div className="small mono ellipsis">{b.ref || b.repo || b.session_id}</div>
-            <div className="muted small">{publishBlockerText(t, b)}</div>
-          </div>
-          {onOpen && (
-            <button className="btn ghost small" data-test="open-blocker" onClick={() => onOpen(b)}>
-              {t('publishOpenSession')} <Ico name="chevronRight" size={12} w={2.2} />
-            </button>
-          )}
-        </div>
+        <BlockerRow key={b.session_id} i18n={i18n} b={b} onOpen={onOpen} onDeleted={onDeleted} />
       ))}
+    </div>
+  )
+}
+
+// One blocking session, and what the owner can do about this one.
+//
+// The delete confirms in the row rather than in a dialog: this list is already
+// inside the publish wizard's Modal, and a second Modal over it would share the
+// Escape key with the first — one press would close both and take the list of
+// blockers with it.
+function BlockerRow({
+  i18n,
+  b,
+  onOpen,
+  onDeleted,
+}: {
+  i18n: I18n
+  b: PublishBlocker
+  onOpen?: (b: PublishBlocker) => void
+  onDeleted?: (b: PublishBlocker) => void
+}) {
+  const { t } = i18n
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  // Only an unfinished run. A flagged tree is a decision about what the
+  // reproduction contains, and deleting the evidence is not how that is made.
+  const removable = !!onDeleted && b.reason === 'unfinished'
+  const go = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await deleteSession(b.session_id)
+      onDeleted?.(b)
+    } catch (e) {
+      setErr(deleteSessionErrLabel(t, e))
+      setBusy(false)
+      setAsking(false)
+    }
+  }
+  return (
+    <div className="blocker-row">
+      <div style={{ minWidth: 0 }}>
+        <div className="small mono ellipsis">{b.ref || b.repo || b.session_id}</div>
+        <div className="muted small">{publishBlockerText(t, b)}</div>
+        {removable && !err && <div className="muted small">{t('blockerDeleteHint')}</div>}
+        {err && <div className="err small">{err}</div>}
+      </div>
+      {removable &&
+        (asking ? (
+          <>
+            <button className="btn ghost small" onClick={() => setAsking(false)} disabled={busy}>
+              {t('cancel')}
+            </button>
+            <button className="btn danger small" data-test="delete-blocker-confirm" onClick={go} disabled={busy}>
+              {busy ? t('deletingSession') : t('deleteSessionConfirm')}
+            </button>
+          </>
+        ) : (
+          <button className="btn ghost small" data-test="delete-blocker" onClick={() => setAsking(true)}>
+            <Ico name="trash" size={12} /> {t('deleteSession')}
+          </button>
+        ))}
+      {onOpen && !asking && (
+        <button className="btn ghost small" data-test="open-blocker" onClick={() => onOpen(b)}>
+          {t('publishOpenSession')} <Ico name="chevronRight" size={12} w={2.2} />
+        </button>
+      )}
     </div>
   )
 }
