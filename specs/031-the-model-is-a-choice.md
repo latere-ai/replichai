@@ -25,7 +25,9 @@ Three things constrain how the door gets cut.
 
 **An unvalidated string is two failures, not one.** `modelTier` ends `default: return preference` (`anthropic.go:46`), so anything it does not recognise is passed through as a literal model id to `BetaManagedAgentsModelConfigParams{ID: spec.Model}` (`anthropic.go:237`). That is correct for the adapter — an operator naming a concrete model on the CLI means it — but it means a user-supplied string reaches the vendor unexamined. And a model the card does not name is priced by `Card.For` at the **dearest rates on the card** (`price.go:104`), deliberately, so a vendor's new id is never free compute. Together: a typo would request a model that may not exist and, if it did, would be charged Opus rates for it. The boundary that accepts the choice has to close the set.
 
-**A tier consumed at enqueue is a tier that evaporates.** `Resume` (`runner.go:204`) rebuilds the auditor from the job row alone, because a restart has nothing else. A preference that lived only on `job.Submission` and was read at `Execute` time would be correct until the first pod restart and silently revert to `best` after it — an Opus run the owner did not pick and does pay for, with no trace of the substitution anywhere.
+**A tier that stops at the handler reaches nothing.** `job.Submission` does not outlive `Enqueue` — it is an argument, not a record. Nobody who runs a session ever sees it: the worker claims a row, and `Execute` may be a different process on a different pod minutes later. So the tier has to be on the job, or the run has no way to learn it. The restart case makes this visible rather than causing it: a pod that dies between enqueue and the backend session existing leaves only the row for the next worker to re-claim.
+
+`Resume` is *not* the reason, and it is worth saying so because it looks like one. It rejoins a session that already exists, and a session's model was fixed when it was created — the auditor resolves a model in `Start` (`audit.go:235`) and nowhere else, so `finish` has nothing left to choose. The tier is passed on that path anyway, inert, so both paths stay one expression.
 
 **The reserve does not move.** `takeReserveTx` calls `s.reserve(ctx)` with no model input (`pgstore.go:181`), so the hold taken at the door is the same whichever tier is chosen. This changes burn rate, not admission.
 
@@ -35,7 +37,7 @@ Three things constrain how the door gets cut.
 
 It is `Preference` and not `Tier` for two reasons. `access.Tier` already means *what a principal may do*, and `internal/credit/memstore.go:283` reads `access.TierAdmin` — a second `Tier` in the same package would make a permission level and a model choice look alike at the call site. And *preference* is the word the engine has used since 004: `modelPref`, `WithModelPreference`, `ResolveModel(ctx, pref)`. On the wire the field is `tier`, because that is the word the person choosing it uses; projecting a domain enum to a plain string under whatever name the API surface wants is what the wire-DTO convention is for.
 
-**The tier is a column, not an argument.** Migration 6 adds `tier TEXT NOT NULL DEFAULT ''` to `jobs`, in `jobColumns`, scanned in `scanJob`, written by both `Enqueue` implementations, and read by `Execute` *and* `Resume` through the same accessor. Empty means the engine default, resolved in exactly one place (`Tier.OrDefault()`), and existing rows are left empty rather than backfilled to `best`: a backfill would put a choice on record that nobody made, and this product's whole argument is that the record says what actually happened.
+**The tier is a column, not an argument.** Migration 6 adds `tier TEXT NOT NULL DEFAULT ''` to `jobs`, in `jobColumns`, scanned in `scanJob`, written by both `Enqueue` implementations, and read through one `auditOptions(j, observe)` that cannot be called without a job — so the fresh and resumed paths cannot come to disagree, whether or not the resumed one acts on it. Empty means the engine default, resolved in exactly one place (`Tier.OrDefault()`), and existing rows are left empty rather than backfilled to `best`: a backfill would put a choice on record that nobody made, and this product's whole argument is that the record says what actually happened.
 
 **Validation is the HTTP boundary's job, and `modelTier` keeps its passthrough.** `startSession` refuses an unrecognised tier with `400 bad_tier` before `Enqueue`, so no job row and no credit hold can exist for a tier the engine cannot serve. The adapter's `default:` branch stays exactly as it is — it is how `replichai audit --model` names a concrete model, and the CLI operator is not the surface being defended.
 
@@ -52,7 +54,7 @@ The tier is not remembered between sessions: a per-project default is a differen
 ## Acceptance criteria
 
 1. A submission carrying `tier: "fast"` runs the auditor with that preference: the provider resolves a `haiku` model and the job's `Status.Model` records it.
-2. A job's tier survives the store round trip and is read by **`Resume`** as well as `Execute` — asserted against a job row alone, with no submission in hand, because that is what a restart has.
+2. A job's tier survives the store round trip and is read from the row alone, with no submission in hand — because a row is all the worker that runs the session ever has.
 3. `POST /projects/{id}/sessions` with an unrecognised tier is `400 bad_tier`, and afterwards the project has no new job and no new hold.
 4. A submission that omits the tier behaves exactly as today: `best`, Opus, same resolved model, same charge. Existing rows with an empty tier read the same way.
 5. `GET /models` returns one entry per tier with its model and per-Mtok rates from the platform card; a tier whose model the card does not name is still returned, priced at the dearest rates, and flagged as unnamed.
@@ -72,11 +74,15 @@ The tier is not remembered between sessions: a per-project default is a differen
 
 **A concrete model id as user input**, for the reason the first decision gives.
 
+**Recording the tier in `replication.json`.** The tier rides on `SessionView`, which redacts only `Principal` and `Cost` (028) — so a signed-out reader of a published session sees it. That is deliberate and adds no disclosure: `Status.Model` names the concrete model on the same wire already (`provider.go:221`), and the tier is a coarser view of a fact the public zone has always carried. Putting it in the manifest is a different question — a good one, since which model produced a claim is part of the claim's provenance — but the manifest is 002's schema and a field there is a change to the published record, not to this control.
+
 **A second locale.** `Lang` is `'en'` only (`i18n.ts:8`) and `i18n-coverage.test.ts` keeps it honest; new keys go in the English block.
 
 ## Outcome
 
 Built as designed, in six commits — the typed preference, the column, the runner, the boundary and its price route, the picker, and the pricing/gate assertions. Every acceptance criterion has a test; the two that could regress silently were checked against a deliberately reverted change and do fail without it (`TestServerRunsOnTheJobsChosenTier` on the runner wiring, `model-tier.test.mjs` on the request payload). The Postgres store contract was run against a real database, so migration 6 and the new column are exercised rather than assumed.
+
+One claim in the first draft was simply wrong and is corrected above: it said the tier had to be durable because `Resume` would otherwise revert a restarted session to `best`. `Resume` rejoins an existing backend session, and a session's model is fixed at creation — the auditor resolves one in `Start` and nowhere else — so the preference is inert on that path. The column is still required, for a plainer reason the draft missed: `job.Submission` does not outlive `Enqueue`, so without the column the tier would never reach a run at all, restart or no restart. The code was right; the stated mechanism was not.
 
 Three things landed differently from the first draft, each recorded above with its reason: the domain type is `credit.Preference` rather than `credit.Tier`, because `access.Tier` already means what a principal may do and this package reads it; the picker is the existing `ui.tsx` `Select` on the papers card rather than a new split-button menu on Start, because reusing the app's one tested combobox beat writing a second overlay; and `GET /models` memoises for five minutes, which the design did not originally say and the implementation needed once `Covers` turned out to cost one backend round trip per tier.
 

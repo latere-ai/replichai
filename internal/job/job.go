@@ -184,10 +184,10 @@ type Job struct {
 	// every run before the choice existed, and every caller that omits it — and
 	// Preference.OrDefault is where that resolves, once.
 	//
-	// It is durable rather than an argument to the run because Resume rebuilds
-	// the auditor from this row alone. A tier read only at Execute would hold
-	// until the first restart and then quietly revert to the default, on a
-	// session the owner is paying for.
+	// It is durable rather than an argument to the run because this row is the
+	// only thing the worker sees: the submission is gone once Enqueue returns,
+	// and the worker that eventually runs the session may be a different process
+	// on a different pod. A tier that stopped at the handler would reach nothing.
 	Tier credit.Preference `json:"tier,omitempty"`
 	// Rates is the price list this session was admitted under, snapshotted at
 	// enqueue (011). Settlement prices from it rather than from whatever the

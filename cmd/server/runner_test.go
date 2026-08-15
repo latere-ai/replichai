@@ -29,10 +29,9 @@ func TestServerRunsWaitWithoutADeadline(t *testing.T) {
 //
 // It asserts auditOptions rather than either call site on purpose: that is the
 // single wiring Execute and Resume both take, and it cannot be called without a
-// job, so the tier cannot be applied to the fresh path and forgotten on the
-// resumed one. Resume is the path that would regress silently — it rebuilds the
-// auditor from the job row alone, so a restart mid-run would otherwise move the
-// session onto the default model while the project goes on paying for it.
+// job. The job is the only place the tier can come from — the submission is gone
+// once Enqueue returns, and the worker that calls Execute may be a different
+// process, so a tier that did not reach the row could not reach the run at all.
 func TestServerRunsOnTheJobsChosenTier(t *testing.T) {
 	optionsFor := func(j *job.Job) *audit.Auditor {
 		return audit.New(memory.New(), method.Method{}, auditOptions(j, func(provider.RunStatus) {})...)

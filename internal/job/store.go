@@ -25,8 +25,8 @@ type Submission struct {
 	PaperKey string
 	// Tier is the model tier the submitter chose for this session (031). Empty
 	// means they did not choose and the engine's default applies. It is carried
-	// onto the job rather than consumed here, because a restart resumes from the
-	// row and would otherwise put the run on a model nobody picked.
+	// onto the job rather than read here, because the worker that runs the
+	// session sees only the row — this struct does not outlive Enqueue.
 	Tier credit.Preference
 }
 

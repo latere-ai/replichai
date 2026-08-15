@@ -62,6 +62,12 @@ func (rt *Router) listModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // tiers returns the priced tier list, recomputing it at most once per modelsTTL.
+//
+// Only a fully priced answer is kept. A policy store that blipped or a backend
+// that timed out would otherwise pin blank prices in front of every caller for
+// five minutes — turning one slow read into a five-minute outage of the number,
+// which is the opposite of what the cache is for. An unpriced answer is served
+// and forgotten, so the next caller tries again.
 func (rt *Router) tiers(ctx context.Context) []tierPrice {
 	rt.models.mu.Lock()
 	defer rt.models.mu.Unlock()
@@ -69,8 +75,21 @@ func (rt *Router) tiers(ctx context.Context) []tierPrice {
 		return rt.models.tiers
 	}
 	tiers := rt.priceTiers(ctx)
-	rt.models.tiers, rt.models.at, rt.models.loaded = tiers, time.Now(), true
+	if priced(tiers) {
+		rt.models.tiers, rt.models.at, rt.models.loaded = tiers, time.Now(), true
+	}
 	return tiers
+}
+
+// priced reports whether every tier came back with rates and no error — the
+// only answer worth holding on to.
+func priced(tiers []tierPrice) bool {
+	for _, p := range tiers {
+		if p.Err != "" || p.Model == "" {
+			return false
+		}
+	}
+	return len(tiers) > 0
 }
 
 // priceTiers resolves and prices every tier the engine offers. Held apart from
