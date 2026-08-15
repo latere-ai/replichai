@@ -63,6 +63,18 @@ const SETTINGS_TABS: SettingsTab[] = ['profile']
 
 const isSettingsTab = (s: string): s is SettingsTab => (SETTINGS_TABS as string[]).includes(s)
 
+// isPublicView reports whether a signed-out reader can be shown this view (028).
+//
+// Four of them: the registry, a project in it, a session under that project, and
+// a researcher's page. Each renders whatever the reader may actually read — a
+// private project reads as not-public, from the same screen its owner reaches by
+// signing in. Everything else is somebody's own workspace, and there is nothing
+// to render at /new or /wallet for a reader with no account, so the landing
+// stands in for those.
+export function isPublicView(v: View): boolean {
+  return v.name === 'public' || v.name === 'project' || v.name === 'session' || v.name === 'profile'
+}
+
 // pathOf is the address a view lives at. The sessions tab is the project's own
 // path rather than /p/{id}/sessions, so the link somebody shares of a project is
 // the same one an invitation mail already carries. A session's transcript

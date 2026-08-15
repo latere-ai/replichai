@@ -57,6 +57,10 @@ const en = {
     newProject: 'New project',
     foldSidebar: 'Collapse sidebar',
     unfoldSidebar: 'Expand sidebar',
+    // On a phone the rail is a drawer rather than a column, so the same head
+    // control closes it and a hamburger in the topbar brings it back (030).
+    openNav: 'Open navigation',
+    closeNav: 'Close navigation',
     settings: 'Settings',
     navSettings: 'Settings',
     settingsAccount: 'Account',
@@ -242,6 +246,14 @@ const en = {
       'Reproductions their initiators have signed off and opened to the platform. Each one carries its sessions and the full transcript that produced them, so you can check the reasoning rather than take the number.',
     noPublic: 'No public projects yet.',
     initiator: 'Published by',
+    // What a reader with no account gets at an address that is not public (028).
+    // The server answers one 404 for private, withdrawn, and never-existed, so
+    // the copy claims none of them — it says what is certain and offers the two
+    // things that help.
+    notPublicTitle: 'Not public',
+    notPublicBody: 'This address is not published. If you have been given access to it, sign in and you will land right back here.',
+    notPublicBodyIn: 'This address is not published, or it is not shared with your account.',
+    browseRegistry: 'Browse the registry',
     // submit / new project
     submit: 'Submit',
     submitting: 'Submitting…',

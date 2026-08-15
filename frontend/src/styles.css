@@ -246,7 +246,12 @@ textarea {
 /* ── Shell ── */
 .shell {
   display: flex;
+  /* 100vh on a phone is the tall viewport measured behind the browser's own
+     chrome, so the rail's foot and the screen's last row sit under the address
+     bar. dvh is the one that shrinks with it; vh stays as the fallback for a
+     browser that does not know the unit. */
   height: 100vh;
+  height: 100dvh;
 }
 .rail {
   width: 236px;
@@ -310,6 +315,44 @@ textarea {
 }
 .rail-fold-btn:hover .fold-chev {
   display: inline-flex;
+}
+/* The drawer's two controls (030). Both are in the markup at every width and
+   the phone block below is what shows them, so which one is on screen is
+   decided by the viewport alone and never by a piece of state that a resize
+   could leave pointing the wrong way. */
+.rail-open-btn,
+.rail-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--fg-2);
+  transition: background var(--dur-hover), color var(--dur-hover);
+}
+.rail-open-btn:hover,
+.rail-close-btn:hover {
+  background: var(--bg-raised);
+  color: var(--fg-1);
+}
+.rail-close-btn {
+  margin-left: auto;
+}
+/* Under the drawer and over the screen. It is inside `.shell`, which promotes
+   nothing, so a fixed box here covers the viewport rather than a column. */
+.rail-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(15, 17, 21, 0.42);
+  animation: om-fade-in 0.18s var(--ease-fluid) both;
 }
 
 /* ── Folded rail ──
@@ -489,6 +532,18 @@ textarea {
 }
 .user-btn:hover {
   background: var(--bg-raised);
+}
+/* The way in, where the account sits for everybody else (028). It fills the
+   rail's width unfolded and collapses to its mark when the rail does — the
+   label is the same `.nav-label` every destination uses, so one rule folds
+   them all. */
+.rail-signin {
+  width: 100%;
+  justify-content: center;
+}
+.rail-fold .rail-signin {
+  padding-left: 0;
+  padding-right: 0;
 }
 /* An avatar with no picture is not blank: the address seeds a hue, so the same
    person is the same colour in every list they appear in. */
@@ -3050,4 +3105,203 @@ input.submit-input {
 }
 .card-foot > .btn {
   margin-left: auto;
+}
+
+/* ─── The phone (030) ──────────────────────────────────────────────────────
+   One breakpoint for the whole app. Below it the rail leaves the flow and
+   becomes a drawer, the topbar sheds what is duplicated on another screen, and
+   every pane that is columns because it had the width becomes rows.
+
+   760px, not a fourth number: the project list already folds here, and 768 — an
+   iPad held upright — keeps the rail it has room for. */
+@media (max-width: 760px) {
+  /* ── The rail as a drawer ── */
+  /* Out of the flow entirely, so `.main` measures the whole viewport rather
+     than the whole viewport less 236px. */
+  .rail {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    width: 264px;
+    max-width: 84vw;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-pop);
+    transition: transform 0.22s var(--ease-fluid);
+  }
+  .rail-open {
+    transform: none;
+  }
+  .rail-scrim {
+    display: block;
+  }
+  /* A drawer has room for words, so the desktop fold is not what a phone gets.
+     Every `.rail-fold` rule is undone rather than avoided, because the fold is
+     a stored preference this width must not read and must not write. */
+  .rail-fold {
+    width: 264px;
+  }
+  .rail-fold .rail-logo,
+  .rail-fold .rail-name,
+  .rail-fold .rail-beta,
+  .rail-fold .rail-group .eyebrow,
+  .rail-fold .nav-label,
+  .rail-fold .nav-btn .count,
+  .rail-fold .user-meta {
+    display: revert;
+  }
+  .rail-fold .rail-head {
+    padding: 0 16px;
+    justify-content: flex-start;
+  }
+  .rail-fold .rail-nav {
+    padding: 14px 10px;
+    gap: 18px;
+  }
+  .rail-fold .nav-btn,
+  .rail-fold .user-btn {
+    justify-content: flex-start;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .rail-fold .rail-foot {
+    padding: 12px 12px;
+  }
+  /* The fold has no meaning here, so its control goes and the drawer's own
+     close takes the corner. */
+  .rail-fold-btn {
+    display: none;
+  }
+  .rail-close-btn,
+  .rail-open-btn {
+    display: inline-flex;
+  }
+
+  /* ── The topbar fits ── */
+  .topbar {
+    gap: 8px;
+    padding: 0 12px;
+  }
+  /* The controls stay `flex: none` — a shrunk box around children that cannot
+     shrink just moves the overflow inside it, which is what a first attempt
+     here did: the box measured 64px and its two controls still ran to 443. What
+     gives instead is what the bar is *carrying*: the appearance switcher leaves
+     (it is on /settings too) and the button drops its label, and the crumb —
+     which already ellipsizes — absorbs the rest. */
+  .topbar-actions .segmented {
+    display: none;
+  }
+  .btn-topbar .btn-label {
+    display: none;
+  }
+  .btn-topbar {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+  .crumb .leaf {
+    max-width: none;
+  }
+
+  /* ── Panes that were columns ── */
+  .screen {
+    padding: 18px 14px 40px;
+  }
+  .detail-grid,
+  .tx-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The transcript's three panes become three stacked sections. Each scrolled
+     itself when it was a column of a full-height grid; stacked, the screen is
+     what scrolls, so they hand their overflow back. */
+  .tx-body {
+    overflow-y: auto;
+  }
+  .tx-side,
+  .tx-stream,
+  .tx-inspector {
+    border-right: none;
+    border-left: none;
+    border-bottom: 1px solid var(--border);
+    overflow-y: visible;
+  }
+  .tx-stream {
+    padding: 14px 12px 40px;
+  }
+  .findings-head {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .findings-verdict {
+    width: auto;
+  }
+  /* ── The list of projects ──
+     A grid stops being a grid at 390: five tracks less the fixed 171px of them
+     leaves ~120px for a paper title, and the column headings collide with each
+     other above it. So it stops pretending. The row becomes two lines — what
+     the project is, then its phase and what you can do to it — and the heading
+     goes with the columns it was naming. Owner, date and visibility are context
+     a phone reads on the project's own screen. */
+  .project-list > .project-head {
+    display: none;
+  }
+  .project-list > .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .project-list > .row > .row-main {
+    flex: 1 0 100%;
+    min-width: 0;
+  }
+  .row-visibility,
+  .project-list > .row > .row-slot {
+    display: none;
+  }
+  /* The chevron closes the second line, so the actions sit between the badge
+     and it rather than trailing off the end. */
+  .project-list > .row > .chev {
+    margin-left: auto;
+  }
+
+  /* ── Rows that were one line ──
+     A flex row of a title plus badges plus a control fits at desktop width
+     because the title is the only part that shrinks. At 390 the title has
+     nothing left to give and everything after it is pushed off the edge. These
+     rows wrap instead, with the title claiming its own line, which is what
+     `.field-row` already does for the same reason in a 340px rail. */
+  .row,
+  .member-row {
+    flex-wrap: wrap;
+  }
+  .row > .row-title,
+  .member-row > .member-email {
+    flex: 1 0 100%;
+  }
+  /* The list of projects is a grid, not this flex row, and its columns are
+     already folded above. */
+  .project-list > .row {
+    flex-wrap: nowrap;
+  }
+  /* A value that is a number must never wrap — a clipped amount is a wrong
+     amount, which is why `.v` is `flex: none` — but a value that is an address
+     is a long unbreakable string, and on a public profile it ran 412px wide in
+     a 362px card. Numbers keep the rule; text gets to break. */
+  .usage-line .v:not(.tabular) {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  /* ── Tables of numbers ──
+     Read across, so they keep their columns and scroll inside their own box
+     rather than stacking into something that is no longer a table. */
+  .grid-table-wrap {
+    overflow-x: auto;
+  }
+  .grid-table {
+    min-width: 380px;
+  }
 }
