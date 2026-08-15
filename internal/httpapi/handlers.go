@@ -1057,7 +1057,17 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 		// The owner's name and handle are resolved from p, not from the redacted
 		// row — a public reader still reads who published this, by the name they
 		// chose to publish under. It is the opaque subject that is withheld.
+		//
+		// To a reader with no stake the name comes only with a public profile.
+		// rt.owner gates the handle on that already and the display name on
+		// nothing, which was right while every reader was a collaborator and is
+		// not right for the internet: a name somebody kept private stays private,
+		// and the signer of a published project is named by the sign-off block
+		// regardless.
 		v.OwnerName, v.OwnerHandle = rt.owner(ctx, p.Owner)
+		if !stake && v.OwnerHandle == "" {
+			v.OwnerName = ""
+		}
 		out = append(out, v)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ModifiedAt.After(out[j].ModifiedAt) })
@@ -2255,6 +2265,15 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_path")
 		return
 	}
+	// The path names a file inside one repository, and the reader builds a forge
+	// URL out of it. Anything that could climb out of that repository is refused
+	// here, at the edge where the string arrives (028): the route is open now, so
+	// this is a URL an anonymous caller composes and the forge read runs under
+	// the platform's own credential.
+	if !repoRelative(path) {
+		writeError(w, http.StatusBadRequest, "bad_path")
+		return
+	}
 	raw, err := rt.repro.Artifact(r.Context(), repoName(j.RepoName), path)
 	if err != nil {
 		writeReadError(w, err)
@@ -2267,6 +2286,26 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", artifactContentType(path))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
+}
+
+// repoRelative reports whether a path names a file inside a repository and
+// nothing else.
+//
+// It is deliberately strict rather than clever: no absolute path, no `.` or `..`
+// segment, no backslash, and no percent sign. The last one is what stops a
+// double-encoded `%252e%252e` — the query decoder unescapes once, so a surviving
+// `%2e%2e` would be handed on and decoded again by whoever reads it. A committed
+// artifact with a percent in its name is not worth the ambiguity.
+func repoRelative(p string) bool {
+	if p == "" || strings.HasPrefix(p, "/") || strings.ContainsAny(p, `\%`) {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // artifactContentType maps a committed file's extension to a safe content type:

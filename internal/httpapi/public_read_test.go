@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
+	"github.com/latere-ai/replichai/internal/provider"
 )
 
 // 028: a reproduction is published so somebody can check it, and until now
@@ -32,6 +37,36 @@ func closedTo(d Deps) http.Handler {
 	return NewRouter(closed).Handler()
 }
 
+// pricedDeps is testDeps with a rate card, so a session in these fixtures has a
+// cost that is a real number rather than an unpriced zero. A redaction test
+// against a zero-cost session proves nothing: the field would be absent either
+// way.
+func pricedDeps(gate Gate) Deps {
+	d := testDeps(gate)
+	d.Jobs = job.NewMemStore(job.WithRates(func(context.Context) (credit.Card, error) {
+		return credit.DefaultCard(), nil
+	}))
+	return d
+}
+
+// spend makes a finished session cost something, by recording usage against the
+// card it was admitted under. Cost is derived on read from the two, so this is
+// the whole of it.
+func spend(t *testing.T, s JobStore, id string) {
+	t.Helper()
+	model := credit.DefaultCard().Models[0].Model
+	err := s.(*job.MemStore).Observe(context.Background(), id, provider.RunStatus{
+		Model: model,
+		Usage: provider.Usage{InputTokens: 1_000_000, OutputTokens: 250_000},
+	})
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if got, _ := s.Get(context.Background(), id); got.Cost == 0 {
+		t.Fatal("the fixture session still costs nothing; the redaction assertions below would prove nothing")
+	}
+}
+
 // publicProject builds a published project with one finished session under it,
 // and returns both. The publish flip needs a public profile, exactly as 006r
 // requires of a real signer.
@@ -42,6 +77,7 @@ func publicProject(t *testing.T, d Deps, h http.Handler, owner string) (project.
 		t.Fatalf("create: %v", err)
 	}
 	sess := publishInto(t, d.Jobs, owner, p.ID, "r1")
+	spend(t, d.Jobs, sess.ID)
 	publishable(t, d, owner, "ada")
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
 		t.Fatalf("publish: status %d (%s)", w.Code, w.Body.String())
@@ -91,7 +127,7 @@ func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 // same reads of a private project answer 404, which hides it rather than
 // confirming it exists.
 func TestASignedOutReaderReadsAPublicProject(t *testing.T) {
-	d := testDeps(allowAll)
+	d := pricedDeps(allowAll)
 	d.Reproductions.(*fakeRepro).findings = validFindings(t)
 	pub, sess := publicProject(t, d, NewRouter(d).Handler(), "owner")
 	priv, _ := d.Projects.Create(context.Background(), "owner", "Not published")
@@ -133,10 +169,40 @@ func TestASignedOutReaderReadsAPublicProject(t *testing.T) {
 	}
 }
 
+// The artifact read takes a path from the query string and the reader builds a
+// forge URL out of it, under the platform's own credential. Open (028), that URL
+// is composed by anonymous callers, so the path may name a file in the
+// repository and nothing else.
+func TestAnArtifactPathCannotLeaveTheRepository(t *testing.T) {
+	d := pricedDeps(allowAll)
+	_, sess := publicProject(t, d, NewRouter(d).Handler(), "owner")
+	h := closedTo(d)
+
+	for _, path := range []string{
+		"../../../../user/repos",
+		"/etc/passwd",
+		"src/../../other-repo/secret",
+		"%2e%2e/%2e%2e/user",
+		"./README.md",
+		`..\..\windows`,
+	} {
+		w := do(t, h, "GET", "/jobs/"+sess.ID+"/artifact?path="+url.QueryEscape(path), "", "")
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("artifact path %q = %d (%s), want 400", path, w.Code, w.Body.String())
+		}
+	}
+	// A real committed path still reads, including one in a subdirectory.
+	for _, path := range []string{"README.md", "src/main.py"} {
+		if w := do(t, h, "GET", "/jobs/"+sess.ID+"/artifact?path="+url.QueryEscape(path), "", ""); w.Code != http.StatusOK {
+			t.Errorf("artifact path %q = %d, want 200", path, w.Code)
+		}
+	}
+}
+
 // AC2: the four reads that stay behind the gate stay behind it — the caller's
 // own job list, the live stream, the member roll, and the archive.
 func TestTheGatedReadsStayGated(t *testing.T) {
-	d := testDeps(allowAll)
+	d := pricedDeps(allowAll)
 	pub, sess := publicProject(t, d, NewRouter(d).Handler(), "owner")
 	h := closedTo(d)
 
@@ -162,11 +228,21 @@ func TestAnonymousIsNobody(t *testing.T) {
 	ctx := context.Background()
 
 	// The store refuses an ownerless project outright, which is the first reason
-	// `"" == ""` can never be ownership. The guard in mayViewProject is the
-	// second, and it is the one that holds if a row ever arrives from anywhere
-	// but Create — a migration, a restore, a hand-edited database.
+	// `"" == ""` can never be ownership.
 	if _, err := d.Projects.Create(ctx, "", "Owned by nobody"); err == nil {
 		t.Error("the store accepted a project with no owner")
+	}
+	// The guard in mayViewProject is the second, and the one that holds if such a
+	// row ever arrives from somewhere other than Create — a migration, a restore,
+	// a hand-edited database. The store cannot produce one, so the predicate is
+	// asked directly.
+	rt := NewRouter(d)
+	anon := httptest.NewRequest("GET", "/projects/x", nil)
+	if rt.mayViewProject(anon, project.Project{ID: "x", Owner: "", Visibility: project.VisibilityPrivate}) {
+		t.Error("an anonymous caller owns a project with an empty owner")
+	}
+	if rt.stakeIn(anon, project.Project{ID: "x", Owner: ""}) {
+		t.Error("an anonymous caller has a stake in a project with an empty owner")
 	}
 
 	// A membership seeded against an email, read by a caller with no sub and no
@@ -200,7 +276,7 @@ func TestAnonymousIsNobody(t *testing.T) {
 // assertions are on the bytes, because the point is what leaves the process —
 // a zeroed field that still serialises is still a field on the wire.
 func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
-	d := testDeps(allowAll)
+	d := pricedDeps(allowAll)
 	h := NewRouter(d).Handler()
 	pub, sess := publicProject(t, d, h, "owner-principal-sub")
 
@@ -212,6 +288,24 @@ func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
 			}
 		}
 	}
+	// A private profile's display name does not travel with a public project: the
+	// row names its owner only when that person has a page to name them on.
+	private := pricedDeps(allowAll)
+	quiet, _ := publicProject(t, private, NewRouter(private).Handler(), "quiet-owner")
+	if _, err := private.Profiles.Save(context.Background(), profile.Profile{
+		Principal: "quiet-owner", DisplayName: "Ada Lovelace", Contact: "ada@example.org", Handle: "ada", Public: false,
+	}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+	var zone []ProjectView
+	_ = json.Unmarshal(do(t, NewRouter(private).Handler(), "GET", "/public", "", "").Body.Bytes(), &zone)
+	if len(zone) != 1 || zone[0].ID != quiet.ID {
+		t.Fatalf("zone = %+v", zone)
+	}
+	if zone[0].OwnerName != "" || zone[0].OwnerHandle != "" {
+		t.Errorf("a private profile's name travels with the public project: %+v", zone[0])
+	}
+
 	// What was published is still published: the signer, by the name they chose.
 	for _, path := range []string{"/public", "/projects/" + pub.ID} {
 		body := do(t, h, "GET", path, "", "").Body.String()
