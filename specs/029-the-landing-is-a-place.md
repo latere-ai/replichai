@@ -1,6 +1,8 @@
 # 029 — The landing is a place
 
-**Status:** designed, not built.
+**Status:** built. Every acceptance criterion holds. The landing lives in its own `frontend/src/landing.tsx` — a page this long has no business inside `App.tsx`, which now imports it and renders it for a signed-out reader at any address 028 does not open. `frontend/test/landing.test.mjs` was rewritten against the sticky-header guarantee and drives it at 1440×900 and 390×844, at the top of the page *and* scrolled to the bottom, plus the three figures, the reduced-motion resting state, and the registry link; it was verified to fail against the old landing.
+
+Three things came out of the build. Figures 2 and 3 are HTML and CSS with drawn connectors rather than one inline SVG each: every part of them is a sentence, and a sentence in an SVG does not wrap, translate, or select. Figure 1 stays SVG, because there the geometry *is* the argument. And 017's deep-link criterion moved rather than survived: a public `/p/{id}` renders the app signed out now (028), so the landing's own `next` round trip is asserted from an address that still needs an account, and the public deep link is `public-shell.test.mjs`'s to guard.
 
 **Scope:** the signed-out landing stops being a door and becomes a page a researcher can read: a sticky header that carries the way in, the claim, three drawn figures that show what the product does rather than assert it, a strip of real reproductions pulled from the now-open registry, and a close. Frontend only — no route, no API, no schema. Supersedes 017's two-column fold.
 
