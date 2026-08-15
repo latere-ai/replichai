@@ -3290,21 +3290,27 @@ input.submit-input {
   .member-row > .member-email {
     flex: 1 0 100%;
   }
-  /* The list of projects is a grid, not this flex row, and its columns are
-     already folded above. */
-  .project-list > .row {
-    flex-wrap: nowrap;
-  }
   /* A value that is a number must never wrap — a clipped amount is a wrong
      amount, which is why `.v` is `flex: none` — but a value that is an address
      is a long unbreakable string, and on a public profile it ran 412px wide in
-     a 362px card. Numbers keep the rule; text gets to break. */
+     a 362px card. Numbers keep the rule; text gets to break.
+
+     `break-word`, not `anywhere`: `anywhere` lets the browser break a word to
+     make the *line box* narrower even when the word would have fitted, and the
+     statement's own rows are what caught that — a date and an amount on one
+     line came back as "8/3 /20 25" and "−$ 5. 00". `break-word` breaks only a
+     word that cannot fit by itself, which is the email and nothing else. */
   .usage-line .v:not(.tabular) {
     flex: 0 1 auto;
     min-width: 0;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     text-align: right;
+    /* The slot holds more than one thing on a statement row — a date and an
+       amount — and neither of them shrinks. Letting the slot itself wrap is
+       what puts the amount under the date instead of past the edge. */
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   /* ── Tables of numbers ──
@@ -3313,7 +3319,10 @@ input.submit-input {
   .grid-table-wrap {
     overflow-x: auto;
   }
+  /* Wide enough that scrolling to a column shows a readable one. Sized to the
+     container would put four columns in 362px and hand back the clipping the
+     scroll was meant to fix. */
   .grid-table {
-    min-width: 380px;
+    min-width: 620px;
   }
 }
