@@ -68,6 +68,11 @@ const en = {
     lpPartVerdict: 'The verdict',
     lpPartVerdictBody: 'Authored over both by the system, and signed by a named researcher who stands behind it.',
     lpPartVerdictBy: 'the system, signed',
+    // Who signed the reproduction, said as that. A bare name under a paper's
+    // title is read as the paper's byline, and the person here is the opposite
+    // of an author: they are the one who re-ran somebody else's work and put
+    // their name to what came back.
+    lpCardSigner: 'Reproduction signed by {name}',
     lpStripTitle: 'Published reproductions',
     lpStripCaption: 'Signed, opened, and readable without an account. Open one before you decide whether this is for you.',
     lpCloseTitle: 'Read one before you sign up.',

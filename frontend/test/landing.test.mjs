@@ -25,7 +25,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const puppeteer = (await import(require.resolve('puppeteer-core'))).default
 
-const PORT = 5233
+const PORT = 5239
 const BASE = `http://localhost:${PORT}`
 
 const asked = process.env.PUPPETEER_EXECUTABLE_PATH
@@ -340,6 +340,7 @@ try {
         cards: cards.length,
         painted: cards.filter(seen).length,
         titles: cards.map((c) => c.querySelector('.lp-card-title')?.textContent.trim()),
+        bylines: cards.map((c) => c.querySelector('.lp-card-by')?.textContent.trim()),
         links: cards.map((c) => c.getAttribute('href')),
       }
     })
@@ -347,6 +348,15 @@ try {
     if (strip.cards !== 2) fail(`the strip rendered ${strip.cards} cards for two published projects`)
     if (strip.painted !== strip.cards) fail(`${strip.cards - strip.painted} of ${strip.cards} strip cards never became visible`)
     if (!strip.titles.every(Boolean)) fail(`a strip card has no title: ${JSON.stringify(strip.titles)}`)
+    // The card's second line is a person's name under a paper's title, which is
+    // exactly the shape of an author byline — and the signer is the one person
+    // it is never about. It has to say what the name is for.
+    const signers = ['Ada Lovelace', 'Grace Hopper']
+    strip.bylines.forEach((by, i) => {
+      if (!by?.includes(signers[i])) fail(`strip card ${i} does not name its signer: ${by}`)
+      if (by.trim() === signers[i]) fail(`strip card ${i} names "${by}" and nothing else; a bare name reads as the paper's author`)
+      if (!/sign/i.test(by)) fail(`strip card ${i} says "${by}"; it has to say the name signed the reproduction`)
+    })
     if (!strip.links.every((h) => h?.startsWith('/p/'))) fail(`a strip card links nowhere useful: ${JSON.stringify(strip.links)}`)
     await page.close()
   }

@@ -296,7 +296,13 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
         {rows.map((p, i) => (
           <a key={p.id} className="lp-card" href={`/p/${p.id}`} style={{ '--i': i } as React.CSSProperties}>
             <span className="lp-card-title">{p.title}</span>
-            <span className="lp-card-by">{p.signed_off_name || p.owner_name || t('ownerUnknown')}</span>
+            {/* Named, and named as what: a bare name under a paper's title reads
+                as the paper's author, which is the one person this line is never
+                about. The signer is who put their name to the *reproduction*. */}
+            <span className="lp-card-by">
+              <Ico name="shieldCheck" size={11} />
+              {t('lpCardSigner', { name: p.signed_off_name || p.owner_name || t('ownerUnknown') })}
+            </span>
             <span className="lp-card-foot">
               <Ico name="globe" size={11} /> {t('sessionCount', { n: String(p.session_count) })}
             </span>
