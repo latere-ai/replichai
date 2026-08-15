@@ -281,6 +281,19 @@ const en = {
     errCreditsRemaining: 'This project still holds credits. Take them back first, then delete it.',
     purgeFailed: 'Couldn’t delete this project. Try again in a moment.',
     trashedBanner: 'This project is in the trash. Nothing can be changed or started here until you restore it.',
+
+    // Removing one session (032)
+    deleteSession: 'Delete session',
+    deleteSessionTitle: 'Delete this session?',
+    deleteSessionBody:
+      'The session and its record leave this project. What it cost stays on your ledger, and it cannot be brought back — you can always run the paper again.',
+    deleteSessionKeepsRepo:
+      'Its GitHub repository is closed, not destroyed. A reproduction the agent wrote is evidence; what this removes is replichai’s record of it.',
+    deleteSessionConfirm: 'Delete session',
+    deletingSession: 'Deleting…',
+    errSessionRunning: 'This session is still running. Stop it first.',
+    deleteSessionFailed: 'Couldn’t delete this session. Try again in a moment.',
+    blockerDeleteHint: 'Delete it to publish the rest of this project.',
     sessionCount: '{n} session(s)',
     private: 'Private',
     public: 'Public',
