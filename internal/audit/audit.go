@@ -200,6 +200,12 @@ func withSleep(f func(context.Context, time.Duration) error) Option {
 // letting the composition root assert how it wired the wait.
 func (a *Auditor) Unbounded() bool { return a.unbounded }
 
+// ModelPreference reports the tier this auditor will resolve a model from, for
+// the same reason Unbounded exists: the composition root decides it per session
+// (031) and has to be able to prove it wired the job's choice through, on the
+// resumed path as well as the fresh one.
+func (a *Auditor) ModelPreference() string { return a.modelPref }
+
 // New builds an Auditor.
 func New(p provider.Provider, m method.Method, opts ...Option) *Auditor {
 	a := &Auditor{
