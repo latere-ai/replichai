@@ -78,7 +78,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier`
 
 // scanJob reads one row in jobColumns order.
 func scanJob(row pgx.Row) (Job, error) {
@@ -89,7 +89,7 @@ func scanJob(row pgx.Row) (Job, error) {
 		ratesRaw   []byte
 	)
 	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
-		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw)
+		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw, &j.Tier)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -150,10 +150,10 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 			return err
 		}
 		row := tx.QueryRow(ctx, `
-			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10,$11)
+			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10,$11,$12)
 			RETURNING `+jobColumns,
-			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, PhaseSubmitted, status, now, phaseAt, rates)
+			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, PhaseSubmitted, status, now, phaseAt, rates, sub.Tier)
 		var err error
 		j, err = scanJob(row)
 		return err

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -106,6 +107,35 @@ func runStoreContract(t *testing.T, s Store) {
 	// An unknown principal lists nothing, without error.
 	if none, err := s.ListByPrincipal(ctx, "nobody"); err != nil || len(none) != 0 {
 		t.Errorf("unknown principal: %d jobs, err %v; want 0, nil", len(none), err)
+	}
+
+	// The chosen model tier is durable (031). Resume rebuilds the auditor from
+	// the row and nothing else, so a tier that did not survive the write would
+	// put a restarted session on a model its owner never picked — and pay for it.
+	chosen, err := s.Enqueue(ctx, Submission{
+		Principal: "sub", Ref: "tiered", Kind: KindAudit, Project: "proj", Tier: credit.PrefFast,
+	})
+	if err != nil {
+		t.Fatalf("Enqueue with a tier: %v", err)
+	}
+	if chosen.Tier != credit.PrefFast {
+		t.Errorf("Enqueue returned tier %q, want %q", chosen.Tier, credit.PrefFast)
+	}
+	if got, _ := s.Get(ctx, chosen.ID); got.Tier != credit.PrefFast {
+		t.Errorf("tier read back as %q, want %q — the choice did not survive the store", got.Tier, credit.PrefFast)
+	}
+
+	// Omitting the tier stores nothing, rather than writing a default. Unset is
+	// the state a session that predates the choice is in, and OrDefault is the
+	// single place it resolves.
+	unchosen, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "untiered", Kind: KindAudit, Project: "proj"})
+	if err != nil {
+		t.Fatalf("Enqueue without a tier: %v", err)
+	}
+	if got, _ := s.Get(ctx, unchosen.ID); got.Tier != "" {
+		t.Errorf("an unchosen tier was stored as %q; unset must stay unset", got.Tier)
+	} else if got.Tier.OrDefault() != credit.PrefBest {
+		t.Errorf("an unchosen session resolves to %q, want %q", got.Tier.OrDefault(), credit.PrefBest)
 	}
 }
 
