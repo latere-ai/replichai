@@ -82,6 +82,7 @@ import {
   type Profile,
   type Project,
   type ProjectView,
+  type PublishBlocker,
   type Credits,
   type Reproduction,
   type SignOff,
@@ -94,6 +95,9 @@ import {
   creditMoveErrLabel,
   generic,
   profileSaveErrText,
+  blockerTab,
+  publishBlockers,
+  publishBlockerText,
   publishErrText,
   refusal,
   sessionFailureText,
@@ -2109,6 +2113,17 @@ function ProjectScreen({
   // that makes it true.
   const isOwner = project != null && isMine(me, project.owner) && !project.deleted_at
   const [publishing, setPublishing] = useState(false)
+  // A publish refusal names the sessions in the way; this is the way to them.
+  // Each opens where its own blocker is legible: a flagged manifest on the
+  // verdict pane, which is where the redistribution review is shown, and a run
+  // that never finished on its transcript, which is where its status is.
+  const openBlocker = useCallback(
+    (b: PublishBlocker) => {
+      setPublishing(false)
+      onOpenSession(b.session_id, b.ref ?? '', project?.title ?? '', blockerTab(b))
+    },
+    [onOpenSession, project?.title],
+  )
   // What this project is, joined: every session under the paper it is a run of.
   // Nothing here derives one session for the project — a project holds papers,
   // and a verdict and a repository belong to the session that produced them.
@@ -2140,6 +2155,7 @@ function ProjectScreen({
             setPublishing(false)
             refresh()
           }}
+          onOpenBlocker={openBlocker}
         />
       )}
       <div className="detail-head">
@@ -2230,7 +2246,7 @@ function ProjectScreen({
               <Members i18n={i18n} projectID={id} />
             </div>
             {project.visibility === 'private' ? (
-              <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} />
+              <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} onOpenBlocker={openBlocker} />
             ) : (
               <PublishedCard i18n={i18n} project={project} signerHandle={signerHandle} onWithdrawn={refresh} />
             )}
@@ -2352,6 +2368,20 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
             <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review || '—'}</Pill>
           </span>
         </div>
+        {/* This row is the reason a project cannot go public, and the reader
+            following a refusal here arrives at a pill with one word in it. The
+            sentence says what the word means and that this is the thing in the
+            way — permanently, not as a flash on arrival, because it is still
+            true the next time they come. */}
+        {repro.review && repro.review !== 'clear' && (
+          <div className="banner warn inline" data-test="blocks-publishing">
+            <Ico name="alert" size={14} />
+            <span>
+              <strong>{t('blocksPublishing')}</strong> —{' '}
+              {t(repro.review === 'secret_in_transcript' ? 'blockerSecret' : 'blockerNotClear')}
+            </span>
+          </div>
+        )}
         {repro.method_digest && (
           <div className="usage-line">
             <Ico name="key" size={13} style={{ color: 'var(--fg-3)' }} />
@@ -3885,7 +3915,17 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
 // it opens the transcript and artifacts to everyone, and it puts the signer's
 // name behind the result (006n). Withdrawable since 006o, but not undoable:
 // copies taken while it was public stay taken.
-function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID: string; onPublished: () => void }) {
+function PublishPanel({
+  i18n,
+  projectID,
+  onPublished,
+  onOpenBlocker,
+}: {
+  i18n: I18n
+  projectID: string
+  onPublished: () => void
+  onOpenBlocker?: (b: PublishBlocker) => void
+}) {
   const { t } = i18n
   const [open, setOpen] = useState(false)
   return (
@@ -3909,6 +3949,7 @@ function PublishPanel({ i18n, projectID, onPublished }: { i18n: I18n; projectID:
             setOpen(false)
             onPublished()
           }}
+          onOpenBlocker={onOpenBlocker}
         />
       )}
     </div>
@@ -3924,11 +3965,15 @@ function PublishWizard({
   projectID,
   onClose,
   onPublished,
+  onOpenBlocker,
 }: {
   i18n: I18n
   projectID: string
   onClose: () => void
   onPublished: () => void
+  // Where a named blocker is opened. Absent on a screen with no session to go to
+  // — the refusal then still says what is wrong, it just cannot travel.
+  onOpenBlocker?: (b: PublishBlocker) => void
 }) {
   const { t } = i18n
   const [step, setStep] = useState(1)
@@ -3938,6 +3983,7 @@ function PublishWizard({
   const [flipRepo, setFlipRepo] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [blockers, setBlockers] = useState<PublishBlocker[]>([])
 
   useEffect(() => {
     getProfile()
@@ -3962,6 +4008,7 @@ function PublishWizard({
     if (!affirmed || busy) return
     setBusy(true)
     setErr('')
+    setBlockers([])
     const signOff: SignOff = {
       signed_off_name: p.display_name,
       signed_off_institution: p.institution,
@@ -3978,11 +4025,15 @@ function PublishWizard({
       await makeProjectPublic(projectID, signOff, flipRepo)
       onPublished()
     } catch (e) {
-      // A 409 is either an unclear tree or a profile that is not public, and
-      // the status alone cannot tell them apart — they need different remedies,
-      // so the body's code decides.
+      // A 409 is any of the reasons this project is not publishable, and the
+      // status alone cannot tell them apart — they need different remedies, so
+      // the body's code decides. When the refusal is about the sessions rather
+      // than the signer, it also names them, and the reader is offered the way
+      // there instead of the sign-off form they were already past.
+      const named = publishBlockers(e)
       setErr(publishErrText(t, e))
-      setStep(2)
+      setBlockers(named)
+      if (!named.length) setStep(2)
     } finally {
       setBusy(false)
     }
@@ -4073,7 +4124,38 @@ function PublishWizard({
           <Ico name="alert" size={13} /> {err}
         </p>
       )}
+      {blockers.length > 0 && <Blockers i18n={i18n} blockers={blockers} onOpen={onOpenBlocker} />}
     </Modal>
+  )
+}
+
+// Blockers lists the sessions standing between a project and the public flip:
+// one row each, saying what is wrong with that one and opening it.
+//
+// The list is the point. The refusal used to be a single sentence about "the
+// reproduction", which named neither the session nor, when there were several,
+// how many more were behind it — so an owner fixed one and met the same wall.
+function Blockers({ i18n, blockers, onOpen }: { i18n: I18n; blockers: PublishBlocker[]; onOpen?: (b: PublishBlocker) => void }) {
+  const { t } = i18n
+  return (
+    <div className="stack" style={{ gap: 8 }} data-test="publish-blockers">
+      <span className="eyebrow eyebrow-ico">
+        <Ico name="alert" size={12} /> {t('publishBlockersTitle')}
+      </span>
+      {blockers.map((b) => (
+        <div key={b.session_id} className="blocker-row">
+          <div style={{ minWidth: 0 }}>
+            <div className="small mono ellipsis">{b.ref || b.repo || b.session_id}</div>
+            <div className="muted small">{publishBlockerText(t, b)}</div>
+          </div>
+          {onOpen && (
+            <button className="btn ghost small" data-test="open-blocker" onClick={() => onOpen(b)}>
+              {t('publishOpenSession')} <Ico name="chevronRight" size={12} w={2.2} />
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
