@@ -92,115 +92,19 @@ function Section({
 // already been told what the tab means.
 function LoopFigure({ i18n }: { i18n: I18n }) {
   const { t } = i18n
-  const stage = useRef<HTMLDivElement | null>(null)
-  const tiltFrame = useRef<number | null>(null)
-
-  useEffect(
-    () => () => {
-      if (tiltFrame.current !== null) cancelAnimationFrame(tiltFrame.current)
-    },
-    [],
-  )
-
-  const tilt = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    const el = stage.current
-    if (!el) return
-    const box = el.getBoundingClientRect()
-    const x = Math.max(-1, Math.min(1, (event.clientX - box.left) / box.width * 2 - 1))
-    const y = Math.max(-1, Math.min(1, (event.clientY - box.top) / box.height * 2 - 1))
-    if (tiltFrame.current !== null) cancelAnimationFrame(tiltFrame.current)
-    tiltFrame.current = requestAnimationFrame(() => {
-      el.style.setProperty('--loop-rx', `${(-y * 7).toFixed(2)}deg`)
-      el.style.setProperty('--loop-ry', `${(x * 7).toFixed(2)}deg`)
-      tiltFrame.current = null
-    })
-  }
-
-  const settle = () => {
-    const el = stage.current
-    if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    if (tiltFrame.current !== null) cancelAnimationFrame(tiltFrame.current)
-    tiltFrame.current = requestAnimationFrame(() => {
-      el.style.setProperty('--loop-rx', '0deg')
-      el.style.setProperty('--loop-ry', '0deg')
-      tiltFrame.current = null
-    })
-  }
-
   return (
     <figure className="lp-loop" aria-hidden="true">
-      <div ref={stage} className="lp-loop-stage" onPointerMove={tilt} onPointerLeave={settle}>
-        <span className="lp-loop-shadow" />
-        <span className="lp-loop-aura" />
-
-        {/* Six real pieces, not one dashed circle. Their gaps are structural:
-            precession can move the study, but the machine never closes it. */}
-        <svg viewBox="0 0 360 300" className="lp-loop-svg lp-outer-plane" focusable="false">
-          <defs>
-            <linearGradient id="lp-outer-metal" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="var(--loop-outer-dim)" />
-              <stop offset="0.48" stopColor="var(--loop-outer)" />
-              <stop offset="1" stopColor="var(--loop-outer-hot)" />
-            </linearGradient>
-            <filter id="lp-outer-glow" x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="2.3" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          <g className="lp-orbit-outer" filter="url(#lp-outer-glow)">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <circle
-                key={i}
-                className="lp-ring-outer"
-                cx="180"
-                cy="150"
-                r="112"
-                pathLength="360"
-                strokeDasharray="39 321"
-                strokeDashoffset={-i * 60}
-              />
-            ))}
-          </g>
-        </svg>
-
-        <span className="lp-loop-core">
-          <span className="lp-core-ring" />
-          <span className="lp-core-point" />
-        </span>
-
-        {/* The inner track is a closed glass rail. The wake and runner move on
-            that rail, while three nodes make its steady rotation perceptible. */}
-        <svg viewBox="0 0 360 300" className="lp-loop-svg lp-inner-plane" focusable="false">
-          <defs>
-            <linearGradient id="lp-inner-glass" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="var(--loop-inner-dim)" />
-              <stop offset="0.52" stopColor="var(--loop-inner)" />
-              <stop offset="1" stopColor="var(--loop-inner-hot)" />
-            </linearGradient>
-            <filter id="lp-inner-glow" x="-45%" y="-45%" width="190%" height="190%">
-              <feGaussianBlur stdDeviation="3.2" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          <g className="lp-orbit-inner">
-            <circle className="lp-ring-depth" cx="180" cy="150" r="67" />
-            <circle className="lp-ring-inner" cx="180" cy="150" r="67" />
-            <circle className="lp-ring-highlight" cx="180" cy="150" r="67" pathLength="360" strokeDasharray="94 266" />
-            <circle className="lp-ring-wake" cx="180" cy="150" r="67" pathLength="360" strokeDasharray="64 296" />
-            <circle className="lp-ring-runner" cx="180" cy="150" r="67" pathLength="360" strokeDasharray="13 347" />
-            <circle className="lp-orbit-node lp-node-a" cx="180" cy="83" r="4.5" />
-            <circle className="lp-orbit-node lp-node-b" cx="238" cy="183.5" r="3" />
-            <circle className="lp-orbit-node lp-node-c" cx="122" cy="183.5" r="2.5" />
-          </g>
-        </svg>
-      </div>
+      <svg viewBox="0 0 240 240" className="lp-loop-svg" role="img">
+        {/* The outer loop: open, and it stays open. The dash pattern is the
+            mark's own, scaled — six dashes, so it never reads as a spinner. */}
+        <circle className="lp-ring-outer" cx="120" cy="120" r="92" strokeDasharray="60 36.87" />
+        {/* The inner loop: closed, because it is the half that re-runs. */}
+        <circle className="lp-ring-inner" cx="120" cy="120" r="50" />
+        {/* The runner: one arc travelling the closed loop. It is what "re-runs"
+            looks like, and it is the only thing on this page that moves on its
+            own. */}
+        <circle className="lp-ring-runner" cx="120" cy="120" r="50" strokeDasharray="40 274" />
+      </svg>
       <figcaption className="lp-loop-legend">
         <span className="lp-legend-row">
           <span className="lp-swatch lp-swatch-inner" /> {t('landingInnerTitle')}
