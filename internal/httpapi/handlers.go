@@ -103,6 +103,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/papers", rt.addProjectPaper)
 	rt.gatedHandle("DELETE", "/projects/{id}/papers", rt.removeProjectPaper)
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
+	rt.gatedHandle("GET", "/models", rt.listModels)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
 	// The literal segment wins over {id} in Go's mux, so the trash screen is
@@ -293,9 +294,23 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		PaperKey string `json:"paper_key"`
+		// The model tier to run on (031). A plain string on the wire, as every
+		// wire DTO here projects a domain enum; omitted means the caller did not
+		// choose and the engine's default applies.
+		Tier string `json:"tier"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	// The set is closed here, at the only boundary a person's choice crosses.
+	// The provider adapter passes a preference it does not recognise straight
+	// through as a literal model id, and a model the card cannot name is priced
+	// at the dearest rates it holds — so an unchecked string would be both a
+	// request for a model that may not exist and a bill at the top of the card.
+	tier := credit.Preference(strings.TrimSpace(body.Tier))
+	if tier != "" && !tier.Valid() {
+		writeError(w, http.StatusBadRequest, "bad_tier")
 		return
 	}
 	key := strings.TrimSpace(body.PaperKey)
@@ -323,6 +338,7 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{
 		Principal: principal(r), Ref: held.Ref, Kind: job.KindAudit, Project: proj.ID, PaperKey: held.Key,
+		Tier: tier,
 	})
 	if err != nil {
 		rt.writeEnqueueError(w, err)

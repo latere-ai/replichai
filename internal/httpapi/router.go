@@ -264,6 +264,10 @@ type Deps struct {
 	// Platform supplies the purchase spread and floor. Nil leaves the checkout
 	// route and the wallet quote at zero, which an offline run wants.
 	Platform TopupPolicy
+	// Models resolves a tier to the model a run would get, so the tier list can
+	// be priced (031). Satisfied by provider.Provider. Nil lists the tiers with
+	// no prices, which is what an offline run with no backend can say.
+	Models credit.ModelResolver
 	// BaseURL is where the app lives, for the checkout return URLs (022b).
 	BaseURL string
 	// Notifier reaches somebody who is not looking at the app (006p). Nil sends
@@ -303,6 +307,10 @@ type Router struct {
 	baseURL     string
 	sseInterval time.Duration
 	spa         http.Handler
+	// modelResolver turns a tier into the model a run would get, so the choice
+	// on the Start control can be priced (031). Nil lists the tiers unpriced.
+	modelResolver credit.ModelResolver
+	models        modelCache
 	// bg tracks work scheduled to outlive the request that started it — title
 	// enrichment today. Nothing in the serving path waits on it; tests do.
 	bg sync.WaitGroup
@@ -322,7 +330,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }
