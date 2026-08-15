@@ -205,6 +205,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 029 | [The landing is a place](029-the-landing-is-a-place.md) | built | 028, 017, 013, 006q |
 | 030 | [The app on a phone](030-the-app-on-a-phone.md) | built | 006e, 013, 017 |
 | 031 | [The model is a choice](031-the-model-is-a-choice.md) | built | 011, 006b, 012, 006e |
+| 032 | [A session can be thrown away](032-a-session-can-be-thrown-away.md) | ready | 006b, 006f, 019, 021d |
 
 ## The three tracks
 
