@@ -419,6 +419,41 @@ func TestCloseRunToleratesAnAlreadyClosedRun(t *testing.T) {
 	}
 }
 
+// A session already archived by an earlier close (a cancel, say) rejects the
+// interrupt with 400, not 404/409. That is the requested end state, so it must
+// not be reported as a failed close and turn a finished run into a failed one.
+func TestCloseRunToleratesAnAlreadyArchivedSession(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/sessions/sesn_1/events":
+			http.Error(w, `{"type":"error","error":{"type":"invalid_request_error","message":"Cannot send events to archived session: sesn_1"}}`, http.StatusBadRequest)
+		default:
+			writeJSON(t, w, map[string]any{"id": "sesn_1"})
+		}
+	})
+	if err := p.CloseRun(context.Background(), provider.RunHandle{ID: "sesn_1"}); err != nil {
+		t.Errorf("CloseRun on an archived session = %v, want nil", err)
+	}
+}
+
+// Tolerating the archived case must not widen into tolerating every 400: a
+// malformed interrupt payload is also a 400, and swallowing it would leave live
+// sessions running.
+func TestCloseRunReportsOtherBadRequests(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/sessions/sesn_1/events":
+			http.Error(w, `{"type":"error","error":{"type":"invalid_request_error","message":"events.0.type: unknown event type"}}`, http.StatusBadRequest)
+		default:
+			writeJSON(t, w, map[string]any{"id": "sesn_1"})
+		}
+	})
+	err := p.CloseRun(context.Background(), provider.RunHandle{ID: "sesn_1"})
+	if err == nil || !strings.Contains(err.Error(), "interrupt") {
+		t.Fatalf("CloseRun error = %v, want the interrupt failure reported", err)
+	}
+}
+
 // Closing a live managed-agent session must interrupt its work before archiving
 // it. Archival alone hides the session but leaves the agent running.
 func TestCloseRunInterruptsBeforeArchiving(t *testing.T) {
