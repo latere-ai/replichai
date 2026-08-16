@@ -108,6 +108,11 @@ function HeroSlab({ i18n, href }: { i18n: I18n; href: string }) {
   const { t } = i18n
   const stage = useRef<HTMLDivElement | null>(null)
   const mount = useRef<HTMLDivElement | null>(null)
+  // The hero is a band like any other and starts at the pre-reveal opacity, so
+  // it needs the observer that ends that. Without it the whole first screen —
+  // slab, scene, claim, and both ways in — stays at opacity 0 for every reader
+  // who has not asked for less motion, which is nearly all of them.
+  const reveal = useReveal<HTMLElement>()
 
   useEffect(() => {
     const el = mount.current
@@ -128,7 +133,7 @@ function HeroSlab({ i18n, href }: { i18n: I18n; href: string }) {
   }, [])
 
   return (
-    <section className="lp-hero">
+    <section className="lp-hero" ref={reveal}>
       <div className="lp-slab" ref={stage}>
         <div className="lp-scene" ref={mount} aria-hidden="true" />
         <div className="lp-slab-veil" aria-hidden="true" />
