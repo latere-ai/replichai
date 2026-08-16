@@ -82,6 +82,8 @@ const en = {
     // eyebrows name what a band is *about* — a reader scanning the page reads
     // only those, so each one is a noun, not a verb.
     lpEyebrowAudited: 'Reproducibility, audited',
+    lpStepN: 'Step {n}',
+    lpStripEyebrow: 'The registry',
     lpHeroAside: 'The inner loop closes. The outer loop never will.',
     lpLoopsEyebrow: 'The boundary',
     lpPipelineEyebrow: 'A session, step by step',
