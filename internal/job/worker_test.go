@@ -276,6 +276,32 @@ func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	}
 }
 
+// Resolving is quiet: the paper fetch and the repository creation report no
+// status, so a slow one lets its lease go cold while it is working. A sweep runs
+// beside a live pool and cannot tell that from a dead driver, so it must leave
+// what it cannot positively rejoin alone — the startup pass, where nothing is
+// mid-anything, is the only place a session is judged unrecoverable.
+func TestASweepDoesNotFailASessionItCannotRejoin(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-a") // -> resolving on the other replica, no run id yet
+
+	// Lease expired: the other pod has been resolving for longer than the ttl.
+	w := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-b"), withLeaseTTL(0))
+	resumed, failed, err := w.reconcile(ctx, false)
+	if err != nil || resumed != 0 || failed != 0 {
+		t.Fatalf("sweep = %d/%d/%v, want 0/0/nil", resumed, failed, err)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseResolving {
+		t.Errorf("phase = %s, want resolving — a sweep failed a session that was working", got.Phase)
+	}
+	// It did not take the lease either: a row it will not drive is not its to hold.
+	if won, _ := s.Adopt(ctx, j.ID, "pod-a", time.Minute); !won {
+		t.Error("the sweep took the lease on a row it left alone")
+	}
+}
+
 // The claim leases too, so a session another pod took seconds ago is not read as
 // stranded. Nothing has been observed onto it yet — no run id — which is exactly
 // the shape reconciliation fails as unrecoverable, and failing it would kill a
@@ -323,7 +349,7 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
-	_, _, _ = s.Claim(ctx, "test-worker")                                                                  // -> resolving
+	_, _, _ = s.Claim(ctx, "test-worker")                                                   // -> resolving
 	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" }) // running, repo created pre-crash
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})                     // id observed before the "crash"
 
