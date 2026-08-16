@@ -1279,7 +1279,13 @@ h1.screen-title {
   font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
+  /* `break-word`, not `anywhere`: `anywhere` lets a word break to make the line
+     box narrower even where the word would have fitted, and it takes the
+     element's min-content width down with it. Beside a button that cannot
+     shrink, that let this title collapse to an 80px column and set a paper's
+     name one syllable to the line, 485px tall. A word only breaks here when it
+     cannot fit on a line of its own. */
+  overflow-wrap: break-word;
 }
 .detail-meta {
   display: flex;
@@ -1322,6 +1328,12 @@ h1.screen-title {
 .member-row {
   display: flex;
   align-items: center;
+  /* A crowded row wraps rather than squeezing: a pending, frozen account
+     carries three pills and a third control, and with the columns below fixed
+     the only thing left to give was the address — which is the one part of the
+     row that identifies who it is about. It went to zero width and the last
+     control still ran past the card's edge. */
+  flex-wrap: wrap;
   gap: var(--gap-row);
   padding: 11px 14px;
   border-top: 1px solid var(--border);
@@ -1332,10 +1344,33 @@ h1.screen-title {
 }
 .member-email {
   flex: 1;
+  min-width: 16ch;
   font: 400 12.5px/1 var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* A list of people reads down its columns: what tier, how much, then the two
+   controls. Sized to their own content, a USER pill and an ADMIN one differ by
+   22px and every row below moved with them. Widths here are the column, and
+   `justify-content` keeps a shorter label centred in it rather than leaving the
+   difference at one end. */
+.member-row > .pill {
+  min-width: 78px;
+  justify-content: center;
+}
+.member-wallet {
+  min-width: 62px;
+  text-align: right;
+}
+/* Grouped, and pushed to the far side. On a row that fits, `auto` takes the
+   slack the email has already claimed and this does nothing; on one that wraps,
+   it is what puts every row's controls under the same right edge. */
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 /* What is left to spend, beside the button that spends it (006l). */
 .quota-pill {
@@ -4610,6 +4645,35 @@ input.submit-input {
     margin-left: auto;
   }
 
+  /* ── The project's own head ──
+     The title shared a flex row with the publish button, which does not shrink,
+     so the title took what was left: an 80px column on a 390px phone, and a
+     header 582px tall on an 844px screen — the tabs, which are how you get
+     anywhere else on the project, started below the fold. The button takes its
+     own line here, which gives the title the width, and the title is capped so
+     a long paper name cannot push the tabs off the screen again. */
+  .detail-head {
+    padding: 14px 14px 0;
+  }
+  .detail-title-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .detail-title-row > :first-child {
+    flex: 1 0 100%;
+  }
+  .detail-title {
+    font-size: 17px;
+    /* Three lines of a paper's name, then an ellipsis. The whole title is one
+       tap away — the pencil opens it in a field — and the phone's own crumb
+       carries it too, so what is spent here is recognition, not access. */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+
   /* ── Rows that were one line ──
      A flex row of a title plus badges plus a control fits at desktop width
      because the title is the only part that shrinks. At 390 the title has
@@ -4620,9 +4684,35 @@ input.submit-input {
   .member-row {
     flex-wrap: wrap;
   }
+  /* The desk's 18px between columns is what a phone does not have: a tier, an
+     amount and two controls come to 340px of the 332 a card leaves. Ten is
+     enough to read them apart and buys the line back. */
+  .member-row {
+    gap: 10px;
+  }
   .row > .row-title,
   .member-row > .member-email {
     flex: 1 0 100%;
+  }
+  /* An address is the identity in this list and it is already the line's whole
+     width; the initials beside it are the same letters again, in a circle, and
+     on a phone they cost a line of their own to say so. */
+  .member-row > .user-avatar {
+    display: none;
+  }
+  /* Two controls and their icons do not fit beside a tier and an amount at
+     390px. The group wraps as one and stays flush right, so the rows still read
+     as a column rather than as four ragged lines. */
+  .row-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  /* The icons go, not the words: a phone has 334px for a tier, an amount and
+     two controls, and the four glyphs are exactly what does not fit. The topbar
+     makes the same trade the other way round — there the label goes, because
+     the icon is what the control is known by. */
+  .member-row .row-actions .btn svg {
+    display: none;
   }
   /* A value that is a number must never wrap — a clipped amount is a wrong
      amount, which is why `.v` is `flex: none` — but a value that is an address

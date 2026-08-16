@@ -58,6 +58,12 @@ const DESKTOP = { width: 1440, height: 900 }
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
 const PROJECT = 'proj-1'
+// A second project, private and owned by the reader, so the head carries the
+// publish button — the sibling that took the title's width away from it.
+const PRIVATE = 'proj-private'
+// 122 characters. A paper's name is the longest string this app puts in a
+// heading, and the head has to hold one without pushing the tabs off a phone.
+const LONG_TITLE = 'Effects of Semantic Segmentation Visualization on Trust, Situation Awareness, and Cognitive Load in Highly Automated Vehicles'
 const JOB = 'job-a'
 const HANDLE = 'ada'
 
@@ -104,7 +110,7 @@ const routes = [
   [
     /^\/projects\/[^/]+$/,
     (id) => ({
-      project: { ...project, id },
+      project: { ...project, id, ...(id === PRIVATE ? { visibility: 'private', title: LONG_TITLE } : {}) },
       sessions: [job],
       may_submit: true,
       signer_handle: HANDLE,
@@ -144,7 +150,16 @@ const routes = [
     /^\/profiles\/[^/]+$/,
     { handle: HANDLE, display_name: 'Ada Lovelace', institution: 'University of Somewhere, Department of Rather Long Names', contact_email: ADDRESS, projects: [{ id: PROJECT, title: TITLE, signed_off_at: at(9000) }] },
   ],
-  [/^\/admin\/access$/, [{ email: ADDRESS, tier: 'user', wallet: -1_500_000, created_at: at(0), bound: true, frozen: true }]],
+  [
+    /^\/admin\/access$/,
+    [
+      // Two ordinary rows and one crowded one: the tiers differ in width, which
+      // is what used to move every column after them.
+      { email: 'ada@example.com', tier: 'user', wallet: 10_000_000, created_at: at(0), bound: true },
+      { email: 'grace@example.com', tier: 'admin', wallet: 0, created_at: at(0), bound: true },
+      { email: ADDRESS, tier: 'user', wallet: -1_500_000, created_at: at(0), bound: true, frozen: true },
+    ],
+  ],
   [/^\/admin\/solvency$/, { outstanding_micro: 1_500_000 }],
   [/^\/admin\//, {}],
 ]
@@ -447,6 +462,74 @@ try {
     // fixed ones it had ~120px; on its own line it has the card.
     const title = await page.evaluate(() => Math.round(document.querySelector('.project-list .row .row-main').getBoundingClientRect().width))
     if (title < 280) fail(`a project's title cell is ${title}px wide; the row is still trying to be a table`)
+    await page.close()
+  }
+
+  /* ── A project's head leaves room for the project ── */
+
+  // The title shared a flex row with the publish button, which cannot shrink,
+  // so the title took what was left: an 80px column, `overflow-wrap: anywhere`
+  // breaking a paper's name one syllable to the line, and a head 582px tall on
+  // an 844px phone — the tabs, which are how you reach anything else on the
+  // project, started at y=605.
+  {
+    const page = await open(`/p/${PRIVATE}`)
+    await page.waitForSelector('[data-test="publish-project"]')
+    await new Promise((r) => setTimeout(r, 400))
+    const h = await page.evaluate(() => {
+      const box = (s) => {
+        const e = document.querySelector(s)
+        const b = e.getBoundingClientRect()
+        return { w: Math.round(b.width), h: Math.round(b.height), top: Math.round(b.top) }
+      }
+      return { head: box('.detail-head'), title: box('.detail-title'), tabs: box('.detail-tabs') }
+    })
+    if (h.title.w < 260) fail(`the project title is ${h.title.w}px wide; the button beside it is taking the line again`)
+    if (h.head.h > 280) fail(`the project head is ${h.head.h}px of an 844px phone`)
+    if (h.tabs.top > 330) fail(`the tabs start at y=${h.tabs.top}; a phone cannot reach them without scrolling past the title`)
+    await page.close()
+  }
+
+  /* ── People read as columns ── */
+
+  // Every row sized its own tier, amount and controls, so a USER row and an
+  // ADMIN row put them in different places and a phone broke the two controls
+  // across two more lines. What a row is about is comparable across rows or it
+  // is not a table.
+  {
+    const page = await open('/console')
+    await page.waitForSelector('.member-row')
+    await new Promise((r) => setTimeout(r, 400))
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('.member-row')].map((r) => {
+        const at = (s) => {
+          const e = r.querySelector(s)
+          if (!e) return null
+          const b = e.getBoundingClientRect()
+          return { l: Math.round(b.left), r: Math.round(b.right) }
+        }
+        return {
+          h: Math.round(r.getBoundingClientRect().height),
+          controls: r.querySelectorAll('.row-actions button').length,
+          actions: at('.row-actions'),
+          money: at('.member-wallet'),
+        }
+      }),
+    )
+    if (rows.length < 3) fail(`the console listed ${rows.length} people; this measures alignment across rows`)
+    if (rows.some((r) => !r.actions)) {
+      fail('a person’s controls are loose in the row; grouped is what lets every row end them in the same place')
+      await page.close()
+      throw new Error('people rows have no control group')
+    }
+    const edges = new Set(rows.map((r) => r.actions.r))
+    if (edges.size !== 1) fail(`the controls end at ${[...edges].join(', ')} — every row puts them somewhere else`)
+    const plain = rows.filter((r) => r.controls === 2)
+    const money = new Set(plain.map((r) => r.money.l))
+    if (money.size !== 1) fail(`the amount starts at ${[...money].join(', ')}; the tier beside it is still setting the column`)
+    for (const r of plain) {
+      if (r.h > 100) fail(`a person's row is ${r.h}px tall on a phone; it is an address, a tier, an amount and two controls`)
+    }
     await page.close()
   }
 
