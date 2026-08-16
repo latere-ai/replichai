@@ -24,6 +24,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 )
 
 // DefaultStartReserve is how much a project must have available before a
@@ -101,9 +102,15 @@ type Settings struct {
 	// MinTopupMicro is the smallest purchase allowed, in micro-USD, below which
 	// the processor's fixed fee dwarfs the amount. It is public, so the client
 	// can refuse a too-small amount before it ever reaches the processor.
-	MinTopupMicro int64     `json:"min_topup_micro"`
-	UpdatedBy     string    `json:"updated_by,omitempty"`
-	UpdatedAt     time.Time `json:"updated_at,omitzero"`
+	MinTopupMicro int64 `json:"min_topup_micro"`
+	// Draft is which model writes a project's description when somebody asks for
+	// one (039) — a protocol, an endpoint and a model id. The credential is not
+	// here and never will be: it is the deployment's, read from its environment.
+	// Empty means this deployment does not draft, which is a state the app has
+	// to render anyway (a project's description is typed).
+	Draft     draft.Config `json:"draft,omitzero"`
+	UpdatedBy string       `json:"updated_by,omitempty"`
+	UpdatedAt time.Time    `json:"updated_at,omitzero"`
 }
 
 // Credited is what a gross top-up of grossMicro micro-USD lands in a wallet

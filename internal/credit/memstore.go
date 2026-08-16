@@ -168,6 +168,25 @@ func (s *MemStore) RefundPaid(_ context.Context, email string, amount int64, ref
 	return s.append(Entry{Holder: Wallet(email), Amount: -amount, Kind: KindAdjust, Actor: actor, ExternalRef: ref})
 }
 
+// Spend charges a pot for a model call that is not a session, idempotent on ref.
+func (s *MemStore) Spend(_ context.Context, pot Holder, amount int64, ref, actor string) error {
+	if strings.TrimSpace(ref) == "" {
+		return ErrNoRef
+	}
+	if amount < 0 {
+		return ErrNotPositive
+	}
+	if amount == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hasRef(ref) {
+		return nil
+	}
+	return s.append(Entry{Holder: pot, Amount: -amount, Kind: KindDraft, Actor: actor, ExternalRef: ref})
+}
+
 // hasRef reports whether an entry with this external reference already exists.
 // The caller holds the lock. It is the mem store's idempotency, mirroring the
 // partial unique index the Postgres one leans on.

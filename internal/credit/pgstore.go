@@ -118,6 +118,29 @@ func (s *PGStore) RefundPaid(ctx context.Context, email string, amount int64, re
 	})
 }
 
+// Spend charges a pot for a model call that is not a session, idempotent on ref.
+//
+// The unique index on external_ref is what makes it exactly-once: the same
+// reference twice inserts once, the way a retried webhook credits once. No hold
+// and no release — a hold reserves money for work that has not happened, and
+// this is called after the work has.
+func (s *PGStore) Spend(ctx context.Context, pot Holder, amount int64, ref, actor string) error {
+	if strings.TrimSpace(ref) == "" {
+		return ErrNoRef
+	}
+	if amount < 0 {
+		return ErrNotPositive
+	}
+	if amount == 0 {
+		return nil // a call that cost nothing to a rounding is not a ledger line
+	}
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		return s.insertPaidTx(ctx, tx, Entry{
+			Holder: pot, Amount: -amount, Kind: KindDraft, Actor: actor, ExternalRef: ref,
+		})
+	})
+}
+
 // EntryByExternalRef finds the entry carrying ref. The reference is unique, so
 // there is at most one.
 func (s *PGStore) EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error) {

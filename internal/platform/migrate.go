@@ -110,6 +110,16 @@ ALTER TABLE platform_settings ADD COLUMN spread_bps BIGINT NOT NULL DEFAULT %d;
 ALTER TABLE platform_settings ADD COLUMN spread_fixed_micro BIGINT NOT NULL DEFAULT %d;
 ALTER TABLE platform_settings ADD COLUMN min_topup_micro BIGINT NOT NULL DEFAULT %d;
 `, DefaultSpreadBps, DefaultSpreadFixedMicro, DefaultMinTopupMicro)},
+	{7, `
+-- Which model writes a project's description when somebody asks for a draft
+-- (039): a protocol, an endpoint and a model id. Not the credential — that stays
+-- in the deployment's environment, because a settings row is read by every
+-- admin and lands in every backup.
+--
+-- Empty by default, which means this deployment does not draft. The app renders
+-- that state anyway: a description is typed unless a model is configured.
+ALTER TABLE platform_settings ADD COLUMN draft JSONB NOT NULL DEFAULT '{}'::jsonb;
+`},
 }
 
 // defaultCardJSON renders the seeded price list for the migration. It is
