@@ -1,6 +1,12 @@
 # 037 — A paper carries its bibliography
 
-**Status:** designed.
+**Status:** built. All nine criteria hold.
+
+Resolution turned out to be mostly subtraction, as the problem statement predicted: Crossref, arXiv and the `citation_*` tags were already being fetched, and the parsers kept the title alone. Widening them surfaced a latent bug in the shared meta-tag matcher — it read a `content="…"` attribute up to the first quote *of either kind*, so a conference called `CHI '24` came back as `CHI`, and the same matcher reads the title and the DOI. It now matches by the attribute's own delimiter (`internal/paper/record.go`).
+
+Two decisions were made in the building. The admin sweep is an HTTP route (`POST /admin/papers/refresh`) rather than a command: the production image is distroless and has no shell to run one in. And enrichment reads-then-writes inside a single transaction, because the rule it applies depends on what is already stored — a read outside the write's transaction would let a correction land between the two and be overwritten by exactly the enrichment this spec says must never overwrite one.
+
+`make db-contract` did not run `internal/project`'s Postgres contract at all; it does now, which is what caught an untyped parameter in the enrichment UPDATE that the in-memory store could not see.
 
 **Scope:** a paper recorded in a project keeps the bibliographic record its identifier already returns — authors, venue, year, volume, issue, pages, publisher — instead of a title and nothing else. Resolution stops discarding what it fetched, the record is stored beside the paper, the project screen shows it, an owner can correct it, and there is a way to fill in every paper that predates this. Backend and frontend. One migration.
 
