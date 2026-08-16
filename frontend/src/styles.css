@@ -2727,6 +2727,7 @@ input.submit-input {
 }
 .lp-slab .btn:not(.ghost):hover {
   background: #ffffff;
+  color: var(--slab);
 }
 .landing .btn.ghost.lp-on-dark {
   background: var(--slab-fill);
@@ -3591,6 +3592,10 @@ input.submit-input {
 }
 .lp-close .btn:not(.ghost) {
   background: var(--slab-ink);
+  color: var(--slab);
+}
+.lp-close .btn:not(.ghost):hover {
+  background: #ffffff;
   color: var(--slab);
 }
 .lp-close .landing-note {
