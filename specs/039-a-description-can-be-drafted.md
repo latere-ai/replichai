@@ -1,6 +1,12 @@
 # 039 — A description can be drafted, by whichever model the deployment configures
 
-**Status:** designed.
+**Status:** built. All nine criteria hold.
+
+The seam is `internal/draft`: a `Model` interface, an Anthropic Messages client and an OpenAI-compatible one, both speaking their protocol over plain HTTP rather than through a vendor SDK — this is one POST with four fields, and the SDK's session machinery is what the package exists to avoid. The composition root resolves the configured model *per call* rather than at boot, so an admin changing it does not need a deploy.
+
+Two details the design did not anticipate. The two protocols report cached prompt tokens differently — Anthropic's `cache_read_input_tokens` is *beside* the input count and OpenAI's `cached_tokens` is *inside* it — so the OpenAI adapter subtracts them out before pricing; counted as they arrive, a cached prompt would be billed at the input rate and the cache rate at once. And the credential is read from one fixed environment variable rather than one an admin names: letting the settings row name the variable would have let an admin point the base URL at their own server and the credential at *another* of the deployment's secrets, which is an exfiltration primitive rather than a configuration option.
+
+Pricing needed no new field: the rate card already prices by model id. What it needed was the *refusal* — an exact card entry, never the card's fail-expensive fallback, which exists so an unrecognised session model is charged the dearest rates rather than nothing and would have billed Opus rates for a local model.
 
 **Scope:** the owner of a project can ask for a description to be drafted from what the project already holds. The draft is one short model call, on a model the deployment's admin configures — which need not be Anthropic's — and it is charged to the project. This is the first single-turn model call in the codebase, and it brings the seam for every cheap task after it. Backend and frontend. One migration (the ledger's new kind needs no schema; the platform setting does).
 

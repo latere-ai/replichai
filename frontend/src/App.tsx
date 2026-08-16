@@ -69,6 +69,7 @@ import {
   editPaper,
   refreshPapers,
   describeProject,
+  draftDescription,
   startSession,
   listModels,
   type ModelTier,
@@ -1888,23 +1889,37 @@ function PlatformPolicy({
 }: {
   i18n: I18n
   settings: PlatformSettings | null
-  onSave: (next: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates'>) => void
+  onSave: (next: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft'>) => void
 }) {
   const { t } = i18n
   const [reserve, setReserve] = useState('')
   const [floor, setFloor] = useState('')
+  // The drafting model (039): a protocol, an endpoint and a model id. No key —
+  // that is the deployment's, and this form has nowhere to put one.
+  const [provider, setProvider] = useState('')
+  const [baseURL, setBaseURL] = useState('')
+  const [model, setModel] = useState('')
   useEffect(() => {
     if (!settings) return
     setReserve(toDollars(settings.start_reserve))
     setFloor(toDollars(settings.overdraft_cap))
+    setProvider(settings.draft?.provider ?? '')
+    setBaseURL(settings.draft?.base_url ?? '')
+    setModel(settings.draft?.model ?? '')
   }, [settings])
 
   const nextReserve = parseUSD(reserve)
   const nextFloor = parseUSD(floor)
   const valid = nextReserve !== null && nextReserve >= 0 && nextFloor !== null && nextFloor >= 0
-  const dirty = !!settings && valid && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap)
+  const draftCfg = { provider: provider.trim(), base_url: baseURL.trim(), model: model.trim() }
+  const draftChanged =
+    !!settings &&
+    (draftCfg.provider !== (settings.draft?.provider ?? '') ||
+      draftCfg.base_url !== (settings.draft?.base_url ?? '') ||
+      draftCfg.model !== (settings.draft?.model ?? ''))
+  const dirty = !!settings && valid && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap || draftChanged)
   const save = () => {
-    if (settings && valid) onSave({ start_reserve: nextReserve, overdraft_cap: nextFloor, rates: settings.rates })
+    if (settings && valid) onSave({ start_reserve: nextReserve, overdraft_cap: nextFloor, rates: settings.rates, draft: draftCfg })
   }
 
   return (
@@ -1930,6 +1945,62 @@ function PlatformPolicy({
         </label>
         <NumberField id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
       </div>
+      {/* Which model writes a project's description (039). Three fields and no
+          key: the credential is the deployment's, read from its environment,
+          because a settings row is read by every admin and lands in every
+          backup. The model id must also appear in the rate card below, or the
+          deployment refuses to draft rather than guessing a price. */}
+      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+        {t('draftModelHint')}
+      </p>
+      <div className="field-row">
+        <label className="admin-label" htmlFor="draft-provider">
+          {t('draftProvider')}
+        </label>
+        <Select
+          value={provider}
+          options={[
+            { value: '', label: t('draftProviderNone') },
+            { value: 'anthropic', label: 'Anthropic' },
+            { value: 'openai', label: t('draftProviderOpenAI') },
+          ]}
+          onChange={setProvider}
+          label={t('draftProvider')}
+          width={260}
+        />
+      </div>
+      {provider !== '' && (
+        <>
+          <div className="field-row">
+            <label className="admin-label" htmlFor="draft-base-url">
+              {t('draftBaseURL')}
+            </label>
+            <input
+              id="draft-base-url"
+              className="text"
+              style={{ flex: 1 }}
+              value={baseURL}
+              placeholder={provider === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
+              onChange={(e) => setBaseURL(e.target.value)}
+              data-test="draft-base-url"
+            />
+          </div>
+          <div className="field-row">
+            <label className="admin-label" htmlFor="draft-model">
+              {t('draftModel')}
+            </label>
+            <input
+              id="draft-model"
+              className="text"
+              style={{ flex: 1 }}
+              value={model}
+              placeholder={t('draftModelPlaceholder')}
+              onChange={(e) => setModel(e.target.value)}
+              data-test="draft-model"
+            />
+          </div>
+        </>
+      )}
       {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
       {/* One Save, at the foot of the card it saves. Beside the overdraft floor
           it read as that field's control, and an admin who edited the start
@@ -2153,7 +2224,38 @@ function ProjectDescription({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(project.description ?? '')
   const [busy, setBusy] = useState(false)
+  const [drafting, setDrafting] = useState(false)
+  // Whether this deployment has a model to draft with (039). Asked once, where
+  // the tier prices are already asked for.
+  const [mayDraft, setMayDraft] = useState(false)
   const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!canEdit) return
+    let live = true
+    listModels()
+      .then((r) => live && setMayDraft(!!r.drafting))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [canEdit])
+
+  const askForADraft = async () => {
+    if (drafting) return
+    setDrafting(true)
+    setErr('')
+    try {
+      const got = await draftDescription(project.id)
+      // Into the editor, never into the project: what is stored is what somebody
+      // chose to keep.
+      setDraft(got.description)
+    } catch {
+      setErr(t('draftFailed'))
+    } finally {
+      setDrafting(false)
+    }
+  }
 
   const save = async () => {
     if (busy) return
@@ -2198,6 +2300,16 @@ function ProjectDescription({
           >
             {t('cancel')}
           </button>
+          {/* A draft is a suggestion: it lands in the field above for somebody
+              to read and change. It is offered inside the editor for that
+              reason — there is nowhere else it could land. */}
+          {mayDraft && (
+            <Tip text={t('draftHint')}>
+              <button className="btn ghost sm" onClick={askForADraft} disabled={busy || drafting} data-test="describe-draft">
+                <Ico name="sparkles" size={12} /> {drafting ? t('drafting') : t('draftIt')}
+              </button>
+            </Tip>
+          )}
           {err && <span className="err small">{err}</span>}
         </div>
       </div>

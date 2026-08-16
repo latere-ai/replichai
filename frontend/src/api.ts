@@ -479,7 +479,14 @@ export type ModelTier = {
 // listModels answers what each tier would run on and what it would cost. A
 // deployment with no backend still lists the tiers, without prices — the choice
 // is offerable without the number.
-export const listModels = () => fetch('/models').then(json<{ tiers: ModelTier[] }>)
+export const listModels = () => fetch('/models').then(json<{ tiers: ModelTier[]; drafting?: boolean }>)
+
+// draftDescription asks the deployment's configured model for a description of
+// this project (039). It writes nothing: what comes back is a suggestion, and
+// the project's own field changes only when somebody saves it. The project pays
+// for the call whether or not they keep the answer.
+export const draftDescription = (id: string) =>
+  fetch(`/projects/${id}/description/draft`, { method: 'POST' }).then(json<{ description: string; model: string; cost_micro: number }>)
 
 // createProject opens a named project holding its papers, with seeded
 // collaborators. It records and runs nothing, so it cannot be refused for money
@@ -680,9 +687,16 @@ export type PlatformSettings = {
   // members can read, because a floor somebody knows is one they plan around.
   overdraft_cap: number
   rates: RateCard
+  // draft is which model writes a project's description when somebody asks for
+  // one (039). No credential: that is the deployment's, from its environment.
+  draft?: DraftConfig
   updated_by?: string
   updated_at?: string
 }
+
+// The drafting model: which protocol to speak, where, and which model. An empty
+// provider is a deployment that does not draft.
+export type DraftConfig = { provider?: string; base_url?: string; model?: string }
 
 // A model's price, in micro-USD per million tokens — the unit vendors quote, so
 // an admin copying a price list types the number they read.
@@ -730,7 +744,7 @@ export const topUp = (email: string, amount: number) =>
 
 export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
 
-export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates'>) =>
+export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft'>) =>
   fetch('/admin/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

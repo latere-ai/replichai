@@ -58,7 +58,25 @@ type modelCache struct {
 // offerable without a price, and refusing to answer would take the control away
 // rather than the number.
 func (rt *Router) listModels(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"tiers": rt.tiers(r.Context())})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tiers": rt.tiers(r.Context()),
+		// Whether this deployment can draft a description (039). The app asks so
+		// it can offer the control or not, rather than offering one that answers
+		// 503 — and it is here, with the other model policy, because that is what
+		// it is: which model does what, and at what price.
+		"drafting": rt.canDraft(),
+	})
+}
+
+// canDraft reports whether a draft would work: a model is configured, and the
+// rate card prices it. Both, because a configured model nobody can price is a
+// button that always refuses.
+func (rt *Router) canDraft() bool {
+	if rt.drafter == nil {
+		return false
+	}
+	_, err := rt.draftRates()
+	return err == nil
 }
 
 // tiers returns the priced tier list, recomputing it at most once per modelsTTL.

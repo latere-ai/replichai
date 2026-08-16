@@ -242,3 +242,32 @@ func TestDraftingRefusals(t *testing.T) {
 		t.Error("a call that produced nothing charged the project")
 	}
 }
+
+// AC7, as the app sees it: the model list says whether this deployment drafts,
+// so the screen can offer the control or not rather than offering one that
+// answers 503.
+func TestTheModelListSaysWhetherItDrafts(t *testing.T) {
+	says := func(deps Deps) bool {
+		w := do(t, NewRouter(deps).Handler(), "GET", "/models", "", "me")
+		var got struct {
+			Drafting bool `json:"drafting"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return got.Drafting
+	}
+	configured, _ := draftDeps(t, &fakeDrafter{model: draftModel}, pricedAt(1_000_000, 5_000_000))
+	if !says(configured) {
+		t.Error("a deployment with a priced model says it cannot draft")
+	}
+	unpriced, _ := draftDeps(t, &fakeDrafter{model: draftModel}, platform.Settings{})
+	if says(unpriced) {
+		t.Error("a deployment whose model has no price offers a control that can only refuse")
+	}
+	none, _ := draftDeps(t, &fakeDrafter{model: draftModel}, pricedAt(1_000_000, 5_000_000))
+	none.Drafter = nil
+	if says(none) {
+		t.Error("a deployment with no model says it drafts")
+	}
+}
