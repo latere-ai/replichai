@@ -324,6 +324,23 @@ func (s *PGStore) DeleteByProject(ctx context.Context, projectID string) error {
 	return err
 }
 
+// MovePaperSessionsTx repoints one paper's sessions at another project, inside
+// the transaction that is moving the paper row itself (035). It is the job
+// store's half of project.MovePaper, and runs nowhere else.
+//
+// Deleted sessions move too. They are hidden from every read but SpendSince,
+// which still counts them, so leaving one behind would strand a charge under a
+// project that no longer holds the paper it paid for.
+//
+// updated_at is deliberately not touched: SpendSince windows on it, so bumping
+// it here would drag months-old sessions into the 30-day figure and inflate the
+// spend of both projects at once.
+func (s *PGStore) MovePaperSessionsTx(ctx context.Context, tx pgx.Tx, fromID, toID, key string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE jobs SET project_id=$2 WHERE project_id=$1 AND paper_key=$3`, fromID, toID, key)
+	return err
+}
+
 // Delete marks one session deleted (032). Idempotent: the WHERE clause makes a
 // second call a no-op rather than a moved timestamp, so the record of when a
 // session left the app is the first answer and not the last.

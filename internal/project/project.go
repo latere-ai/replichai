@@ -160,6 +160,19 @@ type Paper struct {
 // this is the shape that refusal takes.
 var ErrPaperExists = errors.New("the project already holds this paper")
 
+// ErrPaperNotFound reports a paper the project does not hold (035). It is
+// distinct from ErrNotFound, which is about the project: a move quotes two
+// projects and one key, and "which of the three is missing" is the whole of
+// what the caller can act on.
+var ErrPaperNotFound = errors.New("the project does not hold this paper")
+
+// ErrNoSessionMover reports a MovePaper on a store built without the mover that
+// carries the paper's sessions across (035). It fails loudly rather than moving
+// the paper alone, because a paper whose runs stayed behind is the orphaned
+// session 015 exists to prevent — and a composition-root omission has to
+// surface in a test, not in the data.
+var ErrNoSessionMover = errors.New("this store cannot move a paper's sessions")
+
 // Store is where projects live. Sessions are not stored here — they are jobs in
 // the job store, joined to a project by the handler through job.ListByProject —
 // so this store owns only the container and the papers it is about, keeping the
@@ -239,6 +252,30 @@ type Store interface {
 	// go (012 refuses one that has sessions, so the record of what was actually
 	// reproduced stays); this store only records. Idempotent.
 	RemovePaper(ctx context.Context, projectID, key string) error
+	// MovePaper refiles a paper under another project, and carries every session
+	// that is a run of it across in the same transaction (035). The paper keeps
+	// its AddedAt and AddedBy: they record when somebody wrote the paper down,
+	// and moving it does not un-write that.
+	//
+	// It returns ErrNotFound for a project that is not there, ErrPaperNotFound
+	// when the source does not hold the key, and ErrPaperExists when the
+	// destination already does — a merge of two papers' histories is not a move.
+	// The caller authorises both ends and decides whether the sessions may travel
+	// (035 refuses while one is still running); this store only records.
+	MovePaper(ctx context.Context, fromID, toID, key string) error
+}
+
+// SessionMover carries a paper's sessions from one project to another. They
+// live in the job store, so the move spans two packages; this is the seam, kept
+// as a locally-declared interface so project never imports job — the same shape
+// the job store uses to reach the credit ledger inside its own transaction.
+//
+// The Postgres and in-memory stores take different movers, because only one of
+// them has a transaction to pass. See PGSessionMover.
+type SessionMover interface {
+	// MovePaperSessions repoints every session of one paper at another project.
+	// A paper with no sessions is not an error.
+	MovePaperSessions(ctx context.Context, fromID, toID, key string) error
 }
 
 // newID mints a random project identifier.

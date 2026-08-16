@@ -122,6 +122,10 @@ type ProjectStore interface {
 	ListPapers(ctx context.Context, projectID string) ([]project.Paper, error)
 	SetPaperTitle(ctx context.Context, projectID, key, title string) error
 	RemovePaper(ctx context.Context, projectID, key string) error
+	// MovePaper refiles a paper, and the sessions that are runs of it, under
+	// another project (035). One call, because the paper and its runs have to
+	// arrive together.
+	MovePaper(ctx context.Context, fromID, toID, key string) error
 }
 
 // ProfileStore is the researcher profile (006n): the identity a sign-off is

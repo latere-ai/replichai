@@ -49,7 +49,9 @@ func TestServerEndToEnd(t *testing.T) {
 	if err := acc.SeedAdmin(ctx, devEmail); err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}
-	projects := project.NewMemStore()
+	// Wired as the composition root wires them, so the move at the end of this
+	// test carries the session across (035).
+	projects := project.NewMemStore(project.WithSessions(store))
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          store,
 		Projects:      projects,
@@ -113,6 +115,7 @@ func TestServerEndToEnd(t *testing.T) {
 	// Poll until the job reaches a terminal phase.
 	deadline := time.Now().Add(10 * time.Second)
 	var phase string
+	var finished bool
 	for time.Now().Before(deadline) {
 		j, err := store.Get(ctx, out.JobID)
 		if err != nil {
@@ -129,9 +132,87 @@ func TestServerEndToEnd(t *testing.T) {
 					t.Errorf("phase %s has no timestamp", p)
 				}
 			}
-			return
+			finished = true
+			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("job did not finish in time; last phase %q", phase)
+	if !finished {
+		t.Fatalf("job did not finish in time; last phase %q", phase)
+	}
+
+	// 035: the paper was filed under the wrong project, and moving it takes the
+	// run with it. This is the whole point of the move — a reproduction that is
+	// already finished is exactly when somebody notices where it belongs.
+	resp, err = http.Post(srv.URL+"/projects", "application/json", strings.NewReader(`{"title":"Where it belongs","papers":["10.1145/3411764.3445649"]}`))
+	if err != nil {
+		t.Fatalf("create the destination: %v", err)
+	}
+	var second struct {
+		ProjectID string `json:"project_id"`
+	}
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create the destination: status %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&second); err != nil {
+		t.Fatalf("decode the destination: %v", err)
+	}
+	resp.Body.Close()
+
+	move := `{"paper_key":"` + created.Papers[0].Key + `","to_project":"` + second.ProjectID + `"}`
+	resp, err = http.Post(srv.URL+"/projects/"+created.ProjectID+"/papers/move", "application/json", strings.NewReader(move))
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("move status = %d, want 204", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Read it back the way the project screen does, on both projects. The
+	// destination was opened with a paper of its own, so the moved one arrives
+	// beside it — and arrives carrying its session, which is the whole point.
+	arrived := readPapers(t, srv.URL, second.ProjectID)
+	if len(arrived) != 2 {
+		t.Fatalf("destination papers = %+v; want two", arrived)
+	}
+	var moved *paperView
+	for i, p := range arrived {
+		if p.Key == created.Papers[0].Key {
+			moved = &arrived[i]
+		}
+	}
+	if moved == nil || moved.Sessions != 1 {
+		t.Fatalf("the moved paper did not arrive with its session: %+v", arrived)
+	}
+	if papers := readPapers(t, srv.URL, created.ProjectID); len(papers) != 0 {
+		t.Fatalf("source papers = %+v; want none", papers)
+	}
+	if j, err := store.Get(ctx, out.JobID); err != nil || j.ProjectID != second.ProjectID {
+		t.Fatalf("the session stayed behind: %+v, err %v", j, err)
+	}
+}
+
+// paperView is the project screen's read of one paper: the record, plus how
+// many sessions have run against it.
+type paperView struct {
+	Key      string `json:"key"`
+	Sessions int    `json:"sessions"`
+}
+
+func readPapers(t *testing.T, base, projectID string) []paperView {
+	t.Helper()
+	resp, err := http.Get(base + "/projects/" + projectID + "/papers")
+	if err != nil {
+		t.Fatalf("list papers: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list papers status = %d, want 200", resp.StatusCode)
+	}
+	var out []paperView
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode papers: %v", err)
+	}
+	return out
 }

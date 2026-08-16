@@ -25,9 +25,12 @@ import (
 var allowAll = GateFunc(func(*http.Request) (bool, string) { return true, "" })
 
 func testDeps(gate Gate) Deps {
+	jobs := job.NewMemStore()
 	return Deps{
-		Jobs:          job.NewMemStore(),
-		Projects:      project.NewMemStore(),
+		Jobs: jobs,
+		// Wired the way the composition root wires them, so a paper moved here
+		// takes its sessions with it (035).
+		Projects:      project.NewMemStore(project.WithSessions(jobs)),
 		Members:       access.NewMemMembership(),
 		Profiles:      profile.NewMemStore(),
 		Reproductions: &fakeRepro{},

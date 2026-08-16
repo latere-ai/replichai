@@ -228,6 +228,22 @@ func (s *MemStore) DeleteByProject(_ context.Context, projectID string) error {
 	return nil
 }
 
+// MovePaperSessions repoints one paper's sessions at another project (035), the
+// in-memory half of project.MovePaper. Deleted sessions move too, and nothing
+// else on the row is touched — see the Postgres mover for why updated_at in
+// particular is left where it is.
+func (s *MemStore) MovePaperSessions(_ context.Context, fromID, toID, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, j := range s.jobs {
+		if j.ProjectID == fromID && j.PaperKey == key {
+			j.ProjectID = toID
+			s.jobs[id] = j
+		}
+	}
+	return nil
+}
+
 // Delete marks one session deleted (032). Idempotent, and a success on an id
 // that was never here — removal asks for an absence, and an absence is what the
 // caller gets either way.

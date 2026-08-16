@@ -16,6 +16,9 @@ type MemStore struct {
 	order    []string // creation order, so ListByOwner is newest-first in reverse
 	papers   map[string][]Paper
 	clock    func() time.Time
+	// sessions carries a moved paper's runs across (035). Nil means MovePaper
+	// refuses rather than stranding them.
+	sessions SessionMover
 }
 
 // MemOption configures a MemStore.
@@ -24,6 +27,12 @@ type MemOption func(*MemStore)
 // WithClock sets the time source, so tests get deterministic timestamps.
 func WithClock(f func() time.Time) MemOption {
 	return func(s *MemStore) { s.clock = f }
+}
+
+// WithSessions wires the store that holds a paper's sessions, so a move takes
+// them with it (035). Without it MovePaper returns ErrNoSessionMover.
+func WithSessions(m SessionMover) MemOption {
+	return func(s *MemStore) { s.sessions = m }
 }
 
 // NewMemStore builds an empty in-memory store.
@@ -268,6 +277,15 @@ func (s *MemStore) ListPapers(_ context.Context, projectID string) ([]Paper, err
 	// A copy: the caller must not be able to edit the store through the slice.
 	out := make([]Paper, len(s.papers[projectID]))
 	copy(out, s.papers[projectID])
+	// Sorted rather than left in insertion order, which they agreed on until a
+	// paper could arrive from another project (035) carrying an AddedAt older
+	// than everything already here. Postgres orders the same way.
+	sort.SliceStable(out, func(i, j int) bool {
+		if !out[i].AddedAt.Equal(out[j].AddedAt) {
+			return out[i].AddedAt.Before(out[j].AddedAt)
+		}
+		return out[i].Key < out[j].Key
+	})
 	return out, nil
 }
 
@@ -295,4 +313,56 @@ func (s *MemStore) RemovePaper(_ context.Context, projectID, key string) error {
 		}
 	}
 	return nil
+}
+
+// MovePaper refiles a paper under another project and takes its sessions with
+// it. The sessions move first: this store has no transaction, so ordering is
+// the only atomicity available, and a session pointing at a project that does
+// not yet hold the paper is invisible for an instant, while a paper whose
+// sessions never followed would be wrong for good.
+func (s *MemStore) MovePaper(ctx context.Context, fromID, toID, key string) error {
+	if s.sessions == nil {
+		return ErrNoSessionMover
+	}
+	s.mu.Lock()
+	err := s.detachPaper(fromID, toID, key)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := s.sessions.MovePaperSessions(ctx, fromID, toID, key); err != nil {
+		// Put the paper back, so a failed move leaves the two projects as they
+		// were rather than splitting the paper from its runs.
+		s.mu.Lock()
+		_ = s.detachPaper(toID, fromID, key)
+		s.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// detachPaper moves one paper row between two projects under the held lock. It
+// is where every refusal a move can make is decided, so the reverse used to
+// undo a failed move takes the same path as the move itself.
+func (s *MemStore) detachPaper(fromID, toID, key string) error {
+	if _, ok := s.projects[fromID]; !ok {
+		return ErrNotFound
+	}
+	if _, ok := s.projects[toID]; !ok {
+		return ErrNotFound
+	}
+	for _, have := range s.papers[toID] {
+		if have.Key == key {
+			return ErrPaperExists
+		}
+	}
+	for i, p := range s.papers[fromID] {
+		if p.Key != key {
+			continue
+		}
+		s.papers[fromID] = append(s.papers[fromID][:i], s.papers[fromID][i+1:]...)
+		s.papers[toID] = append(s.papers[toID], p)
+		return nil
+	}
+	return ErrPaperNotFound
 }
