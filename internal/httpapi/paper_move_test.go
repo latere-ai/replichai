@@ -253,6 +253,20 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 		t.Fatalf("a collaborator moving a paper: status %d, body %s", w.Code, w.Body)
 	}
 
+	// Authorisation is answered before state. A destination they may not move
+	// into must not first tell them it is published — the caller may name any
+	// project they have a stake in, so the order of these two checks is the
+	// difference between a refusal and a disclosure.
+	if err := d.Projects.SetPublic(ctx, to.ID, project.SignOff{By: owner.Sub, AttestationVersion: "v2"}); err != nil {
+		t.Fatalf("publish the destination: %v", err)
+	}
+	if w := doAs(t, h, "POST", path, moveBody(key, to.ID), collab); errorCode(w.Body.Bytes()) != "not_lead" {
+		t.Fatalf("a published destination reported its state to a non-lead: status %d, body %s", w.Code, w.Body)
+	}
+	if err := d.Projects.SetPrivate(ctx, to.ID, project.Withdrawal{By: owner.Sub, Reason: "reorganising"}); err != nil {
+		t.Fatalf("withdraw: %v", err)
+	}
+
 	// Promoted to lead of the source alone, they still cannot: the destination
 	// is checked by the same rule, which is the half a one-project helper misses.
 	if err := d.Members.Add(ctx, access.Principal{Sub: owner.Sub, Email: owner.Email},
