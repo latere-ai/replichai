@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -388,6 +389,52 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 		Filled int         `json:"filled"`
 		Papers []PaperView `json:"papers"`
 	}{filled, paperViews(papers, sessions)})
+}
+
+// SweepPapers fills in the bibliography of every paper in every project whose
+// record is incomplete (037 AC8), and reports how many projects it looked at and
+// how many papers it completed.
+//
+// It is the platform's own fill-in, for the projects nobody opens: the same
+// enrichment the owner's button runs, over every project rather than one. It is
+// not an HTTP handler — the admin router owns who may ask, and this owns what
+// happens — and it is safe to run again, because enrichment is.
+//
+// Requests to the metadata services are strictly serialised. These are free,
+// courteous services and a sweep is the one place in this codebase that could
+// ask them a thousand questions in a second.
+func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err error) {
+	if rt.resolver == nil {
+		return 0, 0, errors.New("no paper resolver is configured")
+	}
+	all, err := rt.projects.ListAll(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list projects: %w", err)
+	}
+	for _, proj := range all {
+		if ctx.Err() != nil {
+			return projects, filled, ctx.Err()
+		}
+		papers, err := rt.projects.ListPapers(ctx, proj.ID)
+		if err != nil {
+			continue // a project that vanished mid-sweep is not the sweep's problem
+		}
+		projects++
+		for _, p := range papers {
+			if !p.NeedsDetails() || ctx.Err() != nil {
+				continue
+			}
+			got, err := rt.resolver.Resolve(ctx, p.Ref)
+			if err != nil {
+				continue
+			}
+			changed, err := rt.projects.EnrichPaper(ctx, proj.ID, p.Key, got.Title, got.Record)
+			if err == nil && changed {
+				filled++
+			}
+		}
+	}
+	return projects, filled, nil
 }
 
 // removeProjectPaper drops a paper a project has never run.

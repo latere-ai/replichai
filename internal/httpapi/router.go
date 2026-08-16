@@ -122,6 +122,7 @@ type ProjectStore interface {
 	AddPaper(ctx context.Context, projectID string, p project.Paper) error
 	ListPapers(ctx context.Context, projectID string) ([]project.Paper, error)
 	EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error)
+	ListAll(ctx context.Context) ([]project.Project, error)
 	EditPaper(ctx context.Context, projectID, key string, edit project.PaperEdit) (project.Paper, error)
 	RemovePaper(ctx context.Context, projectID, key string) error
 	// MovePaper refiles a paper, and the sessions that are runs of it, under

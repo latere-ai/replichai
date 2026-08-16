@@ -198,7 +198,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, *dev, baseURL)
 	if err != nil {
 		return err
 	}
@@ -222,7 +222,7 @@ func run() error {
 // the open /me, the admin access endpoints behind the tier guard, and either the
 // OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
 // everything, resolving a session (or the dev principal) onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, sweep webauth.PaperSweep, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	// /me reports whether the account is frozen (022d), over the same predicate
@@ -238,7 +238,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc)))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep)))
 
 	// The freeze gate sits inside the auth middleware (identity is already on the
 	// request) and outside the mux, so every mutating request from a

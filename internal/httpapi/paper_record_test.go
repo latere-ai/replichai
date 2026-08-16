@@ -241,3 +241,95 @@ func TestFillingInSurvivesAnUnreachableSource(t *testing.T) {
 		t.Errorf("a paper was filled in from a source that answered nothing: %+v", got)
 	}
 }
+
+// AC8: the platform's own fill-in walks every project, including the ones nobody
+// has opened, and is safe to run again.
+func TestTheSweepWalksEveryProject(t *testing.T) {
+	d := testDeps(allowAll)
+	rt := NewRouter(d)
+	h := rt.Handler()
+	_, first := createWithPaper(t, h, theRef, "sub")
+	_, second := createWithPaper(t, h, "https://arxiv.org/abs/2603.01795", "other")
+	rt.WaitBackground()
+
+	res := &recordingResolver{byRef: map[string]ResolvedPaper{
+		theRef:                             {Key: "doi:10.1145/3772318.3791265", Title: "A Real Paper", Record: fullRecord()},
+		"https://arxiv.org/abs/2603.01795": {Key: "arxiv:2603.01795", Title: "A Preprint", Record: paper.Record{Authors: []string{"Ada Lovelace"}, Venue: "arXiv", Year: 2026}},
+	}}
+	d.Resolver = res
+	rt = NewRouter(d)
+	h = rt.Handler()
+
+	projects, filled, err := rt.SweepPapers(context.Background())
+	if err != nil {
+		t.Fatalf("SweepPapers: %v", err)
+	}
+	if projects != 2 || filled != 2 {
+		t.Fatalf("sweep looked at %d projects and filled %d, want 2 and 2", projects, filled)
+	}
+	for who, id := range map[string]string{"sub": first, "other": second} {
+		if got := papersOf(t, h, id, who)[0]; got.NeedsDetails() {
+			t.Errorf("project %s was not filled in: %+v", id, got)
+		}
+	}
+
+	// Again changes nothing, and asks nobody.
+	asked := len(res.asked)
+	if _, filled, err := rt.SweepPapers(context.Background()); err != nil || filled != 0 {
+		t.Errorf("a second sweep filled %d (err %v)", filled, err)
+	}
+	if len(res.asked) != asked {
+		t.Errorf("the second sweep asked the sources again: %v", res.asked[asked:])
+	}
+}
+
+// A deployment with no resolver says so rather than reporting a sweep that
+// silently did nothing.
+func TestTheSweepNeedsAResolver(t *testing.T) {
+	rt := NewRouter(testDeps(allowAll))
+	if _, _, err := rt.SweepPapers(context.Background()); err == nil {
+		t.Error("a sweep with no resolver should say so")
+	}
+}
+
+// AC9: a paper moved to another project (035) arrives with its record and its
+// corrections intact — it moves as a row, and the record is on the row.
+func TestAMovedPaperKeepsItsRecord(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{
+		theRef: {Key: "doi:10.1145/3772318.3791265", Title: "A Real Paper", Record: fullRecord()},
+	}}
+	rt := NewRouter(d)
+	h := rt.Handler()
+	_, from := createWithPaper(t, h, theRef, "sub")
+	rt.WaitBackground()
+	key := papersOf(t, h, from, "sub")[0].Key
+	if w := do(t, h, "PATCH", "/projects/"+from+"/papers?key="+key, `{"venue":"Proc. ACM HCI"}`, "sub"); w.Code != http.StatusOK {
+		t.Fatalf("correct: %d", w.Code)
+	}
+
+	w := do(t, h, "POST", "/projects", `{"title":"Somewhere Else"}`, "sub")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create destination = %d: %s", w.Code, w.Body.String())
+	}
+	var made struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &made); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	body := `{"paper_key":"` + key + `","to_project":"` + made.ProjectID + `"}`
+	if w := do(t, h, "POST", "/projects/"+from+"/papers/move", body, "sub"); w.Code != http.StatusOK && w.Code != http.StatusNoContent {
+		t.Fatalf("move = %d: %s", w.Code, w.Body.String())
+	}
+	got := papersOf(t, h, made.ProjectID, "sub")
+	if len(got) != 1 {
+		t.Fatalf("the destination holds %d papers", len(got))
+	}
+	if got[0].Record.Venue != "Proc. ACM HCI" || got[0].Record.Year != 2024 {
+		t.Errorf("record did not travel: %+v", got[0].Record)
+	}
+	if !got[0].WasEdited("venue") {
+		t.Errorf("the correction's mark did not travel: %v", got[0].Edited)
+	}
+}

@@ -247,6 +247,24 @@ func (s *PGStore) ModifiedAt(ctx context.Context, ids []string) (map[string]time
 	return out, rows.Err()
 }
 
+// ListAll returns every project, oldest first — the platform's own read.
+func (s *PGStore) ListAll(ctx context.Context) ([]Project, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects ORDER BY created_at, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Project
+	for rows.Next() {
+		p, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // Delete removes a project by id, idempotently.
 func (s *PGStore) Delete(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)

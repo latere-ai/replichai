@@ -27,6 +27,19 @@ type Admin struct {
 	credits   credit.Store
 	projects  ProjectCaps
 	overrides access.FreezeOverrides
+	sweep     PaperSweep
+}
+
+// PaperSweep fills in the bibliography of every paper the platform holds that is
+// still missing one (037). It is a function rather than an interface because
+// there is one of them and it takes no arguments an admin chooses: what it does
+// is decided by the enrichment rule, not by whoever pressed the button.
+type PaperSweep func(ctx context.Context) (projects, filled int, err error)
+
+// WithPaperSweep enables the bibliography sweep. Without it the route answers
+// 503, which is what a deployment with no paper resolver should say.
+func WithPaperSweep(f PaperSweep) func(*Admin) {
+	return func(a *Admin) { a.sweep = f }
 }
 
 // ProjectCaps is the sliver of the project store this console writes: one
@@ -79,6 +92,7 @@ func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Ad
 		{httpapi.Route{Method: "POST", Pattern: "/admin/access/{email}/unfreeze"}, a.Unfreeze},
 		{httpapi.Route{Method: "DELETE", Pattern: "/admin/access/{email}/unfreeze"}, a.Refreeze},
 		{httpapi.Route{Method: "PUT", Pattern: "/admin/projects/{id}/cap"}, a.SetProjectCap},
+		{httpapi.Route{Method: "POST", Pattern: "/admin/papers/refresh"}, a.RefreshPapers},
 	}
 	out := make([]httpapi.Route, 0, len(routes))
 	for _, r := range routes {
@@ -393,4 +407,28 @@ func writeAdminError(w http.ResponseWriter, err error) {
 	default:
 		httpapi.WriteError(w, http.StatusInternalServerError, "grant_failed")
 	}
+}
+
+// RefreshPapers fills in every paper the platform holds whose bibliography is
+// incomplete (037), and reports what it did.
+//
+// It is the admin's half of the fill-in: an owner's button covers the project in
+// front of them, and this covers the ones nobody has opened since the record
+// existed. It is synchronous, because the number it returns is the reason to
+// press it — and it is safe to press twice, because enrichment never overwrites.
+func (a *Admin) RefreshPapers(w http.ResponseWriter, r *http.Request) {
+	if a.sweep == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_sweep")
+		return
+	}
+	projects, filled, err := a.sweep(r.Context())
+	if err != nil {
+		log.Printf("admin: paper sweep: %v", err)
+		httpapi.WriteError(w, http.StatusBadGateway, "sweep_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Projects int `json:"projects"`
+		Filled   int `json:"filled"`
+	}{projects, filled})
 }
