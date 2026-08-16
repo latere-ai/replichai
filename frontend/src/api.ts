@@ -387,6 +387,20 @@ export const addPaper = (id: string, url: string) =>
 export const removePaper = (id: string, key: string) =>
   fetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, { method: 'DELETE' }).then(ok)
 
+// movePaper refiles a paper, and the sessions that are runs of it, under
+// another project (035). It is the lead's at both ends, and is refused 409
+// while a run is still in flight, while either project is published or in the
+// trash, or when the destination already holds that paper.
+//
+// The key travels in the body, not the path: a paper key spans several path
+// segments ("doi:10.1145/…") and would route nowhere.
+export const movePaper = (id: string, key: string, toProject: string) =>
+  fetch(`/projects/${id}/papers/move`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ paper_key: key, to_project: toProject }),
+  }).then(ok)
+
 // startSession runs one paper the project holds. This is the call that spends:
 // it is refused 402 when the project's pot cannot cover the start reserve, and
 // 409 when that paper is already running.

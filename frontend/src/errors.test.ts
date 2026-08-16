@@ -1,6 +1,16 @@
 import { expect, test } from 'bun:test'
 import { ApiError, type CreatedProject } from './api'
-import { addPaperErrLabel, checkoutErrLabel, createOutcome, generic, refusal, removePaperErrLabel, sessionFailureText, startErrLabel } from './errors'
+import {
+  addPaperErrLabel,
+  checkoutErrLabel,
+  createOutcome,
+  generic,
+  movePaperErrLabel,
+  refusal,
+  removePaperErrLabel,
+  sessionFailureText,
+  startErrLabel,
+} from './errors'
 import { MICRO } from './money'
 
 // The helpers take a translate function, so asserting the key is what matters
@@ -79,6 +89,20 @@ test('adding and removing a paper never mention credits', () => {
   // editable, and that is a different refusal from not being allowed to try.
   expect(removePaperErrLabel(t, new ApiError(409, 'paper_has_sessions'))).toBe('errPaperHasSessions')
   expect(removePaperErrLabel(t, new ApiError(403, 'not_lead'))).toBe('errRemoveNotLead')
+})
+
+// 035: each refusal has a different next step — finish the run, withdraw the
+// publication, pick another project — so they must not collapse into one
+// "could not move". The two 409s in particular: one is about time, the other
+// about the destination.
+test('moving a paper names the specific refusal', () => {
+  expect(movePaperErrLabel(t, new ApiError(409, 'paper_running'))).toBe('errPaperRunning')
+  expect(movePaperErrLabel(t, new ApiError(409, 'paper_exists'))).toBe('errPaperAlreadyThere')
+  expect(movePaperErrLabel(t, new ApiError(409, 'project_public'))).toBe('errMovePublic')
+  expect(movePaperErrLabel(t, new ApiError(409, 'project_trashed'))).toBe('errMoveTrashed')
+  expect(movePaperErrLabel(t, new ApiError(403, 'not_lead'))).toBe('errMovePaperNotLead')
+  expect(movePaperErrLabel(t, new ApiError(404, 'target_not_found'))).toBe('movePaperFailed')
+  expect(movePaperErrLabel(t, new TypeError('offline'))).toBe('errOffline')
 })
 
 // A failed session used to print the worker's own error text on the row:

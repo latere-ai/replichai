@@ -65,6 +65,7 @@ import {
   listPapers,
   addPaper,
   removePaper,
+  movePaper,
   startSession,
   listModels,
   type ModelTier,
@@ -106,6 +107,7 @@ import {
   checkoutErrLabel,
   addPaperErrLabel,
   removePaperErrLabel,
+  movePaperErrLabel,
   deleteSessionErrLabel,
   trashErrLabel,
   purgeErrLabel,
@@ -3470,6 +3472,8 @@ function PapersCard({
   // The session waiting on a delete confirmation (032). One dialog for the card
   // rather than one per row, the way the projects list holds its trash dialog.
   const [dropping, setDropping] = useState<Job | null>(null)
+  // The paper waiting on a move (035). One dialog for the card, as above.
+  const [moving, setMoving] = useState<ProjectPaper | null>(null)
   const refresh = onRefresh
   // Removing a session is the owner's alone — 019's rule, at session scale. The
   // trashed clause matches the server, which refuses every write on a project in
@@ -3611,9 +3615,30 @@ function PapersCard({
                 <span className="muted small">
                   {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
                 </span>
+                {/* Moving is offered whether or not the paper has been run —
+                    which is the point: a paper filed under the wrong project is
+                    usually noticed after a replication, and that is exactly when
+                    removing it stops being allowed. */}
+                {mayWork && (
+                  <Tip text={t('movePaper')}>
+                    <button
+                      className="icon-btn"
+                      aria-label={t('movePaper')}
+                      data-test="move-paper"
+                      onClick={() => setMoving(g.paper)}
+                    >
+                      <Ico name="folder" size={13} w={1.9} />
+                    </button>
+                  </Tip>
+                )}
                 {mayWork && g.sessions.length === 0 && (
                   <Tip text={t('removePaper')}>
-                    <button className="icon-btn danger" aria-label={t('removePaper')} onClick={() => remove(g.paper.key)}>
+                    <button
+                      className="icon-btn danger"
+                      aria-label={t('removePaper')}
+                      data-test="remove-paper"
+                      onClick={() => remove(g.paper.key)}
+                    >
                       <Ico name="x" size={13} w={1.9} />
                     </button>
                   </Tip>
@@ -3659,6 +3684,19 @@ function PapersCard({
           onClose={() => setDropping(null)}
           onDone={() => {
             setDropping(null)
+            refresh()
+          }}
+        />
+      )}
+
+      {moving && (
+        <MovePaperDialog
+          i18n={i18n}
+          project={project}
+          paper={moving}
+          onClose={() => setMoving(null)}
+          onDone={() => {
+            setMoving(null)
             refresh()
           }}
         />
@@ -4090,6 +4128,101 @@ function DeleteSessionDialog({ i18n, job, onClose, onDone }: { i18n: I18n; job: 
     >
       <p className="muted">{t('deleteSessionBody')}</p>
       {job.repo_name && <p className="muted small">{t('deleteSessionKeepsRepo')}</p>}
+      {err && <p className="err small">{err}</p>}
+    </Modal>
+  )
+}
+
+// MovePaperDialog refiles one paper, and its replications, under another
+// project (035).
+//
+// The destinations are the caller's own projects, private and not in the trash
+// — the plain reading of "move it to my other project", and the same three
+// things the server checks, so the list offers nothing that would be refused.
+// The server still decides: it authorises a lead of either end, which this
+// picker does not yet surface.
+function MovePaperDialog({
+  i18n,
+  project,
+  paper,
+  onClose,
+  onDone,
+}: {
+  i18n: I18n
+  project: Project
+  paper: ProjectPaper
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { t } = i18n
+  const [targets, setTargets] = useState<ProjectView[] | null>(null)
+  const [to, setTo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let live = true
+    listProjects()
+      .then((ps) => {
+        if (!live) return
+        const open = ps.filter((p) => p.id !== project.id && p.visibility === 'private' && !p.deleted_at)
+        setTargets(open)
+        if (open.length > 0) setTo(open[0].id)
+      })
+      .catch(() => live && setTargets([]))
+    return () => {
+      live = false
+    }
+  }, [project.id])
+
+  const go = async () => {
+    if (!to || busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await movePaper(project.id, paper.key, to)
+      onDone()
+    } catch (e) {
+      setErr(movePaperErrLabel(t, e))
+      setBusy(false)
+    }
+  }
+
+  const nowhere = targets !== null && targets.length === 0
+  return (
+    <Modal
+      title={t('movePaperTitle')}
+      icon="fileText"
+      eyebrow={paper.title || paper.ref}
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>
+            {t('cancel')}
+          </button>
+          <button className="btn" onClick={go} disabled={busy || !to} data-test="move-paper-confirm">
+            {busy ? t('movingPaper') : t('movePaperConfirm')}
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{t('movePaperBody')}</p>
+      {targets === null ? (
+        <p className="muted small">{t('loading')}</p>
+      ) : nowhere ? (
+        <p className="muted small">{t('movePaperNowhere')}</p>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="muted small">{t('movePaperTo')}</span>
+          <Select
+            value={to}
+            options={targets.map((p) => ({ value: p.id, label: p.title }))}
+            onChange={setTo}
+            label={t('movePaperTo')}
+            width={320}
+          />
+        </div>
+      )}
       {err && <p className="err small">{err}</p>}
     </Modal>
   )
