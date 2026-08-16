@@ -103,6 +103,8 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/papers", rt.addProjectPaper)
 	rt.gatedHandle("DELETE", "/projects/{id}/papers", rt.removeProjectPaper)
 	rt.gatedHandle("POST", "/projects/{id}/papers/move", rt.moveProjectPaper)
+	rt.gatedHandle("PATCH", "/projects/{id}/papers", rt.editProjectPaper)
+	rt.gatedHandle("POST", "/projects/{id}/papers/refresh", rt.refreshProjectPapers)
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("GET", "/models", rt.listModels)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
@@ -181,6 +183,13 @@ func (rt *Router) listProjectPapers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
 		return
 	}
+	writeJSON(w, http.StatusOK, paperViews(papers, sessions))
+}
+
+// paperViews joins each paper to what has been run against it. The counts are
+// computed here rather than stored, so a session that failed, was deleted or
+// moved cannot leave a number behind that nothing updates.
+func paperViews(papers []project.Paper, sessions []job.Job) []PaperView {
 	out := make([]PaperView, 0, len(papers))
 	for _, p := range papers {
 		v := PaperView{Paper: p}
@@ -196,7 +205,7 @@ func (rt *Router) listProjectPapers(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, v)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out
 }
 
 // addProjectPaper records another paper on a project. It starts nothing: adding
@@ -236,6 +245,149 @@ func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 	// that paper's title and never touches the project's own name.
 	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, "", []PaperResult{added}) })
 	writeJSON(w, http.StatusCreated, added)
+}
+
+// editProjectPaper records a correction to a paper's bibliography (037).
+//
+// It is the first route that writes a paper field at all: until now the only
+// writer was the background enrichment, and a source that got an author's name
+// wrong had nobody to hear about it. A correction is a member's act — the same
+// people who may add a paper — and it is permanent, which the store enforces by
+// marking every field it writes.
+//
+// The key travels as a query parameter rather than a path segment, as it does
+// for removing and moving: a paper key is `doi:10.1145/3772318.3791265`, and the
+// slash in it is not a path separator.
+func (rt *Router) editProjectPaper(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok {
+		return
+	}
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "missing_key")
+		return
+	}
+	var edit project.PaperEdit
+	if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	if err := tidyPaperEdit(&edit); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	p, err := rt.projects.EditPaper(r.Context(), proj.ID, key, edit)
+	switch {
+	case errors.Is(err, project.ErrPaperNotFound):
+		writeError(w, http.StatusNotFound, "paper_not_found")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "edit_paper_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, PaperView{Paper: p})
+}
+
+// The caps a correction is held to. A bibliography is short by nature; these
+// exist so a field nobody validates upstream cannot become a place to store
+// arbitrary text.
+const (
+	maxPaperField = 500
+	maxAuthors    = 100
+)
+
+// tidyPaperEdit trims what a person typed and refuses what is too long. It
+// trims rather than refusing whitespace, because a trailing space in a pasted
+// author list is not a mistake worth a 400.
+func tidyPaperEdit(e *project.PaperEdit) error {
+	for _, f := range []*string{e.Title, e.Venue, e.Volume, e.Issue, e.Pages, e.Publisher} {
+		if f == nil {
+			continue
+		}
+		*f = strings.TrimSpace(*f)
+		if len(*f) > maxPaperField {
+			return errors.New("field_too_long")
+		}
+	}
+	if e.Authors != nil {
+		if len(*e.Authors) > maxAuthors {
+			return errors.New("too_many_authors")
+		}
+		out := make([]string, 0, len(*e.Authors))
+		for _, a := range *e.Authors {
+			a = strings.TrimSpace(a)
+			if a == "" {
+				continue // an empty row in the editor is not an author
+			}
+			if len(a) > maxPaperField {
+				return errors.New("field_too_long")
+			}
+			out = append(out, a)
+		}
+		*e.Authors = out
+	}
+	if e.Year != nil && *e.Year != 0 && (*e.Year < 1600 || *e.Year > 2200) {
+		return errors.New("bad_year")
+	}
+	return nil
+}
+
+// refreshProjectPapers fills in the details of every paper in the project whose
+// record is incomplete (037), and reports how many it completed.
+//
+// It is what an owner clicks for a project that predates the bibliography, and
+// it is the same enrichment a fresh add runs — one path, so what a refresh may
+// overwrite (nothing a person edited, nothing already filled) is decided in one
+// place. Requests to the metadata services are serialised: they are courteous
+// free services, and a project with twenty papers must not open twenty
+// connections to Crossref at once.
+func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok {
+		return
+	}
+	if rt.resolver == nil {
+		writeError(w, http.StatusServiceUnavailable, "no_resolver")
+		return
+	}
+	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	filled := 0
+	for _, p := range papers {
+		if !p.NeedsDetails() {
+			continue
+		}
+		got, err := rt.resolver.Resolve(r.Context(), p.Ref)
+		if err != nil {
+			continue // a source that cannot answer today is not this request's failure
+		}
+		changed, err := rt.projects.EnrichPaper(r.Context(), proj.ID, p.Key, got.Title, got.Record)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "enrich_failed")
+			return
+		}
+		if changed {
+			filled++
+		}
+	}
+	papers, err = rt.projects.ListPapers(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Filled int         `json:"filled"`
+		Papers []PaperView `json:"papers"`
+	}{filled, paperViews(papers, sessions)})
 }
 
 // removeProjectPaper drops a paper a project has never run.
