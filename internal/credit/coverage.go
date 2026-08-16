@@ -80,10 +80,10 @@ func (p Preference) String() string { return string(p) }
 // would turn a billing imprecision into an outage.
 type Coverage struct {
 	Preference Preference `json:"preference"`
-	Model      string `json:"model,omitempty"`
-	Named      bool   `json:"named"`
-	Rates      Rates  `json:"rates,omitzero"`
-	Err        string `json:"error,omitempty"`
+	Model      string     `json:"model,omitempty"`
+	Named      bool       `json:"named"`
+	Rates      Rates      `json:"rates,omitzero"`
+	Err        string     `json:"error,omitempty"`
 }
 
 // Covers reports how this card would price each preference the engine asks for.

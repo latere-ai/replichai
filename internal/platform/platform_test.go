@@ -11,6 +11,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 )
 
 var ctx = context.Background()
@@ -59,6 +60,12 @@ func contract(t *testing.T, s Store) {
 		t.Errorf("seeded spread = {bps:%d fixed:%d min:%d}, want the defaults", got.SpreadBps, got.SpreadFixedMicro, got.MinTopupMicro)
 	}
 
+	// A fresh deployment drafts nothing: no model is configured, which is the
+	// state that leaves a description something people type (039).
+	if got.Draft.Configured() {
+		t.Errorf("a fresh deployment came with a drafting model: %+v", got.Draft)
+	}
+
 	// Policy is admin-only, re-checked in the store rather than trusted to the
 	// route guard.
 	if err := s.SetSettings(ctx, user, Settings{StartReserve: 999}); !errors.Is(err, ErrNotAdmin) {
@@ -76,6 +83,22 @@ func contract(t *testing.T, s Store) {
 	if got.StartReserve != 7*credit.Dollar {
 		t.Errorf("reserve = %d, want %d", got.StartReserve, 7*credit.Dollar)
 	}
+	// The drafting model an admin configures is durable, and the row carries no
+	// credential to be durable *with*: the key is the deployment's, from its
+	// environment, and this struct has nowhere to put one.
+	if err := s.SetSettings(ctx, admin, Settings{
+		StartReserve: 7 * credit.Dollar,
+		Draft:        draft.Config{Provider: "openai", BaseURL: "https://models.example/v1", Model: "small-1"},
+	}); err != nil {
+		t.Fatalf("SetSettings with a drafting model: %v", err)
+	}
+	if got, err = s.Settings(ctx); err != nil {
+		t.Fatalf("Settings: %v", err)
+	}
+	if got.Draft.Model != "small-1" || got.Draft.BaseURL != "https://models.example/v1" || !got.Draft.Configured() {
+		t.Errorf("drafting config = %+v, did not survive the store", got.Draft)
+	}
+
 	if got.UpdatedBy != admin.Email || got.UpdatedAt.IsZero() {
 		t.Errorf("settings = %+v, want the admin and a time recorded", got)
 	}

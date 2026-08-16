@@ -11,6 +11,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 )
 
 // PGStore is the Postgres implementation of Store, against the same contract
@@ -51,15 +52,20 @@ func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
 		SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
 	}
 	var out Settings
-	var card []byte
+	var card, drafting []byte
 	err := s.pool.QueryRow(ctx,
-		`SELECT start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, updated_by, updated_at FROM platform_settings WHERE id = 1`,
-	).Scan(&out.StartReserve, &out.OverdraftCap, &card, &out.SpreadBps, &out.SpreadFixedMicro, &out.MinTopupMicro, &out.UpdatedBy, &out.UpdatedAt)
+		`SELECT start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, updated_by, updated_at FROM platform_settings WHERE id = 1`,
+	).Scan(&out.StartReserve, &out.OverdraftCap, &card, &out.SpreadBps, &out.SpreadFixedMicro, &out.MinTopupMicro, &drafting, &out.UpdatedBy, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fallback, nil
 	}
 	if err != nil {
 		return fallback, err
+	}
+	// An unreadable drafting config is a deployment that does not draft, which
+	// is a state everything downstream already handles.
+	if err := json.Unmarshal(drafting, &out.Draft); err != nil {
+		out.Draft = draft.Config{}
 	}
 	if err := json.Unmarshal(card, &out.Rates); err != nil || len(out.Rates.Models) == 0 {
 		// An unreadable or empty card is the one value that would price a
@@ -85,9 +91,13 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 	if err != nil {
 		return err
 	}
+	drafting, err := json.Marshal(next.Draft)
+	if err != nil {
+		return err
+	}
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, updated_by, updated_at)
-		VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, updated_by, updated_at)
+		VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (id) DO UPDATE
 		SET start_reserve      = EXCLUDED.start_reserve,
 		    overdraft_cap      = EXCLUDED.overdraft_cap,
@@ -95,8 +105,9 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 		    spread_bps         = EXCLUDED.spread_bps,
 		    spread_fixed_micro = EXCLUDED.spread_fixed_micro,
 		    min_topup_micro    = EXCLUDED.min_topup_micro,
+		    draft              = EXCLUDED.draft,
 		    updated_by         = EXCLUDED.updated_by,
 		    updated_at         = EXCLUDED.updated_at`,
-		next.StartReserve, next.OverdraftCap, card, next.SpreadBps, next.SpreadFixedMicro, next.MinTopupMicro, byAdmin.Email, s.clock().UTC())
+		next.StartReserve, next.OverdraftCap, card, next.SpreadBps, next.SpreadFixedMicro, next.MinTopupMicro, drafting, byAdmin.Email, s.clock().UTC())
 	return err
 }

@@ -141,6 +141,12 @@ const (
 	// KindCharge spends a pot's credits for a finished session (negative). At
 	// most one per session, which is what makes settlement exactly-once.
 	KindCharge Kind = "charge"
+	// KindDraft spends a pot's credits on a model call that is not a session
+	// (039): drafting a project's description. It is a charge with no job, made
+	// exactly-once by its own reference rather than by a session id, so a
+	// retried request bills once and the project's statement accounts for every
+	// token the platform spent on it.
+	KindDraft Kind = "draft"
 	// KindAdjust corrects a charge after the fact (either sign) — a session that
 	// settled from last-observed usage while its backend kept burning, found and
 	// reconciled afterwards. Deliberately not unique per session.
@@ -226,6 +232,13 @@ type Store interface {
 	// the statement tells a purchase from an admin grant. A second call with the
 	// same ref is a no-op — a retried webhook credits exactly once.
 	TopupPaid(ctx context.Context, email string, credited int64, ref, actor string) error
+	// Spend charges a pot for work that is not a session — today, one model
+	// call that drafts a project's description (039). It is idempotent on ref,
+	// so a retried request bills once, and it never refuses for want of balance:
+	// the tokens were spent before this is called, and a project that has just
+	// gone under is a project that owes rather than one that got the work free.
+	// Whether it *may* be spent is asked before the work, not here.
+	Spend(ctx context.Context, pot Holder, amount int64, ref, actor string) error
 	// RefundPaid reverses a purchase: a negative adjust of amount (a positive
 	// magnitude), idempotent on its own ref — the refund or dispute id, distinct
 	// from the purchase's, so it dedupes independently. The wallet may go

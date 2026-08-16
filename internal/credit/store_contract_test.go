@@ -219,6 +219,55 @@ func runStoreContract(t *testing.T, s Store) {
 	if red[0].Email != "debtor@latere.ai" || red[0].Balance != -5*Dollar {
 		t.Fatalf("NegativeWallets[0] = %+v, want debtor@latere.ai at -%d", red[0], 5*Dollar)
 	}
+
+	// A model call that is not a session still costs the project money (039).
+	// It is a charge with no job, made exactly-once by its own reference.
+	spendPot := Pot("proj-spend")
+	if err := s.Topup(ctx, admin, "payer@example.org", 5*Dollar); err != nil {
+		t.Fatalf("Topup: %v", err)
+	}
+	if err := s.Fund(ctx, "payer@example.org", "proj-spend", "Spending", 5*Dollar); err != nil {
+		t.Fatalf("Fund: %v", err)
+	}
+	before, _ := s.Balance(ctx, spendPot)
+	if err := s.Spend(ctx, spendPot, 1500, "draft:proj-spend:1", "system"); err != nil {
+		t.Fatalf("Spend: %v", err)
+	}
+	if err := s.Spend(ctx, spendPot, 1500, "draft:proj-spend:1", "system"); err != nil {
+		t.Fatalf("Spend twice on one reference: %v", err)
+	}
+	after, _ := s.Balance(ctx, spendPot)
+	if before-after != 1500 {
+		t.Errorf("balance moved by %d, want one charge of 1500 for two identical requests", before-after)
+	}
+	// It appears in the statement as its own kind, so a reader can tell what the
+	// project's money went on.
+	entries, entriesErr := s.Entries(ctx, spendPot, 50)
+	if entriesErr != nil {
+		t.Fatalf("Entries: %v", entriesErr)
+	}
+	var drafts int
+	for _, e := range entries {
+		if e.Kind == KindDraft {
+			drafts++
+			if e.Amount != -1500 || e.JobID != "" {
+				t.Errorf("draft entry = %+v, want a negative charge with no session", e)
+			}
+		}
+	}
+	if drafts != 1 {
+		t.Errorf("statement holds %d draft entries, want 1", drafts)
+	}
+	// A reference is required, and a call that rounded to nothing is not a line.
+	if err := s.Spend(ctx, spendPot, 100, "", "system"); !errors.Is(err, ErrNoRef) {
+		t.Errorf("Spend with no reference = %v, want ErrNoRef", err)
+	}
+	if err := s.Spend(ctx, spendPot, 0, "draft:proj-spend:zero", "system"); err != nil {
+		t.Errorf("Spend of nothing = %v, want it to be a no-op", err)
+	}
+	if got, _ := s.Balance(ctx, spendPot); got != after {
+		t.Errorf("a zero spend moved the balance")
+	}
 }
 
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
