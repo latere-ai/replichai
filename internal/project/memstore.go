@@ -214,6 +214,17 @@ func (s *MemStore) ListPublic(_ context.Context) ([]Project, error) {
 	return out, nil
 }
 
+// ListAll returns every project, oldest first.
+func (s *MemStore) ListAll(_ context.Context) ([]Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Project, 0, len(s.order))
+	for _, id := range s.order {
+		out = append(out, s.projects[id])
+	}
+	return out, nil
+}
+
 // ModifiedAt returns each named project's creation-or-newest-paper time.
 func (s *MemStore) ModifiedAt(_ context.Context, ids []string) (map[string]time.Time, error) {
 	s.mu.Lock()

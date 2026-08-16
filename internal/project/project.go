@@ -322,6 +322,11 @@ type Store interface {
 	// timestamp must keep pointing at the moment the publication actually ended,
 	// not at the last time somebody asked. The caller authorises (owner-only).
 	SetPrivate(ctx context.Context, id string, w Withdrawal) error
+	// ListAll returns every project, trashed ones included, oldest first. It is
+	// the platform's own read, not a person's: the paper sweep (037) walks it to
+	// fill in the projects nobody has opened since. Oldest first because that is
+	// the order they need filling in.
+	ListAll(ctx context.Context) ([]Project, error)
 	// ListPublic returns every public project, newest first — the public zone's
 	// read surface, across all owners.
 	ListPublic(ctx context.Context) ([]Project, error)
