@@ -42,7 +42,7 @@ AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
 ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
 MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
-DRAFT_API_KEY=...              # the model that drafts project descriptions (039); omit and descriptions are typed
+DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint (039); Anthropic reuses REPLICHAI_API_KEY
 ```
 
 `DATABASE_URL`, `ADDR`, `BASE_URL`, and `PROVIDER` are set by the manifest and
@@ -51,22 +51,28 @@ override any same-named key in `.env`, so the two cannot drift.
 ### Which model drafts a description
 
 [039](../specs/039-a-description-can-be-drafted.md) lets a project's owner ask a
-model for a first draft of its description. Two things have to be true before the
-control appears, and they are deliberately in two different places:
+model for a first draft of its description.
 
-- **`DRAFT_API_KEY`** in this secret — the credential. It never goes in the
-  database: a settings row is read by every admin, lands in every backup, and
-  would be printed by any debug route somebody adds later.
-- **The model**, in the admin console's policy card: which protocol
-  (Anthropic, or any OpenAI-compatible endpoint — a hosted vendor, or your own
-  llama.cpp / vLLM / Ollama), which endpoint, and which model id.
+**On Anthropic, it is one field.** The deployment already holds an Anthropic
+credential for the agent that runs its sessions, so drafting reuses it: pick
+Anthropic in the admin console's policy card, type a model id, save. Nothing else
+to set, and no second key.
 
-The model id must also appear in the rate card on the same screen. Without an
-exact entry the deployment refuses to draft rather than guessing a price — the
-card's "charge the dearest rates" fallback exists for an unrecognised *session*
-model, and applying it here would bill Opus rates for a model that costs pennies.
+**On another vendor**, drafting needs what the platform does not already have: an
+endpoint (anything speaking the OpenAI chat-completions protocol — a hosted
+vendor, or your own llama.cpp / vLLM / Ollama) and a key of its own in
+`DRAFT_API_KEY`. The key stays in this secret and never goes in the database: a
+settings row is read by every admin, lands in every backup, and would be printed
+by any debug route somebody adds later.
 
-With either half missing, nothing breaks: the app offers no draft control and
+Either way the model id must be priced by the rate card on the same screen — an
+exact entry, or a dated snapshot of one (`claude-haiku-4-5-20251001` prices as
+`claude-haiku-4-5`). Without one the deployment refuses to draft rather than
+guessing: the card's "charge the dearest rates" fallback exists for an
+unrecognised *session* model, and applying it here would bill Opus rates for a
+model that costs pennies.
+
+With no model configured, nothing breaks: the app offers no draft control and
 descriptions are typed.
 
 ### Who may sign in

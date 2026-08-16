@@ -77,26 +77,16 @@ type Card struct {
 // An empty card cannot price anything and is ErrNoRates. That is fail-closed on
 // purpose: tokens nobody can price are not free tokens.
 func (c Card) For(model string) (Rates, error) {
+	if hit, ok := c.Priced(model); ok {
+		return hit, nil
+	}
 	model = strings.TrimSpace(model)
 	priced := make([]Rates, 0, len(c.Models))
-	var snapshot *Rates
 	for _, r := range c.Models {
 		if r.Zero() {
 			continue // a free row prices nothing; it cannot stand in for a model
 		}
-		name := strings.TrimSpace(r.Model)
-		if strings.EqualFold(name, model) && model != "" {
-			return r, nil
-		}
-		if snapshot == nil && isSnapshotOf(name, model) {
-			hit := r
-			hit.Model = model // record what was asked for, priced as what it is
-			snapshot = &hit
-		}
 		priced = append(priced, r)
-	}
-	if snapshot != nil {
-		return *snapshot, nil
 	}
 	if len(priced) == 0 {
 		return Rates{}, ErrNoRates
@@ -110,6 +100,40 @@ func (c Card) For(model string) (Rates, error) {
 		dearest.CacheWrite1h = max(dearest.CacheWrite1h, r.CacheWrite1h)
 	}
 	return dearest, nil
+}
+
+// Priced resolves a model to rates the card actually names for it — an exact
+// entry, or a dated snapshot of one — and reports whether it found any.
+//
+// It is `For` without the fail-expensive fallback. That fallback exists so an
+// unrecognised *session* model is charged the dearest rates rather than nothing;
+// a caller who must refuse an unknown model instead of guessing at it high
+// (039's drafting, where the model is an operator's choice and might be a local
+// one costing pennies) asks this question rather than that one.
+func (c Card) Priced(model string) (Rates, bool) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return Rates{}, false
+	}
+	var snapshot *Rates
+	for _, r := range c.Models {
+		if r.Zero() {
+			continue // a free row prices nothing; it cannot stand in for a model
+		}
+		name := strings.TrimSpace(r.Model)
+		if strings.EqualFold(name, model) {
+			return r, true
+		}
+		if snapshot == nil && isSnapshotOf(name, model) {
+			hit := r
+			hit.Model = model // record what was asked for, priced as what it is
+			snapshot = &hit
+		}
+	}
+	if snapshot != nil {
+		return *snapshot, true
+	}
+	return Rates{}, false
 }
 
 // isSnapshotOf reports whether model is a dated snapshot of the card entry

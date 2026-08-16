@@ -1972,20 +1972,6 @@ function PlatformPolicy({
       {provider !== '' && (
         <>
           <div className="field-row">
-            <label className="admin-label" htmlFor="draft-base-url">
-              {t('draftBaseURL')}
-            </label>
-            <input
-              id="draft-base-url"
-              className="text"
-              style={{ flex: 1 }}
-              value={baseURL}
-              placeholder={provider === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
-              onChange={(e) => setBaseURL(e.target.value)}
-              data-test="draft-base-url"
-            />
-          </div>
-          <div className="field-row">
             <label className="admin-label" htmlFor="draft-model">
               {t('draftModel')}
             </label>
@@ -1999,6 +1985,28 @@ function PlatformPolicy({
               data-test="draft-model"
             />
           </div>
+          {/* Only another vendor needs an address and a key. Anthropic is the
+              one this deployment already runs its sessions on, so choosing it
+              is a model id and nothing else. */}
+          {provider !== 'anthropic' && (
+            <div className="field-row">
+              <label className="admin-label" htmlFor="draft-base-url">
+                {t('draftBaseURL')}
+              </label>
+              <input
+                id="draft-base-url"
+                className="text"
+                style={{ flex: 1 }}
+                value={baseURL}
+                placeholder={t('draftBaseURLPlaceholder')}
+                onChange={(e) => setBaseURL(e.target.value)}
+                data-test="draft-base-url"
+              />
+            </div>
+          )}
+          <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
+            {provider === 'anthropic' ? t('draftUsesAgentKey') : t('draftNeedsOwnKey')}
+          </p>
         </>
       )}
       {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
@@ -2371,8 +2379,12 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
 
   if (!editing) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <h1 className="detail-title">{title}</h1>
+      // The control belongs to the last word, not to the right-hand edge: inside
+      // the heading it follows the text wherever the text ends, which is where a
+      // reader's eye already is. Beside it, on a title that wrapped to two lines,
+      // it floated off at the end of the row looking like somebody else's button.
+      <h1 className="detail-title">
+        {title}
         {canEdit && (
           <Tip text={t('rename')}>
             <button className="icon-btn" aria-label={t('rename')} onClick={() => { setDraft(title); setEditing(true) }}>
@@ -2380,14 +2392,14 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
             </button>
           </Tip>
         )}
-      </div>
+      </h1>
     )
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div className="detail-title-edit">
       <input
-        className="text"
-        style={{ minWidth: 280, fontSize: 15 }}
+        className="text title-input"
+        aria-label={t('rename')}
         value={draft}
         autoFocus
         disabled={busy}
@@ -2556,8 +2568,8 @@ function ProjectScreen({
       )}
       <div className="detail-head">
         <div className="detail-title-row">
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+          <div className="detail-title-main">
+            <div className="detail-title-line">
               <EditableTitle i18n={i18n} title={project.title} canEdit={isOwner} onRename={async (next) => { await renameProject(id, next); refresh() }} />
               <VisibilityBadge i18n={i18n} visibility={project.visibility} />
             </div>

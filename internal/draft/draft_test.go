@@ -162,3 +162,31 @@ func TestTheSystemPromptForbidsAVerdict(t *testing.T) {
 		}
 	}
 }
+
+// Choosing Anthropic is a model id and nothing else: the deployment already
+// holds an Anthropic credential for the agent that runs its sessions, and the
+// endpoint is that vendor's own. Only pointing drafting at another vendor needs
+// an endpoint and a key of its own.
+func TestAnthropicNeedsNothingButAModelID(t *testing.T) {
+	m, err := New(Config{Provider: "anthropic", Model: "claude-haiku-4-5"}, "the-agents-key", nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if m.Name() != "claude-haiku-4-5" {
+		t.Errorf("model = %q", m.Name())
+	}
+	// The vendor's own endpoint, not one somebody had to type.
+	if got := m.(*anthropicModel).base; got != "https://api.anthropic.com" {
+		t.Errorf("base = %q, want the vendor's own", got)
+	}
+	// An OpenAI-compatible endpoint defaults too, so "just a model id" is the
+	// shape everywhere — but that is the case where a key has to be supplied,
+	// which New already refuses without.
+	o, err := New(Config{Provider: "openai", Model: "small-1"}, "sk-other", nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got := o.(*openAIModel).base; got != "https://api.openai.com/v1" {
+		t.Errorf("base = %q", got)
+	}
+}
