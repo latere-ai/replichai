@@ -298,12 +298,12 @@ func (w *Worker) sweep(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
-		resumed, failed, err := w.Reconcile(ctx)
+		resumed, _, err := w.reconcile(ctx, false)
 		if err != nil {
 			log.Printf("worker: sweep: %v", err)
 		}
-		if resumed > 0 || failed > 0 {
-			log.Printf("worker: sweep adopted %d stranded run(s), failed %d unrecoverable", resumed, failed)
+		if resumed > 0 {
+			log.Printf("worker: sweep adopted %d stranded run(s)", resumed)
 		}
 	}
 }
@@ -319,6 +319,22 @@ func (w *Worker) sweep(ctx context.Context) {
 // its id was never recorded) cannot be synced and is failed. It returns how many
 // were resumed and how many failed.
 func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error) {
+	return w.reconcile(ctx, true)
+}
+
+// reconcile is Reconcile with one thing made explicit: whether a job with no run
+// to rejoin may be failed.
+//
+// It may at startup, where "nothing in this process is mid-anything" is true by
+// construction. It may not on a sweep, which runs beside a live pool: a session
+// this process is not driving may still be resolving on the other replica, and
+// resolving is quiet — the paper fetch and the repository creation report no
+// status, so a slow one lets its lease go cold while it is working perfectly
+// well. Failing it there would kill a healthy session, which is the failure the
+// lease exists to prevent, arriving by another door. A sweep therefore only ever
+// picks up what it can positively identify as rejoinable: a run with a backend
+// session id behind it.
+func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed int, err error) {
 	active, err := w.store.Active(ctx)
 	if err != nil {
 		return 0, 0, fmt.Errorf("list active: %w", err)
@@ -329,6 +345,10 @@ func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error)
 		}
 		if w.driving(j.ID) {
 			continue // this process is already on it; a sweep must not re-drive it
+		}
+		rejoinable := j.Status.RunID != "" && (j.Phase == PhaseRunning || j.Phase == PhasePublishing)
+		if !rejoinable && !strand {
+			continue // not this sweep's to judge — and not even its lease to take
 		}
 		// Take the row before touching it. Every replica reconciles at startup,
 		// and a rolling deploy overlaps a starting pod with one still driving, so
