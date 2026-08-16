@@ -108,7 +108,11 @@ try {
   })
   if (!policy) fail('the platform policy card has no save control')
   else {
-    if (policy.fields !== 2) fail(`the policy card shows ${policy.fields} fields, want the reserve and the floor`)
+    // Three since 039: the reserve, the floor, and which model drafts. The
+    // count is asserted at all so that "Save is below every field" below has
+    // something to be true *of* — a card that lost its fields would pass that
+    // vacuously.
+    if (policy.fields !== 3) fail(`the policy card shows ${policy.fields} fields, want the reserve, the floor and the drafting model`)
     if (policy.insideAField) fail('Save sits inside a field row, so it reads as that one field\u2019s control')
     if (!policy.belowEveryField) fail('Save is not below every field it writes')
     if (!policy.last) fail('Save is not the card\u2019s final control')
