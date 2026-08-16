@@ -557,14 +557,24 @@ func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 
 // closeRunError keeps CloseRun idempotent without hiding infrastructure
 // failures. The managed-agents API uses not-found/conflict when work is already
-// terminal or archived; those are the requested end state.
+// terminal or archived, and rejects an interrupt sent to an already archived
+// session with 400; all of those are the requested end state. Other 400s are
+// real — a malformed event would stop live sessions being interrupted at all —
+// so only the archived message is tolerated.
 func closeRunError(operation string, err error) error {
 	if err == nil {
 		return nil
 	}
 	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusConflict) {
-		return nil
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusNotFound, http.StatusConflict:
+			return nil
+		case http.StatusBadRequest:
+			if strings.Contains(strings.ToLower(apiErr.Error()), "archived session") {
+				return nil
+			}
+		}
 	}
 	return fmt.Errorf("%s managed session: %w", operation, err)
 }
