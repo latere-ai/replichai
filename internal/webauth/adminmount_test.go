@@ -226,6 +226,32 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 		t.Errorf("settings after write = %+v", got)
 	}
 
+	// The drafting model is written by the same request, and survives it (039).
+	// It did not, at first: the handler decoded an explicit struct and had no
+	// field for it, so the console's Save appeared to work and changed nothing.
+	w = do("PUT", "/admin/settings", `{"start_reserve":9000000,"draft":{"provider":"anthropic","model":"claude-haiku-4-5"}}`, admin)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put drafting settings = %d %s", w.Code, w.Body.String())
+	}
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Draft.Provider != "anthropic" || got.Draft.Model != "claude-haiku-4-5" {
+		t.Errorf("drafting config after write = %+v", got.Draft)
+	}
+	// And an edit that does not mention it leaves it alone, the way the spread
+	// and the floor are left alone.
+	if w := do("PUT", "/admin/settings", `{"start_reserve":8000000}`, admin); w.Code != http.StatusOK {
+		t.Fatalf("put settings = %d", w.Code)
+	}
+	w = do("GET", "/admin/settings", "", admin)
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Draft.Model != "claude-haiku-4-5" {
+		t.Errorf("an unrelated edit switched drafting off: %+v", got.Draft)
+	}
+
 	// A negative policy is a bad request, not a 500.
 	if w := do("PUT", "/admin/settings", `{"start_reserve":-1}`, admin); w.Code != http.StatusBadRequest {
 		t.Errorf("negative reserve = %d, want 400", w.Code)

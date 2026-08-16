@@ -1325,14 +1325,53 @@ h1.screen-title {
 }
 .detail-describe textarea.text {
   width: 100%;
-  resize: vertical;
-  line-height: 1.6;
 }
 .detail-describe-foot {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* Renaming a project swaps the heading for a field. It is the same text at the
+   same size in the same place, so the field carries the heading's typography and
+   the row's width rather than a 280px box in 15px type that clipped the name it
+   was editing. */
+/* The title's column claims the row's spare width, so the field that replaces
+   the heading is as wide as the heading was. Content-sized, it was a 450px box
+   scrolling a name that had been reading in full one click earlier. */
+.detail-title-main {
+  flex: 1;
+  min-width: 0;
+}
+.detail-title-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.detail-title-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+input.text.title-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+/* The rename control sits in the heading's own text flow, so it follows the
+   last word. Baseline-ish alignment rather than middle: it is punctuation on a
+   line of type, not a control in a toolbar. */
+.detail-title .icon-btn {
+  vertical-align: middle;
+  margin-left: 7px;
 }
 
 .detail-meta {
@@ -1748,8 +1787,11 @@ input.text.amount-input {
   flex-wrap: wrap;
   align-items: center;
 }
-input.text {
-  height: 32px;
+/* One text control, whatever tag it is. `input.text` alone left every textarea
+   in the app with the browser's own box — a white fill in a dark theme, a native
+   resize grip, and none of the app's border, radius or focus behaviour. */
+input.text,
+textarea.text {
   padding: 0 11px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -1758,14 +1800,28 @@ input.text {
   font-size: 13px;
   transition: border-color var(--dur-hover), background var(--dur-hover);
 }
-input.text:hover {
+input.text {
+  height: 32px;
+}
+textarea.text {
+  /* A paragraph, not a line: vertical padding and a readable measure, and it
+     grows downwards only — sideways it belongs to the layout. */
+  padding: 9px 11px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+}
+input.text:hover,
+textarea.text:hover {
   border-color: var(--fg-3);
 }
-input.text:focus {
+input.text:focus,
+textarea.text:focus {
   border-color: var(--brand);
   background: var(--bg-surface);
 }
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--fg-3);
 }
 .publish-panel {

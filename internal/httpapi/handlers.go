@@ -536,15 +536,11 @@ func (rt *Router) draftRates(ctx context.Context) (credit.Rates, error) {
 		return credit.Rates{}, fmt.Errorf("reading settings: %w", err)
 	}
 	name := rt.drafter.Name()
-	for _, m := range set.Rates.Models {
-		if m.Model == name {
-			if m.Zero() {
-				return credit.Rates{}, fmt.Errorf("the rate card prices %s at nothing", name)
-			}
-			return m, nil
-		}
+	rates, ok := set.Rates.Priced(name)
+	if !ok {
+		return credit.Rates{}, fmt.Errorf("the rate card has no entry for %s", name)
 	}
-	return credit.Rates{}, fmt.Errorf("the rate card has no entry for %s", name)
+	return rates, nil
 }
 
 // draftRef mints the idempotency key for one draft charge.

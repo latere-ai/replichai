@@ -100,6 +100,12 @@ func (c Config) Configured() bool {
 // New builds the model an operator configured. The key is the deployment's, read
 // from the environment by the composition root and passed in here — this package
 // never reaches for it, so a test cannot accidentally use a real one.
+//
+// Choosing Anthropic needs nothing but a model id: the deployment already holds
+// an Anthropic credential for the agent that runs its sessions, and asking an
+// operator to configure a second one for the same vendor would be paperwork
+// rather than security. Pointing drafting at *another* vendor is what needs a
+// key of its own, because that is a credential the deployment does not have.
 func New(c Config, key string, client *http.Client) (Model, error) {
 	if !c.Configured() {
 		return nil, ErrNotConfigured

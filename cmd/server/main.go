@@ -182,7 +182,7 @@ func run() error {
 	// (039). It is resolved per request rather than at boot: an admin who
 	// changes the model must not have to wait for a deploy, and a deployment
 	// with no key configured simply never offers a draft.
-	drafter := draftingModel(ctx, st.platform, os.Getenv("DRAFT_API_KEY"))
+	drafter := draftingModel(ctx, st.platform, os.Getenv("DRAFT_API_KEY"), os.Getenv("REPLICHAI_API_KEY"))
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
@@ -638,21 +638,36 @@ func envBool(key string) bool {
 // an admin's setting, and a setting that needed a deploy to take effect would be
 // a constant with extra steps. The credential is not: it is the deployment's,
 // read once from the environment, and it never reaches the settings row.
-func draftingModel(ctx context.Context, plat platform.Store, key string) httpapi.Drafter {
-	if strings.TrimSpace(key) == "" {
-		log.Print("drafting: no DRAFT_API_KEY; project descriptions are typed")
+func draftingModel(ctx context.Context, plat platform.Store, draftKey, agentKey string) httpapi.Drafter {
+	if strings.TrimSpace(draftKey) == "" && strings.TrimSpace(agentKey) == "" {
+		log.Print("drafting: no credential; project descriptions are typed")
 		return nil
 	}
 	if set, err := plat.Settings(ctx); err == nil && !set.Draft.Configured() {
 		log.Print("drafting: no model configured; project descriptions are typed")
 	}
-	return &configuredDrafter{plat: plat, key: key}
+	return &configuredDrafter{plat: plat, draftKey: draftKey, agentKey: agentKey}
 }
 
 // configuredDrafter resolves the configured model at the moment it is asked.
 type configuredDrafter struct {
 	plat platform.Store
-	key  string
+	// draftKey is the credential for a drafting endpoint the deployment would
+	// not otherwise hold; agentKey is the one it already holds for the agent
+	// that runs its sessions. Choosing Anthropic uses the second, so pointing
+	// drafting at the vendor already in use costs an operator one model id and
+	// nothing else.
+	draftKey, agentKey string
+}
+
+// keyFor picks the credential a provider needs. Anthropic falls back to the
+// agent's key; anything else is a vendor this deployment has no other reason to
+// hold a key for, so it must be given one.
+func (d *configuredDrafter) keyFor(c draft.Config) string {
+	if strings.EqualFold(strings.TrimSpace(c.Provider), "anthropic") && strings.TrimSpace(d.draftKey) == "" {
+		return d.agentKey
+	}
+	return d.draftKey
 }
 
 // Name is the model id the answer will be priced under. An unconfigured
@@ -671,7 +686,7 @@ func (d *configuredDrafter) Complete(ctx context.Context, r draft.Request) (draf
 	if err != nil {
 		return draft.Result{}, fmt.Errorf("reading the drafting settings: %w", err)
 	}
-	m, err := draft.New(set.Draft, d.key, nil)
+	m, err := draft.New(set.Draft, d.keyFor(set.Draft), nil)
 	if err != nil {
 		return draft.Result{}, err
 	}

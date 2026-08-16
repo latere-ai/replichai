@@ -11,6 +11,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/platform"
 )
@@ -232,6 +233,9 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		SpreadBps        *int64 `json:"spread_bps"`
 		SpreadFixedMicro *int64 `json:"spread_fixed_micro"`
 		MinTopupMicro    *int64 `json:"min_topup_micro"`
+		// Which model drafts a description (039), a pointer for the same reason:
+		// a console that edits only the reserve must not switch drafting off.
+		Draft *draft.Config `json:"draft"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
@@ -257,6 +261,10 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.MinTopupMicro != nil {
 		next.MinTopupMicro = *body.MinTopupMicro
+	}
+	next.Draft = current.Draft
+	if body.Draft != nil {
+		next.Draft = *body.Draft
 	}
 	if err := a.platform.SetSettings(r.Context(), principalFrom(r), next); err != nil {
 		writeAdminError(w, err)
