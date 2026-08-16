@@ -2035,24 +2035,30 @@ function PeopleCard({
               </Pill>
             )}
             <Tip text={t('walletOf', { email: p.email })}>
-              <span className="muted small mono tabular">{formatUSD(p.wallet)}</span>
+              <span className="muted small mono tabular member-wallet">{formatUSD(p.wallet)}</span>
             </Tip>
-            {p.wallet < 0 &&
-              (p.frozen ? (
-                <button className="btn ghost sm" data-tip={t('unfreezeTitle')} onClick={() => onUnfreeze(p.email)}>
-                  <Ico name="check" size={12} /> {t('unfreeze')}
-                </button>
-              ) : (
-                <button className="btn ghost sm" data-tip={t('refreezeTitle')} onClick={() => onRefreeze(p.email)}>
-                  <Ico name="alert" size={12} /> {t('refreeze')}
-                </button>
-              ))}
-            <button className="btn ghost sm" onClick={() => setTopping(p)}>
-              <Ico name="wallet" size={12} /> {t('topup')}
-            </button>
-            <button className="btn ghost sm danger" onClick={() => onRevoke(p.email)}>
-              <Ico name="x" size={12} w={2} /> {t('revoke')}
-            </button>
+            {/* The controls travel together. Loose in the row they were sized
+                one by one, so a phone broke them across two lines and each row
+                put them somewhere else; as one group they stay on one line and
+                end where every other row's do. */}
+            <span className="row-actions">
+              {p.wallet < 0 &&
+                (p.frozen ? (
+                  <button className="btn ghost sm" data-tip={t('unfreezeTitle')} onClick={() => onUnfreeze(p.email)}>
+                    <Ico name="check" size={12} /> {t('unfreeze')}
+                  </button>
+                ) : (
+                  <button className="btn ghost sm" data-tip={t('refreezeTitle')} onClick={() => onRefreeze(p.email)}>
+                    <Ico name="alert" size={12} /> {t('refreeze')}
+                  </button>
+                ))}
+              <button className="btn ghost sm" onClick={() => setTopping(p)}>
+                <Ico name="wallet" size={12} /> {t('topup')}
+              </button>
+              <button className="btn ghost sm danger" onClick={() => onRevoke(p.email)}>
+                <Ico name="x" size={12} w={2} /> {t('revoke')}
+              </button>
+            </span>
           </div>
         ))
       )}
