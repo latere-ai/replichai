@@ -19,19 +19,19 @@ import (
 // no source declared stays empty and is shown as missing.
 type Record struct {
 	// Authors in the order the source gave them. Order is part of a citation.
-	Authors []string
+	Authors []string `json:"authors,omitempty"`
 	// Venue is the journal or the proceedings — Crossref's container-title, an
 	// arXiv journal reference, a page's citation_journal_title.
-	Venue string
+	Venue string `json:"venue,omitempty"`
 	// Year the paper was published, or 0 when no source declares one.
-	Year int
+	Year int `json:"year,omitempty"`
 	// Volume, Issue and Pages as the source spells them, page range included
 	// ("1128-1145"), because a citation reproduces them rather than parsing them.
-	Volume string
-	Issue  string
-	Pages  string
+	Volume string `json:"volume,omitempty"`
+	Issue  string `json:"issue,omitempty"`
+	Pages  string `json:"pages,omitempty"`
 	// Publisher, where the source names one. Crossref does; arXiv does not.
-	Publisher string
+	Publisher string `json:"publisher,omitempty"`
 }
 
 // Empty reports whether nothing at all is known about the paper beyond its
