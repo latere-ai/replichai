@@ -50,9 +50,12 @@ type Project struct {
 	// Owner is the owning principal (006c). It is omitted when empty because a
 	// reader with no stake in the project is served a Redacted copy, and an
 	// `"owner": ""` on that wire would be a claim about who owns it (028).
-	Owner      string     `json:"owner,omitempty"`
-	Title      string     `json:"title"`      // defaults from the first session's paper
-	Visibility Visibility `json:"visibility"` // private by default; the public flip is 006f
+	Owner string `json:"owner,omitempty"`
+	Title string `json:"title"` // defaults from the first session's paper
+	// Description is what the project is about, in its owner's words (038).
+	// Empty is the ordinary state of one nobody has described.
+	Description string     `json:"description,omitempty"`
+	Visibility  Visibility `json:"visibility"` // private by default; the public flip is 006f
 	// CreditCap overrides the platform's overdraft floor for this project, in
 	// micro-USD; zero means the platform default. It is never on the wire: a
 	// published overdraft is an allowance somebody plans around, which is the
@@ -111,6 +114,15 @@ func (p Project) Redacted() Project {
 	p.Owner, p.SignedOffBy, p.WithdrawnBy = "", "", ""
 	return p
 }
+
+// MaxDescription is how long a description may be. A description sits under a
+// title in a header and inside a card in a list; past a couple of paragraphs it
+// is a layout problem rather than a feature, and a project that needs a document
+// has a repository.
+const MaxDescription = 2000
+
+// ErrDescriptionTooLong reports a description past MaxDescription.
+var ErrDescriptionTooLong = errors.New("that description is too long")
 
 // Trashed reports whether this project is in the trash.
 func (p Project) Trashed() bool { return p.DeletedAt != nil }
@@ -304,6 +316,12 @@ type Store interface {
 	// placeholder with the resolved paper title once its Resolve phase has run.
 	// A missing project is not an error — the enrichment is best-effort.
 	SetTitle(ctx context.Context, id, title string) error
+	// SetDescription updates what a project says it is about (038). Unlike
+	// SetTitle it is somebody's deliberate act rather than a best-effort
+	// enrichment, so a missing project is ErrNotFound and an over-long
+	// description is ErrDescriptionTooLong — both are things the person who
+	// typed it should be told.
+	SetDescription(ctx context.Context, id, description string) error
 	// SetCreditCap overrides this project's overdraft floor, in micro-USD; zero
 	// restores the platform default. Platform-admin policy, never the owner's:
 	// a project deciding how far past its own balance it may run is the one

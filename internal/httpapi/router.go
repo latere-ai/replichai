@@ -116,6 +116,7 @@ type ProjectStore interface {
 	// SetTitle renames a project — naming it at create and the rename endpoint
 	// (006j). The worker also enriches a placeholder title through this.
 	SetTitle(ctx context.Context, id, title string) error
+	SetDescription(ctx context.Context, id, description string) error
 	// The papers a project is about (012). A paper is recorded before anything
 	// runs against it and outlives every session that does, so these sit beside
 	// the container rather than being derived from the job store.

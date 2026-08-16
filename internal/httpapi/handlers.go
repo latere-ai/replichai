@@ -1179,22 +1179,46 @@ func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Both fields are optional and independent: renaming and describing are two
+	// edits made from the same screen, and a client sending one must not have to
+	// resend the other. Pointers rather than strings, so "not sent" and "cleared"
+	// stay different — clearing a description is something an owner may do.
 	var body struct {
-		Title string `json:"title"`
+		Title       *string `json:"title,omitempty"`
+		Description *string `json:"description,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	if strings.TrimSpace(body.Title) == "" {
-		writeError(w, http.StatusBadRequest, "missing_title")
+	if body.Title == nil && body.Description == nil {
+		writeError(w, http.StatusBadRequest, "nothing_to_change")
 		return
 	}
-	if err := rt.projects.SetTitle(r.Context(), proj.ID, strings.TrimSpace(body.Title)); err != nil {
-		writeError(w, http.StatusInternalServerError, "rename_failed")
-		return
+	if body.Title != nil {
+		title := strings.TrimSpace(*body.Title)
+		if title == "" {
+			writeError(w, http.StatusBadRequest, "missing_title")
+			return
+		}
+		if err := rt.projects.SetTitle(r.Context(), proj.ID, title); err != nil {
+			writeError(w, http.StatusInternalServerError, "rename_failed")
+			return
+		}
+		proj.Title = title
 	}
-	proj.Title = strings.TrimSpace(body.Title)
+	if body.Description != nil {
+		desc := strings.TrimSpace(*body.Description)
+		switch err := rt.projects.SetDescription(r.Context(), proj.ID, desc); {
+		case errors.Is(err, project.ErrDescriptionTooLong):
+			writeError(w, http.StatusBadRequest, "description_too_long")
+			return
+		case err != nil:
+			writeError(w, http.StatusInternalServerError, "describe_failed")
+			return
+		}
+		proj.Description = desc
+	}
 	writeJSON(w, http.StatusOK, proj)
 }
 

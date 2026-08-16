@@ -58,14 +58,14 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 }
 
 // projectColumns is the column list every read selects, in scan order.
-const projectColumns = `id, owner, title, visibility, credit_cap, created_at, signed_off_by, signed_off_at, attestation_version,
+const projectColumns = `id, owner, title, description, visibility, credit_cap, created_at, signed_off_by, signed_off_at, attestation_version,
 	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email,
 	withdrawn_at, withdrawn_by, withdrawn_reason, deleted_at`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
-	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Visibility, &p.CreditCap, &p.CreatedAt,
+	err := row.Scan(&p.ID, &p.Owner, &p.Title, &p.Description, &p.Visibility, &p.CreditCap, &p.CreatedAt,
 		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion,
 		&p.SignedOffName, &p.SignedOffInstitution, &p.SignedOffContact,
 		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail,
@@ -161,6 +161,22 @@ func (s *PGStore) list(ctx context.Context, where string, args ...any) ([]Projec
 func (s *PGStore) SetTitle(ctx context.Context, id, title string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE projects SET title = $2 WHERE id = $1`, id, title)
 	return err
+}
+
+// SetDescription writes what a project says it is about, and reports a project
+// that is not there — this one is somebody typing, not an enrichment.
+func (s *PGStore) SetDescription(ctx context.Context, id, description string) error {
+	if len(description) > MaxDescription {
+		return ErrDescriptionTooLong
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE projects SET description = $2 WHERE id = $1`, id, description)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetCreditCap overrides this project's overdraft floor; zero restores the
