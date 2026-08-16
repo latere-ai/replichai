@@ -16,6 +16,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/payment"
@@ -31,6 +32,15 @@ import (
 // store to price one purchase.
 type TopupPolicy interface {
 	Settings(ctx context.Context) (platform.Settings, error)
+}
+
+// Drafter is the model that writes a draft, as this package needs it: a
+// completion and the id it is priced under. Satisfied by draft.Model, and
+// deliberately restated here so the HTTP layer depends on the shape rather than
+// on the package that dials a vendor.
+type Drafter interface {
+	Complete(ctx context.Context, r draft.Request) (draft.Result, error)
+	Name() string
 }
 
 // Route is one registered endpoint, method and pattern, so the gated set is
@@ -283,6 +293,10 @@ type Deps struct {
 	// be priced (031). Satisfied by provider.Provider. Nil lists the tiers with
 	// no prices, which is what an offline run with no backend can say.
 	Models credit.ModelResolver
+	// Drafter writes a project's description when somebody asks for one (039).
+	// Nil is a deployment that does not draft: the route answers 503 and the app
+	// offers no control, which leaves descriptions typed.
+	Drafter Drafter
 	// BaseURL is where the app lives, for the checkout return URLs (022b).
 	BaseURL string
 	// Notifier reaches somebody who is not looking at the app (006p). Nil sends
@@ -325,6 +339,7 @@ type Router struct {
 	// modelResolver turns a tier into the model a run would get, so the choice
 	// on the Start control can be priced (031). Nil lists the tiers unpriced.
 	modelResolver credit.ModelResolver
+	drafter       Drafter
 	models        modelCache
 	// bg tracks work scheduled to outlive the request that started it — title
 	// enrichment today. Nothing in the serving path waits on it; tests do.
@@ -345,7 +360,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA}
 	rt.routes()
 	return rt
 }
