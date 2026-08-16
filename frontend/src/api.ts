@@ -370,6 +370,37 @@ export type ProjectPaper = {
   added_at: string
   sessions: number
   latest_phase?: string
+  // The bibliography, as the paper's own source declared it (037). Absent for a
+  // paper whose reference nothing could be looked up for.
+  record?: PaperRecord
+  // Which fields somebody corrected by hand. Enrichment never touches these.
+  edited?: string[]
+}
+
+// What a citation is made of. Every field is optional because a source that
+// declares half of one is the ordinary case, and a field nobody declared is
+// shown as missing rather than guessed at.
+export type PaperRecord = {
+  authors?: string[]
+  venue?: string
+  year?: number
+  volume?: string
+  issue?: string
+  pages?: string
+  publisher?: string
+}
+
+// A correction. Only the fields present are written, and each one written is
+// marked so no later lookup undoes it.
+export type PaperEdit = {
+  title?: string
+  authors?: string[]
+  venue?: string
+  year?: number
+  volume?: string
+  issue?: string
+  pages?: string
+  publisher?: string
 }
 
 // listPapers returns the papers a project is about.
@@ -382,6 +413,20 @@ export const addPaper = (id: string, url: string) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ url }),
   }).then(json<PaperResult>)
+
+// editPaper corrects a paper's record. What it writes stays written: the server
+// marks each corrected field so the next lookup fills only what is still empty.
+export const editPaper = (id: string, key: string, edit: PaperEdit) =>
+  fetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(edit),
+  }).then(json<ProjectPaper>)
+
+// refreshPapers fills in the details of every paper in the project that is
+// missing them, and reports how many it completed.
+export const refreshPapers = (id: string) =>
+  fetch(`/projects/${id}/papers/refresh`, { method: 'POST' }).then(json<{ filled: number; papers: ProjectPaper[] }>)
 
 // removePaper drops a paper the project has never run.
 export const removePaper = (id: string, key: string) =>
