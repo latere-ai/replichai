@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -198,6 +199,98 @@ func (s *PGAccess) List(ctx context.Context, byAdmin Principal) ([]Grant, error)
 		return nil, err
 	}
 	defer rows.Close()
+	return scanGrants(rows)
+}
+
+// ListPage returns one page of grants ordered by email, after opts.Cursor and
+// matching opts.Query, in one keyset query. It over-reads by one row to learn
+// whether a further page exists without a second count.
+func (s *PGAccess) ListPage(ctx context.Context, byAdmin Principal, opts ListOpts) ([]Grant, string, error) {
+	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+		return nil, "", err
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = DefaultPageLimit
+	}
+	cursor := strings.ToLower(strings.TrimSpace(opts.Cursor))
+	q := strings.ToLower(strings.TrimSpace(opts.Query))
+	// The cursor is a keyset on email, not an offset: a page is the emails after
+	// the last one seen, so an inserted grant never shifts a boundary. The '%' is
+	// wrapped here rather than in SQL so an empty query is a plain match-all.
+	like := "%" + q + "%"
+	rows, err := s.pool.Query(ctx,
+		`SELECT email, COALESCE(principal,''), tier, granted_by, granted_at, revoked_at, revoked_by
+		 FROM access_grants
+		 WHERE email > $1 AND ($2 = '' OR email ILIKE $3)
+		 ORDER BY email LIMIT $4`, cursor, q, like, limit+1)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	out, err := scanGrants(rows)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(out) > limit {
+		next = out[limit-1].Email
+		out = out[:limit]
+	}
+	return out, next, nil
+}
+
+// GrantsFor returns the grants for a set of emails in one query, unordered.
+func (s *PGAccess) GrantsFor(ctx context.Context, byAdmin Principal, emails []string) ([]Grant, error) {
+	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+		return nil, err
+	}
+	if len(emails) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, len(emails))
+	for i, e := range emails {
+		keys[i] = strings.ToLower(strings.TrimSpace(e))
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT email, COALESCE(principal,''), tier, granted_by, granted_at, revoked_at, revoked_by
+		 FROM access_grants WHERE email = ANY($1)`, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanGrants(rows)
+}
+
+// OverridesActiveFor reports which of a batch of emails carry an uncleared
+// override, in one query. A missing email is absent from the map.
+func (s *PGAccess) OverridesActiveFor(ctx context.Context, emails []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(emails))
+	if len(emails) == 0 {
+		return out, nil
+	}
+	keys := make([]string, len(emails))
+	for i, e := range emails {
+		keys[i] = strings.ToLower(strings.TrimSpace(e))
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT email FROM freeze_overrides WHERE email = ANY($1) AND cleared_at IS NULL`, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			return nil, err
+		}
+		out[e] = true
+	}
+	return out, rows.Err()
+}
+
+// scanGrants reads a rows cursor of the grant columns into Grants, in order.
+func scanGrants(rows pgx.Rows) ([]Grant, error) {
 	var out []Grant
 	for rows.Next() {
 		var g Grant

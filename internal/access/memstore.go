@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -213,6 +214,78 @@ func (s *MemStore) List(ctx context.Context, byAdmin Principal) ([]Grant, error)
 		out = append(out, g)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	return out, nil
+}
+
+// ListPage returns one page of grants ordered by email, after opts.Cursor and
+// matching opts.Query. It over-reads by one to learn whether a next page exists.
+func (s *MemStore) ListPage(ctx context.Context, byAdmin Principal, opts ListOpts) ([]Grant, string, error) {
+	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+		return nil, "", err
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = DefaultPageLimit
+	}
+	cursor := normalizeEmail(opts.Cursor)
+	q := normalizeEmail(opts.Query)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all := make([]Grant, 0, len(s.grants))
+	for _, g := range s.grants {
+		all = append(all, g)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].Email < all[j].Email })
+	out := make([]Grant, 0, limit+1)
+	for _, g := range all {
+		if g.Email <= cursor {
+			continue
+		}
+		if q != "" && !strings.Contains(g.Email, q) {
+			continue
+		}
+		out = append(out, g)
+		if len(out) > limit {
+			break
+		}
+	}
+	next := ""
+	if len(out) > limit {
+		next = out[limit-1].Email
+		out = out[:limit]
+	}
+	return out, next, nil
+}
+
+// GrantsFor returns the grants for a set of emails, unordered, skipping any that
+// do not exist.
+func (s *MemStore) GrantsFor(ctx context.Context, byAdmin Principal, emails []string) ([]Grant, error) {
+	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Grant, 0, len(emails))
+	for _, e := range emails {
+		if g, ok := s.grants[normalizeEmail(e)]; ok {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+// OverridesActiveFor reports which of a batch of emails carry an active override.
+// A missing email is absent from the map, not false — it simply has none.
+func (s *MemStore) OverridesActiveFor(_ context.Context, emails []string) (map[string]bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]bool, len(emails))
+	for _, e := range emails {
+		ne := normalizeEmail(e)
+		if _, ok := s.overrides[ne]; ok {
+			out[ne] = true
+		}
+	}
 	return out, nil
 }
 

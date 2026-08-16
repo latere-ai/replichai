@@ -115,8 +115,20 @@ type Access interface {
 	// so a seeded admin stays an admin through their first login, and a ban
 	// survives one.
 	SelfGrant(ctx context.Context, p Principal) (Tier, bool, error)
-	// List returns every grant, for the admin surface. Admin only.
+	// List returns every grant, for the admin surface. Admin only. It is the
+	// whole-set read the sort-by-balance view folds; ListPage is what the table
+	// pages through at scale (026).
 	List(ctx context.Context, byAdmin Principal) ([]Grant, error)
+	// ListPage returns one page of grants ordered by email, matching an optional
+	// email substring, after an optional cursor (026). It is List for a thousand
+	// accounts: a page at a time so the response and the scroll stay bounded, a
+	// substring so a lookup is a query not a scan. next is the cursor for the
+	// following page, empty on the last. Admin only.
+	ListPage(ctx context.Context, byAdmin Principal, opts ListOpts) (grants []Grant, next string, err error)
+	// GrantsFor returns the grants for a set of emails, unordered — how the people
+	// table names the accounts a balance predicate already found, e.g. the
+	// negative set (026). Admin only.
+	GrantsFor(ctx context.Context, byAdmin Principal, emails []string) ([]Grant, error)
 	// LinkedAccount returns a principal's proven forge login, if any. Written
 	// only by the link callback (006c's forge link), read by 006f's invitation.
 	LinkedAccount(ctx context.Context, principalSub, forge string) (login string, ok bool, err error)
@@ -124,6 +136,22 @@ type Access interface {
 	// is proven by an OAuth handshake, never taken from a request body.
 	LinkAccount(ctx context.Context, principalSub, forge, login string) error
 }
+
+// ListOpts scopes a page of the admin people table (026).
+type ListOpts struct {
+	// Query matches an email substring, case-insensitive; empty matches all.
+	Query string
+	// Cursor is the last email of the previous page; empty starts at the first.
+	// Pagination is by email — not an offset — so an inserted grant (every first
+	// sign-in) never shifts a page boundary under a scroll, and the order matches
+	// the look-someone-up habit the table is for.
+	Cursor string
+	// Limit caps the page; zero means DefaultPageLimit.
+	Limit int
+}
+
+// DefaultPageLimit is the page size when a caller asks for none.
+const DefaultPageLimit = 100
 
 // Role is a principal's role within one project (007). It is orthogonal to Tier:
 // a role decides which project's experiments and data a principal may touch, and
