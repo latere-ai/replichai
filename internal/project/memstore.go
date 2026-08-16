@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/paper"
 )
 
 // MemStore is an in-memory Store for tests and for the rest of 006 to build
@@ -289,17 +291,40 @@ func (s *MemStore) ListPapers(_ context.Context, projectID string) ([]Paper, err
 	return out, nil
 }
 
-// SetPaperTitle fills in a title, ignoring a missing project or paper.
-func (s *MemStore) SetPaperTitle(_ context.Context, projectID, key, title string) error {
+// EnrichPaper fills a paper's empty fields, ignoring a missing project or paper.
+func (s *MemStore) EnrichPaper(_ context.Context, projectID, key, title string, rec paper.Record) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, p := range s.papers[projectID] {
 		if p.Key == key {
-			s.papers[projectID][i].Title = title
-			return nil
+			changed := p.Enrich(title, rec)
+			s.papers[projectID][i] = p
+			return changed, nil
 		}
 	}
-	return nil
+	return false, nil
+}
+
+// EditPaper records a correction, and refuses one aimed at a paper that is not
+// there.
+func (s *MemStore) EditPaper(_ context.Context, projectID, key string, edit PaperEdit) (Paper, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, p := range s.papers[projectID] {
+		if p.Key == key {
+			edit.Apply(&p)
+			s.papers[projectID][i] = p
+			return clonePaper(p), nil
+		}
+	}
+	return Paper{}, ErrPaperNotFound
+}
+
+// clonePaper copies the slices a caller could otherwise mutate through.
+func clonePaper(p Paper) Paper {
+	p.Record.Authors = append([]string(nil), p.Record.Authors...)
+	p.Edited = append([]string(nil), p.Edited...)
+	return p
 }
 
 // RemovePaper drops a paper from a project, idempotently.

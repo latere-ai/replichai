@@ -17,6 +17,7 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/payment"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
@@ -120,7 +121,8 @@ type ProjectStore interface {
 	// the container rather than being derived from the job store.
 	AddPaper(ctx context.Context, projectID string, p project.Paper) error
 	ListPapers(ctx context.Context, projectID string) ([]project.Paper, error)
-	SetPaperTitle(ctx context.Context, projectID, key, title string) error
+	EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error)
+	EditPaper(ctx context.Context, projectID, key string, edit project.PaperEdit) (project.Paper, error)
 	RemovePaper(ctx context.Context, projectID, key string) error
 	// MovePaper refiles a paper, and the sessions that are runs of it, under
 	// another project (035). One call, because the paper and its runs have to
@@ -161,6 +163,9 @@ type ResolvedPaper struct {
 	Title  string `json:"title"`
 	Scheme string `json:"scheme"`
 	Slug   string `json:"slug"`
+	// Record is the paper's bibliography as the source declared it (037). The
+	// preview shows it, and the record a project stores is written from it.
+	Record paper.Record `json:"record,omitzero"`
 }
 
 // ErrUnresolvable is what a PaperResolver returns for a reference that is not a

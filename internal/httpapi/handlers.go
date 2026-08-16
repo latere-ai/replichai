@@ -734,11 +734,16 @@ func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder strin
 		go func(i int) {
 			defer wg.Done()
 			got, err := rt.resolver.Resolve(ctx, papers[i].Ref)
-			if err != nil || strings.TrimSpace(got.Title) == "" {
+			if err != nil {
+				return
+			}
+			// A source that answered with a bibliography and no title still has
+			// something to record.
+			if strings.TrimSpace(got.Title) == "" && got.Record.Empty() {
 				return
 			}
 			titles[i] = got.Title
-			_ = rt.projects.SetPaperTitle(ctx, projectID, papers[i].Key, got.Title)
+			_, _ = rt.projects.EnrichPaper(ctx, projectID, papers[i].Key, got.Title, got.Record)
 		}(i)
 	}
 	wg.Wait()

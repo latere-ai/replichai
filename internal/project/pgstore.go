@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/latere-ai/replichai/internal/paper"
 )
 
 // foreignKeyViolation is the SQLSTATE a paper insert returns when the project it
@@ -252,7 +254,17 @@ func (s *PGStore) Delete(ctx context.Context, id string) error {
 }
 
 // paperColumns is the column list every paper read selects, in scan order.
-const paperColumns = `paper_key, ref, title, added_by, added_at`
+const paperColumns = `paper_key, ref, title, added_by, added_at,
+	authors, venue, year, volume, issue, pages, publisher, edited`
+
+// scanPaper reads one paper row in paperColumns order.
+func scanPaper(row interface{ Scan(...any) error }) (Paper, error) {
+	var p Paper
+	err := row.Scan(&p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt,
+		&p.Record.Authors, &p.Record.Venue, &p.Record.Year,
+		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Edited)
+	return p, err
+}
 
 // AddPaper records a paper the project is about. The primary key is what makes
 // a duplicate impossible, so the refusal is read off the insert rather than
@@ -262,10 +274,14 @@ func (s *PGStore) AddPaper(ctx context.Context, projectID string, p Paper) error
 		p.AddedAt = s.clock()
 	}
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO project_papers (project_id, paper_key, ref, title, added_by, added_at)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO project_papers
+			(project_id, paper_key, ref, title, added_by, added_at,
+			 authors, venue, year, volume, issue, pages, publisher)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (project_id, paper_key) DO NOTHING`,
-		projectID, p.Key, p.Ref, p.Title, p.AddedBy, p.AddedAt)
+		projectID, p.Key, p.Ref, p.Title, p.AddedBy, p.AddedAt,
+		nonNil(p.Record.Authors), p.Record.Venue, p.Record.Year,
+		p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher)
 	if err != nil {
 		// The foreign key is the only other way this fails on well-formed input,
 		// and it means the project is not there.
@@ -297,8 +313,8 @@ func (s *PGStore) ListPapers(ctx context.Context, projectID string) ([]Paper, er
 	defer rows.Close()
 	var out []Paper
 	for rows.Next() {
-		var p Paper
-		if err := rows.Scan(&p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt); err != nil {
+		p, err := scanPaper(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -306,11 +322,74 @@ func (s *PGStore) ListPapers(ctx context.Context, projectID string) ([]Paper, er
 	return out, rows.Err()
 }
 
-// SetPaperTitle fills in a title, ignoring a missing project or paper.
-func (s *PGStore) SetPaperTitle(ctx context.Context, projectID, key, title string) error {
-	_, err := s.pool.Exec(ctx,
-		`UPDATE project_papers SET title=$3 WHERE project_id=$1 AND paper_key=$2`, projectID, key, title)
-	return err
+// nonNil keeps a nil slice out of a NOT NULL text[] column.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// EnrichPaper fills a paper's empty fields from what a source answered,
+// ignoring a missing project or paper.
+//
+// It reads the row, applies the rule, and writes it back inside one transaction:
+// the rule depends on what is already there ("fill only what is empty, and never
+// what a person edited"), so a read outside the write's transaction would let a
+// correction land between the two and be overwritten by this.
+func (s *PGStore) EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error) {
+	changed := false
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `SELECT `+paperColumns+`
+			FROM project_papers WHERE project_id=$1 AND paper_key=$2 FOR UPDATE`, projectID, key)
+		p, err := scanPaper(row)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // best-effort: nothing to enrich
+		}
+		if err != nil {
+			return err
+		}
+		if !p.Enrich(title, rec) {
+			return nil
+		}
+		changed = true
+		_, err = tx.Exec(ctx, `
+			UPDATE project_papers SET title=$3, authors=$4, venue=$5, year=$6,
+				volume=$7, issue=$8, pages=$9, publisher=$10
+			WHERE project_id=$1 AND paper_key=$2`,
+			projectID, key, p.Title, nonNil(p.Record.Authors), p.Record.Venue, p.Record.Year,
+			p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher)
+		return err
+	})
+	return changed, err
+}
+
+// EditPaper records a correction and marks the fields it wrote, in one
+// transaction for the same reason enrichment is: the edited set is read, added
+// to, and written back.
+func (s *PGStore) EditPaper(ctx context.Context, projectID, key string, edit PaperEdit) (Paper, error) {
+	var out Paper
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `SELECT `+paperColumns+`
+			FROM project_papers WHERE project_id=$1 AND paper_key=$2 FOR UPDATE`, projectID, key)
+		p, err := scanPaper(row)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrPaperNotFound
+		}
+		if err != nil {
+			return err
+		}
+		edit.Apply(&p)
+		out = p
+		_, err = tx.Exec(ctx, `
+			UPDATE project_papers SET title=$3, authors=$4, venue=$5, year=$6,
+				volume=$7, issue=$8, pages=$9, publisher=$10, edited=$11
+			WHERE project_id=$1 AND paper_key=$2`,
+			projectID, key, p.Title, nonNil(p.Record.Authors), p.Record.Venue, p.Record.Year,
+			p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher, nonNil(p.Edited))
+		return err
+	})
+	return out, err
 }
 
 // RemovePaper drops a paper from a project, idempotently.
