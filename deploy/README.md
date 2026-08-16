@@ -42,10 +42,32 @@ AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
 ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
 MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
+DRAFT_API_KEY=...              # the model that drafts project descriptions (039); omit and descriptions are typed
 ```
 
 `DATABASE_URL`, `ADDR`, `BASE_URL`, and `PROVIDER` are set by the manifest and
 override any same-named key in `.env`, so the two cannot drift.
+
+### Which model drafts a description
+
+[039](../specs/039-a-description-can-be-drafted.md) lets a project's owner ask a
+model for a first draft of its description. Two things have to be true before the
+control appears, and they are deliberately in two different places:
+
+- **`DRAFT_API_KEY`** in this secret — the credential. It never goes in the
+  database: a settings row is read by every admin, lands in every backup, and
+  would be printed by any debug route somebody adds later.
+- **The model**, in the admin console's policy card: which protocol
+  (Anthropic, or any OpenAI-compatible endpoint — a hosted vendor, or your own
+  llama.cpp / vLLM / Ollama), which endpoint, and which model id.
+
+The model id must also appear in the rate card on the same screen. Without an
+exact entry the deployment refuses to draft rather than guessing a price — the
+card's "charge the dearest rates" fallback exists for an unrecognised *session*
+model, and applying it here would bill Opus rates for a model that costs pennies.
+
+With either half missing, nothing breaks: the app offers no draft control and
+descriptions are typed.
 
 ### Who may sign in
 

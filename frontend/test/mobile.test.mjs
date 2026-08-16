@@ -64,6 +64,9 @@ const PRIVATE = 'proj-private'
 // 122 characters. A paper's name is the longest string this app puts in a
 // heading, and the head has to hold one without pushing the tabs off a phone.
 const LONG_TITLE = 'Effects of Semantic Segmentation Visualization on Trust, Situation Awareness, and Cognitive Load in Highly Automated Vehicles'
+// A description of the length the field invites: two sentences.
+const DESCRIPTION =
+  'Two papers on whether a segmentation overlay changes what a driver trusts, and one replication of each. Both were run on the same instrument.'
 const JOB = 'job-a'
 const HANDLE = 'ada'
 
@@ -110,7 +113,14 @@ const routes = [
   [
     /^\/projects\/[^/]+$/,
     (id) => ({
-      project: { ...project, id, ...(id === PRIVATE ? { visibility: 'private', title: LONG_TITLE } : {}) },
+      project: {
+        ...project,
+        id,
+        // The private one is the head's worst case: a long title, the publish
+        // button beside it, and a description under it (038) — which is the
+        // shape the height below is asserted against.
+        ...(id === PRIVATE ? { visibility: 'private', title: LONG_TITLE, description: DESCRIPTION } : {}),
+      },
       sessions: [job],
       may_submit: true,
       signer_handle: HANDLE,
@@ -485,7 +495,9 @@ try {
       return { head: box('.detail-head'), title: box('.detail-title'), tabs: box('.detail-tabs') }
     })
     if (h.title.w < 260) fail(`the project title is ${h.title.w}px wide; the button beside it is taking the line again`)
-    if (h.head.h > 280) fail(`the project head is ${h.head.h}px of an 844px phone`)
+    // 300 with a description under the title; the head was 582 before this was
+    // fixed, and the number is asserted so it cannot creep back.
+    if (h.head.h > 300) fail(`the project head is ${h.head.h}px of an 844px phone`)
     if (h.tabs.top > 330) fail(`the tabs start at y=${h.tabs.top}; a phone cannot reach them without scrolling past the title`)
     await page.close()
   }

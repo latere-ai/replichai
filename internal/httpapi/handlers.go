@@ -415,7 +415,7 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "drafting_unconfigured")
 		return
 	}
-	rates, err := rt.draftRates()
+	rates, err := rt.draftRates(r.Context())
 	if err != nil {
 		// An operator's mistake, reported to an operator: the owner is told the
 		// deployment cannot draft, and the log says which model has no price.
@@ -434,6 +434,19 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// One draft at a time per project.
+	//
+	// The balance check above is read-then-spend, and the spend lands after the
+	// model has answered: a hundred requests fired at once all read the same
+	// healthy balance and all buy tokens. A session cannot do this — 011 holds
+	// the money before the work — but a draft has no job to hold against, so the
+	// bound is on the work instead. Sequential drafts still stop at the balance,
+	// because each one reads it after the last was charged.
+	if !rt.beginDraft(proj.ID) {
+		writeError(w, http.StatusTooManyRequests, "draft_in_flight")
+		return
+	}
+	defer rt.endDraft(proj.ID)
 
 	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
 	if err != nil {
@@ -479,6 +492,30 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	}{got.Text, got.Model, cost})
 }
 
+// beginDraft claims the one drafting slot a project has, reporting whether it
+// got it. Per process, which in a deployment of N replicas bounds concurrent
+// drafts per project to N rather than to one — a bound, not a lock, and the
+// difference between "a few cents" and "as many cents as a loop is long".
+func (rt *Router) beginDraft(projectID string) bool {
+	rt.drafting.mu.Lock()
+	defer rt.drafting.mu.Unlock()
+	if rt.drafting.inFlight == nil {
+		rt.drafting.inFlight = map[string]bool{}
+	}
+	if rt.drafting.inFlight[projectID] {
+		return false
+	}
+	rt.drafting.inFlight[projectID] = true
+	return true
+}
+
+// endDraft releases the slot.
+func (rt *Router) endDraft(projectID string) {
+	rt.drafting.mu.Lock()
+	defer rt.drafting.mu.Unlock()
+	delete(rt.drafting.inFlight, projectID)
+}
+
 // draftMaxTokens bounds a draft. A description is a paragraph; this is what
 // keeps a fraction of a cent a fraction of a cent.
 const draftMaxTokens = 400
@@ -490,11 +527,11 @@ const draftMaxTokens = 400
 // rates rather than nothing, which is right for a run somebody chose and wrong
 // for a local model an operator pointed us at — it would bill Opus rates for a
 // model that costs pennies. No exact price, no draft.
-func (rt *Router) draftRates() (credit.Rates, error) {
+func (rt *Router) draftRates(ctx context.Context) (credit.Rates, error) {
 	if rt.policy == nil {
 		return credit.Rates{}, errors.New("no platform settings to price a draft from")
 	}
-	set, err := rt.policy.Settings(context.Background())
+	set, err := rt.policy.Settings(ctx)
 	if err != nil {
 		return credit.Rates{}, fmt.Errorf("reading settings: %w", err)
 	}

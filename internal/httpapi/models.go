@@ -64,18 +64,18 @@ func (rt *Router) listModels(w http.ResponseWriter, r *http.Request) {
 		// it can offer the control or not, rather than offering one that answers
 		// 503 — and it is here, with the other model policy, because that is what
 		// it is: which model does what, and at what price.
-		"drafting": rt.canDraft(),
+		"drafting": rt.canDraft(r.Context()),
 	})
 }
 
 // canDraft reports whether a draft would work: a model is configured, and the
 // rate card prices it. Both, because a configured model nobody can price is a
 // button that always refuses.
-func (rt *Router) canDraft() bool {
+func (rt *Router) canDraft(ctx context.Context) bool {
 	if rt.drafter == nil {
 		return false
 	}
-	_, err := rt.draftRates()
+	_, err := rt.draftRates(ctx)
 	return err == nil
 }
 
