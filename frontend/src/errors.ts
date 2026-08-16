@@ -109,6 +109,21 @@ export function removePaperErrLabel(t: T, e: unknown): string {
   return t('removePaperFailed')
 }
 
+// movePaperErrLabel names why a paper could not be refiled (035). Each refusal
+// has a different next step — finish the run, withdraw the publication, pick
+// another project — so they are told apart rather than collapsed into one
+// "could not move".
+export function movePaperErrLabel(t: T, e: unknown): string {
+  const { status, code, offline } = refusal(e)
+  if (offline) return t('errOffline')
+  if (code === 'paper_running') return t('errPaperRunning')
+  if (code === 'paper_exists') return t('errPaperAlreadyThere')
+  if (code === 'project_public') return t('errMovePublic')
+  if (code === 'project_trashed') return t('errMoveTrashed')
+  if (status === 403 || code === 'not_lead') return t('errMovePaperNotLead')
+  return t('movePaperFailed')
+}
+
 // trashErrLabel names why a project could not be moved to the trash. The one
 // refusal an owner can act on is a session still running: a run spends this
 // project's credits, and hiding the container it spends from is not tidying up.
