@@ -475,6 +475,54 @@ try {
       const btn = getComputedStyle(btnEl)
       return { w: r.width, h: r.height, fill: getComputedStyle(svg).fill, ink: btn.color, bg: btn.backgroundColor, paths: svg.querySelectorAll('path').length }
     })
+    // Hovered, too. 034 made the base `.btn:hover` repaint the fill *and* the
+    // ink, so a slab button that overrides only the fill inherits the base's ink
+    // — which is how the hero's sign-in became white on white, taking the latere
+    // mark with it, since the mark fills with currentColor.
+    const hovered = await page.evaluate(async () => {
+      const out = []
+      for (const sel of ['[data-test="lp-hero-signin"]', '.lp-close .btn:not(.ghost)']) {
+        const el = document.querySelector(sel)
+        if (!el) continue
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+        // :hover is not settable from script, so read the rules that would apply.
+        const rules = [...document.styleSheets].flatMap((s) => {
+          try {
+            return [...s.cssRules]
+          } catch {
+            return []
+          }
+        })
+        const decl = {}
+        for (const r of rules) {
+          if (!r.selectorText || !/:hover/.test(r.selectorText)) continue
+          const bare = r.selectorText.replaceAll(':hover', '')
+          let hit = false
+          try {
+            hit = el.matches(bare)
+          } catch {
+            hit = false
+          }
+          if (!hit) continue
+          if (r.style.backgroundColor) decl.bg = r.style.backgroundColor
+          if (r.style.color) decl.fg = r.style.color
+        }
+        const resolve = (v) => {
+          if (!v) return ''
+          const probe = document.createElement('span')
+          probe.style.color = v
+          el.appendChild(probe)
+          const got = getComputedStyle(probe).color
+          probe.remove()
+          return got
+        }
+        out.push({ sel, bg: resolve(decl.bg), fg: resolve(decl.fg) })
+      }
+      return out
+    })
+    for (const h of hovered) {
+      if (h.bg && h.fg && h.bg === h.fg) fail(`hovered, ${h.sel} paints its label ${h.fg} on a ${h.bg} fill — the button goes blank under the pointer`)
+    }
     if (!provider) fail('the sign-in button lost the latere mark')
     else {
       if (provider.paths < 6) fail(`the latere mark draws ${provider.paths} paths; the canonical one has six`)
