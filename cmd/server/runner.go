@@ -310,7 +310,10 @@ func (p paperResolver) Resolve(ctx context.Context, ref string) (httpapi.Resolve
 	if err != nil {
 		return httpapi.ResolvedPaper{}, err
 	}
-	return httpapi.ResolvedPaper{Key: id.String(), Title: id.Title, Scheme: id.Scheme.String(), Slug: id.Slug}, nil
+	return httpapi.ResolvedPaper{
+		Key: id.String(), Title: id.Title, Scheme: id.Scheme.String(), Slug: id.Slug,
+		Record: id.Record,
+	}, nil
 }
 
 // liveTranscript reads a run's live event stream from the backend by its run id,
