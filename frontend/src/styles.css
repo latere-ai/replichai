@@ -3571,6 +3571,20 @@ input.submit-input {
   }
 }
 
+/* With the driver stood down every artifact is open at once, which is taller
+   than the panel it sits in. The cap is there to keep the driven state from
+   growing the sticky panel; without motion there is nothing to cap, and a
+   reader who asked for less of it should not have to find a nested scroller. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-walk-panel {
+    min-height: 0;
+  }
+  .lp-plates {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 /* Motion, for readers who have not asked for less of it. Everything above is
    already the resting state, so this adds movement and never removes content. */
 @media (prefers-reduced-motion: no-preference) {
