@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { LatereMark, Mark, Wordmark } from './brand'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from './artifact'
 import {
@@ -66,6 +66,8 @@ import {
   addPaper,
   removePaper,
   movePaper,
+  editPaper,
+  refreshPapers,
   startSession,
   listModels,
   type ModelTier,
@@ -3484,6 +3486,10 @@ function PapersCard({
   const [dropping, setDropping] = useState<Job | null>(null)
   // The paper waiting on a move (035). One dialog for the card, as above.
   const [moving, setMoving] = useState<ProjectPaper | null>(null)
+  // The paper being corrected (037), and whether a fill-in is running.
+  const [editing, setEditing] = useState<ProjectPaper | null>(null)
+  const [filling, setFilling] = useState(false)
+  const [filled, setFilled] = useState<number | null>(null)
   const refresh = onRefresh
   // Removing a session is the owner's alone — 019's rule, at session scale. The
   // trashed clause matches the server, which refuses every write on a project in
@@ -3566,7 +3572,39 @@ function PapersCard({
 
   return (
     <div className="card">
-      <CardHead label={t('papers')} icon="fileText" tone="var(--accent)" />
+      <CardHead label={t('papers')} icon="fileText" tone="var(--accent)">
+        {/* The fill-in, for the papers recorded before a paper had a
+            bibliography (037). Offered only when there is something to fill:
+            a button that always says "nothing to do" is furniture. */}
+        {mayWork && grouped.papers.some((g) => needsDetails(g.paper)) && (
+          <button
+            className="btn ghost sm"
+            style={{ marginLeft: 'auto' }}
+            data-test="fill-in-papers"
+            disabled={filling}
+            onClick={async () => {
+              setFilling(true)
+              setErr('')
+              try {
+                const got = await refreshPapers(project.id)
+                setFilled(got.filled)
+                refresh()
+              } catch {
+                setErr(t('fillInFailed'))
+              } finally {
+                setFilling(false)
+              }
+            }}
+          >
+            <Ico name="repeat" size={12} /> {filling ? t('fillingIn') : t('fillIn')}
+          </button>
+        )}
+        {filled !== null && !filling && (
+          <span className="muted small" data-test="fill-in-result">
+            {filled > 0 ? t('fillInDone', { n: String(filled) }) : t('fillInNothing')}
+          </span>
+        )}
+      </CardHead>
       {mayWork && (
       <div className="card-pad stack">
         <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -3617,18 +3655,33 @@ function PapersCard({
           {grouped.papers.map((g) => (
             <div className="paper-group" key={g.paper.key}>
               <div className="row">
-                <span className="row-title">{g.paper.title || t('paperUntitled')}</span>
-                <span className="muted small mono">{g.paper.ref}</span>
+                <span className="paper-main">
+                  <span className="row-title">{g.paper.title || t('paperUntitled')}</span>
+                  <Citation i18n={i18n} paper={g.paper} />
+                </span>
+                <span className="muted small mono paper-ref">{g.paper.ref}</span>
                 {/* The count is the length of what this row lists. The server
                     sends one too, but it is the input to the never-remove-a-run
                     rule (012), not a second answer to the same question. */}
-                <span className="muted small">
+                <span className="muted small paper-state">
                   {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
                 </span>
                 {/* Moving is offered whether or not the paper has been run —
                     which is the point: a paper filed under the wrong project is
                     usually noticed after a replication, and that is exactly when
                     removing it stops being allowed. */}
+                {mayWork && (
+                  <Tip text={t('editPaper')}>
+                    <button
+                      className="icon-btn"
+                      aria-label={t('editPaper')}
+                      data-test="edit-paper"
+                      onClick={() => setEditing(g.paper)}
+                    >
+                      <Ico name="pencil" size={13} w={1.9} />
+                    </button>
+                  </Tip>
+                )}
                 {mayWork && (
                   <Tip text={t('movePaper')}>
                     <button
@@ -3699,6 +3752,19 @@ function PapersCard({
         />
       )}
 
+      {editing && (
+        <EditPaperDialog
+          i18n={i18n}
+          project={project}
+          paper={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null)
+            refresh()
+          }}
+        />
+      )}
+
       {moving && (
         <MovePaperDialog
           i18n={i18n}
@@ -3712,6 +3778,160 @@ function PapersCard({
         />
       )}
     </div>
+  )
+}
+
+// needsDetails is the client's half of the server's rule: a paper whose record
+// has no authors, no venue or no year is one the fill-in has something to do
+// for. A title alone does not count — a title is what a paper is called, and the
+// record is what it is.
+function needsDetails(p: ProjectPaper): boolean {
+  const r = p.record
+  return !r || !r.authors?.length || !r.venue || !r.year
+}
+
+// Citation renders a paper's bibliography the way a reference list would: the
+// authors, then where and when it appeared. It is one quiet line under the
+// title, because it is what you scan a project by rather than what you click.
+//
+// Three authors, then "et al." — a fifteen-author paper would otherwise be the
+// whole row, and the full list is in the correction dialog for anyone who needs
+// it. A paper whose record nobody could fill in says so, which is also the
+// invitation to fill it in.
+function Citation({ i18n, paper }: { i18n: I18n; paper: ProjectPaper }) {
+  const { t } = i18n
+  const r = paper.record
+  const bits: string[] = []
+  if (r?.authors?.length) {
+    bits.push(r.authors.length > 3 ? `${r.authors.slice(0, 3).join(', ')} ${t('etAl')}` : r.authors.join(', '))
+  }
+  if (r?.venue) bits.push(r.venue)
+  if (r?.year) bits.push(String(r.year))
+  if (bits.length === 0) {
+    return (
+      <span className="paper-cite" data-test="citation-missing">
+        {t('paperNoDetails')}
+      </span>
+    )
+  }
+  return (
+    <span className="paper-cite" data-test="citation">
+      {bits.map((b, i) => (
+        <Fragment key={i}>
+          {i > 0 && <span className="paper-cite-dot" />}
+          <span>{b}</span>
+        </Fragment>
+      ))}
+    </span>
+  )
+}
+
+// EditPaperDialog corrects a paper's record (037). What it writes is permanent:
+// the server marks every corrected field, so the next lookup fills only what is
+// still empty and never puts a source's wrong answer back.
+//
+// Authors are one field, one per line. A list of people is what somebody pastes
+// from a reference manager, and a row-per-author editor would make correcting a
+// twelve-author paper a chore for no gain in precision.
+function EditPaperDialog({
+  i18n,
+  project,
+  paper,
+  onClose,
+  onDone,
+}: {
+  i18n: I18n
+  project: Project
+  paper: ProjectPaper
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { t } = i18n
+  const r = paper.record ?? {}
+  const [title, setTitle] = useState(paper.title ?? '')
+  const [authors, setAuthors] = useState((r.authors ?? []).join('\n'))
+  const [venue, setVenue] = useState(r.venue ?? '')
+  const [year, setYear] = useState(r.year ? String(r.year) : '')
+  const [volume, setVolume] = useState(r.volume ?? '')
+  const [issue, setIssue] = useState(r.issue ?? '')
+  const [pages, setPages] = useState(r.pages ?? '')
+  const [publisher, setPublisher] = useState(r.publisher ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const save = async () => {
+    if (busy) return
+    const n = Number(year.trim())
+    if (year.trim() !== '' && (!Number.isInteger(n) || n < 1600 || n > 2200)) {
+      setErr(t('editPaperBadYear'))
+      return
+    }
+    setBusy(true)
+    setErr('')
+    try {
+      // Everything the dialog shows is sent, because everything it shows is
+      // something the person just looked at and let stand.
+      await editPaper(project.id, paper.key, {
+        title: title.trim(),
+        authors: authors
+          .split('\n')
+          .map((a) => a.trim())
+          .filter(Boolean),
+        venue: venue.trim(),
+        year: year.trim() === '' ? 0 : n,
+        volume: volume.trim(),
+        issue: issue.trim(),
+        pages: pages.trim(),
+        publisher: publisher.trim(),
+      })
+      onDone()
+    } catch {
+      setErr(t('editPaperFailed'))
+      setBusy(false)
+    }
+  }
+
+  const field = (label: string, value: string, set: (v: string) => void, test: string) => (
+    <label className="field">
+      <span className="muted small">{label}</span>
+      <input className="text" value={value} onChange={(e) => set(e.target.value)} data-test={test} />
+    </label>
+  )
+
+  return (
+    <Modal
+      title={t('editPaperTitle')}
+      icon="pencil"
+      eyebrow={paper.ref}
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>
+            {t('cancel')}
+          </button>
+          <button className="btn" onClick={save} disabled={busy} data-test="edit-paper-save">
+            {busy ? t('saving') : t('save')}
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{t('editPaperBody')}</p>
+      <div className="field-grid">
+        {field(t('paperFieldTitle'), title, setTitle, 'paper-title')}
+        <label className="field">
+          <span className="muted small">{t('paperFieldAuthors')}</span>
+          <textarea className="text" rows={4} value={authors} onChange={(e) => setAuthors(e.target.value)} data-test="paper-authors" />
+          <span className="muted small">{t('paperFieldAuthorsHint')}</span>
+        </label>
+        {field(t('paperFieldVenue'), venue, setVenue, 'paper-venue')}
+        {field(t('paperFieldYear'), year, setYear, 'paper-year')}
+        {field(t('paperFieldVolume'), volume, setVolume, 'paper-volume')}
+        {field(t('paperFieldIssue'), issue, setIssue, 'paper-issue')}
+        {field(t('paperFieldPages'), pages, setPages, 'paper-pages')}
+        {field(t('paperFieldPublisher'), publisher, setPublisher, 'paper-publisher')}
+      </div>
+      {err && <p className="err small">{err}</p>}
+    </Modal>
   )
 }
 
