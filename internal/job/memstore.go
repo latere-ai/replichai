@@ -24,12 +24,23 @@ type MemStore struct {
 	// side is a column nobody selects: a deleted session never leaves the store,
 	// so nothing downstream should be able to read a flag saying it did.
 	deleted map[string]bool
-	clock   func() time.Time
+	// leases records which worker is driving each job and when it last said so
+	// — beside the map for the same reason as deleted, and matching the Postgres
+	// side, where they are columns no read selects. A lease is a fact about the
+	// process driving a session, not about the session.
+	leases map[string]lease
+	clock  func() time.Time
 	// credits and reserve are the enqueue gate (011). Both nil means unmetered,
 	// which is what an offline run and every test that is not about money want.
 	credits *credit.MemStore
 	reserve credit.Reserve
 	card    credit.CardSnapshot
+}
+
+// lease is one job's driver and when it last proved it was alive.
+type lease struct {
+	by string
+	at time.Time
 }
 
 // MemOption configures a MemStore.
@@ -94,7 +105,7 @@ func (s *MemStore) takeReserve(ctx context.Context, project, jobID string) error
 
 // NewMemStore builds an empty in-memory store.
 func NewMemStore(opts ...MemOption) *MemStore {
-	s := &MemStore{jobs: map[string]Job{}, deleted: map[string]bool{}, clock: time.Now}
+	s := &MemStore{jobs: map[string]Job{}, deleted: map[string]bool{}, leases: map[string]lease{}, clock: time.Now}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -342,7 +353,7 @@ func (s *MemStore) Cancel(ctx context.Context, id string) (Job, error) {
 
 // Claim takes the oldest submitted job into resolving and returns it. The lock
 // makes the take atomic, so two concurrent claims never hand out the same job.
-func (s *MemStore) Claim(_ context.Context) (Job, bool, error) {
+func (s *MemStore) Claim(_ context.Context, worker string) (Job, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, id := range s.order {
@@ -352,9 +363,28 @@ func (s *MemStore) Claim(_ context.Context) (Job, bool, error) {
 		}
 		s.transition(&j, PhaseResolving, nil)
 		s.jobs[id] = j
+		s.leases[id] = lease{by: worker, at: s.clock()}
 		return cloneJob(j), true, nil
 	}
 	return Job{}, false, nil
+}
+
+// Adopt leases a job in flight to one driver, under the lock that is this
+// store's whole concurrency story.
+func (s *MemStore) Adopt(_ context.Context, id, worker string, ttl time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok || j.Phase.Terminal() {
+		return false, nil
+	}
+	now := s.clock()
+	held, leased := s.leases[id]
+	if leased && held.by != worker && now.Sub(held.at) < ttl {
+		return false, nil
+	}
+	s.leases[id] = lease{by: worker, at: now}
+	return true, nil
 }
 
 // Advance moves a job through the one transition function, refusing anything the
@@ -388,6 +418,9 @@ func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStat
 	j.Status = status
 	j.UpdatedAt = s.clock()
 	s.jobs[id] = j
+	if held, leased := s.leases[id]; leased {
+		s.leases[id] = lease{by: held.by, at: j.UpdatedAt}
+	}
 	return nil
 }
 

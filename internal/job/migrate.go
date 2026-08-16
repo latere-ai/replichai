@@ -89,6 +89,20 @@ ALTER TABLE jobs ADD COLUMN deleted_at TIMESTAMPTZ;
 CREATE INDEX jobs_live_by_project ON jobs (project_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX jobs_live_by_principal ON jobs (principal, created_at DESC) WHERE deleted_at IS NULL;
 `},
+	{8, `
+-- Which process is driving this session, and when it last said so. The queue
+-- claims a submitted row, but nothing claimed a row already in flight: every
+-- replica reconciles at startup, so a deploy mid-run had two pods rejoin the
+-- same backend session, poll it, close it and publish it. One finished and went
+-- to record done; the other's close hit the session the first had archived,
+-- failed the row, and the winner's write was refused as an illegal transition.
+--
+-- The lease is what makes driving exclusive. It expires (rather than being
+-- held forever) so a run whose driver died is adoptable by a later boot instead
+-- of stranded; a live driver keeps it fresh on every observation.
+ALTER TABLE jobs ADD COLUMN adopted_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN adopted_at TIMESTAMPTZ;
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

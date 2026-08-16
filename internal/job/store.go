@@ -102,7 +102,23 @@ type Store interface {
 	// Claim atomically takes one submitted job into resolving and returns it, or
 	// reports false when none is waiting. Two concurrent claims return disjoint
 	// jobs — in Postgres by SELECT … FOR UPDATE SKIP LOCKED, in memory by a lock.
-	Claim(ctx context.Context) (Job, bool, error)
+	//
+	// It leases the row to worker in the same statement. The claim already makes
+	// this the only process driving the job; the lease is what says so to the
+	// *other* processes, whose startup reconciliation would otherwise adopt a run
+	// this one is in the middle of.
+	Claim(ctx context.Context, worker string) (Job, bool, error)
+	// Adopt leases a job in flight to one driver and reports whether this caller
+	// won it. It is how reconciliation picks up a run a restart stranded without
+	// two replicas picking up the same one.
+	//
+	// A lease is won when the row is non-terminal and either unleased, held by
+	// this same worker (a pod that crashed and came back under its own name
+	// resumes its own work), or older than ttl — a driver that stopped saying it
+	// was alive. A live driver refreshes its lease on every observation, so ttl
+	// bounds how long a dead one keeps its run to itself, not how long a run may
+	// take.
+	Adopt(ctx context.Context, id, worker string, ttl time.Duration) (bool, error)
 	// Advance moves a job to a new phase through the one transition function,
 	// applying mutate to set fields (the error on failure, the repo on
 	// publishing, the latest status). It refuses a transition the state machine
@@ -111,6 +127,11 @@ type Store interface {
 	// Observe records the latest run status on a job without changing its phase,
 	// so a reader who connects mid-run sees where it is. Progress is not a
 	// transition.
+	//
+	// It also refreshes an existing lease. An observation is the driver saying it
+	// is still there, and it arrives on every poll, so the lease stays fresh for
+	// as long as the run does without a second heartbeat to keep in step. A job
+	// nobody has leased stays unleased.
 	Observe(ctx context.Context, id string, status provider.RunStatus) error
 	// Active returns the jobs that are not terminal, so a restart can find work
 	// a crash left mid-flight and reap it.

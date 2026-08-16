@@ -42,6 +42,13 @@ func WithPGCredits(c *credit.PGStore, r credit.Reserve) PGOption {
 	return func(s *PGStore) { s.credits, s.reserve = c, r }
 }
 
+// WithPGClock sets the time source. A lease is a claim about when a driver was
+// last alive, so testing that it expires means moving time rather than waiting
+// for it.
+func WithPGClock(f func() time.Time) PGOption {
+	return func(s *PGStore) { s.clock = f }
+}
+
 // WithPGRates prices a settled session from the card in force when it started.
 // Without it a metered store holds and releases the reserve but charges
 // nothing.
@@ -204,13 +211,15 @@ func (s *PGStore) Get(ctx context.Context, id string) (Job, error) {
 
 // Claim atomically takes the oldest submitted job into resolving. FOR UPDATE
 // SKIP LOCKED is what makes concurrent claims disjoint under real contention.
-func (s *PGStore) Claim(ctx context.Context) (Job, bool, error) {
+func (s *PGStore) Claim(ctx context.Context, worker string) (Job, bool, error) {
 	now := s.clock()
 	row := s.pool.QueryRow(ctx, `
 		UPDATE jobs SET
 			phase = $1,
 			updated_at = $2,
-			phase_at = phase_at || jsonb_build_object($3::text, to_jsonb($2::timestamptz))
+			phase_at = phase_at || jsonb_build_object($3::text, to_jsonb($2::timestamptz)),
+			adopted_by = $5,
+			adopted_at = $2
 		WHERE id = (
 			SELECT id FROM jobs WHERE phase = $4
 			ORDER BY created_at
@@ -218,7 +227,7 @@ func (s *PGStore) Claim(ctx context.Context) (Job, bool, error) {
 			LIMIT 1
 		)
 		RETURNING `+jobColumns,
-		PhaseResolving, now, string(PhaseResolving), PhaseSubmitted)
+		PhaseResolving, now, string(PhaseResolving), PhaseSubmitted, worker)
 	j, err := scanJob(row)
 	if errors.Is(err, ErrNotFound) {
 		return Job{}, false, nil
@@ -270,7 +279,12 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 // Observe records the latest status without a phase change.
 func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunStatus) error {
 	raw, _ := json.Marshal(status)
-	tag, err := s.pool.Exec(ctx, `UPDATE jobs SET status=$2, updated_at=$3 WHERE id=$1`, id, raw, s.clock())
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE jobs SET
+			status = $2,
+			updated_at = $3,
+			adopted_at = CASE WHEN adopted_at IS NULL THEN NULL ELSE $3::timestamptz END
+		WHERE id = $1`, id, raw, s.clock())
 	if err != nil {
 		return err
 	}
@@ -278,6 +292,23 @@ func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunSta
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Adopt leases a job in flight to one driver, and reports whether this caller
+// won it. The whole decision is the WHERE clause, so two replicas reconciling
+// the same row at the same instant cannot both win it.
+func (s *PGStore) Adopt(ctx context.Context, id, worker string, ttl time.Duration) (bool, error) {
+	now := s.clock()
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE jobs SET adopted_by=$2, adopted_at=$3
+		WHERE id=$1
+		  AND phase NOT IN ('done','failed')
+		  AND (adopted_at IS NULL OR adopted_by=$2 OR adopted_at < $4)`,
+		id, worker, now, now.Add(-ttl))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // ListByPrincipal returns a principal's jobs, newest first.

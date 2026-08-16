@@ -65,6 +65,42 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("observe: status=%+v phase=%s", got.Status, got.Phase)
 	}
 
+	// A job in flight belongs to one driver. Two replicas reconcile the same rows
+	// at startup, so the lease is what stops both of them rejoining one backend
+	// session; without it the losing driver's failure overwrites the winner's
+	// published success.
+	lj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "leased", Kind: KindAudit})
+	if won, err := s.Adopt(ctx, lj.ID, "pod-a", time.Minute); err != nil || !won {
+		t.Fatalf("first Adopt = %v/%v, want it won", won, err)
+	}
+	if won, err := s.Adopt(ctx, lj.ID, "pod-b", time.Minute); err != nil || won {
+		t.Fatalf("second Adopt = %v/%v, want it refused — pod-a holds the lease", won, err)
+	}
+	// A driver that comes back under its own name resumes its own work, rather
+	// than being locked out of it by the lease it took before it died.
+	if won, err := s.Adopt(ctx, lj.ID, "pod-a", time.Minute); err != nil || !won {
+		t.Fatalf("re-Adopt by the holder = %v/%v, want it won", won, err)
+	}
+	// A lease older than the ttl is a driver that stopped saying it was alive, and
+	// its run is adoptable — otherwise a crash would strand it for good.
+	if won, err := s.Adopt(ctx, lj.ID, "pod-b", 0); err != nil || !won {
+		t.Fatalf("Adopt of an expired lease = %v/%v, want it won", won, err)
+	}
+	// Claim leases as it takes, so a session one pod just claimed does not read as
+	// stranded to a pod starting up beside it.
+	claimed, ok, err := s.Claim(ctx, "pod-a")
+	if err != nil || !ok {
+		t.Fatalf("Claim = %v/%v, want a job", ok, err)
+	}
+	if won, err := s.Adopt(ctx, claimed.ID, "pod-b", time.Minute); err != nil || won {
+		t.Fatalf("Adopt of a just-claimed job = %v/%v, want it refused", won, err)
+	}
+	// A finished session is nobody's to drive.
+	_ = s.Advance(ctx, lj.ID, PhaseFailed, func(jb *Job) { jb.Err = "done with" })
+	if won, err := s.Adopt(ctx, lj.ID, "pod-c", time.Minute); err != nil || won {
+		t.Fatalf("Adopt of a terminal job = %v/%v, want it refused", won, err)
+	}
+
 	// A failure records its cause and lands in failed (submitted -> failed).
 	fj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_ = s.Advance(ctx, fj.ID, PhaseFailed, func(jb *Job) { jb.Err = "boom" })
@@ -447,7 +483,7 @@ func runClaimContention(t *testing.T, s Store) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if j, ok, err := s.Claim(ctx); err == nil && ok {
+			if j, ok, err := s.Claim(ctx, "test-worker"); err == nil && ok {
 				mu.Lock()
 				seen[j.ID]++
 				mu.Unlock()
@@ -465,12 +501,61 @@ func runClaimContention(t *testing.T, s Store) {
 	}
 }
 
+// runLeaseContract asserts that a lease tracks whether a driver is still there,
+// with time under the test's control: a live driver keeps its run, and a driver
+// that went quiet loses it. `at` sets the store's clock.
+func runLeaseContract(t *testing.T, s Store, at func(time.Time)) {
+	t.Helper()
+	ctx := context.Background()
+	start := time.Date(2026, 8, 16, 9, 0, 0, 0, time.UTC)
+	at(start)
+
+	j, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "leased", Kind: KindAudit})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if won, err := s.Adopt(ctx, j.ID, "pod-a", time.Minute); err != nil || !won {
+		t.Fatalf("Adopt = %v/%v, want it won", won, err)
+	}
+
+	// An observation is the driver saying it is still there. It arrives on every
+	// poll of the backend, so a run that takes hours keeps its lease without a
+	// second heartbeat to keep in step with — and a sweep looking for stranded
+	// work leaves it alone.
+	at(start.Add(45 * time.Second))
+	if err := s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning}); err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	at(start.Add(90 * time.Second))
+	if won, err := s.Adopt(ctx, j.ID, "pod-b", time.Minute); err != nil || won {
+		t.Fatalf("Adopt = %v/%v, want it refused — pod-a is still observing", won, err)
+	}
+
+	// Once the observations stop, the ttl runs out and the run is adoptable: a
+	// driver that died must not keep a session to itself for good.
+	at(start.Add(3 * time.Minute))
+	if won, err := s.Adopt(ctx, j.ID, "pod-b", time.Minute); err != nil || !won {
+		t.Fatalf("Adopt = %v/%v, want it won — pod-a went quiet", won, err)
+	}
+
+	// Observing a job nobody leased does not lease it.
+	free, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "unleased", Kind: KindAudit})
+	if err := s.Observe(ctx, free.ID, provider.RunStatus{State: provider.StateRunning}); err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if won, err := s.Adopt(ctx, free.ID, "pod-c", time.Minute); err != nil || !won {
+		t.Fatalf("Adopt of an unleased job = %v/%v, want it won", won, err)
+	}
+}
+
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewMemStore())
 	runGuardContract(t, NewMemStore())
 	runProjectJoinContract(t, NewMemStore(WithRates(fixedCard(testCard))))
 	runDeleteContract(t, NewMemStore(WithRates(fixedCard(testCard))))
 	runClaimContention(t, NewMemStore())
+	memNow := time.Now()
+	runLeaseContract(t, NewMemStore(WithClock(func() time.Time { return memNow })), func(at time.Time) { memNow = at })
 }
 
 // TestPGStoreSatisfiesTheContract runs the same contract against a real
@@ -514,4 +599,9 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 		t.Fatalf("truncate: %v", err)
 	}
 	runClaimContention(t, NewPGStore(pool))
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	pgNow := time.Now()
+	runLeaseContract(t, NewPGStore(pool, WithPGClock(func() time.Time { return pgNow })), func(at time.Time) { pgNow = at })
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -57,6 +58,14 @@ type Budget func(ctx context.Context, j Job) (stop bool, why string, err error)
 // far past their balance a run is allowed to go.
 const GenericFailure = "the session could not be completed"
 
+// LeaseTTL is how long a job stays leased to a driver that has stopped saying
+// it is alive. A running session refreshes its lease on every observation
+// (every poll of the backend), so this bounds how long a *dead* driver keeps a
+// run to itself — not how long a run may take. It is generous next to the poll
+// cadence so an ordinary pause between observations, or a slow resolve before
+// the first one, never reads as a dead driver.
+const LeaseTTL = 5 * time.Minute
+
 // Worker drives claimed jobs through the phases. A small pool of these is the
 // whole queue: no external broker, durability from the row.
 type Worker struct {
@@ -65,10 +74,20 @@ type Worker struct {
 	poll   time.Duration
 	sleep  func(context.Context, time.Duration) error
 	budget Budget
+	// sweepEvery is how often the pool looks again for stranded runs, and
+	// leaseTTL is how long a quiet driver keeps one. The sweep runs at the lease,
+	// so it never finds a lease it would have to wait long on.
+	sweepEvery time.Duration
+	leaseTTL   time.Duration
+	// id names this process in the lease it takes on every job it drives. The
+	// deployment runs more than one replica, so "the worker" is not one process
+	// and a job has to record which one has it.
+	id string
 
 	// running maps a session being driven here to the cancel func for its run
 	// context, so Cancel can interrupt the agent mid-run (and stop the spend),
-	// not just after the next phase boundary. One process, one replica.
+	// not just after the next phase boundary. It covers the sessions *this*
+	// process drives; the lease is what keeps another replica off them.
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
 }
@@ -84,6 +103,24 @@ func WithPoll(d time.Duration) WorkerOption { return func(w *Worker) { w.poll = 
 // stopped for money — which is right for an offline run and wrong for a
 // deployment holding a real credential.
 func WithBudget(b Budget) WorkerOption { return func(w *Worker) { w.budget = b } }
+
+// WithWorkerID names this process in the leases it takes. Two workers in one
+// test process share a hostname, so a test about two replicas has to say which
+// is which.
+func WithWorkerID(id string) WorkerOption { return func(w *Worker) { w.id = id } }
+
+// defaultWorkerID names this process by its host, falling back to a random id
+// when the host has no name to give.
+func defaultWorkerID() string {
+	if host, err := os.Hostname(); err == nil && host != "" {
+		return host
+	}
+	id, err := newID()
+	if err != nil {
+		return "worker"
+	}
+	return id
+}
 
 // watch is the backstop, run on every observation because that is the only
 // moment fresh usage exists. A session runs to completion in the ordinary case
@@ -120,6 +157,14 @@ func (w *Worker) watch(pool context.Context, id string) {
 	w.interrupt(id)
 }
 
+// driving reports whether this process is already driving a session.
+func (w *Worker) driving(id string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.running[id]
+	return ok
+}
+
 // interrupt cancels the run context of a session this worker is driving, so the
 // agent stops rather than running on after the row went terminal.
 func (w *Worker) interrupt(id string) {
@@ -131,14 +176,29 @@ func (w *Worker) interrupt(id string) {
 	}
 }
 
+// withSweepEvery shortens the stranded-run sweep so a test can watch one happen.
+func withSweepEvery(d time.Duration) WorkerOption {
+	return func(w *Worker) { w.sweepEvery = d }
+}
+
+// withLeaseTTL shortens the lease, so a test can put a departed driver's hold in
+// the state a sweep finds it in minutes later.
+func withLeaseTTL(d time.Duration) WorkerOption {
+	return func(w *Worker) { w.leaseTTL = d }
+}
+
 // withWorkerSleep replaces the idle wait so tests run instantly.
 func withWorkerSleep(f func(context.Context, time.Duration) error) WorkerOption {
 	return func(w *Worker) { w.sleep = f }
 }
 
-// NewWorker builds a worker over a store and a runner.
+// NewWorker builds a worker over a store and a runner. Its identity defaults to
+// the host it runs on, which in the deployment is the pod name: a lease is read
+// by a person looking at a stuck session, and "replichai-6c786cc9c6-c577z" tells
+// them which pod to pull logs from where a random id would not.
 func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
-	w := &Worker{store: store, runner: runner, poll: time.Second, sleep: sleepCtx, running: map[string]context.CancelFunc{}}
+	w := &Worker{store: store, runner: runner, poll: time.Second, sleep: sleepCtx,
+		sweepEvery: LeaseTTL, leaseTTL: LeaseTTL, id: defaultWorkerID(), running: map[string]context.CancelFunc{}}
 	for _, opt := range opts {
 		opt(w)
 	}
@@ -179,7 +239,7 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 // found work. It is the unit the pool loop repeats, and the unit tests drive
 // directly.
 func (w *Worker) Process(ctx context.Context) (bool, error) {
-	j, ok, err := w.store.Claim(ctx)
+	j, ok, err := w.store.Claim(ctx, w.id)
 	if err != nil {
 		return false, fmt.Errorf("claim: %w", err)
 	}
@@ -190,11 +250,13 @@ func (w *Worker) Process(ctx context.Context) (bool, error) {
 }
 
 // Start runs a pool of workers until ctx is canceled. Each loops: process a job,
-// or wait and look again when the queue is empty.
+// or wait and look again when the queue is empty. Alongside them it sweeps for
+// stranded runs.
 func (w *Worker) Start(ctx context.Context, workers int) {
 	if workers < 1 {
 		workers = 1
 	}
+	go w.sweep(ctx)
 	done := make(chan struct{})
 	for i := 0; i < workers; i++ {
 		go func() {
@@ -217,6 +279,35 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 	}
 }
 
+// sweep re-runs reconciliation for as long as the pool lives, so a run whose
+// driver died is picked up by whoever is still standing.
+//
+// Reconciling only at startup was enough while every replica adopted every
+// stranded run: the pod that came up during a deploy took over the outgoing
+// pod's work — which is exactly the double-drive the lease now prevents. With
+// adoption exclusive, the incoming pod correctly declines a run the outgoing one
+// still holds, and if nothing looked again the run would sit in `running` until
+// the next deploy. This is that second look. The interval is the lease, so a
+// sweep never finds a lease it must wait on for long.
+func (w *Worker) sweep(ctx context.Context) {
+	tick := time.NewTicker(w.sweepEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		resumed, failed, err := w.Reconcile(ctx)
+		if err != nil {
+			log.Printf("worker: sweep: %v", err)
+		}
+		if resumed > 0 || failed > 0 {
+			log.Printf("worker: sweep adopted %d stranded run(s), failed %d unrecoverable", resumed, failed)
+		}
+	}
+}
+
 // Reconcile brings jobs left in flight by a restart back in line with the
 // backend, rather than guessing they failed. A run whose backend session id was
 // observed is *rejoined* — resumed and driven to completion, reflecting the
@@ -235,6 +326,21 @@ func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error)
 	for _, j := range active {
 		if j.Phase == PhaseSubmitted {
 			continue // still claimable; not stranded
+		}
+		if w.driving(j.ID) {
+			continue // this process is already on it; a sweep must not re-drive it
+		}
+		// Take the row before touching it. Every replica reconciles at startup,
+		// and a rolling deploy overlaps a starting pod with one still driving, so
+		// without this each of them rejoins the same backend session: two drivers
+		// poll it, close it and publish it, and the one that loses the race
+		// records a failure over the other's success.
+		mine, err := w.store.Adopt(ctx, j.ID, w.id, w.leaseTTL)
+		if err != nil {
+			return resumed, failed, fmt.Errorf("adopt session %s: %w", j.ID, err)
+		}
+		if !mine {
+			continue // another worker has it
 		}
 		if j.Phase == PhaseRunning && j.Status.RunID != "" {
 			go func(j Job) {
