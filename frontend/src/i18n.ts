@@ -508,6 +508,11 @@ const en = {
     errMovePublic: 'A published project’s papers can’t be moved. Withdraw the publication first.',
     errMoveTrashed: 'A project in the trash can’t be changed. Restore it first.',
     errMovePaperNotLead: 'You need to lead both projects to move a paper between them.',
+    // What a project is about (038).
+    describeAdd: 'Add a description',
+    describeEdit: 'Edit the description',
+    describePlaceholder: 'What is this project about? One paragraph is plenty.',
+    describeFailed: 'Couldn’t save that. Try again in a moment.',
     // A paper's own bibliography (037): what it is, not just what it is called.
     editPaper: 'Correct these details',
     editPaperTitle: 'Correct this paper',

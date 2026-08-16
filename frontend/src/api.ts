@@ -67,6 +67,9 @@ export type Project = {
   id: string
   owner: string
   title: string
+  // What the project is about, in its owner's words (038). Absent for one
+  // nobody has described, and for a private project somebody may not read.
+  description?: string
   visibility: 'private' | 'public'
   created_at: string
   signed_off_by?: string
@@ -502,6 +505,15 @@ export const renameProject = (id: string, title: string) =>
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title }),
+  }).then(json<Project>)
+
+// describeProject writes what a project is about (038). Empty clears it, which
+// is a deliberate edit and not the same as leaving the field alone.
+export const describeProject = (id: string, description: string) =>
+  fetch(`/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ description }),
   }).then(json<Project>)
 
 // cancelSession stops a running session (owner-only). It returns the resulting
