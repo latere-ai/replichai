@@ -462,9 +462,12 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		plat := platform.NewMemStore(acc)
 		members := access.NewMemMembership()
 		ledger := credit.NewMemStore(acc, members)
+		jobs := job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat)), job.WithRates(platform.RateSnapshot(plat)))
 		return stores{
-			jobs:     job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat)), job.WithRates(platform.RateSnapshot(plat))),
-			projects: project.NewMemStore(),
+			jobs: jobs,
+			// The job store goes into the project store so a moved paper takes its
+			// sessions with it (035); without it MovePaper refuses.
+			projects: project.NewMemStore(project.WithSessions(jobs)),
 			access:   acc,
 			members:  members,
 			platform: plat,
@@ -502,9 +505,10 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	plat := platform.NewPGStore(pool, acc)
 	members := access.NewPGMembership(pool)
 	ledger := credit.NewPGStore(pool, acc, members)
+	jobs := job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat)), job.WithPGRates(platform.RateSnapshot(plat)))
 	return stores{
-		jobs:     job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat)), job.WithPGRates(platform.RateSnapshot(plat))),
-		projects: project.NewPGStore(pool),
+		jobs:     jobs,
+		projects: project.NewPGStore(pool, project.WithPGSessions(jobs)),
 		access:   acc,
 		members:  members,
 		platform: plat,

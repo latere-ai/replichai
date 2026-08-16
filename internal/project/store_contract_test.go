@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/latere-ai/replichai/internal/job"
@@ -593,5 +594,174 @@ func TestMigrationBackfillsPapersFromSessions(t *testing.T) {
 	}
 	if p := byKey["doi:10.1145/3544548.3581433"]; p.Title != "" {
 		t.Errorf("the backfill must not guess a title, got %q", p.Title)
+	}
+}
+
+/* ─── Moving a paper to another project (035) ─── */
+
+// recordingMover stands in for the job store on both sides of the seam: it
+// satisfies SessionMover and PGSessionMover at once, so one fake drives the
+// contract against both implementations. It records what it was asked to move
+// and can be told to fail, which is how the rollback is checked.
+type recordingMover struct {
+	moves []string
+	fail  error
+}
+
+func (m *recordingMover) MovePaperSessions(_ context.Context, from, to, key string) error {
+	if m.fail != nil {
+		return m.fail
+	}
+	m.moves = append(m.moves, from+"→"+to+":"+key)
+	return nil
+}
+
+func (m *recordingMover) MovePaperSessionsTx(_ context.Context, _ pgx.Tx, from, to, key string) error {
+	if m.fail != nil {
+		return m.fail
+	}
+	m.moves = append(m.moves, from+"→"+to+":"+key)
+	return nil
+}
+
+// runMovePaperContract asserts what a move must do, whichever store performs it.
+func runMovePaperContract(t *testing.T, s Store, mover *recordingMover) {
+	t.Helper()
+	ctx := context.Background()
+
+	from, err := s.Create(ctx, "owner", "Where it was filed")
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	to, err := s.Create(ctx, "owner", "Where it belongs")
+	if err != nil {
+		t.Fatalf("Create destination: %v", err)
+	}
+
+	added := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	moving := Paper{Key: "doi:10.1145/3544548.3581433", Ref: "https://doi.org/10.1145/3544548.3581433", AddedBy: "owner", AddedAt: added}
+	staying := Paper{Key: "arxiv:2401.00001", Ref: "arxiv:2401.00001", AddedBy: "owner", AddedAt: added.Add(time.Hour)}
+	for _, p := range []Paper{moving, staying} {
+		if err := s.AddPaper(ctx, from.ID, p); err != nil {
+			t.Fatalf("AddPaper %s: %v", p.Key, err)
+		}
+	}
+
+	// A key the source does not hold names nothing to move, and is not the same
+	// answer as a project that is not there.
+	if err := s.MovePaper(ctx, from.ID, to.ID, "doi:10.0000/nope"); !errors.Is(err, ErrPaperNotFound) {
+		t.Errorf("moving a paper the project does not hold: want ErrPaperNotFound, got %v", err)
+	}
+	if err := s.MovePaper(ctx, "nope", to.ID, moving.Key); !errors.Is(err, ErrNotFound) {
+		t.Errorf("moving out of a missing project: want ErrNotFound, got %v", err)
+	}
+	if err := s.MovePaper(ctx, from.ID, "nope", moving.Key); !errors.Is(err, ErrNotFound) {
+		t.Errorf("moving into a missing project: want ErrNotFound, got %v", err)
+	}
+
+	if err := s.MovePaper(ctx, from.ID, to.ID, moving.Key); err != nil {
+		t.Fatalf("MovePaper: %v", err)
+	}
+	if len(mover.moves) != 1 || mover.moves[0] != from.ID+"→"+to.ID+":"+moving.Key {
+		t.Errorf("the sessions were not carried across: %v", mover.moves)
+	}
+
+	// The paper is in exactly one project afterwards, and the one that stayed
+	// stayed.
+	left, err := s.ListPapers(ctx, from.ID)
+	if err != nil {
+		t.Fatalf("ListPapers source: %v", err)
+	}
+	if len(left) != 1 || left[0].Key != staying.Key {
+		t.Errorf("source holds %v; want only %s", keysOf(left), staying.Key)
+	}
+	arrived, err := s.ListPapers(ctx, to.ID)
+	if err != nil {
+		t.Fatalf("ListPapers destination: %v", err)
+	}
+	if len(arrived) != 1 || arrived[0].Key != moving.Key {
+		t.Fatalf("destination holds %v; want %s", keysOf(arrived), moving.Key)
+	}
+	// It arrives as it was written down: moving a paper does not re-date it or
+	// re-attribute who added it.
+	if !arrived[0].AddedAt.Equal(added) || arrived[0].AddedBy != "owner" || arrived[0].Ref != moving.Ref {
+		t.Errorf("the moved paper was rewritten: %+v", arrived[0])
+	}
+
+	// Moving it back and forth is fine; moving it where it already is, is not —
+	// merging two papers' histories is not a move.
+	if err := s.AddPaper(ctx, from.ID, moving); err != nil {
+		t.Fatalf("re-adding the key to the source: %v", err)
+	}
+	if err := s.MovePaper(ctx, from.ID, to.ID, moving.Key); !errors.Is(err, ErrPaperExists) {
+		t.Errorf("moving onto a key the destination holds: want ErrPaperExists, got %v", err)
+	}
+	if left, _ := s.ListPapers(ctx, from.ID); len(left) != 2 {
+		t.Errorf("a refused move must leave the source alone, holds %v", keysOf(left))
+	}
+
+	// A paper is never in both projects, nor in neither, when the sessions fail
+	// to follow.
+	mover.fail = errors.New("the job store said no")
+	if err := s.MovePaper(ctx, from.ID, to.ID, staying.Key); err == nil {
+		t.Fatal("MovePaper: want the mover's error, got nil")
+	}
+	mover.fail = nil
+	src, _ := s.ListPapers(ctx, from.ID)
+	dst, _ := s.ListPapers(ctx, to.ID)
+	if !holds(src, staying.Key) || holds(dst, staying.Key) {
+		t.Errorf("a failed move split the paper from its sessions: source %v, destination %v", keysOf(src), keysOf(dst))
+	}
+}
+
+func keysOf(ps []Paper) []string {
+	out := make([]string, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.Key)
+	}
+	return out
+}
+
+func holds(ps []Paper, key string) bool {
+	for _, p := range ps {
+		if p.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMemStoreMovesAPaper(t *testing.T) {
+	m := &recordingMover{}
+	runMovePaperContract(t, NewMemStore(WithSessions(m)), m)
+}
+
+func TestPGStoreMovesAPaper(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+	m := &recordingMover{}
+	runMovePaperContract(t, NewPGStore(pool, WithPGSessions(m)), m)
+}
+
+// TestMovingAPaperNeedsASessionMover is the loud failure a composition root has
+// to trip over: a store with no mover refuses rather than moving the paper and
+// leaving its runs in the old project, which is the orphan 015 exists to
+// prevent and would be silent.
+func TestMovingAPaperNeedsASessionMover(t *testing.T) {
+	ctx := context.Background()
+	s := NewMemStore()
+	p, err := s.Create(ctx, "owner", "Unwired")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	other, _ := s.Create(ctx, "owner", "Elsewhere")
+	if err := s.AddPaper(ctx, p.ID, Paper{Key: "arxiv:2401.00001", Ref: "arxiv:2401.00001", AddedBy: "owner"}); err != nil {
+		t.Fatalf("AddPaper: %v", err)
+	}
+	if err := s.MovePaper(ctx, p.ID, other.ID, "arxiv:2401.00001"); !errors.Is(err, ErrNoSessionMover) {
+		t.Fatalf("MovePaper with no mover: want ErrNoSessionMover, got %v", err)
+	}
+	if papers, _ := s.ListPapers(ctx, p.ID); len(papers) != 1 {
+		t.Error("the paper moved anyway")
 	}
 }

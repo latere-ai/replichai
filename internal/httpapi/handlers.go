@@ -102,6 +102,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects", rt.createProject)
 	rt.gatedHandle("POST", "/projects/{id}/papers", rt.addProjectPaper)
 	rt.gatedHandle("DELETE", "/projects/{id}/papers", rt.removeProjectPaper)
+	rt.gatedHandle("POST", "/projects/{id}/papers/move", rt.moveProjectPaper)
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("GET", "/models", rt.listModels)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
@@ -248,9 +249,7 @@ func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// An owner leads their own project by definition; isLead covers the case
-	// where a collaborator was promoted to lead.
-	if proj.Owner != principal(r) && !rt.isLead(r, proj.ID) {
+	if !rt.leads(r, proj) {
 		writeError(w, http.StatusForbidden, "not_lead")
 		return
 	}
@@ -275,6 +274,120 @@ func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// moveProjectPaper refiles a paper, and its finished sessions, under another
+// project (035).
+//
+// It is a remove from one project and an add to the other, so it is authorised
+// like both: lead-or-owner on each end, which is stricter than the "any member"
+// rule adding follows and exactly the rule removing follows. `projectForWork`
+// resolves the one project in the path, so the destination is resolved beside
+// it and put through the same three gates — stake, trash, and (new here) the
+// public flip.
+//
+// The sessions travel because a session whose project no longer holds its paper
+// is the orphan 015 was written to fix. They travel only when every one of them
+// is finished: a live session rewritten into another project moves *inside*
+// jobs_active_paper_project, the partial unique index the destination's paper
+// row cannot see, and the worker driving it holds the old project id in memory.
+// That is 032's terminal-only rule, for 032's reason.
+func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
+	from, ok := rt.projectForWork(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		PaperKey  string `json:"paper_key"`
+		ToProject string `json:"to_project"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	key := strings.TrimSpace(body.PaperKey)
+	toID := strings.TrimSpace(body.ToProject)
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "missing_key")
+		return
+	}
+	if toID == "" {
+		writeError(w, http.StatusBadRequest, "missing_target")
+		return
+	}
+	if toID == from.ID {
+		writeError(w, http.StatusBadRequest, "same_project")
+		return
+	}
+	to, ok := rt.moveTarget(w, r, toID)
+	if !ok {
+		return
+	}
+	// Published on either end and the move is refused. Read off Visibility, never
+	// off the presence of a sign-off: 006o leaves the sign-off standing on a
+	// withdrawn project, so a sign-off proves nothing about current openness.
+	// Moving a paper out of a published project would change what a signed
+	// attestation covers; the owner withdraws first.
+	if from.Visibility == project.VisibilityPublic || to.Visibility == project.VisibilityPublic {
+		writeError(w, http.StatusConflict, "project_public")
+		return
+	}
+	if !rt.leads(r, from) || !rt.leads(r, to) {
+		writeError(w, http.StatusForbidden, "not_lead")
+		return
+	}
+	sessions, err := rt.jobs.ListByProject(r.Context(), from.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
+		return
+	}
+	for _, j := range sessions {
+		if j.PaperKey == key && !j.Phase.Terminal() {
+			writeError(w, http.StatusConflict, "paper_running")
+			return
+		}
+	}
+	switch err := rt.projects.MovePaper(r.Context(), from.ID, to.ID, key); {
+	case errors.Is(err, project.ErrPaperNotFound):
+		writeError(w, http.StatusNotFound, "paper_not_found")
+	case errors.Is(err, project.ErrPaperExists):
+		writeError(w, http.StatusConflict, "paper_exists")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "move_paper_failed")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// moveTarget resolves a move's destination — projectForWork's job for a project
+// named in the body rather than the path. It answers 404 for a project the
+// caller has no stake in, not 403: the id came from the caller, and confirming
+// that some other person's project exists is the leak projectForRead avoids.
+func (rt *Router) moveTarget(w http.ResponseWriter, r *http.Request, id string) (project.Project, bool) {
+	p, err := rt.projects.Get(r.Context(), id)
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "target_not_found")
+		return project.Project{}, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return project.Project{}, false
+	}
+	if !rt.mayWorkInProject(r, p, principal(r)) {
+		writeError(w, http.StatusNotFound, "target_not_found")
+		return project.Project{}, false
+	}
+	if p.Trashed() {
+		writeError(w, http.StatusConflict, "project_trashed")
+		return project.Project{}, false
+	}
+	return p, true
+}
+
+// leads reports whether the caller may take a lead's action in this project. An
+// owner leads their own by definition; isLead covers a promoted collaborator.
+func (rt *Router) leads(r *http.Request, p project.Project) bool {
+	return p.Owner == principal(r) || rt.isLead(r, p.ID)
 }
 
 // startSession runs one paper the project already holds.

@@ -12,19 +12,47 @@ import (
 )
 
 // foreignKeyViolation is the SQLSTATE a paper insert returns when the project it
-// names is not there.
-const foreignKeyViolation = "23503"
+// names is not there, and uniqueViolation the one a move returns when the
+// destination already holds the paper.
+const (
+	foreignKeyViolation = "23503"
+	uniqueViolation     = "23505"
+)
+
+// PGSessionMover is SessionMover's Postgres half: it moves a paper's sessions
+// inside the caller's transaction, so the paper and its runs arrive together or
+// not at all. Satisfied by the job store.
+type PGSessionMover interface {
+	MovePaperSessionsTx(ctx context.Context, tx pgx.Tx, fromID, toID, key string) error
+}
 
 // PGStore is the Postgres implementation of Store, satisfying the same contract
 // the in-memory store does.
 type PGStore struct {
 	pool  *pgxpool.Pool
 	clock func() time.Time
+	// sessions carries a moved paper's runs across (035). Nil means MovePaper
+	// refuses rather than stranding them.
+	sessions PGSessionMover
+}
+
+// PGOption configures a PGStore.
+type PGOption func(*PGStore)
+
+// WithPGSessions wires the store that holds a paper's sessions, so a move takes
+// them with it inside the move's own transaction (035). Without it MovePaper
+// returns ErrNoSessionMover.
+func WithPGSessions(m PGSessionMover) PGOption {
+	return func(s *PGStore) { s.sessions = m }
 }
 
 // NewPGStore builds a store over a pgx pool.
-func NewPGStore(pool *pgxpool.Pool) *PGStore {
-	return &PGStore{pool: pool, clock: time.Now}
+func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
+	s := &PGStore{pool: pool, clock: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // projectColumns is the column list every read selects, in scan order.
@@ -290,4 +318,45 @@ func (s *PGStore) RemovePaper(ctx context.Context, projectID, key string) error 
 	_, err := s.pool.Exec(ctx,
 		`DELETE FROM project_papers WHERE project_id=$1 AND paper_key=$2`, projectID, key)
 	return err
+}
+
+// MovePaper refiles a paper under another project, and its sessions with it,
+// in one transaction (035). The paper row and the job rows live in different
+// tables owned by different packages but in the same database, so the seam is
+// the transaction: this store opens it and hands it to the mover, exactly as
+// the job store hands its own transaction to the credit ledger at settlement.
+//
+// The UPDATE is the duplicate check. A destination that already holds the key
+// breaks the primary key, and reading that off the error is what keeps two
+// concurrent moves from both believing they were first — the same reason
+// AddPaper does not SELECT before it inserts.
+func (s *PGStore) MovePaper(ctx context.Context, fromID, toID, key string) error {
+	if s.sessions == nil {
+		return ErrNoSessionMover
+	}
+	// Both projects are read outside the transaction only to tell a missing
+	// project from a missing paper; inside it, the UPDATE is still the authority
+	// on what actually moved.
+	if _, err := s.Get(ctx, fromID); err != nil {
+		return err
+	}
+	if _, err := s.Get(ctx, toID); err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE project_papers SET project_id=$2
+			WHERE project_id=$1 AND paper_key=$3`, fromID, toID, key)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+				return ErrPaperExists
+			}
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrPaperNotFound
+		}
+		return s.sessions.MovePaperSessionsTx(ctx, tx, fromID, toID, key)
+	})
 }
