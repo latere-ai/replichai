@@ -45,7 +45,7 @@ There is also nothing in `<head>`: no description, no icon, no social card (`fro
 | Inner loop | The algorithm, model, or analysis pipeline. Implemented, run, and published as a repository with the agent's own commit history. |
 | Outer loop | The study that validates it with people. Named, bounded, and never simulated — pretending otherwise is how reproducibility claims go wrong. |
 | The verdict | Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number. |
-| Card | Sign in — Signing in is open and costs nothing. A session is what spends, and only when you start one. |
+| Card | Sign in — Sign in to give it a paper, watch the audit run, and sign the verdict that comes back. |
 
 Every string lives in `i18n.ts` under the `auth` section. `Lang` is `'en'` only (`i18n.ts:6`), so there is no second locale to update.
 
