@@ -141,6 +141,22 @@ func (s *MemStore) SetTitle(_ context.Context, id, title string) error {
 	return nil
 }
 
+// SetDescription writes what a project says it is about (038).
+func (s *MemStore) SetDescription(_ context.Context, id, description string) error {
+	if len(description) > MaxDescription {
+		return ErrDescriptionTooLong
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	p.Description = description
+	s.projects[id] = p
+	return nil
+}
+
 // SetCreditCap overrides this project's overdraft floor; zero restores the
 // platform default.
 func (s *MemStore) SetCreditCap(_ context.Context, id string, cap int64) error {

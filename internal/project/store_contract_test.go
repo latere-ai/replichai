@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,6 +355,25 @@ func runPaperContract(t *testing.T, s Store) {
 	}
 	if papers[0].Title != "" {
 		t.Errorf("a paper nobody has resolved should carry no title, got %q", papers[0].Title)
+	}
+
+	// What a project is about is its owner's to write (038), and it is a
+	// deliberate act rather than an enrichment: a project that is not there is an
+	// error, and one that is too long is refused rather than truncated.
+	if err := s.SetDescription(ctx, p.ID, "Two papers on trust in automation."); err != nil {
+		t.Fatalf("SetDescription: %v", err)
+	}
+	if got, _ := s.Get(ctx, p.ID); got.Description != "Two papers on trust in automation." {
+		t.Errorf("description = %q", got.Description)
+	}
+	if err := s.SetDescription(ctx, "nobody", "x"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("describing a project that is not there = %v, want ErrNotFound", err)
+	}
+	if err := s.SetDescription(ctx, p.ID, strings.Repeat("x", MaxDescription+1)); !errors.Is(err, ErrDescriptionTooLong) {
+		t.Errorf("an over-long description = %v, want ErrDescriptionTooLong", err)
+	}
+	if got, _ := s.Get(ctx, p.ID); got.Description != "Two papers on trust in automation." {
+		t.Errorf("a refused description still wrote: %q", got.Description)
 	}
 
 	// The record arrives later, from whichever resolve answers first (037).

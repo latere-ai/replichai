@@ -161,6 +161,15 @@ ALTER TABLE project_papers ADD COLUMN publisher TEXT   NOT NULL DEFAULT '';
 -- year nobody has looked up yet.
 ALTER TABLE project_papers ADD COLUMN edited TEXT[] NOT NULL DEFAULT '{}';
 `},
+	{11, `
+-- What the project is about, in its owner's own words (038). A title is either
+-- what somebody typed or the first paper's reference, so half the projects here
+-- are named after a doi: string and none of them can say why they exist.
+--
+-- Empty rather than NULL: every project that predates this has no description,
+-- which is a state the screen already has to render, not a missing value.
+ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
