@@ -1,4 +1,4 @@
-// A browser regression test for the merged projects list (018).
+// A browser regression test for the merged projects list (018, restyled by 034).
 //
 // What it guards: the screen used to split a reader's work in two by a fact they
 // did not choose — whether they created a project or were invited to it. The
@@ -6,7 +6,14 @@
 // project have to appear in one list, the Owner column has to say "You" for your
 // own and link somebody else's public page for theirs, the Last-modified column
 // has to render an age rather than a raw timestamp, the order has to follow that
-// column, and the stat tiles have to count the merged list and not the owned half.
+// column, and the headline numbers have to count the merged list and not the
+// owned half.
+//
+// 034 moved the owner and the date off the column grid and onto the title's meta
+// line, and put a Published column and a filter row in the space that freed. What
+// each of those facts *says* is unchanged and is still asserted here; where it
+// sits is not. The three counters became two cards, and the numbers they show are
+// asserted against the same fixture the rows are.
 //
 // None of that is reachable from a unit test: the assertions are about rendered
 // rows and their painted order. It drives Chrome over a Vite dev server with the
@@ -134,9 +141,17 @@ try {
   const rows = await read()
   if (rows.length !== 2) fail(`the list shows ${rows.length} rows, want both the owned and the shared project in one list`)
 
-  // The split is gone, not hidden behind a default tab.
-  const tabs = await page.evaluate(() => document.querySelectorAll('.screen .segmented').length)
-  if (tabs) fail('the projects screen still renders a segmented control; ownership is a column now, not a tab')
+  // The split is gone, not hidden behind a default tab. 034 put a segmented
+  // control back on this screen, so the assertion is no longer "there is none" —
+  // it is that the one there is filters by *state*, which the reader picks, and
+  // never by ownership, which they did not.
+  const segs = await page.evaluate(() =>
+    [...document.querySelectorAll('.screen .segmented')].map((g) => [...g.querySelectorAll('.seg-btn')].map((b) => b.textContent.trim())),
+  )
+  if (segs.length !== 1) fail(`the projects screen renders ${segs.length} segmented controls, want just the state filter`)
+  for (const g of segs) {
+    if (g.some((l) => /mine|shared|yours|invited/i.test(l))) fail(`a segmented control splits the list by ownership again: ${JSON.stringify(g)}`)
+  }
   if (asked.some((p) => p === '/shared')) fail('the screen still fetches /shared')
 
   // Order follows the column the reader can see.
@@ -169,10 +184,27 @@ try {
   })
   if (downloadRow !== projects[0].title) fail(`the download is on "${downloadRow}", want the project with published sessions`)
 
-  // The tiles count what the list now shows, not the owned half of it.
-  const stats = await page.evaluate(() => [...document.querySelectorAll('.stat .stat-value')].map((e) => e.textContent.trim()))
-  if (stats[0] !== '2') fail(`the projects tile reads ${stats[0]}, want 2 — the merged list`)
-  if (stats[1] !== '5') fail(`the sessions tile reads ${stats[1]}, want 5 — every row's sessions`)
+  // The boundary cards count what the list now shows, not the owned half of it.
+  // The fixture is two projects, five sessions, two of which published.
+  const band = await page.evaluate(() => {
+    const txt = (sel) => document.querySelector(sel)?.textContent.replace(/\s+/g, ' ').trim() || ''
+    return { evidence: txt('[data-test="evidence-card"]'), credits: txt('[data-test="credits-card"]'), n: txt('[data-test="evidence-n"]') }
+  })
+  if (band.n !== '2') fail(`the published figure reads "${band.n}", want 2 — the sessions that committed a repository`)
+  if (!/of 5 sessions/.test(band.evidence)) fail(`the evidence card does not give its denominator: ${band.evidence}`)
+  if (!/across 2 projects/.test(band.evidence)) fail(`the evidence card does not say what it is across: ${band.evidence}`)
+  // The remainder is stated, not left to be inferred from a bar.
+  if (!/3 with nothing to hand over/.test(band.evidence)) fail(`the evidence card does not name the remainder: ${band.evidence}`)
+  if (!/\$10\.00/.test(band.credits)) fail(`the credits card shows no wallet balance: ${band.credits}`)
+
+  // A project that has published says what it handed over; one that has not says
+  // so in words rather than showing an empty bar, which reads as a figure that
+  // failed to load.
+  const pub = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-test="project-rows"] .row')].map((r) => r.querySelector('[data-test="published-cell"]')?.textContent.replace(/\s+/g, ' ').trim() || ''),
+  )
+  if (!/2 of 2/.test(pub[0] || '')) fail(`the published project's cell reads "${pub[0]}", want its 2 of 2`)
+  if (!/Nothing published/i.test(pub[1] || '')) fail(`the project that published nothing reads "${pub[1]}"`)
 
   // The download is a real link to the archive, so the browser saves it rather
   // than the tab buffering a body that size — and a project that has produced
@@ -195,10 +227,12 @@ try {
     const rows = [...document.querySelectorAll('[data-test="project-rows"] .row')]
     const head = document.querySelector('[data-test="project-rows"] .project-head')
     const left = (el) => (el ? Math.round(el.getBoundingClientRect().left) : null)
+    // Owner and date are no longer cells — they ride the title's meta line — so
+    // the grid is title, published, status, visibility, and the first action.
     const cells = (row) => [
       left(row.querySelector('.row-main')),
-      left(row.querySelector('[data-test="owner"]')),
-      left(row.querySelector('[data-test="modified"]')),
+      left(row.querySelector('[data-test="published-cell"]')),
+      left(row.children[2]),
       left(row.children[3]),
       left(row.children[4]),
     ]
@@ -207,13 +241,14 @@ try {
       // The header is drawn from the same grid template, so its labels sit over
       // the cells they name rather than merely near them.
       head: head ? [...head.children].slice(0, 5).map((c) => left(c)) : null,
-      labels: head ? [...head.children].slice(0, 5).map((c) => c.textContent.trim()) : null,
+      labels: head ? [...head.children].slice(0, 5).map((c) => c.textContent.trim() || `col${[...head.children].indexOf(c)}`) : null,
     }
   })
 
   if (!cols.head) fail('the projects list has no column headings')
   else {
-    if (cols.labels.some((l) => !l)) fail(`a column has no name: ${JSON.stringify(cols.labels)}`)
+    // The four that carry content are named; the fifth is the action gutter.
+    if (cols.labels.slice(0, 4).some((l) => /^col\d$/.test(l))) fail(`a column has no name: ${JSON.stringify(cols.labels)}`)
     for (const row of cols.rows) {
       row.forEach((x, i) => {
         if (x === null) return
@@ -234,12 +269,50 @@ try {
     })
   }
 
-  // Narrow enough and the two context columns fold away; the row's identity does
+  // The filter narrows the rendered rows and restores them, and asks the server
+  // for nothing to do it — a filter that refetched could disagree with the rows
+  // it is filtering.
+  const before = asked.length
+  // Typed rather than assigned: a value written straight onto the node does not
+  // fire the event React listens for, so the assertion would be about a DOM the
+  // component never saw. Clearing selects the field's own text and deletes it,
+  // for the same reason.
+  const typeFilter = async (text) => {
+    await page.click('[data-test="project-filter"]')
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-test="project-filter"]')
+      el.setSelectionRange(0, el.value.length)
+    })
+    await page.keyboard.press('Backspace')
+    if (text) await page.type('[data-test="project-filter"]', text)
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  await typeFilter('Placebo')
+  const filtered = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-test="project-rows"] .row .row-title')].map((e) => e.textContent.trim()),
+  )
+  if (filtered.length !== 1 || !/Placebo/.test(filtered[0] || '')) fail(`filtering by title left ${JSON.stringify(filtered)}`)
+  if (asked.length !== before) fail(`filtering made ${asked.length - before} network calls; it narrows what is already loaded`)
+  // Filtering by the owner's name, not only the title — the owner is on the row,
+  // so it is a thing a reader would type.
+  await typeFilter('Lovelace')
+  const byOwner = await page.evaluate(() => document.querySelectorAll('[data-test="project-rows"] .row').length)
+  if (byOwner !== 1) fail(`filtering by owner matched ${byOwner} rows, want the one Ada owns`)
+  await typeFilter('')
+  const restored = await page.evaluate(() => document.querySelectorAll('[data-test="project-rows"] .row').length)
+  if (restored !== 2) fail(`clearing the filter left ${restored} rows, want both back`)
+
+  // Narrow enough and the context column folds away; the row's identity does
   // not. A column that squeezes the title out is worse than one that leaves.
+  // Owner is no longer a column at any width — it is on the meta line — so what
+  // is asserted here is that it is still *readable*, and that Published is the
+  // one that leaves.
   await page.setViewport({ width: 640, height: 900 })
   await new Promise((r) => setTimeout(r, 200))
   const narrow = await read()
-  if (narrow.some((r) => r.ownerShown)) fail('the Owner column still takes space on a narrow screen')
+  const pubShown = await page.evaluate(() => [...document.querySelectorAll('[data-test="published-cell"]')].some((c) => c.getClientRects().length))
+  if (pubShown) fail('the Published column still takes space on a narrow screen')
+  if (narrow.some((r) => !r.ownerShown)) fail('a row lost its owner on a narrow screen; it moved to the meta line, it did not leave')
   if (narrow.some((r) => !r.title)) fail('a row lost its title on a narrow screen')
 
   if (!process.exitCode) console.log('ok: the projects list is one list, in named columns that line up')

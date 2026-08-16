@@ -3,7 +3,7 @@
 // What it guards: the rail is a fixed 236px column of the shell's flex row, and
 // folding it is not one property. The width has to change, the labels have to
 // stop taking space (not merely turn invisible — a `visibility: hidden` label
-// still reserves its line box and pushes the icons off centre in a 56px column),
+// still reserves its line box and pushes the icons off centre in a 64px column),
 // every destination has to stay clickable at its icon, the label has to survive
 // as a tooltip, the main area has to actually claim the space the rail gave up,
 // and the choice has to outlive a reload.
@@ -23,7 +23,9 @@ const BASE = `http://localhost:${PORT}`
 
 // The folded rail's width, and the expanded one, as the stylesheet sets them.
 const OPEN = 236
-const FOLDED = 56
+// 64, not 56 (034): the rail lost its border and gained the desk's padding, and
+// the fold is sized to the nav row's own 12px radius rather than to the icon.
+const FOLDED = 64
 
 // Naming a browser is a demand that it run: an unset PUPPETEER_EXECUTABLE_PATH
 // skips on a machine without Chrome, but a set one that does not exist fails, so
@@ -161,7 +163,9 @@ try {
   if (!near(shut.width, FOLDED)) fail(`the folded rail is ${shut.width}px, want ${FOLDED}px`)
   if (shut.expanded !== 'false') fail(`the folded rail's toggle reports aria-expanded=${shut.expanded}, want "false"`)
   // The point of folding: the space has to go to the content, not be left blank.
-  if (!near(shut.mainLeft, FOLDED + 1, 2)) fail(`the main area starts at ${shut.mainLeft}px after folding, want the rail's ${FOLDED}px edge`)
+  // No +1: the rail's right border is gone (034) — the content is a sheet inset
+  // on the desk, so what the main area starts at is the rail's own edge.
+  if (!near(shut.mainLeft, FOLDED, 2)) fail(`the main area starts at ${shut.mainLeft}px after folding, want the rail's ${FOLDED}px edge`)
   if (shut.rows.length !== open.rows.length) fail(`folding dropped ${open.rows.length - shut.rows.length} navigation rows; every destination must stay reachable`)
   for (const row of shut.rows) {
     if (row.labelShown) fail(`the "${row.label}" label is still laid out in the folded rail`)

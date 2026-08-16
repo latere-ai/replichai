@@ -256,7 +256,8 @@ try {
   if (railTotal !== search.narrowed.cards) fail(`rail counts sum to ${railTotal} but ${search.narrowed.cards} cards are shown`)
   if (search.restored !== EVENTS + 1) fail(`clearing the search left ${search.restored} cards, want ${EVENTS + 1}`)
 
-  // The topbar is a single 52px row and the app is a full-height shell: nothing
+  // The topbar is a single row — 56px since 034 — and the app is a full-height
+  // shell: nothing
   // on the session screen may wrap it or scroll the document sideways. The
   // breadcrumb is what broke both — a paper title long enough to wrap took the
   // trail onto a second line and pushed the header's controls off the right
@@ -280,7 +281,10 @@ try {
       }
     })
     if (bar.scroll > 0.5) fail(`at ${width}px the document scrolls ${Math.round(bar.scroll)}px sideways`)
-    if (bar.topbar !== 52) fail(`at ${width}px the topbar is ${bar.topbar}px tall, want 52`)
+    // The number is the bar's height, and the guarantee is that it is *one* row:
+    // a second line of breadcrumb is what this catches, and it catches it as a
+    // height that is no longer this one.
+    if (bar.topbar !== 56) fail(`at ${width}px the topbar is ${bar.topbar}px tall, want 56`)
     if (bar.wrapped.length) fail(`at ${width}px these breadcrumb segments wrap onto a second line: ${bar.wrapped.join(' | ')}`)
   }
   await page.setViewport({ width: 1440, height: 900 })
