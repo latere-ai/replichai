@@ -210,7 +210,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 034 | [The console, rebuilt from the design](034-the-console-rebuilt-from-the-design.md) | built | 033, 030, 018, 021e, 020 |
 | 035 | [A paper can move to another project](035-a-paper-can-move-to-another-project.md) | built | 012, 011, 015, 019, 021e, 032 |
 | 036 | [A project can start empty](036-a-project-can-start-empty.md) | built | 012, 006j, 035 |
-| 037 | [A paper carries its bibliography](037-a-paper-carries-its-bibliography.md) | designed | 001, 012, 035 |
+| 037 | [A paper carries its bibliography](037-a-paper-carries-its-bibliography.md) | built | 001, 012, 035 |
 | 038 | [A project says what it is about](038-a-project-says-what-it-is-about.md) | designed | 018, 006j, 028 |
 | 039 | [A description can be drafted](039-a-description-can-be-drafted.md) | designed | 038, 037, 011, 006k, 031 |
 
