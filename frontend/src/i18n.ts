@@ -321,8 +321,6 @@ const en = {
     // projects
     projectsIntro:
       'A project holds a paper and every replication session run against it. Each session is a durable, inspectable run — its trajectory and token usage are yours to check, never a score to rank papers by.',
-    statProjects: 'Projects',
-    statSessionsRun: 'Replication sessions',
     statWallet: 'Credits',
     statementShow: 'Statement',
     statementHide: 'Hide',
@@ -346,6 +344,32 @@ const en = {
     ownerYou: 'You',
     ownerUnknown: '—',
     noProjects: 'No projects yet. Start a new audit to open one.',
+    // The boundary band (034). It replaces three counters, two of which were the
+    // list below them counted. This is the one number the product exists to
+    // produce, and it is never a bare rate: a count, its denominator, and what
+    // the remainder actually is.
+    evidenceEyebrow: 'Published evidence',
+    evidenceAcross: 'across {n} projects',
+    evidenceOf: 'of {n} sessions committed a repository',
+    evidencePublished: '{n} published',
+    evidenceNothing: '{n} with nothing to hand over',
+    creditsEyebrow: 'What the credits buy',
+    creditsInWallet: 'in your wallet',
+    creditsNote: 'A session draws on the project you allocate to, not on the wallet directly.',
+    // The filter (034). 018 removed the mine/shared tabs because which of the two
+    // a project was is not a fact the reader chose. This is the opposite: a
+    // narrowing the reader picks and can unpick, over rows already on screen.
+    filterProjects: 'Filter by paper or owner',
+    filterAll: 'All',
+    filterRunning: 'Running',
+    filterPublished: 'Published',
+    noMatches: 'No project matches that filter.',
+    // The Published column: what a project has actually handed over, said as a
+    // fraction of what it has run rather than as a rate on its own.
+    colPublished: 'Published',
+    publishedNone: 'Nothing published yet',
+    publishedOf: '{n} of {total}',
+    publishedUnit: 'sessions',
     // The trash (019). Two steps, because the dangerous one has to be
     // deliberate: the row action is reversible and says so, and the words that
     // matter on the permanent one are what it does *not* remove — the

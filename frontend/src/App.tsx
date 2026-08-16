@@ -393,6 +393,7 @@ function NavItem({
   tone,
   on,
   folded,
+  count,
   onClick,
 }: {
   label: string
@@ -400,6 +401,7 @@ function NavItem({
   tone: string
   on: boolean
   folded?: boolean
+  count?: number
   onClick: () => void
 }) {
   return (
@@ -408,6 +410,10 @@ function NavItem({
         <Ico name={icon} size={13} />
       </span>
       <span className="nav-label">{label}</span>
+      {/* Absent until it is known, so the rail never shows a 0 that is really a
+          fetch in flight. It is removed from the layout when folded, not merely
+          hidden — a 64px column has no room to hold open. */}
+      {count !== undefined && <span className="count">{count}</span>}
     </button>
   )
 }
@@ -466,6 +472,22 @@ function Shell({
   // address (013) — a shared link opens at the width its reader last chose.
   const { folded, toggle: toggleRail } = useSidebar()
   const foldLabel = folded ? t('unfoldSidebar') : t('foldSidebar')
+
+  // How many projects the rail's Projects row carries. It is fetched here rather
+  // than lifted out of the screen, because the rail outlives every screen and a
+  // number that only existed while the list was mounted would vanish the moment
+  // the reader opened one of its rows.
+  const [projectCount, setProjectCount] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    if (!signedIn) return
+    let live = true
+    listProjects()
+      .then((p) => live && setProjectCount((p ?? []).length))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [signedIn, view.name])
 
   // Below the phone breakpoint the rail is an overlay instead of a column, and
   // this is what holds it open (030). It is not the fold and never persists —
@@ -530,6 +552,7 @@ function Shell({
                 icon="folder"
                 tone="var(--brand)"
                 folded={folded}
+                count={projectCount}
                 on={view.name === 'projects' || view.name === 'project' || view.name === 'session'}
                 onClick={() => goto({ name: 'projects' })}
               />
@@ -630,10 +653,10 @@ function Shell({
           </button>
           <Breadcrumb i18n={i18n} view={view} setView={setView} signedIn={signedIn} />
           <div className="topbar-actions">
-            <ThemeSwitcher i18n={i18n} theme={theme} compact />
             {signedIn ? (
               <>
                 <WalletPill i18n={i18n} credits={me.credits} onTopUp={() => setTopUp(true)} />
+                <ThemeSwitcher i18n={i18n} theme={theme} compact />
                 <button className="btn btn-topbar" disabled={me.frozen} aria-label={t('newProject')} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => setView({ name: 'submit' })}>
                   {/* The label is a span so a phone can drop it and keep the plus.
                       The button keeps its aria-label at every width, so what is lost
@@ -646,9 +669,12 @@ function Shell({
                  the one act a reader here can take. It repeats the rail's foot on
                  purpose: on a phone the rail is a drawer, and the way in must not
                  be behind it. */
-              <a className="btn btn-topbar" data-test="topbar-signin" href={signInHref}>
-                <LatereMark height={11} /> <span className="btn-label">{t('signInTitle')}</span>
-              </a>
+              <>
+                <ThemeSwitcher i18n={i18n} theme={theme} compact />
+                <a className="btn btn-topbar" data-test="topbar-signin" href={signInHref}>
+                  <LatereMark height={11} /> <span className="btn-label">{t('signInTitle')}</span>
+                </a>
+              </>
             )}
           </div>
         </header>
@@ -777,19 +803,15 @@ function Breadcrumb({ i18n, view, setView, signedIn }: { i18n: I18n; view: View;
 
 /* ─── Presentation helpers ─── */
 
-// Stat is one headline number: its own icon, its own tone, and a hairline of
-// that tone along the card's top edge.
-function Stat({ label, value, icon, tone }: { label: string; value: React.ReactNode; icon: IconName; tone: string }) {
+// Meter is a proportion drawn as a bar. It is never the only thing said about a
+// number — the count and its denominator are always beside it in words, because
+// a bar alone is a rate, and a rate alone is the thing this product refuses to
+// hand out.
+function Meter({ pct, tone, size }: { pct: number; tone: string; size?: 'sm' }) {
   return (
-    <div className="stat" style={{ color: tone }}>
-      <span className="stat-ico">
-        <Ico name={icon} size={17} />
-      </span>
-      <span className="stat-body">
-        <span className="eyebrow">{label}</span>
-        <span className="stat-value">{value}</span>
-      </span>
-    </div>
+    <span className={size === 'sm' ? 'meter sm' : 'meter'} aria-hidden="true">
+      <span className="meter-fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: tone }} />
+    </span>
   )
 }
 
@@ -820,10 +842,22 @@ function CardHead({ label, icon, tone = 'var(--fg-3)', children }: { label: stri
 
 // VisibilityBadge: private is a closed lock in ink, public is the published
 // tone — the one state that means anyone can read this.
-function VisibilityBadge({ i18n, visibility }: { i18n: I18n; visibility: 'private' | 'public' }) {
+function VisibilityBadge({ i18n, visibility, icon }: { i18n: I18n; visibility: 'private' | 'public'; icon?: boolean }) {
+  const glyph = <Ico name={visibility === 'public' ? 'globe' : 'lock'} size={icon ? 14 : 11} w={icon ? 1.7 : 2} />
+  // In a list the word is the same on nearly every row, so the glyph carries it
+  // and the word moves into the tooltip — which is what buys the column its
+  // width back for the figures beside it. Standing on its own, it keeps the word.
+  if (icon)
+    return (
+      <Tip text={i18n.t(visibility)}>
+        <span className={'vis-ico ' + visibility} aria-label={i18n.t(visibility)} role="img">
+          {glyph}
+        </span>
+      </Tip>
+    )
   return (
     <span className={'badge ' + visibility}>
-      <Ico name={visibility === 'public' ? 'globe' : 'lock'} size={11} w={2} />
+      {glyph}
       {i18n.t(visibility)}
     </span>
   )
@@ -843,15 +877,38 @@ function TierPill({ i18n, tier }: { i18n: I18n; tier?: string }) {
 
 /* ─── Projects ─── */
 
+// A project matches the filter when its title or its owner does. The DOI is not
+// searched: `ProjectView` does not carry one, and a placeholder that silently
+// matches nothing is worse than a field that does not claim to.
+type ProjectFilter = 'all' | 'running' | 'published'
+
+function projectMatches(p: ProjectView, q: string, f: ProjectFilter, ownerLabel: string) {
+  if (f === 'running' && p.running <= 0) return false
+  if (f === 'published' && (p.published_sessions ?? 0) <= 0) return false
+  if (!q) return true
+  const hay = `${p.title} ${p.owner_name ?? ''} ${ownerLabel}`.toLowerCase()
+  return hay.includes(q.toLowerCase())
+}
+
 // The projects list: one list of everything the reader may work in, owned or
-// shared, with the owner as a column rather than a tab (018). Which of the two a
-// project was never a fact the reader chose, and splitting on it meant finding
-// work started with remembering who had created it.
+// shared, with the owner named on the row rather than as a tab (018). Which of
+// the two a project was never a fact the reader chose, and splitting on it meant
+// finding work started with remembering who had created it.
+//
+// 034 moved the owner and the date out of the column grid and into the title's
+// meta line. That is not a demotion of what they say — the owner still links to
+// their profile, the age still carries its exact moment — it is what frees the
+// width for the column that was missing: what this project has actually handed
+// over.
 function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
   const [list, setList] = useState<ProjectView[] | null>(null)
   // The project the reader has asked to throw away, held while they confirm.
   const [dropping, setDropping] = useState<ProjectView | null>(null)
+  // The filter narrows what is already loaded and fetches nothing, so it can
+  // never disagree with what the rows say.
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<ProjectFilter>('all')
 
   const load = useCallback(() => {
     listProjects()
@@ -862,11 +919,17 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
 
   const projects = list ?? []
   const sessionTotal = projects.reduce((n, p) => n + p.session_count, 0)
-  // Spend may be absent when the server could not sum it — that renders as a
-  // dash, which claims nothing, rather than $0.00, which claims the month was
-  // free. `some` rather than a total-of-zero check: a real zero is a fact.
+  // Both sums are over optional fields, and a sum over an absent field is not
+  // zero: a server that could not compute one omits it, and a confident 0 there
+  // would claim the work produced nothing. `some` rather than a total-of-zero
+  // check, because a real zero is a fact worth showing.
   const spendKnown = projects.some((p) => p.spend_30d !== undefined)
   const spend30d = projects.reduce((n, p) => n + (p.spend_30d ?? 0), 0)
+  const pubKnown = projects.some((p) => p.published_sessions !== undefined)
+  const published = projects.reduce((n, p) => n + (p.published_sessions ?? 0), 0)
+  const barren = Math.max(0, sessionTotal - published)
+
+  const shown = projects.filter((p) => projectMatches(p, query.trim(), filter, t('ownerYou')))
 
   return (
     <div className="screen">
@@ -875,22 +938,87 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
         <p className="screen-desc">{t('projectsIntro')}</p>
       </div>
 
-      <div className="stat-grid">
-        <Stat label={t('statProjects')} value={list === null ? '—' : projects.length} icon="folder" tone="var(--brand)" />
-        <Stat label={t('statSessionsRun')} value={list === null ? '—' : sessionTotal} icon="beaker" tone="var(--run)" />
-        <Stat
-          label={t('statSpend30d')}
-          value={list === null || !spendKnown ? '—' : formatUSD(spend30d)}
-          icon="wallet"
-          tone="var(--warn)"
-        />
+      {/* The boundary band. It replaces three counters, two of which restated
+          the list below them. */}
+      <div className="boundary-grid" data-test="boundary">
+        <div className="boundary" data-test="evidence-card">
+          <div className="boundary-head">
+            <span className="eyebrow">{t('evidenceEyebrow')}</span>
+            <span className="boundary-aside">{t('evidenceAcross', { n: String(projects.length) })}</span>
+          </div>
+          <div className="boundary-figure">
+            <span className="boundary-n" data-test="evidence-n">
+              {list === null || !pubKnown ? '—' : published}
+            </span>
+            <span className="boundary-of">{t('evidenceOf', { n: String(sessionTotal) })}</span>
+          </div>
+          <Meter pct={sessionTotal ? (published / sessionTotal) * 100 : 0} tone="var(--pub)" />
+          <div className="boundary-legend">
+            <span className="legend-row">
+              <span className="legend-swatch" style={{ background: 'var(--pub)' }} />
+              {t('evidencePublished', { n: String(pubKnown ? published : 0) })}
+            </span>
+            <span className="legend-row sub">
+              <span className="legend-swatch legend-swatch-none" />
+              {t('evidenceNothing', { n: String(pubKnown ? barren : sessionTotal) })}
+            </span>
+          </div>
+        </div>
+
+        <div className="boundary" data-test="credits-card">
+          <div className="boundary-head">
+            <span className="eyebrow">{t('creditsEyebrow')}</span>
+          </div>
+          <div className="boundary-figure">
+            <span className="boundary-n">{me.credits ? formatUSD(me.credits.wallet) : '—'}</span>
+            <span className="boundary-of">{t('creditsInWallet')}</span>
+          </div>
+          <p className="boundary-note">{t('creditsNote')}</p>
+          {/* The windowed spend keeps its own row and keeps its window named
+              (021e): a figure whose period is not stated is not a figure. */}
+          <div className="boundary-foot" data-test="spend-30d">
+            <span>{t('statSpend30d')}</span>
+            <span className="boundary-foot-n">{list === null || !spendKnown ? '—' : formatUSD(spend30d)}</span>
+          </div>
+        </div>
       </div>
+
+      {projects.length > 0 && (
+        <div className="list-filter">
+          <label className="filter-field">
+            <Ico name="search" size={14} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('filterProjects')}
+              aria-label={t('filterProjects')}
+              data-test="project-filter"
+            />
+          </label>
+          {/* A segmented control is back on this screen, and 018's removal of the
+              mine/shared tabs still stands: that split was a fact about a project
+              the reader did not choose, and this is a narrowing they pick and can
+              unpick. */}
+          <Segmented
+            value={filter}
+            options={[
+              { value: 'all' as const, label: t('filterAll') },
+              { value: 'running' as const, label: t('filterRunning') },
+              { value: 'published' as const, label: t('filterPublished') },
+            ]}
+            onChange={setFilter}
+            label={t('colStatus')}
+          />
+        </div>
+      )}
 
       <div className="card">
         {list === null ? (
           <div className="empty">…</div>
         ) : projects.length === 0 ? (
           <Empty icon="folder" text={t('noProjects')} />
+        ) : shown.length === 0 ? (
+          <Empty icon="search" text={t('noMatches')} />
         ) : (
           <div className="rows project-list" data-test="project-rows">
             {/* The header is a row of the same grid, not a table head: one
@@ -898,25 +1026,53 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                 and widened in another. */}
             <div className="project-head" aria-hidden="true">
               <span className="eyebrow">{t('colPaper')}</span>
-              <span className="eyebrow">{t('colOwner')}</span>
-              <span className="eyebrow">{t('colModified')}</span>
+              {/* Named so the phone can fold it away first: what a project has
+                  handed over is context, and what a row *is* — its title and its
+                  phase — is not (030). */}
+              <span className="eyebrow row-published">{t('colPublished')}</span>
               <span className="eyebrow">{t('colStatus')}</span>
-              {/* Named so the phone can fold it away after the owner and the
-                  date, which is the order these stop being worth a column in
-                  (030). What a row *is* — its title and its phase — stays. */}
               <span className="eyebrow row-visibility">{t('colVisibility')}</span>
               <span />
               <span />
               <span />
             </div>
-            {projects.map((p) => (
+            {shown.map((p) => (
               <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
                 <div className="row-main">
                   <div className="row-title">{p.title}</div>
-                  <div className="row-sub">{t('sessionCount', { n: String(p.session_count) })}</div>
+                  {/* Owner, count, and age on one line under the title. They are
+                      the same facts the columns carried and they still behave the
+                      same way — the owner links, the age holds its exact moment —
+                      they simply no longer each cost a column. */}
+                  <div className="row-meta">
+                    <OwnerCell i18n={i18n} me={me} p={p} />
+                    <span className="row-meta-dot" aria-hidden="true" />
+                    <span>{t('sessionCount', { n: String(p.session_count) })}</span>
+                    <span className="row-meta-dot" aria-hidden="true" />
+                    <ModifiedCell i18n={i18n} at={p.modified_at} />
+                  </div>
                 </div>
-                <OwnerCell i18n={i18n} me={me} p={p} />
-                <ModifiedCell i18n={i18n} at={p.modified_at} />
+                {/* What this project has actually handed over, as a fraction of
+                    what it ran. A project that has published nothing says so in
+                    words rather than showing an empty bar, which reads as a
+                    figure that failed to load. */}
+                <div className="row-cell row-published" data-test="published-cell">
+                  {(p.published_sessions ?? 0) > 0 ? (
+                    <span className="pub-figure">
+                      <span className="pub-count">
+                        <b>{t('publishedOf', { n: String(p.published_sessions), total: String(p.session_count) })}</b>
+                        <span className="pub-unit">{t('publishedUnit')}</span>
+                      </span>
+                      <Meter
+                        pct={p.session_count ? ((p.published_sessions ?? 0) / p.session_count) * 100 : 0}
+                        tone="var(--pub)"
+                        size="sm"
+                      />
+                    </span>
+                  ) : (
+                    <span className="pub-none">{t('publishedNone')}</span>
+                  )}
+                </div>
                 {/* Each badge gets its own cell rather than sizing the column
                     itself. A badge is as wide as its word — "1 RUNNING" against
                     "DONE" — and letting that width set the column is what pushed
@@ -925,7 +1081,7 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                   <StatusBadge i18n={i18n} p={p} />
                 </span>
                 <span className="row-cell row-visibility">
-                  <VisibilityBadge i18n={i18n} visibility={p.visibility} />
+                  <VisibilityBadge i18n={i18n} visibility={p.visibility} icon />
                 </span>
                 {/* An anchor, not a fetch: the browser's own download is what
                     should handle a body this size. The condition is the server's
@@ -1174,7 +1330,7 @@ function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
   const mine = isMine(me, p.owner)
   const label = mine ? t('ownerYou') : p.owner_name || t('ownerUnknown')
   return (
-    <div className="row-col row-owner" data-test="owner">
+    <span className="row-owner" data-test="owner">
       {p.owner_handle && !mine ? (
         <a className="link" href={`/u/${p.owner_handle}`} onClick={(e) => e.stopPropagation()}>
           {label}
@@ -1182,7 +1338,7 @@ function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
       ) : (
         label
       )}
-    </div>
+    </span>
   )
 }
 
@@ -1191,9 +1347,9 @@ function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
   const rel = relativeTime(at)
   const tip = tipAttrs(absoluteTime(at))
   return (
-    <div {...tip} className={`row-col row-modified ${tip.className}`} data-test="modified">
+    <span {...tip} className={`row-modified ${tip.className}`} data-test="modified">
       {rel || i18n.t('ownerUnknown')}
-    </div>
+    </span>
   )
 }
 

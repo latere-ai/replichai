@@ -252,24 +252,27 @@ textarea {
      browser that does not know the unit. */
   height: 100vh;
   height: 100dvh;
+  /* The ground the rail sits on. The content is a sheet of paper laid on it, so
+     the seam between navigation and work is a depth rather than a line (034). */
+  background: var(--bg-deep);
 }
 .rail {
   width: 236px;
   flex: none;
   display: flex;
   flex-direction: column;
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border);
+  /* No fill and no border: the rail *is* the desk. A surface here would draw a
+     second sheet of paper beside the one the reader is working on. */
+  background: transparent;
   transition: width 0.18s var(--ease-fluid);
 }
 .rail-head {
-  height: 52px;
+  height: 56px;
   flex: none;
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 18px;
 }
 /* The fold control. It keeps the head's right edge in both states, so the click
    that folds the rail and the click that unfolds it are the same gesture in
@@ -360,7 +363,7 @@ textarea {
    are not `visibility: hidden` but `display: none`, so the 56px column never
    reserves space for text it will not draw and the icons sit truly centred. */
 .rail-fold {
-  width: 56px;
+  width: 64px;
 }
 .rail-fold .rail-logo,
 .rail-fold .rail-name,
@@ -435,11 +438,10 @@ textarea {
   font-size: 14px;
 }
 .rail-beta {
-  margin-left: auto;
   font: 600 9.5px/1 var(--font-mono);
   letter-spacing: 0.1em;
-  color: var(--brand);
-  background: var(--brand-soft);
+  color: var(--fg-3);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   padding: 4px 8px;
 }
@@ -467,9 +469,9 @@ textarea {
   gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 7px 9px;
+  padding: 8px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -495,13 +497,17 @@ textarea {
   transition: background var(--dur-hover);
 }
 .nav-btn:hover {
-  background: var(--bg-raised);
+  background: color-mix(in srgb, var(--fg-1) 5%, transparent);
   color: var(--fg-1);
 }
+/* The current destination is the one sheet of paper in the rail — the same
+   material the content is, so "where you are" and "what you are looking at" are
+   the same thing. The brand hue stays on the icon and nowhere else. */
 .nav-btn.active {
-  background: var(--brand-soft);
-  color: var(--brand);
+  background: var(--bg-surface);
+  color: var(--fg-1);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.06), 0 6px 14px -10px rgba(12, 10, 9, 0.24);
 }
 .nav-btn.active .nav-ico {
   background: color-mix(in srgb, currentColor 18%, transparent);
@@ -513,8 +519,7 @@ textarea {
 }
 .rail-foot {
   flex: none;
-  border-top: 1px solid var(--border);
-  padding: 10px;
+  padding: 10px 12px 12px;
 }
 .user-btn {
   display: flex;
@@ -608,16 +613,24 @@ textarea {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* Inset on three sides: the rail's own padding is the fourth, so the gap
+     between the last nav row and the paper's edge is even all the way round. */
+  margin: 8px 8px 8px 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.04), 0 18px 40px -30px rgba(12, 10, 9, 0.3);
 }
 .topbar {
-  height: 52px;
+  height: 56px;
   flex: none;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 18px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
+  background: transparent;
 }
 .crumb {
   display: flex;
@@ -678,10 +691,13 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-raised);
-  color: var(--fg-2);
+  /* Borderless and unfilled at rest (034): a list row can carry three of these
+     and three outlined boxes per row is a row made of chrome. The affordance
+     arrives on hover, where the pointer already is. */
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg-3);
   cursor: pointer;
   /* The download is an anchor rather than a button, so the browser saves the
      archive instead of the tab buffering it (020). It has to look like the
@@ -710,11 +726,15 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--brand);
-  color: var(--brand-fg);
+  border-radius: var(--radius-pill);
+  /* Ink, not brand (034). The brand hue marks what an operator acts on *within*
+     a screen; the one control that starts work should be the darkest thing on
+     the bar rather than compete with every link under it. It inverts correctly
+     in dark, because both halves are tokens that swap. */
+  background: var(--fg-1);
+  color: var(--bg);
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
@@ -722,7 +742,8 @@ textarea {
   transition: transform 0.14s var(--ease-fluid), background var(--dur-hover), opacity 0.14s;
 }
 .btn:hover {
-  background: var(--brand-hover);
+  background: var(--brand);
+  color: var(--brand-fg);
 }
 .btn:active {
   transform: scale(0.96);
@@ -730,7 +751,8 @@ textarea {
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
-  background: var(--brand);
+  background: var(--fg-1);
+  color: var(--bg);
 }
 .btn.ghost {
   background: var(--bg-raised);
@@ -766,12 +788,11 @@ textarea {
 }
 .btn.lg {
   height: 38px;
-  padding: 0 16px;
-  border-radius: 9px;
+  padding: 0 18px;
 }
 .btn.sm {
   height: 26px;
-  padding: 0 10px;
+  padding: 0 11px;
   font-size: 12px;
 }
 
@@ -815,61 +836,170 @@ h1.screen-title {
 }
 
 /* ── Stat cards ── */
-.stat-grid {
+/* The boundary band (034). Two cards where three counters were: the one number
+   the product exists to produce, decomposed, and what the money buys. */
+.boundary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.stat {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  padding: 13px 14px;
-  display: flex;
-  align-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 12px;
+  margin-bottom: 22px;
 }
-/* The card's tone lives on the icon tile, not a bar across the top edge — the
-   same contained-colour rule the transcript cards follow. A soft inset ring
-   gives the tile enough definition to tell two stats apart at a glance. */
-.stat-ico {
-  width: 34px;
-  height: 34px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  background: color-mix(in srgb, currentColor 16%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
-}
-.stat-body {
+.boundary {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.04);
 }
-.stat-value {
-  font-size: 22px;
-  font-weight: 600;
+.boundary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.boundary-aside {
+  font-size: 11.5px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+.boundary-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.boundary-n {
+  font: 600 28px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  color: var(--fg-1);
 }
-.stat-value .sub {
+.boundary-of {
+  font-size: 12.5px;
+  color: var(--fg-2);
+}
+.boundary-note {
+  margin: -6px 0 14px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--run);
+  line-height: 1.55;
+  color: var(--fg-3);
+}
+.boundary-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 12px;
+}
+.legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--fg-2);
+}
+.legend-row.sub {
+  color: var(--fg-3);
+}
+.legend-swatch {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 2px;
+}
+/* The remainder is drawn as the absence it is: the bar's own trough, not a
+   second colour competing with the one thing being counted. `-none`, not
+   `.empty`: that class is the app's own no-content state and carries padding. */
+.legend-swatch-none {
+  background: var(--bg-deep);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+/* The card's own last line, ruled off: a different quantity from the one above
+   it, and one whose window has to be stated with it (021e). */
+.boundary-foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.boundary-foot-n {
+  font: 600 13px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+/* A proportion, drawn. Never on its own — the count and its denominator are
+   always beside it in words. */
+.meter {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+.meter.sm {
+  width: 88px;
+  height: 4px;
+}
+.meter-fill {
+  display: block;
+  height: 100%;
+}
+
+/* The filter over a list already on screen. It fetches nothing, so it can never
+   disagree with the rows under it. */
+.list-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filter-field {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 34px;
+  padding: 0 13px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--fg-3);
+}
+.filter-field:focus-within {
+  border-color: var(--brand-line);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.filter-field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg-1);
 }
 
 /* ── Card + rows ── */
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 18px;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.04);
 }
 .card-pad {
   padding: 14px;
@@ -976,28 +1106,6 @@ h1.screen-title {
   flex: 1;
   min-width: 0;
 }
-.row-col {
-  flex: none;
-  font-size: 12px;
-  color: var(--fg-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.row-owner {
-  width: 140px;
-}
-.row-modified {
-  width: 110px;
-}
-/* Below the width where five columns fit, the two that are context rather than
-   identity fold away first. The title, status, and visibility are what a row is. */
-@media (max-width: 760px) {
-  .row-owner,
-  .row-modified {
-    display: none;
-  }
-}
 .chev {
   flex: none;
   color: var(--fg-3);
@@ -1012,20 +1120,20 @@ h1.screen-title {
 .segmented {
   display: inline-flex;
   gap: 2px;
-  padding: 2px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--fg-1) 4.5%, transparent);
+  border: none;
+  border-radius: var(--radius-pill);
 }
 .seg-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 11px;
+  padding: 5px 12px;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--fg-3);
+  color: var(--fg-2);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -1036,14 +1144,19 @@ h1.screen-title {
 }
 .seg-btn.on {
   background: var(--bg-surface);
-  color: var(--brand);
+  color: var(--fg-1);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.08);
+}
+/* The theme switcher is the one segmented control whose choice is a *mode*
+   rather than a filter, and it keeps the brand hue for it. */
+.segmented.compact .seg-btn.on {
+  color: var(--brand);
 }
 /* The icon-only form (the appearance switcher) wants square hit targets. */
 .segmented.compact .seg-btn {
   width: 28px;
-  height: 24px;
+  height: 26px;
   padding: 0;
   justify-content: center;
 }
@@ -4194,8 +4307,12 @@ input.submit-input {
 
    The two action slots are reserved rather than conditional: a row with nothing
    to download would otherwise pull the next control into the download column. */
+/* Fluid tracks, not fixed ones: the title never collapses because the columns
+   beside it are proportions of what is left rather than reservations taken off
+   the top. Owner and date are not here — they are on the title's own meta line
+   (034), which is what buys the Published column its room. */
 .project-list {
-  --project-cols: minmax(0, 1fr) 132px 116px 116px 96px 30px 30px 15px;
+  --project-cols: minmax(0, 2.4fr) minmax(0, 1.1fr) minmax(96px, 0.6fr) 34px 30px 30px 15px;
 }
 .project-list > .row,
 .project-list > .project-head {
@@ -4223,9 +4340,86 @@ input.submit-input {
 }
 
 @media (max-width: 760px) {
+  /* What a project has handed over is context; what it *is* — its title and its
+     phase — is not. So Published is the column that leaves first. */
   .project-list {
-    --project-cols: minmax(0, 1fr) 116px 96px 30px 30px 15px;
+    --project-cols: minmax(0, 1fr) 96px 30px 30px 30px 15px;
   }
+  .row-published {
+    display: none;
+  }
+}
+
+/* The meta line: the owner, the count, and the age, under the title. */
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--fg-3);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.row-meta > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-meta-dot {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+.row-owner .link {
+  color: inherit;
+  text-decoration: none;
+}
+.row-owner .link:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+/* What the project has published, as a fraction of what it ran. */
+.pub-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pub-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pub-count b {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pub);
+  font-variant-numeric: tabular-nums;
+}
+.pub-unit {
+  font-size: 11.5px;
+  color: var(--fg-3);
+}
+.pub-none {
+  font-size: 12.5px;
+  color: var(--fg-3);
+}
+
+/* Visibility as a glyph: the word is the same on nearly every row, so it moves
+   into the tooltip and the column keeps its 34px. */
+.vis-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: var(--fg-3);
+}
+.vis-ico.public {
+  color: var(--pub);
 }
 
 /* A card's own action, at its foot. A button parked beside one field reads as
@@ -4264,6 +4458,18 @@ input.submit-input {
     transform: translateX(-100%);
     box-shadow: var(--shadow-pop);
     transition: transform 0.22s var(--ease-fluid);
+    /* A drawer floats over the screen, so it needs a ground of its own — the
+       desk's fill, which is transparent in the flow, has nothing behind it
+       here. */
+    background: var(--bg-deep);
+  }
+  /* No inset on a phone: 390px has no width to spend on a margin, and the
+     drawer already separates navigation from work. */
+  .main {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   .rail-open {
     transform: none;

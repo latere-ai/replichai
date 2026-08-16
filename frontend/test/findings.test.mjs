@@ -383,23 +383,25 @@ try {
   }
   if (!rail.publish) fail('the project header offers no Publish… button')
 
-  /* ── The spend tile (021e) ── */
+  /* ── The windowed spend (021e) ── */
 
+  // 034 folded the three counters into two cards; the spend kept its own ruled
+  // row on the credits card. Where it sits changed, what it must say did not: a
+  // figure whose period is not stated is not a figure.
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle0' })
-  await page.waitForSelector('.stat-grid', { timeout: 15000 })
+  await page.waitForSelector('[data-test="spend-30d"]', { timeout: 15000 })
   await new Promise((r) => setTimeout(r, 300))
-  const tiles = await page.evaluate(() =>
-    [...document.querySelectorAll('.stat-grid > *')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()),
+  const spend = await page.evaluate(
+    () => document.querySelector('[data-test="spend-30d"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
   )
-  const spend = tiles.find((s) => /spend/i.test(s))
-  if (!spend) fail(`no spend tile among ${JSON.stringify(tiles)}`)
+  if (!spend) fail('the projects screen no longer shows what the last thirty days cost')
   else {
-    if (!/30 days/i.test(spend)) fail(`the spend tile does not state its window: ${spend}`)
+    if (!/30 days/i.test(spend)) fail(`the spend does not state its window: ${spend}`)
     // The mocked project reports 4_210_000 micro-USD across the window.
-    if (!/\$4\.21/.test(spend)) fail(`the spend tile shows ${spend}, want the server's windowed sum`)
+    if (!/\$4\.21/.test(spend)) fail(`the spend reads ${spend}, want the server's windowed sum`)
   }
 
-  if (!process.exitCode) console.log('PASS: findings panes, rail, and spend tile')
+  if (!process.exitCode) console.log('PASS: findings panes, rail, and the windowed spend')
 } catch (err) {
   fail(err.message)
 } finally {
