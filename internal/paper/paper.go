@@ -22,7 +22,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -58,6 +57,10 @@ type Identity struct {
 	Title   string
 	Slug    string
 	Sources []string
+	// Record is the paper's bibliography, as far as the source that named it
+	// declares one (037). Empty for a reference nothing could be looked up for,
+	// and never guessed.
+	Record Record
 }
 
 // String renders the canonical "scheme:key" identity string.
@@ -109,14 +112,18 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 	// key-based slug, so a blocked network yields the same identity a no-fetcher
 	// resolution would.
 	if doi, ok := extractDOI(ref); ok {
-		title := ""
+		title, rec := "", Record{}
 		if r.fetch != nil {
-			title = r.titleFromCrossref(ctx, doi)
-			if title == "" && looksLikeURL(ref) {
-				title = r.titleFromPage(ctx, ref)
+			title, rec = r.metaFromCrossref(ctx, doi)
+			// The publisher's own page is the second source, for a DOI Crossref
+			// does not answer for and for the fields its record leaves out.
+			if (title == "" || rec.Empty()) && looksLikeURL(ref) {
+				pageTitle, pageRec := r.metaFromPage(ctx, ref)
+				title = firstNonEmpty(title, pageTitle)
+				rec = mergeRecord(rec, pageRec)
 			}
 		}
-		return r.finish(SchemeDOI, doi, title, ref), nil
+		return r.finish(SchemeDOI, doi, title, ref, rec), nil
 	}
 
 	// An arXiv ID is not terminal: look it up to discover a possible DOI.
@@ -176,8 +183,8 @@ func normalizeURLKey(ref string) string {
 
 // finish assembles an Identity, deriving the slug from the title and falling
 // back to a slug of the key when the title folds to nothing (spec AC5).
-func (r *resolver) finish(scheme Scheme, key, title, source string) Identity {
-	id := Identity{Key: key, Scheme: scheme, Title: collapseWS(title)}
+func (r *resolver) finish(scheme Scheme, key, title, source string, rec Record) Identity {
+	id := Identity{Key: key, Scheme: scheme, Title: collapseWS(title), Record: rec}
 	id.Slug = Slug(id.Title)
 	if id.Slug == "" {
 		id.Slug = Slug(key)
@@ -202,9 +209,12 @@ func (r *resolver) resolveArXiv(ctx context.Context, id, source string) (Identit
 		if !ok {
 			doi = strings.ToLower(strings.TrimSpace(meta.DOI))
 		}
-		return r.finish(SchemeDOI, doi, meta.Title, source), nil
+		// The DOI is now the identity, so Crossref is the better source for its
+		// record; the preprint's own authors and year fill what Crossref omits.
+		title, rec := r.metaFromCrossref(ctx, doi)
+		return r.finish(SchemeDOI, doi, firstNonEmpty(title, meta.Title), source, mergeRecord(rec, meta.Record)), nil
 	}
-	return r.finish(SchemeArXiv, id, meta.Title, source), nil
+	return r.finish(SchemeArXiv, id, meta.Title, source, meta.Record), nil
 }
 
 // resolveURL handles a URL with no identifier in the string itself. It fetches
@@ -223,10 +233,12 @@ func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error)
 		return Identity{}, fmt.Errorf("%w: fetching %q: %w", ErrUnresolvable, ref, err)
 	}
 	title := titleFromBody(body)
+	rec := recordFromBody(body)
 
 	if doi := metaContent(body, citationDOIRe); doi != "" {
 		if normalised, ok := extractDOI(doi); ok {
-			return r.finish(SchemeDOI, normalised, title, ref), nil
+			crossTitle, crossRec := r.metaFromCrossref(ctx, normalised)
+			return r.finish(SchemeDOI, normalised, firstNonEmpty(crossTitle, title), ref, mergeRecord(crossRec, rec)), nil
 		}
 	}
 	if raw := metaContent(body, citationArxivRe); raw != "" {
@@ -236,18 +248,27 @@ func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error)
 	}
 
 	sum := sha256.Sum256(body)
-	return r.finish(SchemeSHA256, hex.EncodeToString(sum[:]), title, ref), nil
+	return r.finish(SchemeSHA256, hex.EncodeToString(sum[:]), title, ref, rec), nil
 }
 
-type arxivMeta struct{ Title, DOI string }
+type arxivMeta struct {
+	Title, DOI string
+	Record     Record
+}
 
 // arxivFeed is the fragment of the arXiv Atom response resolution reads. The
 // element names match on local name, so the arxiv: namespace prefix on <doi>
 // needs no special handling.
 type arxivFeed struct {
 	Entries []struct {
-		Title string `xml:"title"`
-		DOI   string `xml:"doi"`
+		Title     string `xml:"title"`
+		DOI       string `xml:"doi"`
+		Published string `xml:"published"`
+		// A preprint updated after acceptance carries where it appeared.
+		JournalRef string `xml:"journal_ref"`
+		Authors    []struct {
+			Name string `xml:"name"`
+		} `xml:"author"`
 	} `xml:"entry"`
 }
 
@@ -264,16 +285,22 @@ func (r *resolver) fetchArXivMeta(ctx context.Context, id string) (arxivMeta, er
 		return arxivMeta{}, errors.New("no entry in arXiv response")
 	}
 	e := feed.Entries[0]
-	return arxivMeta{Title: collapseWS(e.Title), DOI: strings.TrimSpace(e.DOI)}, nil
+	rec := Record{Venue: collapseWS(e.JournalRef), Year: yearFrom(e.Published)}
+	for _, a := range e.Authors {
+		if n := collapseWS(a.Name); n != "" {
+			rec.Authors = append(rec.Authors, n)
+		}
+	}
+	return arxivMeta{Title: collapseWS(e.Title), DOI: strings.TrimSpace(e.DOI), Record: rec}, nil
 }
 
 var (
 	doiRe           = regexp.MustCompile(`10\.\d{4,9}/[^\s"'<>#?]+`)
 	arxivCtxRe      = regexp.MustCompile(`(?i)arxiv(?:\.org)?(?:/(?:abs|pdf))?[:/]\s*(\d{4}\.\d{4,5})`)
 	bareArxivRe     = regexp.MustCompile(`^(\d{4}\.\d{4,5})(?:v\d+)?$`)
-	citationDOIRe   = regexp.MustCompile(`(?i)<meta[^>]+name=["']citation_doi["'][^>]+content=["']([^"']+)["']`)
-	citationArxivRe = regexp.MustCompile(`(?i)<meta[^>]+name=["']citation_arxiv_id["'][^>]+content=["']([^"']+)["']`)
-	citationTitleRe = regexp.MustCompile(`(?i)<meta[^>]+name=["']citation_title["'][^>]+content=["']([^"']+)["']`)
+	citationDOIRe   = metaRe(`citation_doi`)
+	citationArxivRe = metaRe(`citation_arxiv_id`)
+	citationTitleRe = metaRe(`citation_title`)
 	htmlTitleRe     = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 )
 
@@ -305,7 +332,7 @@ func extractArXiv(ref string) (string, bool) {
 // or "" if none. re must capture the content attribute in group 1.
 func metaContent(body []byte, re *regexp.Regexp) string {
 	if m := re.FindSubmatch(body); m != nil {
-		return collapseWS(string(m[1]))
+		return collapseWS(captured(m))
 	}
 	return ""
 }
@@ -315,20 +342,12 @@ func metaContent(body []byte, re *regexp.Regexp) string {
 // and unblocked where publisher pages often bot-block. Returns "" on any failure
 // (unreachable, not found, malformed): enriching the title is best-effort and
 // must never fail a resolution that already has its key.
-func (r *resolver) titleFromCrossref(ctx context.Context, doi string) string {
+func (r *resolver) metaFromCrossref(ctx context.Context, doi string) (string, Record) {
 	body, err := r.fetch.Fetch(ctx, crossrefAPI+doi)
 	if err != nil {
-		return ""
+		return "", Record{}
 	}
-	var out struct {
-		Message struct {
-			Title []string `json:"title"`
-		} `json:"message"`
-	}
-	if json.Unmarshal(body, &out) != nil || len(out.Message.Title) == 0 {
-		return ""
-	}
-	return collapseWS(out.Message.Title[0])
+	return parseCrossref(body)
 }
 
 // titleFromBody reads a page's declared paper title — the Highwire
@@ -338,16 +357,17 @@ func titleFromBody(body []byte) string {
 	return firstNonEmpty(metaContent(body, citationTitleRe), htmlTitle(body))
 }
 
-// titleFromPage fetches a publisher URL and returns its declared title, or ""
-// when the page cannot be fetched or declares none. It never errors: enriching
-// the title is best-effort and must not disturb a resolution that already has
-// its key and slug from the DOI in the reference.
-func (r *resolver) titleFromPage(ctx context.Context, ref string) string {
+// metaFromPage fetches a publisher URL and returns what it declares about
+// itself: its paper's title and its bibliography, or zero values when the page
+// cannot be fetched or declares neither. It never errors: enrichment is
+// best-effort and must not disturb a resolution that already has its key and
+// slug from the DOI in the reference.
+func (r *resolver) metaFromPage(ctx context.Context, ref string) (string, Record) {
 	body, err := r.fetch.Fetch(ctx, ref)
 	if err != nil {
-		return ""
+		return "", Record{}
 	}
-	return titleFromBody(body)
+	return titleFromBody(body), recordFromBody(body)
 }
 
 func firstNonEmpty(a, b string) string {
