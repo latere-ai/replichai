@@ -346,6 +346,10 @@ try {
     const want = ['README.md', 'REPRODUCIBILITY.md', 'src/', 'UNVERIFIED.md', 'SOURCES.md']
     if (JSON.stringify(shown.files) !== JSON.stringify(want)) fail(`the page says a session ships ${JSON.stringify(shown.files)}, and the publish gate ships ${JSON.stringify(want)}`)
     if (!shown.example) fail('the demo verdict is not marked as an example; it is a fabrication and has to say so')
+    // An empty match set would satisfy the filter below identically to "only the
+    // illustrative key is there", and this is the one guard on the page that
+    // must never pass because it looked at nothing.
+    if (!shown.dois.some((d) => d.startsWith('10.0000/'))) fail('the paper-key guard matched nothing, so it cannot prove the demo key is the illustrative one')
     // 10.0000 is unassigned, so it resolves to nothing. Any other registrant
     // prefix means the page hung a made-up verdict on a real paper.
     const real = shown.dois.filter((d) => !d.startsWith('10.0000/'))
