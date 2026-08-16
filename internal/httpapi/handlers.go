@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/notify"
 	"github.com/latere-ai/replichai/internal/paper"
@@ -106,6 +109,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/papers/move", rt.moveProjectPaper)
 	rt.gatedHandle("PATCH", "/projects/{id}/papers", rt.editProjectPaper)
 	rt.gatedHandle("POST", "/projects/{id}/papers/refresh", rt.refreshProjectPapers)
+	rt.gatedHandle("POST", "/projects/{id}/description/draft", rt.draftDescription)
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("GET", "/models", rt.listModels)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
@@ -389,6 +393,148 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 		Filled int         `json:"filled"`
 		Papers []PaperView `json:"papers"`
 	}{filled, paperViews(papers, sessions)})
+}
+
+// draftDescription writes a project a description with one model call (039),
+// charges the project for it, and returns the text without storing it.
+//
+// The draft is a suggestion. It lands in the editor for the owner to read,
+// change and save, which is what keeps 038's field a human one — and a draft
+// they discard is still charged, because the tokens were spent either way.
+//
+// The order is: may they, can it be priced, does the project have the money,
+// then the call, then the charge. Pricing before the call is what makes "an
+// unpriced model does not draft" true rather than aspirational: a model nobody
+// can price would otherwise be found out after the tokens were burned.
+func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok {
+		return
+	}
+	if rt.drafter == nil {
+		writeError(w, http.StatusServiceUnavailable, "drafting_unconfigured")
+		return
+	}
+	rates, err := rt.draftRates()
+	if err != nil {
+		// An operator's mistake, reported to an operator: the owner is told the
+		// deployment cannot draft, and the log says which model has no price.
+		log.Printf("draft: %v", err)
+		writeError(w, http.StatusServiceUnavailable, "drafting_unpriced")
+		return
+	}
+	if rt.credits != nil {
+		available, err := rt.credits.Available(r.Context(), credit.Pot(proj.ID))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "credits_read_failed")
+			return
+		}
+		if available <= 0 {
+			writeError(w, http.StatusPaymentRequired, "no_credits")
+			return
+		}
+	}
+
+	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
+	got, err := rt.drafter.Complete(r.Context(), draft.Request{
+		System:    draft.DescriptionSystem,
+		Prompt:    draft.DescriptionPrompt(proj.Title, draftPapers(papers)),
+		MaxTokens: draftMaxTokens,
+	})
+	if err != nil {
+		log.Printf("draft: project %s: %v", proj.ID, err)
+		writeError(w, http.StatusBadGateway, "drafting_failed")
+		return
+	}
+
+	// Charged before the answer is handed over, and idempotent per call: the
+	// reference is minted here, so a client that retries a *request* pays twice
+	// (it was two calls) while a retried write of one call pays once.
+	cost := rates.Price(got.Usage)
+	if rt.credits != nil && cost > 0 {
+		ref, mintErr := draftRef(proj.ID)
+		if mintErr != nil {
+			writeError(w, http.StatusInternalServerError, "draft_charge_failed")
+			return
+		}
+		if err := rt.credits.Spend(r.Context(), credit.Pot(proj.ID), cost, ref, principal(r)); err != nil {
+			// The tokens are spent and unaccounted for. That is a fault worth
+			// hearing about, but the draft is still handed over: refusing it
+			// would charge the project nothing and give it nothing.
+			log.Printf("draft: charging project %s %d micro-USD: %v", proj.ID, cost, err)
+		}
+	}
+	if strings.TrimSpace(got.Text) == "" {
+		writeError(w, http.StatusBadGateway, "drafting_empty")
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Description string `json:"description"`
+		Model       string `json:"model"`
+		CostMicro   int64  `json:"cost_micro"`
+	}{got.Text, got.Model, cost})
+}
+
+// draftMaxTokens bounds a draft. A description is a paragraph; this is what
+// keeps a fraction of a cent a fraction of a cent.
+const draftMaxTokens = 400
+
+// draftRates is what the configured drafting model is priced at, or an error.
+//
+// An *exact* entry in the rate card, never the card's fail-expensive fallback:
+// that fallback exists so an unrecognised session model is charged the dearest
+// rates rather than nothing, which is right for a run somebody chose and wrong
+// for a local model an operator pointed us at — it would bill Opus rates for a
+// model that costs pennies. No exact price, no draft.
+func (rt *Router) draftRates() (credit.Rates, error) {
+	if rt.policy == nil {
+		return credit.Rates{}, errors.New("no platform settings to price a draft from")
+	}
+	set, err := rt.policy.Settings(context.Background())
+	if err != nil {
+		return credit.Rates{}, fmt.Errorf("reading settings: %w", err)
+	}
+	name := rt.drafter.Name()
+	for _, m := range set.Rates.Models {
+		if m.Model == name {
+			if m.Zero() {
+				return credit.Rates{}, fmt.Errorf("the rate card prices %s at nothing", name)
+			}
+			return m, nil
+		}
+	}
+	return credit.Rates{}, fmt.Errorf("the rate card has no entry for %s", name)
+}
+
+// draftRef mints the idempotency key for one draft charge.
+func draftRef(projectID string) (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "draft:" + projectID + ":" + hex.EncodeToString(b[:]), nil
+}
+
+// draftPapers projects the store's papers onto the little a prompt needs. It is
+// a projection rather than a pass-through so the drafting package never sees a
+// project's internals — and so what reaches a third-party endpoint is exactly
+// this list and nothing else.
+func draftPapers(papers []project.Paper) []draft.Paper {
+	out := make([]draft.Paper, 0, len(papers))
+	for _, p := range papers {
+		out = append(out, draft.Paper{
+			Title:   p.Title,
+			Ref:     p.Ref,
+			Authors: p.Record.Authors,
+			Venue:   p.Record.Venue,
+			Year:    p.Record.Year,
+		})
+	}
+	return out
 }
 
 // SweepPapers fills in the bibliography of every paper in every project whose

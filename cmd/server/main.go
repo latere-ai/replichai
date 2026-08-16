@@ -32,6 +32,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/draft"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
@@ -177,6 +178,12 @@ func run() error {
 	// the rest of the app runs unmetered (022b).
 	payments := stripe.New()
 
+	// The drafting model an admin configured, with the deployment's own key
+	// (039). It is resolved per request rather than at boot: an admin who
+	// changes the model must not have to wait for a deploy, and a deployment
+	// with no key configured simply never offers a draft.
+	drafter := draftingModel(ctx, st.platform, os.Getenv("DRAFT_API_KEY"))
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
 		Projects:      projectStore,
@@ -193,6 +200,7 @@ func run() error {
 		Payments:      payments,
 		Platform:      st.platform,
 		Models:        prov,
+		Drafter:       drafter,
 		BaseURL:       baseURL,
 		Notifier:      notifier,
 		SPA:           spaHandler,
@@ -622,6 +630,54 @@ func envBool(key string) bool {
 }
 
 // splitList splits a comma- or space-separated list, dropping blanks.
+// draftingModel builds the drafting seam over whatever the admin configured
+// (039). Nil when nothing is configured or no credential is present, which is
+// exactly what the route reads as "this deployment does not draft".
+//
+// The settings are re-read per call rather than captured at boot: the model is
+// an admin's setting, and a setting that needed a deploy to take effect would be
+// a constant with extra steps. The credential is not: it is the deployment's,
+// read once from the environment, and it never reaches the settings row.
+func draftingModel(ctx context.Context, plat platform.Store, key string) httpapi.Drafter {
+	if strings.TrimSpace(key) == "" {
+		log.Print("drafting: no DRAFT_API_KEY; project descriptions are typed")
+		return nil
+	}
+	if set, err := plat.Settings(ctx); err == nil && !set.Draft.Configured() {
+		log.Print("drafting: no model configured; project descriptions are typed")
+	}
+	return &configuredDrafter{plat: plat, key: key}
+}
+
+// configuredDrafter resolves the configured model at the moment it is asked.
+type configuredDrafter struct {
+	plat platform.Store
+	key  string
+}
+
+// Name is the model id the answer will be priced under. An unconfigured
+// deployment has none, and the empty string matches no rate-card entry — which
+// is the refusal the drafting route already makes.
+func (d *configuredDrafter) Name() string {
+	set, err := d.plat.Settings(context.Background())
+	if err != nil {
+		return ""
+	}
+	return set.Draft.Model
+}
+
+func (d *configuredDrafter) Complete(ctx context.Context, r draft.Request) (draft.Result, error) {
+	set, err := d.plat.Settings(ctx)
+	if err != nil {
+		return draft.Result{}, fmt.Errorf("reading the drafting settings: %w", err)
+	}
+	m, err := draft.New(set.Draft, d.key, nil)
+	if err != nil {
+		return draft.Result{}, err
+	}
+	return m.Complete(ctx, r)
+}
+
 func splitList(s string) []string {
 	var out []string
 	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {
