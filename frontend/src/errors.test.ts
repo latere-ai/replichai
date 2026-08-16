@@ -41,6 +41,26 @@ test('a create reports the references the server did not recognise', () => {
   expect(out.rows.has('https://doi.org/10/a')).toBe(false)
 })
 
+// A project may start empty (036), so a create with no papers at all is the
+// ordinary case rather than an error — there is nothing to report per reference
+// because there were no references.
+test('a create with no papers is a clean create', () => {
+  const out = createOutcome(t, 201, { project_id: 'p1', papers: [] })
+  expect(out.ok).toBe(true)
+  expect(out.banner).toBe('')
+  expect(out.rows.size).toBe(0)
+})
+
+// What a project may not start without is a name: the title falls back to the
+// first paper's reference, and with no paper there is no fallback. The screen
+// guards this before asking, so this path means the two disagreed — and it has
+// to say the same thing the screen would have.
+test('a create with neither a name nor a paper names both fixes', () => {
+  const out = createOutcome(t, 400, { error: 'missing_title' })
+  expect(out.ok).toBe(false)
+  expect(out.banner).toBe('nameOrPaper')
+})
+
 // Every reference recognised: nothing to say, so the screen goes through.
 test('a clean create says nothing', () => {
   const data: CreatedProject = { project_id: 'p1', papers: [{ ref: 'a', key: 'doi:a' }] }

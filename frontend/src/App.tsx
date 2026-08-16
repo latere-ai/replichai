@@ -1444,8 +1444,11 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
 
   const submit = async () => {
     const papers = rows.map((r) => r.url.trim()).filter(Boolean)
-    if (papers.length === 0) {
-      setErr(t('noPapers'))
+    // A project may start empty (036) — it records papers and runs nothing — but
+    // it may not start nameless, because the title falls back to the first
+    // paper's reference and with no paper there is no fallback.
+    if (papers.length === 0 && !title.trim()) {
+      setErr(t('nameOrPaper'))
       return
     }
     if (busy) return
@@ -1490,6 +1493,7 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
 
         <div className="field">
           {t('papersLabel')}
+          <span className="attestation">{t('papersOptional')}</span>
           <div className="stack" style={{ gap: 10 }}>
             {rows.map((row, i) => (
               <div key={i} className="paper-row">

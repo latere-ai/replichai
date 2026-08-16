@@ -641,15 +641,21 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
+	// A project may start empty (036): creating one records papers and enqueues
+	// nothing (012), so a paper is not what a create is *for* — it is contents,
+	// and the container is useful before it has any. What a project cannot start
+	// without is a name.
 	papers := nonEmpty(body.Papers)
-	if len(papers) == 0 {
-		writeError(w, http.StatusBadRequest, "missing_papers")
-		return
-	}
 	// placeholder is the stand-in a project gets when nobody names it — and the
 	// only title enrichment may replace. A project somebody named is theirs.
 	title, placeholder := strings.TrimSpace(body.Title), ""
 	if title == "" {
+		// With no paper there is nothing to name it after, so the requirement
+		// moves here rather than disappearing.
+		if len(papers) == 0 {
+			writeError(w, http.StatusBadRequest, "missing_title")
+			return
+		}
 		placeholder = defaultTitle(papers[0])
 		title = placeholder
 	}

@@ -117,13 +117,11 @@ func TestCreateProjectReportsBadReferencesAndKeepsTheProject(t *testing.T) {
 	}
 }
 
-// Empty papers is a 400.
-func TestCreateProjectNeedsAPaper(t *testing.T) {
-	d := testDeps(allowAll)
-	if w := do(t, NewRouter(d).Handler(), "POST", "/projects", `{"title":"x","papers":[]}`, "me"); w.Code != http.StatusBadRequest {
-		t.Errorf("no-papers status = %d, want 400", w.Code)
-	}
-}
+// A create with no papers used to be a 400. It is a 201 since 036 — a create
+// records papers and starts nothing, so a paper is contents rather than what a
+// create is for. What replaces the rule lives in empty_project_test.go: the
+// refusal moved to a project with neither a title nor a paper, which cannot be
+// named at all.
 
 // AC8 (012): titles are the server's to write, and they land after the answer —
 // a create must not block on somebody else's web server.

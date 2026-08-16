@@ -66,6 +66,10 @@ export function createOutcome(t: T, status: number, data: CreatedProject): Creat
     return { ok: true, banner: rows.size ? t('somePapersNotRecognised') : '', rows }
   }
   if (status === 403) return { ok: false, banner: t('errNotAllowed'), rows }
+  // A project may start empty but not unnamed (036): with no paper there is
+  // nothing to name it after. The screen guards this before asking, so reaching
+  // it means the two disagreed — say the same thing either way.
+  if (status === 400 && data.error === 'missing_title') return { ok: false, banner: t('nameOrPaper'), rows }
   return { ok: false, banner: t('createFailed'), rows }
 }
 
