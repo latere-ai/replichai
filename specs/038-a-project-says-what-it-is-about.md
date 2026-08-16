@@ -1,6 +1,10 @@
 # 038 — A project says what it is about
 
-**Status:** designed.
+**Status:** built. Six of the seven criteria hold as written; the seventh reads differently in practice than it did on paper.
+
+Criterion 3 turned out to be about hiding rather than redaction: a stranger reading a *private* project gets a 404, not a project with its description stripped, because `mayViewProject` hides the whole thing. The description therefore needs no redaction rule of its own — what `Redacted()` had to be checked for is the *public* case, where the description must survive while the owner is still stripped. The test asserts both.
+
+`PATCH /projects/{id}` now takes two optional fields rather than one required one, with pointers so "not sent" and "cleared" stay different — clearing a description is an edit an owner may make.
 
 **Scope:** a project gains a description: a paragraph its owner writes, shown under the title on the project screen and on the registry card, and readable by whoever may read the project. Backend and frontend. One migration.
 

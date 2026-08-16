@@ -1287,6 +1287,54 @@ h1.screen-title {
      cannot fit on a line of its own. */
   overflow-wrap: break-word;
 }
+/* What the project is about, under its title (038). Measured rather than full
+   width: prose past about 70 characters a line is harder to read, and the head
+   is the one place in this app that holds a paragraph. */
+.detail-describe-text {
+  margin: 8px 0 0;
+  max-width: 68ch;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+.detail-describe-text .icon-btn {
+  vertical-align: middle;
+  margin-left: 6px;
+}
+/* The invitation, for an owner whose project has no description yet. Quiet: it
+   is an offer, not a warning that something is missing. */
+.detail-describe-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--fg-3);
+  transition: color var(--dur-hover);
+}
+.detail-describe-add:hover {
+  color: var(--brand);
+}
+.detail-describe {
+  margin-top: 8px;
+  max-width: 68ch;
+}
+.detail-describe textarea.text {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.6;
+}
+.detail-describe-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .detail-meta {
   display: flex;
   align-items: center;
@@ -4465,6 +4513,18 @@ input.submit-input {
   .row-published {
     display: none;
   }
+}
+
+/* One line of the project's own description in a list row (038): trimmed to the
+   row rather than wrapped, because a list is scanned and a paragraph in it makes
+   every row a different height. */
+.row-desc {
+  font-size: 12px;
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
 }
 
 /* The meta line: the owner, the count, and the age, under the title. */

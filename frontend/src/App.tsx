@@ -68,6 +68,7 @@ import {
   movePaper,
   editPaper,
   refreshPapers,
+  describeProject,
   startSession,
   listModels,
   type ModelTier,
@@ -1044,6 +1045,14 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
               <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
                 <div className="row-main">
                   <div className="row-title">{p.title}</div>
+                  {/* One line of what the project is about, where its owner has
+                      said (038). It sits above the facts rather than among them:
+                      it is the only part of the row somebody wrote. */}
+                  {p.description && (
+                    <div className="row-desc" data-test="row-description">
+                      {p.description}
+                    </div>
+                  )}
                   {/* Owner, count, and age on one line under the title. They are
                       the same facts the columns carried and they still behave the
                       same way — the owner links, the age holds its exact moment —
@@ -2122,6 +2131,108 @@ function Tab({ on, onClick, icon, label }: { on: boolean; onClick: () => void; i
   )
 }
 
+// ProjectDescription is what the project is about, under its title (038).
+//
+// Edited in place, like the title beside it: a project has one screen, and the
+// thing being described is on it. Empty is a state rather than a placeholder —
+// its owner is invited to write one, and everybody else is shown nothing at all,
+// because a published project should read as what it is, not as a form somebody
+// left blank.
+function ProjectDescription({
+  i18n,
+  project,
+  canEdit,
+  onSaved,
+}: {
+  i18n: I18n
+  project: Project
+  canEdit: boolean
+  onSaved: () => void
+}) {
+  const { t } = i18n
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(project.description ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const save = async () => {
+    if (busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await describeProject(project.id, draft.trim())
+      setEditing(false)
+      onSaved()
+    } catch {
+      setErr(t('describeFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="detail-describe" data-test="describe-editor">
+        <textarea
+          className="text"
+          rows={3}
+          autoFocus
+          maxLength={2000}
+          value={draft}
+          placeholder={t('describePlaceholder')}
+          onChange={(e) => setDraft(e.target.value)}
+          data-test="describe-input"
+        />
+        <div className="detail-describe-foot">
+          <button className="btn sm" onClick={save} disabled={busy} data-test="describe-save">
+            {busy ? t('saving') : t('save')}
+          </button>
+          <button
+            className="btn ghost sm"
+            onClick={() => {
+              setDraft(project.description ?? '')
+              setEditing(false)
+              setErr('')
+            }}
+            disabled={busy}
+          >
+            {t('cancel')}
+          </button>
+          {err && <span className="err small">{err}</span>}
+        </div>
+      </div>
+    )
+  }
+  if (!project.description) {
+    if (!canEdit) return null
+    return (
+      <button className="detail-describe-add" onClick={() => setEditing(true)} data-test="describe-add">
+        <Ico name="plus" size={12} /> {t('describeAdd')}
+      </button>
+    )
+  }
+  return (
+    <p className="detail-describe-text" data-test="description">
+      {project.description}
+      {canEdit && (
+        <Tip text={t('describeEdit')}>
+          <button
+            className="icon-btn"
+            aria-label={t('describeEdit')}
+            data-test="describe-edit"
+            onClick={() => {
+              setDraft(project.description ?? '')
+              setEditing(true)
+            }}
+          >
+            <Ico name="pencil" size={12} />
+          </button>
+        </Tip>
+      )}
+    </p>
+  )
+}
+
 // EditableTitle shows a project's title and, for its owner, an inline rename:
 // a pencil turns the title into an input; Enter or the check saves, Escape
 // cancels (006j PATCH /projects/{id}).
@@ -2338,6 +2449,12 @@ function ProjectScreen({
               <EditableTitle i18n={i18n} title={project.title} canEdit={isOwner} onRename={async (next) => { await renameProject(id, next); refresh() }} />
               <VisibilityBadge i18n={i18n} visibility={project.visibility} />
             </div>
+            <ProjectDescription
+              i18n={i18n}
+              project={project}
+              canEdit={isOwner && !project.deleted_at}
+              onSaved={refresh}
+            />
             {project.visibility === 'public' && project.signed_off_at && (
               <div className="detail-meta">
                 <Ico name="check" size={12} w={2.2} style={{ color: 'var(--ok)' }} />
