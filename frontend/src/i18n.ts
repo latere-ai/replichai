@@ -442,6 +442,10 @@ const en = {
     projectNameLabel: 'Project name',
     projectNamePlaceholder: 'Optional — named from the first paper if left blank',
     papersLabel: 'Papers',
+    // Optional since 036: a create records papers and starts nothing, so the
+    // container is useful before it has any. Said on the label, because a
+    // reader deciding what to type is looking at the label, not at an error.
+    papersOptional: 'Optional — you can add papers from inside the project.',
     paperPlaceholder: 'arXiv link · DOI · ACM DL',
     addPaper: 'Add another paper',
     removePaper: 'Remove',
@@ -454,7 +458,8 @@ const en = {
     creatingProject: 'Creating…',
     resolveFailed: 'We couldn’t reach the site this paper is on. It may be down or busy — try again in a moment.',
     unresolvablePaper: 'We don’t recognise this link. Paste a DOI, an arXiv link, or the paper’s page on a publisher site.',
-    noPapers: 'Add at least one paper.',
+    // One mistake with two fixes, so it names both (036).
+    nameOrPaper: 'Name the project, or add a paper to name it after.',
     // The short forms sit directly under the paper they belong to, so they only
     // have to say what about it — the row already says which one.
     errUnresolvable: 'We don’t recognise this link.',
