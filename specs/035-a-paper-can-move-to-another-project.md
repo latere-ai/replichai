@@ -1,6 +1,14 @@
 # 035 — A paper can move to another project
 
-**Status:** designed.
+**Status:** built. Every acceptance criterion holds. `project.Store.MovePaper` with the `SessionMover`/`PGSessionMover` seam (Postgres does it in one transaction; the in-memory store moves the sessions first and puts the paper back if they fail), `job.MovePaperSessions`/`MovePaperSessionsTx`, `POST /projects/{id}/papers/move` with the two-project authorisation, and the paper row's Move action with its dialog. Covered by `runMovePaperContract` against both stores, `runMoveSessionsContract` against both movers, `internal/httpapi/paper_move_test.go`, the extended `cmd/server` e2e, and `frontend/test/paper-move.test.mjs`. Go (including the Postgres contracts), the 130 unit tests and the 18-file browser suite are green.
+
+Five guards were verified to fail with their fix reverted: the running-session refusal (the move returned 204 mid-run), the destination lead check (a lead of one end could move), the in-memory rollback (a failed session move split the paper from its runs), `updated_at` (bumping it in the SQL moved months-old spend into the window), and the deleted-session filter (the thrown-away run's charge stayed under the source). The browser test was checked against three separate regressions: Move gated behind "never run", the destination list unfiltered, and the refresh dropped after a successful move.
+
+Two things came out of the build.
+
+**The column the design started with was not needed, and the terminal-only rule is why.** The first draft added `jobs.pot_project_id` so a moved session's charge kept naming the project that paid — because `Hold`/`Settle` key on `credit.Pot(j.ProjectID)` and would follow the row. But a move is refused while any session is non-terminal, so every session that moves is already settled and neither is ever called on it again. The ledger keeps the charge under the pot that made it with no help from a column. What remained was the rail's 30-day figure, and that is answered by argument rather than schema — see the decision below.
+
+**`removeProjectPaper`'s lead check became `rt.leads`.** The move needs the same rule twice, on two projects, and leaving the original inline would have been the third copy of `proj.Owner != principal(r) && !rt.isLead(...)` — three places for one rule to drift in.
 
 **Scope:** moving one paper, and every session that is a run of it, from one project to another. A lead of both projects picks the destination from the paper's row; the paper record and its runs land there together, and the money stays where it was spent.
 
