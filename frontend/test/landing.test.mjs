@@ -307,6 +307,34 @@ try {
     await page.close()
   }
 
+  /* ── Every band reaches the page, motion or not ── */
+
+  {
+    // The counterpart to the reduced-motion block, and the one that was missing:
+    // with motion *allowed* every band starts transparent and is brought in by
+    // an observer, so a band whose reveal ref was never wired is on the page,
+    // occupying its full height, and invisible. Geometry assertions do not catch
+    // that — a box at opacity 0 measures exactly like a box at opacity 1 — which
+    // is how a blank hero reached production.
+    const page = await open({ authenticated: false }, { json: { '/public': [] } })
+    await page.waitForSelector('.lp-slab')
+    await new Promise((r) => setTimeout(r, 900))
+    // The hero is above the fold and must be visible with no scrolling at all.
+    const heroOpacity = await page.evaluate(() => +getComputedStyle(document.querySelector('.lp-hero')).opacity)
+    if (heroOpacity < 0.9) fail(`the hero is at opacity ${heroOpacity} on a page nobody has scrolled; the first screen is invisible`)
+    const dark = await page.evaluate(async () => {
+      const bands = [...document.querySelectorAll('.lp-hero, .lp-section')]
+      for (const b of bands) {
+        b.scrollIntoView()
+        await new Promise((r) => setTimeout(r, 260))
+      }
+      await new Promise((r) => setTimeout(r, 800))
+      return bands.filter((b) => +getComputedStyle(b).opacity < 0.9).map((b) => b.className)
+    })
+    if (dark.length) fail(`${dark.length} bands never became visible after being scrolled to: ${JSON.stringify(dark)}`)
+    await page.close()
+  }
+
   /* ── The walkthrough drives, where driving it is motion a reader allows ── */
 
   {
