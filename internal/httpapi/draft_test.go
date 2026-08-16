@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -62,7 +63,9 @@ func draftDeps(t *testing.T, d *fakeDrafter, set platform.Settings) (Deps, strin
 	ledger := credit.NewMemStore(nil, nil)
 	deps.Credits = ledger
 	deps.Reserve = func(context.Context) (int64, error) { return credit.Dollar, nil }
-	deps.Drafter = d
+	if d != nil {
+		deps.Drafter = d
+	}
 	deps.Platform = fixedPolicy{settings: set}
 
 	ctx := context.Background()
@@ -270,4 +273,62 @@ func TestTheModelListSaysWhetherItDrafts(t *testing.T) {
 	if says(none) {
 		t.Error("a deployment with no model says it drafts")
 	}
+}
+
+// The balance check is read-then-spend and the spend lands after the model has
+// answered, so a burst of requests would otherwise all read one healthy balance
+// and all buy tokens. A session cannot do that — 011 holds the money before the
+// work — and a draft has no job to hold against, so the bound is on the work.
+func TestOnlyOneDraftAtATimePerProject(t *testing.T) {
+	release := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	d := &blockingDrafter{model: draftModel, entered: entered, release: release}
+	deps, id := draftDeps(t, nil, pricedAt(1_000_000, 5_000_000))
+	deps.Drafter = d
+	h := NewRouter(deps).Handler()
+
+	done := make(chan int, 1)
+	go func() {
+		done <- do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me").Code
+	}()
+	<-entered // the first draft is inside the model call
+
+	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me"); w.Code != http.StatusTooManyRequests {
+		t.Errorf("a second concurrent draft = %d, want 429", w.Code)
+	}
+	close(release)
+	if code := <-done; code != http.StatusOK {
+		t.Fatalf("the first draft = %d", code)
+	}
+	if d.calls != 1 {
+		t.Errorf("the model was called %d times for two requests", d.calls)
+	}
+	// And the slot is released, so the next one goes through.
+	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me"); w.Code != http.StatusOK {
+		t.Errorf("the draft after the first finished = %d, want 200", w.Code)
+	}
+}
+
+// blockingDrafter holds a call open until released, so a test can have two
+// requests genuinely overlap.
+type blockingDrafter struct {
+	model   string
+	entered chan struct{}
+	release chan struct{}
+	mu      sync.Mutex
+	calls   int
+}
+
+func (b *blockingDrafter) Name() string { return b.model }
+
+func (b *blockingDrafter) Complete(_ context.Context, _ draft.Request) (draft.Result, error) {
+	b.mu.Lock()
+	b.calls++
+	first := b.calls == 1
+	b.mu.Unlock()
+	if first {
+		b.entered <- struct{}{}
+		<-b.release
+	}
+	return draft.Result{Text: "A paragraph.", Model: b.model, Usage: provider.Usage{InputTokens: 1000}}, nil
 }

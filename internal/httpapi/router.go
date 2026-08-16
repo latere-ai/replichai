@@ -340,7 +340,13 @@ type Router struct {
 	// on the Start control can be priced (031). Nil lists the tiers unpriced.
 	modelResolver credit.ModelResolver
 	drafter       Drafter
-	models        modelCache
+	// drafting is which projects have a draft in flight here (039), so a burst
+	// of requests cannot each buy tokens against one balance.
+	drafting struct {
+		mu       sync.Mutex
+		inFlight map[string]bool
+	}
+	models modelCache
 	// bg tracks work scheduled to outlive the request that started it — title
 	// enrichment today. Nothing in the serving path waits on it; tests do.
 	bg sync.WaitGroup
