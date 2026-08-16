@@ -77,6 +77,103 @@ const en = {
     lpStripCaption: 'Signed, opened, and readable without an account. Open one before you decide whether this is for you.',
     lpCloseTitle: 'Read one before you sign up.',
     lpCloseBody: 'Everything published here is open — the verdict, the repository, and the transcript that produced them.',
+    // The rebuild (033). 029's copy above is the argument and is reused
+    // untouched; everything here belongs to a band 029 did not have. The
+    // eyebrows name what a band is *about* — a reader scanning the page reads
+    // only those, so each one is a noun, not a verb.
+    lpEyebrowAudited: 'Reproducibility, audited',
+    lpHeroAside: 'The inner loop closes. The outer loop never will.',
+    lpLoopsEyebrow: 'The boundary',
+    lpPipelineEyebrow: 'A session, step by step',
+    lpAnatomyEyebrow: 'In the app',
+    // What comes back. The five names are the five paths `internal/publish`
+    // treats as worker-written, so this list and the gate cannot disagree; they
+    // are filenames and are not translated.
+    lpShipsEyebrow: 'What comes back',
+    lpShipsTitle: 'A repository, not a rating.',
+    lpShipsCaption:
+      'An audit writes a reproduction repository you can clone. Five files, each answering one question, and one of them is a list of everything that could not be confirmed.',
+    lpShipsReadme: 'What the paper is, what the reproduction is, how to run it.',
+    lpShipsRepro: 'The verdict and its rate, the inner/outer boundary table, the hidden decisions, the open-science scorecard.',
+    lpShipsSrc: 'A best-effort implementation of the inner loop, runnable.',
+    lpShipsUnverified: 'Everything that could not be confirmed, each with its specific blocker.',
+    lpShipsSources: 'The paper’s identity and every artifact search performed, with its result.',
+    // The walkthrough's plates: the artifact each step leaves, drawn as the app
+    // draws it. The paper key is deliberately unresolvable — see lpDemoExample.
+    lpPlateKey: 'Paper key',
+    lpPlateKeyValue: '10.0000/replichai.example',
+    lpPlateKeyNote: 'One identity, one slug, one thing to audit.',
+    lpPlateRelease: 'Release record',
+    lpPlateCode: 'Code',
+    lpPlateData: 'Data',
+    lpPlatePrereg: 'Preregistration',
+    lpPlateFound: 'Found',
+    lpPlatePartial: 'Partial',
+    lpPlateNone: 'None',
+    lpPlateCommitted: 'Committed live',
+    lpPlateCommit1: 'implement inner loop from §4.2',
+    lpPlateCommit2: 'record unstated seed and tolerance',
+    lpPlateCommit3: 'add UNVERIFIED.md with 3 blockers',
+    lpPlateManifest: 'Manifest',
+    lpPlateInnerLoop: 'inner loop',
+    lpPlateSigned: 'Signed by a named researcher. Transcript committed beside the work.',
+    // The verdict panel. It is the strongest thing this product has to show and
+    // it is also a fabrication, so it says so: an Example marker, and a paper key
+    // under the unregistered 10.0000 prefix that resolves to nothing. A made-up
+    // verdict against a real DOI is the exact failure this product exists to
+    // catch, and it would be on our own front page.
+    lpDemoTitle: 'Verdict',
+    lpDemoExample: 'Example',
+    lpDemoPublished: 'Published',
+    lpDemoOutcome: 'Partly reproduces',
+    lpDemoRate: '72%',
+    lpDemoTally: '5 verified · 2 partial · 2 blocked, of 9',
+    lpDemoSummary:
+      'The inner loop reproduces on the released code path, with one numeric mismatch in Table 3 that the run recorded rather than reconciled. The outer loop is out of scope by construction: the effect rests on 84 participants, and nothing here simulates them.',
+    lpDemoColClaim: 'Claim',
+    lpDemoColLoop: 'Loop',
+    lpDemoColOutcome: 'Outcome',
+    lpDemoColEvidence: 'Evidence / blocker',
+    lpDemoInner: 'Inner',
+    lpDemoOuter: 'Outer',
+    lpDemoVerified: 'Verified',
+    lpDemoPartial: 'Partial',
+    lpDemoNotScored: 'Not scored',
+    lpDemoRow1: 'Ranking model beats the BM25 baseline',
+    lpDemoRow1Evidence: 'Re-ran on the released split; nDCG@10 within tolerance.',
+    lpDemoRow2: 'Reported ablation gain of 4.1 points',
+    lpDemoRow2Evidence: 'Observed 2.6. Number differs; paper 4.1, run 2.6.',
+    lpDemoRow3: 'Participants preferred the assisted condition',
+    lpDemoRow3Evidence: 'Rests on 84 participants. Never simulated.',
+    // Who it is for. Named as fields rather than as job titles: the thing that
+    // decides whether this product fits is the shape of the paper, not the
+    // department it came from.
+    lpWhoEyebrow: 'Who it is for',
+    lpWhoTitle: 'Where a finding rests on what people did.',
+    lpWhoCaption:
+      'Built for research with human participants. A paper of that kind almost always contains two loops, and placing the boundary between them precisely — and defending it — is the point.',
+    lpWhoHci: 'Human–computer interaction',
+    lpWhoHciBody: 'A system paper whose contribution is the system and whose evidence is a user study.',
+    lpWhoPsych: 'Psychology',
+    lpWhoPsychBody: 'An analysis pipeline a machine can re-run over data a cohort produced once.',
+    lpWhoSocial: 'Social science',
+    lpWhoSocialBody: 'A model and a survey instrument, published together and reproducible apart.',
+    lpWhoElse: 'And anywhere else',
+    lpWhoElseBody: 'a finding rests on what people did — where the outer loop is named and left open.',
+    // What it costs. What 006q and 011 made true and nothing more: no prices.
+    // The rate card is a database row behind an admin endpoint, and a number
+    // typed here would be a number that drifts.
+    lpCostEyebrow: 'What it costs',
+    lpCostTitle: 'A session is what spends.',
+    lpCostCaption:
+      'Not a seat, not a plan. A session is charged for the tokens it burned, and what it does not spend comes back.',
+    lpCostSignIn: 'Sign in',
+    lpCostSignInBody: 'Signing in is open and costs nothing. A session is what spends, and only when you start one.',
+    lpCostFund: 'Fund a project',
+    lpCostFundBody: 'Credits you buy sit in your wallet. A session draws on the project you allocate to, not on the wallet directly.',
+    lpCostRun: 'Run',
+    lpCostRunBody: 'A reserve is held while a session runs. What it does not spend comes back when it settles.',
+    lpFootTagline: 'Audits the reproducibility of research papers.',
     signInTitle: 'Sign in',
     signInBody: 'Signing in is open and costs nothing. A session is what spends, and only when you start one.',
     signInNote: 'Built for research with human participants.',
