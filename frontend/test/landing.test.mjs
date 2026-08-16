@@ -1,4 +1,4 @@
-// A browser regression test for the first screen (017, rebuilt by 029).
+// A browser regression test for the first screen (017, rebuilt by 029 and 033).
 //
 // What it guards: the landing is a page a researcher reads, and the way in never
 // leaves the screen. 017 guaranteed that with a fold — the sign-in button's box
@@ -16,6 +16,14 @@
 // `--font-serif: 'Instrument Serif'` — a font with no `@font-face` anywhere in
 // the repository, so the identity had always rendered in Georgia. The assertions
 // below require an SVG that paints, in both themes, at every size it is used.
+//
+// 033 rebuilt the page from the design, and added four things worth guarding:
+// the hero is now a slab that has to hold its own copy at both viewports and
+// stay legible when its WebGL scene never loads; the walkthrough *dims* steps
+// it is not on, which is motion and must stand down under `reduce`; the file
+// list names the product's own output and must match the publish gate; and the
+// verdict panel is a fabrication, so it has to be marked as one and must never
+// carry a paper key that resolves.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -243,6 +251,105 @@ try {
     if (still.hidden) fail(`${still.hidden} parts of the landing are transparent under reduced motion; the resting state has to be the finished one`)
     if (still.animated) fail(`${still.animated} bands still animate under reduced motion`)
     if (still.runner !== 'none') fail('the loop runner still spins under reduced motion')
+
+    // The walkthrough dims the steps it is not on and folds their artifacts down
+    // to a header strip. Both of those are motion by this page's own definition,
+    // so under `reduce` the driver must never start: every step lit, every plate
+    // open. A reader who asked for less movement is not asked to scroll to find
+    // three quarters of a band.
+    await page.evaluate(() => {
+      document.querySelector('.lp-walk').scrollIntoView()
+    })
+    await new Promise((r) => setTimeout(r, 400))
+    const walk = await page.evaluate(() => {
+      const steps = [...document.querySelectorAll('.lp-step')]
+      const plates = [...document.querySelectorAll('.lp-plate')]
+      return {
+        dim: steps.filter((s) => +getComputedStyle(s).opacity < 0.99).length,
+        folded: plates.filter((p) => p.style.maxHeight !== '').length,
+        plates: plates.length,
+      }
+    })
+    if (walk.plates !== 4) fail(`the walkthrough shows ${walk.plates} artifacts for four steps`)
+    if (walk.dim) fail(`${walk.dim} walkthrough steps are dimmed under reduced motion`)
+    if (walk.folded) fail(`${walk.folded} artifacts are folded shut under reduced motion; the resting state is the open one`)
+    await page.close()
+  }
+
+  /* ── The hero slab carries its own copy, with or without the scene ── */
+
+  for (const viewport of [DESKTOP, PHONE]) {
+    const page = await open({ authenticated: false }, { viewport })
+    await page.waitForSelector('.lp-slab')
+    const slab = await page.evaluate(() => {
+      const el = document.querySelector('.lp-slab')
+      const r = el.getBoundingClientRect()
+      const inside = (sel) => {
+        const c = document.querySelector(sel)
+        if (!c) return false
+        const b = c.getBoundingClientRect()
+        return b.width > 0 && b.left >= r.left - 1 && b.right <= r.right + 1 && b.bottom <= r.bottom + 1
+      }
+      return {
+        // The slab paints its own dark ground. The scene is lazy, optional, and
+        // allowed to fail; if the copy's legibility rode on it, a browser with
+        // no WebGL would get white text on white.
+        bg: getComputedStyle(el).backgroundColor,
+        h1: document.querySelector('.lp-slab h1')?.textContent.trim().length ?? 0,
+        signin: inside('[data-test="lp-hero-signin"]'),
+        registry: inside('[data-test="lp-hero-registry"]'),
+      }
+    })
+    if (!/^rgba?\((\d+), (\d+), (\d+)/.test(slab.bg) || slab.bg.includes(', 0)')) fail(`at ${viewport.width}px the hero slab has no ground of its own (${slab.bg}); the scene is allowed to fail and the copy is not`)
+    if (slab.h1 < 20) fail(`at ${viewport.width}px the hero slab carries no claim`)
+    if (!slab.signin) fail(`at ${viewport.width}px the hero's sign-in is not inside the slab`)
+    if (!slab.registry) fail(`at ${viewport.width}px the hero's registry link is not inside the slab`)
+    await page.close()
+  }
+
+  /* ── The walkthrough drives, where driving it is motion a reader allows ── */
+
+  {
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.lp-walk')
+    const lit = await page.evaluate(async () => {
+      document.querySelector('.lp-step[data-step="2"]').scrollIntoView({ block: 'center' })
+      window.dispatchEvent(new Event('scroll'))
+      await new Promise((r) => setTimeout(r, 700))
+      const steps = [...document.querySelectorAll('.lp-step')]
+      return {
+        on: steps.filter((s) => +getComputedStyle(s).opacity > 0.99).length,
+        // Exactly one artifact is open at a time; two open plates overlap and
+        // each shows its body through the other.
+        open: [...document.querySelectorAll('.lp-plate')].filter((p) => p.getBoundingClientRect().height > 60).length,
+      }
+    })
+    if (lit.on !== 1) fail(`${lit.on} walkthrough steps are lit at once; the band is about one step at a time`)
+    if (lit.open !== 1) fail(`${lit.open} artifacts are open at once`)
+    await page.close()
+  }
+
+  /* ── The page names the product's own output, and nobody else's paper ── */
+
+  {
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.lp-file')
+    const shown = await page.evaluate(() => ({
+      files: [...document.querySelectorAll('.lp-file-name')].map((e) => e.textContent.trim()),
+      example: !!document.querySelector('.lp-tag.example'),
+      // Every DOI-shaped string on the page. The verdict this page shows is
+      // invented, and an invented verdict hung on somebody's real DOI is the
+      // exact failure this product exists to catch.
+      dois: (document.body.innerText.match(/10\.\d{4,9}\/[^\s]+/g) || []),
+    }))
+    // The five paths `internal/publish/gate.go` treats as worker-written.
+    const want = ['README.md', 'REPRODUCIBILITY.md', 'src/', 'UNVERIFIED.md', 'SOURCES.md']
+    if (JSON.stringify(shown.files) !== JSON.stringify(want)) fail(`the page says a session ships ${JSON.stringify(shown.files)}, and the publish gate ships ${JSON.stringify(want)}`)
+    if (!shown.example) fail('the demo verdict is not marked as an example; it is a fabrication and has to say so')
+    // 10.0000 is unassigned, so it resolves to nothing. Any other registrant
+    // prefix means the page hung a made-up verdict on a real paper.
+    const real = shown.dois.filter((d) => !d.startsWith('10.0000/'))
+    if (real.length) fail(`the landing shows a resolvable paper key beside an invented verdict: ${JSON.stringify(real)}`)
     await page.close()
   }
 
