@@ -316,10 +316,15 @@ func (s *MemStore) RemovePaper(_ context.Context, projectID, key string) error {
 }
 
 // MovePaper refiles a paper under another project and takes its sessions with
-// it. The sessions move first: this store has no transaction, so ordering is
-// the only atomicity available, and a session pointing at a project that does
-// not yet hold the paper is invisible for an instant, while a paper whose
-// sessions never followed would be wrong for good.
+// it. The paper moves first and is put back if the sessions do not follow, so
+// a failure ends where it started.
+//
+// It is not atomic and cannot be: this store has no transaction, and the lock
+// is released while the session mover runs. A concurrent reader in that window
+// would see the paper in its new project with its runs still in the old one.
+// That window is unobservable in what this store is for — tests and a
+// no-database run — and Postgres, which is what production uses, does the whole
+// move in one transaction.
 func (s *MemStore) MovePaper(ctx context.Context, fromID, toID, key string) error {
 	if s.sessions == nil {
 		return ErrNoSessionMover

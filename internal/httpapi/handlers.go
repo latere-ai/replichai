@@ -323,6 +323,14 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Authorisation before state, both ends. The other order answers "is that
+	// project published?" to somebody who is not allowed to move anything into
+	// it — a caller can name any id they have a stake in, so the refusals below
+	// would otherwise report its openness before reporting that they may not act.
+	if !rt.leads(r, from) || !rt.leads(r, to) {
+		writeError(w, http.StatusForbidden, "not_lead")
+		return
+	}
 	// Published on either end and the move is refused. Read off Visibility, never
 	// off the presence of a sign-off: 006o leaves the sign-off standing on a
 	// withdrawn project, so a sign-off proves nothing about current openness.
@@ -330,10 +338,6 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 	// attestation covers; the owner withdraws first.
 	if from.Visibility == project.VisibilityPublic || to.Visibility == project.VisibilityPublic {
 		writeError(w, http.StatusConflict, "project_public")
-		return
-	}
-	if !rt.leads(r, from) || !rt.leads(r, to) {
-		writeError(w, http.StatusForbidden, "not_lead")
 		return
 	}
 	sessions, err := rt.jobs.ListByProject(r.Context(), from.ID)
