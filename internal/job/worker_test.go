@@ -25,6 +25,7 @@ type fakeRunner struct {
 	closed      []string // run ids Close was called with
 	closeErr    error
 	onExecute   func() // fires inside Execute; stands in for a signal landing mid-run
+	onResume    func() // fires inside Resume; holds a rejoined run open while a test looks
 }
 
 func (f *fakeRunner) record(s string) {
@@ -59,6 +60,9 @@ func (f *fakeRunner) Execute(_ context.Context, j *Job, observe func(provider.Ru
 func (f *fakeRunner) Resume(_ context.Context, j *Job, observe func(provider.RunStatus)) error {
 	f.record("resume")
 	observe(f.observed)
+	if f.onResume != nil {
+		f.onResume()
+	}
 	if f.failAt == "resume" {
 		return errors.New("resume boom")
 	}
@@ -193,12 +197,12 @@ func TestReconcileFailsUnrecoverable(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	stranded, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
-	if _, ok, _ := s.Claim(ctx); !ok { // -> resolving, no run id
+	if _, ok, _ := s.Claim(ctx, "test-worker"); !ok { // -> resolving, no run id
 		t.Fatal("claim should have taken the job")
 	}
 	fresh, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref2", Kind: KindAudit})
 
-	resumed, failed, err := NewWorker(s, &fakeRunner{}).Reconcile(ctx)
+	resumed, failed, err := NewWorker(s, &fakeRunner{}, WithWorkerID("test-worker")).Reconcile(ctx)
 	if err != nil || resumed != 0 || failed != 1 {
 		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 0/1/nil", resumed, failed, err)
 	}
@@ -210,6 +214,108 @@ func TestReconcileFailsUnrecoverable(t *testing.T) {
 	}
 }
 
+// Exactly one process may drive a run. A deploy overlaps a pod coming up with
+// one still working, and both reconcile: without a lease each rejoined the same
+// backend session, and the two drivers collided — one closed the session the
+// other was still using, and the failure it recorded overwrote the success the
+// other had just published.
+func TestReconcileLeavesARunAnotherWorkerIsDriving(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-a")
+	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})
+
+	held := make(chan struct{})
+	defer close(held)
+	first := &fakeRunner{onResume: func() { <-held }} // pod-a stays inside the run
+	if resumed, _, err := NewWorker(s, first, WithWorkerID("pod-a")).Reconcile(ctx); err != nil || resumed != 1 {
+		t.Fatalf("pod-a Reconcile = %d/%v, want it to adopt the run", resumed, err)
+	}
+	waitForCall(t, first, "resume")
+
+	second := &fakeRunner{}
+	resumed, failed, err := NewWorker(s, second, WithWorkerID("pod-b")).Reconcile(ctx)
+	if err != nil || resumed != 0 || failed != 0 {
+		t.Fatalf("pod-b Reconcile = %d/%d/%v, want 0/0/nil — the run is not its to take", resumed, failed, err)
+	}
+	second.mu.Lock()
+	defer second.mu.Unlock()
+	if len(second.calls) != 0 {
+		t.Errorf("pod-b drove a run pod-a holds: %v", second.calls)
+	}
+}
+
+// Reconciling only at startup was enough while every replica took every
+// stranded run. Now that a lease stops the incoming pod taking one the outgoing
+// pod still holds, something has to look again once that lease goes cold —
+// otherwise a deploy mid-run leaves the session sitting in `running` until the
+// next deploy.
+func TestThePoolSweepsForStrandedRuns(t *testing.T) {
+	s := NewMemStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-gone") // the pod that had it is not coming back
+	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_stranded_01"})
+
+	r := &fakeRunner{}
+	// A zero lease makes the departed pod's hold cold immediately, which is the
+	// state a sweep finds it in five minutes later in the deployment.
+	w := NewWorker(s, r, WithWorkerID("pod-here"), WithPoll(time.Millisecond),
+		withSweepEvery(time.Millisecond), withLeaseTTL(0))
+	go w.Start(ctx, 1)
+
+	waitForPhase(t, s, j.ID, PhaseDone)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !slices.Contains(r.calls, "resume") {
+		t.Errorf("the sweep should have rejoined the stranded run, calls=%v", r.calls)
+	}
+}
+
+// The claim leases too, so a session another pod took seconds ago is not read as
+// stranded. Nothing has been observed onto it yet — no run id — which is exactly
+// the shape reconciliation fails as unrecoverable, and failing it would kill a
+// session that is resolving perfectly well on the pod that claimed it.
+func TestReconcileLeavesAFreshlyClaimedSessionAlone(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	if _, ok, _ := s.Claim(ctx, "pod-a"); !ok { // -> resolving, no run id yet
+		t.Fatal("claim should have taken the job")
+	}
+
+	resumed, failed, err := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-b")).Reconcile(ctx)
+	if err != nil || resumed != 0 || failed != 0 {
+		t.Fatalf("pod-b Reconcile = %d/%d/%v, want 0/0/nil", resumed, failed, err)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseResolving {
+		t.Errorf("phase = %s, want resolving — pod-b failed a session pod-a is driving", got.Phase)
+	}
+}
+
+// waitForCall blocks until the runner has recorded a call, so a test can look at
+// the store while a driver is inside one.
+func waitForCall(t *testing.T, r *fakeRunner, call string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		r.mu.Lock()
+		got := slices.Contains(r.calls, call)
+		r.mu.Unlock()
+		if got {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("runner never reached %s", call)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // A run whose backend session id was observed is REJOINED on restart, not
 // failed: reconcile resumes it and drives it to done, reflecting the live
 // session rather than guessing it failed while it kept running.
@@ -217,12 +323,12 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
-	_, _, _ = s.Claim(ctx)                                                                  // -> resolving
+	_, _, _ = s.Claim(ctx, "test-worker")                                                                  // -> resolving
 	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" }) // running, repo created pre-crash
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})                     // id observed before the "crash"
 
 	r := &fakeRunner{} // repo stays "" so the pre-crash RepoName survives to Publish
-	resumed, failed, err := NewWorker(s, r).Reconcile(ctx)
+	resumed, failed, err := NewWorker(s, r, WithWorkerID("test-worker")).Reconcile(ctx)
 	if err != nil || resumed != 1 || failed != 0 {
 		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 1/0/nil", resumed, failed, err)
 	}
@@ -260,13 +366,13 @@ func TestReconcileRepublishesAnInterruptedPublish(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
-	_, _, _ = s.Claim(ctx) // -> resolving
+	_, _, _ = s.Claim(ctx, "test-worker") // -> resolving
 	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" })
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})
 	_ = s.Advance(ctx, j.ID, PhasePublishing, nil) // crashed mid-publish
 
 	r := &fakeRunner{}
-	resumed, failed, err := NewWorker(s, r).Reconcile(ctx)
+	resumed, failed, err := NewWorker(s, r, WithWorkerID("test-worker")).Reconcile(ctx)
 	if err != nil || resumed != 1 || failed != 0 {
 		t.Fatalf("Reconcile = resumed %d failed %d err %v; want 1/0/nil", resumed, failed, err)
 	}
@@ -346,7 +452,7 @@ func TestCancelClosesAnOrphanRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p", PaperKey: "arxiv:1"})
-	_, _, _ = s.Claim(ctx)
+	_, _, _ = s.Claim(ctx, "test-worker")
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_02"})
 
 	r := &fakeRunner{}
@@ -367,7 +473,7 @@ func TestCancelKeepsTheJobRetryableWhenBackendCloseFails(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p", PaperKey: "arxiv:1"})
-	_, _, _ = s.Claim(ctx)
+	_, _, _ = s.Claim(ctx, "test-worker")
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{State: provider.StateRunning, RunID: "sesn_live_03"})
 
 	r := &fakeRunner{closeErr: errors.New("backend down")}
@@ -415,7 +521,7 @@ func TestStartProcessesThePool(t *testing.T) {
 // failClaimStore errors on Claim, so the worker's claim-error path is covered.
 type failClaimStore struct{ Store }
 
-func (failClaimStore) Claim(context.Context) (Job, bool, error) {
+func (failClaimStore) Claim(context.Context, string) (Job, bool, error) {
 	return Job{}, false, errors.New("db down")
 }
 

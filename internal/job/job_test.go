@@ -160,7 +160,7 @@ func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if j, ok, err := s.Claim(ctx); err == nil && ok {
+			if j, ok, err := s.Claim(ctx, "test-worker"); err == nil && ok {
 				mu.Lock()
 				seen[j.ID]++
 				mu.Unlock()
@@ -178,7 +178,7 @@ func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 		}
 	}
 	// Every claimed job left the submitted phase.
-	if _, ok, _ := s.Claim(ctx); ok {
+	if _, ok, _ := s.Claim(ctx, "test-worker"); ok {
 		t.Error("no submitted job should remain after all were claimed")
 	}
 }

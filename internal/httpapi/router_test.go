@@ -1277,7 +1277,7 @@ func TestCancelSession(t *testing.T) {
 	ctx := context.Background()
 	p, _ := d.Projects.Create(ctx, "me", "P")
 	j, _ := jobs.Enqueue(ctx, job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
-	_, _, _ = jobs.Claim(ctx) // -> resolving (non-terminal)
+	_, _, _ = jobs.Claim(ctx, "test-worker") // -> resolving (non-terminal)
 	h := NewRouter(d).Handler()
 
 	// A non-owner cannot stop it.
@@ -1474,7 +1474,7 @@ func TestSessionTranscriptPerEventUsageLive(t *testing.T) {
 	}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
-	_, _, _ = store.Claim(context.Background())
+	_, _, _ = store.Claim(context.Background(), "test-worker")
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
 	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
 
@@ -1591,7 +1591,7 @@ func TestSessionTranscriptLive(t *testing.T) {
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	// Reach running with an observed backend run id — the in-flight state.
-	_, _, _ = store.Claim(context.Background())
+	_, _, _ = store.Claim(context.Background(), "test-worker")
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
 	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
 	h := NewRouter(d).Handler()
@@ -1625,7 +1625,7 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "live-not-committed"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
-	_, _, _ = store.Claim(context.Background())
+	_, _, _ = store.Claim(context.Background(), "test-worker")
 	// Running, with a repo created in resolve AND a run id observed — the 006i state.
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, func(jb *job.Job) { jb.RepoName = "open-hai/r1" })
 	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
