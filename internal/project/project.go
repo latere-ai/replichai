@@ -17,7 +17,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/paper"
 )
 
 // Visibility is whether a project is private to its owner and members or open in
@@ -43,7 +46,7 @@ var (
 
 // Project is the durable record of one research container.
 type Project struct {
-	ID         string     `json:"id"`
+	ID string `json:"id"`
 	// Owner is the owning principal (006c). It is omitted when empty because a
 	// reader with no stake in the project is served a Redacted copy, and an
 	// `"owner": ""` on that wire would be a claim about who owns it (028).
@@ -153,6 +156,118 @@ type Paper struct {
 	Title   string    `json:"title,omitempty"`
 	AddedBy string    `json:"added_by"`
 	AddedAt time.Time `json:"added_at"`
+	// Record is the paper's bibliography (037), stored here rather than looked
+	// up, so a project renders with no network. It is paper.Record's own type
+	// because there is one definition of what a citation is made of.
+	Record paper.Record `json:"record,omitzero"`
+	// Edited names the fields a person corrected. Enrichment skips them, for
+	// good: a correction that a later refresh could undo is not a correction.
+	Edited []string `json:"edited,omitempty"`
+}
+
+// The names Edited carries. They are the wire's field names, because a
+// correction arrives as a field name and is stored as one.
+const (
+	FieldTitle     = "title"
+	FieldAuthors   = "authors"
+	FieldVenue     = "venue"
+	FieldYear      = "year"
+	FieldVolume    = "volume"
+	FieldIssue     = "issue"
+	FieldPages     = "pages"
+	FieldPublisher = "publisher"
+)
+
+// WasEdited reports whether a person set this field by hand.
+func (p Paper) WasEdited(field string) bool { return slices.Contains(p.Edited, field) }
+
+// NeedsDetails reports a paper whose record nobody has been able to fill in —
+// what the project screen offers to complete, and what a sweep looks for. A
+// paper with a title and nothing else still needs its details: a title is what
+// it is called, and the rest is what it is.
+func (p Paper) NeedsDetails() bool {
+	return len(p.Record.Authors) == 0 || p.Record.Venue == "" || p.Record.Year == 0
+}
+
+// PaperEdit is a correction. A nil field is one the caller is not touching; a
+// non-nil field is written and marked edited, empty values included — clearing a
+// venue somebody's source got wrong is as much a correction as setting it.
+type PaperEdit struct {
+	Title     *string   `json:"title,omitempty"`
+	Authors   *[]string `json:"authors,omitempty"`
+	Venue     *string   `json:"venue,omitempty"`
+	Year      *int      `json:"year,omitempty"`
+	Volume    *string   `json:"volume,omitempty"`
+	Issue     *string   `json:"issue,omitempty"`
+	Pages     *string   `json:"pages,omitempty"`
+	Publisher *string   `json:"publisher,omitempty"`
+}
+
+// Apply writes the correction onto a paper and returns which fields it set, in
+// the order the type declares them. It is the one place a correction is applied,
+// so the two stores cannot disagree about what an edit means.
+func (e PaperEdit) Apply(p *Paper) []string {
+	var set []string
+	if e.Title != nil {
+		p.Title, set = *e.Title, append(set, FieldTitle)
+	}
+	if e.Authors != nil {
+		p.Record.Authors, set = *e.Authors, append(set, FieldAuthors)
+	}
+	if e.Venue != nil {
+		p.Record.Venue, set = *e.Venue, append(set, FieldVenue)
+	}
+	if e.Year != nil {
+		p.Record.Year, set = *e.Year, append(set, FieldYear)
+	}
+	if e.Volume != nil {
+		p.Record.Volume, set = *e.Volume, append(set, FieldVolume)
+	}
+	if e.Issue != nil {
+		p.Record.Issue, set = *e.Issue, append(set, FieldIssue)
+	}
+	if e.Pages != nil {
+		p.Record.Pages, set = *e.Pages, append(set, FieldPages)
+	}
+	if e.Publisher != nil {
+		p.Record.Publisher, set = *e.Publisher, append(set, FieldPublisher)
+	}
+	for _, f := range set {
+		if !p.WasEdited(f) {
+			p.Edited = append(p.Edited, f)
+		}
+	}
+	return set
+}
+
+// Enrich fills a paper's empty fields from a freshly resolved record and returns
+// whether anything changed. It is the whole of what enrichment may do, shared by
+// the three callers that do it — a fresh add, an owner's fill-in, the admin
+// sweep — so there is one rule rather than three.
+//
+// The rule: a field a person edited is never touched, and a field that already
+// has a value is left alone. Enrichment completes a record; it does not correct
+// one, because the source it reads is the source that was already wrong.
+func (p *Paper) Enrich(title string, rec paper.Record) bool {
+	changed := false
+	str := func(field string, dst *string, src string) {
+		if src != "" && *dst == "" && !p.WasEdited(field) {
+			*dst, changed = src, true
+		}
+	}
+	str(FieldTitle, &p.Title, title)
+	str(FieldVenue, &p.Record.Venue, rec.Venue)
+	str(FieldVolume, &p.Record.Volume, rec.Volume)
+	str(FieldIssue, &p.Record.Issue, rec.Issue)
+	str(FieldPages, &p.Record.Pages, rec.Pages)
+	str(FieldPublisher, &p.Record.Publisher, rec.Publisher)
+	if len(rec.Authors) > 0 && len(p.Record.Authors) == 0 && !p.WasEdited(FieldAuthors) {
+		p.Record.Authors, changed = rec.Authors, true
+	}
+	if rec.Year != 0 && p.Record.Year == 0 && !p.WasEdited(FieldYear) {
+		p.Record.Year, changed = rec.Year, true
+	}
+	return changed
 }
 
 // ErrPaperExists reports adding a paper a project already holds. The store's
@@ -244,10 +359,18 @@ type Store interface {
 	// added is the order somebody wrote them down, and reversing it would put
 	// the paper a project was created for at the bottom.
 	ListPapers(ctx context.Context, projectID string) ([]Paper, error)
-	// SetPaperTitle fills in a paper's title once a source has answered — at
-	// create, or from the first session's resolve. A missing project or paper is
-	// not an error: the enrichment is best-effort, exactly as SetTitle is.
-	SetPaperTitle(ctx context.Context, projectID, key, title string) error
+	// EnrichPaper fills in what a source has answered — the title, and the
+	// bibliography behind it (037) — and reports whether anything changed. It is
+	// the one enrichment path: a fresh add, an owner's fill-in and the admin
+	// sweep all arrive here, so the rule about what enrichment may overwrite
+	// (nothing) is stated once. A missing project or paper is not an error: the
+	// enrichment is best-effort, exactly as SetTitle is.
+	EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error)
+	// EditPaper records a person's correction, and marks every field it wrote so
+	// no later enrichment undoes it. A missing project or paper is
+	// ErrPaperNotFound: a correction that landed nowhere is a mistake worth
+	// hearing about, unlike an enrichment that found nothing to add.
+	EditPaper(ctx context.Context, projectID, key string, edit PaperEdit) (Paper, error)
 	// RemovePaper drops a paper from a project. The caller decides whether it may
 	// go (012 refuses one that has sessions, so the record of what was actually
 	// reproduced stays); this store only records. Idempotent.

@@ -139,6 +139,28 @@ ALTER TABLE projects ADD COLUMN deleted_at TIMESTAMPTZ;
 CREATE INDEX projects_by_owner_live ON projects (owner, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX projects_trashed ON projects (owner, deleted_at DESC) WHERE deleted_at IS NOT NULL;
 `},
+	{10, `
+-- What a paper is, and not merely what it is called (037). The record comes from
+-- the identifier's own metadata service or the publisher's own declaration, and
+-- resolution was already fetching all of it and keeping the title alone.
+--
+-- Columns rather than a jsonb blob: these are the fields a citation is made of,
+-- they are the same for every paper, and a screen renders them one by one.
+ALTER TABLE project_papers ADD COLUMN authors   TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE project_papers ADD COLUMN venue     TEXT   NOT NULL DEFAULT '';
+ALTER TABLE project_papers ADD COLUMN year      INT    NOT NULL DEFAULT 0;
+ALTER TABLE project_papers ADD COLUMN volume    TEXT   NOT NULL DEFAULT '';
+ALTER TABLE project_papers ADD COLUMN issue     TEXT   NOT NULL DEFAULT '';
+ALTER TABLE project_papers ADD COLUMN pages     TEXT   NOT NULL DEFAULT '';
+ALTER TABLE project_papers ADD COLUMN publisher TEXT   NOT NULL DEFAULT '';
+
+-- Which fields a person corrected. Enrichment runs on its own initiative — a
+-- button, a sweep, a re-add — and a refresh that quietly replaced a name
+-- somebody had fixed would make fixing it pointless. Named fields rather than a
+-- single edited flag, because correcting one author's name must not freeze the
+-- year nobody has looked up yet.
+ALTER TABLE project_papers ADD COLUMN edited TEXT[] NOT NULL DEFAULT '{}';
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

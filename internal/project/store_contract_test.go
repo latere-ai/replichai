@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/paper"
 )
 
 // runStoreContract asserts the invariants every project Store must hold, so the
@@ -354,18 +356,85 @@ func runPaperContract(t *testing.T, s Store) {
 		t.Errorf("a paper nobody has resolved should carry no title, got %q", papers[0].Title)
 	}
 
-	// The title arrives later, from whichever resolve answers first.
-	if err := s.SetPaperTitle(ctx, p.ID, first.Key, "Point of no Undo"); err != nil {
-		t.Fatalf("SetPaperTitle: %v", err)
+	// The record arrives later, from whichever resolve answers first (037).
+	rec := paper.Record{
+		Authors: []string{"Ada Lovelace", "Grace Hopper"},
+		Venue:   "CHI '24",
+		Year:    2024,
+		Pages:   "1-14",
+	}
+	changed, err := s.EnrichPaper(ctx, p.ID, first.Key, "Point of no Undo", rec)
+	if err != nil || !changed {
+		t.Fatalf("EnrichPaper = %v, %v; want it to have written something", changed, err)
 	}
 	papers, _ = s.ListPapers(ctx, p.ID)
 	if papers[0].Title != "Point of no Undo" {
-		t.Errorf("title after SetPaperTitle = %q", papers[0].Title)
+		t.Errorf("title after EnrichPaper = %q", papers[0].Title)
 	}
-	// Best-effort, exactly as SetTitle is: naming a paper nobody holds is not an
-	// error, because the enrichment races a paper that may have been removed.
-	if err := s.SetPaperTitle(ctx, p.ID, "url:nobody", "x"); err != nil {
-		t.Errorf("SetPaperTitle on a missing paper: %v", err)
+	if !reflect.DeepEqual(papers[0].Record, rec) {
+		t.Errorf("record after EnrichPaper = %+v, want %+v", papers[0].Record, rec)
+	}
+	// Enriching completes a record; it never corrects one. A second source with
+	// a different answer for a field that already has one changes nothing, and
+	// says so.
+	changed, err = s.EnrichPaper(ctx, p.ID, first.Key, "Another Title", paper.Record{Venue: "Elsewhere", Year: 1999})
+	if err != nil || changed {
+		t.Errorf("EnrichPaper = %v, %v; want it to have written nothing", changed, err)
+	}
+	papers, _ = s.ListPapers(ctx, p.ID)
+	if papers[0].Title != "Point of no Undo" || papers[0].Record.Venue != "CHI '24" {
+		t.Errorf("a second source overwrote what was already there: %+v", papers[0])
+	}
+	// It does fill what is still empty.
+	if _, err := s.EnrichPaper(ctx, p.ID, first.Key, "", paper.Record{Publisher: "ACM"}); err != nil {
+		t.Fatalf("EnrichPaper: %v", err)
+	}
+	papers, _ = s.ListPapers(ctx, p.ID)
+	if papers[0].Record.Publisher != "ACM" {
+		t.Errorf("an empty field was not filled: %+v", papers[0].Record)
+	}
+
+	// A correction is a person's, and it is permanent: what they wrote is marked,
+	// and no later enrichment may put the source's answer back.
+	edited, err := s.EditPaper(ctx, p.ID, first.Key, PaperEdit{
+		Venue:   ptr("Proc. ACM Hum.-Comput. Interact."),
+		Authors: ptr([]string{"Ada Lovelace"}),
+	})
+	if err != nil {
+		t.Fatalf("EditPaper: %v", err)
+	}
+	if edited.Record.Venue != "Proc. ACM Hum.-Comput. Interact." || len(edited.Record.Authors) != 1 {
+		t.Errorf("EditPaper returned %+v", edited.Record)
+	}
+	if !edited.WasEdited(FieldVenue) || !edited.WasEdited(FieldAuthors) || edited.WasEdited(FieldYear) {
+		t.Errorf("edited = %v, want exactly the two fields written", edited.Edited)
+	}
+	// Clearing a field a source got wrong is a correction too, and it stays clear.
+	if _, err := s.EditPaper(ctx, p.ID, first.Key, PaperEdit{Pages: ptr("")}); err != nil {
+		t.Fatalf("EditPaper clearing a field: %v", err)
+	}
+	if _, err := s.EnrichPaper(ctx, p.ID, first.Key, "", paper.Record{
+		Venue: "CHI '24", Authors: []string{"Somebody Else"}, Pages: "1-14",
+	}); err != nil {
+		t.Fatalf("EnrichPaper after a correction: %v", err)
+	}
+	papers, _ = s.ListPapers(ctx, p.ID)
+	if papers[0].Record.Venue != "Proc. ACM Hum.-Comput. Interact." {
+		t.Errorf("enrichment overwrote a corrected venue: %q", papers[0].Record.Venue)
+	}
+	if len(papers[0].Record.Authors) != 1 {
+		t.Errorf("enrichment overwrote a corrected author list: %v", papers[0].Record.Authors)
+	}
+	if papers[0].Record.Pages != "" {
+		t.Errorf("enrichment refilled a field somebody deliberately cleared: %q", papers[0].Record.Pages)
+	}
+	// A correction aimed at a paper nobody holds is a mistake worth hearing
+	// about, unlike an enrichment that found nothing.
+	if _, err := s.EditPaper(ctx, p.ID, "url:nobody", PaperEdit{Venue: ptr("x")}); !errors.Is(err, ErrPaperNotFound) {
+		t.Errorf("EditPaper on a missing paper = %v, want ErrPaperNotFound", err)
+	}
+	if _, err := s.EnrichPaper(ctx, p.ID, "url:nobody", "x", paper.Record{}); err != nil {
+		t.Errorf("EnrichPaper on a missing paper: %v", err)
 	}
 
 	// Removal is the store's to do and idempotent; who may ask is the caller's.
@@ -765,3 +834,7 @@ func TestMovingAPaperNeedsASessionMover(t *testing.T) {
 		t.Error("the paper moved anyway")
 	}
 }
+
+// ptr is how a PaperEdit says "this field is present" — including when the
+// value it is set to is the zero one.
+func ptr[T any](v T) *T { return &v }
