@@ -8,6 +8,10 @@ Two decisions were made in the building. The admin sweep is an HTTP route (`POST
 
 `make db-contract` did not run `internal/project`'s Postgres contract at all; it does now, which is what caught an untyped parameter in the enrichment UPDATE that the in-memory store could not see.
 
+**Amended after use.** Reading a project somebody else assembled, a citation line turned out not to be enough: it says where a paper appeared, not what it is about. The record therefore also carries the **abstract** its source publishes — Crossref's deposited JATS with its markup stripped, arXiv's `<summary>`, a page's `citation_abstract` — under the same rule as every other field: never written by a model, correctable by hand, and absent rather than invented where no source publishes one.
+
+The layout changed with it. A paper was a table row, and the title was the item that shrank: at the card's width it read as "There is more to context than l…" beside a reference printed in full. It is now a block — title on its own line, citation under it, abstract clamped to three lines with a control that opens it, and the controls on their own line beneath. The reference is printed as the identifier it is (`10.1145/…`, `arXiv:…`) and links to the paper.
+
 **Scope:** a paper recorded in a project keeps the bibliographic record its identifier already returns — authors, venue, year, volume, issue, pages, publisher — instead of a title and nothing else. Resolution stops discarding what it fetched, the record is stored beside the paper, the project screen shows it, an owner can correct it, and there is a way to fill in every paper that predates this. Backend and frontend. One migration.
 
 **Depends on:** [001](001-paper-identity-and-slugs.md) (resolution and the identity it produces), [012](012-a-project-holds-papers.md) (the paper row this widens), [035](035-a-paper-can-move-to-another-project.md) (a paper moves between projects, and its record goes with it).
