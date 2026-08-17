@@ -391,6 +391,9 @@ export type PaperRecord = {
   issue?: string
   pages?: string
   publisher?: string
+  // What the paper is about, in its source's own words. Absent for the many
+  // records that publish none.
+  abstract?: string
 }
 
 // A correction. Only the fields present are written, and each one written is
@@ -404,6 +407,7 @@ export type PaperEdit = {
   issue?: string
   pages?: string
   publisher?: string
+  abstract?: string
 }
 
 // listPapers returns the papers a project is about.

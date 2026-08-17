@@ -289,14 +289,14 @@ func (s *PGStore) Delete(ctx context.Context, id string) error {
 
 // paperColumns is the column list every paper read selects, in scan order.
 const paperColumns = `paper_key, ref, title, added_by, added_at,
-	authors, venue, year, volume, issue, pages, publisher, edited`
+	authors, venue, year, volume, issue, pages, publisher, abstract, edited`
 
 // scanPaper reads one paper row in paperColumns order.
 func scanPaper(row interface{ Scan(...any) error }) (Paper, error) {
 	var p Paper
 	err := row.Scan(&p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt,
 		&p.Record.Authors, &p.Record.Venue, &p.Record.Year,
-		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Edited)
+		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Record.Abstract, &p.Edited)
 	return p, err
 }
 
@@ -310,12 +310,12 @@ func (s *PGStore) AddPaper(ctx context.Context, projectID string, p Paper) error
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO project_papers
 			(project_id, paper_key, ref, title, added_by, added_at,
-			 authors, venue, year, volume, issue, pages, publisher)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			 authors, venue, year, volume, issue, pages, publisher, abstract)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		ON CONFLICT (project_id, paper_key) DO NOTHING`,
 		projectID, p.Key, p.Ref, p.Title, p.AddedBy, p.AddedAt,
 		nonNil(p.Record.Authors), p.Record.Venue, p.Record.Year,
-		p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher)
+		p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher, p.Record.Abstract)
 	if err != nil {
 		// The foreign key is the only other way this fails on well-formed input,
 		// and it means the project is not there.
@@ -389,10 +389,10 @@ func (s *PGStore) EnrichPaper(ctx context.Context, projectID, key, title string,
 		changed = true
 		_, err = tx.Exec(ctx, `
 			UPDATE project_papers SET title=$3, authors=$4, venue=$5, year=$6,
-				volume=$7, issue=$8, pages=$9, publisher=$10
+				volume=$7, issue=$8, pages=$9, publisher=$10, abstract=$11
 			WHERE project_id=$1 AND paper_key=$2`,
 			projectID, key, p.Title, nonNil(p.Record.Authors), p.Record.Venue, p.Record.Year,
-			p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher)
+			p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher, p.Record.Abstract)
 		return err
 	})
 	return changed, err
@@ -417,10 +417,10 @@ func (s *PGStore) EditPaper(ctx context.Context, projectID, key string, edit Pap
 		out = p
 		_, err = tx.Exec(ctx, `
 			UPDATE project_papers SET title=$3, authors=$4, venue=$5, year=$6,
-				volume=$7, issue=$8, pages=$9, publisher=$10, edited=$11
+				volume=$7, issue=$8, pages=$9, publisher=$10, abstract=$11, edited=$12
 			WHERE project_id=$1 AND paper_key=$2`,
 			projectID, key, p.Title, nonNil(p.Record.Authors), p.Record.Venue, p.Record.Year,
-			p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher, nonNil(p.Edited))
+			p.Record.Volume, p.Record.Issue, p.Record.Pages, p.Record.Publisher, p.Record.Abstract, nonNil(p.Edited))
 		return err
 	})
 	return out, err

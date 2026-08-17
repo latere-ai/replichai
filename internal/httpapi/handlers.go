@@ -300,6 +300,9 @@ func (rt *Router) editProjectPaper(w http.ResponseWriter, r *http.Request) {
 const (
 	maxPaperField = 500
 	maxAuthors    = 100
+	// An abstract runs to a few hundred words; this is generous enough for the
+	// longest real one and still a bound.
+	maxAbstract = 8000
 )
 
 // tidyPaperEdit trims what a person typed and refuses what is too long. It
@@ -331,6 +334,14 @@ func tidyPaperEdit(e *project.PaperEdit) error {
 			out = append(out, a)
 		}
 		*e.Authors = out
+	}
+	if e.Abstract != nil {
+		// An abstract is a paragraph rather than a field: it gets its own, much
+		// larger bound, and the same trim.
+		*e.Abstract = strings.TrimSpace(*e.Abstract)
+		if len(*e.Abstract) > maxAbstract {
+			return errors.New("field_too_long")
+		}
 	}
 	if e.Year != nil && *e.Year != 0 && (*e.Year < 1600 || *e.Year > 2200) {
 		return errors.New("bad_year")

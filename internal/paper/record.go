@@ -32,6 +32,11 @@ type Record struct {
 	Pages  string `json:"pages,omitempty"`
 	// Publisher, where the source names one. Crossref does; arXiv does not.
 	Publisher string `json:"publisher,omitempty"`
+	// Abstract as the source publishes it, with its markup removed and nothing
+	// else changed. Plenty of records have none — Crossref carries one only when
+	// the publisher deposited it — and a paper without one shows none rather than
+	// a summary somebody wrote for it.
+	Abstract string `json:"abstract,omitempty"`
 }
 
 // Empty reports whether nothing at all is known about the paper beyond its
@@ -39,7 +44,7 @@ type Record struct {
 // the project screen shows as a paper still needing its details.
 func (r Record) Empty() bool {
 	return len(r.Authors) == 0 && r.Venue == "" && r.Year == 0 &&
-		r.Volume == "" && r.Issue == "" && r.Pages == "" && r.Publisher == ""
+		r.Volume == "" && r.Issue == "" && r.Pages == "" && r.Publisher == "" && r.Abstract == ""
 }
 
 // crossrefRecord is the part of a Crossref record this reads. Crossref returns the
@@ -63,6 +68,7 @@ type crossrefRecord struct {
 		Issue     string `json:"issue"`
 		Page      string `json:"page"`
 		Publisher string `json:"publisher"`
+		Abstract  string `json:"abstract"`
 	} `json:"message"`
 }
 
@@ -81,6 +87,7 @@ func parseCrossref(body []byte) (string, Record) {
 		Issue:     strings.TrimSpace(m.Issue),
 		Pages:     strings.TrimSpace(m.Page),
 		Publisher: collapseWS(m.Publisher),
+		Abstract:  plainAbstract(m.Abstract),
 	}
 	for _, a := range m.Author {
 		// A person has given and family names; an organisation has one `name`.
@@ -143,7 +150,11 @@ var (
 	citationFirstPageRe = metaRe(`citation_firstpage`)
 	citationLastPageRe  = metaRe(`citation_lastpage`)
 	citationPublisherRe = metaRe(`citation_publisher`)
-	yearRe              = regexp.MustCompile(`(\d{4})`)
+	citationAbstractRe  = metaRe(`citation_abstract`)
+	// Crossref deposits an abstract as JATS XML, and a publisher page may emit
+	// one with inline markup. The tags go; the words are the source's.
+	tagRe  = regexp.MustCompile(`<[^>]*>`)
+	yearRe = regexp.MustCompile(`(\d{4})`)
 )
 
 // recordFromBody reads a page's own declaration of its paper's bibliography.
@@ -157,6 +168,7 @@ var (
 func recordFromBody(body []byte) Record {
 	rec := Record{
 		Authors:   metaContents(body, citationAuthorRe),
+		Abstract:  plainAbstract(metaContent(body, citationAbstractRe)),
 		Venue:     firstNonEmpty(metaContent(body, citationJournalRe), metaContent(body, citationConfRe)),
 		Volume:    metaContent(body, citationVolumeRe),
 		Issue:     metaContent(body, citationIssueRe),
@@ -218,6 +230,24 @@ func pageRange(first, last string) string {
 	}
 }
 
+// plainAbstract turns a source's abstract into the paragraph it is: markup
+// removed, whitespace collapsed, and the redundant "Abstract" heading many
+// publishers deposit as the first word dropped.
+//
+// It is the one transformation this package makes to a field's *content*, and it
+// is a rendering decision rather than an editorial one — `<jats:p>` is not part
+// of what the authors wrote.
+func plainAbstract(s string) string {
+	s = collapseWS(tagRe.ReplaceAllString(s, " "))
+	for _, lead := range []string{"Abstract ", "ABSTRACT ", "Summary "} {
+		if strings.HasPrefix(s, lead) {
+			s = strings.TrimSpace(strings.TrimPrefix(s, lead))
+			break
+		}
+	}
+	return s
+}
+
 // mergeRecord fills the gaps in a record from a second source, and never
 // overwrites what the first already declared. The order of the arguments is the
 // order of trust: Crossref before a publisher's page, a DOI's record before the
@@ -234,6 +264,7 @@ func mergeRecord(first, second Record) Record {
 	out.Issue = firstNonEmpty(out.Issue, second.Issue)
 	out.Pages = firstNonEmpty(out.Pages, second.Pages)
 	out.Publisher = firstNonEmpty(out.Publisher, second.Publisher)
+	out.Abstract = firstNonEmpty(out.Abstract, second.Abstract)
 	if out.Year == 0 {
 		out.Year = second.Year
 	}

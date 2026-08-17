@@ -4,7 +4,7 @@
 // paper. Everything else — who wrote it, where it appeared, when — was fetched
 // during resolution and thrown away, so a project read as a list of URLs.
 //
-// Four things have to hold:
+// Five things have to hold:
 //
 //   1. A paper with a record reads as a citation: authors, venue, year, on one
 //      line under the title. Long author lists are cut with "et al." rather than
@@ -14,6 +14,9 @@
 //      POST /projects/{id}/papers/refresh, and the rows re-read afterwards.
 //   4. Correcting sends exactly what the dialog shows to PATCH
 //      /projects/{id}/papers?key=…, including an author list split by line.
+//   5. The paper reads as a block rather than a table row: the title gets the
+//      card's width, and the abstract is clamped to three lines with a control
+//      that opens it.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -51,6 +54,11 @@ const PROJECT = 'proj-1'
 const FULL = 'doi:10.1145/3772318.3791265'
 const BARE = 'url:https://example.edu/one.pdf'
 
+// Longer than three lines at any width this card has, which is what the clamp
+// and its control are for.
+const LONG_ABSTRACT =
+  'Automated vehicles must communicate what they perceive. We ran a within-subjects study of semantic segmentation overlays in a driving simulator, measuring trust, situation awareness and cognitive load across three visualisation conditions with forty-eight participants drawn from two universities. Overlays raised situation awareness without a measurable cost in load, and trust followed perceived competence rather than visual fidelity. Participants who saw the segmented view reported understanding the vehicle’s intent sooner, and were quicker to intervene when the segmentation was wrong. We discuss what this implies for interfaces that must show a machine’s perception without implying more certainty than the machine has, and we release the simulator scenarios, the analysis scripts and the per-trial data.'
+
 // The server's state, which the page's own calls change.
 let papers = [
   {
@@ -68,6 +76,7 @@ let papers = [
       issue: 'CSCW1',
       pages: '1128-1145',
       publisher: 'ACM',
+      abstract: LONG_ABSTRACT,
     },
   },
   { key: BARE, ref: 'https://example.edu/one.pdf', title: '', added_by: ME, added_at: at(1), sessions: 0 },
@@ -194,7 +203,66 @@ try {
 
   await page.waitForFunction(() => /CHI 2024/.test(document.querySelector('[data-test="citation"]')?.textContent ?? ''), { timeout: 10000 })
 
-  if (!process.exitCode) console.log('ok: a paper reads as a citation, fills in what is missing, and takes a correction')
+  /* ── 5. The paper is a block: the title gets the width, the abstract is
+        clamped to three lines, and the reader can open it ── */
+
+  {
+    const p = await browser.newPage()
+    await p.setViewport({ width: 1440, height: 1000 })
+    await p.setRequestInterception(true)
+    p.on('request', (req) => {
+      const u = new URL(req.url())
+      if (u.origin !== BASE) return req.continue()
+      const path = u.pathname
+      if (path === '/me') return json(req, { authenticated: true, principal: ME, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } })
+      if (path === '/me/profile') return json(req, { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true })
+      if (path === '/projects') return json(req, [{ ...project, session_count: 0, running: 0 }])
+      if (/^\/projects\/[^/]+$/.test(path)) return json(req, { project, sessions: [], papers, may_submit: true, role: 'owner' })
+      if (/^\/projects\/[^/]+\/papers$/.test(path)) return json(req, papers)
+      if (/^\/projects\/[^/]+\/members$/.test(path)) return json(req, [])
+      if (/^\/projects\/[^/]+\/credits$/.test(path)) return json(req, { wallet: 20, start_reserve: 5, available: 20 })
+      if (path === '/models') return json(req, { tiers: [] })
+      if (path === '/public' || path === '/shared') return json(req, [])
+      if (path.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
+      req.continue()
+    })
+    await p.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+    await p.waitForSelector('[data-test="paper-abstract"]', { timeout: 15000 })
+    await new Promise((r) => setTimeout(r, 400))
+
+    // The title is not the item that shrinks: it gets a line of its own, and the
+    // whole of it — which is the complaint this layout answers.
+    const title = await p.$eval('.paper-title', (e) => ({
+      w: Math.round(e.getBoundingClientRect().width),
+      full: e.scrollWidth <= e.clientWidth + 1 || e.getBoundingClientRect().height > 20,
+      text: e.textContent.trim(),
+    }))
+    if (title.w < 400) fail(`the paper's title cell is ${title.w}px wide; it is still sharing a line`)
+    if (!title.full) fail(`the title is still truncated: ${JSON.stringify(title.text)}`)
+
+    // Three lines, and a control that opens the rest.
+    const height = () => p.$eval('[data-test="paper-abstract"]', (e) => Math.round(e.getBoundingClientRect().height))
+    const closed = await height()
+    if (closed > 80) fail(`the abstract is ${closed}px tall closed; it should be three lines`)
+
+    // Opening it is what proves the clamp was hiding something: a fixture short
+    // enough to fit would not grow, and the test would be measuring nothing.
+    await p.click('[data-test="paper-abstract-toggle"]')
+    await new Promise((r) => setTimeout(r, 250))
+    const opened = await height()
+    if (opened <= closed) fail(`opening the abstract left it ${opened}px; it was ${closed}px closed`)
+    const whole = await p.$eval('[data-test="paper-abstract"]', (e) => e.textContent.trim())
+    if (!whole.endsWith('the per-trial data.')) fail('the opened abstract is still cut short')
+
+    // The reference is a link to the paper, printed as the identifier it is
+    // rather than as 60 characters of URL.
+    const ref = await p.$eval('.paper-ref', (e) => ({ text: e.textContent.trim(), href: e.getAttribute('href') }))
+    if (ref.text !== '10.1145/3772318.3791265') fail(`the reference reads ${JSON.stringify(ref.text)}`)
+    if (ref.href !== 'https://doi.org/10.1145/3772318.3791265') fail(`the reference links to ${JSON.stringify(ref.href)}`)
+    await p.close()
+  }
+
+  if (!process.exitCode) console.log('ok: a paper reads as a block — title, citation, abstract — and takes a correction')
 } catch (err) {
   fail(err.message)
 } finally {

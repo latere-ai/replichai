@@ -170,6 +170,17 @@ ALTER TABLE project_papers ADD COLUMN edited TEXT[] NOT NULL DEFAULT '{}';
 -- which is a state the screen already has to render, not a missing value.
 ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
 `},
+	{12, `
+-- The paper's own abstract, as its source publishes it (037). A title says what
+-- a paper is called and the record says where it appeared; this is the only
+-- field that says what it is *about*, which is what somebody reading a project
+-- they did not assemble needs.
+--
+-- Empty for the many records that carry none: Crossref has an abstract only
+-- where the publisher deposited one, and a paper without one shows none rather
+-- than a summary somebody wrote for it.
+ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

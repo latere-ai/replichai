@@ -297,3 +297,51 @@ func TestAnApostropheInsideAQuotedAttribute(t *testing.T) {
 		t.Errorf("authors = %v, want the single-quoted value whole", got)
 	}
 }
+
+// An abstract is what a source publishes, with its markup removed and nothing
+// else changed. Crossref deposits JATS; arXiv publishes a <summary>; a
+// publisher page may emit citation_abstract.
+func TestTheAbstractComesFromTheSource(t *testing.T) {
+	fetch := &fakeFetcher{responses: map[string][]byte{
+		"api.crossref.org": []byte(`{"message":{"title":["A Paper"],"abstract":"<jats:p>Abstract We argue that <jats:italic>context</jats:italic> is more than location.</jats:p>"}}`),
+	}}
+	id, err := Resolve(context.Background(), theDOI, WithFetcher(fetch))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	want := "We argue that context is more than location."
+	if id.Record.Abstract != want {
+		t.Errorf("abstract = %q, want %q", id.Record.Abstract, want)
+	}
+
+	feed := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <title>Retention Under Load</title>
+    <summary>  We measure attention over a long session,
+    and report the decline.  </summary>
+  </entry>
+</feed>`)
+	arx := &fakeFetcher{responses: map[string][]byte{"export.arxiv.org": feed}}
+	id, err = Resolve(context.Background(), "2603.01795", WithFetcher(arx))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if id.Record.Abstract != "We measure attention over a long session, and report the decline." {
+		t.Errorf("arXiv abstract = %q", id.Record.Abstract)
+	}
+
+	page := []byte(`<html><head>
+  <meta name="citation_title" content="One Page">
+  <meta name="citation_abstract" content="A short statement of what the paper does.">
+</head></html>`)
+	if got := recordFromBody(page).Abstract; got != "A short statement of what the paper does." {
+		t.Errorf("page abstract = %q", got)
+	}
+
+	// A source with no abstract yields none, rather than the page's prose.
+	bare := []byte(`<html><head><meta name="citation_title" content="No Abstract Here"></head><body>Some body text.</body></html>`)
+	if got := recordFromBody(bare).Abstract; got != "" {
+		t.Errorf("abstract = %q, want none — nothing published one", got)
+	}
+}

@@ -378,10 +378,11 @@ func runPaperContract(t *testing.T, s Store) {
 
 	// The record arrives later, from whichever resolve answers first (037).
 	rec := paper.Record{
-		Authors: []string{"Ada Lovelace", "Grace Hopper"},
-		Venue:   "CHI '24",
-		Year:    2024,
-		Pages:   "1-14",
+		Authors:  []string{"Ada Lovelace", "Grace Hopper"},
+		Venue:    "CHI '24",
+		Year:     2024,
+		Pages:    "1-14",
+		Abstract: "We measure attention over a long session, and report the decline.",
 	}
 	changed, err := s.EnrichPaper(ctx, p.ID, first.Key, "Point of no Undo", rec)
 	if err != nil || !changed {

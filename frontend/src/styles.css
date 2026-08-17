@@ -1893,53 +1893,49 @@ input.submit-input {
   color: var(--fg-3);
 }
 
-/* A paper reads as two lines: what it is called, then what it is (037). The
-   cell is a column so the citation sits under the title rather than competing
-   with it for the row's width — which is what it did as two inline spans, each
-   ellipsised to a single character. */
-.paper-main {
+/* ── A paper, as a block (037) ──
+   It was a table row: a title, a citation, a reference, a state and four
+   controls, all competing for one line inside a card that is itself a column of
+   a two-column screen. The title — the thing you are looking for — is the item
+   that shrinks, so a paper read as "There is more to context than l…" beside a
+   URL printed in full.
+   
+   As a block, the identity gets the width and the controls get their own line
+   under it. It costs vertical space, which is the trade: a project is a handful
+   of papers you read, not a hundred you scan. */
+.paper-head {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  flex: 1;
+  gap: 12px;
+  padding: 14px;
+}
+.paper-id {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   min-width: 0;
 }
-/* One quiet line, ellipsised as a whole rather than per part: "Ou, Welsch,
-   Mayer · Proc. ACM…" reads; "O… · P… · 2…" does not. */
+.paper-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--fg-1);
+  overflow-wrap: break-word;
+}
+/* The authors and where it appeared, on one line and allowed to wrap: at this
+   width a six-author paper is two lines, and two lines of authorship reads
+   better than three names and an ellipsis. */
 .paper-cite {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
-  font-size: 11.5px;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--fg-3);
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-/* The reference is how the paper was typed in, not what it is: it gives way
-   first. Without a budget of its own a 60-character DOI URL took the row and
-   left the paper's own name eleven characters wide. */
-.paper-ref {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 24ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.paper-main {
-  flex: 1 1 auto;
-}
-/* "not started" is three words that must stay on one line: wrapped, it makes the
-   row two lines tall and pushes the control that starts a run off the card. */
-.paper-state,
-.paper-group .row > .btn,
-/* A control wrapped in a tooltip is still a control: the wrapper is what the
-   row sees, and without this the disabled "start" button — the one that always
-   carries a tip explaining why — was the item that got squeezed off the card. */
-.paper-group .row > .tip {
-  flex: none;
 }
 .paper-cite-dot {
   flex: none;
@@ -1949,7 +1945,79 @@ input.submit-input {
   background: currentColor;
   opacity: 0.6;
 }
-
+/* Three lines, then the reader decides. `line-clamp` rather than a character
+   count, so the cut lands at the end of a line at whatever the card's width
+   turns out to be. */
+.paper-abstract {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--fg-2);
+}
+/* Both properties, not just the display: `line-clamp` is standard now and keeps
+   clamping a block box, so a rule that only swapped `-webkit-box` for `block`
+   left the abstract three lines tall with its control saying "less". */
+.paper-abstract.open {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+.paper-abstract-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 3px;
+}
+.paper-abstract-wrap .paper-abstract {
+  margin: 0;
+}
+.paper-more {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--brand);
+}
+.paper-more:hover {
+  text-decoration: underline;
+}
+/* The controls, on their own line, ending where the card ends. The reference
+   leads them: it is what the paper *is* on this platform, and it is a link. */
+.paper-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.paper-ref {
+  color: var(--fg-3);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 30ch;
+}
+.paper-ref:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+/* Everything after the reference is pushed to the far side, so the control that
+   starts work sits where the eye ends. */
+.paper-state {
+  margin-left: auto;
+}
+.paper-group .paper-head .btn,
+.paper-group .paper-head .tip {
+  flex: none;
+}
 /* A form of short fields, two to a row where there is room for two (037's
    correction dialog: a volume and an issue are both four characters, and a
    column each is what makes them read as a pair). The title and the author list
@@ -4836,6 +4904,17 @@ input.submit-input {
      and it rather than trailing off the end. */
   .project-list > .row > .chev {
     margin-left: auto;
+  }
+
+  /* A paper's controls do not fit on one line beside its identifier at 390px,
+     so the identifier takes its own line and the controls keep theirs together —
+     the control that starts a run must not end up alone under a stray ×. */
+  .paper-ref {
+    flex: 1 0 100%;
+    max-width: none;
+  }
+  .paper-head {
+    padding: 12px;
   }
 
   /* ── The project's own head ──
