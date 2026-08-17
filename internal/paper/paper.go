@@ -264,6 +264,7 @@ type arxivFeed struct {
 		Title     string `xml:"title"`
 		DOI       string `xml:"doi"`
 		Published string `xml:"published"`
+		Summary   string `xml:"summary"`
 		// A preprint updated after acceptance carries where it appeared.
 		JournalRef string `xml:"journal_ref"`
 		Authors    []struct {
@@ -285,7 +286,7 @@ func (r *resolver) fetchArXivMeta(ctx context.Context, id string) (arxivMeta, er
 		return arxivMeta{}, errors.New("no entry in arXiv response")
 	}
 	e := feed.Entries[0]
-	rec := Record{Venue: collapseWS(e.JournalRef), Year: yearFrom(e.Published)}
+	rec := Record{Venue: collapseWS(e.JournalRef), Year: yearFrom(e.Published), Abstract: plainAbstract(e.Summary)}
 	for _, a := range e.Authors {
 		if n := collapseWS(a.Name); n != "" {
 			rec.Authors = append(rec.Authors, n)

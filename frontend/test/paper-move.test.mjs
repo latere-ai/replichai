@@ -166,7 +166,10 @@ try {
   if (await page.$('.modal select')) fail('the destination picker is an OS-drawn <select>')
 
   await page.evaluate(() => document.querySelector('.modal [role="combobox"], .modal .select-btn')?.click())
-  await new Promise((r) => setTimeout(r, 250))
+  // Waited for, not slept on: the destinations arrive from /projects, and a
+  // machine running the whole browser suite back to back is slower than one
+  // running this file alone — which is how this read an empty list.
+  await page.waitForSelector('[role="option"]', { timeout: 10000 })
   const options = await page.$$eval('[role="option"]', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()))
   if (!options.includes('Where it belongs')) fail(`the destination list is missing the other private project: ${JSON.stringify(options)}`)
   if (options.includes('Filed by mistake')) fail('the destination list offers the project the paper is already in')

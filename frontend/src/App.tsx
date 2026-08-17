@@ -3895,18 +3895,22 @@ function PapersCard({
         <div className="rows">
           {grouped.papers.map((g) => (
             <div className="paper-group" key={g.paper.key}>
-              <div className="row">
-                <span className="paper-main">
-                  <span className="row-title">{g.paper.title || t('paperUntitled')}</span>
+              <div className="paper-head">
+                <div className="paper-id">
+                  <h3 className="paper-title">{g.paper.title || t('paperUntitled')}</h3>
                   <Citation i18n={i18n} paper={g.paper} />
-                </span>
-                <span className="muted small mono paper-ref">{g.paper.ref}</span>
+                  <Abstract i18n={i18n} text={g.paper.record?.abstract} />
+                </div>
+                <div className="paper-actions">
+                  <a className="muted small mono paper-ref" href={g.paper.ref} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>
+                    {shortRef(g.paper.ref)}
+                  </a>
                 {/* The count is the length of what this row lists. The server
                     sends one too, but it is the input to the never-remove-a-run
                     rule (012), not a second answer to the same question. */}
-                <span className="muted small paper-state">
-                  {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
-                </span>
+                  <span className="muted small paper-state">
+                    {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
+                  </span>
                 {/* Moving is offered whether or not the paper has been run —
                     which is the point: a paper filed under the wrong project is
                     usually noticed after a replication, and that is exactly when
@@ -3959,6 +3963,7 @@ function PapersCard({
                       <Ico name="sparkles" size={12} /> {busyKey === g.paper.key ? t('startingSession') : t('startSession')}
                     </button>
                   ))}
+                </div>
               </div>
               {g.sessions.map((s) => (
                 <SessionRow key={s.id} i18n={i18n} job={s} nested canDelete={mayDelete} onOpen={() => onOpenSession(s)} onChanged={refresh} onDelete={setDropping} />
@@ -4067,6 +4072,64 @@ function Citation({ i18n, paper }: { i18n: I18n; paper: ProjectPaper }) {
   )
 }
 
+// Abstract is what the paper is about, in its own source's words (037).
+//
+// Three lines, then "more". Long enough to tell two papers apart, short enough
+// that a project holding six of them still shows its sessions without a scroll —
+// and expanding is per paper and per visit, because a preference about somebody
+// else's abstract is not worth storing.
+function Abstract({ i18n, text }: { i18n: I18n; text?: string }) {
+  const { t } = i18n
+  const [open, setOpen] = useState(false)
+  if (!text) return null
+  // The clamp is CSS, so "is it actually longer than three lines" is a layout
+  // question; the control is offered from a length that cannot fit in three
+  // lines at this measure rather than from a measurement that would force a
+  // reflow to answer.
+  const long = text.length > 260
+  return (
+    <div className="paper-abstract-wrap">
+      <p className={'paper-abstract' + (open ? ' open' : '')} data-test="paper-abstract">
+        {text}
+      </p>
+      {/* Outside the paragraph, not after its last word: the clamp hides
+          whatever overflows the third line, and a control inside it is exactly
+          what overflows. */}
+      {long && (
+        <button
+          className="paper-more"
+          data-test="paper-abstract-toggle"
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen((v) => !v)
+          }}
+        >
+          {open ? t('showLess') : t('showMore')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// shortRef renders a reference as the identifier it is: a DOI or arXiv id
+// without the URL scaffolding, and anything else as its host and last segment.
+// The full reference is the link's target, so nothing is lost by not printing
+// it — and a 60-character URL was taking a third of the row.
+function shortRef(ref: string): string {
+  const trimmed = ref.trim()
+  const doi = trimmed.match(/10\.\d{4,9}\/\S+/)
+  if (doi) return doi[0]
+  const arxiv = trimmed.match(/arxiv\.org\/(?:abs|pdf)\/([\w.]+?)(?:v\d+)?(?:\.pdf)?$/i)
+  if (arxiv) return 'arXiv:' + arxiv[1]
+  try {
+    const u = new URL(trimmed)
+    const last = u.pathname.split('/').filter(Boolean).pop()
+    return last ? `${u.hostname}/${last}` : u.hostname
+  } catch {
+    return trimmed
+  }
+}
+
 // EditPaperDialog corrects a paper's record (037). What it writes is permanent:
 // the server marks every corrected field, so the next lookup fills only what is
 // still empty and never puts a source's wrong answer back.
@@ -4097,6 +4160,7 @@ function EditPaperDialog({
   const [issue, setIssue] = useState(r.issue ?? '')
   const [pages, setPages] = useState(r.pages ?? '')
   const [publisher, setPublisher] = useState(r.publisher ?? '')
+  const [abstract, setAbstract] = useState(r.abstract ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -4124,6 +4188,7 @@ function EditPaperDialog({
         issue: issue.trim(),
         pages: pages.trim(),
         publisher: publisher.trim(),
+        abstract: abstract.trim(),
       })
       onDone()
     } catch {
@@ -4170,6 +4235,11 @@ function EditPaperDialog({
         {field(t('paperFieldIssue'), issue, setIssue, 'paper-issue')}
         {field(t('paperFieldPages'), pages, setPages, 'paper-pages')}
         {field(t('paperFieldPublisher'), publisher, setPublisher, 'paper-publisher')}
+        <label className="field field-wide">
+          <span className="muted small">{t('paperFieldAbstract')}</span>
+          <textarea className="text" rows={6} value={abstract} onChange={(e) => setAbstract(e.target.value)} data-test="paper-abstract-field" />
+          <span className="muted small">{t('paperFieldAbstractHint')}</span>
+        </label>
       </div>
       {err && <p className="err small">{err}</p>}
     </Modal>

@@ -188,6 +188,7 @@ const (
 	FieldIssue     = "issue"
 	FieldPages     = "pages"
 	FieldPublisher = "publisher"
+	FieldAbstract  = "abstract"
 )
 
 // WasEdited reports whether a person set this field by hand.
@@ -213,6 +214,7 @@ type PaperEdit struct {
 	Issue     *string   `json:"issue,omitempty"`
 	Pages     *string   `json:"pages,omitempty"`
 	Publisher *string   `json:"publisher,omitempty"`
+	Abstract  *string   `json:"abstract,omitempty"`
 }
 
 // Apply writes the correction onto a paper and returns which fields it set, in
@@ -244,6 +246,9 @@ func (e PaperEdit) Apply(p *Paper) []string {
 	if e.Publisher != nil {
 		p.Record.Publisher, set = *e.Publisher, append(set, FieldPublisher)
 	}
+	if e.Abstract != nil {
+		p.Record.Abstract, set = *e.Abstract, append(set, FieldAbstract)
+	}
 	for _, f := range set {
 		if !p.WasEdited(f) {
 			p.Edited = append(p.Edited, f)
@@ -273,6 +278,7 @@ func (p *Paper) Enrich(title string, rec paper.Record) bool {
 	str(FieldIssue, &p.Record.Issue, rec.Issue)
 	str(FieldPages, &p.Record.Pages, rec.Pages)
 	str(FieldPublisher, &p.Record.Publisher, rec.Publisher)
+	str(FieldAbstract, &p.Record.Abstract, rec.Abstract)
 	if len(rec.Authors) > 0 && len(p.Record.Authors) == 0 && !p.WasEdited(FieldAuthors) {
 		p.Record.Authors, changed = rec.Authors, true
 	}
