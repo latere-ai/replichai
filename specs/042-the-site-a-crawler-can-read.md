@@ -35,6 +35,8 @@ Three separate failures sit behind that one line.
 
 **An address that does not exist says so.** Go learns the route shapes the client already knows, and anything outside them is a 404 carrying the shell — so the app still renders, and renders a *not found* screen rather than the dashboard under a corrected address.
 
+**A record page is specific; the site is not.** The entity pages — a project, a session, a researcher — describe one record as precisely as the record allows, because that specificity is the whole of their value to a reader arriving from a search. The site-level surfaces (the landing, the registry, the `WebSite` and `Organization` documents) describe what the platform is *for*: research that runs, published as evidence anyone can check, under the name of whoever signed it off. Reproduction is the act that can be automated and graded today and is what earns the trust the rest of the roadmap needs; it is not the category this platform intends to stay inside, and nothing written into a head here should say otherwise. What would actually be expensive to change is not an adjective but the address vocabulary — and `/p/{id}` is a project, `/u/{handle}` a researcher, `/registry` a public record. None of them says "reproduction", and none needs renaming when 007's instruments and experiments arrive.
+
 **The structured data is metadata we hold, not markup we invent.** A public project is a report about a paper with a DOI (`internal/paper` already enriches from Crossref); a researcher has an ORCID and a Scholar URL. `Report` → `about: ScholarlyArticle`, and `ProfilePage` → `Person` with `sameAs`. Nothing is asserted that is not already on the page.
 
 ## The children
