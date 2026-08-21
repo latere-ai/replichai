@@ -136,7 +136,7 @@ evals/               golden set: papers with known answers, used as a regression
 deploy/              k8s kustomize for staging and prod
 docs/                architecture, procedure, landscape
 specs/               designs, and the record of what got built
-reference/python/    the Python reference implementation of the core, checked against Go
+reference/python/    the Python reference implementation of the core (frozen at spec 005; no CI)
 ```
 
 ## The method is data

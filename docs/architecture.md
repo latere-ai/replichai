@@ -129,7 +129,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Composition roots** (`cmd/`) are where the vendor adapter is imported and the pieces are wired. `cmd/replichai` is the CLI — `audit`, `resolve`, `publish`, `finish`, `providers`, `rates`. `cmd/server` wires the stores, the gate, the worker, and the HTTP surface, and holds the runner that turns a claimed job into an audit and a published repository.
 
-A second implementation of the core — orchestrator, backend seam, and method loading — lives in `reference/python/`. It is not dead code: `method/` and `evals/` are shared, and the two conform when they produce the same verdict for the same case. It has not followed the Go seam past 005, so its provider has no `Transcript`; identity, publishing, the registry, and the whole application are Go-only.
+A second implementation of the core — orchestrator, backend seam, and method loading — lives in `reference/python/`. It is not dead code: `method/` and `evals/` are shared, and the two conform when they produce the same verdict for the same case. It has not followed the Go seam past 005, so its provider has no `Transcript`; identity, publishing, the registry, and the whole application are Go-only. Nor does CI run it — conformance is a claim somebody checks by hand, which is worth knowing before trusting it, and worth resolving one way or the other before [041](../specs/041-the-runtime-is-not-the-model-vendor.md) reshapes the seam underneath it.
 
 ## Grading
 
