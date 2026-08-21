@@ -1,6 +1,7 @@
 package managed
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -255,6 +256,18 @@ func TestErrors(t *testing.T) {
 	cleanup := &CleanupError{Err: temporary}
 	if !errors.Is(cleanup, temporary) || !strings.Contains(cleanup.Error(), "cleanup") {
 		t.Fatal("cleanup error does not retain cause")
+	}
+}
+
+func TestRequestSecretsAreReferencedAndCopied(t *testing.T) {
+	values := map[string]string{"repo": "first"}
+	ctx := WithSecrets(context.Background(), values)
+	values["repo"] = "changed"
+	if got, ok := Secret(ctx, "repo"); !ok || got != "first" {
+		t.Fatalf("Secret = %q, %v", got, ok)
+	}
+	if _, ok := Secret(ctx, "missing"); ok {
+		t.Fatal("missing secret resolved")
 	}
 }
 
