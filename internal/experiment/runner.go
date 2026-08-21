@@ -2,13 +2,14 @@ package experiment
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // Defaults for a runner. The instrument is mounted read-only, the dataset lands
@@ -24,8 +25,6 @@ const (
 	ResultFile = "result.json"
 
 	defaultRunnerModel   = "best"
-	defaultRunnerWorker  = "repro-runner"
-	defaultPollInterval  = 20 * time.Second
 	defaultRunnerTimeout = 30 * time.Minute
 	outputDirPlaceholder = "{{OUTPUT_DIR}}"
 )
@@ -36,22 +35,18 @@ const (
 // there is no rubric and no revision budget, and the worker's doctrine forbids
 // changing the command.
 //
-// It reuses provider.Provider unchanged: an experiment is a run with an empty
-// rubric and no revisions, not a second execution substrate.
+// It uses the same normalized controller as audits, with Evaluation left nil.
 type Runner struct {
-	provider     provider.Provider
+	controller   *managed.Controller
 	blobs        ArtifactStore
 	instructions string // the experiment doctrine (method/experiment.md)
 
-	modelPref    string
-	workerName   string
-	mountToken   string // read-only-scoped; never the org token (AC3)
-	mountPath    string
-	inputPath    string
-	packages     map[string][]string
-	pollInterval time.Duration
-	timeout      time.Duration
-	sleep        func(context.Context, time.Duration) error
+	modelPref  string
+	mountToken string // read-only-scoped; never the org token (AC3)
+	mountPath  string
+	inputPath  string
+	packages   map[string][]string
+	timeout    time.Duration
 }
 
 // RunnerOption configures a Runner.
@@ -73,31 +68,18 @@ func WithRunnerTimeout(d time.Duration) RunnerOption {
 	return func(r *Runner) { r.timeout = d }
 }
 
-// WithRunnerPollInterval overrides the gap between status checks.
-func WithRunnerPollInterval(d time.Duration) RunnerOption {
-	return func(r *Runner) { r.pollInterval = d }
-}
-
-// withRunnerSleep replaces the wait between polls so tests run instantly.
-func withRunnerSleep(f func(context.Context, time.Duration) error) RunnerOption {
-	return func(r *Runner) { r.sleep = f }
-}
-
 // NewRunner builds a Runner. instructions is the experiment doctrine loaded from
 // method/experiment.md; blobs is where result artifacts are persisted.
-func NewRunner(p provider.Provider, blobs ArtifactStore, instructions string, opts ...RunnerOption) *Runner {
+func NewRunner(controller *managed.Controller, blobs ArtifactStore, instructions string, opts ...RunnerOption) *Runner {
 	r := &Runner{
-		provider:     p,
+		controller:   controller,
 		blobs:        blobs,
 		instructions: instructions,
 		modelPref:    defaultRunnerModel,
-		workerName:   defaultRunnerWorker,
 		mountPath:    DefaultInstrumentMount,
 		inputPath:    DefaultInputPath,
 		packages:     map[string][]string{"pip": {"pandas", "numpy"}},
-		pollInterval: defaultPollInterval,
 		timeout:      defaultRunnerTimeout,
-		sleep:        sleepCtx,
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -131,55 +113,62 @@ func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input 
 		return Outcome{}, err
 	}
 
-	model, err := r.provider.ResolveModel(ctx, r.modelPref)
+	selector := managed.ModelSelector{Preference: r.modelPref}
+	base := managed.SessionSpec{Model: selector}
+	capabilities, err := r.controller.Capabilities(ctx, base)
 	if err != nil {
-		return Outcome{}, fmt.Errorf("resolve model: %w", err)
+		return Outcome{}, fmt.Errorf("read runtime capabilities: %w", err)
 	}
-	ws, err := r.provider.EnsureWorkspace(ctx, provider.WorkspaceSpec{
-		Name:     r.workerName + "-workspace",
-		Packages: r.packages,
-		Network:  provider.NetworkOpen,
-	})
-	if err != nil {
-		return Outcome{}, fmt.Errorf("ensure workspace: %w", err)
+	instructions := strings.ReplaceAll(r.instructions, outputDirPlaceholder, capabilities.OutputDir)
+	digest := sha256.Sum256(input)
+	repository := managed.RepositoryResource{
+		URL: inst.Ref.Repo.URL, Destination: strings.TrimPrefix(r.mountPath, "/workspace/"), Access: managed.AccessReadOnly,
 	}
-	instructions := strings.ReplaceAll(r.instructions, outputDirPlaceholder, r.provider.OutputDir())
-	worker, err := r.provider.EnsureWorker(ctx, provider.WorkerSpec{
-		Name:         r.workerName,
-		Instructions: instructions,
-		Model:        model,
-		Description:  "Runs a declared analysis on given data and reports what happened.",
-	})
-	if err != nil {
-		return Outcome{}, fmt.Errorf("ensure worker: %w", err)
+	if r.mountToken != "" {
+		repository.CredentialRef = "experiment-repository"
+		ctx = managed.WithSecrets(ctx, map[string]string{repository.CredentialRef: r.mountToken})
 	}
-
-	h, err := r.provider.StartRun(ctx, worker, ws, provider.RunSpec{
-		Task: r.taskFor(command),
-		// No rubric and no revisions: an experiment is run and reported, never graded.
-		Mount: provider.RepoMount{
-			URL:       inst.Ref.Repo.URL,
-			Token:     r.mountToken,
-			MountPath: r.mountPath,
-			ReadOnly:  true,
+	spec := managed.SessionSpec{
+		Model: selector, Instructions: instructions, Task: r.taskFor(command),
+		Sandbox: managed.SandboxSpec{
+			Packages: packageSpecs(r.packages), Network: managed.NetworkPolicy{Mode: managed.NetworkOpen},
 		},
-		Attachments: []provider.Attachment{{Path: r.inputPath, Content: input}},
-	})
-	if err != nil {
-		return Outcome{}, fmt.Errorf("start run: %w", err)
+		Resources: []managed.Resource{
+			{Kind: managed.ResourceRepository, Repository: &repository},
+			{Kind: managed.ResourceAttachment, Attachment: &managed.AttachmentResource{
+				Path: strings.TrimPrefix(r.inputPath, "/workspace/"), Content: input, SHA256: fmt.Sprintf("%x", digest),
+			}},
+		},
+		Evaluation: nil,
 	}
-	defer func() {
-		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
-		if closeErr := r.provider.CloseRun(releaseCtx, h); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("close run %s: %w", h.ID, closeErr))
-		}
-	}()
+	runCtx := ctx
+	cancel := func() {}
+	if r.timeout != 0 {
+		runCtx, cancel = context.WithTimeout(ctx, r.timeout)
+	}
+	defer cancel()
+	hooks := managed.Hooks{Retain: func(retainCtx context.Context, evidence managed.EvidenceReader) error {
+		out, err = r.collect(retainCtx, e, evidence, command)
+		return err
+	}}
+	_, err = r.controller.Execute(runCtx, spec, hooks)
+	return out, err
+}
 
-	if err := r.wait(ctx, h); err != nil {
-		return Outcome{}, err
+func packageSpecs(packages map[string][]string) []managed.Package {
+	var result []managed.Package
+	managers := make([]string, 0, len(packages))
+	for manager := range packages {
+		managers = append(managers, manager)
 	}
-	return r.collect(ctx, e, h, command)
+	sort.Strings(managers)
+	for _, manager := range managers {
+		names := packages[manager]
+		for _, name := range names {
+			result = append(result, managed.Package{Manager: manager, Name: name})
+		}
+	}
+	return result
 }
 
 // taskFor builds the per-run task: the exact command, where its input and the
@@ -194,37 +183,12 @@ The input data is at %s. The instrument repository is mounted read-only at %s â€
 		command, r.inputPath, r.mountPath, ResultFile)
 }
 
-// wait polls until the run reaches a terminal state, the deadline passes, or the
-// context is canceled.
-func (r *Runner) wait(ctx context.Context, h provider.RunHandle) error {
-	deadline := time.Now().Add(r.timeout)
-	for {
-		status, err := r.provider.Poll(ctx, h)
-		if err != nil {
-			return fmt.Errorf("poll run %s: %w", h.ID, err)
-		}
-		if status.State.Terminal() {
-			return nil
-		}
-		if !time.Now().Before(deadline) {
-			return fmt.Errorf("experiment run %s did not finish within %s", h.ID, r.timeout)
-		}
-		if err := r.sleep(ctx, r.pollInterval); err != nil {
-			return err
-		}
-	}
-}
-
 // collect reads the worker's report and persists the output artifacts. A missing
 // or unreadable report is itself an outcome â€” a run that produced nothing
 // reportable did not run, honestly recorded rather than raised as an error.
-func (r *Runner) collect(ctx context.Context, e *Experiment, h provider.RunHandle, command string) (Outcome, error) {
-	arts, err := r.provider.ListArtifacts(ctx, h)
-	if err != nil {
-		return Outcome{}, fmt.Errorf("list artifacts: %w", err)
-	}
-	byPath := make(map[string]provider.Artifact, len(arts))
-	for _, a := range arts {
+func (r *Runner) collect(ctx context.Context, e *Experiment, evidence managed.EvidenceReader, command string) (Outcome, error) {
+	byPath := make(map[string]managed.Artifact, len(evidence.Artifacts))
+	for _, a := range evidence.Artifacts {
 		byPath[a.Path] = a
 	}
 
@@ -234,7 +198,7 @@ func (r *Runner) collect(ctx context.Context, e *Experiment, h provider.RunHandl
 		out.Stderr = "the run produced no " + ResultFile
 		return out, nil
 	}
-	raw, err := r.provider.FetchArtifact(ctx, h, reportArt)
+	raw, err := evidence.Fetch(ctx, reportArt)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("fetch %s: %w", ResultFile, err)
 	}
@@ -255,7 +219,7 @@ func (r *Runner) collect(ctx context.Context, e *Experiment, h provider.RunHandl
 		if !ok {
 			continue // the worker named an output it did not actually produce; skip it
 		}
-		body, err := r.provider.FetchArtifact(ctx, h, art)
+		body, err := evidence.Fetch(ctx, art)
 		if err != nil {
 			return Outcome{}, fmt.Errorf("fetch output %s: %w", name, err)
 		}
@@ -266,24 +230,4 @@ func (r *Runner) collect(ctx context.Context, e *Experiment, h provider.RunHandl
 		out.Artifacts = append(out.Artifacts, Artifact{Name: name, Checksum: sum})
 	}
 	return out, nil
-}
-
-// sleepCtx waits for d, or returns early if ctx is canceled.
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			return nil
-		}
-	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }

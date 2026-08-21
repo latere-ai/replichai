@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // CohortDataFile is the conforming trial data a model cohort writes and the
@@ -43,23 +42,20 @@ func AssertNoPersona(prompt string) error {
 // plausible responder behaves, so it is gated on ground truth (see
 // GateModelCohort) and its data is a pilot, never evidence about people.
 type ModelCohort struct {
-	N        int
-	Trials   int
-	Provider provider.Provider
-	Config   PilotConfig
-	Coverage Coverage // the servable components to drive; the rest are skipped
+	N          int
+	Trials     int
+	Controller *managed.Controller
+	Config     PilotConfig
+	Coverage   Coverage // the servable components to drive; the rest are skipped
 
-	pollInterval time.Duration
-	timeout      time.Duration
-	sleep        func(context.Context, time.Duration) error
-	usage        provider.Usage
+	usage managed.Usage
 }
 
 // Kind identifies the cohort.
 func (*ModelCohort) Kind() CohortKind { return CohortModel }
 
 // Usage reports what the last Collect consumed, for the pilot.
-func (m *ModelCohort) Usage() provider.Usage { return m.usage }
+func (m *ModelCohort) Usage() managed.Usage { return m.usage }
 
 // Collect drives the cohort through the provider and reads back conforming trial
 // data. It refuses a persona-bearing prompt and an over-cap run before any
@@ -76,39 +72,20 @@ func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (
 		return CohortData{}, err
 	}
 
-	model, err := m.Provider.ResolveModel(ctx, "best")
-	if err != nil {
-		return CohortData{}, fmt.Errorf("resolve model: %w", err)
+	spec := managed.SessionSpec{
+		Model:        managed.ModelSelector{Preference: "best"},
+		Instructions: m.instructions(decl), Task: m.task(decl),
+		Sandbox:    managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkOpen}},
+		Evaluation: nil,
 	}
-	ws, err := m.Provider.EnsureWorkspace(ctx, provider.WorkspaceSpec{Name: "cohort-workspace", Network: provider.NetworkOpen})
-	if err != nil {
-		return CohortData{}, fmt.Errorf("ensure workspace: %w", err)
-	}
-	worker, err := m.Provider.EnsureWorker(ctx, provider.WorkerSpec{
-		Name:         "repro-cohort",
-		Instructions: m.instructions(decl),
-		Model:        model,
-		Description:  "Answers a study protocol's servable trials as a plausible participant, with no invented demographics.",
-	})
-	if err != nil {
-		return CohortData{}, fmt.Errorf("ensure worker: %w", err)
-	}
-	h, err := m.Provider.StartRun(ctx, worker, ws, provider.RunSpec{Task: m.task(decl)})
-	if err != nil {
-		return CohortData{}, fmt.Errorf("start run: %w", err)
-	}
-	defer func() {
-		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
-		if closeErr := m.Provider.CloseRun(releaseCtx, h); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("close run %s: %w", h.ID, closeErr))
-		}
-	}()
-
-	if err := m.wait(ctx, h); err != nil {
-		return CohortData{}, err
-	}
-	return m.collectData(ctx, h)
+	hooks := managed.Hooks{Retain: func(retainCtx context.Context, evidence managed.EvidenceReader) error {
+		m.usage = evidence.Status.Usage
+		var retainErr error
+		data, retainErr = m.collectData(retainCtx, evidence)
+		return retainErr
+	}}
+	_, err = m.Controller.Execute(ctx, spec, hooks)
+	return data, err
 }
 
 // instructions is the cohort worker's standing doctrine: answer as a plausible
@@ -134,48 +111,12 @@ func (m *ModelCohort) task(decl instrument.Instrument) string {
 		m.N, CohortDataFile, strings.Join(cols, ", "))
 }
 
-func (m *ModelCohort) wait(ctx context.Context, h provider.RunHandle) error {
-	interval := m.pollInterval
-	if interval <= 0 {
-		interval = defaultPollInterval
-	}
-	timeout := m.timeout
-	if timeout <= 0 {
-		timeout = defaultRunnerTimeout
-	}
-	sleep := m.sleep
-	if sleep == nil {
-		sleep = sleepCtx
-	}
-	deadline := time.Now().Add(timeout)
-	for {
-		status, err := m.Provider.Poll(ctx, h)
-		if err != nil {
-			return fmt.Errorf("poll cohort run %s: %w", h.ID, err)
-		}
-		if status.State.Terminal() {
-			m.usage = status.Usage
-			return nil
-		}
-		if !time.Now().Before(deadline) {
-			return fmt.Errorf("cohort run %s did not finish within %s", h.ID, timeout)
-		}
-		if err := sleep(ctx, interval); err != nil {
-			return err
-		}
-	}
-}
-
-func (m *ModelCohort) collectData(ctx context.Context, h provider.RunHandle) (CohortData, error) {
-	arts, err := m.Provider.ListArtifacts(ctx, h)
-	if err != nil {
-		return CohortData{}, fmt.Errorf("list cohort artifacts: %w", err)
-	}
-	for _, a := range arts {
+func (m *ModelCohort) collectData(ctx context.Context, evidence managed.EvidenceReader) (CohortData, error) {
+	for _, a := range evidence.Artifacts {
 		if a.Path != CohortDataFile {
 			continue
 		}
-		body, err := m.Provider.FetchArtifact(ctx, h, a)
+		body, err := evidence.Fetch(ctx, a)
 		if err != nil {
 			return CohortData{}, fmt.Errorf("fetch %s: %w", CohortDataFile, err)
 		}

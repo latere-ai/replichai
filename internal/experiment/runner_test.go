@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/managed/legacy"
+	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/provider/memory"
@@ -18,10 +21,35 @@ const testDoctrine = "You are repro-runner. Run the command exactly as given; do
 
 func newTestRunner(t *testing.T, p *memory.Provider, blobs ArtifactStore) *Runner {
 	t.Helper()
-	return NewRunner(p, blobs, testDoctrine,
-		WithMountToken("ro-token"),
-		withRunnerSleep(func(context.Context, time.Duration) error { return nil }),
-	)
+	return NewRunner(newManagedController(t, p), blobs, testDoctrine, WithMountToken("ro-token"))
+}
+
+type singleRuntimeRouter struct{ runtime managed.Runtime }
+
+func (r singleRuntimeRouter) ForNew(managed.SessionSpec) (managed.Runtime, error) {
+	return r.runtime, nil
+}
+func (r singleRuntimeRouter) ForRef(managed.SessionRef) (managed.Runtime, error) {
+	return r.runtime, nil
+}
+
+func newManagedController(t *testing.T, p provider.Provider) *managed.Controller {
+	t.Helper()
+	return managedController(p)
+}
+
+func managedController(p provider.Provider) *managed.Controller {
+	runtime, err := legacy.New(legacy.Config{Name: "anthropic-managed", ModelProvider: "anthropic", Provider: p})
+	if err != nil {
+		panic(err)
+	}
+	return controllerForRuntime(runtime)
+}
+
+func controllerForRuntime(runtime managed.Runtime) *managed.Controller {
+	policy := managed.DefaultWaitPolicy()
+	policy.InitialDelay, policy.MaxDelay = 0, 0
+	return managed.NewController(singleRuntimeRouter{runtime: runtime}, managed.WithWaitPolicy(policy))
 }
 
 type closeFailProvider struct {
@@ -72,13 +100,26 @@ func TestRunnerRunsAndReports(t *testing.T) {
 	}
 }
 
+func TestRunnerUsesOneUngradedManagedSession(t *testing.T) {
+	runtime := managedmemory.NewWithStore(nil, managedmemory.Config{Files: map[string][]byte{
+		ResultFile: []byte(`{"ran":true,"stdout":"managed"}`),
+	}})
+	runner := NewRunner(controllerForRuntime(runtime), NewMemArtifactStore(), testDoctrine, WithMountToken("scoped"))
+	out, err := runner.Run(context.Background(), &Experiment{ID: "managed"}, mountedInstrument(), []byte("data"))
+	if err != nil || !out.Ran || out.Stdout != "managed" {
+		t.Fatalf("Run = %+v, %v", out, err)
+	}
+	specs := runtime.Specs()
+	if len(specs) != 1 || specs[0].Evaluation != nil || len(specs[0].Resources) != 2 {
+		t.Fatalf("managed specs = %+v", specs)
+	}
+}
+
 func TestRunnerReturnsCleanupError(t *testing.T) {
 	closeErr := errors.New("close failed")
 	p := &closeFailProvider{Provider: memory.New(), err: closeErr}
 	p.Files = map[string][]byte{ResultFile: []byte(`{"ran":true}`)}
-	r := NewRunner(p, NewMemArtifactStore(), testDoctrine,
-		WithMountToken("ro-token"),
-		withRunnerSleep(func(context.Context, time.Duration) error { return nil }))
+	r := NewRunner(newManagedController(t, p), NewMemArtifactStore(), testDoctrine, WithMountToken("ro-token"))
 
 	if _, err := r.Run(context.Background(), &Experiment{ID: "exp-1"}, mountedInstrument(), []byte("data")); !errors.Is(err, closeErr) {
 		t.Fatalf("Run error = %v, want cleanup error", err)
@@ -192,23 +233,6 @@ func TestRunnerRefusesUnparameterisedCommand(t *testing.T) {
 	}
 }
 
-func TestSleepCtx(t *testing.T) {
-	if err := sleepCtx(context.Background(), 0); err != nil {
-		t.Errorf("zero duration should return nil, got %v", err)
-	}
-	if err := sleepCtx(context.Background(), time.Millisecond); err != nil {
-		t.Errorf("a short sleep should complete, got %v", err)
-	}
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := sleepCtx(canceled, time.Hour); !errors.Is(err, context.Canceled) {
-		t.Errorf("a canceled context should cut the sleep short, got %v", err)
-	}
-	if err := sleepCtx(canceled, 0); !errors.Is(err, context.Canceled) {
-		t.Errorf("cancellation should win even at zero duration, got %v", err)
-	}
-}
-
 func TestRunnerSurfacesProviderFailure(t *testing.T) {
 	p := memory.New()
 	p.Err = errBackendDown
@@ -268,8 +292,7 @@ func TestRunnerSurfacesArtifactStoreFailure(t *testing.T) {
 		ResultFile: []byte(`{"ran":true,"outputs":["out.csv"]}`),
 		"out.csv":  []byte("x"),
 	}
-	r := NewRunner(p, failBlobs{NewMemArtifactStore()}, testDoctrine,
-		withRunnerSleep(func(context.Context, time.Duration) error { return nil }))
+	r := NewRunner(newManagedController(t, p), failBlobs{NewMemArtifactStore()}, testDoctrine)
 	if _, err := r.Run(context.Background(), &Experiment{ID: "x"}, mountedInstrument(), []byte("d")); err == nil {
 		t.Fatal("a store failure while persisting an output should surface")
 	}
@@ -280,8 +303,7 @@ func TestRunnerWrapsEachStageFailure(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			mem := memory.New()
 			mem.Files = map[string][]byte{ResultFile: []byte(`{"ran":true}`)}
-			r := NewRunner(failAt{Provider: mem, stage: stage}, NewMemArtifactStore(), testDoctrine,
-				withRunnerSleep(func(context.Context, time.Duration) error { return nil }))
+			r := NewRunner(newManagedController(t, failAt{Provider: mem, stage: stage}), NewMemArtifactStore(), testDoctrine)
 			if _, err := r.Run(context.Background(), &Experiment{ID: "x"}, mountedInstrument(), []byte("d")); err == nil {
 				t.Fatalf("a failure at %s should surface from Run", stage)
 			}
@@ -292,9 +314,8 @@ func TestRunnerWrapsEachStageFailure(t *testing.T) {
 func TestRunnerTimesOut(t *testing.T) {
 	p := memory.New()
 	p.PollsBeforeDone = 99 // never finishes in time
-	r := NewRunner(p, NewMemArtifactStore(), testDoctrine,
+	r := NewRunner(newManagedController(t, p), NewMemArtifactStore(), testDoctrine,
 		WithRunnerTimeout(-time.Second),
-		withRunnerSleep(func(context.Context, time.Duration) error { return nil }),
 	)
 	if _, err := r.Run(context.Background(), &Experiment{ID: "x"}, mountedInstrument(), []byte("d")); err == nil {
 		t.Fatal("a run that never finishes should time out")

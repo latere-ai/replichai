@@ -5,16 +5,15 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
+	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/provider/memory"
 )
 
 func newModelCohort(p provider.Provider, config PilotConfig, cov Coverage) *ModelCohort {
 	return &ModelCohort{
-		N: config.N, Trials: 4, Provider: p, Config: config, Coverage: cov,
-		sleep: func(context.Context, time.Duration) error { return nil },
+		N: config.N, Trials: 4, Controller: managedController(p), Config: config, Coverage: cov,
 	}
 }
 
@@ -58,6 +57,23 @@ func TestModelCohortCollects(t *testing.T) {
 	}
 	if err := AssertNoPersona(instr); err != nil {
 		t.Errorf("the cohort instructions themselves carry a persona term: %v", err)
+	}
+}
+
+func TestModelCohortUsesOneUngradedManagedSession(t *testing.T) {
+	runtime := managedmemory.NewWithStore(nil, managedmemory.Config{Files: map[string][]byte{
+		CohortDataFile: []byte("participant,answer\np1,yes\n"),
+	}})
+	m := &ModelCohort{
+		N: 2, Trials: 4, Controller: controllerForRuntime(runtime), Config: cohortConfig(),
+		Coverage: Coverage{Servable: []string{"task"}},
+	}
+	if _, err := m.Collect(context.Background(), caseTwoInstrument().Decl); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	specs := runtime.Specs()
+	if len(specs) != 1 || specs[0].Evaluation != nil || m.Usage().Model.Provider != "memory" {
+		t.Fatalf("managed specs=%+v usage=%+v", specs, m.Usage())
 	}
 }
 
@@ -128,7 +144,7 @@ func TestModelCohortReportsUsage(t *testing.T) {
 	if _, err := m.Collect(context.Background(), caseTwoInstrument().Decl); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if m.Usage().Total() == 0 {
+	if m.Usage().TotalTokens() == 0 {
 		t.Error("the cohort should report the run's usage for the pilot")
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // Caps bound what one pilot may cost, so a synthetic run cannot be silently
@@ -61,7 +61,7 @@ type Pilot struct {
 	Data        CohortData                        `json:"-"` // the bytes; exported separately
 	Calibration *Comparison                       `json:"calibration,omitempty"`
 	NotCovered  []instrument.ComponentServability `json:"not_covered,omitempty"`
-	Usage       provider.Usage                    `json:"usage"`
+	Usage       managed.Usage                     `json:"usage"`
 }
 
 // ErrIncompletePilot reports a pilot missing a decision it must record. Such a
@@ -120,7 +120,7 @@ func (p Pilot) Render() ([]byte, error) {
 	} else {
 		fmt.Fprintf(&b, "- seed: %d (the run is reproducible from it)\n", p.Config.Seed)
 	}
-	fmt.Fprintf(&b, "- usage: %d input + %d output tokens\n\n", p.Usage.InputTokens, p.Usage.OutputTokens)
+	fmt.Fprintf(&b, "- usage: %d input + %d output tokens\n\n", p.Usage.InputFresh+p.Usage.InputCached, p.Usage.Output)
 
 	if len(p.NotCovered) > 0 {
 		b.WriteString("## Components not covered\n\n")
