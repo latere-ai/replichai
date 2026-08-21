@@ -2,6 +2,8 @@
 
 Designs, and the record of what got built. One spec per tightly-scoped feature; each states the problem, the decisions, the acceptance criteria, and what it deliberately leaves out. This page is the map: what exists today, how it fits, and what is left.
 
+**The table is the record.** A spec's own file carries its status and its argument; the map below carries its row. Prose on this page is for a decision that outlived its spec — something a later reader has to know before touching the code — not for a paragraph per feature. A shipped spec that needs no such note needs no paragraph here.
+
 Feasibility questions and scope extensions that are *not* on the roadmap — multi-study papers, hard-to-replicate instruments, unpublished manuscripts — live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced. One of them, [016](016-a-paper-that-is-not-published-yet.md), needed enough argument to get a deferred spec of its own.
 
 ## What replichai is
@@ -257,7 +259,7 @@ Nothing on this list blocks the loop the product exists for: a paper goes in, a 
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input — `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop.
 
-**The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md), five children).** The provider contract still carries one backend's lifecycle and vocabulary in places the application can see. 041a–041e normalise a managed session behind one contract, make a session remember which runtime ran it, make models and meters name their source, and then bring the Anthropic adapter into conformance — a refactor that changes no product behaviour and is what a second execution path would need first.
+**The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md)).** The provider contract still carries one backend's lifecycle and vocabulary in places the application can see. 041a–041e normalise a managed session behind one contract, make a session remember which runtime ran it, make models and meters name their source, and then bring the Anthropic adapter into conformance — a refactor that changes no product behaviour and is what a second execution path would need first. The umbrella names two further children for the alternative runtimes themselves (041f, 041g); neither is written yet, and neither is reachable until the seam above is proven.
 
 **Blocked on corpus, not on code.** [023d](023d-ground-truth-for-a-cohort.md) (a cohort with ground truth) and [007d](007d-hosting-a-study.md) (hosting a study for real participants) wait on papers, not on packages: a census of every published `instrument.json` found 0/26 servable components and 0/3 papers whose released data is held. Until the golden set gains a fully servable study, neither can be checked against anything. The same gap is recorded in [`BACKLOG.md`](BACKLOG.md) item 3.
 

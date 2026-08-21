@@ -171,7 +171,7 @@ Ownership is granted by invitation — the organisation invites a GitHub login a
 
 The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and there is a test asserting that. Every server-side GitHub operation runs as a GitHub App installation rather than an organisation PAT. The one remaining exception is the mount credential the sandbox itself holds: an installation token lives at most an hour, shorter than a long run, so the mount keeps a non-expiring token until runs are bounded under that or the backend can refresh one mid-session. That is [009](../specs/009-secret-containment-when-the-agent-commits-live.md)'s open commit, and it is recorded rather than assumed away.
 
-The app is fail-closed by the same habit. An empty grants table admits nobody, the gate resolves per request, and the router's own gated set is asserted in a test so a new route cannot ship open.
+The app is fail-closed by the same habit. An empty grants table admits nobody, the gate resolves per request, and the router's own gated set is asserted in a test so a new route cannot ship open. The release smoke (`test/release-smoke.sh`) drives the deployed gate after every tagged deploy and fails if `/projects` answers anything but a refusal — so the dev bypass reaching production is a failed release rather than a quiet hole.
 
 ## What is not here
 
