@@ -1,6 +1,6 @@
 # Specs
 
-Designs, and the record of what got built. One spec per tightly-scoped feature; each states the problem, the decisions, the acceptance criteria, and what it deliberately leaves out. This page is the map: what exists today, how it fits, what is only designed, and the order it gets built.
+Designs, and the record of what got built. One spec per tightly-scoped feature; each states the problem, the decisions, the acceptance criteria, and what it deliberately leaves out. This page is the map: what exists today, how it fits, and what is left.
 
 Feasibility questions and scope extensions that are *not* on the roadmap — multi-study papers, hard-to-replicate instruments, unpublished manuscripts — live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced. One of them, [016](016-a-paper-that-is-not-published-yet.md), needed enough argument to get a deferred spec of its own.
 
@@ -27,11 +27,11 @@ replichai finish <owner>/<repo> <paper> --session <id>
 
 This was proven end to end: a real reproduction (`open-hai/short-form-videos-…-wtmk`) with agent-authored history, an independent manifest, and a collaborator invitation. `audit --publish` blocks; `--detach` starts it and hands you a `finish` command to run later, since the agent commits independently of the CLI.
 
-**Implemented:** 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b/007c (experiments and the synthetic pilot — engine halves), and the **web application core**: 006a (HTTP + SSE), 006b (job model + Postgres), 006c (OIDC login + the fail-closed access gate). **006f is implemented at its core** (mount, publish, finish, verifier, invite); two pieces stay open (below). **010** provisions production — domain, database, k8s manifests, and a tag-triggered deploy pipeline.
+**Implemented:** the engine — 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b/007c (experiments and the synthetic pilot — engine halves) — and the application on top of it: 006a (HTTP + SSE), 006b (job model + Postgres), 006c (OIDC login + the fail-closed access gate), 006e (the frontend), 006f/006i (the mount publish, from the CLI and from the server), and everything the numbered specs from 011 up have added to them. **010** provisions production — domain, database, k8s manifests, and a tag-triggered deploy pipeline.
 
 **The app runs end to end**: `docker compose up` (or `make up`) brings up Postgres + the server, which serves the React frontend (006e) and the API. A researcher signs in, submits a paper URL, and watches its phases stream live to `done` behind the real fail-closed gate. Production is provisioned and fail-closed.
 
-**Built (pending a full prod run):** [006i](006i-server-side-mount-and-publish.md) wires the CLI's live-mount publish into the server `engineRunner`, so a web-submitted session gets a real repository, manifest, and committed transcript rather than evaporating with the sandbox — the backend half of 006f, with the CLI's finalize extracted into a shared `publish.FinalizeLive` so the two paths cannot drift.
+**Built:** [006i](006i-server-side-mount-and-publish.md) wires the CLI's live-mount publish into the server `engineRunner`, so a web-submitted session gets a real repository, manifest, and committed transcript rather than evaporating with the sandbox — the backend half of 006f, with the CLI's finalize extracted into a shared `publish.FinalizeLive` so the two paths cannot drift.
 
 **Built:** [006j](006j-the-new-project-flow.md) makes "New project" a deliberate act — name it, preview each paper link (`POST /resolve`), start several papers at once, and invite collaborators, through a dedicated `POST /projects` (plus `PATCH /projects/{id}` rename).
 
@@ -77,6 +77,12 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Built and deployed:** the project/session rework — 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
+**Built — what a run actually found:** the [021](021-what-the-run-actually-found.md) chain turns a finished session from a folder of markdown into a result somebody reads. [021a](021a-the-findings-as-data.md) makes the findings data (`verdict.json`, its schema in `internal/verdict`, graded by the rubric); [021b](021b-a-verdict-that-reads-like-one.md) renders it as a verdict rather than a file listing; [021c](021c-what-the-authors-released.md) reports what the authors released; [021d](021d-watching-a-session-run.md) is the live session screen; [021e](021e-the-project-rail.md) is the project's own rail — what it holds, what it has spent, whether it can be published.
+
+**Built — the places the app has:** [024](024-settings-is-a-place.md) makes personal settings a destination with its own tabs, and makes the ledger name the project each move went to, durably enough that a deleted project still reads. [028](028-the-registry-opens.md) opens the registry, a public project, and a public session to a reader who is not signed in — nine reads moved outside the gate, with the redaction keyed on the same predicate that already withheld a balance. [029](029-the-landing-is-a-place.md) gives the signed-out reader a real landing page, and [033](033-the-landing-rebuilt-from-the-design.md)/[034](034-the-console-rebuilt-from-the-design.md)/[040](040-the-landing-in-light.md) rebuild the landing and the console from the design, in both themes, ending on the footer the rest of Latere shares.
+
+**Built — what a project holds and says:** [036](036-a-project-can-start-empty.md) lets a project be created with a title and no papers, dropping the requirement 012 had left in place. [037](037-a-paper-carries-its-bibliography.md) gives a paper its bibliographic record rather than a bare reference string. [038](038-a-project-says-what-it-is-about.md) gives a project a description, and [039](039-a-description-can-be-drafted.md) lets a model draft that description — through `internal/draft`, a single priced call that is deliberately not a `provider.Provider`, against whichever model the deployment configures.
+
 ## Architecture at a glance
 
 **The neutral core, the named edges.** The orchestrator (`internal/audit`) and the contract (`internal/provider`) name only roles; the one backend adapter (`internal/provider/anthropic`) and the composition root (`cmd/`) name the vendor. A `memory` provider runs nothing, so the whole orchestrator is testable offline.
@@ -88,6 +94,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/paper` | resolve a reference to a stable identity + slug (001) |
 | `internal/method` | the method — instructions, rubric, task template, experiment doctrine — and its digest |
 | `internal/instrument` | the `instrument.json` schema and its validation (007a) |
+| `internal/verdict` | the `verdict.json` schema — the findings as data (021a) |
 | `internal/provider` | the neutral backend contract; `anthropic` and `memory` adapters |
 | `internal/audit` | the orchestrator: run an audit, optionally into a mounted repo |
 | `internal/experiment` | run a reproduction's declared analysis on new data (007b); never imported by `audit` |
@@ -95,15 +102,19 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/github` | the small GitHub client publishing and the registry need |
 | `internal/registry` | the derived registry: relate reproductions of one paper (003) |
 | `internal/job` | the job lifecycle: the state machine, the store seam, the worker (006b) |
+| `internal/project` | projects, the papers they hold, and their members (006g, 012, 035) |
 | `internal/access` | the authorisation model: grants, tiers, project membership, seed-and-bind (006c) |
 | `internal/platform` | the policy an admin tunes at runtime: the settings row — start reserve, overdraft floor, rate card (006k, 011) |
 | `internal/credit` | the ledger: wallets, project pots, holds and charges, in micro-USD (011) |
+| `internal/payment` | the card-processor seam and its Stripe adapter (022a, 022b) |
 | `internal/profile` | the self-asserted researcher identity a public sign-off is published under (006n) |
+| `internal/notify` | what the platform says to somebody who is not looking at it (006p) |
+| `internal/draft` | one short model call — a prompt in, a paragraph and a token count out (039) |
 | `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
 | `frontend/` | the researcher UI — bun + React, i18n scaffolding (English only today) (006e) |
-| `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers` |
+| `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers`, `rates` |
 | `cmd/server` | the web app composition root: wires the engine + stores + gate, runs the worker + HTTP server (006a/b) |
 | `deploy/` + `.github/` | k8s kustomize (prod/staging) and the CI/release pipeline (010) |
 
@@ -143,7 +154,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | implemented | 006b |
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | implemented | 006a |
-| 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | core built | 002, 004, 006g, (006c) |
+| 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | built; hardening in 009 | 002, 004, 006g, (006c) |
 | 006g | [Projects and replication sessions](006g-projects-and-replication-sessions.md) | implemented, deployed | 006b, 006c |
 | 006h | [Session transcript viewer](006h-session-transcript-viewer.md) | implemented, deployed | 006g, 005, 003 |
 | 006i | [Server-side mount and publish](006i-server-side-mount-and-publish.md) | built | 006f, 006b |
@@ -167,6 +178,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
 | 011 | [What a session costs](011-what-a-session-costs.md) | built | 006b, 006c, 006g, 006k, 006h |
 | 012 | [A project holds papers](012-a-project-holds-papers.md) | built | 006g, 006j, 006c, 011, 001 |
+| 013 | [The address bar is the state](013-the-address-bar-is-the-state.md) | built | 006e, 006g |
 | 014a | [Managed runs close truthfully](014a-managed-runs-close-truthfully.md) | built | 004, 006b, 011 |
 | 014b | [Job-state writes are required](014b-job-state-writes-are-required.md) | built | 006b, 011, 014a |
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
@@ -183,7 +195,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 021c | [What the authors released](021c-what-the-authors-released.md) | built | 021a, 015, 002 |
 | 021d | [Watching a session run](021d-watching-a-session-run.md) | built (revised down) | 006a, 006s, 005, 011 |
 | 021e | [The project rail](021e-the-project-rail.md) | built | 021a, 021d, 018, 006n, 011 |
-| 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | designed | 011, 006c, 006k, 010 |
+| 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | built (all six leaves) | 011, 006c, 006k, 010 |
 | 022a | [The idempotent paid top-up](022a-the-idempotent-paid-topup.md) | built | 011 |
 | 022b | [Checkout and the webhook](022b-checkout-and-the-webhook.md) | built | 022a |
 | 022c | [Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) | built | 022b |
@@ -223,29 +235,26 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **The engine (001–005) — done.** 001 decides what a paper *is*; 002 decides where a reproduction *goes* and gates what may be republished; 003 relates repeat reproductions of one paper by identity; 004 is the record of why the core is Go. 005 closed the evidence layer: the agent's full session transcript is fetched and committed, by the system, in the same finalize step as the manifest — so each reproduction is claim + evidence + verdict.
 
-**The web application (006).** A single-tenant service that wraps the engine: submit a paper (URL or dropped PDF), watch it run, be granted the resulting repository, and inspect the transcript and cost afterwards. It spawns six children — **006a** the HTTP API and SSE, **006b** the job model and Postgres, **006c** identity and the fail-closed access gate, **006d** PDF ingestion, **006e** the frontend, **006f** taking a reproduction out (the mount publish, invitation, and visibility flip — the one child already built at its core). Closed beta: signing in grants nothing until a platform admin seeds you.
+**The web application (006) — built, deployed, and taking money.** A service that wraps the engine: sign in, put papers in a project, start a session per paper, watch it stream, read the verdict, take the repository out, publish it under your name, and pay for the compute it burned. 006 itself stays a draft because it is the container: what it argued for now lives in nineteen children (006a–006s) and in the numbered specs from 011 up, each of which carries its own status. The one child still unbuilt is **006d**, dropping a PDF to submit.
+
+Sign-in is open ([006q](006q-sign-in-is-open-budget-is-not.md)): anyone with a Latere account may sign in and is granted the ordinary user tier. What limits them is the meter, not a guest list, and they arrive with nothing to spend until they buy credits ([022](022-money-comes-in-without-an-admin.md)) or an admin grants them.
 
 **Replication (007) — the track past the inner loop.** It turns a reproduction into a re-runnable **instrument** — the study protocol, the analysis entrypoint, and a servability verdict, declared as data (**007a**) — then generalises the unit of work: an **experiment** binds one instrument to one **data source**, of which there are four. The paper's released data gives re-analysis; a researcher's uploaded dataset gives a new finding on the paper's instrument (**007b**); an LLM cohort gives a *pilot* that shakes the apparatus down and never becomes evidence about people (**007c**); real participants, through a page the platform hosts, give re-observation (**007d**). One generalisation, four bindings — "run it on my own data" is a row in a table, not a feature of its own.
 
 What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop boundary is a rubric failure condition and the product's thesis. 007 also revises **006b** (a job runs an audit *or* an experiment) and **006c** (project membership beside the tiers) — written before either is built, because afterwards it would be a migration.
 
-## Build sequence
+The engine halves of 007a/007b/007c are built and nothing user-facing reaches them. Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.
 
-Engine first; the web shell last, because every screen it renders needs an engine capability the earlier specs deliver.
+## What is left
 
-```
-002 ✓ → 003 ✓ → 006f-core ✓ → 005 ✓ → 007a ✓ → 007b ✓ → 007c ✓
-     → 006a ✓ / 006b ✓ (runs on Postgres via compose) → 006c (identity, next) → 006d (PDF) → 006e (frontend) → 007d → 008
-```
+Nothing on this list blocks the loop the product exists for: a paper goes in, a graded reproduction with its transcript comes out, and somebody pays for it. These are the next things worth building, and each one names why it is not built yet.
 
-Done so far: 001–005, 006f's core, 007a, the engine halves of 007b and 007c, and **006a and 006b** — the job state machine and its in-process worker (`internal/job`, with in-memory and Postgres stores behind one contract), the HTTP router, SSE stream, read surfaces, and fail-closed gate seam (`internal/httpapi`), and the composition root (`cmd/server`) that wires them to the engine. **The web app runs locally**: `docker compose up` brings up Postgres + the server, a submitted paper walks `submitted → done` through the real HTTP + worker path, and the job survives a restart. It defaults to the in-process memory provider (no API key); `--provider anthropic` does real audits.
+**The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input — `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop.
 
-**006c's core is built**: the authorisation model (`internal/access` — grants, three tiers, project membership, seed-by-verified-email with one-way binding, in-memory and Postgres against one contract) and the fail-closed gate policy (`internal/webauth`) that resolves a grant per request. What remains of 006c is the **OIDC login front door** — sign-in via `latere.ai/x/pkg/oidclogin`, the session cookie holding only `sub`+email, `/me`, the `/admin/access` endpoints, the dev-bypass off-loopback refusal, and rewiring `cmd/server` from the `--dev` gate to the real one. Until that lands the server still runs behind `--dev`.
+**Blocked on corpus, not on code.** [023d](023d-ground-truth-for-a-cohort.md) (a cohort with ground truth) and [007d](007d-hosting-a-study.md) (hosting a study for real participants) wait on papers, not on packages: a census of every published `instrument.json` found 0/26 servable components and 0/3 papers whose released data is held. Until the golden set gains a fully servable study, neither can be checked against anything. The same gap is recorded in [`BACKLOG.md`](BACKLOG.md) item 3.
 
-**The web application is usable end to end.** What remains is depth, not the core loop: **006f packaged** for reuse (the `publishing` phase — a pass-through in the server today, so runs are graded but not yet pushed to a repository), **006d** (dropping a PDF to submit), a server-side job list, **011** (credits replacing the session counter, so what limits a run is what it actually costs), and 007d.
+**Deferred on a hard constraint.** [009](009-secret-containment-when-the-agent-commits-live.md)'s third commit — a per-repo mount token replacing the org PAT inside the sandbox — cannot ship while a GitHub App installation token lives at most an hour and a real run took 53 minutes. It needs runs bounded under the hour or a backend that can refresh a mount credential mid-session.
 
-**Production is provisioned** ([010](010-deployment-and-release.md)): `replichai.latere.ai` DNS, the `replichai` database and its secret (terraform, applied), the k8s kustomize manifests (`deploy/prod` in the `latere` namespace), and the CI/release pipeline — a `v*` tag builds, deploys to prod, and smokes. Prod is **fail-closed**: with no login yet it admits nobody, and the release smoke fails if the dev bypass ever reaches production.
+**Deferred on scale.** [025](025-the-solvency-an-operator-can-act-on.md), [026](026-the-people-table-at-scale.md), and [027](027-eu-vat-and-the-invoice.md) are the money follow-ups 022 named. The current surfaces are fine at today's numbers; the specs exist so the fix is known before the numbers force it. 027 waits on the operator — OSS registration, a Stripe Tax configuration, and one legal classification — rather than on code.
 
-Still open in the server: the experiment `Kind` in `job.Runner` (the dispatch is there; the experiment callee is 007b's server wiring), the Postgres stores for 007b/007c, and reading a transcript through `ReproReader`. The first two are now scoped as the [023](023-the-outer-loop-as-a-product.md) chain — [023a](023a-experiments-persisted-and-dispatched.md) fills them, [023b](023b-the-experiment-http-surface.md)/[023c](023c-running-an-experiment-from-the-app.md) put a person in front of them.
-
-Within 007 the order inverted how the capabilities were first asked for — the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.
+**Deferred by choice.** [006d](006d-pdf-ingestion.md) (drop a PDF to submit), [008](008-drive-data-plane.md) (drive as the artifact data plane, behind the `Store` seam), and [016](016-a-paper-that-is-not-published-yet.md) (a manuscript with no public identity, at ideation level). Still owed and not yet specced: recovering a negative project *pot* — 022 closed negative wallets, not overrun pots.
