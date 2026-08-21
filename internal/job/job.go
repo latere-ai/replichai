@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -207,6 +209,32 @@ type Job struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// PhaseAt records when the job entered each phase, so the timeline is durable.
 	PhaseAt map[Phase]time.Time `json:"phase_at,omitempty"`
+}
+
+const LegacyRuntime managed.RuntimeName = "anthropic-managed"
+
+// ManagedSessionRef returns the complete durable reference. Historical rows
+// carried only run_id; the production invariant before the managed contract was
+// Anthropic, so that compatibility path is explicit and never uses today's
+// configured default.
+func (j Job) ManagedSessionRef() (managed.SessionRef, bool, error) {
+	if len(j.Status.SessionRef) > 0 {
+		var ref managed.SessionRef
+		if err := json.Unmarshal(j.Status.SessionRef, &ref); err != nil {
+			return managed.SessionRef{}, false, fmt.Errorf("decode managed session ref: %w", err)
+		}
+		if err := ref.Validate(managed.DefaultMaxLocatorBytes); err != nil {
+			return managed.SessionRef{}, false, fmt.Errorf("validate managed session ref: %w", err)
+		}
+		if j.Status.Runtime != "" && managed.RuntimeName(j.Status.Runtime) != ref.Runtime {
+			return managed.SessionRef{}, false, &managed.RuntimeMismatchError{Expected: managed.RuntimeName(j.Status.Runtime), Actual: ref.Runtime}
+		}
+		return ref, true, nil
+	}
+	if j.Status.RunID == "" {
+		return managed.SessionRef{}, false, nil
+	}
+	return managed.SessionRef{Runtime: LegacyRuntime, ID: j.Status.RunID, Revision: 1, LocatorVersion: 1}, true, nil
 }
 
 // Active reports whether the job is still in a phase from which work continues —

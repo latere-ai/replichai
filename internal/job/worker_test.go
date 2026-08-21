@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -83,9 +84,9 @@ func (f *fakeRunner) Publish(_ context.Context, j *Job) error {
 	return f.publishErr
 }
 
-func (f *fakeRunner) Close(_ context.Context, runID string) error {
+func (f *fakeRunner) Close(_ context.Context, ref managed.SessionRef) error {
 	f.mu.Lock()
-	f.closed = append(f.closed, runID)
+	f.closed = append(f.closed, ref.ID)
 	f.mu.Unlock()
 	return f.closeErr
 }

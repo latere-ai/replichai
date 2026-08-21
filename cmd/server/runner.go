@@ -13,6 +13,7 @@ import (
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
@@ -228,11 +229,11 @@ func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(prov
 
 // Close releases a managed-agents run by its session id, so a run left in flight
 // by a restart is archived (stopped) rather than orphaned. Idempotent.
-func (e *engineRunner) Close(ctx context.Context, runID string) error {
-	if runID == "" {
+func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error {
+	if ref.ID == "" {
 		return nil
 	}
-	return e.provider.CloseRun(ctx, provider.RunHandle{ID: runID})
+	return e.provider.CloseRun(ctx, provider.RunHandle{ID: ref.ID})
 }
 
 // Publish finalizes the live-mount reproduction (006i): the agent has already

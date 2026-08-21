@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -116,8 +117,8 @@ func (r progressRunner) Execute(_ context.Context, _ *job.Job, observe func(prov
 	}
 	return nil
 }
-func (progressRunner) Publish(context.Context, *job.Job) error { return nil }
-func (progressRunner) Close(context.Context, string) error     { return nil }
+func (progressRunner) Publish(context.Context, *job.Job) error         { return nil }
+func (progressRunner) Close(context.Context, managed.SessionRef) error { return nil }
 func (progressRunner) Resume(context.Context, *job.Job, func(provider.RunStatus)) error {
 	return nil
 }
