@@ -104,6 +104,9 @@ func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 		"GET /jobs/{id}/verdict":      true,
 		"GET /jobs/{id}/artifacts":    true,
 		"GET /jobs/{id}/artifact":     true,
+		// The list of what is worth reading (042b). Open by definition: it is
+		// addressed to a crawler, which has no session.
+		"GET /sitemap.xml": true,
 	}
 	got := map[string]bool{}
 	for _, r := range rt.OpenRoutes() {
@@ -115,8 +118,9 @@ func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 		}
 	}
 	for k := range got {
-		// The SPA fallback is registered open only when a frontend is embedded;
-		// testDeps embeds none, so it never appears here.
+		// The SPA fallback and the public app addresses that describe themselves
+		// (042a) are registered open only when a frontend is embedded; testDeps
+		// embeds none, so they never appear here.
 		if !want[k] {
 			t.Errorf("%q is open and was not decided to be", k)
 		}

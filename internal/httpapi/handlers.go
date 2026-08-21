@@ -135,6 +135,11 @@ func (rt *Router) routes() {
 	rt.gatedHandle("DELETE", "/jobs/{id}", rt.deleteSession)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 
+	// What is worth reading, for a crawler that has not followed a link to it
+	// (042b). Registered ahead of the SPA fallback, which would otherwise answer
+	// a request for it with the app.
+	rt.openHandle("GET", "/sitemap.xml", rt.sitemapXML)
+
 	// The public app addresses, each resolving what it is about before the shell
 	// goes out (042a) — registered ahead of the fallback below, which they end
 	// in. seo.go holds the rules.
@@ -1482,6 +1487,15 @@ type ProjectView struct {
 	// private after publishing keeps their attestation intact and loses the
 	// link, which is correct — the record was never the profile.
 	SignerHandle string `json:"signer_handle,omitempty"`
+	// Papers is what this project is a reproduction of (043) — every paper it
+	// holds, trimmed to a citation. A list is what the store holds and what the
+	// card must be able to say: a project of two papers with one citation line
+	// under it attributes the second paper's work to the first.
+	//
+	// It is not gated on a stake in the project, unlike Spend30d. A published
+	// project's bibliography is the thing publishing published, and the reader
+	// this exists for is the anonymous one on the landing page.
+	Papers []PaperCitation `json:"papers,omitempty"`
 	// The owner, as a reader can read them (018). Project.Owner is an opaque OIDC
 	// subject, which named nobody in a list that now has an Owner column.
 	//
@@ -1552,6 +1566,35 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, views)
 }
 
+// PaperCitation is one paper as a list reads it: what it is called, and the
+// three fields a citation line is made of. It is a projection of paper.Record
+// rather than the record itself — the abstract is paragraphs, and `ref`,
+// `added_by` and `edited` are the owner screen's bookkeeping. Six cards on a
+// landing page must not carry six abstracts to print six citations.
+type PaperCitation struct {
+	Title   string   `json:"title,omitempty"`
+	Authors []string `json:"authors,omitempty"`
+	Venue   string   `json:"venue,omitempty"`
+	Year    int      `json:"year,omitempty"`
+}
+
+// citations trims a project's papers down to what a list renders.
+func citations(papers []project.Paper) []PaperCitation {
+	if len(papers) == 0 {
+		return nil
+	}
+	out := make([]PaperCitation, 0, len(papers))
+	for _, p := range papers {
+		out = append(out, PaperCitation{
+			Title:   p.Title,
+			Authors: p.Record.Authors,
+			Venue:   p.Record.Venue,
+			Year:    p.Record.Year,
+		})
+	}
+	return out
+}
+
 // projectViews decorates a set of projects for a list: the session summary, the
 // modified time, and who owns them — three reads for the whole page rather than
 // three per row.
@@ -1593,6 +1636,15 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 		log.Printf("projects: summing spend: %v", err)
 		spend = nil
 	}
+	// The bibliography, in one call for the whole list (043). It fails as softly
+	// as the spend does and for the same reason: a row that cannot say which
+	// paper it reproduces is still a row, and a registry that refuses to render
+	// because a citation could not be read shows the reader nothing at all.
+	papers, err := rt.projects.PapersByProjects(ctx, ids)
+	if err != nil {
+		log.Printf("projects: reading papers: %v", err)
+		papers = nil
+	}
 	out := make([]ProjectView, 0, len(projects))
 	for _, p := range projects {
 		st := status[p.ID]
@@ -1609,6 +1661,7 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 			LatestPhase:       string(st.Latest),
 			SignerHandle:      rt.signerHandle(ctx, p),
 			ModifiedAt:        later(later(p.CreatedAt, modified[p.ID]), st.LatestAt),
+			Papers:            citations(papers[p.ID]),
 		}
 		// The spend is a pointer so absent and zero stay different things: a
 		// reader with no stake is told nothing, and one who spent nothing is told

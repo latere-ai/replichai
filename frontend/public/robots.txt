@@ -1,0 +1,17 @@
+# What a crawler may read here (042b).
+#
+# The public zone is open on purpose: a published reproduction, the session
+# under it, and the researcher who signed it off are meant to be found by
+# somebody searching for the paper. What is disallowed below is not secret —
+# every one of those screens needs an account, and a signed-out reader renders
+# nothing at them — it is simply not worth a crawl.
+
+User-agent: *
+Allow: /
+Disallow: /new
+Disallow: /wallet
+Disallow: /settings
+Disallow: /trash
+Disallow: /console
+
+Sitemap: https://replichai.latere.ai/sitemap.xml
