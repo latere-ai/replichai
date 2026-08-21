@@ -14,6 +14,7 @@
 package seo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"html"
@@ -182,4 +183,55 @@ func With(ctx context.Context, p Page) context.Context {
 func From(r *http.Request) (Page, bool) {
 	p, ok := r.Context().Value(key{}).(Page)
 	return p, ok
+}
+
+/* ─── Rendering the shell ─── */
+
+// The markers around the head region index.html hands over. Everything between
+// them is what the document says about itself; everything outside — the icon,
+// the font preload, the theme script — is the shell's and is never touched.
+var (
+	headOpen  = []byte("<!--seo-->")
+	headClose = []byte("<!--/seo-->")
+)
+
+// WriteShell writes the app shell for this request, with the head of whatever
+// page the request resolved to and the header that page needs. It is the one
+// place a described document is produced, so what the server serves and what a
+// test asserts cannot be two implementations of the same rule.
+func WriteShell(w http.ResponseWriter, r *http.Request, index []byte) {
+	page, described := From(r)
+	if described && page.NoIndex {
+		// A page that exists and must never be offered in a search result:
+		// somebody's private project, an operator screen a signed-out reader
+		// renders as nothing. This header governs a crawler that already holds
+		// the URL, which robots.txt cannot.
+		w.Header().Set("X-Robots-Tag", "noindex")
+	}
+	_, _ = w.Write(Describe(index, page, described))
+}
+
+// Describe substitutes the head region for a page the router resolved. A page
+// with no title (the not-indexed case) keeps the default head: there is nothing
+// truer to say about an address a reader may not read, and the response is
+// already marked.
+func Describe(index []byte, p Page, described bool) []byte {
+	if !described || p.Title == "" {
+		return index
+	}
+	start := bytes.Index(index, headOpen)
+	end := bytes.Index(index, headClose)
+	// A shell without the markers is one nobody built from this repository —
+	// the committed placeholder, or a stale dist/. Serving it unchanged is the
+	// only honest answer; the alternative is a document with two titles.
+	if start < 0 || end < start {
+		return index
+	}
+	head := p.Head()
+	out := make([]byte, 0, len(index)+len(head))
+	out = append(out, index[:start+len(headOpen)]...)
+	out = append(out, '\n', ' ', ' ', ' ', ' ')
+	out = append(out, head...)
+	out = append(out, '\n', ' ', ' ', ' ', ' ')
+	return append(out, index[end:]...)
 }
