@@ -3,6 +3,7 @@ package managed
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -55,11 +56,17 @@ func (e *NotFoundError) Error() string {
 func (e *NotFoundError) Unwrap() error { return ErrNotFound }
 
 // TemporaryError marks an upstream failure which the controller may retry.
-type TemporaryError struct{ Err error }
+type TemporaryError struct {
+	Err   error
+	After time.Duration
+}
 
 func (e *TemporaryError) Error() string   { return e.Err.Error() }
 func (e *TemporaryError) Unwrap() error   { return e.Err }
 func (e *TemporaryError) Temporary() bool { return true }
+func (e *TemporaryError) RetryAfter() time.Duration {
+	return e.After
+}
 
 func IsTemporary(err error) bool {
 	var temporary interface{ Temporary() bool }
