@@ -432,6 +432,12 @@ const en = {
     notPublicBody: 'This address is not published. If you have been given access to it, sign in and you will land right back here.',
     notPublicBodyIn: 'This address is not published, or it is not shared with your account.',
     browseRegistry: 'Browse the registry',
+    // An address this app does not have (042c). It says what happened without
+    // guessing why — a typo, a link that lost its tail, a page that was never
+    // here — and offers the two places worth going next.
+    notFoundTitle: 'No page at this address',
+    notFoundBody: 'This is not an address on replichai. The link may have been cut short, or the page may never have been here.',
+    notFoundHome: 'Go to your projects',
     // submit / new project
     submit: 'Submit',
     submitting: 'Submitting…',
