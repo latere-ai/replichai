@@ -225,7 +225,9 @@ type RunStatus struct {
 	// only place the concrete model appears — and it is what settlement prices
 	// the usage at (011). Empty where a backend does not report it, which is
 	// charged at the dearest rates on the card.
-	Model string `json:"model,omitempty"`
+	Model          string `json:"model,omitempty"`
+	ModelProvider  string `json:"model_provider,omitempty"`
+	BillingVariant string `json:"billing_variant,omitempty"`
 }
 
 // Passed reports whether the run finished and met the rubric. A run with no

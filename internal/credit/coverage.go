@@ -1,12 +1,20 @@
 package credit
 
-import "context"
+import (
+	"context"
+
+	"github.com/latere-ai/replichai/internal/managed"
+)
 
 // ModelResolver turns a model *preference* into the concrete model a backend
 // will actually run. Satisfied by provider.Provider, declared here as one
 // method so pricing does not depend on the whole provider surface.
 type ModelResolver interface {
 	ResolveModel(ctx context.Context, pref string) (string, error)
+}
+
+type QualifiedModelResolver interface {
+	ResolveModelRef(ctx context.Context, pref string) (managed.ModelRef, error)
 }
 
 // Preference is a model tier the engine asks for — the unit a session's cost is
@@ -79,11 +87,12 @@ func (p Preference) String() string { return string(p) }
 // first run, not an error: refusing to start because a card is a release behind
 // would turn a billing imprecision into an outage.
 type Coverage struct {
-	Preference Preference `json:"preference"`
-	Model      string     `json:"model,omitempty"`
-	Named      bool       `json:"named"`
-	Rates      Rates      `json:"rates,omitzero"`
-	Err        string     `json:"error,omitempty"`
+	Preference Preference       `json:"preference"`
+	Model      string           `json:"model,omitempty"`
+	ModelRef   managed.ModelRef `json:"model_ref,omitempty"`
+	Named      bool             `json:"named"`
+	Rates      Rates            `json:"rates,omitzero"`
+	Err        string           `json:"error,omitempty"`
 }
 
 // Covers reports how this card would price each preference the engine asks for.
@@ -98,24 +107,32 @@ func (c Card) Covers(ctx context.Context, r ModelResolver) []Coverage {
 		cov := Coverage{Preference: pref}
 		// Projected to a string at the seam: the resolver is the provider, and
 		// the provider does not import pricing.
-		model, err := r.ResolveModel(ctx, pref.String())
+		modelRef, err := resolveModelRef(ctx, r, pref.String())
 		if err != nil {
 			cov.Err = err.Error()
 			out = append(out, cov)
 			continue
 		}
-		cov.Model = model
-		rates, err := c.For(model)
+		cov.Model, cov.ModelRef = modelRef.ID, modelRef
+		rates, err := c.ForRef(modelRef)
 		if err != nil {
 			cov.Err = err.Error()
 			out = append(out, cov)
 			continue
 		}
 		cov.Rates = rates
-		cov.Named = c.names(model)
+		cov.Named = c.namesRef(modelRef)
 		out = append(out, cov)
 	}
 	return out
+}
+
+func resolveModelRef(ctx context.Context, resolver ModelResolver, preference string) (managed.ModelRef, error) {
+	if qualified, ok := resolver.(QualifiedModelResolver); ok {
+		return qualified.ResolveModelRef(ctx, preference)
+	}
+	id, err := resolver.ResolveModel(ctx, preference)
+	return managed.ModelRef{Provider: "anthropic", ID: id}, err
 }
 
 // names reports whether the card can price this model on its own terms — an
@@ -126,11 +143,16 @@ func (c Card) Covers(ctx context.Context, r ModelResolver) []Coverage {
 // carrying the *requested* name, so a fallback and a real match are identical
 // by name, and a check comparing them would report every model as priced.
 func (c Card) names(model string) bool {
+	return c.namesRef(managed.ModelRef{Provider: "anthropic", ID: model})
+}
+
+func (c Card) namesRef(model managed.ModelRef) bool {
 	for _, r := range c.Models {
 		if r.Zero() {
 			continue
 		}
-		if r.Model == model || isSnapshotOf(r.Model, model) {
+		ref := r.modelRef()
+		if ref.Provider == model.Provider && ref.BillingVariant == model.BillingVariant && (ref.ID == model.ID || isSnapshotOf(ref.ID, model.ID)) {
 			return true
 		}
 	}

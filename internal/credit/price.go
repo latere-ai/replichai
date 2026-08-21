@@ -1,8 +1,11 @@
 package credit
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -17,12 +20,42 @@ type Rates struct {
 	// Model is the model these rates are for, recorded so a snapshot taken at
 	// enqueue says what it priced.
 	Model string `json:"model"`
+	// Ref is the durable provider-qualified identity. Model remains in the JSON
+	// for backward compatibility with snapshotted cards written before 041d.
+	Ref managed.ModelRef `json:"model_ref"`
 
-	Input        int64 `json:"input"`
-	Output       int64 `json:"output"`
-	CacheRead    int64 `json:"cache_read"`
-	CacheWrite5m int64 `json:"cache_write_5m"`
-	CacheWrite1h int64 `json:"cache_write_1h"`
+	Input        int64       `json:"input"`
+	Output       int64       `json:"output"`
+	CacheRead    int64       `json:"cache_read"`
+	CacheWrite5m int64       `json:"cache_write_5m"`
+	CacheWrite1h int64       `json:"cache_write_1h"`
+	CacheWrite   int64       `json:"cache_write,omitempty"`
+	Extra        []MeterRate `json:"extra,omitempty"`
+	// Free is explicit; an all-zero row without it is still an invalid accident.
+	Free bool `json:"free,omitempty"`
+}
+
+type MeterRate struct {
+	Meter managed.Meter `json:"meter"`
+	Rate  int64         `json:"rate"`
+}
+
+// UnmarshalJSON assigns historical model-only rows to Anthropic explicitly.
+// Empty never means whichever provider happens to be configured today.
+func (r *Rates) UnmarshalJSON(data []byte) error {
+	type wire Rates
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*r = Rates(decoded)
+	if !r.Ref.Valid() && strings.TrimSpace(r.Model) != "" {
+		r.Ref = managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(r.Model)}
+	}
+	if r.Model == "" && r.Ref.Valid() {
+		r.Model = r.Ref.ID
+	}
+	return nil
 }
 
 // Price is what a run's usage costs under these rates, in micro-USD.
@@ -44,15 +77,64 @@ func (r Rates) Price(u provider.Usage) int64 {
 		// the dearer of the two, on the same fail-expensive rule an unknown
 		// model follows. Guessing cheap would make an unreported lifetime a
 		// discount nobody granted.
-		u.CacheWriteTokens*max(r.CacheWrite5m, r.CacheWrite1h)
+		u.CacheWriteTokens*r.genericCacheWriteRate()
 	return ceilDiv(perMillion, 1_000_000)
+}
+
+func (r Rates) genericCacheWriteRate() int64 {
+	if r.CacheWrite != 0 {
+		return r.CacheWrite
+	}
+	return max(r.CacheWrite5m, r.CacheWrite1h)
+}
+
+// PriceManaged prices normalized usage, refusing negative or unpriced meters.
+func (r Rates) PriceManaged(u managed.Usage) (int64, error) {
+	if u.Model.Valid() && r.modelRef() != u.Model {
+		return 0, fmt.Errorf("usage model %s/%s does not match rates %s/%s", u.Model.Provider, u.Model.ID, r.modelRef().Provider, r.modelRef().ID)
+	}
+	values := []int64{u.InputFresh, u.InputCached, u.CacheWrite, u.CacheWrite5m, u.CacheWrite1h, u.Output}
+	for _, value := range values {
+		if value < 0 {
+			return 0, fmt.Errorf("negative normalized usage")
+		}
+	}
+	perMillion := u.InputFresh*r.Input + u.InputCached*r.CacheRead + u.CacheWrite*r.genericCacheWriteRate() +
+		u.CacheWrite5m*r.CacheWrite5m + u.CacheWrite1h*r.CacheWrite1h + u.Output*r.Output
+	for meter, value := range u.Extra {
+		rate, ok := r.extraRate(meter)
+		if !ok {
+			return 0, fmt.Errorf("unpriced meter %q", meter)
+		}
+		if value < 0 {
+			return 0, fmt.Errorf("negative meter %q", meter)
+		}
+		perMillion += value * rate
+	}
+	return ceilDiv(perMillion, 1_000_000), nil
+}
+
+func (r Rates) extraRate(meter managed.Meter) (int64, bool) {
+	for _, entry := range r.Extra {
+		if entry.Meter == meter {
+			return entry.Rate, true
+		}
+	}
+	return 0, false
 }
 
 // Zero reports rates that price everything at nothing — a card entry that would
 // make a session free. It is not a valid snapshot: the gate refuses to start a
 // session it cannot price.
 func (r Rates) Zero() bool {
-	return r.Input == 0 && r.Output == 0 && r.CacheRead == 0 && r.CacheWrite5m == 0 && r.CacheWrite1h == 0
+	return !r.Free && r.Input == 0 && r.Output == 0 && r.CacheRead == 0 && r.CacheWrite5m == 0 && r.CacheWrite1h == 0 && r.CacheWrite == 0 && len(r.Extra) == 0
+}
+
+func (r Rates) modelRef() managed.ModelRef {
+	if r.Ref.Valid() {
+		return r.Ref
+	}
+	return managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(r.Model)}
 }
 
 // Card is the platform's price list: what each model costs. An admin edits it,
@@ -77,13 +159,16 @@ type Card struct {
 // An empty card cannot price anything and is ErrNoRates. That is fail-closed on
 // purpose: tokens nobody can price are not free tokens.
 func (c Card) For(model string) (Rates, error) {
-	if hit, ok := c.Priced(model); ok {
+	return c.ForRef(managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(model)})
+}
+
+func (c Card) ForRef(model managed.ModelRef) (Rates, error) {
+	if hit, ok := c.PricedRef(model); ok {
 		return hit, nil
 	}
-	model = strings.TrimSpace(model)
 	priced := make([]Rates, 0, len(c.Models))
 	for _, r := range c.Models {
-		if r.Zero() {
+		if r.Zero() || r.Free || r.modelRef().Provider != model.Provider || r.modelRef().BillingVariant != model.BillingVariant {
 			continue // a free row prices nothing; it cannot stand in for a model
 		}
 		priced = append(priced, r)
@@ -91,13 +176,28 @@ func (c Card) For(model string) (Rates, error) {
 	if len(priced) == 0 {
 		return Rates{}, ErrNoRates
 	}
-	dearest := Rates{Model: model}
+	dearest := Rates{Model: model.ID, Ref: model}
 	for _, r := range priced {
 		dearest.Input = max(dearest.Input, r.Input)
 		dearest.Output = max(dearest.Output, r.Output)
 		dearest.CacheRead = max(dearest.CacheRead, r.CacheRead)
 		dearest.CacheWrite5m = max(dearest.CacheWrite5m, r.CacheWrite5m)
 		dearest.CacheWrite1h = max(dearest.CacheWrite1h, r.CacheWrite1h)
+		dearest.CacheWrite = max(dearest.CacheWrite, r.CacheWrite)
+		for _, entry := range r.Extra {
+			current, ok := dearest.extraRate(entry.Meter)
+			if !ok {
+				dearest.Extra = append(dearest.Extra, entry)
+				continue
+			}
+			if entry.Rate > current {
+				for index := range dearest.Extra {
+					if dearest.Extra[index].Meter == entry.Meter {
+						dearest.Extra[index].Rate = entry.Rate
+					}
+				}
+			}
+		}
 	}
 	return dearest, nil
 }
@@ -111,8 +211,11 @@ func (c Card) For(model string) (Rates, error) {
 // (039's drafting, where the model is an operator's choice and might be a local
 // one costing pennies) asks this question rather than that one.
 func (c Card) Priced(model string) (Rates, bool) {
-	model = strings.TrimSpace(model)
-	if model == "" {
+	return c.PricedRef(managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(model)})
+}
+
+func (c Card) PricedRef(model managed.ModelRef) (Rates, bool) {
+	if !model.Valid() {
 		return Rates{}, false
 	}
 	var snapshot *Rates
@@ -120,13 +223,18 @@ func (c Card) Priced(model string) (Rates, bool) {
 		if r.Zero() {
 			continue // a free row prices nothing; it cannot stand in for a model
 		}
-		name := strings.TrimSpace(r.Model)
-		if strings.EqualFold(name, model) {
+		ref := r.modelRef()
+		if ref.Provider != model.Provider || ref.BillingVariant != model.BillingVariant {
+			continue
+		}
+		name := strings.TrimSpace(ref.ID)
+		if strings.EqualFold(name, model.ID) {
 			return r, true
 		}
-		if snapshot == nil && isSnapshotOf(name, model) {
+		if snapshot == nil && isSnapshotOf(name, model.ID) {
 			hit := r
-			hit.Model = model // record what was asked for, priced as what it is
+			hit.Model = model.ID // record what was asked for, priced as what it is
+			hit.Ref = model
 			snapshot = &hit
 		}
 	}
@@ -191,6 +299,7 @@ func DefaultCard() Card {
 	rates := func(model string, in, out int64) Rates {
 		return Rates{
 			Model:        model,
+			Ref:          managed.ModelRef{Provider: "anthropic", ID: model},
 			Input:        in,
 			Output:       out,
 			CacheRead:    in / 10,
@@ -202,5 +311,6 @@ func DefaultCard() Card {
 		rates("claude-opus-5", 5*Dollar, 25*Dollar),
 		rates("claude-sonnet-5", 3*Dollar, 15*Dollar),
 		rates("claude-haiku-4-5", 1*Dollar, 5*Dollar),
+		{Model: "memory-model", Ref: managed.ModelRef{Provider: "memory", ID: "memory-model"}, Free: true},
 	}}
 }

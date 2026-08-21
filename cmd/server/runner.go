@@ -333,7 +333,7 @@ func providerStatus(status managed.Status) provider.RunStatus {
 	raw, _ := json.Marshal(status.Ref)
 	result := provider.RunStatus{
 		State: providerState(status.State), RunID: status.Ref.ID, Runtime: string(status.Ref.Runtime), SessionRef: raw,
-		Model: status.Model.ID,
+		Model: status.Model.ID, ModelProvider: status.Model.Provider, BillingVariant: status.Model.BillingVariant,
 		Usage: provider.Usage{
 			InputTokens: status.Usage.InputFresh, CachedInputTokens: status.Usage.InputCached,
 			CacheWriteTokens: status.Usage.CacheWrite, CacheWrite5mTokens: status.Usage.CacheWrite5m,

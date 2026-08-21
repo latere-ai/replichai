@@ -125,7 +125,11 @@ func resolveCard(ctx context.Context, seam credit.CardSnapshot) (credit.Card, er
 // A session with no rates costs nothing: an unpriced deployment holds and
 // releases the reserve and charges no money.
 func (j Job) cost() int64 {
-	rates, err := j.Rates.For(j.Status.Model)
+	modelProvider := j.Status.ModelProvider
+	if modelProvider == "" {
+		modelProvider = "anthropic"
+	}
+	rates, err := j.Rates.ForRef(managed.ModelRef{Provider: modelProvider, ID: j.Status.Model, BillingVariant: j.Status.BillingVariant})
 	if err != nil {
 		return 0
 	}

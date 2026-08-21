@@ -373,7 +373,7 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 		RunID:   h.ID, // persist the session id so a restart can close this run
 		// What the backend resolved our model *preference* to, so a session is
 		// priced at the rates of the model that actually ran it (011).
-		Model: session.Agent.Model.ID,
+		Model: session.Agent.Model.ID, ModelProvider: "anthropic",
 		Usage: provider.Usage{
 			InputTokens:       session.Usage.InputTokens,
 			OutputTokens:      session.Usage.OutputTokens,
