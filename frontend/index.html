@@ -3,11 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ReplicHAI — does the paper actually reproduce?</title>
-    <meta
-      name="description"
-      content="replichai audits the reproducibility of research papers. It implements and re-runs the part of a paper a machine can run, never simulates the study with human participants, and returns a verdict published with the full transcript."
-    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- The one face the app renders: Latere's logotype in the shared footer,
          and the `<em>` in a screen description. Without this the request is
@@ -16,9 +11,24 @@
     <link rel="preload" href="/fonts/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#2369bd" />
-    <!-- The card is absolute because a crawler resolves it against nothing, and
+    <!-- Everything between the markers is what this document says about itself,
+         and the server replaces the whole region for an address it can describe
+         — a published reproduction, a researcher's page (042a). It is a region
+         rather than an append because a second <title> does not reliably
+         override the first, and it holds nothing else: the icon, the font
+         preload and the theme script below must survive the substitution
+         untouched.
+
+         The card is absolute because a crawler resolves it against nothing, and
          it points at production from every environment on purpose: the image is
          the same picture wherever the link was copied from. -->
+    <!--seo-->
+    <title>ReplicHAI — does the paper actually reproduce?</title>
+    <meta
+      name="description"
+      content="replichai audits the reproducibility of research papers. It implements and re-runs the part of a paper a machine can run, never simulates the study with human participants, and returns a verdict published with the full transcript."
+    />
+    <link rel="canonical" href="https://replichai.latere.ai/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ReplicHAI" />
     <meta property="og:title" content="Does the paper actually reproduce?" />
@@ -37,6 +47,7 @@
       content="It runs the paper. The inner loop is implemented and re-run; the outer loop — the study with people — is named, bounded, and never simulated."
     />
     <meta name="twitter:image" content="https://replichai.latere.ai/og.png" />
+    <!--/seo-->
     <!-- The appearance, stamped before the first paint. React resolves the same
          choice, but it does so in an effect — which is one painted frame too
          late, and 040 made that frame visible: the landing's slabs used to be

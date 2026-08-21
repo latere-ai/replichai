@@ -24,6 +24,7 @@ import (
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/seo"
 )
 
 // TopupPolicy supplies the purchase spread and floor the checkout route applies
@@ -336,6 +337,9 @@ type Router struct {
 	baseURL     string
 	sseInterval time.Duration
 	spa         http.Handler
+	// site turns an app path into the absolute URL a crawler needs (042a). One
+	// per router, so a canonical link and a sitemap entry are the same string.
+	site seo.Site
 	// modelResolver turns a tier into the model a run would get, so the choice
 	// on the Start control can be priced (031). Nil lists the tiers unpriced.
 	modelResolver credit.ModelResolver
@@ -366,7 +370,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
 	rt.routes()
 	return rt
 }

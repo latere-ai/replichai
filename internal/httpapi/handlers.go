@@ -135,6 +135,11 @@ func (rt *Router) routes() {
 	rt.gatedHandle("DELETE", "/jobs/{id}", rt.deleteSession)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 
+	// The public app addresses, each resolving what it is about before the shell
+	// goes out (042a) — registered ahead of the fallback below, which they end
+	// in. seo.go holds the rules.
+	rt.spaRoutes()
+
 	// The frontend shell is public and serves any GET path not matched above,
 	// so a deep link loads the app and lets it route (006e). More specific API
 	// patterns take precedence; the app's data calls are still gated.
