@@ -206,7 +206,7 @@ export default function App() {
   // address somebody can arrive at cold — an invitation mail pointing at a
   // project, a shared link to a session. Sign-in comes back to that address
   // rather than to the dashboard.
-  if (!me.authenticated && !isPublicView(view)) return <Landing i18n={i18n} next={window.location.pathname} />
+  if (!me.authenticated && !isPublicView(view)) return <Landing i18n={i18n} next={window.location.pathname} theme={theme} />
   if (!me.authenticated) return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
   return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
