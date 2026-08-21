@@ -34,7 +34,7 @@ kubectl -n latere create secret generic replichai-config \
 `.env` should carry the secret/config values the app needs, for example:
 
 ```
-REPLICHAI_API_KEY=...          # the managed-agents backend credential
+ANTHROPIC_API_KEY=...          # the anthropic-managed runtime credential
 REPLICHAI_GITHUB_TOKEN=...     # the forge token for publishing (006f)
 AUTH_ISSUER=https://auth.latere.ai
 AUTH_CLIENT_ID=replichai
@@ -42,10 +42,10 @@ AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
 ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
 MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
-DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint (039); Anthropic reuses REPLICHAI_API_KEY
+DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint (039); Anthropic may reuse ANTHROPIC_API_KEY
 ```
 
-`DATABASE_URL`, `ADDR`, `BASE_URL`, and `PROVIDER` are set by the manifest and
+`DATABASE_URL`, `ADDR`, `BASE_URL`, and `REPLICHAI_RUNTIME` are set by the manifest and
 override any same-named key in `.env`, so the two cannot drift.
 
 ### Which model drafts a description

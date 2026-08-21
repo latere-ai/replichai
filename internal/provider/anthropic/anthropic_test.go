@@ -690,21 +690,6 @@ func TestLimitedNetworkIsRequestedWhenAsked(t *testing.T) {
 	}
 }
 
-func TestRegisteredUnderItsName(t *testing.T) {
-	// The init registration must make the adapter reachable by name.
-	t.Setenv("REPLICHAI_API_KEY", "test-credential")
-	got, err := provider.Get("anthropic")
-	if err != nil {
-		t.Fatalf("Get(anthropic): %v", err)
-	}
-	if got.Name() != "anthropic" {
-		t.Errorf("Name = %q, want anthropic", got.Name())
-	}
-	if got.Name() != provider.DefaultName {
-		t.Errorf("the adapter registers as %q but the default is %q", got.Name(), provider.DefaultName)
-	}
-}
-
 func TestWithRequestOptionsIsApplied(t *testing.T) {
 	var gotHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

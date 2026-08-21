@@ -27,10 +27,15 @@ paper reference
 │ orchestrator │ ─────────► │ method/  │  instructions · rubric · task template
 └──────────────┘            └──────────┘
       │
-      │ speaks only the Provider contract
+      │ describes one normalized SessionSpec
       ▼
 ┌────────────────────────────────────────────┐
-│ provider adapter                           │  the only backend-aware code
+│ managed controller + runtime router        │  lifecycle + durable ownership
+└────────────────────────────────────────────┘
+      │
+      ▼
+┌────────────────────────────────────────────┐
+│ runtime adapter                            │  the only backend-aware code
 └────────────────────────────────────────────┘
       │
       ▼
@@ -59,7 +64,7 @@ An audit without publishing stops at the agent runtime and collects artifacts in
 browser ──► cmd/server ─┬─ webauth   OIDC login, session cookie, gate, /admin, freeze gate
                         ├─ httpapi   the operator routes, SSE, the public zone
                         ├─ spa       the built frontend, embedded
-                        └─ job.Runner ──► audit ──► provider ──► agent runtime
+                        └─ job.Runner ──► audit ──► managed.Controller ──► runtime router
                                               │
                                               └─► publish.FinalizeLive ──► github
 
@@ -73,13 +78,13 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Paper identity** (`internal/paper/`) answers "is this the same paper we already audited?". Identity is a resolved external identifier — a DOI, else an arXiv ID upgraded to its published DOI, else a digest of the fetched content — never the title, which changes between preprint and camera-ready. The slug answers "what should the repository be called?" and never feeds identity. An arXiv lookup that cannot complete errors rather than guessing, so identity does not drift with connectivity. The network is reached through a `Fetcher` seam the caller supplies, which keeps the package testable without one.
 
-**Orchestrator** (`internal/audit/`) knows the shape of an audit: resolve a model, prepare a sandbox, define the worker, start a run, wait for it, collect what it produced, release it. It knows nothing about any backend. Every call it makes goes through the provider contract. It returns values rather than printing, which is why an HTTP layer wraps it without changes, and it exposes `Start` separately from `Run` so a caller can kick off a run and reattach later.
+**Orchestrator** (`internal/audit/`) describes one session — model preference, instructions, task, sandbox, resources, and optional evaluation. `managed.Controller` owns start, polling, retry, cancellation, evidence retention, and release. Audit and experiment code never names a vendor workspace, agent, container, or response.
 
-**Provider contract** (`internal/provider/provider.go`) is the seam: name the adapter, say where in the sandbox output belongs, resolve a model preference, ensure a workspace, ensure a worker, start a run, poll it, list artifacts, fetch one, fetch the run's transcript, close the run. Any backend that can run a sandboxed, tool-using worker and grade its output can sit behind it.
+**Managed-session contract** (`internal/managed/`) is the seam: one `SessionSpec` starts one session and returns a provider-tagged, versioned `SessionRef`. That complete reference is persisted before the first poll and routes every later poll, transcript, artifact, cancel, and release back to its owning runtime, even after a restart or default change.
 
-**Provider adapters** (`internal/provider/`) translate. Each one is the sole place its backend's vocabulary, endpoints, and payload shapes appear — and, because the adapter is that one place, it also chooses the public name it registers under. Two ship today: `anthropic` (package `internal/provider/anthropic`), which talks to the managed-agents runtime in use, and `memory`, which runs nothing and exists so the orchestrator can be tested and the contract demonstrated. The seam itself names neither: it learns which adapter is the default when that adapter registers, so `provider.go` holds no backend name.
+**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Two runtimes ship today: `anthropic-managed`, which adapts the existing Managed Agents backend, and `memory`, a deterministic reference runtime. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
-Every operation that can block takes a `context.Context` and honours cancellation. Porting to a different runtime is one new adapter package plus one changed default; nothing above the seam moves. The `anthropic` adapter talks to its backend through that vendor's official SDK rather than hand-rolled HTTP, which buys typed payloads, retry on rate limits and server errors, and correct protocol headers.
+Every operation that can block takes a `context.Context` and honours cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are separately designed and intentionally not part of this refactor.
 
 **Publishing** (`internal/publish/`) owns the manifest, the redistribution gate, repository naming, and the transcript rendering. It is split so that everything decidable without a network is pure: `Classify` and `PlanPublication` touch no repository and no clock; `Publish` and `FinalizeLive` are the only parts that create anything, and they do so through `Forge`, a seam over repository hosting that mirrors the provider seam.
 

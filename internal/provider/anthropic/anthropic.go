@@ -112,10 +112,6 @@ func translateState(status string, verdict *provider.Verdict) provider.RunState 
 	}
 }
 
-func init() {
-	provider.Register("anthropic", func() (provider.Provider, error) { return New() })
-}
-
 // Provider talks to the managed-agents backend through its official SDK.
 type Provider struct {
 	client anthropic.Client

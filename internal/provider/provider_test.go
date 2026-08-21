@@ -151,47 +151,4 @@ func TestArtifactRecognizesCompiledResidue(t *testing.T) {
 	}
 }
 
-func TestRegistry(t *testing.T) {
-	t.Run("get rejects an unknown name", func(t *testing.T) {
-		if _, err := Get("nope"); !errors.Is(err, ErrUnknownProvider) {
-			t.Fatalf("want ErrUnknownProvider, got %v", err)
-		}
-	})
-
-	t.Run("register and retrieve", func(t *testing.T) {
-		Register("stub-for-test", func() (Provider, error) { return nil, nil })
-		if _, err := Get("STUB-FOR-TEST"); err != nil {
-			t.Errorf("lookup should be case-insensitive: %v", err)
-		}
-		if _, err := Get("  stub-for-test  "); err != nil {
-			t.Errorf("lookup should trim whitespace: %v", err)
-		}
-		var found bool
-		for _, name := range Available() {
-			if name == "stub-for-test" {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("registered provider missing from Available(): %v", Available())
-		}
-	})
-
-	t.Run("available is sorted", func(t *testing.T) {
-		names := Available()
-		for i := 1; i < len(names); i++ {
-			if names[i-1] > names[i] {
-				t.Fatalf("Available() is not sorted: %v", names)
-			}
-		}
-	})
-
-	t.Run("empty name selects the default", func(t *testing.T) {
-		Register(DefaultName, func() (Provider, error) { return nil, errSentinel })
-		if _, err := Get(""); !errors.Is(err, errSentinel) {
-			t.Errorf("empty name did not resolve to %q: %v", DefaultName, err)
-		}
-	})
-}
-
 var errSentinel = errors.New("sentinel")

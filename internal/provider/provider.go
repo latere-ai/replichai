@@ -9,9 +9,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"sort"
 	"strings"
 	"time"
 )
@@ -53,9 +50,6 @@ const (
 	KindToolUse    EventKind = "tool_use"
 	KindToolResult EventKind = "tool_result"
 )
-
-// ErrUnknownProvider is returned by Get for a name that is not registered.
-var ErrUnknownProvider = errors.New("unknown provider")
 
 // WorkspaceSpec describes the sandbox a worker runs inside.
 type WorkspaceSpec struct {
@@ -288,41 +282,4 @@ type Provider interface {
 	// CloseRun stops any live work and releases the run. It must be safe to call
 	// more than once and on a run that has already finished.
 	CloseRun(ctx context.Context, h RunHandle) error
-}
-
-// Factory builds a provider.
-type Factory func() (Provider, error)
-
-// DefaultName is the provider used when none is specified.
-const DefaultName = "anthropic"
-
-var registry = map[string]Factory{}
-
-// Register adds a provider factory under name. Adapters call this from init.
-func Register(name string, f Factory) {
-	registry[strings.ToLower(name)] = f
-}
-
-// Available lists the registered provider names, sorted.
-func Available() []string {
-	names := make([]string, 0, len(registry))
-	for name := range registry {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// Get instantiates a provider by name. An empty name selects DefaultName.
-func Get(name string) (Provider, error) {
-	key := strings.ToLower(strings.TrimSpace(name))
-	if key == "" {
-		key = DefaultName
-	}
-	f, ok := registry[key]
-	if !ok {
-		return nil, fmt.Errorf("%w %q; available: %s",
-			ErrUnknownProvider, key, strings.Join(Available(), ", "))
-	}
-	return f()
 }
