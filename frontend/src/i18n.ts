@@ -175,7 +175,6 @@ const en = {
     lpCostFundBody: 'Credits you buy sit in your wallet. A session draws on the project you allocate to, not on the wallet directly.',
     lpCostRun: 'Run',
     lpCostRunBody: 'A reserve is held while a session runs. What it does not spend comes back when it settles.',
-    lpFootTagline: 'Audits the reproducibility of research papers.',
     signInTitle: 'Sign in',
     signInBody: 'Sign in to give it a paper, watch the audit run, and sign the verdict that comes back.',
     signInNote: 'Built for research with human participants.',
