@@ -134,6 +134,13 @@ type RunHandle struct {
 	ID        string
 	Worker    WorkerRef
 	Workspace WorkspaceRef
+	Files     []string
+}
+
+// ResourceReleaser is implemented by transitional adapters that can release
+// the worker and workspace created before a run handle exists.
+type ResourceReleaser interface {
+	ReleaseResources(context.Context, WorkerRef, WorkspaceRef) error
 }
 
 // Verdict is the grader's decision about a run.

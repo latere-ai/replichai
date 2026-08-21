@@ -285,13 +285,31 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 
 	// Attachments become uploaded file resources, mounted outside the repository
 	// so an experiment's dataset (007b) cannot be committed into the reproduction.
+	uploaded := make([]string, 0, len(spec.Attachments))
+	rollback := func(cause error, sessionID string) error {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		failures := []error{cause}
+		if sessionID != "" {
+			if _, err := p.client.Beta.Sessions.Delete(cleanupCtx, sessionID, anthropic.BetaSessionDeleteParams{}); err != nil {
+				failures = append(failures, fmt.Errorf("rollback session %s: %w", sessionID, err))
+			}
+		}
+		for index := len(uploaded) - 1; index >= 0; index-- {
+			if _, err := p.client.Beta.Files.Delete(cleanupCtx, uploaded[index], anthropic.BetaFileDeleteParams{}); err != nil {
+				failures = append(failures, fmt.Errorf("rollback file %s: %w", uploaded[index], err))
+			}
+		}
+		return errors.Join(failures...)
+	}
 	for _, att := range spec.Attachments {
 		meta, err := p.client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
 			File: bytes.NewReader(att.Content),
 		})
 		if err != nil {
-			return provider.RunHandle{}, fmt.Errorf("upload attachment: %w", err)
+			return provider.RunHandle{}, rollback(fmt.Errorf("upload attachment: %w", err), "")
 		}
+		uploaded = append(uploaded, meta.ID)
 		file := anthropic.BetaManagedAgentsFileResourceParams{
 			Type:   anthropic.BetaManagedAgentsFileResourceParamsTypeFile,
 			FileID: meta.ID,
@@ -304,7 +322,7 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 
 	session, err := p.client.Beta.Sessions.New(ctx, params)
 	if err != nil {
-		return provider.RunHandle{}, fmt.Errorf("create session: %w", err)
+		return provider.RunHandle{}, rollback(fmt.Errorf("create session: %w", err), "")
 	}
 
 	// A graded audit starts with an outcome definition. An ungraded experiment
@@ -340,10 +358,10 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 	if _, err := p.client.Beta.Sessions.Events.Send(ctx, session.ID, anthropic.BetaSessionEventSendParams{
 		Events: []anthropic.BetaManagedAgentsEventParamsUnion{kickoff},
 	}); err != nil {
-		return provider.RunHandle{}, fmt.Errorf("send kickoff: %w", err)
+		return provider.RunHandle{}, rollback(fmt.Errorf("send kickoff: %w", err), session.ID)
 	}
 
-	return provider.RunHandle{ID: session.ID, Worker: worker, Workspace: ws}, nil
+	return provider.RunHandle{ID: session.ID, Worker: worker, Workspace: ws, Files: uploaded}, nil
 }
 
 // Poll reports one observation of a run.
@@ -583,7 +601,38 @@ func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 		},
 	})
 	_, archiveErr := p.client.Beta.Sessions.Archive(ctx, h.ID, anthropic.BetaSessionArchiveParams{})
-	return errors.Join(closeRunError("interrupt", interruptErr), closeRunError("archive", archiveErr))
+	failures := []error{closeRunError("interrupt", interruptErr), closeRunError("archive", archiveErr)}
+	for index := len(h.Files) - 1; index >= 0; index-- {
+		_, err := p.client.Beta.Files.Delete(ctx, h.Files[index], anthropic.BetaFileDeleteParams{})
+		failures = append(failures, releaseError("delete file", err))
+	}
+	return errors.Join(failures...)
+}
+
+// ReleaseResources archives the created agent and deletes its environment.
+// It is separate from CloseRun so evidence remains readable until retention.
+func (p *Provider) ReleaseResources(ctx context.Context, worker provider.WorkerRef, workspace provider.WorkspaceRef) error {
+	var failures []error
+	if worker.ID != "" {
+		_, err := p.client.Beta.Agents.Archive(ctx, worker.ID, anthropic.BetaAgentArchiveParams{})
+		failures = append(failures, releaseError("archive agent", err))
+	}
+	if workspace.ID != "" {
+		_, err := p.client.Beta.Environments.Delete(ctx, workspace.ID, anthropic.BetaEnvironmentDeleteParams{})
+		failures = append(failures, releaseError("delete environment", err))
+	}
+	return errors.Join(failures...)
+}
+
+func releaseError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var apiErr *anthropic.Error
+	if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusConflict) {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 // closeRunError keeps CloseRun idempotent without hiding infrastructure
