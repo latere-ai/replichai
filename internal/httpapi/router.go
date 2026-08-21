@@ -101,7 +101,7 @@ type Canceler interface {
 // live trajectory of a session still in flight, before it has published a
 // committed transcript. A seam so the handlers stay off the provider adapter.
 type LiveTranscript interface {
-	Events(ctx context.Context, runID string) ([]provider.Event, error)
+	Events(ctx context.Context, status provider.RunStatus) ([]provider.Event, error)
 }
 
 // ProjectStore is the slice of the project store the handlers need — open a

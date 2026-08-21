@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,12 +28,13 @@ import (
 // internal/job and internal/httpapi are forbidden to touch. It dispatches on
 // Kind; today it runs audits, the experiment path lands with 007b's server wiring.
 type engineRunner struct {
-	provider provider.Provider
-	method   method.Method
-	fetch    paper.Fetcher
-	projects project.Store
-	jobs     jobStatusReader
-	workDir  string
+	provider   provider.Provider
+	controller *managed.Controller
+	method     method.Method
+	fetch      paper.Fetcher
+	projects   project.Store
+	jobs       jobStatusReader
+	workDir    string
 	// The forge (006i). When gh is nil (a local run with no token) the runner
 	// neither creates a repository nor publishes — the session's transcript stays
 	// readable live-only. owner is the org repositories are created under; token
@@ -198,6 +200,21 @@ func auditOptions(j *job.Job, observe func(provider.RunStatus)) []audit.Option {
 // per job carries that job's observer.
 func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
 	e.pause(ctx)
+	if e.controller != nil {
+		options := []audit.SessionOption{
+			audit.WithSessionHooks(e.managedHooks(j, observe)),
+			audit.WithoutSessionTimeout(),
+			audit.WithSessionModel(j.Tier.OrDefault().String()),
+		}
+		if e.gh != nil && j.RepoName != "" {
+			mount := e.mountFor(j)
+			options = append(options, audit.WithSessionMount(audit.SessionMount{
+				URL: mount.URL, Token: mount.Token, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly,
+			}))
+		}
+		_, err := audit.NewSessionAuditor(e.controller, e.method, options...).Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
+		return err
+	}
 	opts := auditOptions(j, observe)
 	// With the repository created in resolving, mount it so the agent commits its
 	// reproduction into it live (006i); the mount is also the redistribution
@@ -218,6 +235,21 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 // observed onto the job) and drives it to completion, so the job's state tracks
 // the real backend session rather than being guessed as failed.
 func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
+	if e.controller != nil {
+		ref, ok, err := j.ManagedSessionRef()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("running job has no managed session reference")
+		}
+		_, err = audit.NewSessionAuditor(e.controller, e.method,
+			audit.WithSessionHooks(e.managedHooks(j, observe)),
+			audit.WithoutSessionTimeout(),
+			audit.WithSessionModel(j.Tier.OrDefault().String()),
+		).Resume(ctx, ref, j.Ref, filepath.Join(e.workDir, j.ID))
+		return err
+	}
 	auditor := audit.New(e.provider, e.method, auditOptions(j, observe)...)
 	res, err := auditor.Resume(ctx, provider.RunHandle{ID: j.Status.RunID}, j.Ref, filepath.Join(e.workDir, j.ID))
 	if err != nil {
@@ -233,7 +265,115 @@ func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error 
 	if ref.ID == "" {
 		return nil
 	}
+	if e.controller != nil && len(ref.Locator) > 0 {
+		_, err := e.controller.Cancel(ctx, ref, managed.Hooks{})
+		return err
+	}
 	return e.provider.CloseRun(ctx, provider.RunHandle{ID: ref.ID})
+}
+
+type jobObserver interface {
+	Observe(context.Context, string, provider.RunStatus) error
+}
+
+func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)) managed.Hooks {
+	persistRef := func(ctx context.Context, ref managed.SessionRef) error {
+		raw, err := json.Marshal(ref)
+		if err != nil {
+			return err
+		}
+		status := j.Status
+		status.RunID, status.Runtime, status.SessionRef = ref.ID, string(ref.Runtime), raw
+		j.Status = status
+		store, ok := e.jobs.(jobObserver)
+		if !ok {
+			return errors.New("job store cannot persist managed session references")
+		}
+		return store.Observe(ctx, j.ID, status)
+	}
+	return managed.Hooks{
+		Started:    func(ctx context.Context, ref managed.SessionRef) error { return persistRef(ctx, ref) },
+		Checkpoint: func(ctx context.Context, _, next managed.SessionRef) error { return persistRef(ctx, next) },
+		Status: func(ctx context.Context, status managed.Status) error {
+			converted := providerStatus(status)
+			j.Status = converted
+			store, ok := e.jobs.(jobObserver)
+			if !ok {
+				return errors.New("job store cannot persist managed session status")
+			}
+			if err := store.Observe(ctx, j.ID, converted); err != nil {
+				return err
+			}
+			observe(converted)
+			return nil
+		},
+		Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+			if e.gh == nil || j.RepoName == "" {
+				return nil
+			}
+			owner, name := splitRepo(j.RepoName)
+			id, ok, err := publish.RecordedIdentity(ctx, e.gh, owner, name)
+			if err != nil {
+				return fmt.Errorf("read recorded paper identity: %w", err)
+			}
+			if !ok {
+				return errors.New("managed retention requires the recorded paper identity")
+			}
+			grade := provider.GradeUnknown
+			if evidence.Status.Verdict != nil {
+				grade = providerGrade(evidence.Status.Verdict.Grade)
+			}
+			_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), grade, providerEvents(evidence.Events), time.Now)
+			return err
+		},
+	}
+}
+
+func providerStatus(status managed.Status) provider.RunStatus {
+	raw, _ := json.Marshal(status.Ref)
+	result := provider.RunStatus{
+		State: providerState(status.State), RunID: status.Ref.ID, Runtime: string(status.Ref.Runtime), SessionRef: raw,
+		Model: status.Model.ID,
+		Usage: provider.Usage{
+			InputTokens: status.Usage.InputFresh, CachedInputTokens: status.Usage.InputCached,
+			CacheWriteTokens: status.Usage.CacheWrite, CacheWrite5mTokens: status.Usage.CacheWrite5m,
+			CacheWrite1hTokens: status.Usage.CacheWrite1h, OutputTokens: status.Usage.Output,
+		},
+	}
+	if status.Verdict != nil {
+		result.Verdict = &provider.Verdict{Grade: providerGrade(status.Verdict.Grade), Explanation: status.Verdict.Explanation}
+	}
+	return result
+}
+
+func providerState(state managed.State) provider.RunState {
+	switch state {
+	case managed.StatePending:
+		return provider.StatePending
+	case managed.StateRunning:
+		return provider.StateRunning
+	case managed.StateDone:
+		return provider.StateDone
+	case managed.StateFailed:
+		return provider.StateFailed
+	default:
+		return provider.StateUnknown
+	}
+}
+
+func providerGrade(grade managed.Grade) provider.Grade {
+	return provider.Grade(grade)
+}
+
+func providerEvents(events []managed.Event) []provider.Event {
+	result := make([]provider.Event, 0, len(events))
+	for _, event := range events {
+		result = append(result, provider.Event{
+			Role: provider.Role(event.Role), Kind: provider.EventKind(event.Kind), Tool: event.Tool,
+			Content: event.Content, Time: event.Time, Raw: event.Raw,
+		})
+	}
+	return result
 }
 
 // Publish finalizes the live-mount reproduction (006i): the agent has already
@@ -244,6 +384,13 @@ func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error 
 func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 	e.pause(ctx)
 	if e.gh == nil || j.RepoName == "" {
+		return nil
+	}
+	if _, ok, err := j.ManagedSessionRef(); err != nil {
+		return err
+	} else if ok && len(j.Status.SessionRef) > 0 {
+		// The controller's Retain hook committed transcript and manifest before
+		// release; this phase remains as the durable job-state transition.
 		return nil
 	}
 	owner, name := splitRepo(j.RepoName)
@@ -317,13 +464,28 @@ func (p paperResolver) Resolve(ctx context.Context, ref string) (httpapi.Resolve
 	}, nil
 }
 
-// liveTranscript reads a run's live event stream from the backend by its run id,
-// so a session still in flight is inspectable before it publishes (006h).
-type liveTranscript struct{ prov provider.Provider }
+// liveTranscript routes a live evidence read by the durable session reference,
+// so changing the default runtime cannot redirect an in-flight session.
+type liveTranscript struct{ router managed.RuntimeRouter }
 
 // Events returns the backend's live trajectory for a run.
-func (l liveTranscript) Events(ctx context.Context, runID string) ([]provider.Event, error) {
-	return l.prov.Transcript(ctx, provider.RunHandle{ID: runID})
+func (l liveTranscript) Events(ctx context.Context, status provider.RunStatus) ([]provider.Event, error) {
+	ref, ok, err := (job.Job{Status: status}).ManagedSessionRef()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("session has no runtime reference")
+	}
+	runtime, err := l.router.ForRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	events, err := runtime.Events(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return providerEvents(events), nil
 }
 
 // forgePublisher flips a repository's visibility with the server token — the

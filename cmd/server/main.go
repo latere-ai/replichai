@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -36,20 +37,18 @@ import (
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/notify"
 	"github.com/latere-ai/replichai/internal/payment/stripe"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
-	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/registry"
+	"github.com/latere-ai/replichai/internal/runtimes"
+	"github.com/latere-ai/replichai/internal/runtimes/builtin"
 	"github.com/latere-ai/replichai/internal/spa"
 	"github.com/latere-ai/replichai/internal/webauth"
-
-	// Register the provider adapters so provider.Get can resolve them.
-	_ "github.com/latere-ai/replichai/internal/provider/anthropic"
-	_ "github.com/latere-ai/replichai/internal/provider/memory"
 )
 
 // The dev bypass authenticates as this synthetic principal. It confers nothing
@@ -68,13 +67,23 @@ func main() {
 func run() error {
 	addr := flag.String("addr", envOr("ADDR", ":8080"), "listen address")
 	dbURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "Postgres URL; empty uses in-memory stores")
-	providerName := flag.String("provider", envOr("PROVIDER", "memory"), "engine provider: memory | anthropic")
+	runtimeName := flag.String("runtime", envOr("REPLICHAI_RUNTIME", envOr("PROVIDER", "memory")), "managed runtime (legacy --provider/PROVIDER is deprecated)")
+	legacyProviderName := flag.String("provider", "", "deprecated alias for --runtime")
 	methodDir := flag.String("method", os.Getenv("METHOD_DIR"), "method directory; empty discovers ./method")
 	reproDir := flag.String("repro-dir", os.Getenv("REPRO_DIR"), "filesystem registry source; empty is an empty registry")
 	workers := flag.Int("workers", 2, "number of job workers")
 	dev := flag.Bool("dev", envBool("DEV"), "enable the loopback-only dev bypass (no OIDC); local use only")
 	runnerDelay := flag.String("runner-delay", os.Getenv("RUNNER_DELAY"), "dev: pause per phase so SSE progression is watchable (e.g. 1500ms)")
 	flag.Parse()
+	if strings.TrimSpace(*legacyProviderName) != "" {
+		runtimeFlagSet := false
+		flag.Visit(func(set *flag.Flag) { runtimeFlagSet = runtimeFlagSet || set.Name == "runtime" })
+		if runtimeFlagSet {
+			return errors.New("--runtime and deprecated --provider cannot both be set")
+		}
+		*runtimeName = *legacyProviderName
+		log.Print("runtime config: --provider is deprecated; use --runtime")
+	}
 
 	baseURL := strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
 	delay, _ := time.ParseDuration(*runnerDelay)
@@ -93,11 +102,55 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	prov, err := provider.Get(*providerName)
+	baseCatalog, err := builtin.Catalog(builtin.Config{})
 	if err != nil {
 		return err
 	}
-	log.Printf("provider: %s", prov.Name())
+	selection, err := runtimes.ResolveSelection(os.LookupEnv, baseCatalog, "memory")
+	if err != nil {
+		return err
+	}
+	selected, err := baseCatalog.Canonical(*runtimeName)
+	if err != nil {
+		return err
+	}
+	selection.Runtime = selected
+	credentials, warnings := runtimes.ResolveCredentials(os.LookupEnv, selection)
+	for _, warning := range warnings {
+		log.Printf("runtime config: %s", warning)
+	}
+	catalog, err := builtin.Catalog(builtin.Config{Anthropic: builtin.AnthropicConfig{
+		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
+	}})
+	if err != nil {
+		return err
+	}
+	selectedRuntime, err := catalog.Build(ctx, string(selected))
+	if err != nil {
+		return err
+	}
+	installed := []managed.Runtime{selectedRuntime}
+	if selected != "memory" {
+		memoryRuntime, buildErr := catalog.Build(ctx, "memory")
+		if buildErr != nil {
+			return buildErr
+		}
+		installed = append(installed, memoryRuntime)
+	}
+	if selected != builtin.AnthropicManaged && credentials.AnthropicKey != "" {
+		anthropicRuntime, buildErr := catalog.Build(ctx, string(builtin.AnthropicManaged))
+		if buildErr != nil {
+			return buildErr
+		}
+		installed = append(installed, anthropicRuntime)
+	}
+	runtimeRouter, err := runtimes.NewRouter(selected, installed...)
+	if err != nil {
+		return err
+	}
+	controller := managed.NewController(runtimeRouter)
+	modelResolver := runtimes.ModelResolver{Runtime: selectedRuntime}
+	log.Printf("managed runtime: %s", selectedRuntime.Name())
 
 	st, err := openStores(ctx, *dbURL)
 	if err != nil {
@@ -105,7 +158,7 @@ func run() error {
 	}
 	defer st.close()
 	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
-	reportRateCoverage(ctx, prov, st.platform)
+	reportRateCoverage(ctx, modelResolver, st.platform)
 
 	for _, email := range splitList(os.Getenv("ADMIN_EMAILS")) {
 		if err := accessStore.SeedGrant(ctx, email, access.TierAdmin); err != nil {
@@ -130,16 +183,16 @@ func run() error {
 	}
 
 	runner := &engineRunner{
-		provider: prov,
-		method:   m,
-		fetch:    newHTTPFetcher(30 * time.Second),
-		projects: projectStore,
-		jobs:     jobStore,
-		workDir:  filepath.Join(os.TempDir(), "replichai-runs"),
-		gh:       runnerForge,
-		owner:    forgeOwner,
-		token:    forgeToken,
-		delay:    delay,
+		controller: controller,
+		method:     m,
+		fetch:      newHTTPFetcher(30 * time.Second),
+		projects:   projectStore,
+		jobs:       jobStore,
+		workDir:    filepath.Join(os.TempDir(), "replichai-runs"),
+		gh:         runnerForge,
+		owner:      forgeOwner,
+		token:      forgeToken,
+		delay:      delay,
 	}
 	worker := job.NewWorker(jobStore, runner, job.WithBudget(spendBackstop(st)))
 	if resumed, failed, err := worker.Reconcile(ctx); err != nil {
@@ -182,7 +235,11 @@ func run() error {
 	// (039). It is resolved per request rather than at boot: an admin who
 	// changes the model must not have to wait for a deploy, and a deployment
 	// with no key configured simply never offers a draft.
-	drafter := draftingModel(ctx, st.platform, os.Getenv("DRAFT_API_KEY"), os.Getenv("REPLICHAI_API_KEY"))
+	draftRuntimeKey := ""
+	if selected == builtin.AnthropicManaged {
+		draftRuntimeKey = credentials.AnthropicKey
+	}
+	drafter := draftingModel(ctx, st.platform, os.Getenv("DRAFT_API_KEY"), draftRuntimeKey)
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
@@ -192,14 +249,14 @@ func run() error {
 		Reproductions: &registryReader{source: reproSource},
 		RepoPublisher: repoPublisher,
 		Canceler:      worker,
-		Live:          liveTranscript{prov: prov},
+		Live:          liveTranscript{router: runtimeRouter},
 		Resolver:      paperResolver{fetch: newHTTPFetcher(30 * time.Second)},
 		Gate:          webauth.Gate(accessStore),
 		Credits:       st.credits,
 		Reserve:       platform.StartReserve(st.platform),
 		Payments:      payments,
 		Platform:      st.platform,
-		Models:        prov,
+		Models:        modelResolver,
 		Drafter:       drafter,
 		BaseURL:       baseURL,
 		Notifier:      notifier,
@@ -362,7 +419,7 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 // id is never free compute — just at another model's price. Refusing to boot
 // because a card is a release behind would turn a billing imprecision into an
 // outage.
-func reportRateCoverage(ctx context.Context, prov provider.Provider, plat platform.Store) {
+func reportRateCoverage(ctx context.Context, resolver credit.ModelResolver, plat platform.Store) {
 	set, err := plat.Settings(ctx)
 	if err != nil {
 		log.Printf("rates: reading the platform card: %v", err)
@@ -373,7 +430,7 @@ func reportRateCoverage(ctx context.Context, prov provider.Provider, plat platfo
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	cov := set.Rates.Covers(ctx, prov)
+	cov := set.Rates.Covers(ctx, resolver)
 	for _, c := range cov {
 		switch {
 		case c.Err != "":
