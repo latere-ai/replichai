@@ -61,7 +61,7 @@ The normalized contract is intentionally semantic rather than lowest-common-deno
 ## Global invariants
 
 1. Vendor SDK types and wire fields exist only inside their adapter. Core, HTTP, jobs, credit, audit, experiment, and publication packages do not import a concrete runtime.
-2. Every started session is represented by a provider-tagged, versioned `SessionRef` persisted before the first poll. Adapter orchestration may advance its opaque locator through CAS-persisted checkpoints, but runtime and session id never change. Every later operation routes by that reference.
+2. Every started session is represented by a runtime-tagged, versioned `SessionRef` persisted before the first poll. Adapter orchestration may advance its opaque locator through CAS-persisted checkpoints, but runtime and session id never change. Every later operation routes by that reference.
 3. A session's runtime, id, and resolved model identity are immutable. Changing a deployment default affects new sessions only.
 4. `Evaluation == nil` means ungraded. A requested evaluation is either implemented with equivalent semantics or refused; zero values never create an empty vendor evaluator.
 5. Startup owns rollback of every partial remote resource. Terminal evidence is retained before release. Cancellation and release are separate, idempotent operations.
