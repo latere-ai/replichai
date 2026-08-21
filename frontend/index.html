@@ -9,6 +9,11 @@
       content="replichai audits the reproducibility of research papers. It implements and re-runs the part of a paper a machine can run, never simulates the study with human participants, and returns a verdict published with the full transcript."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- The one face the app renders: Latere's logotype in the shared footer,
+         and the `<em>` in a screen description. Without this the request is
+         discovered only when those glyphs are first laid out, which is late
+         enough to swap the text under a reader already looking at it. -->
+    <link rel="preload" href="/fonts/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#2369bd" />
     <!-- The card is absolute because a crawler resolves it against nothing, and
