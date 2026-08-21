@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // stubResolver stands in for a backend's model list, resolved the way the
@@ -16,6 +18,26 @@ func (s stubResolver) ResolveModel(_ context.Context, pref string) (string, erro
 		return "", errors.New("no model for " + pref)
 	}
 	return id, nil
+}
+
+type qualifiedResolver struct{ ref managed.ModelRef }
+
+func (q qualifiedResolver) ResolveModel(context.Context, string) (string, error) {
+	return q.ref.ID, nil
+}
+func (q qualifiedResolver) ResolveModelRef(context.Context, string) (managed.ModelRef, error) {
+	return q.ref, nil
+}
+
+func TestCoverageUsesQualifiedResolverIdentity(t *testing.T) {
+	ref := managed.ModelRef{Provider: "openai", ID: "shared"}
+	card := Card{Models: []Rates{{Model: ref.ID, Ref: ref, Input: 7}}}
+	coverage := card.Covers(context.Background(), qualifiedResolver{ref: ref})
+	for _, item := range coverage {
+		if item.Err != "" || !item.Named || item.ModelRef != ref || item.Rates.Input != 7 {
+			t.Fatalf("coverage = %+v", coverage)
+		}
+	}
 }
 
 // The finding this check exists for: a backend that lists a dated id where the

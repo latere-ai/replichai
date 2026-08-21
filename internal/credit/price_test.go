@@ -1,9 +1,12 @@
 package credit
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -16,6 +19,119 @@ var opus = Rates{
 	CacheRead:    300_000,
 	CacheWrite5m: 3_750_000,
 	CacheWrite1h: 6 * Dollar,
+}
+
+func TestProviderQualifiedRatesNeverCrossVendors(t *testing.T) {
+	card := Card{Models: []Rates{
+		{Model: "shared", Ref: managed.ModelRef{Provider: "anthropic", ID: "shared"}, Input: 3},
+		{Model: "shared", Ref: managed.ModelRef{Provider: "openai", ID: "shared"}, Input: 9},
+	}}
+	anthropic, err := card.ForRef(managed.ModelRef{Provider: "anthropic", ID: "shared"})
+	if err != nil || anthropic.Input != 3 {
+		t.Fatalf("Anthropic rates = %+v, %v", anthropic, err)
+	}
+	openai, err := card.ForRef(managed.ModelRef{Provider: "openai", ID: "shared"})
+	if err != nil || openai.Input != 9 {
+		t.Fatalf("OpenAI rates = %+v, %v", openai, err)
+	}
+	if _, err := card.ForRef(managed.ModelRef{Provider: "latere", ID: "shared"}); !errors.Is(err, ErrNoRates) {
+		t.Fatalf("uncovered provider = %v, want ErrNoRates", err)
+	}
+}
+
+func TestManagedUsagePricesGenericAndExtraMetersOnce(t *testing.T) {
+	ref := managed.ModelRef{Provider: "openai", ID: "gpt-test"}
+	rates := Rates{
+		Model: ref.ID, Ref: ref, Input: 1_000_000, Output: 2_000_000, CacheRead: 100_000,
+		CacheWrite: 500_000, Extra: []MeterRate{{Meter: "container_seconds", Rate: 3_000_000}},
+	}
+	usage := managed.Usage{
+		Model: ref, InputFresh: 1, InputCached: 2, CacheWrite: 3, Output: 4,
+		Extra: map[managed.Meter]int64{"container_seconds": 5},
+	}
+	got, err := rates.PriceManaged(usage)
+	if err != nil || got != 26 {
+		t.Fatalf("PriceManaged = %d, %v; want 26", got, err)
+	}
+	usage.Extra["unpriced"] = 1
+	if _, err := rates.PriceManaged(usage); err == nil {
+		t.Fatal("unpriced reported meter was silently ignored")
+	}
+}
+
+func TestLegacyRateJSONBackfillsAnthropicWithoutChangingPrice(t *testing.T) {
+	raw := []byte(`{"models":[{"model":"claude-old","input":3000000,"output":15000000,"cache_read":300000,"cache_write_5m":3750000,"cache_write_1h":6000000}]}`)
+	var card Card
+	if err := json.Unmarshal(raw, &card); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	rates, err := card.ForRef(managed.ModelRef{Provider: "anthropic", ID: "claude-old"})
+	if err != nil || rates.Ref.Provider != "anthropic" {
+		t.Fatalf("legacy rates = %+v, %v", rates, err)
+	}
+	legacyUsage := provider.Usage{InputTokens: 10, OutputTokens: 2, CacheWriteTokens: 1}
+	if got, want := rates.Price(legacyUsage), int64(66); got != want {
+		t.Fatalf("migrated price = %d, want %d", got, want)
+	}
+}
+
+func TestExplicitMemoryRateIsFreeButDoesNotCoverUnknownModels(t *testing.T) {
+	card := DefaultCard()
+	rates, err := card.ForRef(managed.ModelRef{Provider: "memory", ID: "memory-model"})
+	if err != nil || !rates.Free {
+		t.Fatalf("memory rates = %+v, %v", rates, err)
+	}
+	if _, err := card.ForRef(managed.ModelRef{Provider: "memory", ID: "unknown"}); !errors.Is(err, ErrNoRates) {
+		t.Fatalf("unknown memory model = %v", err)
+	}
+}
+
+func TestManagedPricingRejectsMismatchedAndNegativeUsage(t *testing.T) {
+	ref := managed.ModelRef{Provider: "openai", ID: "gpt"}
+	rates := Rates{Model: ref.ID, Ref: ref, Input: 1, Extra: []MeterRate{{Meter: "calls", Rate: 1}}}
+	for _, usage := range []managed.Usage{
+		{Model: managed.ModelRef{Provider: "anthropic", ID: "gpt"}, InputFresh: 1},
+		{Model: ref, InputFresh: -1},
+		{Model: ref, Extra: map[managed.Meter]int64{"calls": -1}},
+	} {
+		if _, err := rates.PriceManaged(usage); err == nil {
+			t.Fatalf("invalid usage accepted: %+v", usage)
+		}
+	}
+}
+
+func TestProviderFallbackSynthesizesDearerExtraMeters(t *testing.T) {
+	providerName := "openai"
+	card := Card{Models: []Rates{
+		{Model: "a", Ref: managed.ModelRef{Provider: providerName, ID: "a"}, Input: 2, Extra: []MeterRate{{Meter: "calls", Rate: 3}}},
+		{Model: "b", Ref: managed.ModelRef{Provider: providerName, ID: "b"}, Input: 1, Extra: []MeterRate{{Meter: "calls", Rate: 5}, {Meter: "seconds", Rate: 7}}},
+	}}
+	rates, err := card.ForRef(managed.ModelRef{Provider: providerName, ID: "new"})
+	if err != nil {
+		t.Fatalf("ForRef: %v", err)
+	}
+	if calls, _ := rates.extraRate("calls"); rates.Input != 2 || calls != 5 {
+		t.Fatalf("fallback = %+v", rates)
+	}
+	if seconds, ok := rates.extraRate("seconds"); !ok || seconds != 7 {
+		t.Fatalf("seconds = %d, %v", seconds, ok)
+	}
+	if _, ok := card.Priced("new"); ok {
+		t.Fatal("fallback was reported as explicitly priced")
+	}
+}
+
+func TestRateJSONValidationAndRefOnlyCompatibility(t *testing.T) {
+	var rates Rates
+	if err := json.Unmarshal([]byte(`not-json`), &rates); err == nil {
+		t.Fatal("invalid JSON accepted")
+	}
+	if err := json.Unmarshal([]byte(`{"model_ref":{"provider":"openai","id":"gpt"},"input":1}`), &rates); err != nil {
+		t.Fatalf("ref-only decode: %v", err)
+	}
+	if rates.Model != "gpt" || rates.Ref.Provider != "openai" {
+		t.Fatalf("ref-only rates = %+v", rates)
+	}
 }
 
 var haiku = Rates{
@@ -90,7 +206,7 @@ func TestForFailsExpensiveOnAnUnknownModel(t *testing.T) {
 	card := Card{Models: []Rates{haiku, opus}}
 
 	got, err := card.For("claude-haiku-4-5")
-	if err != nil || got != haiku {
+	if err != nil || !reflect.DeepEqual(got, haiku) {
 		t.Fatalf("exact match = %+v, %v; want haiku", got, err)
 	}
 

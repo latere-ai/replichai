@@ -12,9 +12,14 @@ import (
 type ModelResolver struct{ Runtime managed.Runtime }
 
 func (resolver ModelResolver) ResolveModel(ctx context.Context, preference string) (string, error) {
+	ref, err := resolver.ResolveModelRef(ctx, preference)
+	return ref.ID, err
+}
+
+func (resolver ModelResolver) ResolveModelRef(ctx context.Context, preference string) (managed.ModelRef, error) {
 	models, err := resolver.Runtime.Models(ctx)
 	if err != nil {
-		return "", err
+		return managed.ModelRef{}, err
 	}
 	var match *managed.ModelRef
 	for _, model := range models {
@@ -23,14 +28,14 @@ func (resolver ModelResolver) ResolveModel(ctx context.Context, preference strin
 				continue
 			}
 			if match != nil && *match != model.Ref {
-				return "", fmt.Errorf("runtime %q maps preference %q to multiple models", resolver.Runtime.Name(), preference)
+				return managed.ModelRef{}, fmt.Errorf("runtime %q maps preference %q to multiple models", resolver.Runtime.Name(), preference)
 			}
 			ref := model.Ref
 			match = &ref
 		}
 	}
 	if match == nil {
-		return "", fmt.Errorf("runtime %q has no model for preference %q", resolver.Runtime.Name(), preference)
+		return managed.ModelRef{}, fmt.Errorf("runtime %q has no model for preference %q", resolver.Runtime.Name(), preference)
 	}
-	return match.ID, nil
+	return *match, nil
 }

@@ -30,12 +30,13 @@ const modelsTTL = 5 * time.Minute
 // but an operator reading their own console should be able to tell a real price
 // from a fallback.
 type tierPrice struct {
-	Tier   string `json:"tier"`
-	Model  string `json:"model,omitempty"`
-	Input  int64  `json:"input,omitempty"`
-	Output int64  `json:"output,omitempty"`
-	Named  bool   `json:"named"`
-	Err    string `json:"error,omitempty"`
+	Tier     string `json:"tier"`
+	Model    string `json:"model,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Input    int64  `json:"input,omitempty"`
+	Output   int64  `json:"output,omitempty"`
+	Named    bool   `json:"named"`
+	Err      string `json:"error,omitempty"`
 }
 
 // modelCache memoises the priced tier list. It is one value, not a map: the
@@ -139,12 +140,13 @@ func (rt *Router) priceTiers(ctx context.Context) []tierPrice {
 	out := make([]tierPrice, 0, len(cov))
 	for _, c := range cov {
 		out = append(out, tierPrice{
-			Tier:   c.Preference.String(),
-			Model:  c.Model,
-			Input:  c.Rates.Input,
-			Output: c.Rates.Output,
-			Named:  c.Named,
-			Err:    c.Err,
+			Tier:     c.Preference.String(),
+			Model:    c.Model,
+			Provider: c.ModelRef.Provider,
+			Input:    c.Rates.Input,
+			Output:   c.Rates.Output,
+			Named:    c.Named,
+			Err:      c.Err,
 		})
 	}
 	return out

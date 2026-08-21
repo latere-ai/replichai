@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -26,6 +27,24 @@ func TestManagedSessionRefRoundTripsAndLegacyNeverUsesCurrentDefault(t *testing.
 	}
 	if _, ok, err := (Job{}).ManagedSessionRef(); err != nil || ok {
 		t.Fatalf("empty ManagedSessionRef = %v, %v", ok, err)
+	}
+}
+
+func TestJobCostUsesPersistedModelProvider(t *testing.T) {
+	card := credit.Card{Models: []credit.Rates{
+		{Model: "shared", Ref: managed.ModelRef{Provider: "anthropic", ID: "shared"}, Input: 3_000_000},
+		{Model: "shared", Ref: managed.ModelRef{Provider: "openai", ID: "shared"}, Input: 9_000_000},
+	}}
+	j := Job{Rates: card, Status: provider.RunStatus{
+		Model: "shared", ModelProvider: "openai", Usage: provider.Usage{InputTokens: 1},
+	}}
+	if got := j.cost(); got != 9 {
+		t.Fatalf("OpenAI cost = %d, want 9", got)
+	}
+	// Historical rows had no provider and are Anthropic, never current-default.
+	j.Status.ModelProvider = ""
+	if got := j.cost(); got != 3 {
+		t.Fatalf("legacy cost = %d, want 3", got)
 	}
 }
 
