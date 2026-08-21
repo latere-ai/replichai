@@ -1,6 +1,6 @@
 # 041a — One managed-session contract
 
-**Status:** designed, not built.
+**Status:** implemented.
 
 **Scope:** replace the Anthropic resource graph exposed by `internal/provider` with a semantic managed-session contract. Define the request, durable reference, capabilities, errors, state, evidence, and usage invariants. No consumer migration and no new vendor adapter in this leaf.
 
@@ -132,3 +132,7 @@ An adapter must discover remote model availability without mutating state. Capab
 - The final usage meter/rate-card representation: 041d; this leaf establishes only cumulative normalized usage.
 - Migrating the current Anthropic and memory adapters: 041e.
 - Direct OpenAI or Latere network calls: 041f and 041g.
+
+## Outcome
+
+`internal/managed` now owns the semantic spec, durable reference, status, usage, evidence, capabilities, typed errors, validation, runtime contract, reusable conformance suite, and deterministic memory runtime. The package has no vendor dependency; its focused coverage exceeds 90%.

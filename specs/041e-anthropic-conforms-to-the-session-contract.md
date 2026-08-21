@@ -1,6 +1,6 @@
 # 041e — Anthropic conforms to the session contract
 
-**Status:** designed, not built. Completion of this leaf is the normalization refactor: production still runs Anthropic, but no application path depends on Anthropic lifecycle or wire vocabulary.
+**Status:** implemented through the managed compatibility adapter.
 
 **Scope:** migrate memory and Anthropic Managed Agents to `internal/managed.Runtime`; add the reusable conformance suite and mocked Anthropic transaction tests; remove the old provider registry/resource contract and all non-adapter Anthropic usage parsing/imports; preserve current audit, experiment, publication, restart, cancellation, and billing behavior.
 
@@ -108,3 +108,7 @@ Implementation lands as independently green commits: neutral types and conforman
 - Calling OpenAI: 041f.
 - Calling Topos, Cella, Lux, or Drive: 041g.
 - Replacing the Anthropic adapter with Lux's Anthropic compatibility surface. Managed Agents lifecycle endpoints are not a model-generation dialect.
+
+## Outcome
+
+Anthropic is constructed only at `internal/runtimes/builtin` and is exposed to consumers only as a managed runtime. Ungraded work emits no evaluator payload. Vendor transcript usage is normalized in the adapter. Uploaded file ids, workspace, worker revision, and model are retained in the opaque locator; failures roll back uploads, sessions, agent, and environment, and successful release cleans owned resources after retention. The old protocol types remain internal to the compatibility adapter rather than being deleted outright, which kept existing behavior and tests stable while removing them from application consumers.

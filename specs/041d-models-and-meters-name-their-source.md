@@ -1,6 +1,6 @@
 # 041d — Models and meters name their source
 
-**Status:** designed, not built.
+**Status:** implemented with legacy billing bridges retained.
 
 **Scope:** make model identity, event usage, session usage, and rate lookup provider-neutral and provider-qualified. Preserve project holds, enqueue-time rate snapshots, and exactly-once settlement while preventing cross-provider fallback or silent omission of hosted-tool cost.
 
@@ -110,3 +110,7 @@ Historical settlement fixture tests calculate the old and migrated price and req
 - Billing a researcher directly from Lux/Cella records.
 - Guessing prices by scraping provider model-list endpoints.
 - User-entered exact model ids; [031](031-the-model-is-a-choice.md)'s three preferences remain the product surface.
+
+## Outcome
+
+Managed catalogues, statuses, usage, event deltas, rate rows, coverage reports, job costing, and `/models` carry provider-qualified model identity. Rate fallback is confined to one provider and billing variant; generic cache writes have their own rate; extra meters must be declared and priced. Old model-only card JSON backfills to Anthropic and preserves historical price. The legacy `provider.Usage` bridge remains at existing job/publication seams, but vendor wire usage no longer crosses the adapter boundary.
