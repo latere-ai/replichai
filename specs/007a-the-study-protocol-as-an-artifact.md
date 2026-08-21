@@ -51,7 +51,7 @@ Two criteria do most of the deciding. The apparatus one: a paper's mechanism may
 
 Most components will answer `false`. That is the correct and useful answer, and it is the same value the boundary table provides by refusing to overclaim.
 
-**The rubric gains a seventh criterion, and the six existing ones do not move.** The new criterion grades the *declaration*, never the extraction:
+**The rubric gains a seventh criterion, and the six existing ones do not move.** *(It is criterion **8** today: [021a](021a-the-findings-as-data.md) later inserted "Findings as data" at 7 and pushed this one down. Read every "criterion 7" below as the instrument criterion, whatever number it carries.)* The new criterion grades the *declaration*, never the extraction:
 
 > **7. Instrument.** `instrument.json` is present and validates against the schema. Each of `protocol` and `analysis` is either populated from the paper with section, table, or figure references, or explicitly null with a specific reason. `servability` is answered against every criterion. A fabricated protocol, an unstated null, or a schema violation fails.
 

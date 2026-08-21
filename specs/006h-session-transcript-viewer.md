@@ -1,5 +1,7 @@
 # 006h — The session transcript viewer
 
+**Revised by [006s](006s-reading-a-session-in-time.md) and [021d](021d-watching-a-session-run.md).** The endpoint survives. What was replaced: the usage derivation (`stripRaw` is gone; per-event usage is parsed from `raw.model_usage`), the screen's whole structure, and this spec's decision that a finished session is static — `getSessionTranscript` now reads the backend's live event stream for a session still running, which this spec put out of scope.
+
 **Status:** implemented
 **Scope:** show a replication session's **transcript** in the app — the agent's trajectory (thinking, tool calls, tool results, the grade) and its token usage. The capture already exists at the provider layer and is published into the repository ([005](005-transcript.md)); this spec makes the web app *serve and render* it, replacing the hard-coded 404 stub. A child of [006](006-web-application.md).
 **Depends on:** [006g](006g-projects-and-replication-sessions.md) (the session the transcript belongs to), [005](005-transcript.md) (what a transcript is and where it lives), [003](003-reproduction-registry.md) (the forge pass-through that reads it).
