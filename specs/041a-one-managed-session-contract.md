@@ -83,20 +83,22 @@ Bootstrap entries are argv arrays, never shell fragments. Package managers are a
 type SessionRef struct {
     Runtime        RuntimeName     `json:"runtime"`
     ID             string          `json:"id"`
+    Revision       uint64          `json:"revision"`
     LocatorVersion int             `json:"locator_version"`
     Locator        json.RawMessage `json:"locator,omitempty"`
 }
 ```
 
-`ID` is the runtime's human-operable primary id. `Locator` is adapter-owned recovery metadata: for example, an OpenAI response and container id, or a Topos trace and Cella sandbox ids. It is versioned, size-limited, JSON-valid, and contains no credential or user content. Core code persists and returns it unchanged but never parses it. The router rejects a reference whose `Runtime` differs from the selected adapter.
+`ID` is the runtime's human-operable stable session id. `Locator` is adapter-owned recovery metadata: for example, an OpenAI response chain and container id, or a Topos trace and Cella sandbox ids. `LocatorVersion` versions its schema; `Revision` is a monotonically increasing checkpoint. The locator is size-limited, JSON-valid, and contains no credential or user content. Core code persists and returns it unchanged but never parses it. The router rejects a reference whose `Runtime` differs from the selected adapter.
 
-The reference is valid as soon as `Start` succeeds. A runtime may not return success until every id required for poll, evidence, cancel, and release is present. If startup fails, it returns no reference and rolls back all partial writes as specified in 041b.
+The reference is valid as soon as `Start` succeeds. A runtime may not return success until every id required to recover the current stage, poll, evidence, cancel, and release is present. Multi-stage orchestration may return a higher-revision locator in `Status`; runtime and id remain immutable. The controller persists that checkpoint with compare-and-swap before another adapter call. Any remote mutation that can precede a checkpoint uses a deterministic idempotency key derived from session id and stage, so replay after a crash resolves the same resource. If startup fails, it returns no reference and rolls back all partial writes as specified in 041b.
 
 ## Status and evidence invariants
 
 `Status` carries the complete `SessionRef`, exact `ModelRef`, state, timestamps, cumulative `Usage`, optional terminal reason, optional error summary, and optional verdict.
 
 - States remain `pending`, `running`, `done`, and `failed` for public compatibility. `TerminalReason` distinguishes success, evaluation failure, cancellation, timeout, runtime failure, and policy refusal.
+- A status may advance only `SessionRef.Revision` and `Locator`; runtime/id never change and revisions never decrease. A terminal reference is stable.
 - `pending → running → done|failed` is monotonic; a terminal observation never becomes non-terminal. Repeated terminal polls are stable.
 - Usage is the cumulative total for the session and is component-wise monotonic. Unknown usage is zero, never an estimate disguised as provider data.
 - An ungraded successful session is `done` with `Verdict == nil`. A graded `done` session has a decided verdict. A runtime may not report a graded success without its evaluation result.
@@ -116,7 +118,7 @@ An adapter must discover remote model availability without mutating state. Capab
 
 1. `internal/managed` exposes the semantic interface above and contains no Anthropic/OpenAI/Topos/Cella SDK import or vendor resource name.
 2. `SessionSpec.Validate` covers selector exclusivity, evaluation nil/positive budget, package manager syntax, argv bootstrap, network combinations, resource destinations/digests, and secret-reference redaction.
-3. `SessionRef` JSON round-trips arbitrary versioned locator data byte-for-byte and rejects empty runtime/id, invalid JSON, oversized locators, and secret-bearing keys.
+3. `SessionRef` JSON round-trips arbitrary versioned locator data byte-for-byte and rejects empty runtime/id, zero/decreasing revision, invalid JSON, oversized locators, and secret-bearing keys.
 4. A reusable contract test runs against a strict fake: ungraded sessions have no verdict; graded sessions carry rubric and budget; state and usage are monotonic; terminal state is stable; evidence survives cancel until release.
 5. Unsupported package, network, repository, evaluation, or attachment features fail before the fake records its first remote mutation.
 6. Cross-runtime references fail with `RuntimeMismatchError` before any adapter call.

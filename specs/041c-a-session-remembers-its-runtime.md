@@ -48,7 +48,7 @@ One migration adds:
 
 The existing public `status.run_id` remains during compatibility but is derived from `session_ref.id` on writes and ignored for routing. New code never reconstructs a reference from it.
 
-Enqueue chooses and persists `runtime`/`route` in the same transaction as the job and rate-card snapshot. The worker may start on another process after configuration changes and still uses that route. `Hooks.Started` persists `session_ref` before the controller's first poll. Every later status write includes the same ref; attempts to replace it fail.
+Enqueue chooses and persists `runtime`/`route` in the same transaction as the job and rate-card snapshot. The worker may start on another process after configuration changes and still uses that route. `Hooks.Started` persists `session_ref` before the controller's first poll. `Hooks.Checkpoint` may compare-and-swap it to a higher revision with the same runtime/id as adapter orchestration advances. Attempts to change identity, skip/decrease a revision, or overwrite a newer checkpoint fail.
 
 MemStore and Postgres store round-trip the full reference and route. Reads validate the persisted JSON, but retain unknown locator fields for forward compatibility. API responses expose runtime and public id; the opaque locator is not returned to browsers, logs, SSE, or public registry records.
 
@@ -91,7 +91,7 @@ Secrets stay outside persisted catalog, route, session ref, status, and settings
 1. Catalog tests cover isolated instances, canonical names/aliases, sorted discovery, duplicate rejection, caller-supplied default, factory errors with runtime context, and actionable unknown names; new catalog/router code exceeds 90% statement coverage.
 2. A two-fake router test exercises start, poll, events, artifact list/fetch, cancel, and release. After the new-session default flips from A to B, every operation on an A reference still reaches only A.
 3. A mismatch returned by an adapter or supplied in a reference fails before another backend call. A missing adapter never falls back.
-4. MemStore and Postgres tests round-trip route, runtime, complete opaque locator, and cleanup state. The locator survives unknown fields and process restart byte-for-byte.
+4. MemStore and Postgres tests round-trip route, runtime, complete opaque locator/revision, and cleanup state. The locator survives unknown fields and process restart byte-for-byte; CAS rejects a stale checkpoint.
 5. A restart end-to-end test persists an in-flight A session, rebuilds the runner with B as the new default, then resumes, streams transcript, publishes, cancels or completes, and releases through A only.
 6. The session reference is committed before the first poll; a simulated crash immediately after `Started` resumes without a duplicate remote start.
 7. Migration fixtures containing legacy status and snapshotted job JSON backfill Anthropic explicitly and preserve the previous model and cost. Empty provenance never resolves to the current default.

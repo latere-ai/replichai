@@ -19,6 +19,7 @@ Audit, experiments, and model cohorts each resolve a model, ensure a workspace, 
 ```go
 type Hooks struct {
     Started func(context.Context, SessionRef) error
+    Checkpoint func(context.Context, previous, next SessionRef) error
     Status  func(context.Context, Status) error
     Retain  func(context.Context, EvidenceReader) error
 }
@@ -37,6 +38,8 @@ context cancelled ----------------------> cancel ----------+
 ```
 
 `Started` runs synchronously immediately after `Runtime.Start` and before the first poll. The server hook persists the full `SessionRef`; CLI and pure engine callers may use a no-op. If `Started` fails, the controller cancels, retains whatever evidence exists, releases, and returns the persistence error joined with cleanup errors. No successful remote start can become invisible merely because a poll did not happen.
+
+When a runtime advances its internal multi-stage orchestration, `Poll` returns a status containing the same runtime/id and a higher-revision locator. `Checkpoint(previous, next)` is synchronously compare-and-swap persisted before the controller emits status or calls the adapter again. A checkpoint failure stops progression and enters the same cancel/retain policy. Adapters use a deterministic idempotency key for every stage-creating mutation, so a crash after the remote write but before checkpoint persistence replays to the same remote object rather than duplicating it.
 
 `Status` receives the initial pending observation and every distinct later observation. Observer failure is treated as a caller failure: cancel, retain, release. Duplicate runtime observations are not emitted.
 
@@ -90,7 +93,7 @@ Pre-existing repositories, Drive workspaces, and caller-owned resources are refe
 ## Acceptance criteria
 
 1. Audit, experiment runner, and model cohort construct one `SessionSpec` and call only `Controller.Execute`/`Resume`; no consumer names workspace, worker, agent revision, environment, or vendor session.
-2. A recording fake proves the exact order `Start → Started → Poll* → Retain → Release`, with `Started` before the first poll and evidence readable throughout `Retain`.
+2. A recording fake proves the exact order `Start → Started → Poll* → Retain → Release`, with `Started` before the first poll, every advanced locator checkpointed before the next call, and evidence readable throughout `Retain`.
 3. A server restart test starts through runtime A, persists the reference before any poll, reconstructs the runner, resumes, retains transcript/artifacts, and releases successfully.
 4. Table tests inject identical temporary/permanent poll failures into all three consumers and prove the same retry, cancellation, retention, and error-joining behavior with a fake clock.
 5. Cancellation tests prove `Cancel` precedes terminal wait/retention/release, partial events are retained, repeated cancel/release succeeds, and a cancelled request still gets the cleanup timeout.
