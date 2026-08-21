@@ -136,6 +136,7 @@ import {
 import { Ico, type IconName } from './icons'
 import { Landing } from './landing'
 import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
+import { useHead } from './head'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
@@ -176,6 +177,9 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null)
   const [meUnavailable, setMeUnavailable] = useState(false)
   const { view, navigate } = useRouter()
+  // The tab follows the screen from the second one onwards; the first one's head
+  // was written by the server (042a).
+  useHead(view, i18n.t, me === null ? null : me.authenticated)
 
   // refreshMe re-reads the identity, and with it the wallet — called
   // after anything that spends allowance, so the header never shows a stale
