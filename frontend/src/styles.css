@@ -3952,13 +3952,15 @@ input.submit-input {
    Not by importing `latere-ui/tokens`: that sheet defines --bg, --bg-surface
    and --bg-raised at :root, which this app also defines, and the import would
    quietly reskin every screen in the product to make one footer work. */
-.landing .site-footer {
+.site-footer {
   --text: var(--fg-1);
   --text-secondary: var(--fg-2);
   --text-muted: var(--fg-3);
   --accent: var(--brand);
   --shadow: var(--shadow-pop);
   --focus-outline: 2px solid var(--brand-ring);
+}
+.landing .site-footer {
   margin-top: 72px;
 }
 
