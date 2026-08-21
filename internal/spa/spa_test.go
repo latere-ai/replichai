@@ -147,3 +147,81 @@ func TestCachingDistinguishesTheShellFromItsAssets(t *testing.T) {
 		t.Errorf("shell Cache-Control = %q, want no-cache", got)
 	}
 }
+
+// Some assets arrive compressed, and gzipping them again is pure loss: CPU on
+// every uncached load, a payload that comes out slightly larger, and no
+// Content-Length, so the browser cannot show progress. 040 added two woff2
+// faces to the served set and made that visible; the PNGs had been paying it
+// since the card images landed.
+func TestHandlerDoesNotRecompressPackedAssets(t *testing.T) {
+	if _, err := fs.ReadFile(embedded, "dist/index.html"); err != nil {
+		t.Skip("no frontend build in this tree")
+	}
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	// Ask for every asset the way a browser does, and check what came back.
+	for _, tc := range []struct {
+		path string
+		gzip bool
+	}{
+		{"/fonts/instrument-serif-italic.woff2", false},
+		{"/og.png", false},
+		{"/favicon.svg", true},
+		{"/index.html", true},
+	} {
+		if !exists(mustSub(t), strings.TrimPrefix(tc.path, "/")) {
+			continue // this tree's build does not carry it
+		}
+		r := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		r.Header.Set("Accept-Encoding", "gzip")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		got := w.Header().Get("Content-Encoding") == "gzip"
+		if got != tc.gzip {
+			t.Errorf("%s: Content-Encoding gzip = %v, want %v", tc.path, got, tc.gzip)
+		}
+		if !got && w.Header().Get("Content-Length") == "" {
+			t.Errorf("%s: served uncompressed without a Content-Length", tc.path)
+		}
+	}
+}
+
+// The faces the shared footer's logotype is set in have to reach the browser
+// from this binary: the stylesheet names Instrument Serif, and without these
+// the Latere logotype renders in whatever serif the reader happens to have.
+func TestHandlerServesTheFonts(t *testing.T) {
+	if _, err := fs.ReadFile(embedded, "dist/index.html"); err != nil {
+		t.Skip("no frontend build in this tree")
+	}
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	for _, name := range []string{"italic", "regular"} {
+		path := "/fonts/instrument-serif-" + name + ".woff2"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", path, w.Code)
+		}
+		// The SPA fallback answers 200 with HTML for anything it cannot find,
+		// so the status alone proves nothing.
+		if ct := w.Header().Get("Content-Type"); ct != "font/woff2" {
+			t.Errorf("%s: content-type %q, want font/woff2", path, ct)
+		}
+		if cc := w.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age=") {
+			t.Errorf("%s: cache-control %q carries no lifetime", path, cc)
+		}
+	}
+}
+
+func mustSub(t *testing.T) fs.FS {
+	t.Helper()
+	dist, err := fs.Sub(embedded, "dist")
+	if err != nil {
+		t.Fatalf("sub: %v", err)
+	}
+	return dist
+}
