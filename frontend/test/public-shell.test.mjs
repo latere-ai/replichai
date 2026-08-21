@@ -53,6 +53,9 @@ const published = {
   published_sessions: 1,
   running: 0,
   latest_phase: 'done',
+  // What it is a reproduction of (043), as the list carries it: the citation,
+  // and no abstract.
+  papers: [{ title: 'The Placebo Effect of Artificial Intelligence', authors: ['Ada Lovelace', 'Grace Hopper'], venue: 'CHI', year: 2024 }],
 }
 
 const detail = {
@@ -157,8 +160,14 @@ try {
       wallet: !!document.querySelector('.wallet-pill'),
       newProject: [...document.querySelectorAll('.topbar-actions button')].some((b) => /new/i.test(b.getAttribute('aria-label') || '')),
       user: !!document.querySelector('.user-btn'),
+      cite: document.querySelector('.screen .rows .row [data-test="row-citation"]')?.textContent.trim() || '',
     }))
     if (shell.landing) fail('the registry rendered the landing; signed-out browsing is the app, not a preview of it')
+    // 043: a row says which paper it reproduces, to the reader who has no
+    // account and is deciding whether to open it.
+    for (const want of ['Ada Lovelace', 'CHI', '2024']) {
+      if (!shell.cite.includes(want)) fail(`the signed-out registry row does not cite ${want}: ${shell.cite || 'no citation at all'}`)
+    }
     if (!shell.rows) fail('the signed-out registry lists nothing')
     if (shell.rail.length !== 1) fail(`the signed-out rail offers ${shell.rail.length} destinations (${shell.rail.join(', ')}), want only the registry`)
     if (shell.signIn !== '/login?next=%2Fregistry') fail(`the rail sign-in points at ${shell.signIn || 'nothing'}`)

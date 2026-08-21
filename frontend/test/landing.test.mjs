@@ -396,8 +396,22 @@ try {
     // reveal that was wired up on mount alone never observed this one, so the
     // section was on the page, occupying its full height, and invisible.
     const published = [
-      { id: 'a', title: 'Attention Is All You Need — decoder ablation', signed_off_name: 'Ada Lovelace', session_count: 3, visibility: 'public' },
-      { id: 'b', title: 'The Placebo Effect of Artificial Intelligence', signed_off_name: 'Grace Hopper', session_count: 1, visibility: 'public' },
+      {
+        id: 'a',
+        title: 'Attention Is All You Need — decoder ablation',
+        signed_off_name: 'Ada Lovelace',
+        session_count: 3,
+        visibility: 'public',
+        // Two papers, the first one cited (043). The second's authors must never
+        // appear on the first's line, and its existence must be counted.
+        papers: [
+          { title: 'Attention Is All You Need', authors: ['Ashish Vaswani', 'Noam Shazeer', 'Niki Parmar', 'Jakob Uszkoreit'], venue: 'NeurIPS', year: 2017 },
+          { title: 'Point of no Undo', authors: ['Barbara Liskov'], venue: 'UIST', year: 2023 },
+        ],
+      },
+      // A paper nobody could look up. The card must say nothing rather than
+      // render an empty line, a stray separator, or a count with no citation.
+      { id: 'b', title: 'The Placebo Effect of Artificial Intelligence', signed_off_name: 'Grace Hopper', session_count: 1, visibility: 'public', papers: [{ title: 'The Placebo Effect' }] },
     ]
     const page = await open({ authenticated: false }, { json: { '/public': published } })
     await page.waitForSelector('[data-test="lp-strip"]')
@@ -417,6 +431,7 @@ try {
         painted: cards.filter(seen).length,
         titles: cards.map((c) => c.querySelector('.lp-card-title')?.textContent.trim()),
         bylines: cards.map((c) => c.querySelector('.lp-card-by')?.textContent.trim()),
+        cites: cards.map((c) => c.querySelector('[data-test="lp-card-cite"]')?.textContent.trim() ?? null),
         links: cards.map((c) => c.getAttribute('href')),
       }
     })
@@ -433,6 +448,24 @@ try {
       if (by.trim() === signers[i]) fail(`strip card ${i} names "${by}" and nothing else; a bare name reads as the paper's author`)
       if (!/sign/i.test(by)) fail(`strip card ${i} says "${by}"; it has to say the name signed the reproduction`)
     })
+    // 043: the card names the paper it is a reproduction of. The project title
+    // is a name somebody typed; this line is the paper's own.
+    const cite = strip.cites[0]
+    if (!cite) fail('the first strip card shows no citation for a paper that has one')
+    else {
+      for (const want of ['Ashish Vaswani', 'NeurIPS', '2017']) {
+        if (!cite.includes(want)) fail(`the strip citation does not carry ${want}: ${cite}`)
+      }
+      if (!/et al\./.test(cite)) fail(`a four-author paper is listed in full on a card: ${cite}`)
+      if (cite.includes('Jakob Uszkoreit')) fail(`the strip citation lists a fourth author it should have dropped: ${cite}`)
+      // The second paper is counted, never merged: its author on the first
+      // paper's line would attribute one paper's work to the other.
+      if (cite.includes('Barbara Liskov') || cite.includes('UIST')) fail(`the strip citation merged a second paper into the first: ${cite}`)
+      if (!cite.includes('1 more')) fail(`a two-paper project does not count its second paper: ${cite}`)
+    }
+    // A record nobody could fill in renders no line at all — not an empty one,
+    // and not a bare separator.
+    if (strip.cites[1] !== null) fail(`a card with no bibliography still rendered a citation: ${JSON.stringify(strip.cites[1])}`)
     if (!strip.links.every((h) => h?.startsWith('/p/'))) fail(`a strip card links nowhere useful: ${JSON.stringify(strip.links)}`)
     await page.close()
   }

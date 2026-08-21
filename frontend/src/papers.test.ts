@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { gradeable, groupByPaper, isGradeable } from './papers'
+import { citationBits, gradeable, groupByPaper, isGradeable, listCitation } from './papers'
 import type { Job, ProjectPaper } from './api'
 
 const paper = (key: string, title: string): ProjectPaper => ({
@@ -86,4 +86,40 @@ test('two papers each with a published session yield one row apiece', () => {
 test('the outcome rows exclude runs that produced nothing', () => {
   const rows = gradeable(groupByPaper([A], [job('half', A.key, 'failed', 'open-hai/half'), job('ok', A.key, 'done', 'open-hai/ok')]))
   expect(rows.map((r) => r.session.id)).toEqual(['ok'])
+})
+
+test('a citation reads authors, venue, year — and omits what no source declared', () => {
+  expect(citationBits({ authors: ['Ada Lovelace'], venue: 'CHI', year: 2024 }, 'et al.')).toEqual(['Ada Lovelace', 'CHI', 2024].map(String))
+  expect(citationBits({ authors: ['Ada Lovelace', 'Grace Hopper'] }, 'et al.')).toEqual(['Ada Lovelace, Grace Hopper'])
+  expect(citationBits({ venue: 'CHI', year: 2024 }, 'et al.')).toEqual(['CHI', '2024'])
+  expect(citationBits({ year: 2024 }, 'et al.')).toEqual(['2024'])
+})
+
+test('a fourth author becomes et al., and the label is the caller’s', () => {
+  const four = { authors: ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Barbara Liskov'] }
+  expect(citationBits(four, 'et al.')).toEqual(['Ada Lovelace, Grace Hopper, Alan Turing et al.'])
+  expect(citationBits({ authors: four.authors.slice(0, 3) }, 'et al.')).toEqual(['Ada Lovelace, Grace Hopper, Alan Turing'])
+})
+
+test('a record nobody could fill in yields nothing to render', () => {
+  expect(citationBits(undefined, 'et al.')).toEqual([])
+  expect(citationBits({}, 'et al.')).toEqual([])
+  // A year of zero is "no source declared one", not the year zero.
+  expect(citationBits({ authors: [], venue: '', year: 0 }, 'et al.')).toEqual([])
+})
+
+test('a registry row cites the first paper and counts the rest', () => {
+  const one = { title: 'Point of no Undo', authors: ['Ada Lovelace'], venue: 'CHI', year: 2024 }
+  const two = { title: 'PinchCatcher', authors: ['Grace Hopper'], venue: 'UIST', year: 2023 }
+  expect(listCitation([one], 'et al.')).toEqual({ bits: ['Ada Lovelace', 'CHI', '2024'], more: 0 })
+  expect(listCitation([one, two], 'et al.')).toEqual({ bits: ['Ada Lovelace', 'CHI', '2024'], more: 1 })
+  // The second paper's authors never join the first paper's line.
+  expect(listCitation([one, two], 'et al.').bits.join(' ')).not.toContain('Grace Hopper')
+})
+
+test('a row with nothing to cite says nothing at all', () => {
+  expect(listCitation(undefined, 'et al.')).toEqual({ bits: [], more: 0 })
+  expect(listCitation([], 'et al.')).toEqual({ bits: [], more: 0 })
+  // No line, so no dangling count under it either.
+  expect(listCitation([{ title: 'Untitled' }, { title: 'Also untitled' }], 'et al.')).toEqual({ bits: [], more: 0 })
 })

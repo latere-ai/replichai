@@ -417,6 +417,8 @@ const en = {
     deleteSessionFailed: 'Couldn’t delete this session. Try again in a moment.',
     blockerDeleteHint: 'Delete it to publish the rest of this project.',
     sessionCount: '{n} session(s)',
+    // A row cites the first paper a project holds, and counts the others (043).
+    morePapers: '+{n} more',
     private: 'Private',
     public: 'Public',
     // public zone

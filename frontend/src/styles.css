@@ -1136,6 +1136,17 @@ h1.screen-title {
   font-size: 11.5px;
   color: var(--fg-3);
 }
+/* The registry row's citation (043). One line: a row is scanned, not read, and
+   the project it links to carries the full bibliography. */
+.row-cite {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The merged project list's columns (018). The title takes the space left over;
    Owner and Last modified are fixed so they line up down the page — a column
    that wanders is one the eye has to re-find on every row. Both are quiet: they
@@ -3912,6 +3923,26 @@ input.submit-input {
   flex: none;
   margin-top: 3px;
   color: var(--fg-3);
+}
+/* The citation under a card's title (043): the paper this is a reproduction of,
+   set quieter than the title and above the facts about the reproduction. Two
+   lines at most — a fifteen-author paper is already cut to three names and an
+   "et al.", and what remains must not push the signer off the card. */
+.lp-card-cite {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+.lp-card-more,
+.row-cite-more {
+  margin-left: 7px;
+  opacity: 0.75;
+  white-space: nowrap;
 }
 .lp-card-foot {
   display: inline-flex;
