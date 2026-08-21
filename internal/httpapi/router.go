@@ -133,6 +133,10 @@ type ProjectStore interface {
 	// the container rather than being derived from the job store.
 	AddPaper(ctx context.Context, projectID string, p project.Paper) error
 	ListPapers(ctx context.Context, projectID string) ([]project.Paper, error)
+	// PapersByProjects is the same read for a whole list, in one call (043): the
+	// registry says what each project on it is a reproduction of, and the route
+	// that serves it is the one the internet calls without signing in.
+	PapersByProjects(ctx context.Context, ids []string) (map[string][]project.Paper, error)
 	EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error)
 	ListAll(ctx context.Context) ([]project.Project, error)
 	EditPaper(ctx context.Context, projectID, key string, edit project.PaperEdit) (project.Paper, error)

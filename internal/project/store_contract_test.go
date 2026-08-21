@@ -171,8 +171,77 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	runPaperContract(t, s)
+	runPapersByProjectsContract(t, s)
 	runModifiedContract(t, s)
 	runTrashContract(t, s)
+}
+
+// runPapersByProjectsContract asserts the list's read (043): every named
+// project's papers in one call, keyed by project, ordered the way ListPapers
+// orders them, and silent about ids that hold nothing.
+func runPapersByProjectsContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	one, err := s.Create(ctx, "owner", "Two papers")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	two, err := s.Create(ctx, "owner", "One paper")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	empty, err := s.Create(ctx, "owner", "No papers yet")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	for _, p := range []struct {
+		project string
+		paper   Paper
+	}{
+		{one.ID, Paper{Key: "doi:10.1145/1", Ref: "1", AddedBy: "owner", Title: "Point of no Undo",
+			Record: paper.Record{Authors: []string{"Ada Lovelace"}, Venue: "CHI", Year: 2024}}},
+		{one.ID, Paper{Key: "doi:10.1145/2", Ref: "2", AddedBy: "owner", Title: "PinchCatcher"}},
+		{two.ID, Paper{Key: "arxiv:2401.00001", Ref: "3", AddedBy: "owner", Title: "A third"}},
+	} {
+		if err := s.AddPaper(ctx, p.project, p.paper); err != nil {
+			t.Fatalf("AddPaper: %v", err)
+		}
+	}
+
+	by, err := s.PapersByProjects(ctx, []string{one.ID, two.ID, empty.ID, "nobody"})
+	if err != nil {
+		t.Fatalf("PapersByProjects: %v", err)
+	}
+	if len(by) != 2 {
+		t.Fatalf("PapersByProjects returned %d projects, want 2 — a project with no papers is absent", len(by))
+	}
+	if got := by[one.ID]; len(got) != 2 || got[0].Key != "doi:10.1145/1" || got[1].Key != "doi:10.1145/2" {
+		t.Errorf("the two-paper project = %+v; want both, in added order", got)
+	}
+	// The record comes with them, or the registry has nothing to render.
+	if got := by[one.ID]; len(got) == 2 && (got[0].Record.Venue != "CHI" || got[0].Record.Year != 2024 || len(got[0].Record.Authors) != 1) {
+		t.Errorf("the first paper lost its record: %+v", got[0].Record)
+	}
+	if got := by[two.ID]; len(got) != 1 || got[0].Key != "arxiv:2401.00001" {
+		t.Errorf("the one-paper project = %+v", got)
+	}
+	// Each project answers for itself. A key that crossed would put one
+	// project's bibliography on another's card.
+	if _, ok := by["nobody"]; ok {
+		t.Errorf("PapersByProjects answered for a project that is not there")
+	}
+
+	// Asking for none is not an error — it is the empty registry's read.
+	if got, err := s.PapersByProjects(ctx, nil); err != nil || len(got) != 0 {
+		t.Errorf("PapersByProjects(nil) = %v, %v; want an empty map and no error", got, err)
+	}
+
+	for _, id := range []string{one.ID, two.ID, empty.ID} {
+		if err := s.Delete(ctx, id); err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+	}
 }
 
 // runTrashContract asserts what the trash must do (019): a trashed project

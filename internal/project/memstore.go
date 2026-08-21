@@ -303,6 +303,29 @@ func (s *MemStore) ListPapers(_ context.Context, projectID string) ([]Paper, err
 	if _, ok := s.projects[projectID]; !ok {
 		return nil, ErrNotFound
 	}
+	return s.papersOf(projectID), nil
+}
+
+// PapersByProjects returns the papers of every named project that exists. An id
+// nothing is filed under is left out rather than refused: this is a list's read,
+// and one project deleted between two calls must not take the list with it.
+func (s *MemStore) PapersByProjects(_ context.Context, ids []string) (map[string][]Paper, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string][]Paper, len(ids))
+	for _, id := range ids {
+		if _, ok := s.projects[id]; !ok {
+			continue
+		}
+		if papers := s.papersOf(id); len(papers) > 0 {
+			out[id] = papers
+		}
+	}
+	return out, nil
+}
+
+// papersOf is one project's papers, ordered. The caller holds the lock.
+func (s *MemStore) papersOf(projectID string) []Paper {
 	// A copy: the caller must not be able to edit the store through the slice.
 	out := make([]Paper, len(s.papers[projectID]))
 	copy(out, s.papers[projectID])
@@ -315,7 +338,7 @@ func (s *MemStore) ListPapers(_ context.Context, projectID string) ([]Paper, err
 		}
 		return out[i].Key < out[j].Key
 	})
-	return out, nil
+	return out
 }
 
 // EnrichPaper fills a paper's empty fields, ignoring a missing project or paper.

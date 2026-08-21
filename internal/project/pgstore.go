@@ -292,11 +292,16 @@ const paperColumns = `paper_key, ref, title, added_by, added_at,
 	authors, venue, year, volume, issue, pages, publisher, abstract, edited`
 
 // scanPaper reads one paper row in paperColumns order.
-func scanPaper(row interface{ Scan(...any) error }) (Paper, error) {
+func scanPaper(row interface{ Scan(...any) error }) (Paper, error) { return scanPaperWith(row) }
+
+// scanPaperWith reads one paper row whose select prefixes paperColumns with the
+// destinations given — the multi-project read selects the project id first, and
+// the column list must stay one string for the two reads to agree.
+func scanPaperWith(row interface{ Scan(...any) error }, before ...any) (Paper, error) {
 	var p Paper
-	err := row.Scan(&p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt,
+	err := row.Scan(append(before, &p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt,
 		&p.Record.Authors, &p.Record.Venue, &p.Record.Year,
-		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Record.Abstract, &p.Edited)
+		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Record.Abstract, &p.Edited)...)
 	return p, err
 }
 
@@ -352,6 +357,32 @@ func (s *PGStore) ListPapers(ctx context.Context, projectID string) ([]Paper, er
 			return nil, err
 		}
 		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// PapersByProjects returns the papers of every named project in one query,
+// ordered within each project the way ListPapers orders them. A project with no
+// papers is simply absent from the map — the same answer, one fewer allocation.
+func (s *PGStore) PapersByProjects(ctx context.Context, ids []string) (map[string][]Paper, error) {
+	if len(ids) == 0 {
+		return map[string][]Paper{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT project_id, `+paperColumns+` FROM project_papers
+		WHERE project_id = ANY($1) ORDER BY project_id, added_at, paper_key`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]Paper{}
+	for rows.Next() {
+		var projectID string
+		p, err := scanPaperWith(rows, &projectID)
+		if err != nil {
+			return nil, err
+		}
+		out[projectID] = append(out[projectID], p)
 	}
 	return out, rows.Err()
 }
