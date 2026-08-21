@@ -533,6 +533,158 @@ try {
     await page.close()
   }
 
+  /* ── The material has two states (040) ── */
+
+  {
+    // 033 built four blocks as a material rather than a theme and painted them
+    // near-black in both appearances. On paper that is four holes down one page,
+    // so 040 gave the material a light half. What is guarded here is that each
+    // half is actually the half it claims: the grounds, and — the thing a colour
+    // swap silently breaks — that the ink on each ground is still readable.
+    const BLOCKS = {
+      hero: '.lp-slab',
+      boundary: '.lp-loops .lp-block',
+      artifacts: '.lp-walk-panel',
+      close: '.lp-close',
+    }
+    const probe = (page) =>
+      page.evaluate((sels) => {
+        // Relative luminance, so "is this paper or is this ink" is one number
+        // rather than three, and contrast is the WCAG ratio off the same value.
+        const rgba = (c) => {
+          const n = c.match(/\d+(\.\d+)?/g).map(Number)
+          return [n[0], n[1], n[2], n.length > 3 ? n[3] : 1]
+        }
+        // Composite the ink over its own ground first. Half this page's quiet
+        // ink is an alpha over the block, and read as opaque it would report a
+        // contrast it does not have.
+        const over = (fg, bg) => fg.slice(0, 3).map((v, i) => v * fg[3] + bg[i] * (1 - fg[3]))
+        const lum = (c) => {
+          const [r, g, b] = Array.isArray(c) ? c : rgba(c)
+          const f = (v) => {
+            const u = v / 255
+            return u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4)
+          }
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+        }
+        const out = {}
+        for (const [name, sel] of Object.entries(sels)) {
+          const el = document.querySelector(sel)
+          if (!el) {
+            out[name] = null
+            continue
+          }
+          const bg = getComputedStyle(el).backgroundColor
+          // The heading, the body and the quietest line each sit on this ground.
+          const inks = [...el.querySelectorAll('h1, h2, h3, p, .lp-eyebrow, .lp-plate-label')]
+            .slice(0, 12)
+            .map((e) => getComputedStyle(e).color)
+          const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+          out[name] = {
+            bg,
+            lum: lum(bg),
+            worst: inks.length ? Math.min(...inks.map((c) => ratio(lum(bg), lum(over(rgba(c), rgba(bg)))))) : null,
+          }
+        }
+        return out
+      }, sels)
+
+    const sels = BLOCKS
+    for (const [theme, want] of [
+      ['light', { min: 0.72, max: 1 }],
+      ['dark', { min: 0, max: 0.06 }],
+    ]) {
+      const page = await open({ authenticated: false }, { theme })
+      await page.waitForSelector('.lp-close')
+      // Every band starts at the pre-reveal opacity; the grounds are painted
+      // regardless, but scrolling through is what the reader actually does.
+      await page.evaluate(async () => {
+        for (const b of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
+          b.scrollIntoView()
+          await new Promise((r) => setTimeout(r, 60))
+        }
+      })
+      const got = await probe(page)
+      for (const [name, v] of Object.entries(got)) {
+        if (!v) {
+          fail(`${theme}: the landing has no ${name} block`)
+          continue
+        }
+        if (v.lum < want.min || v.lum > want.max) {
+          fail(`in ${theme} mode the ${name} block is ${v.bg} (luminance ${v.lum.toFixed(3)}), outside ${want.min}–${want.max} — the block is painted for the other appearance`)
+        }
+        // 3:1 is the bar the product's quiet tier is written to; the heading
+        // and body tiers sit far above it. The failure being caught is a ground
+        // that flipped without its ink flipping, which lands near 1:1 and passes
+        // every geometry assertion on this page.
+        if (v.worst !== null && v.worst < 3) {
+          fail(`in ${theme} mode the ${name} block's quietest ink is ${v.worst.toFixed(2)}:1 against ${v.bg}`)
+        }
+      }
+      // The artifacts panel restated the boundary panel's ground as a literal
+      // and won over it, which is why it stayed dark whatever the tokens said.
+      if (got.artifacts && got.boundary && got.artifacts.bg !== got.boundary.bg) {
+        fail(`in ${theme} mode the artifacts panel is ${got.artifacts.bg} and the boundary panel is ${got.boundary.bg}; both are the same material`)
+      }
+      await page.close()
+    }
+  }
+
+  /* ── The page ends in the Latere footer, and it works (040) ── */
+
+  {
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.landing .site-footer')
+    const foot = await page.evaluate(() => {
+      const f = document.querySelector('.landing .site-footer')
+      const hrefs = [...f.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+      return {
+        // The lineup, so the product is placed among the others rather than alone.
+        products: hrefs.filter((h) => /^https:\/\/[a-z]+\.latere\.ai\/$/.test(h)).length,
+        legal: ['/legal/privacy', '/legal/terms', '/legal/impressum'].filter((p) => hrefs.some((h) => h?.endsWith(p))).length,
+        rights: /©|\(c\)/i.test(f.querySelector('.footer-bottom')?.textContent ?? ''),
+        // A palette the app does not define would leave the ink unset, which
+        // computes to the inherited colour rather than to nothing.
+        ink: getComputedStyle(f.querySelector('.footer-col a')).color,
+        muted: getComputedStyle(f.querySelector('.footer-tagline')).color,
+        themes: [...f.querySelectorAll('.footer-seg-btn')].map((b) => b.textContent.trim()),
+        active: [...f.querySelectorAll('.footer-seg-btn.is-active')].map((b) => b.textContent.trim()),
+        langs: [...f.querySelectorAll('.footer-lang-select option')].map((o) => o.value),
+        // The old one-line strip is gone, not left behind next to the new one.
+        legacy: !!document.querySelector('.lp-foot'),
+      }
+    })
+    if (foot.products < 6) fail(`the footer lists ${foot.products} products; the shared lineup is six`)
+    if (foot.legal !== 3) fail(`the footer carries ${foot.legal} of the three legal links`)
+    if (!foot.rights) fail('the footer has no copyright line')
+    if (foot.ink === foot.muted) fail(`the footer's link ink and its muted ink are both ${foot.ink}; the palette aliases did not reach it`)
+    if (foot.themes.length !== 3) fail(`the footer offers ${foot.themes.length} appearances, want light, dark, and auto`)
+    // One language, because the app has one. A dropdown offering a translation
+    // that does not exist is a promise the app cannot keep.
+    if (foot.langs.length !== 1 || foot.langs[0] !== 'en') fail(`the footer offers ${JSON.stringify(foot.langs)}; the app ships English only`)
+    if (foot.legacy) fail('the landing still carries its own one-line footer beside the shared one')
+    if (foot.active.length !== 1) fail(`${foot.active.length} appearances are marked active`)
+
+    // The control is wired to the app's own theme, not to a copy of it.
+    const flipped = await page.evaluate(async () => {
+      const before = document.documentElement.dataset.theme
+      const btns = [...document.querySelectorAll('.landing .site-footer .footer-seg-btn')]
+      // ☀ light, ☾ dark, ◐ auto — pick whichever is not the one showing now.
+      btns[before === 'dark' ? 0 : 1].click()
+      await new Promise((r) => setTimeout(r, 250))
+      return {
+        before,
+        after: document.documentElement.dataset.theme,
+        stored: localStorage.getItem('theme'),
+        active: [...document.querySelectorAll('.landing .site-footer .footer-seg-btn.is-active')].map((b) => b.textContent.trim()),
+      }
+    })
+    if (flipped.after === flipped.before) fail(`the footer's appearance control did nothing; <html> stayed ${flipped.before}`)
+    if (flipped.stored !== flipped.after) fail(`the footer changed the appearance to ${flipped.after} and stored ${flipped.stored}`)
+    if (flipped.active.length !== 1) fail(`after the switch ${flipped.active.length} appearances are marked active`)
+    await page.close()
+  }
+
   /* ── The failure screens keep the plain card, and inherit the mark ── */
 
   {
