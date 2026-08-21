@@ -94,34 +94,65 @@ func NewController(router RuntimeRouter, options ...ControllerOption) *Controlle
 	return controller
 }
 
-func (c *Controller) Execute(ctx context.Context, spec SessionSpec, hooks Hooks) (Result, error) {
+func (c *Controller) Capabilities(ctx context.Context, spec SessionSpec) (Capabilities, error) {
 	runtime, err := c.router.ForNew(spec)
 	if err != nil {
-		return Result{}, err
+		return Capabilities{}, err
+	}
+	return runtime.Capabilities(ctx)
+}
+
+// Start validates and creates a durable session, invoking Started before it
+// returns. It exists for the CLI's explicit detached workflow; ordinary callers
+// use Execute so retention and release cannot be forgotten.
+func (c *Controller) Start(ctx context.Context, spec SessionSpec, hooks Hooks) (SessionRef, error) {
+	runtime, ref, err := c.start(ctx, spec, hooks)
+	if err != nil {
+		return ref, err
+	}
+	_ = runtime
+	return ref, nil
+}
+
+func (c *Controller) Execute(ctx context.Context, spec SessionSpec, hooks Hooks) (Result, error) {
+	runtime, ref, err := c.start(ctx, spec, hooks)
+	if err != nil {
+		return Result{Ref: ref}, err
+	}
+	graded := spec.Evaluation != nil
+	return c.wait(ctx, runtime, ref, hooks, &graded)
+}
+
+func (c *Controller) start(ctx context.Context, spec SessionSpec, hooks Hooks) (Runtime, SessionRef, error) {
+	runtime, err := c.router.ForNew(spec)
+	if err != nil {
+		return nil, SessionRef{}, err
 	}
 	if err := runtime.Validate(spec); err != nil {
-		return Result{}, err
+		return nil, SessionRef{}, err
 	}
 	ref, err := runtime.Start(ctx, spec)
 	if err != nil {
-		return Result{}, err
+		return nil, SessionRef{}, err
 	}
 	if err := validateRuntimeRef(runtime, ref); err != nil {
-		return c.abort(ctx, runtime, ref, Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}, hooks, err)
+		_, abortErr := c.abort(ctx, runtime, ref, Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}, hooks, err)
+		return nil, ref, abortErr
 	}
 	if hooks.Started != nil {
 		if err := hooks.Started(ctx, ref); err != nil {
-			return c.abort(ctx, runtime, ref, Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}, hooks, err)
+			_, abortErr := c.abort(ctx, runtime, ref, Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}, hooks, err)
+			return nil, ref, abortErr
 		}
 	}
 	initial := Status{Ref: ref, State: StatePending}
 	if hooks.Status != nil {
 		if err := hooks.Status(ctx, initial); err != nil {
-			return c.abort(ctx, runtime, ref, initial, hooks, err)
+			_, abortErr := c.abort(ctx, runtime, ref, initial, hooks, err)
+			return nil, ref, abortErr
 		}
 	}
-	graded := spec.Evaluation != nil
-	return c.wait(ctx, runtime, ref, hooks, &graded)
+	return runtime, ref, nil
 }
 
 func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (Result, error) {

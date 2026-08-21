@@ -163,6 +163,26 @@ func TestControllerExecuteOrdersCheckpointEvidenceAndRelease(t *testing.T) {
 	}
 }
 
+func TestControllerDetachedStartPersistsBeforeReturning(t *testing.T) {
+	runtime := newControllerRuntime()
+	controller := instantController(runtime)
+	var persisted SessionRef
+	ref, err := controller.Start(context.Background(), controllerSpec(false), Hooks{Started: func(_ context.Context, ref SessionRef) error {
+		persisted = ref
+		return nil
+	}})
+	if err != nil || !ref.SameIdentity(persisted) {
+		t.Fatalf("Start = %+v, persisted %+v, %v", ref, persisted, err)
+	}
+	if slicesContain(runtime.calls, "poll") || slicesContain(runtime.calls, "release") {
+		t.Fatalf("detached Start continued lifecycle: %v", runtime.calls)
+	}
+	capabilities, err := controller.Capabilities(context.Background(), controllerSpec(false))
+	if err != nil || capabilities.OutputDir != "" {
+		t.Fatalf("Capabilities = %+v, %v", capabilities, err)
+	}
+}
+
 func TestControllerRetriesTemporaryPollErrors(t *testing.T) {
 	runtime := newControllerRuntime()
 	runtime.pollErrors = []error{
