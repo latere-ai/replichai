@@ -175,7 +175,7 @@ func (c *Controller) Cancel(ctx context.Context, ref SessionRef, hooks Hooks) (R
 		return Result{Ref: ref}, err
 	}
 	status := Status{Ref: ref, State: StateFailed, TerminalReason: ReasonCancelled}
-	return c.abort(ctx, runtime, ref, status, hooks, context.Canceled)
+	return c.abort(ctx, runtime, ref, status, hooks, nil)
 }
 
 func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, hooks Hooks, graded *bool) (Result, error) {
