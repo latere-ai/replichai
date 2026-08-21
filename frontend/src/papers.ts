@@ -1,4 +1,4 @@
-import type { Job, ProjectPaper } from './api'
+import type { Job, PaperCitation, ProjectPaper } from './api'
 
 // What a project is made of, joined. A project holds papers (012) and a paper
 // has sessions; the two are related by the offline paper key, which the paper
@@ -56,4 +56,49 @@ export function gradeable(grouped: Grouped): { paper: ProjectPaper; session: Job
   const rows: { paper: ProjectPaper; session: Job }[] = []
   for (const g of grouped.papers) for (const s of g.sessions) if (isGradeable(s)) rows.push({ paper: g.paper, session: s })
   return rows
+}
+
+// citationBits is a bibliography as a reader scans it: who wrote it, where it
+// appeared, and when — in that order, each part omitted when the record does not
+// declare it. The caller joins them; three surfaces render the same three facts
+// (the project screen, the registry, the landing strip) and they must not drift.
+//
+// Three authors then "et al.", because a fifteen-author paper would otherwise be
+// the whole row. The label is passed in rather than translated here: this is a
+// pure function, and the one thing about a citation that is language is the word
+// standing in for the authors it dropped.
+//
+// An empty result is the honest answer for a record nobody could fill in. What
+// the caller does with it differs by surface — the project screen invites its
+// owner to complete it; the registry, whose reader can do nothing about it,
+// renders nothing at all.
+export function citationBits(r: CitationSource | undefined, etAl: string): string[] {
+  const bits: string[] = []
+  if (r?.authors?.length) {
+    bits.push(r.authors.length > 3 ? `${r.authors.slice(0, 3).join(', ')} ${etAl}` : r.authors.join(', '))
+  }
+  if (r?.venue) bits.push(r.venue)
+  if (r?.year) bits.push(String(r.year))
+  return bits
+}
+
+// CitationSource is the little of a paper a citation line reads. Both shapes
+// that carry it satisfy this: the full PaperRecord a project screen holds, and
+// the trimmed PaperCitation a list is sent.
+export type CitationSource = { authors?: string[]; venue?: string; year?: number }
+
+// listCitation is what one row of a list says about the papers behind it: the
+// first paper's citation, and how many others are filed under the same project.
+//
+// The first paper rather than a merged line, because a citation names one
+// paper's authors and merging two would attribute one's work to the other. The
+// count is the honest remainder — a reader who wants the rest opens the project,
+// which is what the row is a link to.
+//
+// An unfillable first record yields no bits and the row renders nothing, count
+// included: "+1 more" under a line that never appeared reads as a broken card,
+// not as a fact.
+export function listCitation(papers: PaperCitation[] | undefined, etAl: string): { bits: string[]; more: number } {
+  const bits = citationBits(papers?.[0], etAl)
+  return { bits, more: bits.length === 0 ? 0 : Math.max(0, (papers?.length ?? 0) - 1) }
 }

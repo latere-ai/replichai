@@ -1,11 +1,12 @@
 import { SiteFooter } from 'latere-ui/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { listPublic, type ProjectView } from './api'
+import { listPublic, type PaperCitation, type ProjectView } from './api'
 import { LatereMark, Lockup, Mark } from './brand'
 import { mountHeroScene } from './hero-scene'
 import type { I18n } from './i18n'
 import { Ico } from './icons'
+import { listCitation } from './papers'
 import type { Theme, ThemeMode } from './theme'
 
 // The landing (029, rebuilt by 033). It is a place, not a door.
@@ -637,6 +638,11 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
         {rows.map((p, i) => (
           <a key={p.id} className="lp-card" href={`/p/${p.id}`} style={{ '--i': i } as React.CSSProperties}>
             <span className="lp-card-title">{p.title}</span>
+            {/* Which paper this is a reproduction of (043). A card's title is a
+                name its owner typed; the citation is the paper's own, and it is
+                what a stranger scans the registry by. A project holding more
+                than one says so rather than letting the first stand for all. */}
+            <PaperCite i18n={i18n} papers={p.papers} />
             {/* Named, and named as what: a bare name under a paper's title reads
                 as the paper's author, which is the one person this line is never
                 about. The signer is who put their name to the *reproduction*. */}
@@ -651,6 +657,22 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
         ))}
       </div>
     </section>
+  )
+}
+
+// PaperCite is the citation line on a registry card: the first paper's authors,
+// venue and year, and a count of the others. A project whose papers carry no
+// record renders nothing — the reader here is a stranger who cannot fill one in,
+// so "No details yet" would be a line addressed to nobody.
+function PaperCite({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
+  const { t } = i18n
+  const { bits, more } = listCitation(papers, t('etAl'))
+  if (bits.length === 0) return null
+  return (
+    <span className="lp-card-cite" data-test="lp-card-cite">
+      {bits.join(' · ')}
+      {more > 0 && <span className="lp-card-more">{t('morePapers', { n: String(more) })}</span>}
+    </span>
   )
 }
 

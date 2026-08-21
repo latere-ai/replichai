@@ -154,6 +154,11 @@ export type ProjectView = Project & {
   // When this project last changed — the newest of its creation, its papers, and
   // its sessions. Derived server-side on every read, and what the list sorts on.
   modified_at?: string
+  // What this project is a reproduction *of* (043): every paper it holds, as a
+  // citation. All of them, because a project holds a list — one line under a
+  // two-paper project would put the second paper's work under the first one's
+  // name. Absent for a project that holds none.
+  papers?: PaperCitation[]
 }
 
 // may_submit is the server's answer to "may this caller open a session here" —
@@ -394,6 +399,17 @@ export type PaperRecord = {
   // What the paper is about, in its source's own words. Absent for the many
   // records that publish none.
   abstract?: string
+}
+
+// PaperCitation is one paper as a *list* carries it (043): what it is called,
+// and the three fields a citation line is made of. The public registry sends
+// this rather than the whole record — an abstract is paragraphs, and a page of
+// cards would ship one per card to print one line per card.
+export type PaperCitation = {
+  title?: string
+  authors?: string[]
+  venue?: string
+  year?: number
 }
 
 // A correction. Only the fields present are written, and each one written is

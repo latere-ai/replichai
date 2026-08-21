@@ -73,6 +73,7 @@ import {
   startSession,
   listModels,
   type ModelTier,
+  type PaperCitation,
   type ProjectPaper,
   watchJob,
   type ResolvedPaper,
@@ -137,7 +138,7 @@ import { Ico, type IconName } from './icons'
 import { Landing } from './landing'
 import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { useHead } from './head'
-import { gradeable, groupByPaper, type Grouped, type PaperGroup } from './papers'
+import { citationBits, gradeable, groupByPaper, listCitation, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { useTheme, type ThemeMode } from './theme'
 import { absoluteTime, elapsed, relativeTime } from './when'
@@ -1374,6 +1375,22 @@ function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
 
 /* ─── Public registry (zone) ─── */
 
+// RowCitation is the registry row's half of what a landing card says: the first
+// paper's citation, and how many others the project holds. It renders nothing
+// when no source could fill the record in — the stranger reading this list is
+// not the person who can complete it.
+function RowCitation({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
+  const { t } = i18n
+  const { bits, more } = listCitation(papers, t('etAl'))
+  if (bits.length === 0) return null
+  return (
+    <div className="row-cite" data-test="row-citation">
+      {bits.join(' · ')}
+      {more > 0 && <span className="row-cite-more">{t('morePapers', { n: String(more) })}</span>}
+    </div>
+  )
+}
+
 function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
   const [list, setList] = useState<ProjectView[] | null>(null)
@@ -1397,6 +1414,11 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
               <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row-title">{p.title}</div>
+                  {/* Which paper this row is a reproduction of (043), above the
+                      facts about the reproduction itself. It is the paper's own
+                      line, not the project's; a project's title is a name
+                      somebody typed. */}
+                  <RowCitation i18n={i18n} papers={p.papers} />
                   <div className="row-sub">
                     {t('initiator')}:{' '}
                     {p.signer_handle ? (
@@ -4076,13 +4098,7 @@ function needsDetails(p: ProjectPaper): boolean {
 // invitation to fill it in.
 function Citation({ i18n, paper }: { i18n: I18n; paper: ProjectPaper }) {
   const { t } = i18n
-  const r = paper.record
-  const bits: string[] = []
-  if (r?.authors?.length) {
-    bits.push(r.authors.length > 3 ? `${r.authors.slice(0, 3).join(', ')} ${t('etAl')}` : r.authors.join(', '))
-  }
-  if (r?.venue) bits.push(r.venue)
-  if (r?.year) bits.push(String(r.year))
+  const bits = citationBits(paper.record, t('etAl'))
   if (bits.length === 0) {
     return (
       <span className="paper-cite" data-test="citation-missing">
