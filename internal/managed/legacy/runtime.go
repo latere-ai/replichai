@@ -1,0 +1,294 @@
+// Package legacy adapts the original provider resource graph to the managed
+// session contract while the Anthropic implementation is moved behind it.
+// Application packages must not import this package.
+package legacy
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"path"
+	"strings"
+
+	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/provider"
+)
+
+type Config struct {
+	Name          managed.RuntimeName
+	ModelProvider string
+	Provider      provider.Provider
+}
+
+type Runtime struct{ config Config }
+
+func New(config Config) (*Runtime, error) {
+	if config.Name == "" || managed.CanonicalRuntimeName(string(config.Name)) != config.Name {
+		return nil, fmt.Errorf("legacy managed runtime has invalid name %q", config.Name)
+	}
+	if strings.TrimSpace(config.ModelProvider) == "" {
+		return nil, fmt.Errorf("legacy managed runtime %q has no model provider", config.Name)
+	}
+	if config.Provider == nil {
+		return nil, fmt.Errorf("legacy managed runtime %q has no provider", config.Name)
+	}
+	return &Runtime{config: config}, nil
+}
+
+func (r *Runtime) Name() managed.RuntimeName { return r.config.Name }
+
+func (r *Runtime) Capabilities(context.Context) (managed.Capabilities, error) {
+	return managed.Capabilities{
+		OutputDir:          r.config.Provider.OutputDir(),
+		PackageManagers:    map[string]bool{"pip": true},
+		NetworkModes:       map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
+		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true, managed.AccessReadWrite: true},
+		Evaluation:         true,
+		DurableEvents:      true,
+		Artifacts:          true,
+		Cancellation:       true,
+		MaxAttachmentBytes: 64 << 20,
+		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
+	}, nil
+}
+
+func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
+	models := make([]managed.Model, 0, 3)
+	for _, preference := range []string{"best", "balanced", "fast"} {
+		id, err := r.config.Provider.ResolveModel(ctx, preference)
+		if err != nil {
+			return nil, err
+		}
+		models = append(models, managed.Model{Ref: managed.ModelRef{Provider: r.config.ModelProvider, ID: id}, Preferences: []string{preference}})
+	}
+	return models, nil
+}
+
+func (r *Runtime) Validate(spec managed.SessionSpec) error {
+	capabilities, _ := r.Capabilities(context.Background())
+	if err := managed.ValidateCapabilities(r.Name(), capabilities, spec); err != nil {
+		return err
+	}
+	if spec.Model.Exact != nil {
+		return &managed.UnsupportedError{Runtime: r.Name(), Field: "model.exact", Capability: "exact_model"}
+	}
+	return nil
+}
+
+type locator struct {
+	WorkspaceID   string           `json:"workspace_id"`
+	WorkerID      string           `json:"worker_id"`
+	WorkerVersion int              `json:"worker_version"`
+	Model         managed.ModelRef `json:"model"`
+	Graded        bool             `json:"graded"`
+}
+
+func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.SessionRef, error) {
+	if err := r.Validate(spec); err != nil {
+		return managed.SessionRef{}, err
+	}
+	modelID, err := r.config.Provider.ResolveModel(ctx, spec.Model.Preference)
+	if err != nil {
+		return managed.SessionRef{}, fmt.Errorf("resolve model: %w", err)
+	}
+	packages := make(map[string][]string)
+	for _, pkg := range spec.Sandbox.Packages {
+		name := pkg.Name
+		if pkg.Version != "" {
+			name += "==" + pkg.Version
+		}
+		packages[pkg.Manager] = append(packages[pkg.Manager], name)
+	}
+	network := provider.NetworkLimited
+	if spec.Sandbox.Network.Mode == managed.NetworkOpen {
+		network = provider.NetworkOpen
+	}
+	workspace, err := r.config.Provider.EnsureWorkspace(ctx, provider.WorkspaceSpec{Name: "managed-session", Packages: packages, Network: network})
+	if err != nil {
+		return managed.SessionRef{}, fmt.Errorf("create sandbox: %w", err)
+	}
+	worker, err := r.config.Provider.EnsureWorker(ctx, provider.WorkerSpec{Name: "managed-session", Instructions: spec.Instructions, Model: modelID})
+	if err != nil {
+		return managed.SessionRef{}, fmt.Errorf("create worker: %w", err)
+	}
+	runSpec := provider.RunSpec{Task: spec.Task}
+	if spec.Evaluation != nil {
+		runSpec.Rubric = spec.Evaluation.Rubric
+		runSpec.MaxRevisions = spec.Evaluation.MaxRevisions
+	}
+	for _, resource := range spec.Resources {
+		switch resource.Kind {
+		case managed.ResourceAttachment:
+			runSpec.Attachments = append(runSpec.Attachments, provider.Attachment{Path: workspacePath(resource.Attachment.Path), Content: resource.Attachment.Content})
+		case managed.ResourceRepository:
+			repository := resource.Repository
+			token, ok := managed.Secret(ctx, repository.CredentialRef)
+			if repository.CredentialRef != "" && !ok {
+				return managed.SessionRef{}, &managed.InvalidSpecError{Field: "resources.repository.credential_ref", Message: "secret reference is unavailable"}
+			}
+			runSpec.Mount = provider.RepoMount{
+				URL: repository.URL, Token: token, MountPath: workspacePath(repository.Destination), ReadOnly: repository.Access == managed.AccessReadOnly,
+			}
+		}
+	}
+	handle, err := r.config.Provider.StartRun(ctx, worker, workspace, runSpec)
+	if err != nil {
+		return managed.SessionRef{}, fmt.Errorf("start session: %w", err)
+	}
+	encoded, _ := json.Marshal(locator{
+		WorkspaceID: workspace.ID, WorkerID: worker.ID, WorkerVersion: worker.Revision,
+		Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: modelID}, Graded: spec.Evaluation != nil,
+	})
+	return managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}, nil
+}
+
+func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
+	handle, metadata, err := r.handle(ref)
+	if err != nil {
+		return managed.Status{}, err
+	}
+	status, err := r.config.Provider.Poll(ctx, handle)
+	if err != nil {
+		return managed.Status{}, err
+	}
+	result := managed.Status{
+		Ref: ref, Model: metadata.Model, State: translateState(status.State),
+		Usage: managed.Usage{
+			Model: metadata.Model, InputFresh: status.Usage.InputTokens, InputCached: status.Usage.CachedInputTokens,
+			CacheWrite: status.Usage.CacheWriteTokens, CacheWrite5m: status.Usage.CacheWrite5mTokens,
+			CacheWrite1h: status.Usage.CacheWrite1hTokens, Output: status.Usage.OutputTokens,
+		},
+	}
+	if status.Model != "" {
+		result.Model.ID = status.Model
+		result.Usage.Model = result.Model
+	}
+	if metadata.Graded && status.Verdict != nil {
+		result.Verdict = &managed.Verdict{Grade: translateGrade(status.Verdict.Grade), Explanation: status.Verdict.Explanation}
+	}
+	if result.State == managed.StateDone {
+		result.TerminalReason = managed.ReasonSucceeded
+		if result.Verdict != nil && result.Verdict.Grade != managed.GradePassed {
+			result.State = managed.StateFailed
+			result.TerminalReason = managed.ReasonEvaluationFailed
+		}
+	} else if result.State == managed.StateFailed {
+		result.TerminalReason = managed.ReasonRuntimeFailed
+	}
+	return result, nil
+}
+
+func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed.Event, error) {
+	handle, _, err := r.handle(ref)
+	if err != nil {
+		return nil, err
+	}
+	events, err := r.config.Provider.Transcript(ctx, handle)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]managed.Event, 0, len(events))
+	for index, event := range events {
+		result = append(result, managed.Event{
+			ID: fmt.Sprintf("%s-%d", ref.ID, index+1), Role: managed.Role(event.Role), Kind: managed.EventKind(event.Kind),
+			Tool: event.Tool, Content: event.Content, Time: event.Time, Raw: event.Raw,
+		})
+	}
+	return result, nil
+}
+
+func (r *Runtime) ListArtifacts(ctx context.Context, ref managed.SessionRef) ([]managed.Artifact, error) {
+	handle, _, err := r.handle(ref)
+	if err != nil {
+		return nil, err
+	}
+	artifacts, err := r.config.Provider.ListArtifacts(ctx, handle)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]managed.Artifact, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		result = append(result, managed.Artifact{ID: artifact.ID, Path: artifact.Path})
+	}
+	return result, nil
+}
+
+func (r *Runtime) FetchArtifact(ctx context.Context, ref managed.SessionRef, artifact managed.Artifact) ([]byte, error) {
+	handle, _, err := r.handle(ref)
+	if err != nil {
+		return nil, err
+	}
+	return r.config.Provider.FetchArtifact(ctx, handle, provider.Artifact{ID: artifact.ID, Path: artifact.Path})
+}
+
+func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
+	handle, _, err := r.handle(ref)
+	if err != nil {
+		return err
+	}
+	return r.config.Provider.CloseRun(ctx, handle)
+}
+
+func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
+	handle, _, err := r.handle(ref)
+	if err != nil {
+		return err
+	}
+	return r.config.Provider.CloseRun(ctx, handle)
+}
+
+func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, error) {
+	if ref.Runtime != r.Name() {
+		return provider.RunHandle{}, locator{}, &managed.RuntimeMismatchError{Expected: r.Name(), Actual: ref.Runtime}
+	}
+	if err := ref.Validate(managed.DefaultMaxLocatorBytes); err != nil {
+		return provider.RunHandle{}, locator{}, err
+	}
+	if ref.LocatorVersion != 1 {
+		return provider.RunHandle{}, locator{}, fmt.Errorf("unsupported %s locator version %d", r.Name(), ref.LocatorVersion)
+	}
+	var metadata locator
+	if err := json.Unmarshal(ref.Locator, &metadata); err != nil || metadata.WorkspaceID == "" || metadata.WorkerID == "" || !metadata.Model.Valid() {
+		return provider.RunHandle{}, locator{}, fmt.Errorf("invalid %s session locator", r.Name())
+	}
+	return provider.RunHandle{
+		ID: ref.ID, Workspace: provider.WorkspaceRef{ID: metadata.WorkspaceID},
+		Worker: provider.WorkerRef{ID: metadata.WorkerID, Revision: metadata.WorkerVersion},
+	}, metadata, nil
+}
+
+func workspacePath(relative string) string { return path.Join("/workspace", relative) }
+
+func translateState(state provider.RunState) managed.State {
+	switch state {
+	case provider.StatePending:
+		return managed.StatePending
+	case provider.StateRunning:
+		return managed.StateRunning
+	case provider.StateDone:
+		return managed.StateDone
+	case provider.StateFailed:
+		return managed.StateFailed
+	default:
+		return managed.StateUnknown
+	}
+}
+
+func translateGrade(grade provider.Grade) managed.Grade {
+	switch grade {
+	case provider.GradePending:
+		return managed.GradePending
+	case provider.GradePassed:
+		return managed.GradePassed
+	case provider.GradeNeedsRevision:
+		return managed.GradeNeedsRevision
+	case provider.GradeExhausted:
+		return managed.GradeExhausted
+	case provider.GradeFailed:
+		return managed.GradeFailed
+	default:
+		return managed.GradeUnknown
+	}
+}
+
+var _ managed.Runtime = (*Runtime)(nil)
