@@ -15,8 +15,12 @@ func TestHandlerServesIndexFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	// A deep link that is not a real asset falls back to index.html.
-	for _, path := range []string{"/", "/jobs/abc", "/dashboard"} {
+	// A deep link that is not a real asset falls back to index.html, so the
+	// client-side router can resolve it. Which addresses those are is 042c's
+	// list: /jobs/abc and /dashboard were app paths when this test was written
+	// and are not addresses this app has, so they now carry the shell with a
+	// 404 rather than answering 200 with the dashboard.
+	for _, path := range []string{"/", "/registry", "/p/abc", "/p/abc/s/xyz", "/u/ada"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusOK {
@@ -27,6 +31,48 @@ func TestHandlerServesIndexFallback(t *testing.T) {
 		}
 		if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
 			t.Errorf("%s: content-type %q, want html", path, ct)
+		}
+	}
+}
+
+// AC1: an address this app does not have says so, and still carries the app —
+// the status is the truth for a crawler, the body is a page a person who
+// mistyped can navigate from.
+func TestAnAddressThatDoesNotExistIs404(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	for _, path := range []string{"/dashboard", "/jobs/abc", "/this-page-does-not-exist-xyz", "/p"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, w.Code)
+		}
+		if got := w.Header().Get("X-Robots-Tag"); got != "noindex" {
+			t.Errorf("%s: X-Robots-Tag %q, want noindex", path, got)
+		}
+		if !strings.Contains(w.Body.String(), "replichai") {
+			t.Errorf("%s: a 404 did not carry the app", path)
+		}
+	}
+}
+
+// AC5: the screens a signed-out reader renders nothing at are marked, whatever
+// robots.txt says — that file governs fetching, this governs indexing.
+func TestTheOperatorScreensAreNotIndexed(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	for _, path := range []string{"/wallet", "/settings", "/settings/profile", "/console", "/new", "/trash"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", path, w.Code)
+		}
+		if got := w.Header().Get("X-Robots-Tag"); got != "noindex" {
+			t.Errorf("%s: X-Robots-Tag %q, want noindex", path, got)
 		}
 	}
 }
