@@ -10,12 +10,110 @@
 //
 // three is imported dynamically and nowhere else in the app, so Vite splits it
 // into a chunk the first paint never pays for. Everything here is best-effort:
-// no WebGL, no chunk, or a throw on any line leaves the caller with a dark slab
-// and a page that reads exactly as designed.
+// no WebGL, no chunk, or a throw on any line leaves the caller with an empty
+// slab and a page that reads exactly as designed.
 
-// The slab's own colours. They are literal rather than tokens on purpose: the
-// hero is a material, not a theme, and it is this dark in light mode too.
-const VOID = 0x0a0b0d
+// The scene has two states, because the slab does (040). What changes between
+// them is not a colour list — it is the *arithmetic*.
+//
+// In the dark the mark is light added to a void: every layer blends additively,
+// each particle's brightness lives in its colour channels, and where particles
+// crowd, the sum climbs towards white. On paper that operation has no meaning —
+// adding light to a pale ground saturates on the first layer and the mark
+// vanishes. So the light state inks instead: normal blending, the hue held
+// constant, and the brightness moved into an alpha channel. Crowding then
+// converges on full ink exactly as crowding converged on white, so density
+// still reads as density and the figure means what it meant.
+//
+// Everything the two disagree about is in one Palette. The geometry below reads
+// it and never branches on the theme itself.
+export type HeroTheme = 'light' | 'dark'
+
+type Palette = {
+  /** Clear colour and fog: the slab's own ground. */
+  ground: number
+  /** Light adds, paper inks. */
+  additive: boolean
+  /**
+   * Turns a layer's brightness into alpha in the inked state. The brightness
+   * values overshoot 1 on purpose — they were written to saturate an additive
+   * sum — so this scales them into a range where a faint particle stays faint.
+   */
+  gain: number
+  /** Multiplies every layer's material opacity. */
+  ink: number
+  floor: number
+  grid: readonly [number, number]
+  gridOpacity: number
+  hues: {
+    inner: number
+    runner: number
+    outer: number
+    wireIn: number
+    wireOut: number
+    rays: number
+  }
+  /** The core, outermost first: [scale, opacity, hue]. */
+  core: readonly (readonly [number, number, number])[]
+  lights: {
+    sky: number
+    below: number
+    hemi: number
+    key: number
+    fill: number
+    fillPower: number
+    warm: number
+    warmPower: number
+    rim: number
+  }
+  dust: readonly [number, number]
+}
+
+const DARK: Palette = {
+  ground: 0x0a0b0d,
+  additive: true,
+  gain: 1,
+  ink: 1,
+  floor: 0x0d1014,
+  grid: [0x1c2836, 0x141b24],
+  gridOpacity: 0.5,
+  hues: { inner: 0x3d86e0, runner: 0xbcd9fb, outer: 0xd2554f, wireIn: 0x9cc4f2, wireOut: 0xe8a8a3, rays: 0x7fb6f0 },
+  core: [
+    [7.5, 0.1, 0x5f93d8],
+    [4.6, 0.13, 0x86b4ec],
+    [2.7, 0.16, 0xa8cbf5],
+    [1.5, 0.2, 0xd6e8fc],
+    [0.75, 0.26, 0xffffff],
+  ],
+  lights: { sky: 0x9fc4ee, below: 0x08090b, hemi: 0.5, key: 2.1, fill: 0x2369bd, fillPower: 40, warm: 0xa9373b, warmPower: 26, rim: 1.1 },
+  dust: [0x9fb4d0, 0.55],
+}
+
+// Paper. The hue ladder inverts with the ground: in the dark the hottest layer
+// is the palest (the runner, near white), and on paper the hottest layer is the
+// deepest, because that is what stands out against the page.
+const LIGHT: Palette = {
+  ground: 0xeceae5,
+  additive: false,
+  gain: 0.62,
+  ink: 0.85,
+  floor: 0xe8e6e0,
+  grid: [0xdcd9d1, 0xe4e1d9],
+  gridOpacity: 0.3,
+  hues: { inner: 0x2369bd, runner: 0x0f3b6d, outer: 0xa9373b, wireIn: 0x14477f, wireOut: 0x86282c, rays: 0x3d78bd },
+  // Tighter than the dark core on purpose: an additive star reads as light and
+  // a wide inked one reads as a smudge, so the paper version keeps its reach
+  // short and spends the contrast at the centre.
+  core: [
+    [7.5, 0.05, 0x9ab6d8],
+    [4.6, 0.07, 0x6f95c4],
+    [2.7, 0.11, 0x4a74ab],
+    [1.5, 0.16, 0x2b5590],
+    [0.75, 0.32, 0x123a6d],
+  ],
+  lights: { sky: 0xffffff, below: 0xd9d6ce, hemi: 0.9, key: 1.2, fill: 0x2369bd, fillPower: 14, warm: 0xa9373b, warmPower: 9, rim: 0.4 },
+  dust: [0x8f9bab, 0.34],
+}
 
 export type HeroScene = { dispose: () => void }
 
@@ -24,7 +122,13 @@ export type HeroScene = { dispose: () => void }
 // figure, not a first frame of it. `stage` is the element pointer movement is
 // measured against, which is the whole slab rather than the canvas, so the
 // parallax follows the cursor over the copy as well.
-export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null, reduce: boolean): Promise<HeroScene | null> {
+export async function mountHeroScene(
+  el: HTMLElement,
+  stage: HTMLElement | null,
+  reduce: boolean,
+  theme: HeroTheme = 'dark',
+): Promise<HeroScene | null> {
+  const pal = theme === 'light' ? LIGHT : DARK
   let THREE: typeof import('three')
   try {
     THREE = await import('three')
@@ -43,14 +147,19 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
   const h = el.clientHeight || 700
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.setSize(w, h)
-  renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.15
-  renderer.setClearColor(VOID, 1)
+  // The filmic curve is what makes an additive bloom roll off instead of
+  // clipping. Inked on paper there is no bloom to roll off, and the curve only
+  // greys the ground, so the light state renders its values as written.
+  if (pal.additive) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.15
+  }
+  renderer.setClearColor(pal.ground, 1)
   renderer.domElement.style.display = 'block'
   el.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.fog = new THREE.FogExp2(VOID, 0.036)
+  scene.fog = new THREE.FogExp2(pal.ground, 0.036)
   const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 300)
   camera.position.set(0.4, 1.05, 13.2)
   camera.lookAt(0, 0.1, 0)
@@ -59,16 +168,16 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
   // rather than on a colour.
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(300, 300),
-    new THREE.MeshStandardMaterial({ color: 0x0d1014, roughness: 0.62, metalness: 0.28 }),
+    new THREE.MeshStandardMaterial({ color: pal.floor, roughness: 0.62, metalness: 0.28 }),
   )
   floor.rotation.x = -Math.PI / 2
   floor.position.y = -4.2
   scene.add(floor)
-  const grid = new THREE.GridHelper(160, 80, 0x1c2836, 0x141b24)
+  const grid = new THREE.GridHelper(160, 80, pal.grid[0], pal.grid[1])
   grid.position.y = -4.18
   const gridMat = grid.material as import('three').Material
   gridMat.transparent = true
-  gridMat.opacity = 0.5
+  gridMat.opacity = pal.gridOpacity
   scene.add(grid)
 
   // The rig only sways. A solid mark turning on its axis reads as a spinning
@@ -105,12 +214,32 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
       map: glowTex,
       vertexColors: true,
       transparent: true,
-      opacity,
+      opacity: opacity * pal.ink,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: pal.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       sizeAttenuation: true,
       fog: false,
     })
+
+  // Every layer writes its per-particle brightness through here. Additively it
+  // goes into the colour, so the sum climbs; inked it goes into alpha, so the
+  // hue holds and the coverage climbs. The colour attribute is RGBA either way
+  // — three reads a four-wide colour attribute as vertex alpha — which keeps
+  // one buffer layout and one code path for both.
+  const paint = (col: Float32Array, i: number, c: import('three').Color, b: number) => {
+    const k = i * 4
+    if (pal.additive) {
+      col[k] = c.r * b
+      col[k + 1] = c.g * b
+      col[k + 2] = c.b * b
+      col[k + 3] = 1
+    } else {
+      col[k] = c.r
+      col[k + 1] = c.g
+      col[k + 2] = c.b
+      col[k + 3] = Math.min(1, b * pal.gain)
+    }
+  }
 
   // A uniform sample across [rIn,rOut] ends a band at a hard radius, which in
   // near-edge-on projection reads as a straight shear across the disc. Three
@@ -123,7 +252,7 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
   // segment dissolves at its ends instead of stopping square.
   const orbit = (count: number, rIn: number, rOut: number, thick: number, arcs: number, duty: number, hex: number, bright: number) => {
     const pos = new Float32Array(count * 3)
-    const col = new Float32Array(count * 3)
+    const col = new Float32Array(count * 4)
     const c = new THREE.Color(hex)
     const span = (Math.PI * 2) / arcs
     for (let i = 0; i < count; i++) {
@@ -144,14 +273,11 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
       pos[i * 3] = Math.cos(a) * rr
       pos[i * 3 + 1] = Math.sin(a) * rr
       pos[i * 3 + 2] = (bell() - 0.5) * thick * 2
-      const b = bright * (0.12 + 0.88 * radial * along) * (0.35 + Math.random() * 0.65)
-      col[i * 3] = c.r * b
-      col[i * 3 + 1] = c.g * b
-      col[i * 3 + 2] = c.b * b
+      paint(col, i, c, bright * (0.12 + 0.88 * radial * along) * (0.35 + Math.random() * 0.65))
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4))
     return g
   }
 
@@ -161,7 +287,7 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
   // leading edge terminating on a straight cut.
   const arcBand = (count: number, rIn: number, rOut: number, thick: number, aSpan: number, hex: number, bright: number) => {
     const pos = new Float32Array(count * 3)
-    const col = new Float32Array(count * 3)
+    const col = new Float32Array(count * 4)
     const c = new THREE.Color(hex)
     for (let i = 0; i < count; i++) {
       const u = Math.random()
@@ -173,28 +299,25 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
       pos[i * 3 + 1] = Math.sin(a) * rr
       pos[i * 3 + 2] = (bell() - 0.5) * thick * 2
       const along = Math.pow(Math.sin(Math.PI * u), 1.15) * (0.3 + 0.7 * u)
-      const b = bright * radial * along * (0.4 + Math.random() * 0.6)
-      col[i * 3] = c.r * b
-      col[i * 3 + 1] = c.g * b
-      col[i * 3 + 2] = c.b * b
+      paint(col, i, c, bright * radial * along * (0.4 + Math.random() * 0.6))
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4))
     return g
   }
 
-  const innerDisc = new THREE.Points(orbit(9000, 2.02, 3.12, 0.12, 1, 1, 0x3d86e0, 1.75), dot(0.058, 0.95))
-  const runner = new THREE.Points(arcBand(4200, 2.06, 3.06, 0.11, Math.PI * 0.72, 0xbcd9fb, 4.2), dot(0.072, 1))
-  const outerBand = new THREE.Points(orbit(5600, 4.64, 5.28, 0.22, 6, 0.62, 0xd2554f, 3.0), dot(0.072, 0.95))
+  const innerDisc = new THREE.Points(orbit(9000, 2.02, 3.12, 0.12, 1, 1, pal.hues.inner, 1.75), dot(0.058, 0.95))
+  const runner = new THREE.Points(arcBand(4200, 2.06, 3.06, 0.11, Math.PI * 0.72, pal.hues.runner, 4.2), dot(0.072, 1))
+  const outerBand = new THREE.Points(orbit(5600, 4.64, 5.28, 0.22, 6, 0.62, pal.hues.outer, 3.0), dot(0.072, 0.95))
   rig.add(innerDisc, runner, outerBand)
 
   // Hairlines through the fields, so the mark stays legible inside the dust.
   // Built from the same feathered particles rather than from thin tori: a torus
   // arc ends on a flat cap, which is a 90-degree corner sitting in the middle of
   // a picture made entirely of curves.
-  const wireIn = new THREE.Points(orbit(3400, 2.48, 2.64, 0.014, 1, 1, 0x9cc4f2, 2.2), dot(0.03, 0.9))
-  const outerWire = new THREE.Points(orbit(2100, 4.88, 5.02, 0.014, 6, 0.62, 0xe8a8a3, 2.4), dot(0.028, 0.9))
+  const wireIn = new THREE.Points(orbit(3400, 2.48, 2.64, 0.014, 1, 1, pal.hues.wireIn, 2.2), dot(0.03, 0.9))
+  const outerWire = new THREE.Points(orbit(2100, 4.88, 5.02, 0.014, 6, 0.62, pal.hues.wireOut, 2.4), dot(0.028, 0.9))
   rig.add(wireIn, outerWire)
 
   // Radial streaks off the core, bright at the middle and spent well before the
@@ -204,8 +327,8 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
     const PER = 48
     const count = RAYS * PER
     const pos = new Float32Array(count * 3)
-    const col = new Float32Array(count * 3)
-    const c = new THREE.Color(0x7fb6f0)
+    const col = new Float32Array(count * 4)
+    const c = new THREE.Color(pal.hues.rays)
     let i = 0
     for (let k = 0; k < RAYS; k++) {
       const a = Math.random() * Math.PI * 2
@@ -220,16 +343,13 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
         pos[i * 3 + 1] = Math.sin(aa) * rr
         pos[i * 3 + 2] = (bell() - 0.5) * 0.06 * rr
         const fade = Math.pow(1 - t, 2.2) * Math.min(1, t * 8)
-        const b = 2.6 * gain * fade
-        col[i * 3] = c.r * b
-        col[i * 3 + 1] = c.g * b
-        col[i * 3 + 2] = c.b * b
+        paint(col, i, c, 2.6 * gain * fade)
         i++
       }
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4))
     return new THREE.Points(g, dot(0.038, 0.7))
   })()
   rig.add(rays)
@@ -237,32 +357,35 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
   // The core: the thing the orbits are about, and the scene's own light. Several
   // wide faint camera-facing sprites rather than one bright one — each stays well
   // under the clipping point, so the core reads as bright without any radius at
-  // which the additive sum saturates and draws itself an edge.
-  for (const [scale, op, hex] of [
-    [7.5, 0.1, 0x5f93d8],
-    [4.6, 0.13, 0x86b4ec],
-    [2.7, 0.16, 0xa8cbf5],
-    [1.5, 0.2, 0xd6e8fc],
-    [0.75, 0.26, 0xffffff],
-  ] as const) {
+  // which the additive sum saturates and draws itself an edge. Inked, the same
+  // stack reads as a bloom of shadow: each layer lerps the ground a little
+  // further towards the deepest hue, and nothing ever draws an edge either.
+  for (const [scale, op, hex] of pal.core) {
     const sp = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: glowTex, color: hex, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.SpriteMaterial({
+        map: glowTex,
+        color: hex,
+        transparent: true,
+        opacity: op,
+        blending: pal.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+        depthWrite: false,
+      }),
     )
     sp.scale.set(scale, scale, 1)
     rig.add(sp)
   }
 
-  scene.add(new THREE.HemisphereLight(0x9fc4ee, 0x08090b, 0.5))
-  const key = new THREE.DirectionalLight(0xffffff, 2.1)
+  scene.add(new THREE.HemisphereLight(pal.lights.sky, pal.lights.below, pal.lights.hemi))
+  const key = new THREE.DirectionalLight(0xffffff, pal.lights.key)
   key.position.set(7, 10, 8)
   scene.add(key)
-  const fill = new THREE.PointLight(0x2369bd, 40, 30)
+  const fill = new THREE.PointLight(pal.lights.fill, pal.lights.fillPower, 30)
   fill.position.set(-5.5, 1.5, 5)
   scene.add(fill)
-  const warm = new THREE.PointLight(0xa9373b, 26, 28)
+  const warm = new THREE.PointLight(pal.lights.warm, pal.lights.warmPower, 28)
   warm.position.set(6, -1.5, -3)
   scene.add(warm)
-  const rim = new THREE.DirectionalLight(0x88aaff, 1.1)
+  const rim = new THREE.DirectionalLight(0x88aaff, pal.lights.rim)
   rim.position.set(-9, 3, -8)
   scene.add(rim)
 
@@ -278,7 +401,7 @@ export async function mountHeroScene(el: HTMLElement, stage: HTMLElement | null,
   dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3))
   const dust = new THREE.Points(
     dustGeo,
-    new THREE.PointsMaterial({ color: 0x9fb4d0, size: 0.045, transparent: true, opacity: 0.55, depthWrite: false }),
+    new THREE.PointsMaterial({ color: pal.dust[0], size: 0.045, transparent: true, opacity: pal.dust[1], depthWrite: false }),
   )
   scene.add(dust)
 

@@ -1,3 +1,4 @@
+import { SiteFooter } from 'latere-ui/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { listPublic, type ProjectView } from './api'
@@ -5,6 +6,7 @@ import { LatereMark, Lockup, Mark } from './brand'
 import { mountHeroScene } from './hero-scene'
 import type { I18n } from './i18n'
 import { Ico } from './icons'
+import type { Theme, ThemeMode } from './theme'
 
 // The landing (029, rebuilt by 033). It is a place, not a door.
 //
@@ -100,11 +102,10 @@ function Band({
 
 // ── The hero ────────────────────────────────────────────────────────────────
 
-// HeroSlab is the first screen: a dark panel with the mark inside it as a field
-// of particles rather than a drawing. The scene is loaded lazily and is allowed
-// to fail — the slab, the claim, and both ways in are HTML and never depend on
-// it.
-function HeroSlab({ i18n, href }: { i18n: I18n; href: string }) {
+// HeroSlab is the first screen: a panel with the mark inside it as a field of
+// particles rather than a drawing. The scene is loaded lazily and is allowed to
+// fail — the slab, the claim, and both ways in are HTML and never depend on it.
+function HeroSlab({ i18n, href, theme }: { i18n: I18n; href: string; theme: Theme }) {
   const { t } = i18n
   const stage = useRef<HTMLDivElement | null>(null)
   const mount = useRef<HTMLDivElement | null>(null)
@@ -120,7 +121,7 @@ function HeroSlab({ i18n, href }: { i18n: I18n; href: string }) {
     let live = true
     let scene: Awaited<ReturnType<typeof mountHeroScene>> = null
     const reduce = window.matchMedia?.(REDUCE).matches ?? false
-    mountHeroScene(el, stage.current, reduce)
+    mountHeroScene(el, stage.current, reduce, theme)
       .then((s) => {
         if (!live) return s?.dispose()
         scene = s
@@ -130,7 +131,10 @@ function HeroSlab({ i18n, href }: { i18n: I18n; href: string }) {
       live = false
       scene?.dispose()
     }
-  }, [])
+    // The palette is baked into every buffer the scene builds, so an appearance
+    // change is a rebuild rather than a repaint. It costs one teardown at the
+    // moment somebody flips the switch, which is the only moment it happens.
+  }, [theme])
 
   return (
     <section className="lp-hero" ref={reveal}>
@@ -149,7 +153,7 @@ function HeroSlab({ i18n, href }: { i18n: I18n; href: string }) {
               <a className="btn lg" data-test="lp-hero-signin" href={href}>
                 <LatereMark height={12} /> {t('signInWith')}
               </a>
-              <a className="btn ghost lg lp-on-dark" data-test="lp-hero-registry" href="/registry">
+              <a className="btn ghost lg lp-on-slab" data-test="lp-hero-registry" href="/registry">
                 <Ico name="globe" size={13} /> {t('browseRegistry')}
               </a>
             </div>
@@ -235,7 +239,7 @@ function LoopsBand({ i18n }: { i18n: I18n }) {
   const ref = useReveal<HTMLElement>()
   return (
     <section className="lp-section lp-loops" data-test="lp-loops" ref={ref}>
-      <div className="lp-panel lp-dark">
+      <div className="lp-panel lp-block">
         <div className="lp-panel-copy">
           <span className="lp-eyebrow">{t('lpLoopsEyebrow')}</span>
           <h2>{t('lpLoopsTitle')}</h2>
@@ -388,7 +392,7 @@ function WalkBand({ i18n }: { i18n: I18n }) {
             </li>
           ))}
         </ol>
-        <div className="lp-walk-panel lp-dark">
+        <div className="lp-walk-panel lp-block">
           <div className="lp-plates">
             <div className="lp-plate" data-plate="0">
               <span className="lp-plate-label">{t('lpPlateKey')}</span>
@@ -652,7 +656,15 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
 
 // ── The page ────────────────────────────────────────────────────────────────
 
-export function Landing({ i18n, next }: { i18n: I18n; next?: string }) {
+export function Landing({
+  i18n,
+  next,
+  theme,
+}: {
+  i18n: I18n
+  next?: string
+  theme: { mode: ThemeMode; theme: Theme; setMode: (m: ThemeMode) => void }
+}) {
   const { t } = i18n
   const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
 
@@ -675,7 +687,7 @@ export function Landing({ i18n, next }: { i18n: I18n; next?: string }) {
         </nav>
       </header>
 
-      <HeroSlab i18n={i18n} href={href} />
+      <HeroSlab i18n={i18n} href={href} theme={theme.theme} />
       <ShipsBand i18n={i18n} />
       <LoopsBand i18n={i18n} />
       <WalkBand i18n={i18n} />
@@ -685,7 +697,7 @@ export function Landing({ i18n, next }: { i18n: I18n; next?: string }) {
       <PublishedStrip i18n={i18n} />
 
       <section className="lp-close-wrap">
-        <div className="lp-close lp-dark">
+        <div className="lp-close lp-block">
           <Mark size={46} className="lp-close-mark" />
           <h2>{t('lpCloseTitle')}</h2>
           <p>{t('lpCloseBody')}</p>
@@ -693,7 +705,7 @@ export function Landing({ i18n, next }: { i18n: I18n; next?: string }) {
             <a className="btn lg" href={href}>
               <LatereMark height={12} /> {t('signInWith')}
             </a>
-            <a className="btn ghost lg lp-on-dark" href="/registry">
+            <a className="btn ghost lg lp-on-slab" href="/registry">
               <Ico name="globe" size={13} /> {t('browseRegistry')}
             </a>
           </div>
@@ -701,10 +713,19 @@ export function Landing({ i18n, next }: { i18n: I18n; next?: string }) {
         </div>
       </section>
 
-      <footer className="lp-foot">
-        <Lockup size={18} className="lp-foot-lockup" />
-        <span>{t('lpFootTagline')}</span>
-      </footer>
+      {/* The footer every Latere surface ends in, from latere-ui. It is the
+          product's place in a lineup, the legal links, and the appearance
+          control — none of which this page should be authoring itself.
+
+          One language, because the app has one: an app that ships English only
+          must not offer a dropdown that pretends otherwise, and the shared
+          component cannot know which languages its host actually has. */}
+      <SiteFooter
+        theme={theme.mode}
+        onThemeChange={(m) => theme.setMode(m as ThemeMode)}
+        locale="en"
+        locales={[{ code: 'en', label: 'EN', name: 'English' }]}
+      />
     </div>
   )
 }
