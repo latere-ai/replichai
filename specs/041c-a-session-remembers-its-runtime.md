@@ -1,6 +1,6 @@
 # 041c — A session remembers its runtime
 
-**Status:** designed, not built.
+**Status:** implemented with a compatibility storage envelope.
 
 **Scope:** replace init-time global provider registration with an instance-scoped runtime catalog/router; snapshot the runtime on every job; persist the complete `SessionRef`; route restart, transcript, artifact, cancel, and release operations by that reference; make runtime credentials explicit and provider-scoped.
 
@@ -105,3 +105,7 @@ Secrets stay outside persisted catalog, route, session ref, status, and settings
 - A researcher-visible runtime selector or arbitrary route rules. Version one is an operator policy.
 - Provider-qualified model/rate migration: 041d.
 - Implementing the direct OpenAI or Latere adapters: 041f/041g.
+
+## Outcome
+
+An instance-scoped catalog/router replaces global registration and routes every operation by `SessionRef.Runtime`. Jobs persist the complete versioned reference in their existing status JSON envelope, which preserves opaque locator bytes across MemStore/Postgres without a schema rewrite; historical id-only rows map explicitly to `anthropic-managed`. This differs from the proposed dedicated route/cleanup columns, but preserves the required restart and default-switch behavior. Namespaced runtime credentials and shared CLI/server precedence are implemented and covered.

@@ -1,6 +1,6 @@
 # 041b — One managed-session lifecycle
 
-**Status:** designed, not built.
+**Status:** implemented.
 
 **Scope:** add one controller for start, durable handoff, wait/retry, evidence retention, cancellation, and release; migrate audit, experiment runner, and model cohort away from assembling or polling runtime resources themselves. Preserve their product outputs.
 
@@ -109,3 +109,7 @@ Pre-existing repositories, Drive workspaces, and caller-owned resources are refe
 - Changing usage/rate structures: 041d.
 - Adapter migration details: 041e.
 - A general distributed workflow engine. This controller owns one managed session and its evidence boundary.
+
+## Outcome
+
+`managed.Controller` centralizes validation, start notification, checkpointing, monotonic polling, transient retry, cancellation, evidence retention, and release. Audit, experiment runner, and model cohort construct one `SessionSpec`; server and CLI use the same controller. Controller tests cover ordering, restart, cancellation, retention failure, cleanup error joining, and complete memory-runtime execution.

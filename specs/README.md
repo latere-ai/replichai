@@ -228,12 +228,12 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 038 | [A project says what it is about](038-a-project-says-what-it-is-about.md) | built | 018, 006j, 028 |
 | 039 | [A description can be drafted](039-a-description-can-be-drafted.md) | built | 038, 037, 011, 006k, 031 |
 | 040 | [The landing in light, and the shared footer](040-the-landing-in-light.md) | built | 033 |
-| 041 | [The runtime is not the model vendor](041-the-runtime-is-not-the-model-vendor.md) | designed | 004, 005, 006b, 011, 014a, 031 |
-| 041a | [One managed-session contract](041a-one-managed-session-contract.md) | designed | 041, 004, 005, 031 |
-| 041b | [One managed-session lifecycle](041b-one-managed-session-lifecycle.md) | designed | 041a, 005, 006f, 014a |
-| 041c | [A session remembers its runtime](041c-a-session-remembers-its-runtime.md) | designed | 041a, 041b, 006b, 031, 039 |
-| 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | designed | 041a, 041c, 011, 031, 006s, 039 |
-| 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | designed | 041a–041d |
+| 041 | [The runtime is not the model vendor](041-the-runtime-is-not-the-model-vendor.md) | normalization built; adapters designed | 004, 005, 006b, 011, 014a, 031 |
+| 041a | [One managed-session contract](041a-one-managed-session-contract.md) | implemented | 041, 004, 005, 031 |
+| 041b | [One managed-session lifecycle](041b-one-managed-session-lifecycle.md) | implemented | 041a, 005, 006f, 014a |
+| 041c | [A session remembers its runtime](041c-a-session-remembers-its-runtime.md) | implemented | 041a, 041b, 006b, 031, 039 |
+| 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented | 041a, 041c, 011, 031, 006s, 039 |
+| 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented | 041a–041d |
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
 | 042 | [The site a machine that is not a browser can read](042-the-site-a-crawler-can-read.md) | built | 013, 028, 006r |
@@ -268,7 +268,7 @@ Nothing on this list blocks the loop the product exists for: a paper goes in, a 
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input — `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop.
 
-**The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md)).** The provider contract still carries one backend's lifecycle and vocabulary in places the application can see. 041a–041e normalise a managed session behind one contract, make a session remember which runtime ran it, make models and meters name their source, and then bring the Anthropic adapter into conformance — a refactor that changes no product behaviour and is what a second execution path would need first. The umbrella names two further children for the alternative runtimes themselves (041f, 041g); neither is written yet, and neither is reachable until the seam above is proven.
+**The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md)).** 041a–041e now normalize managed execution behind one contract, make a session remember its runtime, qualify models and meters, and isolate Anthropic behind explicit composition. The umbrella's two alternative adapters (041f, 041g) remain design-only and unreachable until implemented deliberately.
 
 **Blocked on corpus, not on code.** [023d](023d-ground-truth-for-a-cohort.md) (a cohort with ground truth) and [007d](007d-hosting-a-study.md) (hosting a study for real participants) wait on papers, not on packages: a census of every published `instrument.json` found 0/26 servable components and 0/3 papers whose released data is held. Until the golden set gains a fully servable study, neither can be checked against anything. The same gap is recorded in [`BACKLOG.md`](BACKLOG.md) item 3.
 

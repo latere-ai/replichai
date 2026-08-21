@@ -1,6 +1,6 @@
 # 041 — The runtime is not the model vendor
 
-**Status:** designed, not built. This is the umbrella for the managed-session normalization. Its first five children refactor the existing Anthropic implementation without changing product behaviour; the last two add alternative execution paths only after that seam is proven.
+**Status:** normalization implemented; alternative adapters remain designed. Children 041a–041e refactor the existing Anthropic implementation without changing product behaviour. 041f and 041g remain unimplemented by design.
 
 **Scope:** managed reproduction and experiment sessions only. Replace the Anthropic-shaped resource choreography exposed to the application with a durable, provider-neutral session contract; route every operation by the runtime recorded on that session; normalize usage and pricing; preserve the existing Anthropic path; then make OpenAI and the Latere platform possible adapters.
 
@@ -88,3 +88,7 @@ The direct OpenAI adapter remains useful for a deployment that does not run the 
 - Moving replichai's project wallet or exactly-once settlement into Lux. Lux usage is upstream evidence; replichai still owns the prepaid project ledger.
 - Exposing runtime choice to researchers. They continue to choose `best`, `balanced`, or `fast`; deployment routing maps that preference to a runtime and model.
 - Replacing GitHub publication with Drive. A repository remains the public reproduction artifact.
+
+## Outcome
+
+The application now describes one managed session, executes it through one controller, persists its runtime-tagged opaque reference before polling, and routes later operations by that reference. Audit, experiments, cohorts, server, and CLI no longer assemble Anthropic environments/agents/sessions. Model and rate identities are provider-qualified; transcript usage is normalized inside the adapter; runtime construction is explicit and credential-scoped. The existing Anthropic protocol implementation remains isolated behind a compatibility adapter while its startup and release paths are transactional. No OpenAI or Latere network adapter was added.
