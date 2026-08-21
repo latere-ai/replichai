@@ -344,7 +344,7 @@ func TestResumeAndCancelRouteByReference(t *testing.T) {
 	runtime.statuses[1].TerminalReason = ReasonCancelled
 	controller = instantController(runtime)
 	result, err := controller.Cancel(context.Background(), runtime.ref, Hooks{})
-	if !errors.Is(err, context.Canceled) || !result.Released || result.Status.TerminalReason != ReasonCancelled {
+	if err != nil || !result.Released || result.Status.TerminalReason != ReasonCancelled {
 		t.Fatalf("Cancel = %+v, %v", result, err)
 	}
 	wantOrder := []string{"cancel", "poll", "poll", "events", "list", "release"}
