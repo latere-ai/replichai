@@ -32,6 +32,19 @@
       content="It runs the paper. The inner loop is implemented and re-run; the outer loop — the study with people — is named, bounded, and never simulated."
     />
     <meta name="twitter:image" content="https://replichai.latere.ai/og.png" />
+    <!-- The appearance, stamped before the first paint. React resolves the same
+         choice, but it does so in an effect — which is one painted frame too
+         late, and 040 made that frame visible: the landing's slabs used to be
+         near-black in both appearances, and now a dark-mode reader would see
+         them flash paper. Same three values `theme.ts` reads, deliberately
+         duplicated here because nothing else can run this early. -->
+    <script>
+      try {
+        var m = localStorage.getItem('theme')
+        if (m !== 'light' && m !== 'dark') m = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = m
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

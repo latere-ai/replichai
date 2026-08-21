@@ -34,6 +34,8 @@ Separately, the page ends in `.lp-foot`: a lockup and a tagline. Every other Lat
 
 **One language, one option.** replichai ships English only (`Lang = 'en'`), so the footer gets a one-entry `locales` list. A dropdown offering 中文 that does nothing would be a lie the shared component cannot know it is telling.
 
+One thing shipped as it is rather than as the shared component intends. The footer's logotype and the six product wordmarks are set in Instrument Serif, which this app does not ship — but neither does it ship Inter, the sans the whole product is written in. Both fall back, everywhere, consistently; vendoring a face for the footer alone would make the footer the one element in the app with a real webfont. So the footer reads in Georgia italic here and in Instrument Serif on latere.ai, and that is a font-loading decision for the app to make once, not a footer decision.
+
 ## Criteria
 
 1. In light mode none of the four blocks paints a near-black ground; each reads as raised paper with a hairline.

@@ -548,7 +548,7 @@ try {
       close: '.lp-close',
     }
     const probe = (page) =>
-      page.evaluate((sels) => {
+      page.evaluate((blocks) => {
         // Relative luminance, so "is this paper or is this ink" is one number
         // rather than three, and contrast is the WCAG ratio off the same value.
         const rgba = (c) => {
@@ -568,7 +568,7 @@ try {
           return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
         }
         const out = {}
-        for (const [name, sel] of Object.entries(sels)) {
+        for (const [name, sel] of Object.entries(blocks)) {
           const el = document.querySelector(sel)
           if (!el) {
             out[name] = null
@@ -587,9 +587,8 @@ try {
           }
         }
         return out
-      }, sels)
+      }, BLOCKS)
 
-    const sels = BLOCKS
     for (const [theme, want] of [
       ['light', { min: 0.72, max: 1 }],
       ['dark', { min: 0, max: 0.06 }],
