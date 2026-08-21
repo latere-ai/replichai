@@ -2,16 +2,18 @@
 #
 #   docker compose up --build
 #
-# Then submit a paper and watch the job run:
+# Then open http://localhost:8080 and work in the app, or drive it by hand:
 #   curl -s localhost:8080/healthz
-#   curl -s -XPOST localhost:8080/papers -H 'content-type: application/json' \
-#        -d '{"url":"10.1145/3544548.3580778"}'
+#   curl -s -XPOST localhost:8080/projects -H 'content-type: application/json' \
+#        -d '{"title":"scratch","papers":["10.1145/3544548.3580778"]}'
+#   curl -s -XPOST localhost:8080/projects/<id>/sessions -H 'content-type: application/json' \
+#        -d '{"paper_key":"<key>"}'
 #   curl -s localhost:8080/jobs/<job_id>
 #
 # It defaults to the in-process "memory" provider, so jobs run in seconds with
 # no API key. Set PROVIDER=anthropic and REPLICHAI_API_KEY for real audits. The
 # --dev gate (DEV=true) admits every request as a synthetic principal — local
-# use only; the real access gate is 006c.
+# use only; production runs behind the real OIDC login and access gate.
 services:
   postgres:
     image: postgres:17-alpine
