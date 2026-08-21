@@ -1,10 +1,14 @@
 # 040 — The landing in light, and the footer it shares with the rest of Latere
 
-**Status:** in progress.
+**Status:** built. All nine criteria hold.
 
 **Scope:** frontend only. The landing's four slabs stop being dark in light mode, and the page ends with the shared Latere footer instead of a one-line strip of its own.
 
 **Depends on:** [033](033-the-landing-rebuilt-from-the-design.md) (the page this redresses), latere-ui v1.28.0 (the React `SiteFooter`).
+
+The scene rewrite turned out to be one substitution rather than a second renderer. Additive blending and normal blending disagree about where a particle's *strength* lives — the colour channels in one, the alpha channel in the other — so the layers write their brightness through a single `paint()` and the buffers became RGBA (three reads a four-wide colour attribute as vertex alpha). Everything downstream, the six orbit builders and the whole animation, is untouched.
+
+Two things the design did not anticipate. The filmic tone curve exists to roll off an additive bloom; on paper there is no bloom and the curve only greys the ground, so the light state renders its values as written. And the material's quietest ink had to go a step darker than the page's `--fg-3`: a 10px plate label inside a card inside a panel does not survive the contrast the page's own quiet tier ships at, which the new browser assertion caught rather than a reviewer.
 
 ## Problem
 
