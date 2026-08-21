@@ -1,5 +1,7 @@
 # 006e — Frontend
 
+**Superseded by [013](013-the-address-bar-is-the-state.md), [018](018-one-list-of-projects.md) and [034](034-the-console-rebuilt-from-the-design.md).** The embed, the fail-closed shell and the English-only i18n scaffold still describe the app. The screens do not: navigation is the address bar rather than one `useState`, the dashboard reads `GET /projects` rather than `GET /jobs`, a project holds many papers rather than one, and the console was rebuilt from a design. Submitting posts to `POST /projects/{id}/papers`, not `/papers`.
+
 **Status:** implemented (submit, watch, inspect; the dropped-PDF path is [006d](006d-pdf-ingestion.md))
 **Scope:** the researcher-facing single-page app — sign in, submit a paper, watch it run, and read the result — served from the Go binary. A child of [006](006-web-application.md).
 **Depends on:** [006a](006a-http-api-and-streaming.md) (the API and SSE it consumes), [006c](006c-identity-and-access.md) (`/me`, the login redirect, the not-invited state).

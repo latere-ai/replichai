@@ -1,5 +1,7 @@
 # 024a — Settings as a destination, with sub-tabs
 
+**Superseded in part by [022e](022e-buying-credits.md).** Settings is a destination with sub-tabs, as below — but two, not three. Credits moved to a dedicated `/wallet` screen, so `SettingsTab` is `'account' | 'profile'` and there is no `/settings/credits`.
+
 **Status:** built. A child of [024](024-settings-is-a-place.md).
 
 **Scope:** give personal settings a home in the rail and a shape that scales — a `Settings` nav item below Trash, and the one screen split into three sub-tabs addressed as `/settings/account`, `/settings/profile`, `/settings/credits`. Pure frontend. No API or schema change; the credits tab renders the existing wallet statement as-is, so [024b](024b-the-ledger-names-its-project.md) can change only what a row shows.

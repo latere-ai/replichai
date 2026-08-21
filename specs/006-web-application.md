@@ -1,5 +1,7 @@
 # 006 — The web application
 
+**Superseded in part by [006q](006q-sign-in-is-open-budget-is-not.md).** Sign-in is open: a first sign-in self-grants the ordinary user tier, and what limits a person is the meter ([011](011-what-a-session-costs.md), [022](022-money-comes-in-without-an-admin.md)), not the invited set below. Two mechanisms this spec named were never wired: the forge-account link and `POST /jobs/{id}/claim`. The rest — the project as the tenant, the derived registry, Postgres for job state — holds.
+
 **Status:** draft
 **Scope:** turning the audit engine into a web application where each user owns private research **projects** — submit a paper, watch it run, iterate the project, and, when the owner is ready, publish it to a public zone. Open at first only to an invited set of users. This is a design spec; it decides the shape and spawns the tightly-scoped child specs that build it.
 **Depends on:** 002 (publishing). Consumes 003 (registry) and 005 (transcript).

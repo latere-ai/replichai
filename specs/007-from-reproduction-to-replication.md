@@ -1,5 +1,7 @@
 # 007 — From reproduction to replication
 
+**One decision below was reversed.** This spec scopes a project as the replication effort around *one paper*; [012](012-a-project-holds-papers.md) made a project hold many, and [015](015-a-verdict-belongs-to-a-session.md)/[023a](023a-experiments-persisted-and-dispatched.md) key an experiment to the session that produced its instrument rather than to the project. The two revisions this spec asked for did land — a job runs an audit *or* an experiment, and project membership sits beside the tiers — and the firewall holds: `internal/audit` never imports `internal/experiment`. The product half of 007b/007c is now the [023](023-the-outer-loop-as-a-product.md) chain.
+
 **Status:** draft
 **Scope:** extending the platform past the inner loop — turning a reproduction into a re-runnable *instrument*, and letting a researcher bind that instrument to new data: their own dataset, a synthetic cohort, or real participants recruited through a page the platform hosts. This is a design spec; it decides the domain model and spawns the tightly-scoped child specs that build it.
 **Depends on:** [002](002-publishing-reproductions.md) (the manifest and the redistribution gate), [004](004-go-port.md) (the provider seam an experiment run reuses), [006f](006f-taking-a-reproduction-out.md) (the repository mount). Revises [006b](006b-job-model-and-persistence.md) and [006c](006c-identity-and-access.md) before either is built.

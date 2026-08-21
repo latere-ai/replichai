@@ -1,5 +1,7 @@
 # 010 — Deployment and release
 
+**Its safety premise has moved on.** This spec was written while the login was still being built, so "prod admits nobody" was the load-bearing claim. [006c](006c-identity-and-access.md) shipped the OIDC front door and [006q](006q-sign-in-is-open-budget-is-not.md) made sign-in open — the meter, not a guest list, is the limit, and the release smoke asserts the gate refuses against `/projects` rather than the retired `/reproductions`. Two out-of-scope items also fell: the pipeline builds the frontend, and prod runs two replicas behind a PodDisruptionBudget. The manifests carry secrets this spec never named — Stripe ([022b](022b-checkout-and-the-webhook.md)), the GitHub App ([009](009-secret-containment-when-the-agent-commits-live.md)), and mail ([006p](006p-the-invitation-that-arrives.md)).
+
 **Status:** built (prod infra provisioned; deploy pipeline live)
 **Scope:** how replichai runs in production — the Kubernetes manifests, the terraform-provisioned domain and database, and the GitHub Actions release pipeline — and the operational decisions that keep a public deployment safe while the login is still being built.
 **Depends on:** [006a](006a-http-api-and-streaming.md)/[006b](006b-job-model-and-persistence.md) (the server and its Postgres store), [006c](006c-identity-and-access.md) (the fail-closed gate; its login front door is the one piece still open).

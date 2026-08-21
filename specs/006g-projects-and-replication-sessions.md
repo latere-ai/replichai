@@ -1,5 +1,7 @@
 # 006g — Projects and replication sessions
 
+**Superseded in part by [012](012-a-project-holds-papers.md) and [036](036-a-project-can-start-empty.md).** The entity layer stands: projects are first-class, a session carries a project foreign key, and the double-trigger guard is a partial unique index on `(project_id, paper_key)`. Three decisions below were reversed — `POST /papers` (four routes under `/projects/{id}` replaced it), the rule that a paper is a property of the session rather than of the project, and the rule that a project is born with its first session and is never empty. `ProjectStore.Sessions` was never built.
+
 **Status:** implemented
 **Scope:** the entity layer. A **project** is a first-class record a user owns — a research container that holds **one or more replication sessions**, each a durable run that targets a paper. The common case is one project, one replication; a project may also gather several. A child of [006](006-web-application.md), which decided "[the project is the tenant](006-web-application.md)".
 **Depends on:** [006b](006b-job-model-and-persistence.md) (the job store and worker that a session's run rides on), [006c](006c-identity-and-access.md) (the principal that owns a project). Revises [006e](006e-frontend.md)'s "one project per job" and [007b](007b-experiments-over-instruments.md)'s free-string `ProjectID`.
