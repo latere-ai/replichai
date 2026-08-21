@@ -304,6 +304,17 @@ func TestOperationFailuresAndInvalidHandlesSurface(t *testing.T) {
 	}
 }
 
+func TestHistoricalIDOnlyReferenceCanResume(t *testing.T) {
+	base := providermemory.New()
+	runtime := newRuntime(t, base)
+	ref, _ := runtime.Start(context.Background(), baseSpec())
+	legacy := managed.SessionRef{Runtime: runtime.Name(), ID: ref.ID, Revision: 1, LocatorVersion: 1}
+	handle, metadata, err := runtime.handle(legacy)
+	if err != nil || handle.ID != ref.ID || !metadata.Graded || !metadata.Model.Valid() {
+		t.Fatalf("legacy handle = %+v, %+v, %v", handle, metadata, err)
+	}
+}
+
 func newRuntime(t *testing.T, backend provider.Provider) *Runtime {
 	t.Helper()
 	runtime, err := New(Config{Name: "anthropic-managed", ModelProvider: "anthropic", Provider: backend})
