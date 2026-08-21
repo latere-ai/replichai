@@ -2,7 +2,7 @@
 
 What one audit does, in order, and why each step is shaped the way it is.
 
-Steps 1–7 are the agent's work, and they are the audit whether or not it is published. Publishing wraps them: identity and a repository before, verification and attestation after.
+Steps 1–7b are the agent's work, and they are the audit whether or not it is published. Publishing wraps them: identity and a repository before, verification and attestation after.
 
 ## 0. Before the agent starts (publishing runs only)
 
@@ -61,9 +61,17 @@ How many components an inner loop has is itself a judgment, so the scalar rate i
 
 The verdict must also separate **re-analysis** from **re-observation**. Reproducing a paper's statistics from its released data does not re-validate its claim about the world; that claim rests on the outer loop and on the sample that was collected. An audit that blurs the two overstates what it proved.
 
+## 7b. Write the findings as data
+
+Everything in step 7 is also written as `verdict.json` — the boundary rows with their loop, outcome, evidence or blocker and citation; the hidden decisions with their sensitivity; the open-science scorecard; and every artifact search with its result — and the study half as `instrument.json`: the protocol, the analysis entrypoint contract for `src/`, and a per-component servability assessment.
+
+The rule between the two forms is that the prose is not authoritative. If `verdict.json` and `REPRODUCIBILITY.md` disagree, the markdown is wrong. Writing the finding as data is what lets a reader get the result without opening a file, and it is what the app's verdict screen renders; the prose is the argument around it.
+
+Both are graded, and both grade the *declaration* only. A paper with no extractable protocol passes `instrument.json` by saying so with a reason, and a missing or invalid `verdict.json` is recorded without changing the inner-loop verdict — the run still publishes, and it still fails that criterion.
+
 ## Grading
 
-Every run is graded against `method/rubric.md` — six binary criteria covering the verdict, the boundary, the hidden decisions, the open-science score, evidence that code was actually run, and honesty of citation. The worker revises and is re-graded up to its revision budget.
+Every run is graded against `method/rubric.md` — eight binary criteria covering the verdict, the boundary, the hidden decisions, the open-science score, evidence that code was actually run, honesty of citation, and the two machine-readable files that carry the same findings as data. The worker revises and is re-graded up to its revision budget.
 
 ## 8. Finalize (publishing runs only)
 
