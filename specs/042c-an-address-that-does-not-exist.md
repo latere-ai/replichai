@@ -1,10 +1,17 @@
 # 042c — An address that does not exist
 
-**Status:** designed.
+**Status:** built. All eight criteria hold.
 
 **Scope:** a route-shape list in Go, a `notfound` view in the client, and `noindex` on the screens only an operator can render.
 
 **Depends on:** [042a](042a-the-head-the-server-writes.md), [013](013-the-address-bar-is-the-state.md).
+
+The drift guard found the first disagreement immediately: `/p/{id}/s` is an
+address the client *does* have — routes.ts resolves a session link cut short back
+to its project rather than to the dashboard — so the server's shape list had to
+admit it. That is exactly the class of divergence the test exists for, and it
+surfaced before the code shipped rather than as a 404 on a truncated link
+somebody pasted.
 
 ## Problem
 

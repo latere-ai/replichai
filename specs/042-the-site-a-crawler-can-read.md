@@ -1,6 +1,6 @@
 # 042 — The site a machine that is not a browser can read
 
-**Status:** designed. Three children.
+**Status:** built. All three children shipped; the release smoke checks each in production.
 
 **Scope:** the HTML the server hands a client that never runs JavaScript, and the two files a crawler asks for before it asks for anything else. No SSR, no prerender, no headless browser: the app boots exactly as it does today.
 

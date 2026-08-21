@@ -67,6 +67,42 @@ esac
 grep -q '"error"' "$tmp/gated" || fail "gate: /projects refused with $code but did not return the JSON error — is the route still registered?"
 pass "gate is fail-closed on /projects ($code)"
 
+# The site as a machine that is not a browser reads it (042). Each of these was
+# broken before that spec: robots.txt and sitemap.xml answered with the app, a
+# shared link to a published reproduction previewed as the homepage, and every
+# mistyped address answered 200 with the dashboard.
+code=$(curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/robots" -w '%{http_code}' "${BASE_URL}/robots.txt") || fail "robots: curl failed"
+[ "$code" = "200" ] || fail "robots.txt returned $code, want 200"
+grep -q '<!doctype' "$tmp/robots" && fail "robots.txt is being served the app shell"
+grep -q "^Sitemap: ${BASE_URL}/sitemap.xml$" "$tmp/robots" || fail "robots.txt does not name the sitemap"
+pass "robots.txt served ($code)"
+
+code=$(curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/sitemap" -w '%{http_code}' "${BASE_URL}/sitemap.xml") || fail "sitemap: curl failed"
+[ "$code" = "200" ] || fail "sitemap.xml returned $code, want 200"
+grep -q '<urlset' "$tmp/sitemap" || fail "sitemap.xml is not a urlset (is the SPA answering it?)"
+grep -q "<loc>${BASE_URL}/registry</loc>" "$tmp/sitemap" || fail "sitemap.xml does not list the registry"
+pass "sitemap served ($code, $(grep -c '<loc>' "$tmp/sitemap") urls)"
+
+# An address this app does not have says so, rather than answering 200 with the
+# dashboard under a corrected URL.
+code=$(curl -sS -o "$tmp/miss" -w '%{http_code}' "${BASE_URL}/this-page-does-not-exist-$$") || fail "404: curl failed"
+[ "$code" = "404" ] || fail "an unknown address returned $code, want 404"
+pass "an unknown address is 404"
+
+# A published project describes itself. The id comes out of the sitemap, so this
+# checks whatever is actually published rather than a fixture that can rot; a
+# deployment with nothing public yet skips it.
+public_url=$(grep -o "<loc>${BASE_URL}/p/[^<]*</loc>" "$tmp/sitemap" | head -1 | sed 's/<[^>]*>//g' || true)
+if [ -n "$public_url" ]; then
+  curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/page" "$public_url" || fail "public page: curl failed"
+  grep -q "<link rel=\"canonical\" href=\"${public_url}\"" "$tmp/page" || fail "$public_url does not carry its own canonical"
+  grep -q 'does the paper actually reproduce?' "$tmp/page" && fail "$public_url is still served the default head"
+  grep -q 'application/ld+json' "$tmp/page" || fail "$public_url carries no structured data"
+  pass "a published page describes itself ($public_url)"
+else
+  pass "no public project to check (nothing published yet)"
+fi
+
 if [ -n "$OUTPUT_MD" ]; then
   {
     echo "## Release smoke — replichai ${TAG}"
