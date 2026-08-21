@@ -247,6 +247,13 @@ func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, e
 	if ref.LocatorVersion != 1 {
 		return provider.RunHandle{}, locator{}, fmt.Errorf("unsupported %s locator version %d", r.Name(), ref.LocatorVersion)
 	}
+	if len(ref.Locator) == 0 {
+		// Historical durable rows and detached CLI output carried only the vendor
+		// session id. Poll/evidence/cancel/release need no worker or workspace id;
+		// the first poll supplies the exact model before the controller accepts an
+		// observation. New starts always emit the complete locator above.
+		return provider.RunHandle{ID: ref.ID}, locator{Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: "legacy-unresolved"}, Graded: true}, nil
+	}
 	var metadata locator
 	if err := json.Unmarshal(ref.Locator, &metadata); err != nil || metadata.WorkspaceID == "" || metadata.WorkerID == "" || !metadata.Model.Valid() {
 		return provider.RunHandle{}, locator{}, fmt.Errorf("invalid %s session locator", r.Name())
