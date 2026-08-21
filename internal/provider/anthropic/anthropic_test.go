@@ -300,7 +300,13 @@ func TestTranscriptTranslatesEvents(t *testing.T) {
 					"input":        map[string]any{"command": "ls"},
 					"processed_at": "2026-07-25T10:00:02Z",
 				},
-				map[string]any{"type": "span.outcome_evaluation_end", "occurred_at": "2026-07-25T10:00:03Z"},
+				map[string]any{
+					"type": "span.model_request_end", "occurred_at": "2026-07-25T10:00:03Z",
+					"model_usage": map[string]any{
+						"input_tokens": 100, "output_tokens": 50,
+						"cache_read_input_tokens": 10, "cache_creation_input_tokens": 20,
+					},
+				},
 			},
 		})
 	})
@@ -321,8 +327,12 @@ func TestTranscriptTranslatesEvents(t *testing.T) {
 	if events[2].Kind != "tool_use" || events[2].Tool != "bash" || !strings.Contains(events[2].Content, `"command":"ls"`) {
 		t.Errorf("tool_use event = %+v", events[2])
 	}
-	if events[3].Role != "system" || events[3].Kind != "outcome_evaluation_end" {
+	if events[3].Role != "system" || events[3].Kind != "model_request_end" {
 		t.Errorf("span event = %+v", events[3])
+	}
+	wantUsage := provider.Usage{InputTokens: 100, OutputTokens: 50, CachedInputTokens: 10, CacheWriteTokens: 20}
+	if events[3].Usage == nil || *events[3].Usage != wantUsage {
+		t.Errorf("normalized event usage = %+v, want %+v", events[3].Usage, wantUsage)
 	}
 	if len(events[0].Raw) == 0 {
 		t.Error("Raw should preserve the original event")

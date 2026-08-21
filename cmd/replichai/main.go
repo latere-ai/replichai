@@ -253,10 +253,18 @@ func decodeSessionRef(encoded string) (managed.SessionRef, error) {
 func providerEventsFromManaged(events []managed.Event) []provider.Event {
 	result := make([]provider.Event, 0, len(events))
 	for _, event := range events {
-		result = append(result, provider.Event{
+		translated := provider.Event{
 			Role: provider.Role(event.Role), Kind: provider.EventKind(event.Kind), Tool: event.Tool,
 			Content: event.Content, Time: event.Time, Raw: event.Raw,
-		})
+		}
+		if event.Usage != nil {
+			translated.Usage = &provider.Usage{
+				InputTokens: event.Usage.InputFresh, CachedInputTokens: event.Usage.InputCached,
+				CacheWriteTokens: event.Usage.CacheWrite, CacheWrite5mTokens: event.Usage.CacheWrite5m,
+				CacheWrite1hTokens: event.Usage.CacheWrite1h, OutputTokens: event.Usage.Output,
+			}
+		}
+		result = append(result, translated)
 	}
 	return result
 }

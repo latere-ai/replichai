@@ -464,6 +464,9 @@ func translateEvent(raw []byte) provider.Event {
 		Time: firstNonZeroTime(head.ProcessedAt, head.OccurredAt, head.CreatedAt),
 		Raw:  append(json.RawMessage(nil), raw...),
 	}
+	if usage, ok := eventUsage(raw); ok {
+		ev.Usage = &usage
+	}
 
 	switch {
 	case head.Name != "": // a tool use: the tool and its input
@@ -481,6 +484,25 @@ func translateEvent(raw []byte) provider.Event {
 		ev.Content = strings.TrimSpace(head.Result + " " + head.Explanation)
 	}
 	return ev
+}
+
+func eventUsage(raw []byte) (provider.Usage, bool) {
+	var wrap struct {
+		ModelUsage *struct {
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+		} `json:"model_usage"`
+	}
+	if json.Unmarshal(raw, &wrap) != nil || wrap.ModelUsage == nil {
+		return provider.Usage{}, false
+	}
+	return provider.Usage{
+		InputTokens: wrap.ModelUsage.InputTokens, OutputTokens: wrap.ModelUsage.OutputTokens,
+		CachedInputTokens: wrap.ModelUsage.CacheReadInputTokens,
+		CacheWriteTokens:  wrap.ModelUsage.CacheCreationInputTokens,
+	}, true
 }
 
 // blocksText concatenates the text of an event's content blocks (or a plain

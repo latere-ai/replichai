@@ -104,16 +104,16 @@ func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 		return []byte(`{"role":"agent","kind":"message","content":"start","event":1}` + "\n" +
 			`{"role":"agent","kind":"tool_use","tool":"bash","content":"ls"}` + "\n" +
 			`{"role":"user","kind":"tool_result","content":"file.txt"}` + "\n" +
-			`{"role":"system","kind":"model_request_end","raw":{"model_usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10}}}` + "\n"), nil
+			`{"role":"system","kind":"model_request_end","usage":{"InputTokens":100,"OutputTokens":50,"CachedInputTokens":10}}` + "\n"), nil
 	case "bare":
 		// A transcript with no per-request usage anywhere — usage is unknowable.
 		return []byte(`{"role":"agent","kind":"message","content":"hi"}` + "\n"), nil
 	case "multi":
 		// Two charged requests either side of an uncharged event, so a per-event
 		// figure can be told apart from the session total (006s).
-		return []byte(`{"role":"system","kind":"model_request_end","raw":{"model_usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10}}}` + "\n" +
+		return []byte(`{"role":"system","kind":"model_request_end","usage":{"InputTokens":100,"OutputTokens":50,"CachedInputTokens":10}}` + "\n" +
 			`{"role":"agent","kind":"message","content":"between"}` + "\n" +
-			`{"role":"system","kind":"model_request_end","raw":{"model_usage":{"input_tokens":7,"output_tokens":3,"cache_read_input_tokens":1}}}` + "\n"), nil
+			`{"role":"system","kind":"model_request_end","usage":{"InputTokens":7,"OutputTokens":3,"CachedInputTokens":1}}` + "\n"), nil
 	default:
 		return nil, ErrReproNotFound
 	}
@@ -1470,7 +1470,7 @@ func TestSessionTranscriptPerEventUsageLive(t *testing.T) {
 	d.Jobs = store
 	d.Live = &fakeLive{events: []provider.Event{
 		{Kind: "message", Content: "no charge"},
-		{Kind: "model_request_end", Raw: json.RawMessage(`{"model_usage":{"input_tokens":4,"output_tokens":2,"cache_read_input_tokens":0}}`)},
+		{Kind: "model_request_end", Usage: &provider.Usage{InputTokens: 4, OutputTokens: 2}},
 	}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})

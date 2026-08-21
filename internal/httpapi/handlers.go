@@ -3032,9 +3032,7 @@ func artifactContentType(path string) string {
 
 // parseTranscriptEvents parses the newline-delimited provider.Event stream
 // committed as transcript.jsonl (005). A blank line is skipped; a malformed
-// line fails the parse, so a corrupt transcript is a 500, not a silent gap. Raw
-// is retained here — usage derivation reads it — and dropped by attachUsage
-// before serving, since it is the bulk of a transcript (megabytes).
+// line fails the parse, so a corrupt transcript is a 500, not a silent gap.
 func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	events := []provider.Event{}
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -3050,36 +3048,13 @@ func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	return events, nil
 }
 
-// eventUsage reads the token counts a managed-agents transcript records against
-// one request, in that event's raw payload (a `model_usage` object). ok is false
-// for an event that carries none, which is most of them — only an event that
-// closes a model request is charged for one. The field selection matches the
-// anthropic adapter's live-run mapping, so a derived figure agrees with a
-// recorded one.
+// eventUsage reads only the adapter-normalized field. Vendor wire payloads are
+// evidence, not an application protocol.
 func eventUsage(e provider.Event) (provider.Usage, bool) {
-	if len(e.Raw) == 0 {
+	if e.Usage == nil {
 		return provider.Usage{}, false
 	}
-	var wrap struct {
-		ModelUsage *struct {
-			InputTokens              int64 `json:"input_tokens"`
-			OutputTokens             int64 `json:"output_tokens"`
-			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
-			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
-		} `json:"model_usage"`
-	}
-	if json.Unmarshal(e.Raw, &wrap) != nil || wrap.ModelUsage == nil {
-		return provider.Usage{}, false
-	}
-	return provider.Usage{
-		InputTokens:       wrap.ModelUsage.InputTokens,
-		OutputTokens:      wrap.ModelUsage.OutputTokens,
-		CachedInputTokens: wrap.ModelUsage.CacheReadInputTokens,
-		// A span reports cache creation as one number with no lifetime, unlike
-		// the session total. It goes to the unattributed field rather than into
-		// a bucket it might not belong to (011).
-		CacheWriteTokens: wrap.ModelUsage.CacheCreationInputTokens,
-	}, true
+	return *e.Usage, true
 }
 
 // attachUsage pairs every event with its own usage and returns the session total
@@ -3103,6 +3078,7 @@ func attachUsage(events []provider.Event) ([]TranscriptEvent, provider.Usage, bo
 			te.Usage = &u
 		}
 		e.Raw = nil
+		e.Usage = nil
 		te.Event = e
 		out[i] = te
 	}
