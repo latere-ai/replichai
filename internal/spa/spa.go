@@ -10,7 +10,6 @@
 package spa
 
 import (
-	"bytes"
 	"compress/gzip"
 	"embed"
 	"io"
@@ -67,49 +66,8 @@ func Handler() (http.Handler, error) {
 		// index.html names the hashed assets, so it must never be the stale one.
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		page, described := seo.From(r)
-		if described && page.NoIndex {
-			// A page that exists and must never be offered in a search result:
-			// somebody's private project, an operator screen a signed-out
-			// reader renders as nothing. The header governs a crawler that
-			// already holds the URL, which robots.txt cannot.
-			w.Header().Set("X-Robots-Tag", "noindex")
-		}
-		_, _ = w.Write(describe(index, page, described))
+		seo.WriteShell(w, r, index)
 	})), nil
-}
-
-// The markers around the head region index.html hands over. Everything between
-// them is what the document says about itself; everything outside — the icon,
-// the font preload, the theme script — is the shell's and is never touched.
-var (
-	headOpen  = []byte("<!--seo-->")
-	headClose = []byte("<!--/seo-->")
-)
-
-// describe substitutes the head region for a page the router resolved. A page
-// with no title (the not-indexed case) keeps the default head: there is nothing
-// truer to say about an address a reader may not read, and the response is
-// already marked.
-func describe(index []byte, p seo.Page, described bool) []byte {
-	if !described || p.Title == "" {
-		return index
-	}
-	start := bytes.Index(index, headOpen)
-	end := bytes.Index(index, headClose)
-	// A shell without the markers is one nobody built from this repository —
-	// the committed placeholder, or a stale dist/. Serving it unchanged is the
-	// only honest answer; the alternative is a document with two titles.
-	if start < 0 || end < start {
-		return index
-	}
-	head := p.Head()
-	out := make([]byte, 0, len(index)+len(head))
-	out = append(out, index[:start+len(headOpen)]...)
-	out = append(out, '\n', ' ', ' ', ' ', ' ')
-	out = append(out, head...)
-	out = append(out, '\n', ' ', ' ', ' ', ' ')
-	return append(out, index[end:]...)
 }
 
 // gzipPool reuses writers: the bundle is compressed on every uncached load, and
