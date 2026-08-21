@@ -268,6 +268,35 @@ func TestAPublishedSessionNamesItsPaper(t *testing.T) {
 	}
 }
 
+// A session its owner threw away (032) leaves the public surface completely: it
+// is neither described nor listed. Both sides ask the job store, and both stores
+// hide a deleted row from Get and ListByProject — this pins that, because the
+// two predicates agreeing with each other is not the same as either being right.
+func TestADeletedSessionLeavesThePublicSurface(t *testing.T) {
+	d := seoDeps()
+	p := describedProject(t, d)
+	j := session(t, d, p.ID, "doi:10.1007/3-540-48157-5_9", true)
+	h := NewRouter(d).Handler()
+
+	if w := do(t, h, "GET", "/p/"+p.ID+"/s/"+j.ID, "", ""); w.Header().Get("X-Robots-Tag") != "" {
+		t.Fatal("the fixture session is not described, so deleting it would prove nothing")
+	}
+	if err := d.Jobs.Delete(context.Background(), j.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	w := do(t, h, "GET", "/p/"+p.ID+"/s/"+j.ID, "", "")
+	if w.Header().Get("X-Robots-Tag") != "noindex" {
+		t.Error("a deleted session is still described")
+	}
+	if strings.Contains(w.Body.String(), "There is more to context than location") {
+		t.Error("a deleted session's paper reached crawlable HTML")
+	}
+	if body := do(t, h, "GET", "/sitemap.xml", "", "").Body.String(); strings.Contains(body, "/s/"+j.ID) {
+		t.Error("the sitemap still lists a deleted session")
+	}
+}
+
 // AC5: one title, one canonical, and a tab folds to the record it is a view of.
 func TestOneTitleAndATabThatFoldsToItsRecord(t *testing.T) {
 	d := seoDeps()
