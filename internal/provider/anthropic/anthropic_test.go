@@ -654,7 +654,13 @@ func TestStartRunFailsWhenTheKickoffIsRejected(t *testing.T) {
 	// The session is created before the kickoff is sent; a rejected kickoff
 	// must fail the call rather than return a handle to a run that will
 	// never start.
+	deleted := false
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = true
+			writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session"})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/events") {
 			http.Error(w, `{"error":{"message":"bad rubric"}}`, http.StatusBadRequest)
 			return
@@ -667,6 +673,60 @@ func TestStartRunFailsWhenTheKickoffIsRejected(t *testing.T) {
 		provider.RunSpec{Task: "t", Rubric: "r"},
 	); err == nil {
 		t.Fatal("a rejected kickoff must fail StartRun")
+	}
+	if !deleted {
+		t.Fatal("a rejected kickoff orphaned the created session")
+	}
+}
+
+func TestStartRunRollsBackEarlierUploadWhenSecondFails(t *testing.T) {
+	uploads, deleted := 0, []string{}
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = append(deleted, r.URL.Path)
+			writeJSON(t, w, map[string]any{"id": "file_1", "type": "file"})
+			return
+		}
+		if strings.Contains(r.URL.Path, "/files") {
+			uploads++
+			if uploads == 2 {
+				http.Error(w, `{"error":{"message":"upload failed"}}`, http.StatusInternalServerError)
+				return
+			}
+			writeJSON(t, w, map[string]any{"id": "file_1", "type": "file", "filename": "one", "mime_type": "text/plain", "size_bytes": 1, "created_at": "2026-01-01T00:00:00Z"})
+			return
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	})
+	_, err := p.StartRun(context.Background(), provider.WorkerRef{ID: "a"}, provider.WorkspaceRef{ID: "e"}, provider.RunSpec{
+		Task: "task", Attachments: []provider.Attachment{{Path: "/one", Content: []byte("1")}, {Path: "/two", Content: []byte("2")}},
+	})
+	if err == nil {
+		t.Fatal("second upload failure was ignored")
+	}
+	if len(deleted) != 1 || !strings.Contains(deleted[0], "file_1") {
+		t.Fatalf("rollback deletes = %v, want file_1", deleted)
+	}
+}
+
+func TestCloseRunDeletesPersistedFilesAndReleasesResources(t *testing.T) {
+	var requests []string
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		writeJSON(t, w, map[string]any{})
+	})
+	handle := provider.RunHandle{ID: "sesn_1", Files: []string{"file_1"}}
+	if err := p.CloseRun(context.Background(), handle); err != nil {
+		t.Fatalf("CloseRun: %v", err)
+	}
+	if err := p.ReleaseResources(context.Background(), provider.WorkerRef{ID: "agent_1"}, provider.WorkspaceRef{ID: "env_1"}); err != nil {
+		t.Fatalf("ReleaseResources: %v", err)
+	}
+	joined := strings.Join(requests, "\n")
+	for _, want := range []string{"DELETE /v1/files/file_1", "POST /v1/agents/agent_1/archive", "DELETE /v1/environments/env_1"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("requests missing %q:\n%s", want, joined)
+		}
 	}
 }
 

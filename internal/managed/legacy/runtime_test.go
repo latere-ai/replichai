@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -258,6 +259,56 @@ type operationFailureProvider struct {
 	listErr   error
 	fetchErr  error
 	closeErr  error
+}
+
+type resourceTrackingProvider struct {
+	*providermemory.Provider
+	workerErr error
+	released  []string
+}
+
+func (p *resourceTrackingProvider) EnsureWorker(ctx context.Context, spec provider.WorkerSpec) (provider.WorkerRef, error) {
+	if p.workerErr != nil {
+		return provider.WorkerRef{}, p.workerErr
+	}
+	return p.Provider.EnsureWorker(ctx, spec)
+}
+
+func (p *resourceTrackingProvider) StartRun(ctx context.Context, worker provider.WorkerRef, workspace provider.WorkspaceRef, spec provider.RunSpec) (provider.RunHandle, error) {
+	handle, err := p.Provider.StartRun(ctx, worker, workspace, spec)
+	handle.Files = []string{"file-1"}
+	return handle, err
+}
+
+func (p *resourceTrackingProvider) ReleaseResources(_ context.Context, worker provider.WorkerRef, workspace provider.WorkspaceRef) error {
+	p.released = append(p.released, worker.ID+"/"+workspace.ID)
+	return nil
+}
+
+func TestStartRollbackAndLocatorPreserveOwnedResources(t *testing.T) {
+	failing := &resourceTrackingProvider{Provider: providermemory.New(), workerErr: errors.New("worker failed")}
+	if _, err := newRuntime(t, failing).Start(context.Background(), baseSpec()); err == nil {
+		t.Fatal("worker failure ignored")
+	}
+	if len(failing.released) != 1 || failing.released[0] == "/" {
+		t.Fatalf("workspace rollback = %v", failing.released)
+	}
+
+	tracking := &resourceTrackingProvider{Provider: providermemory.New()}
+	runtime := newRuntime(t, tracking)
+	ref, err := runtime.Start(context.Background(), baseSpec())
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !contains(string(ref.Locator), "file-1") {
+		t.Fatalf("locator lost uploaded file ownership: %s", ref.Locator)
+	}
+	if err := runtime.Release(context.Background(), ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if len(tracking.released) != 1 || strings.HasPrefix(tracking.released[0], "/") {
+		t.Fatalf("resource release = %v", tracking.released)
+	}
 }
 
 func (p operationFailureProvider) Transcript(context.Context, provider.RunHandle) ([]provider.Event, error) {

@@ -6,9 +6,11 @@ package legacy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -81,6 +83,7 @@ type locator struct {
 	WorkerVersion int              `json:"worker_version"`
 	Model         managed.ModelRef `json:"model"`
 	Graded        bool             `json:"graded"`
+	FileIDs       []string         `json:"file_ids,omitempty"`
 }
 
 func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.SessionRef, error) {
@@ -109,7 +112,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	}
 	worker, err := r.config.Provider.EnsureWorker(ctx, provider.WorkerSpec{Name: "managed-session", Instructions: spec.Instructions, Model: modelID})
 	if err != nil {
-		return managed.SessionRef{}, fmt.Errorf("create worker: %w", err)
+		return managed.SessionRef{}, errors.Join(fmt.Errorf("create worker: %w", err), r.releaseResources(ctx, provider.WorkerRef{}, workspace))
 	}
 	runSpec := provider.RunSpec{Task: spec.Task}
 	if spec.Evaluation != nil {
@@ -124,7 +127,8 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 			repository := resource.Repository
 			token, ok := managed.Secret(ctx, repository.CredentialRef)
 			if repository.CredentialRef != "" && !ok {
-				return managed.SessionRef{}, &managed.InvalidSpecError{Field: "resources.repository.credential_ref", Message: "secret reference is unavailable"}
+				cause := &managed.InvalidSpecError{Field: "resources.repository.credential_ref", Message: "secret reference is unavailable"}
+				return managed.SessionRef{}, errors.Join(cause, r.releaseResources(ctx, worker, workspace))
 			}
 			runSpec.Mount = provider.RepoMount{
 				URL: repository.URL, Token: token, MountPath: workspacePath(repository.Destination), ReadOnly: repository.Access == managed.AccessReadOnly,
@@ -133,11 +137,12 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	}
 	handle, err := r.config.Provider.StartRun(ctx, worker, workspace, runSpec)
 	if err != nil {
-		return managed.SessionRef{}, fmt.Errorf("start session: %w", err)
+		return managed.SessionRef{}, errors.Join(fmt.Errorf("start session: %w", err), r.releaseResources(ctx, worker, workspace))
 	}
 	encoded, _ := json.Marshal(locator{
 		WorkspaceID: workspace.ID, WorkerID: worker.ID, WorkerVersion: worker.Revision,
 		Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: modelID}, Graded: spec.Evaluation != nil,
+		FileIDs: append([]string(nil), handle.Files...),
 	})
 	return managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}, nil
 }
@@ -243,7 +248,17 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	if err != nil {
 		return err
 	}
-	return r.config.Provider.CloseRun(ctx, handle)
+	return errors.Join(r.config.Provider.CloseRun(ctx, handle), r.releaseResources(ctx, handle.Worker, handle.Workspace))
+}
+
+func (r *Runtime) releaseResources(ctx context.Context, worker provider.WorkerRef, workspace provider.WorkspaceRef) error {
+	releaser, ok := r.config.Provider.(provider.ResourceReleaser)
+	if !ok {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	return releaser.ReleaseResources(cleanupCtx, worker, workspace)
 }
 
 func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, error) {
@@ -270,6 +285,7 @@ func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, e
 	return provider.RunHandle{
 		ID: ref.ID, Workspace: provider.WorkspaceRef{ID: metadata.WorkspaceID},
 		Worker: provider.WorkerRef{ID: metadata.WorkerID, Revision: metadata.WorkerVersion},
+		Files:  append([]string(nil), metadata.FileIDs...),
 	}, metadata, nil
 }
 
