@@ -117,6 +117,32 @@ const LIGHT: Palette = {
 
 export type HeroScene = { dispose: () => void }
 
+// The names browsers give a rasteriser that is not a GPU. SwiftShader is
+// Chrome's, llvmpipe and softpipe are Mesa's, WARP is Direct3D's; "software
+// adapter" catches the generic wording. Matched case-insensitively against the
+// unmasked renderer string.
+const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|warp|software|basic render/i
+
+// isSoftwareRenderer asks what is actually behind the context.
+//
+// The debug extension is the only way to see through the masked string a browser
+// reports by default; where it is unavailable the masked value is still worth
+// testing, because SwiftShader names itself there too. Unknown is treated as
+// hardware — a real GPU misread as software would cost the scene for nothing,
+// and that is the worse of the two mistakes.
+function isSoftwareRenderer(renderer: import('three').WebGLRenderer): boolean {
+  try {
+    const gl = renderer.getContext()
+    const ext = gl.getExtension('WEBGL_debug_renderer_info')
+    const name = String(
+      (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '',
+    )
+    return SOFTWARE_GL.test(name)
+  } catch {
+    return false
+  }
+}
+
 // mount builds the scene inside `el` and starts it. `reduce` renders exactly one
 // frame and never schedules another — the resting state of this figure is the
 // figure, not a first frame of it. `stage` is the element pointer movement is
@@ -140,6 +166,21 @@ export async function mountHeroScene(
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
   } catch {
     // No WebGL context. The slab stands on its own.
+    return null
+  }
+
+  // A context is not the same as a GPU. Where hardware acceleration is absent
+  // the browser hands back a *software* rasteriser — SwiftShader, llvmpipe — and
+  // it will honour every draw call by rasterising 25,000 additively-blended
+  // particles on the CPU, every frame, forever. That does not degrade the page;
+  // it takes it over. The main thread stops yielding, the rest of the document
+  // loads at a crawl, and the reader gets a janky first screen where a still one
+  // would have been better.
+  //
+  // So a software renderer is treated as no renderer at all: the same outcome as
+  // a missing context, which the slab is already designed to stand up to.
+  if (isSoftwareRenderer(renderer)) {
+    renderer.dispose()
     return null
   }
 
@@ -442,6 +483,19 @@ export async function mountHeroScene(
     ro.disconnect()
     io.disconnect()
     if (stage) stage.removeEventListener('pointermove', onMove)
+    // The GPU side of ~27k points across eight buffers, released by hand:
+    // renderer.dispose() frees the context's own resources and nothing that was
+    // uploaded through it. This used to run once, at unmount, where the leak
+    // died with the page. 040 put an appearance switch in the footer of the
+    // same page, and the palette is baked into every buffer — so the scene is
+    // now rebuilt on demand, and a leak per rebuild is a leak per click.
+    scene.traverse((o) => {
+      const m = o as unknown as { geometry?: { dispose(): void }; material?: { dispose(): void } | { dispose(): void }[] }
+      m.geometry?.dispose()
+      if (Array.isArray(m.material)) for (const one of m.material) one.dispose()
+      else m.material?.dispose()
+    })
+    glowTex.dispose()
     renderer.dispose()
     renderer.domElement.remove()
   }

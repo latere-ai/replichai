@@ -3957,8 +3957,10 @@ input.submit-input {
   --text-secondary: var(--fg-2);
   --text-muted: var(--fg-3);
   --accent: var(--brand);
-  --shadow: var(--shadow-pop);
-  --focus-outline: 2px solid var(--brand-ring);
+  /* --shadow and --focus-outline are deliberately not aliased. The sheet's own
+     fallbacks are a 1px chip shadow and a solid 2px --accent ring, which is
+     what those two are for; this app's nearest tokens are a 30px popover shadow
+     and a 30%-alpha spread ring, and both would land wrong at chip scale. */
 }
 .landing .site-footer {
   margin-top: 72px;
