@@ -1,10 +1,14 @@
 # 043 — The registry names the paper it reproduces
 
-**Status:** designed.
+**Status:** built. All eight criteria hold.
 
 **Scope:** the public list — `GET /public`, and the two screens that read it: the landing's published strip and the `/registry` screen. No new storage: every fact this puts on a card is already in `project_papers`.
 
 **Depends on:** [037](037-a-paper-carries-its-bibliography.md) (the bibliography this reads), [028](028-the-registry-opens.md) (the list it goes on), [033](033-the-landing-rebuilt-from-the-design.md) (the cards).
+
+The store method turned out to be the whole of the backend. `projectViews` already reads three summaries for the whole page — sessions, modified times, spend — so the bibliography became a fourth, and every list that renders a project row gained it at once rather than the two this spec asked for.
+
+One thing the design did not anticipate: the count and the line have to fail together. A project holding two papers where neither carries a record would otherwise render `+1 more` under nothing at all, which reads as a card that half loaded. `listCitation` returns a zero count whenever it returns no bits, so there is one condition to render on rather than two that can disagree.
 
 ## Problem
 
