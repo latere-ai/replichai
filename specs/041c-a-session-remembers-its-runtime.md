@@ -54,7 +54,7 @@ MemStore and Postgres store round-trip the full reference and route. Reads valid
 
 ## Legacy migration
 
-The historical invariant is explicit: every production managed session before 041 ran on Anthropic. Migration therefore maps every legacy job—not only active rows—to canonical `anthropic-managed`, and converts a non-empty legacy `status.run_id` into `SessionRef{Runtime: "anthropic-managed", ID: run_id, LocatorVersion: 1}`. It never maps an empty provider to the deployment's current default.
+The historical invariant is explicit: every production managed session before 041 ran on Anthropic. Migration therefore maps every legacy job—not only active rows—to canonical `anthropic-managed`, and converts a non-empty legacy `status.run_id` into `SessionRef{Runtime: "anthropic-managed", ID: run_id, Revision: 1, LocatorVersion: 1}`. It never maps an empty provider to the deployment's current default.
 
 Legacy pending rows receive an Anthropic route snapshot. This preserves what they would have run before the deployment changed. Memory jobs are test/process-local and are not inferred from id prefixes; fixtures that need memory declare it after migration.
 
