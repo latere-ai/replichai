@@ -13,7 +13,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/platform"
-	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/runtimes"
 )
 
 // runRates answers one question before a deployment spends real money: does the
@@ -35,16 +35,16 @@ import (
 func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flag.NewFlagSet("rates", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	providerName := fs.String("provider", provider.DefaultName, "provider to ask")
+	providerName := fs.String("provider", defaultCLIRuntime, "managed runtime to ask")
 	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "read the live rate card from this database instead of the compiled-in seed")
 	asJSON := fs.Bool("json", false, "emit machine-readable output")
 	if err := fs.Parse(args); err != nil {
 		return errExitQuiet
 	}
 
-	prov, err := provider.Get(*providerName)
+	_, runtime, err := controllerFor(ctx, *providerName, 0)
 	if err != nil {
-		return fmt.Errorf("provider %q: %w", *providerName, err)
+		return fmt.Errorf("runtime %q: %w", *providerName, err)
 	}
 
 	card, source, err := rateCard(ctx, *dbURL)
@@ -55,7 +55,7 @@ func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error
 	// The comparison itself lives in internal/credit, beside the pricing it is
 	// about, so this command and the server's boot-time report cannot drift
 	// into two different answers to the same question.
-	report := card.Covers(ctx, prov)
+	report := card.Covers(ctx, runtimes.ModelResolver{Runtime: runtime})
 
 	if *asJSON {
 		enc := json.NewEncoder(stdout)

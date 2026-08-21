@@ -15,8 +15,8 @@ import (
 
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/instrument"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/paper"
-	"github.com/latere-ai/replichai/internal/provider"
 )
 
 func TestHTTPFetcherRetriesTransientFailures(t *testing.T) {
@@ -205,7 +205,7 @@ func TestProvidersCommandListsProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	for _, want := range []string{provider.DefaultName, "memory", "(default)"} {
+	for _, want := range []string{"anthropic-managed", "memory", "(default)"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("output missing %q:\n%s", want, stdout)
 		}
@@ -241,7 +241,7 @@ func TestAuditReportsABadMethodDirectory(t *testing.T) {
 func TestAuditReportsAnUnknownProvider(t *testing.T) {
 	_, _, err := capture(t, "audit", "paper", "--provider", "nope",
 		"--method", writeMethod(t))
-	if err == nil || !strings.Contains(err.Error(), "unknown provider") {
+	if err == nil || !strings.Contains(err.Error(), "is unavailable") {
 		t.Fatalf("want an unknown-provider error, got %v", err)
 	}
 }
@@ -495,5 +495,23 @@ func TestFlagsAreAcceptedAfterThePaperReference(t *testing.T) {
 	}
 	if !strings.Contains(stdout, out) {
 		t.Errorf("--out was not applied; output was:\n%s", stdout)
+	}
+}
+
+func TestDetachedSessionReferenceRoundTripsOpaqueLocator(t *testing.T) {
+	ref := managed.SessionRef{
+		Runtime: "memory", ID: "session-1", Revision: 2, LocatorVersion: 1,
+		Locator: json.RawMessage(`{"future":{"container":"c-1"}}`),
+	}
+	encoded, err := encodeSessionRef(ref)
+	if err != nil {
+		t.Fatalf("encodeSessionRef: %v", err)
+	}
+	got, err := decodeSessionRef(encoded)
+	if err != nil || got.Revision != ref.Revision || string(got.Locator) != string(ref.Locator) {
+		t.Fatalf("decodeSessionRef = %+v, %v", got, err)
+	}
+	if _, err := decodeSessionRef("not base64!"); err == nil {
+		t.Fatal("invalid session reference accepted")
 	}
 }

@@ -6,6 +6,8 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,15 +24,12 @@ import (
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/instrument"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
 	"github.com/latere-ai/replichai/internal/registry"
-
-	// Adapters register themselves.
-	_ "github.com/latere-ai/replichai/internal/provider/anthropic"
-	_ "github.com/latere-ai/replichai/internal/provider/memory"
 )
 
 func main() {
@@ -60,9 +59,13 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return runRates(ctx, args[1:], stdout, stderr)
 
 	case "providers":
-		for _, name := range provider.Available() {
+		catalog, _, err := runtimeCatalog("anthropic")
+		if err != nil {
+			return err
+		}
+		for _, name := range catalog.Names() {
 			suffix := ""
-			if name == provider.DefaultName {
+			if name == "anthropic-managed" {
 				suffix = " (default)"
 			}
 			fmt.Fprintf(stdout, "%s%s\n", name, suffix)
@@ -97,7 +100,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	fs.SetOutput(stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
-		providerName = fs.String("provider", provider.DefaultName, "provider to use")
+		providerName = fs.String("provider", defaultCLIRuntime, "managed runtime to use (deprecated name; use --runtime in new automation)")
 		methodDir    = fs.String("method", "", "path to a method directory")
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long a run may take")
@@ -132,18 +135,19 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	if err != nil {
 		return err
 	}
-	p, err := provider.Get(*providerName)
+	controller, _, err := controllerFor(ctx, *providerName, *interval)
 	if err != nil {
 		return err
 	}
 
-	opts := []audit.Option{
-		audit.WithMaxRevisions(*maxRevisions),
-		audit.WithPollInterval(*interval),
-		audit.WithTimeout(*timeout),
-		audit.WithObserver(func(s provider.RunStatus) {
-			fmt.Fprintf(stderr, "  %s\n", s.State)
-		}),
+	hooks := managed.Hooks{Status: func(_ context.Context, status managed.Status) error {
+		fmt.Fprintf(stderr, "  %s\n", status.State)
+		return nil
+	}}
+	opts := []audit.SessionOption{
+		audit.WithSessionMaxRevisions(*maxRevisions),
+		audit.WithSessionTimeout(*timeout),
+		audit.WithSessionHooks(hooks),
 	}
 
 	// When publishing, create the repository up front and mount it, so the
@@ -154,11 +158,21 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		if err != nil {
 			return err
 		}
-		opts = append(opts, audit.WithMount(pub.mount))
+		opts = append(opts, audit.WithSessionMount(audit.SessionMount{
+			URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
+		}))
+		hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
+			grade := provider.GradeUnknown
+			if evidence.Status.Verdict != nil {
+				grade = provider.Grade(evidence.Status.Verdict.Grade)
+			}
+			return finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade, providerEventsFromManaged(evidence.Events), *invite, stdout)
+		}
+		opts = append(opts, audit.WithSessionHooks(hooks))
 		fmt.Fprintf(stderr, "  publishing to %s\n", pub.repoFullName())
 	}
 
-	auditor := audit.New(p, m, opts...)
+	auditor := audit.NewSessionAuditor(controller, m, opts...)
 
 	// Detached: the agent commits to the mounted repo on its own, so there is
 	// no reason to hold the process open for the whole run. Start it, print how
@@ -168,14 +182,18 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			fmt.Fprintln(stderr, "--detach needs --publish")
 			return errExitQuiet
 		}
-		handle, err := auditor.Start(ctx, paper)
+		ref, err := auditor.Start(ctx, paper)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "session:   %s\n", handle.ID)
+		encoded, err := encodeSessionRef(ref)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "session:   %s\n", ref.ID)
 		fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", pub.repoFullName())
-		fmt.Fprintf(stdout, "finish:    replichai finish %s %q --session %s%s\n",
-			pub.repoFullName(), paper, handle.ID, inviteFlag(*invite))
+		fmt.Fprintf(stdout, "finish:    replichai finish %s %q --session-ref %s%s\n",
+			pub.repoFullName(), paper, encoded, inviteFlag(*invite))
 		return nil
 	}
 
@@ -191,16 +209,6 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	reportInstrument(stdout, result.InstrumentPresent, result.InstrumentViolations)
 	fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
 
-	if pub != nil {
-		events, terr := p.Transcript(ctx, result.Handle)
-		if terr != nil {
-			fmt.Fprintf(stderr, "  transcript unavailable: %v\n", terr)
-			events = nil
-		}
-		if err := pub.finalize(ctx, result, events, *invite, stdout); err != nil {
-			return err
-		}
-	}
 	if !result.Passed() {
 		return errExitQuiet
 	}
@@ -218,6 +226,40 @@ type publisher struct {
 }
 
 func (p *publisher) repoFullName() string { return p.owner + "/" + p.name }
+
+func encodeSessionRef(ref managed.SessionRef) (string, error) {
+	raw, err := json.Marshal(ref)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+func decodeSessionRef(encoded string) (managed.SessionRef, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return managed.SessionRef{}, fmt.Errorf("decode --session-ref: %w", err)
+	}
+	var ref managed.SessionRef
+	if err := json.Unmarshal(raw, &ref); err != nil {
+		return managed.SessionRef{}, fmt.Errorf("decode --session-ref: %w", err)
+	}
+	if err := ref.Validate(managed.DefaultMaxLocatorBytes); err != nil {
+		return managed.SessionRef{}, err
+	}
+	return ref, nil
+}
+
+func providerEventsFromManaged(events []managed.Event) []provider.Event {
+	result := make([]provider.Event, 0, len(events))
+	for _, event := range events {
+		result = append(result, provider.Event{
+			Role: provider.Role(event.Role), Kind: provider.EventKind(event.Kind), Tool: event.Tool,
+			Content: event.Content, Time: event.Time, Raw: event.Raw,
+		})
+	}
+	return result
+}
 
 // newPublisher resolves the paper, warns about any prior reproduction, allocates
 // a collision-free name through the registry, and creates the private
@@ -409,8 +451,9 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	fs := flag.NewFlagSet("finish", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		session      = fs.String("session", "", "session id to reattach to and wait for")
-		providerName = fs.String("provider", provider.DefaultName, "provider to poll the session with")
+		session      = fs.String("session", "", "legacy session id to reattach to")
+		sessionRef   = fs.String("session-ref", "", "complete session reference printed by audit --detach")
+		providerName = fs.String("provider", defaultCLIRuntime, "managed runtime for a legacy --session id")
 		methodDir    = fs.String("method", "", "the method directory the audit used")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
 		verdictFlag  = fs.String("verdict", "", "override the recorded verdict when no session is polled")
@@ -469,54 +512,48 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	}
 
 	verdict := provider.GradeUnknown
-	var events []provider.Event
-	if *session != "" {
-		p, err := provider.Get(*providerName)
+	if *sessionRef != "" || *session != "" {
+		if *sessionRef != "" && *session != "" {
+			return errors.New("set only one of --session-ref or legacy --session")
+		}
+		var ref managed.SessionRef
+		rawRuntime := *providerName
+		if *sessionRef != "" {
+			ref, err = decodeSessionRef(*sessionRef)
+			rawRuntime = string(ref.Runtime)
+			if err != nil {
+				return err
+			}
+		}
+		controller, runtime, err := controllerFor(ctx, rawRuntime, *interval)
 		if err != nil {
 			return err
 		}
-		status, err := waitForSession(ctx, p, *session, *interval, *timeout, stderr)
-		if err != nil {
-			return err
+		if *sessionRef == "" {
+			ref = managed.SessionRef{Runtime: runtime.Name(), ID: *session, Revision: 1, LocatorVersion: 1}
 		}
-		if status.Verdict != nil {
-			verdict = status.Verdict.Grade
+		hooks := managed.Hooks{
+			Status: func(_ context.Context, status managed.Status) error {
+				fmt.Fprintf(stderr, "  %s\n", status.State)
+				return nil
+			},
+			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+				if evidence.Status.Verdict != nil {
+					verdict = provider.Grade(evidence.Status.Verdict.Grade)
+				}
+				return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, providerEventsFromManaged(evidence.Events), *invite, stdout)
+			},
 		}
-		// Fetch the transcript before the session is released; a failure is not
-		// safe to publish around: without the evidence stream the redistribution
-		// review cannot truthfully be called clear.
-		if events, err = p.Transcript(ctx, provider.RunHandle{ID: *session}); err != nil {
-			return fmt.Errorf("read transcript for session %s: %w", *session, err)
-		}
+		destination := filepath.Join(os.TempDir(), "replichai-finish-"+ref.ID)
+		_, err = audit.NewSessionAuditor(controller, m,
+			audit.WithSessionHooks(hooks), audit.WithSessionTimeout(*timeout),
+		).Resume(ctx, ref, paperRef, destination)
+		return err
 	} else if *verdictFlag != "" {
 		verdict = verdictOverride
 	}
 
-	return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, events, *invite, stdout)
-}
-
-// waitForSession polls a session by id until it settles or the deadline passes.
-func waitForSession(ctx context.Context, p provider.Provider, session string, interval, timeout time.Duration, stderr *os.File) (provider.RunStatus, error) {
-	h := provider.RunHandle{ID: session}
-	deadline := time.Now().Add(timeout)
-	for {
-		status, err := p.Poll(ctx, h)
-		if err != nil {
-			return provider.RunStatus{}, fmt.Errorf("poll %s: %w", session, err)
-		}
-		fmt.Fprintf(stderr, "  %s\n", status.State)
-		if status.State.Terminal() {
-			return status, nil
-		}
-		if !time.Now().Before(deadline) {
-			return status, fmt.Errorf("%w: session %s (last state: %s)", audit.ErrTimedOut, session, status.State)
-		}
-		select {
-		case <-ctx.Done():
-			return status, ctx.Err()
-		case <-time.After(interval):
-		}
-	}
+	return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, nil, *invite, stdout)
 }
 
 // inviteFlag renders the --invite portion of the suggested finish command.
@@ -747,7 +784,7 @@ a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
 
 flags for audit:
   -out            directory for artifacts (default "runs")
-  -provider       provider to use (default "`+provider.DefaultName+`")
+  -provider       managed runtime to use (default "anthropic")
   -method         path to a method directory
   -interval       gap between status checks
   -timeout        how long a run may take
@@ -758,12 +795,13 @@ flags for audit:
   -detach         with -publish, start the run and return; finish it later
 
 flags for rates:
-  -provider       provider to ask (default "`+provider.DefaultName+`")
+  -provider       managed runtime to ask (default "anthropic")
   -database-url   read the live rate card from a deployment (default $DATABASE_URL)
   -json           machine-readable output
 
 flags for finish:
   -session        session id to reattach to and wait for
+  -session-ref    complete session reference printed by audit --detach
   -invite         GitHub login to invite as a collaborator
   -method         the method directory the audit used
   -timeout        how long to wait for the session
