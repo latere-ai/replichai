@@ -1576,7 +1576,7 @@ type fakeLive struct {
 	err    error
 }
 
-func (f *fakeLive) Events(context.Context, string) ([]provider.Event, error) {
+func (f *fakeLive) Events(context.Context, provider.RunStatus) ([]provider.Event, error) {
 	return f.events, f.err
 }
 

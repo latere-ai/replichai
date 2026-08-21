@@ -2795,7 +2795,7 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "not_ready")
 			return
 		}
-		evs, err := rt.live.Events(r.Context(), j.Status.RunID)
+		evs, err := rt.live.Events(r.Context(), j.Status)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
 			return
@@ -2817,7 +2817,7 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 	case j.Status.RunID != "" && rt.live != nil:
 		// A finished session with no committed repository (a server run that never
 		// published) still shows its trajectory via the backend session's events.
-		evs, err := rt.live.Events(r.Context(), j.Status.RunID)
+		evs, err := rt.live.Events(r.Context(), j.Status)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
 			return
