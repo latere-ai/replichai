@@ -311,27 +311,40 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 		return provider.RunHandle{}, fmt.Errorf("create session: %w", err)
 	}
 
-	// Every discriminator is set explicitly: these fields are omitempty in the
-	// SDK's param structs, so leaving them zero drops "type" from the payload
-	// and the union arrives on the wire unidentified.
-	outcome := &anthropic.BetaManagedAgentsUserDefineOutcomeEventParams{
-		Type:        anthropic.BetaManagedAgentsUserDefineOutcomeEventParamsTypeUserDefineOutcome,
-		Description: spec.Task,
-		Rubric: anthropic.BetaManagedAgentsUserDefineOutcomeEventParamsRubricUnion{
-			OfText: &anthropic.BetaManagedAgentsTextRubricParams{
-				Type:    anthropic.BetaManagedAgentsTextRubricParamsTypeText,
-				Content: spec.Rubric,
+	// A graded audit starts with an outcome definition. An ungraded experiment
+	// starts with an ordinary user message: sending an empty outcome silently
+	// created a grader for work that explicitly asked only to run and report.
+	var kickoff anthropic.BetaManagedAgentsEventParamsUnion
+	if strings.TrimSpace(spec.Rubric) == "" && spec.MaxRevisions == 0 {
+		kickoff = anthropic.BetaManagedAgentsEventParamsUnion{OfUserMessage: &anthropic.BetaManagedAgentsUserMessageEventParams{
+			Type: anthropic.BetaManagedAgentsUserMessageEventParamsTypeUserMessage,
+			Content: []anthropic.BetaManagedAgentsUserMessageEventParamsContentUnion{{
+				OfText: &anthropic.BetaManagedAgentsTextBlockParam{Type: anthropic.BetaManagedAgentsTextBlockTypeText, Text: spec.Task},
+			}},
+		}}
+	} else {
+		// Every discriminator is set explicitly: these fields are omitempty in the
+		// SDK structs, so leaving them zero drops "type" from the wire payload.
+		outcome := &anthropic.BetaManagedAgentsUserDefineOutcomeEventParams{
+			Type:        anthropic.BetaManagedAgentsUserDefineOutcomeEventParamsTypeUserDefineOutcome,
+			Description: spec.Task,
+			Rubric: anthropic.BetaManagedAgentsUserDefineOutcomeEventParamsRubricUnion{
+				OfText: &anthropic.BetaManagedAgentsTextRubricParams{
+					Type:    anthropic.BetaManagedAgentsTextRubricParamsTypeText,
+					Content: spec.Rubric,
+				},
 			},
-		},
-	}
-	if spec.MaxRevisions > 0 {
-		outcome.MaxIterations = param.NewOpt(int64(spec.MaxRevisions))
+		}
+		if spec.MaxRevisions > 0 {
+			outcome.MaxIterations = param.NewOpt(int64(spec.MaxRevisions))
+		}
+		kickoff = anthropic.BetaManagedAgentsEventParamsUnion{OfUserDefineOutcome: outcome}
 	}
 
 	if _, err := p.client.Beta.Sessions.Events.Send(ctx, session.ID, anthropic.BetaSessionEventSendParams{
-		Events: []anthropic.BetaManagedAgentsEventParamsUnion{{OfUserDefineOutcome: outcome}},
+		Events: []anthropic.BetaManagedAgentsEventParamsUnion{kickoff},
 	}); err != nil {
-		return provider.RunHandle{}, fmt.Errorf("send outcome: %w", err)
+		return provider.RunHandle{}, fmt.Errorf("send kickoff: %w", err)
 	}
 
 	return provider.RunHandle{ID: session.ID, Worker: worker, Workspace: ws}, nil

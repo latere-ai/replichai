@@ -245,6 +245,42 @@ func TestStartRunWithoutMountSendsNoResources(t *testing.T) {
 	}
 }
 
+func TestUngradedStartSendsTaskWithoutOutcome(t *testing.T) {
+	var kickoff map[string]any
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/events") {
+			var body struct {
+				Events []map[string]any `json:"events"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode kickoff: %v", err)
+			}
+			kickoff = body.Events[0]
+			writeJSON(t, w, map[string]any{"events": []any{}})
+			return
+		}
+		writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session"})
+	})
+
+	if _, err := p.StartRun(context.Background(), provider.WorkerRef{ID: "a"}, provider.WorkspaceRef{ID: "e"}, provider.RunSpec{Task: "run exactly once"}); err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+	if kickoff["type"] != "user.message" {
+		t.Fatalf("kickoff = %v, want user.message", kickoff)
+	}
+	if _, exists := kickoff["rubric"]; exists {
+		t.Fatalf("ungraded kickoff contains rubric: %v", kickoff)
+	}
+	content, _ := kickoff["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("kickoff content = %v", kickoff)
+	}
+	block, _ := content[0].(map[string]any)
+	if block["text"] != "run exactly once" {
+		t.Fatalf("kickoff task = %v", kickoff)
+	}
+}
+
 func TestTranscriptTranslatesEvents(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/events") {
