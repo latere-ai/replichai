@@ -2820,9 +2820,18 @@ input.submit-input {
    were the tokens already (#2369bd is --brand, #3f7a55 is --ok), so writing
    them as tokens is what makes the page hold in dark without a second palette.
 
-   The two dark slabs are the exception, and deliberately: they are a material
-   rather than a theme, and they are this dark in light mode too. Their inks are
-   local custom properties on .landing so nothing outside can drift from them.
+   The four slabs — the hero, the boundary panel, the walkthrough's artifacts,
+   and the close — are a *material*, and 040 gave that material two states.
+   033 made it one: near-black in both appearances, on the argument that a
+   material is not a theme. That argument holds for one block and fails for
+   four, which is what a reader on paper actually meets — four holes down one
+   page. So the material keeps its own vocabulary, the --slab-* locals below,
+   and the vocabulary has a light half and a dark one. Light is written first
+   because it is the default, exactly as the page's own tokens are.
+
+   Nothing outside .landing reads these, and nothing inside it should reach
+   past them to a literal: a hex in a rule here is a colour that cannot follow
+   the appearance, which is the whole bug 040 fixed.
 
    Motion here is opt-in at the system level. Every animation lives inside the
    no-preference query, and the *base* state is the resting one — a reader who
@@ -2833,15 +2842,64 @@ input.submit-input {
   min-height: 100vh;
   background: var(--bg);
 
+  /* Paper. The hero ground sits a shade under the page so the slab reads as a
+     block rather than as the page continuing, and the panels sit above it. */
+  --slab: #eceae5;
+  --slab-soft: var(--bg-surface);
+  /* The hero veil, as an rgb triple: it is the slab's own colour at varying
+     alpha, so it *lifts* the copy's ground on paper and drops it in the dark.
+     A triple rather than a colour because it is spent inside gradient stops. */
+  --slab-veil: 236, 234, 229;
+  --slab-ink: var(--fg-1);
+  --slab-ink-2: var(--fg-2);
+  /* The quiet tier is a step darker on the material than --fg-3 is on the page.
+     The blocks are denser surfaces — a plate label sits at 10px inside a card
+     inside a panel — and the page's own quietest ink does not survive that. */
+  --slab-ink-3: #7d7b76;
+  --slab-line: rgba(12, 10, 9, 0.14);
+  --slab-fill: rgba(12, 10, 9, 0.035);
+  --slab-fill-2: rgba(12, 10, 9, 0.07);
+  --slab-edge: rgba(12, 10, 9, 0.09);
+  --slab-shadow: 0 30px 70px -42px rgba(12, 10, 9, 0.3), 0 1px 3px rgba(12, 10, 9, 0.05);
+  /* How much of the brand/err wash the panels carry. On paper a strong wash
+     reads as a stain, so it is a fraction of the dark value. */
+  --slab-wash: 9%;
+  /* The semantic pair as it appears *on the material* — on paper the page's
+     own, in the dark the lifted ones, because the plates sit on the block
+     rather than on the page. */
+  --slab-ok: var(--ok);
+  --slab-warn: var(--warn);
+  /* On the slab the primary control follows the ground. On paper the ground is
+     the page's, so the control is the page's too; in the dark it inverts. */
+  --slab-btn-bg: var(--brand);
+  --slab-btn-fg: var(--brand-fg);
+  --slab-btn-bg-hover: var(--brand-hover);
+  /* The loop pair at the luminance it needs against the ground it is on. */
+  --loop-cool: var(--brand);
+  --loop-warm: var(--err);
+}
+
+/* The dark half of the material: 033's values, unchanged. */
+[data-theme='dark'] .landing {
   --slab: #0a0b0d;
   --slab-soft: #111316;
+  --slab-veil: 10, 11, 13;
   --slab-ink: #fafaf9;
   --slab-ink-2: rgba(250, 250, 249, 0.64);
   --slab-ink-3: rgba(250, 250, 249, 0.42);
   --slab-line: rgba(250, 250, 249, 0.18);
   --slab-fill: rgba(250, 250, 249, 0.07);
-  /* The loop pair, lifted for a dark ground: the mark's cool and warm poles at
-     the luminance they need against #0a0b0d rather than against paper. */
+  --slab-fill-2: rgba(250, 250, 249, 0.12);
+  --slab-edge: rgba(250, 250, 249, 0.09);
+  --slab-shadow: 0 40px 90px -30px rgba(10, 11, 13, 0.5), 0 2px 4px rgba(10, 11, 13, 0.2);
+  --slab-wash: 20%;
+  --slab-ok: #8fb894;
+  --slab-warn: #e0bb8c;
+  --slab-btn-bg: var(--slab-ink);
+  --slab-btn-fg: var(--slab);
+  --slab-btn-bg-hover: #ffffff;
+  /* The mark's cool and warm poles at the luminance they need against #0a0b0d
+     rather than against paper. */
   --loop-cool: #6fa3e6;
   --loop-warm: #db8385;
 }
@@ -2917,7 +2975,7 @@ input.submit-input {
   border-radius: 30px;
   overflow: hidden;
   background: var(--slab);
-  box-shadow: 0 40px 90px -30px rgba(10, 11, 13, 0.5), 0 2px 4px rgba(10, 11, 13, 0.2);
+  box-shadow: var(--slab-shadow);
 }
 .lp-scene {
   position: absolute;
@@ -2927,15 +2985,17 @@ input.submit-input {
   width: 100%;
   height: 100%;
 }
-/* The floor of the slab is darkened so the copy has a ground, and the top edge
-   is darkened so the header does not float on a bright field. */
+/* The floor of the slab is pushed back towards the slab's own colour so the
+   copy has a ground, and the top edge with it so the header does not float on
+   a busy field. Which direction that is — down into the dark, up into the
+   paper — is the veil token's business, not this rule's. */
 .lp-slab-veil {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(120% 90% at 20% 100%, rgba(10, 11, 13, 0.92) 0%, rgba(10, 11, 13, 0.45) 45%, rgba(10, 11, 13, 0) 75%),
-    linear-gradient(180deg, rgba(10, 11, 13, 0.55) 0%, rgba(10, 11, 13, 0) 30%);
+    radial-gradient(120% 90% at 20% 100%, rgba(var(--slab-veil), 0.92) 0%, rgba(var(--slab-veil), 0.45) 45%, rgba(var(--slab-veil), 0) 75%),
+    linear-gradient(180deg, rgba(var(--slab-veil), 0.55) 0%, rgba(var(--slab-veil), 0) 30%);
 }
 .lp-slab-top {
   position: relative;
@@ -3003,24 +3063,27 @@ input.submit-input {
 .lp-slab .landing-note {
   color: var(--slab-ink-3);
 }
-/* On the slab the primary control is paper and the secondary is the slab's own
-   material — the inverse of the page, because the ground is. */
-.lp-slab .btn:not(.ghost) {
-  background: var(--slab-ink);
-  color: var(--slab);
+/* The secondary control is always the slab's own material. The primary one is
+   whatever contrasts with the ground, which the material's tokens decide: on
+   paper that is the page's brand button, in the dark it inverts to paper. */
+.lp-slab .btn:not(.ghost),
+.lp-close .btn:not(.ghost) {
+  background: var(--slab-btn-bg);
+  color: var(--slab-btn-fg);
 }
-.lp-slab .btn:not(.ghost):hover {
-  background: #ffffff;
-  color: var(--slab);
+.lp-slab .btn:not(.ghost):hover,
+.lp-close .btn:not(.ghost):hover {
+  background: var(--slab-btn-bg-hover);
+  color: var(--slab-btn-fg);
 }
-.landing .btn.ghost.lp-on-dark {
+.landing .btn.ghost.lp-on-slab {
   background: var(--slab-fill);
   border-color: var(--slab-line);
   color: var(--slab-ink);
   backdrop-filter: blur(10px);
 }
-.landing .btn.ghost.lp-on-dark:hover {
-  background: rgba(250, 250, 249, 0.14);
+.landing .btn.ghost.lp-on-slab:hover {
+  background: var(--slab-fill-2);
   color: var(--slab-ink);
   border-color: var(--slab-line);
 }
@@ -3139,27 +3202,27 @@ input.submit-input {
   overflow: hidden;
   padding: clamp(32px, 5vw, 76px) clamp(22px, 4vw, 56px);
 }
-/* The hairline is for the other theme. On paper a dark panel needs no edge —
-   the contrast is the edge — but in dark mode the panel and the page are within
-   a few points of each other and the shadow under it does nothing, so without
-   this the panel dissolves into the page it is supposed to sit on. */
-.lp-dark,
+/* The hairline carries the edge in both appearances, for opposite reasons: in
+   the dark the block and the page are within a few points of each other and
+   the shadow under it does nothing, and on paper a raised white panel on an
+   off-white page needs the line to say where it stops. */
+.lp-block,
 .lp-slab,
 .lp-close {
-  border: 1px solid rgba(250, 250, 249, 0.09);
+  border: 1px solid var(--slab-edge);
 }
-.lp-dark {
+.lp-block {
   background: var(--slab-soft);
-  box-shadow: 0 40px 80px -40px rgba(12, 10, 9, 0.5);
+  box-shadow: var(--slab-shadow);
 }
-.lp-dark::before {
+.lp-block::before {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(70% 70% at 78% 30%, color-mix(in srgb, var(--brand) 20%, transparent) 0%, transparent 70%),
-    radial-gradient(50% 60% at 20% 85%, color-mix(in srgb, var(--err) 16%, transparent) 0%, transparent 70%);
+    radial-gradient(70% 70% at 78% 30%, color-mix(in srgb, var(--brand) var(--slab-wash), transparent) 0%, transparent 70%),
+    radial-gradient(50% 60% at 20% 85%, color-mix(in srgb, var(--err) calc(var(--slab-wash) * 0.8), transparent) 0%, transparent 70%);
 }
 .lp-loops .lp-panel {
   display: flex;
@@ -3325,9 +3388,9 @@ input.submit-input {
   display: grid;
   place-items: center;
   min-height: min(560px, 62vh);
-  background: #0f1113;
-  border: 1px solid rgba(250, 250, 249, 0.09);
-  box-shadow: 0 30px 70px -34px rgba(12, 10, 9, 0.5);
+  /* Ground, edge and shadow come from .lp-block, which this element also
+     carries. 033 restated all three here, and the restatement won — the panel
+     stayed #0f1113 whatever the material said. */
 }
 .lp-plates {
   position: relative;
@@ -3386,10 +3449,10 @@ input.submit-input {
   text-transform: uppercase;
 }
 .lp-plate-rows b.ok {
-  color: #8fb894;
+  color: var(--slab-ok);
 }
 .lp-plate-rows b.warn {
-  color: #e0bb8c;
+  color: var(--slab-warn);
 }
 .lp-plate-rows b.err {
   color: var(--loop-warm);
@@ -3403,7 +3466,7 @@ input.submit-input {
 }
 .lp-plate-log b {
   font-weight: 600;
-  color: #8fb894;
+  color: var(--slab-ok);
 }
 .lp-plate-rate {
   margin-top: 12px;
@@ -3433,7 +3496,7 @@ input.submit-input {
 }
 .lp-plate .lp-meter {
   margin-top: 12px;
-  background: rgba(250, 250, 249, 0.12);
+  background: var(--slab-fill-2);
 }
 .lp-meter-ok {
   display: block;
@@ -3445,11 +3508,12 @@ input.submit-input {
   height: 100%;
   background: var(--warn);
 }
+/* On the block the ramp is the material's, not the page's. */
 .lp-plate .lp-meter-ok {
-  background: #8fb894;
+  background: var(--slab-ok);
 }
 .lp-plate .lp-meter-warn {
-  background: #e0bb8c;
+  background: var(--slab-warn);
 }
 
 /* ── A verdict you can take apart ─────────────────────────────────────────── */
@@ -3831,14 +3895,14 @@ input.submit-input {
   background: var(--slab);
   padding: clamp(52px, 10vw, 110px) clamp(20px, 4vw, 44px);
   text-align: center;
-  box-shadow: 0 40px 90px -40px rgba(10, 11, 13, 0.5);
+  box-shadow: var(--slab-shadow);
 }
 .lp-close::before {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(60% 80% at 50% 0%, color-mix(in srgb, var(--brand) 24%, transparent) 0%, transparent 70%);
+  background: radial-gradient(60% 80% at 50% 0%, color-mix(in srgb, var(--brand) calc(var(--slab-wash) * 1.2), transparent) 0%, transparent 70%);
 }
 .lp-close > * {
   position: relative;
@@ -3874,35 +3938,28 @@ input.submit-input {
   justify-content: center;
   margin: 32px 0 18px;
 }
-.lp-close .btn:not(.ghost) {
-  background: var(--slab-ink);
-  color: var(--slab);
-}
-.lp-close .btn:not(.ghost):hover {
-  background: #ffffff;
-  color: var(--slab);
-}
 .lp-close .landing-note {
   display: block;
   margin: 0 auto;
   color: var(--slab-ink-3);
 }
 
-.lp-foot {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 40px 32px 56px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--fg-3);
-}
-.lp-foot-lockup {
-  color: var(--fg-3);
-  font-size: 15px;
+/* ── The shared footer ────────────────────────────────────────────────────────
+   latere-ui's SiteFooter ships its own stylesheet, written against the platform
+   palette (--text, --accent, …). This app has its own (--fg-1, --brand, …), so
+   the two are joined here by aliasing on the footer itself.
+
+   Not by importing `latere-ui/tokens`: that sheet defines --bg, --bg-surface
+   and --bg-raised at :root, which this app also defines, and the import would
+   quietly reskin every screen in the product to make one footer work. */
+.landing .site-footer {
+  --text: var(--fg-1);
+  --text-secondary: var(--fg-2);
+  --text-muted: var(--fg-3);
+  --accent: var(--brand);
+  --shadow: var(--shadow-pop);
+  --focus-outline: 2px solid var(--brand-ring);
+  margin-top: 72px;
 }
 
 @media (max-width: 900px) {
@@ -3959,9 +4016,6 @@ input.submit-input {
   }
   .lp-close-wrap {
     padding-top: 68px;
-  }
-  .lp-foot {
-    padding: 32px 20px 44px;
   }
   .lp-bar {
     padding: 10px 16px;
