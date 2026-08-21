@@ -34,7 +34,7 @@ spec:
           ports:
             - containerPort: 8080
           # replichai-config is created from the deployment's .env (secrets: the
-          # OIDC client, REPLICHAI_API_KEY, REPLICHAI_GITHUB_TOKEN,
+          # OIDC client, ANTHROPIC_API_KEY, REPLICHAI_GITHUB_TOKEN,
           # AUTH_COOKIE_KEY, ADMIN_EMAILS). See deploy/README.md.
           envFrom:
             - secretRef:
@@ -51,9 +51,9 @@ spec:
               value: ":8080"
             - name: BASE_URL
               value: https://replichai.latere.ai
-            # Real audits run on the managed-agents backend (memory is dev only).
-            - name: PROVIDER
-              value: anthropic
+            # Real audits run on the Anthropic managed runtime (memory is dev only).
+            - name: REPLICHAI_RUNTIME
+              value: anthropic-managed
             # DEV is deliberately unset in production: the gate is fail-closed and
             # every request must carry a real OIDC session. Setting DEV would
             # admit a synthetic principal on a public domain.

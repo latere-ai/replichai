@@ -25,7 +25,7 @@ The same engine runs behind both.
 make up          # Postgres + the server, on http://localhost:8080
 ```
 
-That brings up the whole stack in the foreground. It defaults to the in-process `memory` provider, so it costs nothing and needs no API key: a submitted paper walks `submitted → done` through the real HTTP, worker, and Postgres path with a fake audit inside it. Sign-in is bypassed locally (`--dev`, refused off loopback); production runs behind OIDC.
+That brings up the whole stack in the foreground. It defaults to the in-process `memory` runtime, so it costs nothing and needs no API key: a submitted paper walks `submitted → done` through the real HTTP, worker, and Postgres path with a fake audit inside it. Sign-in is bypassed locally (`--dev`, refused off loopback); production runs behind OIDC.
 
 The server embeds the frontend, so a code change in `frontend/` needs a rebuild:
 
@@ -40,19 +40,17 @@ cd frontend && bun install && bun run build   # writes internal/spa/dist
 ```bash
 go build ./cmd/replichai
 
-export REPLICHAI_API_KEY=...            # never commit this
+export ANTHROPIC_API_KEY=...             # never commit this
 replichai audit https://arxiv.org/abs/2603.01795 --out runs
 replichai resolve 10.1145/3654777.3676417   # what identity and slug a reference gets
 replichai rates                             # what a session costs, per model
 replichai providers
 ```
 
-`REPLICHAI_API_KEY` holds the backend's ordinary API key. The name is neutral so
-the variable does not advertise which backend is behind it, not because the
-value is different. If you already have that backend's own environment variable
-exported, or are logged in to its CLI, you can leave `REPLICHAI_API_KEY` unset
-and the existing credential is used — there is no need to copy the same secret
-under a second name.
+`REPLICHAI_RUNTIME` selects the managed execution runtime. Today the choices are
+`memory` and `anthropic-managed`; `PROVIDER=anthropic` and `REPLICHAI_API_KEY`
+remain deprecated transition aliases. Runtime credentials are namespaced so a
+future OpenAI runtime can never receive an Anthropic key accidentally.
 
 The audit writes a reproduction repository into `runs/<paper>/`:
 
@@ -93,7 +91,7 @@ the command that finishes it later:
 
 ```bash
 replichai audit <paper> --publish --detach
-replichai finish open-hai/<repo> <paper> --session <id> --invite <github-login>
+replichai finish open-hai/<repo> <paper> --session-ref <opaque-ref> --invite <github-login>
 ```
 
 `replichai publish <artifact-dir> <paper>` is the offline path: it previews what
@@ -111,7 +109,9 @@ cmd/server/          the web app composition root — engine + stores + gate + w
 internal/audit/      the orchestrator
 internal/paper/      resolving a reference to a stable identity and a slug
 internal/method/     loading the method from disk
-internal/provider/   the backend contract, domain types, and adapters
+internal/managed/    the vendor-neutral managed-session contract and controller
+internal/runtimes/   explicit runtime catalog, durable router, and composition
+internal/provider/   the transitional Anthropic protocol adapter behind managed
 internal/publish/    the manifest, the redistribution gate, the transcript, the forge seam
 internal/registry/   the derived registry of published reproductions
 internal/github/     the small GitHub client publishing needs

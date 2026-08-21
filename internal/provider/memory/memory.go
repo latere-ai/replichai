@@ -13,10 +13,6 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-func init() {
-	provider.Register("memory", func() (provider.Provider, error) { return New(), nil })
-}
-
 // Provider is a deterministic stand-in for a real backend. It is safe for
 // concurrent use.
 type Provider struct {
