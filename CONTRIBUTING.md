@@ -4,7 +4,7 @@
 
 ```bash
 go build ./...
-go test ./... -cover
+make test
 go vet ./...
 golangci-lint run ./...
 ```
@@ -15,9 +15,47 @@ All four must be clean. Install the linter with:
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 ```
 
+Beyond the unit suite there are four targets, each covering something the
+others cannot:
+
+```bash
+make cover      # coverage with the Postgres contracts running rather than skipping
+make e2e        # submit -> run -> done through the real server, pure Go
+make web-e2e    # the frontend's browser regressions, in headless Chrome
+make smoke      # the compose stack, end to end
+```
+
+`make cover` is the number to quote. `go test -cover ./...` with no database
+silently skips every Postgres store contract, which costs `internal/access`
+alone about forty points and makes the total meaningless.
+
 Tests need no network and no credential: the backend adapter runs against a
 local HTTP server, and an in-process provider stands in for the backend
 everywhere else. A test that needs either is in the wrong place.
+
+## The frontend
+
+`frontend/` is bun + React + Vite, and the server embeds its build, so a change
+there is invisible to a running server until you rebuild:
+
+```bash
+cd frontend
+bun install
+bun run build      # vite writes ../internal/spa/dist, which the server embeds
+bun test src       # the unit tests
+bun run typecheck
+npm run test:browser   # the puppeteer regressions; skips cleanly with no Chrome
+```
+
+The browser tests are the only ones that can catch a layout bug, because layout
+needs a layout engine. They render a screen against a mocked API and measure it
+— which is how the mobile spill was found, in a pane that scrolled sideways
+while `documentElement.scrollWidth` read clean.
+
+Every string the UI renders lives in `frontend/src/i18n.ts` — English only
+today. Adding a language is a code in the `Lang` union plus a matching
+block, and TypeScript then requires that block to translate every key, so a
+locale cannot ship half-done.
 
 ## The Postgres contracts
 
