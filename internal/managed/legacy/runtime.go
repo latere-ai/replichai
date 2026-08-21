@@ -179,7 +179,7 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 }
 
 func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed.Event, error) {
-	handle, _, err := r.handle(ref)
+	handle, metadata, err := r.handle(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -189,10 +189,19 @@ func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed
 	}
 	result := make([]managed.Event, 0, len(events))
 	for index, event := range events {
-		result = append(result, managed.Event{
+		translated := managed.Event{
 			ID: fmt.Sprintf("%s-%d", ref.ID, index+1), Role: managed.Role(event.Role), Kind: managed.EventKind(event.Kind),
 			Tool: event.Tool, Content: event.Content, Time: event.Time, Raw: event.Raw,
-		})
+		}
+		if event.Usage != nil {
+			translated.Usage = &managed.Usage{
+				Model:      metadata.Model,
+				InputFresh: event.Usage.InputTokens, InputCached: event.Usage.CachedInputTokens,
+				CacheWrite: event.Usage.CacheWriteTokens, CacheWrite5m: event.Usage.CacheWrite5mTokens,
+				CacheWrite1h: event.Usage.CacheWrite1hTokens, Output: event.Usage.OutputTokens,
+			}
+		}
+		result = append(result, translated)
 	}
 	return result, nil
 }

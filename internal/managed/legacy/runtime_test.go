@@ -75,13 +75,19 @@ func TestUngradedAndGradedStatusMapping(t *testing.T) {
 
 func TestEvidenceCancelAndReleaseDelegateWithCompleteHandle(t *testing.T) {
 	backend := providermemory.New()
-	backend.Events = []provider.Event{{Role: provider.RoleAgent, Kind: provider.KindMessage, Content: "done"}}
+	backend.Events = []provider.Event{{
+		Role: provider.RoleAgent, Kind: provider.KindMessage, Content: "done",
+		Usage: &provider.Usage{InputTokens: 3, CachedInputTokens: 2, OutputTokens: 1},
+	}}
 	backend.Files = map[string][]byte{"result.txt": []byte("result")}
 	runtime := newRuntime(t, backend)
 	ref, _ := runtime.Start(context.Background(), baseSpec())
 	events, err := runtime.Events(context.Background(), ref)
 	if err != nil || len(events) != 1 || events[0].ID == "" || events[0].Content != "done" {
 		t.Fatalf("Events = %+v, %v", events, err)
+	}
+	if events[0].Usage == nil || events[0].Usage.Model.ID == "" || events[0].Usage.TotalTokens() != 6 {
+		t.Fatalf("normalized event usage = %+v", events[0].Usage)
 	}
 	artifacts, err := runtime.ListArtifacts(context.Background(), ref)
 	if err != nil || len(artifacts) != 1 {

@@ -82,8 +82,12 @@ func TestManagedStatusConversionPreservesReferenceModelAndUsage(t *testing.T) {
 	if status.RunID != ref.ID || status.Runtime != string(ref.Runtime) || status.Model != "model" || status.Usage.Total() != 21 || !status.Passed() {
 		t.Fatalf("providerStatus = %+v", status)
 	}
-	if len(providerEvents([]managed.Event{{ID: "id", Role: managed.RoleAgent, Kind: managed.KindMessage, Content: "x"}})) != 1 {
-		t.Fatal("event conversion failed")
+	translated := providerEvents([]managed.Event{{
+		ID: "id", Role: managed.RoleAgent, Kind: managed.KindMessage, Content: "x",
+		Usage: &managed.Usage{InputFresh: 2, InputCached: 3, Output: 5},
+	}})
+	if len(translated) != 1 || translated[0].Usage == nil || translated[0].Usage.Total() != 10 {
+		t.Fatalf("event conversion = %+v", translated)
 	}
 	for _, state := range []managed.State{managed.StateUnknown, managed.StatePending, managed.StateRunning, managed.StateDone, managed.StateFailed} {
 		_ = providerState(state)

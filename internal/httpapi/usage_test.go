@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/provider"
@@ -12,8 +11,7 @@ import (
 // creation as one number with no lifetime, unlike the session total, so it is
 // carried unattributed rather than assigned to a bucket it may not belong to.
 func TestEventUsageCarriesCacheCreationUnattributed(t *testing.T) {
-	e := provider.Event{Raw: json.RawMessage(
-		`{"model_usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":400}}`)}
+	e := provider.Event{Usage: &provider.Usage{InputTokens: 100, OutputTokens: 50, CachedInputTokens: 10, CacheWriteTokens: 400}}
 
 	got, ok := eventUsage(e)
 	if !ok {
@@ -36,9 +34,9 @@ func TestEventUsageCarriesCacheCreationUnattributed(t *testing.T) {
 // why the sum goes through Usage.Add rather than a hand-written field list.
 func TestAttachUsageSumsEveryClass(t *testing.T) {
 	events := []provider.Event{
-		{Raw: json.RawMessage(`{"model_usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":2,"cache_creation_input_tokens":3}}`)},
-		{Raw: json.RawMessage(`{"nothing":true}`)},
-		{Raw: json.RawMessage(`{"model_usage":{"input_tokens":20,"output_tokens":2,"cache_read_input_tokens":4,"cache_creation_input_tokens":6}}`)},
+		{Usage: &provider.Usage{InputTokens: 10, OutputTokens: 1, CachedInputTokens: 2, CacheWriteTokens: 3}},
+		{},
+		{Usage: &provider.Usage{InputTokens: 20, OutputTokens: 2, CachedInputTokens: 4, CacheWriteTokens: 6}},
 	}
 
 	out, total, ok := attachUsage(events)

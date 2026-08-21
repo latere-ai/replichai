@@ -25,6 +25,7 @@ type Event struct {
 	Tool    string          `json:"tool,omitempty"` // the tool for a tool_use, else empty
 	Content string          `json:"content,omitempty"`
 	Time    time.Time       `json:"time"`
+	Usage   *Usage          `json:"usage,omitempty"`
 	Raw     json.RawMessage `json:"raw,omitempty"` // the backend's original event
 }
 
