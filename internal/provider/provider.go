@@ -213,6 +213,12 @@ type RunStatus struct {
 	// restart, close a session the process was driving — otherwise a run left in
 	// flight by a restart keeps running on the backend, unreachable.
 	RunID string `json:"run_id,omitempty"`
+	// Runtime and SessionRef are the transition envelope used while durable job
+	// storage moves to the managed-session contract. SessionRef is the complete,
+	// opaque managed.SessionRef JSON; core code persists it without parsing its
+	// locator. A missing value is decoded only by job's explicit legacy path.
+	Runtime    string          `json:"runtime,omitempty"`
+	SessionRef json.RawMessage `json:"session_ref,omitempty"`
 	// Model is what the backend actually ran, as it names it. The engine asks
 	// for a *preference* ("best") and the backend resolves it, so this is the
 	// only place the concrete model appears — and it is what settlement prices

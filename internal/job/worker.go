@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -37,7 +38,7 @@ type Runner interface {
 	// Close releases a run on the backend by its id (the managed-agents session),
 	// so a run left in flight by a restart is stopped rather than orphaned. Safe
 	// to call more than once and on an unknown id.
-	Close(ctx context.Context, runID string) error
+	Close(ctx context.Context, ref managed.SessionRef) error
 }
 
 // Budget answers whether a session must be stopped for spend (011). It is
@@ -221,9 +222,11 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 	// Stop the durable backend handle before making the row terminal. If this
 	// fails, the active row is the retry handle; cancelling it locally first
 	// would report success while making the still-live remote run unreachable.
-	if j.Status.RunID != "" {
-		if err := w.runner.Close(ctx, j.Status.RunID); err != nil {
-			return fmt.Errorf("stop backend run %s: %w", j.Status.RunID, err)
+	if ref, ok, refErr := j.ManagedSessionRef(); refErr != nil {
+		return fmt.Errorf("read backend session reference: %w", refErr)
+	} else if ok {
+		if err := w.runner.Close(ctx, ref); err != nil {
+			return fmt.Errorf("stop backend run %s: %w", ref.ID, err)
 		}
 	}
 	// Persist the terminal cancellation before interrupting the local waiter, so
