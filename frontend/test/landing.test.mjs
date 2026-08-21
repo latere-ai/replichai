@@ -131,7 +131,10 @@ try {
         // The outer loop is drawn open. Losing the dash array turns the mark
         // into two concentric rings and the drawing stops saying anything.
         dashed: (inner.getAttribute('stroke-dasharray') || '') === '' && (outer.getAttribute('stroke-dasharray') || '') !== '',
-        // Nothing in the identity may depend on a font the app does not ship.
+        // The product's own wordmark stays font-independent. 040 self-hosts
+        // Instrument Serif for the shared footer, so "the app does not ship it"
+        // is no longer the reason — the reason is that an identity which waits
+        // on a download is one that can be missing.
         font: cs(document.querySelector('.wordmark')).fontFamily,
         seam: !!document.querySelector('.wordmark .wordmark-seam'),
         word: document.querySelector('.wordmark').textContent.trim(),
@@ -144,7 +147,7 @@ try {
       if (mark.innerStroke === 'none' || /rgba\(.*, *0\)/.test(mark.innerStroke)) fail(`the mark's inner ring does not paint (stroke: ${mark.innerStroke})`)
       if (mark.outerStroke === 'none' || mark.outerOpacity < 0.2) fail(`the mark's outer ring does not paint (stroke: ${mark.outerStroke}, opacity: ${mark.outerOpacity})`)
       if (!mark.dashed) fail('the outer loop is not drawn open; a closed outer ring claims the study is re-runnable')
-      if (/Instrument Serif/.test(mark.font)) fail(`the wordmark asks for ${mark.font}, which the app does not ship`)
+      if (/Instrument Serif/.test(mark.font)) fail(`the wordmark asks for ${mark.font}; the identity is drawn, not set`)
       if (mark.word !== 'ReplicHAI') fail(`the wordmark reads "${mark.word}"`)
       if (!mark.seam) fail('the wordmark lost its seam')
     }
@@ -627,6 +630,46 @@ try {
       }
       await page.close()
     }
+  }
+
+  /* ── The footer's logotype is set in the face it names (040) ── */
+
+  {
+    // The shared footer sets "Latere AI" and all six product wordmarks in
+    // Instrument Serif. Until 040 this app named that family and shipped no
+    // font, so every one of them rendered in Georgia — the same logotype as
+    // latere.ai, in a different face. Nothing else on the page notices: the
+    // markup is right, the colour is right, and the text is there.
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.landing .site-footer .logo-text')
+    const face = await page.evaluate(async () => {
+      await document.fonts.ready
+      const el = document.querySelector('.landing .site-footer .logo-text')
+      const cs = getComputedStyle(el)
+      // The FontFaceSet holds the faces the *document declared*, and nothing
+      // else — a family that only exists on the reader's machine is not in it,
+      // and neither is one that was named and never served. `fonts.check()`
+      // looks like the right call here and is not: it answers "can this text be
+      // painted", which is true of any family, spelled correctly or not.
+      const faces = [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Instrument Serif')
+      return {
+        asked: cs.fontFamily,
+        style: cs.fontStyle,
+        served: faces.map((f) => f.style).sort(),
+        loaded: faces.filter((f) => f.status === 'loaded').map((f) => f.style),
+        // The gradient wordmarks, which are spans inside the products column
+        // — not `.footer-brand`, the block that holds the Latere lockup.
+        brands: [...document.querySelectorAll('.landing .footer-cols span[class$="-brand"]')].length,
+      }
+    })
+    if (!/Instrument Serif/.test(face.asked)) fail(`the footer logotype asks for ${face.asked}`)
+    if (face.style !== 'italic') fail(`the footer logotype is ${face.style}, and the Latere logotype is italic`)
+    if (!face.served.includes('italic')) fail(`the footer logotype names Instrument Serif and the app declares ${JSON.stringify(face.served)}; it renders in the fallback serif`)
+    // Declared is not served: a path typo gives a face that is in the set and
+    // permanently 'error', and the page looks exactly as it did before 040.
+    if (!face.loaded.includes('italic')) fail(`the italic face is declared and did not load (status of the declared faces: ${JSON.stringify(face.loaded)}); check /fonts/`)
+    if (face.brands !== 6) fail(`the footer shows ${face.brands} product wordmarks, want six`)
+    await page.close()
   }
 
   /* ── The page ends in the Latere footer, and it works (040) ── */

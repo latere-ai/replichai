@@ -3,9 +3,12 @@
 // `currentColor` so the same glyph can sit in a brand button and a muted row,
 // while the mark owns its colour and must look the same in every context.
 //
-// Nothing here depends on a font the app does not ship. The mark it replaced
-// was the character `r` set in `--font-serif: 'Instrument Serif'`, which has no
-// `@font-face` anywhere in the repository, so it had always rendered in Georgia.
+// Nothing here depends on a font at all. The mark it replaced was the character
+// `r` set in `--font-serif: 'Instrument Serif'`, which the app did not ship, so
+// the identity had always rendered in Georgia without anyone deciding that.
+// 040 self-hosts the face — the shared footer sets Latere's logotype in it — and
+// that changes nothing here on purpose: a wordmark that waits on a download is
+// a wordmark that can be missing, whether or not the download is in the repo.
 
 // Mark draws the boundary the product defends: the inner loop — the algorithm,
 // model, or analysis pipeline — is mechanically re-runnable, so it is a closed
