@@ -25,6 +25,11 @@ export type SettingsTab = 'account' | 'profile'
 
 export type View =
   | { name: 'projects' }
+  // An address this app does not have (042c). It carries the path it was asked
+  // for so `pathOf` stays total and the address bar keeps what was typed —
+  // silently rewriting a typo to `/` is how a person came to be shown the
+  // dashboard for a page they did not ask for.
+  | { name: 'notfound'; path: string }
   | { name: 'trash' }
   | { name: 'public' }
   | { name: 'submit' }
@@ -72,7 +77,7 @@ const isSettingsTab = (s: string): s is SettingsTab => (SETTINGS_TABS as string[
 // to render at /new or /wallet for a reader with no account, so the landing
 // stands in for those.
 export function isPublicView(v: View): boolean {
-  return v.name === 'public' || v.name === 'project' || v.name === 'session' || v.name === 'profile'
+  return v.name === 'public' || v.name === 'project' || v.name === 'session' || v.name === 'profile' || v.name === 'notfound'
 }
 
 // pathOf is the address a view lives at. The sessions tab is the project's own
@@ -82,6 +87,8 @@ export function isPublicView(v: View): boolean {
 // the links to one already sent point at the bare path.
 export function pathOf(view: View): string {
   switch (view.name) {
+    case 'notfound':
+      return view.path
     case 'project':
       return `/p/${view.id}` + (view.tab && view.tab !== 'sessions' ? `/${view.tab}` : '')
     case 'session':
@@ -102,9 +109,11 @@ export function pathOf(view: View): string {
   }
 }
 
-// viewOf is what an address means. Anything unrecognised is the dashboard: every
-// path here is either one of ours or a typo in a hand-edited URL, and the useful
-// answer to a typo is the app. The caller corrects the address.
+// viewOf is what an address means. Anything unrecognised is *not* the dashboard
+// (042c): a path that resolved to the app and then had its address corrected to
+// `/` was an unbounded set of URLs answering 200 with identical content — a soft
+// 404 to a crawler, and to a person a page they did not ask for, silently
+// substituted. It resolves to a screen that says so, at the address they typed.
 export function viewOf(pathname: string): View {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
   const fixed = SCREENS[path || '/']
@@ -146,7 +155,7 @@ export function viewOf(pathname: string): View {
     const tab = project[2]
     return tab && isTab(tab) ? { name: 'project', id: project[1], tab } : { name: 'project', id: project[1] }
   }
-  return { name: 'projects' }
+  return { name: 'notfound', path }
 }
 
 // Navigate takes a view, or a function of the current one for the cases that

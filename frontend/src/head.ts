@@ -48,6 +48,8 @@ export function titleOf(view: View, t: I18n['t'], authed: boolean | null): strin
       // fetched; the display name that replaces it is not this hook's to wait
       // for — the screen writes it once it has it.
       return named(`@${view.handle}`)
+    case 'notfound':
+      return named(t('notFoundTitle'))
     case 'project':
       return view.title ? named(view.title) : null
     case 'session':

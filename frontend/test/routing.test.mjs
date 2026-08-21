@@ -370,11 +370,38 @@ try {
   await page.waitForSelector('.detail-tabs')
   if ((await path()) !== `/p/${PROJECT}`) fail(`a mistyped tab left the address at ${await path()}, want /p/${PROJECT}`)
 
-  // An address we do not own is the app, at a corrected address — not a dead end,
-  // and not a URL that keeps resolving somewhere else on every reload.
+  // An address we do not own says so, at the address that was asked for (042c).
+  // It used to render the dashboard and rewrite the URL to `/` — a page nobody
+  // asked for, and to a crawler an unbounded set of URLs answering 200 with
+  // identical content. The tab says it too, and Back still works.
   await page.goto(`${BASE}/nonsense`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('[data-test="not-found"]')
+  if ((await path()) !== '/nonsense') fail(`a miss corrected the address to ${await path()}, want /nonsense`)
+  if (!/no page at this address/i.test(await page.title())) fail(`a miss left the tab titled ${JSON.stringify(await page.title())}`)
+  // A reload resolves to the same screen rather than somewhere else.
+  await page.reload({ waitUntil: 'networkidle0' })
+  await page.waitForSelector('[data-test="not-found"]')
+  if ((await path()) !== '/nonsense') fail(`reloading a miss went to ${await path()}`)
+  // And it is a way back, not a dead end.
+  await page.evaluate(() => [...document.querySelectorAll('[data-test="not-found"] button')][0]?.click())
   await page.waitForSelector('.row')
-  if ((await path()) !== '/') fail(`an unknown address stayed at ${await path()}, want / (${await at_('stray')})`)
+  if ((await path()) !== '/') fail(`leaving the not-found screen went to ${await path()}`)
+
+  // The tab follows the screen after the first paint (042a): the head the server
+  // wrote is for the address the reader arrived at, and nothing on the server is
+  // involved from the second screen onwards.
+  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('.detail-tabs')
+  if (!(await page.title()).startsWith(project.title)) fail(`a project left the tab titled ${JSON.stringify(await page.title())}`)
+  const canonical = () => page.evaluate(() => document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? '')
+  if (!(await canonical()).endsWith(`/p/${PROJECT}`)) fail(`a project's canonical is ${await canonical()}`)
+  // A tab is a view of the record, so the canonical stays the record's own.
+  await page.evaluate(() => [...document.querySelectorAll('.detail-tabs .tab')].find((b) => /verdict/i.test(b.textContent))?.click())
+  await new Promise((r) => setTimeout(r, 300))
+  if (!(await canonical()).endsWith(`/p/${PROJECT}`)) fail(`a project tab moved the canonical to ${await canonical()}`)
+  await page.goto(`${BASE}/wallet`, { waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 300))
+  if (!/wallet/i.test(await page.title())) fail(`the wallet left the tab titled ${JSON.stringify(await page.title())}`)
 
   // Failure to read /me is an outage, not evidence that the person signed out.
   // Keep the deep link, offer a retry, and never send them into a login loop.

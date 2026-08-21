@@ -701,6 +701,7 @@ function Shell({
           </div>
         )}
 
+        {view.name === 'notfound' && <NotFound i18n={i18n} navigate={navigate} />}
         {view.name === 'projects' && <ProjectsScreen i18n={i18n} me={me} onOpen={openProject} />}
         {view.name === 'wallet' && <WalletScreen i18n={i18n} me={me} refreshMe={refreshMe} onTopUp={() => setTopUp(true)} />}
         {view.name === 'trash' && <TrashScreen i18n={i18n} me={me} />}
@@ -2419,6 +2420,31 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
       <button className="btn ghost sm" disabled={busy} onClick={() => setEditing(false)}>
         {t('cancel')}
       </button>
+    </div>
+  )
+}
+
+// NotFound is an address this app does not have (042c). The server answered 404
+// for it and served the app anyway, so this screen is what that status looks
+// like to a person: it keeps the address they typed rather than correcting it,
+// and offers the two places worth going next.
+function NotFound({ i18n, navigate }: { i18n: I18n; navigate: Navigate }) {
+  const { t } = i18n
+  return (
+    <div className="screen" data-test="not-found">
+      <div className="card card-pad stack" style={{ maxWidth: 520, margin: '48px auto', textAlign: 'center', alignItems: 'center' }}>
+        <Ico name="search" size={22} style={{ color: 'var(--fg-3)' }} />
+        <h2 style={{ margin: 0 }}>{t('notFoundTitle')}</h2>
+        <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
+          {t('notFoundBody')}
+        </p>
+        <button className="btn" onClick={() => navigate({ name: 'projects' })}>
+          {t('notFoundHome')}
+        </button>
+        <a className="btn ghost" href="/registry">
+          <Ico name="globe" size={13} /> {t('browseRegistry')}
+        </a>
+      </div>
     </div>
   )
 }

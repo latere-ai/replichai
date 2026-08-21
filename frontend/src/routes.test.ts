@@ -96,10 +96,13 @@ test('a handle is normalised the way the profile stores it', () => {
   expect(viewOf('/u/' + encodeURIComponent('ada-lovelace'))).toEqual({ name: 'profile', handle: 'ada-lovelace' })
 })
 
-// Anything else is the dashboard, and the app corrects the address. Note the API
-// paths in this list: reaching them in a browser is answered by the server, never
-// by this mapping, so the mapping must not pretend to own them.
-test('an address we do not own is the dashboard', () => {
+// Anything else is an address this app does not have, and says so at the address
+// it was asked for (042c) — not the dashboard under a corrected URL, which was a
+// page nobody asked for and, to a crawler, an unbounded set of URLs answering
+// 200 with identical content. Note the API paths in this list: reaching them in a
+// browser is answered by the server, never by this mapping, so the mapping must
+// not pretend to own them.
+test('an address we do not own is not found, and keeps its address', () => {
   const strays = [
     '/nonsense',
     '/p',
@@ -117,7 +120,11 @@ test('an address we do not own is the dashboard', () => {
     '/users/ada',
   ]
   for (const path of strays) {
-    expect(viewOf(path)).toEqual({ name: 'projects' })
+    const view = viewOf(path)
+    expect(view.name).toBe('notfound')
+    // The path round-trips, so useRouter's correction leaves the address alone
+    // and a reload resolves to the same screen rather than to the dashboard.
+    expect(pathOf(view)).toBe(path.length > 1 ? path.replace(/\/+$/, '') : path)
   }
 })
 
@@ -137,14 +144,16 @@ test('no screen is shadowed by an API prefix', async () => {
 })
 
 // 028: which addresses a reader with no account is shown, rather than sent to
-// the landing from. The list is exactly the four public things; everything else
-// is somebody's own workspace.
-test('the public views are the registry, a project, a session, and a profile', () => {
+// the landing from. The four public things, and — since 042c — the screen for an
+// address that does not exist: a signed-out reader who mistypes has asked for
+// nothing private, and answering them with the landing hides the mistake.
+test('the public views are the registry, a project, a session, a profile, and a miss', () => {
   const open: View[] = [
     { name: 'public' },
     { name: 'project', id: 'p1' },
     { name: 'session', jobId: 'j1', projectId: 'p1' },
     { name: 'profile', handle: 'ada' },
+    { name: 'notfound', path: '/nonsense' },
   ]
   for (const v of open) expect(isPublicView(v)).toBe(true)
 
