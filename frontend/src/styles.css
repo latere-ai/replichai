@@ -8,6 +8,40 @@
 
    Retinting the product is a two-line change: --brand and its dark twin. */
 
+/* Instrument Serif, self-hosted, the same two faces latere.ai serves from the
+   same paths — byte-identical files, so a reader who has been to either site
+   already has them.
+
+   Until 040 this app named the family and shipped nothing, so `--font-serif`
+   had always rendered in Georgia. That was invisible while the only use was one
+   `<em>`; the shared footer sets Latere's own logotype and all six product
+   wordmarks in it, and a logotype in the wrong face is not a fallback, it is a
+   different mark. 033 solved the same problem for *replichai's* identity by
+   drawing it instead — which is why the wordmark beside this still depends on
+   no font at all, and must not start.
+
+   Two differences from latere.ai, both because this is an app and that is a
+   marketing site. `swap` rather than `block`: the face renders in the footer at
+   the bottom of a long page and in one `<em>` deep inside the console, so
+   showing the fallback immediately costs nothing a reader will see, while
+   `block` blanks that text for up to three seconds. And no `<link rel=preload>`:
+   the footer is on one route, and a preload in index.html would spend the
+   download on every route in the product to save a swap almost nobody watches. */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
+}
+
 :root {
   /* Row rhythm. Two gaps, and the distinction is the point: --gap-row separates
      the *sides* of a list row (a label from its value), --gap-inline separates
