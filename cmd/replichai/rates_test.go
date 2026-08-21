@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/credit"
-	"github.com/latere-ai/replichai/internal/provider"
-	"github.com/latere-ai/replichai/internal/provider/anthropic"
 )
 
 // A backend offering a model the card cannot price on its own terms — the case
@@ -27,9 +25,10 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 		}})
 	}))
 	defer backend.Close()
-	registerStub(t, "rates-dated", backend.URL)
+	t.Setenv("ANTHROPIC_API_KEY", "test-credential")
+	t.Setenv("ANTHROPIC_BASE_URL", backend.URL)
 
-	out := runRatesJSON(t, "-provider", "rates-dated", "-json")
+	out := runRatesJSON(t, "-provider", "anthropic-managed", "-json")
 	byPref := map[credit.Preference]credit.Coverage{}
 	for _, c := range out.Checks {
 		byPref[c.Preference] = c
@@ -65,9 +64,10 @@ func TestRatesReportsACardThatCoversTheBackend(t *testing.T) {
 		}})
 	}))
 	defer backend.Close()
-	registerStub(t, "rates-exact", backend.URL)
+	t.Setenv("ANTHROPIC_API_KEY", "test-credential")
+	t.Setenv("ANTHROPIC_BASE_URL", backend.URL)
 
-	out := runRatesJSON(t, "-provider", "rates-exact", "-json")
+	out := runRatesJSON(t, "-provider", "anthropic-managed", "-json")
 	for _, c := range out.Checks {
 		if !c.Named {
 			t.Errorf("%s (%s) reported inexact against a card that names it", c.Preference, c.Model)
@@ -79,16 +79,6 @@ func TestRatesReportsACardThatCoversTheBackend(t *testing.T) {
 	if out.Source != "compiled-in seed" {
 		t.Errorf("source = %q; with no database it must say which card it read", out.Source)
 	}
-}
-
-// registerStub wires the real anthropic adapter at a local backend under a
-// one-off provider name, so the test drives the same ResolveModel the engine
-// does rather than a fake of it.
-func registerStub(t *testing.T, name, baseURL string) {
-	t.Helper()
-	provider.Register(name, func() (provider.Provider, error) {
-		return anthropic.New(anthropic.WithAPIKey("test-credential"), anthropic.WithAPIBase(baseURL))
-	})
 }
 
 type ratesReport struct {
