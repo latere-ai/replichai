@@ -388,6 +388,16 @@ type Store interface {
 	// added is the order somebody wrote them down, and reversing it would put
 	// the paper a project was created for at the bottom.
 	ListPapers(ctx context.Context, projectID string) ([]Paper, error)
+	// PapersByProjects returns the papers of every named project, in one call,
+	// keyed by project id and ordered within each project exactly as ListPapers
+	// orders them (043). It exists for the lists — the public registry reads
+	// what every project on it is a reproduction of, and doing that a project at
+	// a time is an N+1 on the one route the internet calls unauthenticated.
+	//
+	// A project with no papers is absent from the map rather than present with
+	// an empty slice: the caller reads a missing key as "none", and the two
+	// answers are the same answer.
+	PapersByProjects(ctx context.Context, ids []string) (map[string][]Paper, error)
 	// EnrichPaper fills in what a source has answered — the title, and the
 	// bibliography behind it (037) — and reports whether anything changed. It is
 	// the one enrichment path: a fresh add, an owner's fill-in and the admin
