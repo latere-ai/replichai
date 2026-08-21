@@ -1,10 +1,24 @@
 # 042a — The head the server writes, and the client keeps current
 
-**Status:** designed.
+**Status:** built. All ten criteria hold.
 
 **Scope:** `internal/seo` (new), `internal/spa`, `internal/httpapi` route registration, `frontend/index.html`, and one hook in the frontend. No change to how the app boots or renders.
 
 **Depends on:** [042](042-the-site-a-crawler-can-read.md).
+
+Two things the design did not anticipate. The substitution had to move out of
+`internal/spa` and into `internal/seo` as `WriteShell`, because the router's own
+tests need to assert on a described document and a second copy of "replace the
+region, set the header" in a test fake would have been a second implementation of
+the rule under test. And the privacy predicate turned out to be simpler than the
+API's, not a variant of it: `mayViewProject` admits an owner to their own private
+project, so keying on it would have left a private title one identity away from
+crawlable bytes — the injected head asks only whether the record is public, which
+is a question with no caller in it.
+
+The paper's bibliography (037) made the structured data worth having: authors,
+venue, year and a DOI that resolves, so a machine reading a project page can join
+it to the literature rather than to a title string.
 
 ## Problem
 

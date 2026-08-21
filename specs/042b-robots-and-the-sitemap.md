@@ -1,6 +1,6 @@
 # 042b — robots.txt, and a sitemap of the public zone
 
-**Status:** designed.
+**Status:** built. All eight criteria hold.
 
 **Scope:** one static file in `frontend/public/`, one generated route in `internal/httpapi`.
 
