@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -201,12 +203,21 @@ var (
 // test asserts cannot be two implementations of the same rule.
 func WriteShell(w http.ResponseWriter, r *http.Request, index []byte) {
 	page, described := From(r)
-	if described && page.NoIndex {
+	status := http.StatusOK
+	if !described {
+		// An address no route described: a screen the app has, an operator's
+		// own, or nothing at all (042c).
+		page, status = shellFor(r.URL.Path)
+	}
+	if page.NoIndex {
 		// A page that exists and must never be offered in a search result:
 		// somebody's private project, an operator screen a signed-out reader
 		// renders as nothing. This header governs a crawler that already holds
 		// the URL, which robots.txt cannot.
 		w.Header().Set("X-Robots-Tag", "noindex")
+	}
+	if status != http.StatusOK {
+		w.WriteHeader(status)
 	}
 	_, _ = w.Write(Describe(index, page, described))
 }
@@ -234,4 +245,87 @@ func Describe(index []byte, p Page, described bool) []byte {
 	out = append(out, head...)
 	out = append(out, '\n', ' ', ' ', ' ', ' ')
 	return append(out, index[end:]...)
+}
+
+/* ─── What is an address here, and what is not (042c) ─── */
+
+// Screens are the fixed addresses the app has, and Operator names the ones only
+// a signed-in operator can render.
+//
+// This is a second copy of `SCREENS` in frontend/src/routes.ts, which stays the
+// client's single mapping. It exists for the same reason index.html holds a
+// second copy of the theme resolution: nothing in the frontend can run before
+// this response is written, and until now every address that was not one of
+// these answered 200 with the dashboard — an unbounded set of URLs with
+// identical content. routes_test.go reads routes.ts and fails when the two
+// copies disagree.
+var Screens = []string{
+	LandingPath,
+	RegistryPath,
+	"/trash",
+	"/new",
+	"/wallet",
+	"/settings",
+	"/settings/profile",
+	"/console",
+}
+
+// operator is the subset a signed-out reader — which is what a crawler is —
+// renders nothing at. robots.txt asks a crawler not to fetch them; the noindex
+// these earn governs one that already has the URL.
+var operator = map[string]bool{
+	"/trash":            true,
+	"/new":              true,
+	"/wallet":           true,
+	"/settings":         true,
+	"/settings/profile": true,
+	"/console":          true,
+}
+
+// record matches the addresses of the four record shapes: a project, a project
+// tab, a session, a session tab, and a researcher. The ids are the client's own
+// character classes.
+var record = regexp.MustCompile(`^(/p/[A-Za-z0-9_-]+(/[a-z]+)?(/s/[A-Za-z0-9_-]+(/[a-z]+)?)?|/u/[^/?#]+)$`)
+
+// Known reports whether a path is an address this app has. Anything else is a
+// typo or a link that was never ours.
+func Known(path string) bool {
+	path = trimSlash(path)
+	if slices.Contains(Screens, path) {
+		return true
+	}
+	return record.MatchString(path)
+}
+
+// Operator reports a screen only a signed-in operator can render.
+func Operator(path string) bool { return operator[trimSlash(path)] }
+
+// trimSlash folds a trailing slash, matching the client's viewOf: /wallet/ and
+// /wallet are one address, not two.
+func trimSlash(path string) string {
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+		if path == "" {
+			return "/"
+		}
+	}
+	if path == "" {
+		return "/"
+	}
+	return path
+}
+
+// shellFor is what an address earns when nothing described it: 200 for a screen
+// the app has, a noindex for one only an operator renders, and a 404 for an
+// address that does not exist — carrying the shell, so a person who mistyped
+// gets a page that can navigate rather than a bare error.
+func shellFor(path string) (Page, int) {
+	switch {
+	case Operator(path):
+		return Page{NoIndex: true}, http.StatusOK
+	case Known(path):
+		return Page{}, http.StatusOK
+	default:
+		return Page{NoIndex: true}, http.StatusNotFound
+	}
 }
