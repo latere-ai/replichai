@@ -164,7 +164,7 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, v)
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, out)
 }
 
 // Unfreeze grants a one-shot freeze override so a negative-wallet account may
@@ -180,7 +180,7 @@ func (a *Admin) Unfreeze(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"email": email, "overridden": true})
+	writeJSON(w, map[string]any{"email": email, "overridden": true})
 }
 
 // Refreeze clears a still-standing override, re-freezing a negative account an
@@ -195,7 +195,7 @@ func (a *Admin) Refreeze(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"email": email, "overridden": false})
+	writeJSON(w, map[string]any{"email": email, "overridden": false})
 }
 
 // Settings reads the platform policy row.
@@ -211,7 +211,7 @@ func (a *Admin) Settings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("admin: read platform settings: %v", err)
 	}
-	writeJSON(w, http.StatusOK, s)
+	writeJSON(w, s)
 }
 
 // SetSettings writes the platform policy row.
@@ -271,7 +271,7 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, _ := a.platform.Settings(r.Context())
-	writeJSON(w, http.StatusOK, s)
+	writeJSON(w, s)
 }
 
 // Solvency reports outstanding sold-liability: the sum of every wallet and pot
@@ -290,7 +290,7 @@ func (a *Admin) Solvency(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, "solvency_read_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int64{"outstanding_micro": total})
+	writeJSON(w, map[string]int64{"outstanding_micro": total})
 }
 
 // Topup adds credits to one person's wallet — the only way money enters the
@@ -318,7 +318,7 @@ func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	balance, _ := a.credits.Balance(r.Context(), credit.Wallet(email))
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, map[string]any{
 		"email": strings.ToLower(strings.TrimSpace(email)), "wallet": balance,
 	})
 }
@@ -347,7 +347,7 @@ func (a *Admin) SetProjectCap(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, "cap_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"project": r.PathValue("id"), "cap": body.Cap})
+	writeJSON(w, map[string]any{"project": r.PathValue("id"), "cap": body.Cap})
 }
 
 // Grant seeds or promotes a grant by email.
@@ -369,7 +369,7 @@ func (a *Admin) Grant(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"email": strings.ToLower(strings.TrimSpace(body.Email)), "tier": tier.String()})
+	writeJSON(w, map[string]string{"email": strings.ToLower(strings.TrimSpace(body.Email)), "tier": tier.String()})
 }
 
 // Revoke removes a grant by email.
@@ -435,7 +435,7 @@ func (a *Admin) RefreshPapers(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadGateway, "sweep_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, struct {
+	writeJSON(w, struct {
 		Projects int `json:"projects"`
 		Filled   int `json:"filled"`
 	}{projects, filled})
