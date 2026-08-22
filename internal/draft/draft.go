@@ -71,6 +71,9 @@ type Result struct {
 type Model interface {
 	// Complete answers a request, or fails. It never retries: a draft is a
 	// button somebody pressed, and pressing it again is the retry.
+	//
+	// A model that produced no prose fails with ErrEmptyDraft, and the Result
+	// returned beside it still carries the usage the attempt cost.
 	Complete(ctx context.Context, r Request) (Result, error)
 	// Name is the model id the answer will be priced under.
 	Name() string
@@ -179,7 +182,7 @@ func (m *anthropicModel) Complete(ctx context.Context, r Request) (Result, error
 			text.WriteString(c.Text)
 		}
 	}
-	return Result{
+	return answered(Result{
 		Text:  strings.TrimSpace(text.String()),
 		Model: m.model,
 		Usage: provider.Usage{
@@ -188,7 +191,7 @@ func (m *anthropicModel) Complete(ctx context.Context, r Request) (Result, error
 			CachedInputTokens: out.Usage.CacheReadInputTokens,
 			CacheWriteTokens:  out.Usage.CacheCreationInputTokens,
 		},
-	}, nil
+	})
 }
 
 // openAIModel speaks chat-completions, the protocol every other vendor and every
@@ -243,7 +246,7 @@ func (m *openAIModel) Complete(ctx context.Context, r Request) (Result, error) {
 	// Anthropic's, so they are subtracted out before pricing rather than counted
 	// twice — once at the input rate and once at the cache-read rate.
 	input := max(out.Usage.PromptTokens-out.Usage.PromptTokensDetails.CachedTokens, 0)
-	return Result{
+	return answered(Result{
 		Text:  text,
 		Model: m.model,
 		Usage: provider.Usage{
@@ -251,7 +254,19 @@ func (m *openAIModel) Complete(ctx context.Context, r Request) (Result, error) {
 			OutputTokens:      out.Usage.CompletionTokens,
 			CachedInputTokens: out.Usage.PromptTokensDetails.CachedTokens,
 		},
-	}, nil
+	})
+}
+
+// answered turns a completed call into what Complete promises: a result, or
+// ErrEmptyDraft when the model produced no prose. The result travels with the
+// error rather than being thrown away, because the usage on it is the only
+// record of tokens that were genuinely spent — a caller that cannot see them
+// cannot charge for them, and the deployment pays instead.
+func answered(r Result) (Result, error) {
+	if strings.TrimSpace(r.Text) == "" {
+		return r, ErrEmptyDraft
+	}
+	return r, nil
 }
 
 func (m *openAIModel) do(req *http.Request, out any) error { return roundtrip(m.client, req, out) }

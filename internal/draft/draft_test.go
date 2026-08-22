@@ -190,3 +190,48 @@ func TestAnthropicNeedsNothingButAModelID(t *testing.T) {
 		t.Errorf("base = %q", got)
 	}
 }
+
+// A model that answers with nothing is a refusal, not a blank paragraph — and
+// the refusal carries the usage, because the tokens were spent to produce the
+// nothing and the caller still has to bill for them.
+func TestAnEmptyAnswerIsRefusedWithItsUsage(t *testing.T) {
+	cases := []struct {
+		name     string
+		provider string
+		body     string
+	}{
+		{"openai has no choices", "openai", `{"choices":[],"usage":{"prompt_tokens":900,"completion_tokens":0,"prompt_tokens_details":{"cached_tokens":400}}}`},
+		{"openai answers with whitespace", "openai", `{"choices":[{"message":{"content":"  \n "}}],"usage":{"prompt_tokens":900,"completion_tokens":0,"prompt_tokens_details":{"cached_tokens":400}}}`},
+		{"anthropic answers with whitespace", "anthropic", `{"content":[{"type":"text","text":"   "}],"usage":{"input_tokens":500,"output_tokens":0,"cache_read_input_tokens":400}}`},
+		{"anthropic answers with no text block", "anthropic", `{"content":[{"type":"thinking","text":"hmm"}],"usage":{"input_tokens":500,"output_tokens":0,"cache_read_input_tokens":400}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+
+			m, err := New(Config{Provider: c.provider, BaseURL: srv.URL, Model: "m"}, "k", srv.Client())
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			got, err := m.Complete(context.Background(), Request{Prompt: "a project", MaxTokens: 200})
+			if !errors.Is(err, ErrEmptyDraft) {
+				t.Fatalf("error = %v, want ErrEmptyDraft", err)
+			}
+			if got.Text != "" {
+				t.Errorf("text = %q, want nothing", got.Text)
+			}
+			// The usage is the whole point of returning a Result beside the
+			// error: dropped here, the deployment pays for tokens nobody is
+			// charged for.
+			if got.Usage.InputTokens != 500 || got.Usage.CachedInputTokens != 400 {
+				t.Errorf("usage = %+v, want 500 fresh / 400 cached", got.Usage)
+			}
+			if got.Model != "m" {
+				t.Errorf("model = %q", got.Model)
+			}
+		})
+	}
+}

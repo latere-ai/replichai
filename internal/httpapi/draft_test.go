@@ -35,10 +35,9 @@ func (f *fakeDrafter) Name() string { return f.model }
 func (f *fakeDrafter) Complete(_ context.Context, r draft.Request) (draft.Result, error) {
 	f.calls++
 	f.prompt, f.system = r.Prompt, r.System
-	if f.err != nil {
-		return draft.Result{}, f.err
-	}
-	return draft.Result{Text: f.text, Model: f.model, Usage: f.usage}, nil
+	// The usage travels with a failure too, as the real models do when they
+	// answer with nothing: those tokens were spent and are still billable.
+	return draft.Result{Text: f.text, Model: f.model, Usage: f.usage}, f.err
 }
 
 // fixedPolicy is a platform settings source with one rate card.
@@ -331,4 +330,70 @@ func (b *blockingDrafter) Complete(_ context.Context, _ draft.Request) (draft.Re
 		<-b.release
 	}
 	return draft.Result{Text: "A paragraph.", Model: b.model, Usage: provider.Usage{InputTokens: 1000}}, nil
+}
+
+// A model that answered with nothing is refused, and the project is still
+// charged for the tokens the attempt burned. Refusing without charging would
+// leave the deployment paying for the compute, and answering 200 would let the
+// owner save a blank description over one they had.
+func TestAnEmptyDraftIsChargedAndRefused(t *testing.T) {
+	d := &fakeDrafter{
+		model: draftModel,
+		err:   draft.ErrEmptyDraft,
+		usage: provider.Usage{InputTokens: 1_000_000, OutputTokens: 200_000},
+	}
+	deps, id := draftDeps(t, d, pricedAt(1_000_000, 5_000_000))
+	h := NewRouter(deps).Handler()
+
+	before, _ := deps.Credits.Balance(context.Background(), credit.Pot(id))
+	w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me")
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("an empty draft = %d, want 502: %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Error       string `json:"error"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// The same code the blank answer has always been refused with, so the app
+	// keeps telling the person the same thing.
+	if got.Error != "drafting_empty" {
+		t.Errorf("error = %q, want drafting_empty", got.Error)
+	}
+	// 1M input at $1/Mtok + 0.2M output at $5/Mtok = $2.00, spent either way.
+	after, _ := deps.Credits.Balance(context.Background(), credit.Pot(id))
+	if before-after != 2*credit.Dollar {
+		t.Errorf("the project was charged %d for the spent tokens, want %d", before-after, 2*credit.Dollar)
+	}
+	entries, err := deps.Credits.Entries(context.Background(), credit.Pot(id), 20)
+	if err != nil {
+		t.Fatalf("entries: %v", err)
+	}
+	var drafts int
+	for _, e := range entries {
+		if e.Kind == credit.KindDraft {
+			drafts++
+		}
+	}
+	if drafts != 1 {
+		t.Errorf("statement holds %d draft charges, want 1", drafts)
+	}
+}
+
+// The models in this repository refuse a blank with ErrEmptyDraft, but Drafter
+// is an interface anybody can satisfy, so a blank answered as a success is
+// refused here too rather than handed to the editor.
+func TestABlankAnsweredAsASuccessIsStillRefused(t *testing.T) {
+	d := &fakeDrafter{model: draftModel, text: "   ", usage: provider.Usage{InputTokens: 1_000_000}}
+	deps, id := draftDeps(t, d, pricedAt(1_000_000, 5_000_000))
+	h := NewRouter(deps).Handler()
+	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me"); w.Code != http.StatusBadGateway {
+		t.Fatalf("a blank draft = %d, want 502: %s", w.Code, w.Body.String())
+	}
+	// Still charged, for the same reason the refusal above is.
+	if after, _ := deps.Credits.Balance(context.Background(), credit.Pot(id)); after != 4*credit.Dollar {
+		t.Errorf("balance = %d, want the dollar of tokens taken off 5", after)
+	}
 }
