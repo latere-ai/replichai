@@ -60,11 +60,10 @@ type Budget func(ctx context.Context, j Job) (stop bool, why string, err error)
 const GenericFailure = "the session could not be completed"
 
 // LeaseTTL is how long a job stays leased to a driver that has stopped saying
-// it is alive. A running session refreshes its lease on every observation
-// (every poll of the backend), so this bounds how long a *dead* driver keeps a
-// run to itself — not how long a run may take. It is generous next to the poll
-// cadence so an ordinary pause between observations, or a slow resolve before
-// the first one, never reads as a dead driver.
+// it is alive. A live driver heartbeats every job it is driving at a third of
+// this, whether or not anything changed, so this bounds how long a *dead* driver
+// keeps a run to itself — not how long a run may take, and not how long a run
+// may stay quiet.
 const LeaseTTL = 5 * time.Minute
 
 // Worker drives claimed jobs through the phases. A small pool of these is the
@@ -260,6 +259,7 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 		workers = 1
 	}
 	go w.sweep(ctx)
+	go w.heartbeat(ctx)
 	done := make(chan struct{})
 	for i := 0; i < workers; i++ {
 		go func() {
@@ -309,6 +309,70 @@ func (w *Worker) sweep(ctx context.Context) {
 			log.Printf("worker: sweep adopted %d stranded run(s)", resumed)
 		}
 	}
+}
+
+// heartbeat keeps the lease fresh on every job this process is driving, and
+// stops driving one it has lost.
+//
+// The lease was refreshed only by an observation, and the managed controller
+// emits one only when the observed status *changed*. A run that is thinking
+// reports nothing for minutes at a time, so a healthy driver looked exactly like
+// a dead one, and a replica beside it adopted a live session — two drivers on
+// one backend session, both finalizing it, the loser recording a failure over
+// the winner's published success (044c). A heartbeat separates *alive* from
+// *changed*, which is what the lease meant all along.
+//
+// It runs here rather than in the controller on purpose: w.running already names
+// every job this process drives, so no hook has to be threaded through the
+// session contract, and every phase is covered — including the quiet resolve
+// that reconcile's own comment worries about and that no observation has ever
+// reached.
+func (w *Worker) heartbeat(ctx context.Context) {
+	every := w.leaseTTL / 3
+	if every <= 0 {
+		every = time.Second
+	}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		w.beat(ctx)
+	}
+}
+
+// beat refreshes one round of leases. A job this worker no longer holds is one
+// another replica has adopted, so this one yields it: interrupting its own run
+// is what keeps a wrongful adoption from becoming two drivers racing to publish.
+// A store error is left alone — the next tick is soon, and a transient database
+// blip must not cancel a healthy run.
+func (w *Worker) beat(ctx context.Context) {
+	for _, id := range w.drivingIDs() {
+		held, err := w.store.Touch(ctx, id, w.id)
+		if err != nil {
+			log.Printf("worker: heartbeat %s: %v", id, err)
+			continue
+		}
+		if !held {
+			log.Printf("worker: yielding session %s: its lease is held elsewhere", id)
+			w.interrupt(id)
+		}
+	}
+}
+
+// drivingIDs snapshots the sessions this process is driving, so the heartbeat
+// touches the store without holding the lock that Cancel and interrupt need.
+func (w *Worker) drivingIDs() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ids := make([]string, 0, len(w.running))
+	for id := range w.running {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // Reconcile brings jobs left in flight by a restart back in line with the

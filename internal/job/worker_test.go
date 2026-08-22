@@ -26,6 +26,10 @@ type fakeRunner struct {
 	closed      []string // run ids Close was called with
 	closeErr    error
 	onExecute   func() // fires inside Execute; stands in for a signal landing mid-run
+	// runExecute, when set, is Execute's whole body after the first observation.
+	// A run that holds here is a quiet one: it reports nothing further, which is
+	// what a real agent does while it is thinking.
+	runExecute func(context.Context) error
 	onResume    func() // fires inside Resume; holds a rejoined run open while a test looks
 }
 
@@ -46,11 +50,14 @@ func (f *fakeRunner) Resolve(_ context.Context, j *Job) error {
 	return nil
 }
 
-func (f *fakeRunner) Execute(_ context.Context, j *Job, observe func(provider.RunStatus)) error {
+func (f *fakeRunner) Execute(ctx context.Context, j *Job, observe func(provider.RunStatus)) error {
 	f.record("execute")
 	observe(f.observed)
 	if f.onExecute != nil {
 		f.onExecute()
+	}
+	if f.runExecute != nil {
+		return f.runExecute(ctx)
 	}
 	if f.failAt == "execute" {
 		return errors.New("execute boom")
@@ -698,4 +705,72 @@ func equal(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// A run that is thinking says nothing, and silence is not death. This is the
+// incident of 044: one pod claimed a session at 07:39 and drove it correctly;
+// five quiet minutes later the pod beside it logged "sweep adopted 1 stranded
+// run(s)" and took a live session, and the two drivers' finalizes raced until
+// the loser recorded a failure over the winner's published success.
+func TestAQuietRunKeepsItsLease(t *testing.T) {
+	s := NewMemStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	const ttl = 60 * time.Millisecond
+	held := make(chan struct{})
+	r := &fakeRunner{observed: provider.RunStatus{RunID: "sesn_quiet_01"}}
+	r.runExecute = func(ctx context.Context) error {
+		close(held)
+		<-ctx.Done() // report nothing further, exactly like an agent that is thinking
+		return ctx.Err()
+	}
+	driver := NewWorker(s, r, WithWorkerID("pod-a"), WithPoll(time.Millisecond), withLeaseTTL(ttl))
+	go driver.Start(ctx, 1)
+	<-held
+
+	// Well past the lease, with no observation since the run began.
+	time.Sleep(4 * ttl)
+
+	if won, err := s.Adopt(ctx, j.ID, "pod-b", ttl); err != nil || won {
+		t.Fatalf("Adopt by a second replica = %v/%v, want it refused — pod-a is alive and driving", won, err)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseRunning {
+		t.Errorf("phase = %s, want running", got.Phase)
+	}
+}
+
+// The heartbeat makes a wrongful adoption rare; yielding makes one harmless. A
+// driver that finds its lease held elsewhere stops its own run rather than
+// driving on to a second finalize of the same backend session.
+func TestADriverYieldsASessionItHasLost(t *testing.T) {
+	s := NewMemStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	const ttl = 60 * time.Millisecond
+	held, yielded := make(chan struct{}), make(chan struct{})
+	r := &fakeRunner{observed: provider.RunStatus{RunID: "sesn_lost_01"}}
+	r.runExecute = func(ctx context.Context) error {
+		close(held)
+		<-ctx.Done()
+		close(yielded)
+		return ctx.Err()
+	}
+	driver := NewWorker(s, r, WithWorkerID("pod-a"), WithPoll(time.Millisecond), withLeaseTTL(ttl))
+	go driver.Start(ctx, 1)
+	<-held
+
+	// Another replica takes the row — however it managed to, this driver no
+	// longer owns it.
+	if won, err := s.Adopt(ctx, j.ID, "pod-b", 0); err != nil || !won {
+		t.Fatalf("Adopt = %v/%v, want pod-b to win", won, err)
+	}
+	select {
+	case <-yielded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the driver kept running a session whose lease it had lost")
+	}
 }
