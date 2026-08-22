@@ -15,40 +15,98 @@ type RuntimeRouter interface {
 	ForRef(SessionRef) (Runtime, error)
 }
 
+// Hooks are the caller's synchronous callbacks on the session lifecycle. Every
+// field is optional. An error from Started, Checkpoint, or Status is treated
+// as a caller failure: the controller cancels the session, retains whatever
+// evidence exists, releases, and returns the hook error joined with any
+// cleanup errors. A Retain failure is deliberately different; see below.
 type Hooks struct {
-	Started    func(context.Context, SessionRef) error
+	// Started runs immediately after the runtime accepted the session and
+	// before the first poll, so a successful remote start can never become
+	// invisible. The server persists the durable reference here.
+	Started func(context.Context, SessionRef) error
+	// Checkpoint receives the previous and the advanced reference whenever a
+	// runtime raises its locator revision. It must persist the new reference,
+	// because the controller calls the runtime again only after it returns.
 	Checkpoint func(context.Context, SessionRef, SessionRef) error
-	Status     func(context.Context, Status) error
-	Retain     func(context.Context, EvidenceReader) error
+	// Status receives the initial pending observation and every later
+	// observation that differs from the one before it; duplicates are dropped.
+	Status func(context.Context, Status) error
+	// Retain is the evidence handoff, called once while the remote resources
+	// still exist. Only a successful Retain permits release, so a failure here
+	// deliberately leaves the session unreleased and recoverable.
+	Retain func(context.Context, EvidenceReader) error
 }
 
+// EvidenceReader is the view of a finished or cancelled session handed to
+// Hooks.Retain. It is usable only for the duration of that call, because the
+// release that follows may make the runtime's evidence unreadable.
 type EvidenceReader struct {
-	Status    Status
-	Events    []Event
+	// Status is the terminal observation, or the last partial one when the
+	// session was cancelled or abandoned before it settled.
+	Status Status
+	// Events is the transcript as the runtime normalised it, in the order the
+	// runtime reports; the controller neither filters nor reorders it.
+	Events []Event
+	// Artifacts is the metadata for every file the session produced; the bytes
+	// are read through Fetch.
 	Artifacts []Artifact
 	runtime   Runtime
 }
 
+// Fetch reads one artifact's bytes from the still-live runtime. Call it only
+// from inside the Retain hook: afterwards the session is released and the
+// remote copy may be gone.
 func (e EvidenceReader) Fetch(ctx context.Context, artifact Artifact) ([]byte, error) {
 	return e.runtime.FetchArtifact(ctx, e.Status.Ref, artifact)
 }
 
+// Result is what a controller operation reports back. It is returned alongside
+// an error as well as on success, so a caller can still settle usage and keep
+// the evidence of a run that ended badly.
 type Result struct {
-	Ref       SessionRef
-	Status    Status
-	Events    []Event
+	// Ref is the last durable reference the controller saw, and is zero only
+	// when the session never started.
+	Ref SessionRef
+	// Status is the final observation, terminal unless the runtime stopped
+	// answering, in which case the controller names the terminal reason itself.
+	Status Status
+	// Events is the transcript captured before release.
+	Events []Event
+	// Artifacts is the artifact metadata captured before release.
 	Artifacts []Artifact
-	Released  bool
+	// Released is true only when Release succeeded. False is not proof that the
+	// session still exists, because a failure early in the lifecycle returns
+	// before the cleanup it triggered can report back.
+	Released bool
 }
 
+// WaitPolicy is the single waiting and failure budget every caller shares, so
+// a CLI run and a server job give up on an unresponsive runtime for the same
+// reasons.
 type WaitPolicy struct {
-	InitialDelay       time.Duration
-	MaxDelay           time.Duration
+	// InitialDelay is the pause after the first poll, doubled on each further
+	// poll until it reaches MaxDelay.
+	InitialDelay time.Duration
+	// MaxDelay caps the poll delay. Setting it equal to InitialDelay turns the
+	// backoff into a fixed interval, which is what the CLI does.
+	MaxDelay time.Duration
+	// MaxTemporaryErrors is how many consecutive temporary poll failures are
+	// tolerated; one successful poll resets the count.
 	MaxTemporaryErrors int
-	MaxSilence         time.Duration
-	CleanupTimeout     time.Duration
+	// MaxSilence is how long the controller waits without a successful poll
+	// before it declares the session timed out rather than failed.
+	MaxSilence time.Duration
+	// CleanupTimeout bounds cancel, terminal wait, retention, and release,
+	// which run on a context detached from the caller's so an abandoned
+	// request still cleans up after itself.
+	CleanupTimeout time.Duration
 }
 
+// DefaultWaitPolicy returns the budget tuned for production: poll from two
+// seconds up to fifteen, tolerate five consecutive temporary failures or two
+// minutes of silence, and allow thirty seconds to clean up. Tests shrink these
+// durations instead of inventing their own policy.
 func DefaultWaitPolicy() WaitPolicy {
 	return WaitPolicy{
 		InitialDelay:       2 * time.Second,
@@ -64,14 +122,24 @@ type controllerClock struct {
 	sleep func(context.Context, time.Duration) error
 }
 
+// Controller is the only application-facing lifecycle API for managed
+// sessions. It routes a specification or a durable reference to a runtime and
+// then owns validation, checkpointing, contract enforcement on every
+// observation, transient retry, cancellation, evidence retention, and release,
+// so no caller has to drive the runtime's individual methods in the right
+// order.
 type Controller struct {
 	router RuntimeRouter
 	policy WaitPolicy
 	clock  controllerClock
 }
 
+// ControllerOption overrides a controller default at construction. The
+// defaults are the production wait policy and the real clock.
 type ControllerOption func(*Controller)
 
+// WithWaitPolicy replaces the waiting and failure budget. The CLI uses it to
+// pin the poll interval an operator asked for, and tests to remove the sleeps.
 func WithWaitPolicy(policy WaitPolicy) ControllerOption {
 	return func(controller *Controller) { controller.policy = policy }
 }
@@ -82,6 +150,9 @@ func withControllerClock(now func() time.Time, sleep func(context.Context, time.
 	}
 }
 
+// NewController returns a controller that reaches runtimes through router,
+// which is the only thing it cannot supply itself: the wait policy and the
+// clock have defaults that options replace.
 func NewController(router RuntimeRouter, options ...ControllerOption) *Controller {
 	controller := &Controller{
 		router: router,
@@ -94,6 +165,9 @@ func NewController(router RuntimeRouter, options ...ControllerOption) *Controlle
 	return controller
 }
 
+// Capabilities reports what the runtime routed for spec supports, without
+// starting or mutating anything, so a caller can reject an unsupported request
+// before any remote work happens.
 func (c *Controller) Capabilities(ctx context.Context, spec SessionSpec) (Capabilities, error) {
 	runtime, err := c.router.ForNew(spec)
 	if err != nil {
@@ -114,6 +188,10 @@ func (c *Controller) Start(ctx context.Context, spec SessionSpec, hooks Hooks) (
 	return ref, nil
 }
 
+// Execute runs a session from specification to release: start, poll to a
+// terminal observation, hand the evidence to Retain, release. Because it sees
+// the specification, it also knows whether an evaluation was requested, and so
+// holds the runtime to the matching verdict, which Resume cannot do.
 func (c *Controller) Execute(ctx context.Context, spec SessionSpec, hooks Hooks) (Result, error) {
 	runtime, ref, err := c.start(ctx, spec, hooks)
 	if err != nil {
@@ -155,6 +233,9 @@ func (c *Controller) start(ctx context.Context, spec SessionSpec, hooks Hooks) (
 	return runtime, ref, nil
 }
 
+// Resume reattaches to a session started earlier, after a process restart or
+// when reconciliation retries a retention that failed, and drives the same
+// wait, retain, and release path to its end.
 func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (Result, error) {
 	runtime, err := c.router.ForRef(ref)
 	if err != nil {
@@ -169,6 +250,10 @@ func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (R
 	return c.wait(ctx, runtime, ref, hooks, nil)
 }
 
+// Cancel stops a live session and still finishes the lifecycle: it waits for a
+// terminal observation within the cleanup budget, retains the partial
+// evidence, and releases. It is idempotent, so cancelling a session that has
+// already ended is success.
 func (c *Controller) Cancel(ctx context.Context, ref SessionRef, hooks Hooks) (Result, error) {
 	runtime, err := c.router.ForRef(ref)
 	if err != nil {
