@@ -40,6 +40,14 @@ func New(config Config) (*Runtime, error) {
 func (r *Runtime) Name() managed.RuntimeName { return r.config.Name }
 
 func (r *Runtime) Capabilities(context.Context) (managed.Capabilities, error) {
+	return r.capabilities(), nil
+}
+
+// capabilities is the context-free half of Capabilities. Validate needs the
+// same answer and has no context to pass; borrowing a background one there
+// would claim an I/O boundary this adapter does not have, and forced the error
+// it cannot return to be discarded.
+func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
 		OutputDir:          r.config.Provider.OutputDir(),
 		PackageManagers:    map[string]bool{"pip": true},
@@ -51,7 +59,7 @@ func (r *Runtime) Capabilities(context.Context) (managed.Capabilities, error) {
 		Cancellation:       true,
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
-	}, nil
+	}
 }
 
 func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
@@ -67,8 +75,7 @@ func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 }
 
 func (r *Runtime) Validate(spec managed.SessionSpec) error {
-	capabilities, _ := r.Capabilities(context.Background())
-	if err := managed.ValidateCapabilities(r.Name(), capabilities, spec); err != nil {
+	if err := managed.ValidateCapabilities(r.Name(), r.capabilities(), spec); err != nil {
 		return err
 	}
 	if spec.Model.Exact != nil {
@@ -139,11 +146,16 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if err != nil {
 		return managed.SessionRef{}, errors.Join(fmt.Errorf("start session: %w", err), r.releaseResources(ctx, worker, workspace))
 	}
-	encoded, _ := json.Marshal(locator{
+	encoded, err := json.Marshal(locator{
 		WorkspaceID: workspace.ID, WorkerID: worker.ID, WorkerVersion: worker.Revision,
 		Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: modelID}, Graded: spec.Evaluation != nil,
 		FileIDs: append([]string(nil), handle.Files...),
 	})
+	if err != nil {
+		// The session is already running on the backend, so a locator we cannot
+		// hand back is unreachable state: release it rather than leak it.
+		return managed.SessionRef{}, errors.Join(fmt.Errorf("encode locator: %w", err), r.releaseResources(ctx, worker, workspace))
+	}
 	return managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}, nil
 }
 
@@ -171,13 +183,14 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	if metadata.Graded && status.Verdict != nil {
 		result.Verdict = &managed.Verdict{Grade: translateGrade(status.Verdict.Grade), Explanation: status.Verdict.Explanation}
 	}
-	if result.State == managed.StateDone {
+	switch result.State {
+	case managed.StateDone:
 		result.TerminalReason = managed.ReasonSucceeded
 		if result.Verdict != nil && result.Verdict.Grade != managed.GradePassed {
 			result.State = managed.StateFailed
 			result.TerminalReason = managed.ReasonEvaluationFailed
 		}
-	} else if result.State == managed.StateFailed {
+	case managed.StateFailed:
 		result.TerminalReason = managed.ReasonRuntimeFailed
 	}
 	return result, nil
