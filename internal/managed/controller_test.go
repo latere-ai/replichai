@@ -426,3 +426,54 @@ func sliceIndex(values []string, target string) int {
 	}
 	return -1
 }
+
+// TestControllerSeparatesSilenceFromRuntimeFailure pins apart the two ways the
+// poll loop gives up. An operator who sees timed_out goes looking for a wedged
+// or unreachable session; one who sees runtime_failed goes looking for a fault
+// the runtime reported. Collapsing both onto runtime_failed sends half of them
+// to the wrong place.
+func TestControllerSeparatesSilenceFromRuntimeFailure(t *testing.T) {
+	temporary := &TemporaryError{Err: errors.New("offline")}
+	tests := []struct {
+		name   string
+		policy WaitPolicy
+		want   TerminalReason
+	}{
+		{
+			name:   "silence outlasts the budget before the fault count does",
+			policy: WaitPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxTemporaryErrors: 5, MaxSilence: 3 * time.Second, CleanupTimeout: time.Second},
+			want:   ReasonTimedOut,
+		},
+		{
+			name:   "fault count runs out while the session is still within its silence budget",
+			policy: WaitPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxTemporaryErrors: 3, MaxSilence: time.Hour, CleanupTimeout: time.Second},
+			want:   ReasonRuntimeFailed,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := newControllerRuntime()
+			// The runtime never answers, so the controller has no valid previous
+			// status and must invent the terminal one for itself.
+			for range 16 {
+				runtime.pollErrors = append(runtime.pollErrors, temporary)
+			}
+			now := time.Unix(0, 0)
+			controller := NewController(controllerRouter{runtime: runtime}, WithWaitPolicy(test.policy),
+				withControllerClock(func() time.Time { return now }, func(_ context.Context, delay time.Duration) error {
+					now = now.Add(delay)
+					return nil
+				}))
+			result, err := controller.Execute(context.Background(), controllerSpec(false), Hooks{})
+			if !errors.Is(err, temporary) {
+				t.Fatalf("Execute error = %v, want %v", err, temporary)
+			}
+			if result.Status.State != StateFailed {
+				t.Fatalf("state = %s, want failed", result.Status.State)
+			}
+			if result.Status.TerminalReason != test.want {
+				t.Fatalf("terminal reason = %s, want %s", result.Status.TerminalReason, test.want)
+			}
+		})
+	}
+}
