@@ -24,12 +24,12 @@ func (route Route) Validate() error {
 }
 
 type Router struct {
-	runtimes map[managed.RuntimeName]managed.Runtime
-	default_ managed.RuntimeName
+	runtimes       map[managed.RuntimeName]managed.Runtime
+	defaultRuntime managed.RuntimeName
 }
 
 func NewRouter(defaultRuntime managed.RuntimeName, installed ...managed.Runtime) (*Router, error) {
-	router := &Router{runtimes: make(map[managed.RuntimeName]managed.Runtime, len(installed)), default_: defaultRuntime}
+	router := &Router{runtimes: make(map[managed.RuntimeName]managed.Runtime, len(installed)), defaultRuntime: defaultRuntime}
 	for _, runtime := range installed {
 		if runtime == nil {
 			return nil, fmt.Errorf("installed managed runtime is nil")
@@ -49,7 +49,7 @@ func NewRouter(defaultRuntime managed.RuntimeName, installed ...managed.Runtime)
 	return router, nil
 }
 
-func (r *Router) Route() Route { return Route{Version: RouteVersion, Runtime: r.default_} }
+func (r *Router) Route() Route { return Route{Version: RouteVersion, Runtime: r.defaultRuntime} }
 
 func (r *Router) Bind(route Route) (managed.RuntimeRouter, error) {
 	if err := route.Validate(); err != nil {
@@ -65,11 +65,11 @@ func (r *Router) WithDefault(name managed.RuntimeName) (*Router, error) {
 	if _, ok := r.runtimes[name]; !ok {
 		return nil, r.unavailable(name)
 	}
-	return &Router{runtimes: r.runtimes, default_: name}, nil
+	return &Router{runtimes: r.runtimes, defaultRuntime: name}, nil
 }
 
 func (r *Router) ForNew(managed.SessionSpec) (managed.Runtime, error) {
-	return r.runtime(r.default_)
+	return r.runtime(r.defaultRuntime)
 }
 
 func (r *Router) ForRef(ref managed.SessionRef) (managed.Runtime, error) {
