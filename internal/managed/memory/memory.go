@@ -15,10 +15,13 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
-const (
-	Name      managed.RuntimeName = "memory"
-	OutputDir                     = "/workspace/outputs/"
-)
+// Name identifies this runtime in a session reference.
+const Name managed.RuntimeName = "memory"
+
+// OutputDir is the workspace path a session writes its artifacts to. It is a
+// filesystem path and deliberately not a RuntimeName: sharing a const block
+// with Name left it untyped and one edit away from inheriting the wrong type.
+const OutputDir = "/workspace/outputs/"
 
 type FailurePoint string
 
@@ -91,6 +94,14 @@ func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error
 	if err := contextError(ctx); err != nil {
 		return managed.Capabilities{}, err
 	}
+	return r.capabilities(), nil
+}
+
+// capabilities is the context-free half of Capabilities. Validate needs the
+// same answer and has no context to pass; borrowing a background one there
+// would claim an I/O boundary this runtime does not have, and forced the error
+// it cannot return to be discarded.
+func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
 		OutputDir:          OutputDir,
 		PackageManagers:    map[string]bool{"pip": true},
@@ -102,7 +113,7 @@ func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error
 		Cancellation:       true,
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
-	}, nil
+	}
 }
 
 func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
@@ -116,8 +127,7 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if err := r.failure(FailValidate); err != nil {
 		return err
 	}
-	capabilities, _ := r.Capabilities(context.Background())
-	if err := managed.ValidateCapabilities(Name, capabilities, spec); err != nil {
+	if err := managed.ValidateCapabilities(Name, r.capabilities(), spec); err != nil {
 		return err
 	}
 	if spec.Model.Exact != nil && *spec.Model.Exact != r.config.Model {
@@ -140,9 +150,12 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	defer r.store.mu.Unlock()
 	r.store.next++
 	id := fmt.Sprintf("session-%d", r.store.next)
-	locator, _ := json.Marshal(struct {
+	locator, err := json.Marshal(struct {
 		Store string `json:"store"`
 	}{Store: "memory"})
+	if err != nil {
+		return managed.SessionRef{}, fmt.Errorf("encode locator: %w", err)
+	}
 	ref := managed.SessionRef{Runtime: Name, ID: id, Revision: 1, LocatorVersion: 1, Locator: locator}
 	r.store.sessions[id] = &session{spec: spec, ref: ref, model: r.config.Model}
 	return ref, nil

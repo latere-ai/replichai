@@ -294,7 +294,7 @@ func validateRuntimeRef(runtime Runtime, ref SessionRef) error {
 
 func validateObservation(runtime Runtime, expected SessionRef, previous, current Status, graded *bool) error {
 	if err := validateRuntimeRef(runtime, current.Ref); err != nil {
-		return fmt.Errorf("%w: %v", ErrContract, err)
+		return fmt.Errorf("%w: %w", ErrContract, err)
 	}
 	if !current.Ref.SameIdentity(expected) || current.Ref.Revision < expected.Revision {
 		return fmt.Errorf("%w: invalid session checkpoint", ErrContract)
