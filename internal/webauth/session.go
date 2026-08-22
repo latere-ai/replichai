@@ -104,6 +104,7 @@ func (c *Codec) Open(s string, v any) error {
 // setCookie writes a sealed value as a hardened cookie. secure=false drops the
 // Secure flag and the __Host- prefix for local plain-HTTP dev only.
 func setCookie(w http.ResponseWriter, name, value string, secure bool, ttl time.Duration) {
+	//nolint:gosec // G124: HttpOnly and SameSite are set unconditionally; Secure is the caller's, and cmd/server/main.go passes true for an https base URL unless AUTH_INSECURE_COOKIES is set, the one escape that turns it off. Whenever it is off, cookieName also drops the __Host- prefix the browser would then reject.
 	c := &http.Cookie{
 		Name:     cookieName(name, secure),
 		Value:    value,
@@ -118,6 +119,7 @@ func setCookie(w http.ResponseWriter, name, value string, secure bool, ttl time.
 
 // clearCookie expires a cookie.
 func clearCookie(w http.ResponseWriter, name string, secure bool) {
+	//nolint:gosec // G124: the expiring cookie mirrors setCookie's attributes exactly, Secure included, because a browser only replaces a cookie whose name, path, and security attributes match the one it holds.
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName(name, secure),
 		Value:    "",
