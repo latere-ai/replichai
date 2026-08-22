@@ -125,7 +125,7 @@ func (m *MemMembership) Role(_ context.Context, p Principal, project string) (Ro
 func (m *MemMembership) List(_ context.Context, project string) ([]Member, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []Member
+	out := make([]Member, 0, len(m.members[project]))
 	for email, row := range m.members[project] {
 		out = append(out, Member{Email: email, Role: row.Role, Bound: row.Principal != ""})
 	}
