@@ -150,7 +150,7 @@ func (w *Worker) watch(pool context.Context, id string) {
 	// Logged here and nowhere a member can read: the row records only that the
 	// session did not complete.
 	log.Printf("budget: stopping session %s in project %s: %s", j.ID, j.ProjectID, why)
-	if err := w.fail(id, errors.New(GenericFailure)); err != nil {
+	if err := w.fail(id, errors.New(GenericFailure)); err != nil { //nolint:contextcheck // fail must use a fresh context on purpose: the terminal write goes in before interrupt cancels the run, and the pool context is dead on a shutdown
 		log.Printf("budget: recording stopped session %s: %v", id, err)
 		return
 	}
@@ -638,7 +638,7 @@ func (w *Worker) stop(pool context.Context, id string, cause error) error {
 	if pool.Err() != nil {
 		return nil //nolint:nilerr // a shutdown is not a failed session: leaving the row in phase is what lets the next boot rejoin it
 	}
-	if err := w.fail(id, cause); err != nil {
+	if err := w.fail(id, cause); err != nil { //nolint:contextcheck // fail must use a fresh context on purpose: pool can die between the guard above and the write, and a cancelled job's context is already dead, yet both must still land terminal
 		return errors.Join(cause, err)
 	}
 	return nil
