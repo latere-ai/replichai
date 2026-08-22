@@ -1726,7 +1726,7 @@ func TestNoEngineImports(t *testing.T) {
 		"github.com/latere-ai/replichai/internal/method",
 		"github.com/latere-ai/replichai/internal/provider/anthropic",
 	}
-	for _, dep := range strings.Fields(string(out)) {
+	for dep := range strings.FieldsSeq(string(out)) {
 		for _, bad := range forbidden {
 			if dep == bad {
 				t.Errorf("httpapi imports %s — a handler must contain no engine logic", bad)

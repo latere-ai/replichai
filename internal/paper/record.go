@@ -173,9 +173,9 @@ func recordFromBody(body []byte) Record {
 		Volume:    metaContent(body, citationVolumeRe),
 		Issue:     metaContent(body, citationIssueRe),
 		Publisher: metaContent(body, citationPublisherRe),
+		Year:      yearFrom(firstNonEmpty(metaContent(body, citationDateRe), metaContent(body, citationYearRe))),
+		Pages:     pageRange(metaContent(body, citationFirstPageRe), metaContent(body, citationLastPageRe)),
 	}
-	rec.Year = yearFrom(firstNonEmpty(metaContent(body, citationDateRe), metaContent(body, citationYearRe)))
-	rec.Pages = pageRange(metaContent(body, citationFirstPageRe), metaContent(body, citationLastPageRe))
 	return rec
 }
 
@@ -240,8 +240,8 @@ func pageRange(first, last string) string {
 func plainAbstract(s string) string {
 	s = collapseWS(tagRe.ReplaceAllString(s, " "))
 	for _, lead := range []string{"Abstract ", "ABSTRACT ", "Summary "} {
-		if strings.HasPrefix(s, lead) {
-			s = strings.TrimSpace(strings.TrimPrefix(s, lead))
+		if after, ok := strings.CutPrefix(s, lead); ok {
+			s = strings.TrimSpace(after)
 			break
 		}
 	}

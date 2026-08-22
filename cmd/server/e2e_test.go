@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,8 +30,7 @@ func TestServerEndToEnd(t *testing.T) {
 		t.Fatalf("load method: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	store := job.NewMemStore()
 	runner := &engineRunner{

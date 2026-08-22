@@ -205,14 +205,12 @@ func TestSnapshotIsCachedForTheTTL(t *testing.T) {
 func TestLookupIsConcurrencySafe(t *testing.T) {
 	r := New(pleasQLarifySource())
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 20 {
+		wg.Go(func() {
 			if _, err := r.Lookup(context.Background(), doiID("10.1145/x")); err != nil {
 				t.Errorf("Lookup: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

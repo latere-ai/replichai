@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -79,8 +80,8 @@ func (s *MemStore) ListByOwner(_ context.Context, owner string) ([]Project, erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Project
-	for i := len(s.order) - 1; i >= 0; i-- {
-		if p := s.projects[s.order[i]]; p.Owner == owner && !p.Trashed() {
+	for _, v := range slices.Backward(s.order) {
+		if p := s.projects[v]; p.Owner == owner && !p.Trashed() {
 			out = append(out, p)
 		}
 	}
@@ -222,8 +223,8 @@ func (s *MemStore) ListPublic(_ context.Context) ([]Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Project
-	for i := len(s.order) - 1; i >= 0; i-- {
-		if p := s.projects[s.order[i]]; p.Visibility == VisibilityPublic && !p.Trashed() {
+	for _, v := range slices.Backward(s.order) {
+		if p := s.projects[v]; p.Visibility == VisibilityPublic && !p.Trashed() {
 			out = append(out, p)
 		}
 	}

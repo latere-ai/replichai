@@ -240,7 +240,7 @@ func runGuardContract(t *testing.T, s Store) {
 		t.Errorf("different paper blocked: %v", err)
 	}
 	// An empty key never guards (an experiment, or an unkeyable ref).
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "exp", Kind: KindExperiment, Project: "projA"}); err != nil {
 			t.Errorf("empty-key enqueue %d blocked: %v", i, err)
 		}
@@ -506,7 +506,7 @@ func runClaimContention(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 	const n = 30
-	for i := 0; i < n; i++ {
+	for range n {
 		if _, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
@@ -514,16 +514,14 @@ func runClaimContention(t *testing.T, s Store) {
 	var mu sync.Mutex
 	seen := map[string]int{}
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range n {
+		wg.Go(func() {
 			if j, ok, err := s.Claim(ctx, "test-worker"); err == nil && ok {
 				mu.Lock()
 				seen[j.ID]++
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if len(seen) != n {

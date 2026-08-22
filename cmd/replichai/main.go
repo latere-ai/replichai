@@ -732,7 +732,7 @@ const fetchAttempts = 3
 
 func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	var lastErr error
-	for attempt := 0; attempt < fetchAttempts; attempt++ {
+	for attempt := range fetchAttempts {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():

@@ -127,8 +127,7 @@ func (progressRunner) Resume(context.Context, *job.Job, func(provider.RunStatus)
 // with no phase change) reaches the SSE stream — not just phase transitions.
 func TestSSEStreamsWorkerProgress(t *testing.T) {
 	store := job.NewMemStore()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	projects, j := publicSession(t, store)
 
 	rt := NewRouter(Deps{Jobs: store, Projects: projects, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond})

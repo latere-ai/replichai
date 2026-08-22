@@ -657,7 +657,7 @@ func TestMountProtocolDemandsAPush(t *testing.T) {
 		}
 	}
 	// The push must not be buried in the sentence that asks for the commit.
-	for _, line := range strings.Split(protocol, "\n") {
+	for line := range strings.SplitSeq(protocol, "\n") {
 		if strings.Contains(line, "small, meaningful commits") && strings.Contains(line, "git push") {
 			t.Errorf("the push is back inside the commit instruction:\n%s", line)
 		}

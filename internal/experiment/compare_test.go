@@ -127,11 +127,10 @@ func TestCompareEmptyIsEmpty(t *testing.T) {
 func TestComparisonHasNoVerdictField(t *testing.T) {
 	verdictish := []string{"pass", "fail", "verdict", "judg", "reproduc", "success", "ok", "valid"}
 	for _, typ := range []reflect.Type{
-		reflect.TypeOf(Comparison{}),
-		reflect.TypeOf(ComparisonRow{}),
+		reflect.TypeFor[Comparison](),
+		reflect.TypeFor[ComparisonRow](),
 	} {
-		for i := 0; i < typ.NumField(); i++ {
-			f := typ.Field(i)
+		for f := range typ.Fields() {
 			if f.Type.Kind() == reflect.Bool {
 				t.Errorf("%s.%s is a bool — a comparison must carry no verdict", typ.Name(), f.Name)
 			}

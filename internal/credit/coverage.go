@@ -2,6 +2,7 @@ package credit
 
 import (
 	"context"
+	"slices"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -55,12 +56,7 @@ var Preferences = []Preference{PrefBest, PrefBalanced, PrefFast}
 // holding the field knows whether unset means take the default (a job that
 // predates the choice) or means the caller sent nothing at all.
 func (p Preference) Valid() bool {
-	for _, known := range Preferences {
-		if p == known {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(Preferences, p)
 }
 
 // OrDefault resolves an unset preference to the default, so every reader of a
@@ -89,7 +85,7 @@ func (p Preference) String() string { return string(p) }
 type Coverage struct {
 	Preference Preference       `json:"preference"`
 	Model      string           `json:"model,omitempty"`
-	ModelRef   managed.ModelRef `json:"model_ref,omitempty"`
+	ModelRef   managed.ModelRef `json:"model_ref"`
 	Named      bool             `json:"named"`
 	Rates      Rates            `json:"rates,omitzero"`
 	Err        string           `json:"error,omitempty"`

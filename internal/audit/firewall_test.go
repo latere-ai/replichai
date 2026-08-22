@@ -28,7 +28,7 @@ func TestAuditNeverImportsExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go list -deps %s: %v", auditPkg, err)
 	}
-	for _, dep := range strings.Fields(string(out)) {
+	for dep := range strings.FieldsSeq(string(out)) {
 		if dep == experimentPkg {
 			t.Fatalf("internal/audit imports %s — the audit must never read an experiment", experimentPkg)
 		}

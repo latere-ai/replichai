@@ -1,6 +1,6 @@
 module github.com/latere-ai/replichai
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.59.0

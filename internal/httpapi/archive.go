@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -74,8 +75,8 @@ func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 	notes := &manifest{project: proj.Title, id: proj.ID}
 	// Oldest first: the archive reads in the order the work happened, which is the
 	// opposite of the order a list of sessions is useful in.
-	for i := len(sessions) - 1; i >= 0; i-- {
-		rt.archiveSession(r, zw, sessions[i], notes)
+	for _, session := range slices.Backward(sessions) {
+		rt.archiveSession(r, zw, session, notes)
 	}
 	if err := writeEntry(zw, "MANIFEST.txt", []byte(notes.render()), time.Time{}); err != nil {
 		log.Printf("archive %s: manifest: %v", proj.ID, err)

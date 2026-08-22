@@ -25,10 +25,10 @@ func bootstrapAdmin(t *testing.T, s *MemStore) Principal {
 // could smuggle into a grant decision.
 func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
 	allowed := map[string]bool{"Sub": true, "Email": true}
-	ty := reflect.TypeOf(Principal{})
-	for i := 0; i < ty.NumField(); i++ {
-		if !allowed[ty.Field(i).Name] {
-			t.Errorf("Principal has field %q — no IDP role/scope/org may reach an authorisation decision", ty.Field(i).Name)
+	ty := reflect.TypeFor[Principal]()
+	for field := range ty.Fields() {
+		if !allowed[field.Name] {
+			t.Errorf("Principal has field %q — no IDP role/scope/org may reach an authorisation decision", field.Name)
 		}
 	}
 }

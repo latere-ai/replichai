@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -195,11 +197,11 @@ func (s *MemStore) ListByPrincipal(_ context.Context, principal string) ([]Job, 
 	defer s.mu.Unlock()
 	var out []Job
 	// s.order is oldest-first; walk it in reverse for newest-first.
-	for i := len(s.order) - 1; i >= 0; i-- {
-		if s.deleted[s.order[i]] {
+	for _, v := range slices.Backward(s.order) {
+		if s.deleted[v] {
 			continue
 		}
-		if j := s.jobs[s.order[i]]; j.Principal == principal {
+		if j := s.jobs[v]; j.Principal == principal {
 			out = append(out, cloneJob(j))
 		}
 	}
@@ -211,11 +213,11 @@ func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Job
-	for i := len(s.order) - 1; i >= 0; i-- {
-		if s.deleted[s.order[i]] {
+	for _, v := range slices.Backward(s.order) {
+		if s.deleted[v] {
 			continue
 		}
-		if j := s.jobs[s.order[i]]; j.ProjectID == projectID {
+		if j := s.jobs[v]; j.ProjectID == projectID {
 			out = append(out, cloneJob(j))
 		}
 	}
@@ -499,8 +501,6 @@ func clonePhaseAt(m map[Phase]time.Time) map[Phase]time.Time {
 		return nil
 	}
 	c := make(map[Phase]time.Time, len(m))
-	for k, v := range m {
-		c[k] = v
-	}
+	maps.Copy(c, m)
 	return c
 }

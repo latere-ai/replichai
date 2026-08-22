@@ -5,7 +5,7 @@ package runtimes
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -64,7 +64,7 @@ func (c *Catalog) Names() []managed.RuntimeName {
 	for name := range c.entries {
 		names = append(names, name)
 	}
-	sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+	slices.Sort(names)
 	return names
 }
 

@@ -90,7 +90,7 @@ func TestFailureFromAnyActivePhase(t *testing.T) {
 func TestLifecycleWalkRecordsEveryPhase(t *testing.T) {
 	tick := make(chan time.Time, 16)
 	base := time.Unix(1000, 0)
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		tick <- base.Add(time.Duration(i) * time.Second)
 	}
 	s := NewMemStore(WithClock(func() time.Time { return <-tick }))
@@ -147,7 +147,7 @@ func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	const n = 50
-	for i := 0; i < n; i++ {
+	for range n {
 		if _, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
@@ -156,16 +156,14 @@ func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]int{}
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range n {
+		wg.Go(func() {
 			if j, ok, err := s.Claim(ctx, "test-worker"); err == nil && ok {
 				mu.Lock()
 				seen[j.ID]++
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
