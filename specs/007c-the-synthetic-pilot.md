@@ -59,7 +59,7 @@ This is also what keeps the feature testable. The gate is an intersection — re
 // internal/experiment: the synthetic sources, behind one seam so 007d's human
 // cohort is a third implementation rather than a parallel mechanism.
 type Cohort interface {
-	Kind() string // synthetic:generated | synthetic:model | human
+	Kind() CohortKind // synthetic:generated | synthetic:model | human
 	// Collect produces trial data conforming to the protocol's measures.
 	Collect(ctx context.Context, p instrument.Protocol) (Dataset, error)
 }
@@ -79,7 +79,7 @@ type ModelCohort struct {
 // Pilot is what a synthetic run emits. It is not a Result, and the type
 // difference is deliberate — nothing that consumes a Result can be handed one.
 type Pilot struct {
-	Kind        string
+	Kind        CohortKind
 	Config      PilotConfig
 	Data        Dataset
 	Calibration *Comparison // against protocol.reported; a statement about the cohort

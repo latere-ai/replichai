@@ -71,7 +71,7 @@ All four shipped, one commit apiece plus the store change 044c needed first.
 | 044c | `044c: a lease can be refreshed…`, `044c: a driver heartbeats…`, `044c: a commit retries…` | `Store.Touch` on both stores and the contract test; `Worker.heartbeat`/`beat`; the fast-forward retry in `github.CommitFiles`. |
 | 044d | `044d: an empty repository says so` | `holdsReproduction`, `Findings.Reproduction`, and the second wording for `UNVERIFIED.md`. |
 
-Three things worth recording that the design did not anticipate.
+Seven things worth recording that the design did not anticipate.
 
 **The incident's test is exact, not analogous.** `TestRetainHarvestsARunThatNeverPushed` runs the real `engineRunner` over a repository holding only `README.md` and `.replichai/paper.json` and a runtime whose files exist only as session artifacts. Without the harvest it fails by printing the incident's own manifest — `Present:false Problems:[the run did not write verdict.json]` — and the incident's own `UNVERIFIED.md`, character for character. The regression test and the post-mortem are the same artifact.
 

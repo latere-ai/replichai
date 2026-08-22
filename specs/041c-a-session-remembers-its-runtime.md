@@ -62,7 +62,7 @@ Old status/rate JSON decoders accept missing provenance and assign Anthropic thr
 
 ## Configuration and credentials
 
-`REPLICHAI_RUNTIME` is the canonical selector for new jobs. `PROVIDER` remains a deprecated alias for one release; setting both to different canonical values fails startup. Server and CLI use the same precedence and no contract-owned default. Product defaults live in composition: server keeps `memory` for local development unless production configuration selects a hosted runtime; CLI keeps `anthropic-managed` for backward compatibility.
+`REPLICHAI_RUNTIME` (CLI `--runtime`) is the only selector for new jobs. The transitional `PROVIDER`/`--provider` alias this spec granted one release has since been removed rather than left to rot; `TestTheDeprecatedProviderFlagIsGone` holds the door shut. Server and CLI use the same precedence and no contract-owned default. Product defaults live in composition: server keeps `memory` for local development unless production configuration selects a hosted runtime; CLI keeps `anthropic-managed` for backward compatibility.
 
 Credentials are provider-scoped constructor input:
 

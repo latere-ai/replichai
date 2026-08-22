@@ -29,10 +29,10 @@ Every word is true and the paragraph is misleading. *"exist only as prose in thi
 
 ```
 tree paths ─┬─▶ VerifyTree              → leaked
-            └─▶ agentAuthored(paths)    → empty?
+            └─▶ holdsReproduction(paths) → empty?
 ```
 
-`agentAuthored` is the tree minus what the system itself put there — `.replichai/paper.json`, the auto-initialised `README.md`, and the manifest and transcript paths a re-finalize will have added. An empty result means the run committed nothing.
+`holdsReproduction` asks whether any path in the tree is something other than what the system itself put there — `.replichai/paper.json`, the auto-initialised `README.md`, `UNVERIFIED.md`, and the manifest and transcript paths a re-finalize will have added. A false answer means the run committed nothing.
 
 **The manifest records it.** `Findings` gains `Reproduction bool` — whether the repository holds a reproduction at all. A manifest is still written: the run happened, it cost money, and the transcript is the evidence of what it did. What changes is that the manifest no longer implies a reproduction exists.
 
