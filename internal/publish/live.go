@@ -66,6 +66,11 @@ type FinalizeReport struct {
 	// FindingProblems carries why not, and is what UNVERIFIED.md records.
 	Findings        bool
 	FindingProblems []string
+	// Reproduction reports whether the committed tree holds anything the agent
+	// put there. False means the run committed nothing: a different and more
+	// serious fact than unreadable findings, and one the record used to state as
+	// the other (044d).
+	Reproduction bool
 }
 
 // RecordIdentity writes the resolved paper identity into the repository, so a
@@ -140,8 +145,14 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	rep.Findings = findings
 	rep.FindingProblems = problems
 
+	// Whether the run committed anything at all is a separate question from
+	// whether its findings are readable, and the same tree answers it. A run that
+	// pushed nothing used to be reported as one whose findings were merely not
+	// machine-readable — a sentence promising prose that is not there (044d).
+	rep.Reproduction = holdsReproduction(tree)
+
 	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), redist)
-	manifest.Findings = &Findings{Present: findings, Problems: problems}
+	manifest.Findings = &Findings{Present: findings, Problems: problems, Reproduction: rep.Reproduction}
 	committed, err := commitManifestIfChanged(ctx, forge, owner, name, manifest)
 	if err != nil {
 		return rep, err
@@ -161,7 +172,7 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	}
 
 	if !findings {
-		if err := noteUnverified(ctx, forge, owner, name, problems); err != nil {
+		if err := noteUnverified(ctx, forge, owner, name, problems, rep.Reproduction); err != nil {
 			return rep, err
 		}
 	}
@@ -198,7 +209,7 @@ func readFindings(ctx context.Context, forge LiveForge, owner, name string) (boo
 // agent's own UNVERIFIED.md, under a heading that names the system as the
 // author — the file is the agent's, and a system line inside it has to be
 // attributable or it reads as something the agent claimed.
-func noteUnverified(ctx context.Context, forge LiveForge, owner, name string, problems []string) error {
+func noteUnverified(ctx context.Context, forge LiveForge, owner, name string, problems []string, reproduction bool) error {
 	existing, _, err := forge.GetFileContent(ctx, owner, name, UnverifiedFile)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", UnverifiedFile, err)
@@ -214,7 +225,12 @@ func noteUnverified(ctx context.Context, forge LiveForge, owner, name string, pr
 		b.WriteString("\n\n")
 	}
 	b.WriteString(findingsHeading + "\n\n")
-	b.WriteString("`" + FindingsFile + "` could not be read, so this reproduction's boundary table, hidden decisions, and scorecard exist only as prose in this repository:\n\n")
+	if reproduction {
+		b.WriteString("`" + FindingsFile + "` could not be read, so this reproduction's boundary table, hidden decisions, and scorecard exist only as prose in this repository:\n\n")
+	} else {
+		b.WriteString("This run committed nothing to this repository. There is no reproduction here — no report, no source, and no `" + FindingsFile +
+			"` — and the session transcript beside this file is the only record of what the run did:\n\n")
+	}
 	for _, p := range problems {
 		b.WriteString("- " + p + "\n")
 	}
@@ -365,4 +381,30 @@ func safeRepoPath(p string) (string, bool) {
 		return "", false
 	}
 	return s, true
+}
+
+// systemAuthored is every path this repository's own machinery writes: the
+// recorded identity, the manifest, the transcript, the note appended to the
+// agent's UNVERIFIED.md, and the README GitHub creates the repository with.
+// Everything else in a committed tree came from the run.
+func systemAuthored(p string) bool {
+	switch p {
+	case IdentityFile, ManifestFile, UnverifiedFile, TranscriptMD, TranscriptJSONL, "README.md":
+		return true
+	}
+	return strings.HasPrefix(p, transcriptDir+"/")
+}
+
+// holdsReproduction reports whether a committed tree holds anything the run put
+// there. It is deliberately generous about what counts — one agent-authored path
+// is enough — because the question it answers is not "is this reproduction any
+// good" but "is there one at all", and only the second has an answer the system
+// can give.
+func holdsReproduction(tree []string) bool {
+	for _, p := range tree {
+		if !systemAuthored(p) {
+			return true
+		}
+	}
+	return false
 }
