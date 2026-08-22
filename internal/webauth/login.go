@@ -286,11 +286,10 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 		}
 		tier, _, _ := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
 		body := map[string]any{
-			"authenticated":   true,
-			"principal":       id.Sub,
-			"email":           id.Email,
-			"tier":            tier.String(),
-			"linked_accounts": map[string]string{}, // the forge link is 006f
+			"authenticated": true,
+			"principal":     id.Sub,
+			"email":         id.Email,
+			"tier":          tier.String(),
 		}
 		// Display claims are reported for every authenticated caller, ungranted
 		// ones included, so the not-invited screen can greet a person (006m).

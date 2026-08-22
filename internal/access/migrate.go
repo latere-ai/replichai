@@ -68,6 +68,16 @@ CREATE TABLE freeze_overrides (
 	cleared_at TIMESTAMPTZ            -- NULL while the override is in force
 );
 `},
+	{5, `
+-- The forge link never had a caller. 006c designed it as the proof that a
+-- principal owns a GitHub login, so 006f could invite that login; 006f instead
+-- takes the login from the request and invites it, and ownership is granted by
+-- the organisation's invitation rather than by anything this table asserted.
+-- Nothing read it, nothing wrote it, and a table nobody writes cannot be
+-- evidence of anything -- so it goes rather than waiting for a consumer that
+-- two specs failed to produce.
+DROP TABLE IF EXISTS forge_links;
+`},
 }
 
 // migrationLock is this migrator's advisory-lock id. A rolling deploy runs the

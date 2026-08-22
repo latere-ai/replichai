@@ -120,19 +120,6 @@ func TestGrantPromotesAndPreservesBinding(t *testing.T) {
 	}
 }
 
-func TestLinkedAccountRoundTrip(t *testing.T) {
-	s := NewMemStore()
-	if _, ok, _ := s.LinkedAccount(ctx, "sub", "github"); ok {
-		t.Error("no link should exist initially")
-	}
-	if err := s.LinkAccount(ctx, "sub", "github", "octocat"); err != nil {
-		t.Fatalf("LinkAccount: %v", err)
-	}
-	if login, ok, _ := s.LinkedAccount(ctx, "sub", "github"); !ok || login != "octocat" {
-		t.Errorf("linked account = %q/%v, want octocat", login, ok)
-	}
-}
-
 func TestTierGrantedAndString(t *testing.T) {
 	if TierNone.Granted() {
 		t.Error("TierNone must not be granted")

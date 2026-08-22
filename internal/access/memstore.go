@@ -17,8 +17,6 @@ type MemStore struct {
 	// by principal so a resolve by principal is O(1) and never rebinds.
 	grants         map[string]Grant
 	principalEmail map[string]string
-	// links[principalSub][forge] = proven login.
-	links map[string]map[string]string
 	// overrides holds active freeze overrides, keyed by normalized email (022d).
 	// A cleared override is deleted rather than kept, which the FreezeOverrides
 	// interface cannot tell apart from the Postgres store's soft clear.
@@ -43,7 +41,6 @@ func NewMemStore(opts ...MemOption) *MemStore {
 	s := &MemStore{
 		grants:         map[string]Grant{},
 		principalEmail: map[string]string{},
-		links:          map[string]map[string]string{},
 		overrides:      map[string]freezeGrant{},
 		clock:          time.Now,
 	}
@@ -287,25 +284,6 @@ func (s *MemStore) OverridesActiveFor(_ context.Context, emails []string) (map[s
 		}
 	}
 	return out, nil
-}
-
-// LinkedAccount returns a principal's proven forge login.
-func (s *MemStore) LinkedAccount(_ context.Context, principalSub, forge string) (string, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	login, ok := s.links[principalSub][forge]
-	return login, ok, nil
-}
-
-// LinkAccount records a proven forge login against a principal.
-func (s *MemStore) LinkAccount(_ context.Context, principalSub, forge, login string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.links[principalSub] == nil {
-		s.links[principalSub] = map[string]string{}
-	}
-	s.links[principalSub][forge] = login
-	return nil
 }
 
 // upsert writes a grant's tier while preserving any existing binding, and

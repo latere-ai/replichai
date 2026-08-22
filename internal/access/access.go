@@ -129,12 +129,6 @@ type Access interface {
 	// table names the accounts a balance predicate already found, e.g. the
 	// negative set (026). Admin only.
 	GrantsFor(ctx context.Context, byAdmin Principal, emails []string) ([]Grant, error)
-	// LinkedAccount returns a principal's proven forge login, if any. Written
-	// only by the link callback (006c's forge link), read by 006f's invitation.
-	LinkedAccount(ctx context.Context, principalSub, forge string) (login string, ok bool, err error)
-	// LinkAccount records a proven forge login against a principal. The account
-	// is proven by an OAuth handshake, never taken from a request body.
-	LinkAccount(ctx context.Context, principalSub, forge, login string) error
 }
 
 // ListOpts scopes a page of the admin people table (026).

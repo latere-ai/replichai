@@ -24,7 +24,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	for _, tbl := range []string{"access_grants", "project_members", "forge_links", "freeze_overrides"} {
+	for _, tbl := range []string{"access_grants", "project_members", "freeze_overrides"} {
 		if _, err := pool.Exec(ctx, "TRUNCATE "+tbl); err != nil {
 			t.Fatalf("truncate %s: %v", tbl, err)
 		}
@@ -61,14 +61,6 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	if _, ok, _ := acc.Resolve(ctx, seed); ok {
 		t.Error("revoked grant must lock out")
 	}
-	// Link round-trip.
-	if err := acc.LinkAccount(ctx, "sub", "github", "octocat"); err != nil {
-		t.Fatalf("LinkAccount: %v", err)
-	}
-	if login, ok, _ := acc.LinkedAccount(ctx, "sub", "github"); !ok || login != "octocat" {
-		t.Errorf("linked = %q/%v", login, ok)
-	}
-
 	// Membership binds and is lead-gated.
 	mem := NewPGMembership(pool)
 	if err := mem.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"}); err != nil {
@@ -99,4 +91,30 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 
 	// The freeze-override contract, against the same real store (022d).
 	runFreezeContract(t, acc)
+}
+
+// TestTheMigrationLeavesNoForgeLinkBehind asserts migration 5 removed the table
+// rather than deprecating it. `forge_links` was 006c's proof that a principal
+// owned a GitHub login, so that 006f could invite that login. 006f never read
+// it — it invites the login the request names — so the table was written by
+// nobody and read by nobody. A table nobody writes is not evidence, and leaving
+// it would invite a later reader to trust it.
+func TestTheMigrationLeavesNoForgeLinkBehind(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set TEST_DATABASE_URL to run the access store contract")
+	}
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	var found int
+	if err := pool.QueryRow(ctx,
+		`SELECT 1 FROM information_schema.tables WHERE table_name='forge_links'`).Scan(&found); err == nil {
+		t.Error("forge_links still exists; the dead link table is removed, not deprecated")
+	}
 }
