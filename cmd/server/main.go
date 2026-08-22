@@ -358,8 +358,7 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 			log.Printf("issuer advertises no end_session_endpoint; sign-out will not end the provider's session")
 		}
 	}
-	secure := strings.HasPrefix(baseURL, "https") && !envBool("AUTH_INSECURE_COOKIES")
-	return webauth.NewLogin(auth, codec, acc, baseURL, secure, userInfo).EndSessionAt(endSession), nil
+	return webauth.NewLogin(auth, codec, acc, baseURL, secureCookies(baseURL), userInfo).EndSessionAt(endSession), nil
 }
 
 // accessStore is the access model plus its bootstrap seeder, satisfied by both
@@ -666,6 +665,22 @@ func loadAppKey(v string) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// secureCookies reports whether the session cookie may carry Secure and the
+// __Host- prefix. The scheme of the base URL decides it and nothing else: a
+// plain-HTTP local run cannot use either (the browser rejects __Host- without
+// Secure, and a Secure cookie never comes back over http), and an https
+// deployment always can.
+//
+// There is deliberately no override. One used to exist, AUTH_INSECURE_COOKIES,
+// and it could only ever fire on an https deployment — on plain HTTP the scheme
+// has already answered false, so the variable changed nothing there. Its whole
+// reachable effect was to strip Secure and __Host- from a deployment serving
+// real traffic over TLS, which is not a thing a developer needs and is exactly
+// the thing an attacker does. Nothing set it: not compose, not an overlay, not
+// example.env. Unlike DEV_INSECURE, which buys a containerised local run
+// something real and is refused off loopback, this one had no case to make.
+func secureCookies(baseURL string) bool { return strings.HasPrefix(baseURL, "https") }
 
 func envBool(key string) bool {
 	v := os.Getenv(key)

@@ -104,7 +104,7 @@ func (c *Codec) Open(s string, v any) error {
 // setCookie writes a sealed value as a hardened cookie. secure=false drops the
 // Secure flag and the __Host- prefix for local plain-HTTP dev only.
 func setCookie(w http.ResponseWriter, name, value string, secure bool, ttl time.Duration) {
-	//nolint:gosec // G124: HttpOnly and SameSite are set unconditionally; Secure is the caller's, and cmd/server/main.go passes true for an https base URL unless AUTH_INSECURE_COOKIES is set, the one escape that turns it off. Whenever it is off, cookieName also drops the __Host- prefix the browser would then reject.
+	//nolint:gosec // G124: HttpOnly and SameSite are set unconditionally; Secure is the caller's, and cmd/server/main.go derives it from the base URL's scheme with no override, so it is off only for a plain-HTTP local run — where cookieName also drops the __Host- prefix the browser would then reject.
 	c := &http.Cookie{
 		Name:     cookieName(name, secure),
 		Value:    value,
