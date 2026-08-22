@@ -5,12 +5,10 @@
 // internal/provider; porting to another backend means writing a sibling of
 // this package and changing one setting.
 //
-// Configuration comes from the environment:
-//
-//	REPLICHAI_API_KEY   the backend's API key. Optional: when unset, the SDK's
-//	                    own resolution applies, so an already-exported backend
-//	                    variable or a logged-in CLI profile is picked up.
-//	REPLICHAI_API_BASE  API root (optional; for tests and self-hosted routing)
+// The credential and the API root arrive as options. Nothing here reads the
+// environment: internal/runtimes decides which variable belongs to which
+// runtime, so a key or an API root meant for one backend can never reach
+// another through a second, unscoped path.
 package anthropic
 
 import (
@@ -21,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -127,7 +124,7 @@ type config struct {
 	extra   []option.RequestOption
 }
 
-// WithAPIKey sets the credential explicitly instead of reading the environment.
+// WithAPIKey sets the credential.
 func WithAPIKey(key string) Option { return func(c *config) { c.apiKey = key } }
 
 // WithAPIBase overrides the API root. Tests point this at a local server.
@@ -141,20 +138,12 @@ func WithRequestOptions(opts ...option.RequestOption) Option {
 
 // New builds a Provider.
 //
-// REPLICHAI_API_KEY is the documented way to supply the credential. It holds
-// the backend's ordinary API key; the name is neutral so the variable does not
-// advertise the supplier, not because the value is different.
-//
-// When it is unset the SDK's own credential resolution is left in place, so an
-// operator who already has the backend's environment variable exported, or a
-// logged-in CLI profile, does not have to copy the same secret under a second
-// name. That path cannot be inspected from here, so a genuinely missing
+// The credential comes from WithAPIKey and nowhere else. When no key is given
+// the SDK's own resolution is left in place, so a logged-in CLI profile still
+// works; that path cannot be inspected from here, so a genuinely missing
 // credential surfaces on the first request rather than at construction.
 func New(opts ...Option) (*Provider, error) {
-	cfg := config{
-		apiKey:  os.Getenv("REPLICHAI_API_KEY"),
-		apiBase: os.Getenv("REPLICHAI_API_BASE"),
-	}
+	var cfg config
 	for _, opt := range opts {
 		opt(&cfg)
 	}
