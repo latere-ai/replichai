@@ -136,12 +136,11 @@ evals/               golden set: papers with known answers, used as a regression
 deploy/              k8s kustomize for staging and prod
 docs/                architecture, procedure, landscape
 specs/               designs, and the record of what got built
-reference/python/    the Python reference implementation of the core (frozen at spec 005; no CI)
 ```
 
 ## The method is data
 
-`method/` holds three documents: the worker's standing instructions, the rubric every run is graded against, and the task template. Changing the rubric is a text edit with no rebuild and no redeployment, which is what makes iterating on the bar cheap. Both implementations read the same three files.
+`method/` holds three documents: the worker's standing instructions, the rubric every run is graded against, and the task template. Changing the rubric is a text edit with no rebuild and no redeployment, which is what makes iterating on the bar cheap.
 
 Whenever the method changes, re-run the golden set before trusting it:
 

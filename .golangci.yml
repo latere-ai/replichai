@@ -75,10 +75,6 @@ linters:
           - errcheck
           - unparam
           - noctx
-      # The reference implementation is Python; nothing here to lint.
-      - path: ^reference/
-        linters:
-          - staticcheck
 
 formatters:
   enable:
