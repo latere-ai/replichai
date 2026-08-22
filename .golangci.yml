@@ -71,25 +71,40 @@ linters:
       # stay American keeps being enforced.
       ignore-rules:
         - analyse
+        - analyses
         - authorised
         - authorises
         - behaviour
         - behavioural
+        - behaviours
         - cancelled
         - cancelling
         - catalogue
+        - catalogues
         - centre
+        - centred
+        - favour
+        - favours
+        - honour
         - honoured
         - honouring
+        - honours
         - labelled
         - labelling
         - licence
+        - licences
         - marshalling
+        - materialise
         - materialised
+        - materialises
         - organisation
+        - organise
         - organised
+        - organises
         - recognisable
         - recognise
+        - recognised
+        - recognises
         - reorganises
         - reorganising
         - serialise
