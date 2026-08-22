@@ -338,6 +338,11 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 }
 
 func providerStatus(status managed.Status) provider.RunStatus {
+	// The controller calls this only from its Status hook, and it validates the
+	// observed reference immediately before that hook runs: SessionRef.Validate
+	// unmarshals the locator, so the one field here that could refuse to encode
+	// is already proven to be valid JSON.
+	//nolint:errchkjson // status.Ref.Locator is validated by managed.Controller before the Status hook fires, so Marshal cannot fail.
 	raw, _ := json.Marshal(status.Ref)
 	result := provider.RunStatus{
 		State: providerState(status.State), RunID: status.Ref.ID, Runtime: string(status.Ref.Runtime), SessionRef: raw,

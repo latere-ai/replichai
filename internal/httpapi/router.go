@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -418,10 +419,26 @@ func (rt *Router) guard(h http.HandlerFunc) http.HandlerFunc {
 }
 
 // writeJSON writes v as JSON with a status code.
+//
+// The body is encoded before the status line goes out, so a value that cannot
+// become JSON answers 500 with a machine-readable code. Encoding straight into
+// the ResponseWriter would commit the caller's status first and then break off
+// mid-body, which reaches the client as a truncated success it cannot
+// distinguish from a real one.
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		// writeError's own body is a map[string]string, which always encodes, so
+		// this cannot come back round.
+		log.Printf("httpapi: encoding a %T response: %v", v, err)
+		writeError(w, http.StatusInternalServerError, "response_encoding_failed")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	// The status line is committed now, so a short write has nowhere left to be
+	// reported.
+	_, _ = w.Write(b)
 }
 
 // writeError writes a machine-readable error code.
