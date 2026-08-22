@@ -136,6 +136,31 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// chatMessage is one turn of the conversation. Both protocols spell a message
+// the same way, so one type serves both bodies.
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// anthropicRequest is a Messages API call. The fields carry no omitempty on
+// purpose: the API is sent the same shape on every call, empty system prompt
+// included, so a draft is reproducible from the model id and the prompt alone.
+type anthropicRequest struct {
+	Model     string        `json:"model"`
+	MaxTokens int           `json:"max_tokens"`
+	System    string        `json:"system"`
+	Messages  []chatMessage `json:"messages"`
+}
+
+// openAIRequest is a chat-completions call. It has no system field: that
+// protocol carries the system prompt as the first message instead.
+type openAIRequest struct {
+	Model     string        `json:"model"`
+	MaxTokens int           `json:"max_tokens"`
+	Messages  []chatMessage `json:"messages"`
+}
+
 // anthropicModel speaks the Messages API directly rather than through the SDK:
 // this is one POST with four fields, and the SDK's beta session machinery is
 // exactly what this package exists to avoid.
@@ -144,15 +169,23 @@ type anthropicModel struct {
 	client           *http.Client
 }
 
+// Name is the model id the answer will be priced under.
 func (m *anthropicModel) Name() string { return m.model }
 
+// Complete asks the Messages API for one paragraph.
 func (m *anthropicModel) Complete(ctx context.Context, r Request) (Result, error) {
-	body, _ := json.Marshal(map[string]any{
-		"model":      m.model,
-		"max_tokens": r.MaxTokens,
-		"system":     r.System,
-		"messages":   []map[string]string{{"role": "user", "content": r.Prompt}},
+	// The body is a typed struct rather than a map[string]any so that what goes on
+	// the wire is declared in one place, and so that a field of a type the encoder
+	// could choke on would be visible here rather than hidden in a literal.
+	body, err := json.Marshal(anthropicRequest{
+		Model:     m.model,
+		MaxTokens: r.MaxTokens,
+		System:    r.System,
+		Messages:  []chatMessage{{Role: "user", Content: r.Prompt}},
 	})
+	if err != nil {
+		return Result{}, fmt.Errorf("drafting model: encoding the request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.base+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
 		return Result{}, err
@@ -201,19 +234,25 @@ type openAIModel struct {
 	client           *http.Client
 }
 
+// Name is the model id the answer will be priced under.
 func (m *openAIModel) Name() string { return m.model }
 
+// Complete asks a chat-completions endpoint for one paragraph.
 func (m *openAIModel) Complete(ctx context.Context, r Request) (Result, error) {
-	msgs := []map[string]string{}
+	msgs := make([]chatMessage, 0, 2)
 	if strings.TrimSpace(r.System) != "" {
-		msgs = append(msgs, map[string]string{"role": "system", "content": r.System})
+		msgs = append(msgs, chatMessage{Role: "system", Content: r.System})
 	}
-	msgs = append(msgs, map[string]string{"role": "user", "content": r.Prompt})
-	body, _ := json.Marshal(map[string]any{
-		"model":      m.model,
-		"max_tokens": r.MaxTokens,
-		"messages":   msgs,
+	msgs = append(msgs, chatMessage{Role: "user", Content: r.Prompt})
+	// Typed for the same reason as the Anthropic body above.
+	body, err := json.Marshal(openAIRequest{
+		Model:     m.model,
+		MaxTokens: r.MaxTokens,
+		Messages:  msgs,
 	})
+	if err != nil {
+		return Result{}, fmt.Errorf("drafting model: encoding the request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.base+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return Result{}, err
