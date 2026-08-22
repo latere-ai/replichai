@@ -3,6 +3,7 @@ package publish
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,7 @@ func (f *fakeLiveForge) GetFileContent(_ context.Context, _, _, path string) ([]
 
 func (f *fakeLiveForge) PutFile(_ context.Context, _, _, path, _ string, content []byte) error {
 	f.files[path] = content
+	f.track(path)
 	f.puts++
 	return nil
 }
@@ -49,8 +51,19 @@ func (f *fakeLiveForge) CommitFiles(_ context.Context, _, _, message string, fil
 	f.msgs = append(f.msgs, message)
 	for p, c := range files {
 		f.files[p] = c
+		f.track(p)
 	}
 	return len(files) > 0, nil
+}
+
+// track puts a committed path into the tree, because a real forge does: a
+// finalize that runs after a harvest reads a tree the harvest contributed to,
+// and a fake that forgot that could not tell harvest-before-finalize from the
+// other way round (044b).
+func (f *fakeLiveForge) track(path string) {
+	if !slices.Contains(f.tree, path) {
+		f.tree = append(f.tree, path)
+	}
 }
 
 func fixedNow() func() time.Time {
@@ -398,9 +411,8 @@ func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
 		t.Fatalf("first finalize = %+v, %v", first, err)
 	}
 
-	// The second pass sees everything the first one wrote.
-	forge.tree = append(forge.tree, ManifestFile, UnverifiedFile, TranscriptMD, TranscriptJSONL,
-		transcriptDir+"/001.md")
+	// The second pass sees everything the first one wrote — the fake tracks its
+	// tree, so this is the same shape a real re-finalize meets.
 	second, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
 		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
 	if err != nil {

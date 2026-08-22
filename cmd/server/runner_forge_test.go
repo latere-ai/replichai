@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/job"
@@ -55,13 +56,23 @@ func (f *fakeForge) GetFileContent(_ context.Context, _, _, path string) ([]byte
 }
 func (f *fakeForge) PutFile(_ context.Context, _, _, path, _ string, content []byte) error {
 	f.files[path] = content
+	f.track(path)
 	return nil
 }
 func (f *fakeForge) CommitFiles(_ context.Context, _, _, _ string, files map[string][]byte) (bool, error) {
 	for p, c := range files {
 		f.files[p] = c
+		f.track(p)
 	}
 	return len(files) > 0, nil
+}
+
+// track puts a committed path into the tree, as a real forge does — so a
+// finalize running after a harvest reads the tree the harvest contributed to.
+func (f *fakeForge) track(path string) {
+	if !slices.Contains(f.tree, path) {
+		f.tree = append(f.tree, path)
+	}
 }
 
 // fakeJobs returns a canned job — the runner reloads the observed status
