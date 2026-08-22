@@ -95,7 +95,7 @@ func RecordedIdentity(ctx context.Context, forge LiveForge, owner, name string) 
 		return paper.Identity{}, false, err
 	}
 	if json.Unmarshal(raw, &id) != nil {
-		return paper.Identity{}, false, nil
+		return paper.Identity{}, false, nil //nolint:nilerr // an unreadable record is absent, not an error: the caller re-resolves
 	}
 	return id, true, nil
 }

@@ -434,7 +434,7 @@ func validateInstrument(dir string) (present bool, violations []instrument.Viola
 	}
 	vs, verr := instrument.Validate(raw)
 	if verr != nil {
-		return true, []instrument.Violation{{Field: InstrumentFile, Message: verr.Error()}}, nil
+		return true, []instrument.Violation{{Field: InstrumentFile, Message: verr.Error()}}, nil //nolint:nilerr // a malformed instrument is one violation to report, not a failed check
 	}
 	return true, vs, nil
 }

@@ -159,7 +159,7 @@ func RateSnapshot(s Store) credit.CardSnapshot {
 	return func(ctx context.Context) (credit.Card, error) {
 		set, err := s.Settings(ctx)
 		if err != nil || len(set.Rates.Models) == 0 {
-			return credit.DefaultCard(), nil
+			return credit.DefaultCard(), nil //nolint:nilerr // a database hiccup falls back to the published price list, as documented above
 		}
 		return set.Rates, nil
 	}
@@ -174,7 +174,7 @@ func StartReserve(s Store) credit.Reserve {
 	return func(ctx context.Context) (int64, error) {
 		set, err := s.Settings(ctx)
 		if err != nil {
-			return DefaultStartReserve, nil
+			return DefaultStartReserve, nil //nolint:nilerr // a reserve that disappears when the database hiccups is not a reserve
 		}
 		return set.StartReserve, nil
 	}
@@ -196,7 +196,7 @@ func OverdraftCap(s Store) func(ctx context.Context) (int64, error) {
 	return func(ctx context.Context) (int64, error) {
 		set, err := s.Settings(ctx)
 		if err != nil || set.OverdraftCap <= 0 {
-			return DefaultOverdraftCap, nil
+			return DefaultOverdraftCap, nil //nolint:nilerr // the bound stays on a failed read rather than disappearing
 		}
 		return set.OverdraftCap, nil
 	}

@@ -636,7 +636,7 @@ func apply(src Job) func(*Job) {
 // here — and the store's cancel write, made first, wins the state machine.
 func (w *Worker) stop(pool context.Context, id string, cause error) error {
 	if pool.Err() != nil {
-		return nil
+		return nil //nolint:nilerr // a shutdown is not a failed session: leaving the row in phase is what lets the next boot rejoin it
 	}
 	if err := w.fail(id, cause); err != nil {
 		return errors.Join(cause, err)
