@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -156,7 +156,7 @@ func packageSpecs(packages map[string][]string) []managed.Package {
 	for manager := range packages {
 		managers = append(managers, manager)
 	}
-	sort.Strings(managers)
+	slices.Sort(managers)
 	for _, manager := range managers {
 		names := packages[manager]
 		for _, name := range names {

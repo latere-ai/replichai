@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -339,7 +339,7 @@ func CommitOutputs(ctx context.Context, forge LiveForge, owner, name string, fil
 	for p := range files {
 		paths = append(paths, p)
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 
 	clean := make(map[string][]byte, len(paths))
 	for _, p := range paths {

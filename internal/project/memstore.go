@@ -1,9 +1,9 @@
 package project
 
 import (
+	"cmp"
 	"context"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -93,7 +93,7 @@ func (s *MemStore) ListTrashed(_ context.Context, owner string) ([]Project, erro
 			out = append(out, p)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].DeletedAt.After(*out[j].DeletedAt) })
+	slices.SortStableFunc(out, func(a, b Project) int { return b.DeletedAt.Compare(*a.DeletedAt) })
 	return out, nil
 }
 
@@ -328,11 +328,11 @@ func (s *MemStore) papersOf(projectID string) []Paper {
 	// Sorted rather than left in insertion order, which they agreed on until a
 	// paper could arrive from another project (035) carrying an AddedAt older
 	// than everything already here. Postgres orders the same way.
-	sort.SliceStable(out, func(i, j int) bool {
-		if !out[i].AddedAt.Equal(out[j].AddedAt) {
-			return out[i].AddedAt.Before(out[j].AddedAt)
+	slices.SortStableFunc(out, func(a, b Paper) int {
+		if c := a.AddedAt.Compare(b.AddedAt); c != 0 {
+			return c
 		}
-		return out[i].Key < out[j].Key
+		return cmp.Compare(a.Key, b.Key)
 	})
 	return out
 }

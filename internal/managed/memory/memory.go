@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"sync"
 	"time"
 
@@ -197,11 +197,7 @@ func (r *Runtime) ListArtifacts(ctx context.Context, ref managed.SessionRef) ([]
 	if err := r.before(ctx, FailList, ref); err != nil {
 		return nil, err
 	}
-	paths := make([]string, 0, len(r.config.Files))
-	for filePath := range r.config.Files {
-		paths = append(paths, filePath)
-	}
-	sort.Strings(paths)
+	paths := slices.Sorted(maps.Keys(r.config.Files))
 	artifacts := make([]managed.Artifact, 0, len(paths))
 	for index, filePath := range paths {
 		artifacts = append(artifacts, managed.Artifact{ID: fmt.Sprintf("artifact-%d", index+1), Path: filePath})
@@ -260,11 +256,7 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 func (r *Runtime) Specs() []managed.SessionSpec {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
-	ids := make([]string, 0, len(r.store.sessions))
-	for id := range r.store.sessions {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(r.store.sessions))
 	result := make([]managed.SessionSpec, 0, len(ids))
 	for _, id := range ids {
 		result = append(result, r.store.sessions[id].spec)

@@ -1,8 +1,9 @@
 package access
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -200,7 +201,7 @@ func (s *MemStore) List(ctx context.Context, byAdmin Principal) ([]Grant, error)
 	for _, g := range s.grants {
 		out = append(out, g)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	slices.SortFunc(out, func(a, b Grant) int { return cmp.Compare(a.Email, b.Email) })
 	return out, nil
 }
 
@@ -222,7 +223,7 @@ func (s *MemStore) ListPage(ctx context.Context, byAdmin Principal, opts ListOpt
 	for _, g := range s.grants {
 		all = append(all, g)
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].Email < all[j].Email })
+	slices.SortFunc(all, func(a, b Grant) int { return cmp.Compare(a.Email, b.Email) })
 	out := make([]Grant, 0, limit+1)
 	for _, g := range all {
 		if g.Email <= cursor {

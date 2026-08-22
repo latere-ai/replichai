@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,7 +79,7 @@ func TestProjectArchive(t *testing.T) {
 		"MANIFEST.txt",
 	} {
 		if _, ok := files[want]; !ok {
-			t.Errorf("the archive has no %s; it holds %v", want, keys(files))
+			t.Errorf("the archive has no %s; it holds %v", want, slices.Sorted(maps.Keys(files)))
 		}
 	}
 	// Organised by session, not merged: two sessions' REPRODUCIBILITY.md must not
@@ -205,7 +207,7 @@ func TestArchiveRecordsWhatItCouldNotRead(t *testing.T) {
 	}
 	files := openZip(t, w.Body.Bytes())
 	if _, ok := files["sessions/"+good.ID+"/README.md"]; !ok {
-		t.Errorf("the readable session is missing; the archive holds %v", keys(files))
+		t.Errorf("the readable session is missing; the archive holds %v", slices.Sorted(maps.Keys(files)))
 	}
 	manifest := files["MANIFEST.txt"]
 	if !strings.Contains(manifest, "ERRORS") || !strings.Contains(manifest, bad.ID) {
@@ -239,12 +241,4 @@ func (b *brokenRepro) Files(ctx context.Context, id string) ([]string, error) {
 		return nil, errors.New("the forge is unreachable")
 	}
 	return b.fakeRepro.Files(ctx, id)
-}
-
-func keys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }

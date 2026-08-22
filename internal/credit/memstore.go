@@ -1,8 +1,9 @@
 package credit
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -100,7 +101,7 @@ func (s *MemStore) NegativeWallets(_ context.Context) ([]WalletBalance, error) {
 			out = append(out, WalletBalance{Email: email, Balance: n})
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Balance < out[j].Balance })
+	slices.SortStableFunc(out, func(a, b WalletBalance) int { return cmp.Compare(a.Balance, b.Balance) })
 	return out, nil
 }
 
@@ -117,7 +118,7 @@ func (s *MemStore) Entries(_ context.Context, h Holder, limit int) ([]Entry, err
 			out = append(out, e)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	slices.SortStableFunc(out, func(a, b Entry) int { return b.CreatedAt.Compare(a.CreatedAt) })
 	if len(out) > limit {
 		out = out[:limit]
 	}

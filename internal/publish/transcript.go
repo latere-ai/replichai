@@ -43,7 +43,7 @@ func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 	if chunks == 0 {
 		chunks = 1 // an empty transcript still gets an index and one (empty) part
 	}
-	for c := 0; c < chunks; c++ {
+	for c := range chunks {
 		start, end := c*eventsPerChunk, min((c+1)*eventsPerChunk, len(events))
 		var m bytes.Buffer
 		nav := chunkNav(c, chunks)

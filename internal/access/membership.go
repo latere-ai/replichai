@@ -1,8 +1,9 @@
 package access
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -128,7 +129,7 @@ func (m *MemMembership) List(_ context.Context, project string) ([]Member, error
 	for email, row := range m.members[project] {
 		out = append(out, Member{Email: email, Role: row.Role, Bound: row.Principal != ""})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	slices.SortFunc(out, func(a, b Member) int { return cmp.Compare(a.Email, b.Email) })
 	return out, nil
 }
 
@@ -173,7 +174,7 @@ func (m *MemMembership) Projects(_ context.Context, principalSub string) ([]stri
 			out = append(out, project)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }
 
