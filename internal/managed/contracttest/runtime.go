@@ -10,8 +10,14 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
+// Factory builds one runtime under test. Run calls it afresh for each case, so
+// no state leaks from one case into the next.
 type Factory func() managed.Runtime
 
+// Run is the black-box suite every managed runtime adapter has to pass: the
+// ungraded and graded lifecycles, that cancelling keeps the evidence readable,
+// and that a ref naming another runtime is refused by Poll, Events,
+// ListArtifacts, Cancel and Release.
 func Run(t *testing.T, factory Factory) {
 	t.Helper()
 	t.Run("ungraded lifecycle", func(t *testing.T) {

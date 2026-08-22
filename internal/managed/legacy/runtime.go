@@ -16,14 +16,22 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
+// Config wires a legacy managed runtime: the canonical name it answers to, the
+// model provider label stamped on every ModelRef it reports, and the provider
+// resource graph it drives.
 type Config struct {
 	Name          managed.RuntimeName
 	ModelProvider string
 	Provider      provider.Provider
 }
 
+// Runtime adapts the provider resource graph to the managed session contract,
+// so callers hold one managed.Runtime whichever backend sits underneath.
 type Runtime struct{ config Config }
 
+// New rejects a non-canonical or empty name, an empty model provider, and a nil
+// provider. A non-canonical name would otherwise go unnoticed until a session
+// ref carrying it fails managed validation.
 func New(config Config) (*Runtime, error) {
 	if config.Name == "" || managed.CanonicalRuntimeName(string(config.Name)) != config.Name {
 		return nil, fmt.Errorf("legacy managed runtime has invalid name %q", config.Name)
@@ -37,8 +45,13 @@ func New(config Config) (*Runtime, error) {
 	return &Runtime{config: config}, nil
 }
 
+// Name reports the canonical runtime name the adapter was built with. Every
+// session ref Start mints carries it, and the ref-taking methods refuse a ref
+// that names a different runtime.
 func (r *Runtime) Name() managed.RuntimeName { return r.config.Name }
 
+// Capabilities reports what this adapter supports. The answer is static, so the
+// context is unused and the error exists only for interface conformance.
 func (r *Runtime) Capabilities(context.Context) (managed.Capabilities, error) {
 	return r.capabilities(), nil
 }
@@ -62,6 +75,8 @@ func (r *Runtime) capabilities() managed.Capabilities {
 	}
 }
 
+// Models resolves the best, balanced and fast preferences into concrete model
+// ids, one provider round-trip each. A single failed resolve fails the call.
 func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 	models := make([]managed.Model, 0, 3)
 	for _, preference := range []string{"best", "balanced", "fast"} {
@@ -74,6 +89,9 @@ func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 	return models, nil
 }
 
+// Validate checks the spec against the adapter's capabilities and additionally
+// refuses an exact model pin: this adapter can only ask the provider to resolve
+// a preference.
 func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if err := managed.ValidateCapabilities(r.Name(), r.capabilities(), spec); err != nil {
 		return err
@@ -93,6 +111,11 @@ type locator struct {
 	FileIDs       []string         `json:"file_ids,omitempty"`
 }
 
+// Start creates the workspace, worker and run the spec asks for, and returns a
+// ref whose locator carries the ids needed to reach that run again. Every
+// failure after the workspace exists releases what was already created, as far
+// as the provider allows: one that does not implement provider.ResourceReleaser
+// keeps them.
 func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.SessionRef, error) {
 	if err := r.Validate(spec); err != nil {
 		return managed.SessionRef{}, err
@@ -159,6 +182,9 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	return managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}, nil
 }
 
+// Poll translates the provider's run status and folds the evaluation verdict
+// into it: on a graded session, any grade other than passed turns a finished run
+// into a failure with ReasonEvaluationFailed.
 func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
 	handle, metadata, err := r.handle(ref)
 	if err != nil {
@@ -196,6 +222,9 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	return result, nil
 }
 
+// Events returns the whole transcript on every call, because the provider offers
+// no cursor. Transcript entries arrive unidentified, so event ids are synthesised
+// from the session id and the position in the transcript.
 func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed.Event, error) {
 	handle, metadata, err := r.handle(ref)
 	if err != nil {
@@ -224,6 +253,9 @@ func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed
 	return result, nil
 }
 
+// ListArtifacts returns every file the run produced, unfiltered, compiled Python
+// output included. Callers that do not want it screen the result with
+// managed.Artifact.IsCompiled.
 func (r *Runtime) ListArtifacts(ctx context.Context, ref managed.SessionRef) ([]managed.Artifact, error) {
 	handle, _, err := r.handle(ref)
 	if err != nil {
@@ -240,6 +272,8 @@ func (r *Runtime) ListArtifacts(ctx context.Context, ref managed.SessionRef) ([]
 	return result, nil
 }
 
+// FetchArtifact reads one artifact body whole. There is no streaming path, so
+// the caller holds the entire file in memory.
 func (r *Runtime) FetchArtifact(ctx context.Context, ref managed.SessionRef, artifact managed.Artifact) ([]byte, error) {
 	handle, _, err := r.handle(ref)
 	if err != nil {
@@ -248,6 +282,9 @@ func (r *Runtime) FetchArtifact(ctx context.Context, ref managed.SessionRef, art
 	return r.config.Provider.FetchArtifact(ctx, handle, provider.Artifact{ID: artifact.ID, Path: artifact.Path})
 }
 
+// Cancel stops the run but keeps the worker and workspace, so the transcript and
+// artifacts of a cancelled session stay reachable. Release is what tears them
+// down.
 func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 	handle, _, err := r.handle(ref)
 	if err != nil {
@@ -256,6 +293,8 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 	return r.config.Provider.CloseRun(ctx, handle)
 }
 
+// Release closes the run and releases the worker and workspace behind it. Use
+// Cancel instead when the evidence still has to be read.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	handle, _, err := r.handle(ref)
 	if err != nil {
