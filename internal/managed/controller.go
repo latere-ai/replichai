@@ -187,14 +187,15 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 		status, err := runtime.Poll(ctx, ref)
 		if err != nil {
 			if !IsTemporary(err) || ctx.Err() != nil {
-				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref), hooks, err)
+				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 			}
+			silent := c.clock.now().Sub(lastSuccess) >= c.policy.MaxSilence
 			temporaryErrors++
-			if temporaryErrors >= c.policy.MaxTemporaryErrors || c.clock.now().Sub(lastSuccess) >= c.policy.MaxSilence {
-				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref), hooks, err)
+			if temporaryErrors >= c.policy.MaxTemporaryErrors || silent {
+				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, silent), hooks, err)
 			}
 			if err := c.clock.sleep(ctx, retryDelay(err, delay)); err != nil {
-				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref), hooks, err)
+				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 			}
 			delay = nextDelay(delay, c.policy.MaxDelay)
 			continue
@@ -203,7 +204,7 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 		lastSuccess = c.clock.now()
 		delay = c.policy.InitialDelay
 		if err := validateObservation(runtime, ref, previous, status, graded); err != nil {
-			return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref), hooks, err)
+			return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 		}
 		if status.Ref.Revision > ref.Revision {
 			if hooks.Checkpoint != nil {
@@ -405,11 +406,19 @@ func retryDelay(err error, fallback time.Duration) time.Duration {
 	return fallback
 }
 
-func previousOrFailure(previous Status, ref SessionRef) Status {
+// previousOrFailure names the terminal status for a session the runtime never
+// reported a valid observation for. A session that simply stopped answering is
+// a timeout, not a fault the runtime owned up to, and operators chase the two
+// in different places.
+func previousOrFailure(previous Status, ref SessionRef, timedOut bool) Status {
 	if previous.State.Valid() {
 		return previous
 	}
-	return Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}
+	reason := ReasonRuntimeFailed
+	if timedOut {
+		reason = ReasonTimedOut
+	}
+	return Status{Ref: ref, State: StateFailed, TerminalReason: reason}
 }
 
 func nextDelay(current, maximum time.Duration) time.Duration {
