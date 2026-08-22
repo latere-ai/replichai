@@ -52,11 +52,6 @@ type Runner struct {
 // RunnerOption configures a Runner.
 type RunnerOption func(*Runner)
 
-// WithRunnerModel overrides the model preference.
-func WithRunnerModel(pref string) RunnerOption {
-	return func(r *Runner) { r.modelPref = pref }
-}
-
 // WithMountToken sets the read-only-scoped credential the instrument is mounted
 // with. It must never be the organisation token — an experiment only reads.
 func WithMountToken(token string) RunnerOption {

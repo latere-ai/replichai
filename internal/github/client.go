@@ -56,9 +56,6 @@ type Option func(*Client)
 // WithBaseURL overrides the API root. Tests point it at a local server.
 func WithBaseURL(base string) Option { return func(c *Client) { c.base = base } }
 
-// WithHTTPClient overrides the HTTP client.
-func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
-
 // New builds a client authenticating with token. The default timeout is
 // generous because a reproduction's transcript can be several megabytes, and the
 // Contents API base64-encodes the whole file into one request body.
