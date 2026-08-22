@@ -59,7 +59,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return runRates(ctx, args[1:], stdout, stderr)
 
 	case "providers":
-		catalog, _, err := runtimeCatalog("anthropic")
+		catalog, _, err := runtimeCatalog(defaultCLIRuntime)
 		if err != nil {
 			return err
 		}
@@ -785,7 +785,7 @@ a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
 
 flags for audit:
   -out            directory for artifacts (default "runs")
-  -provider       managed runtime to use (default "anthropic")
+  -provider       managed runtime to use (default "anthropic-managed")
   -method         path to a method directory
   -interval       gap between status checks
   -timeout        how long a run may take
@@ -796,7 +796,7 @@ flags for audit:
   -detach         with -publish, start the run and return; finish it later
 
 flags for rates:
-  -provider       managed runtime to ask (default "anthropic")
+  -provider       managed runtime to ask (default "anthropic-managed")
   -database-url   read the live rate card from a deployment (default $DATABASE_URL)
   -json           machine-readable output
 

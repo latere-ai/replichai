@@ -6,13 +6,12 @@
 //
 // Local runs use the in-process "memory" provider and the loopback-only dev
 // bypass (`DEV=true`), so `docker compose up` brings the whole system up with no
-// IDP and no API key. Production sets `PROVIDER=anthropic`, the `AUTH_*` OIDC
+// IDP and no API key. Production sets `REPLICHAI_RUNTIME=anthropic-managed`, the `AUTH_*` OIDC
 // config, and `ADMIN_EMAILS`. Anyone may sign in; budget is what limits them.
 package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -67,24 +66,13 @@ func main() {
 func run() error {
 	addr := flag.String("addr", envOr("ADDR", ":8080"), "listen address")
 	dbURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "Postgres URL; empty uses in-memory stores")
-	runtimeName := flag.String("runtime", envOr("REPLICHAI_RUNTIME", envOr("PROVIDER", "memory")), "managed runtime (legacy --provider/PROVIDER is deprecated)")
-	legacyProviderName := flag.String("provider", "", "deprecated alias for --runtime")
+	runtimeName := flag.String("runtime", envOr("REPLICHAI_RUNTIME", "memory"), "managed runtime")
 	methodDir := flag.String("method", os.Getenv("METHOD_DIR"), "method directory; empty discovers ./method")
 	reproDir := flag.String("repro-dir", os.Getenv("REPRO_DIR"), "filesystem registry source; empty is an empty registry")
 	workers := flag.Int("workers", 2, "number of job workers")
 	dev := flag.Bool("dev", envBool("DEV"), "enable the loopback-only dev bypass (no OIDC); local use only")
 	runnerDelay := flag.String("runner-delay", os.Getenv("RUNNER_DELAY"), "dev: pause per phase so SSE progression is watchable (e.g. 1500ms)")
 	flag.Parse()
-	if strings.TrimSpace(*legacyProviderName) != "" {
-		runtimeFlagSet := false
-		flag.Visit(func(set *flag.Flag) { runtimeFlagSet = runtimeFlagSet || set.Name == "runtime" })
-		if runtimeFlagSet {
-			return errors.New("--runtime and deprecated --provider cannot both be set")
-		}
-		*runtimeName = *legacyProviderName
-		log.Print("runtime config: --provider is deprecated; use --runtime")
-	}
-
 	baseURL := strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
 	delay, _ := time.ParseDuration(*runnerDelay)
 
@@ -106,19 +94,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	selection, err := runtimes.ResolveSelection(os.LookupEnv, baseCatalog, "memory")
-	if err != nil {
-		return err
-	}
 	selected, err := baseCatalog.Canonical(*runtimeName)
 	if err != nil {
 		return err
 	}
-	selection.Runtime = selected
-	credentials, warnings := runtimes.ResolveCredentials(os.LookupEnv, selection)
-	for _, warning := range warnings {
-		log.Printf("runtime config: %s", warning)
-	}
+	credentials := runtimes.ResolveCredentials(os.LookupEnv)
 	catalog, err := builtin.Catalog(builtin.Config{Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
 	}})

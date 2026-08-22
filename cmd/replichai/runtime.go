@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -11,7 +10,7 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
 )
 
-const defaultCLIRuntime = "anthropic"
+const defaultCLIRuntime = "anthropic-managed"
 
 func runtimeCatalog(rawName string) (*runtimes.Catalog, managed.RuntimeName, error) {
 	base, err := builtin.Catalog(builtin.Config{})
@@ -22,8 +21,7 @@ func runtimeCatalog(rawName string) (*runtimes.Catalog, managed.RuntimeName, err
 	if err != nil {
 		return nil, "", err
 	}
-	selection := runtimes.Selection{Runtime: name, LegacyAlias: strings.EqualFold(strings.TrimSpace(rawName), "anthropic")}
-	credentials, _ := runtimes.ResolveCredentials(os.LookupEnv, selection)
+	credentials := runtimes.ResolveCredentials(os.LookupEnv)
 	catalog, err := builtin.Catalog(builtin.Config{Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
 	}})

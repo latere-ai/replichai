@@ -19,8 +19,14 @@ func TestCatalogComposesAdaptersExplicitly(t *testing.T) {
 	if runtime, err := catalog.Build(context.Background(), "memory"); err != nil || runtime.Name() != "memory" {
 		t.Fatalf("Build(memory) = %v, %v", runtime, err)
 	}
-	if runtime, err := catalog.Build(context.Background(), "anthropic"); err != nil || runtime.Name() != AnthropicManaged {
-		t.Fatalf("Build(anthropic) = %v, %v", runtime, err)
+	if runtime, err := catalog.Build(context.Background(), string(AnthropicManaged)); err != nil || runtime.Name() != AnthropicManaged {
+		t.Fatalf("Build(%s) = %v, %v", AnthropicManaged, runtime, err)
+	}
+	// The runtime answers to its own name only. "anthropic" named the vendor,
+	// not the runtime, and an alias that conflates the two is how a second
+	// vendor's runtime ends up unnameable.
+	if _, err := catalog.Build(context.Background(), "anthropic"); err == nil {
+		t.Fatal("the removed vendor alias still resolves")
 	}
 }
 

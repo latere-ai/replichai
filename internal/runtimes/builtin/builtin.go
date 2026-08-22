@@ -31,7 +31,7 @@ func Catalog(config Config) (*runtimes.Catalog, error) {
 		runtimes.Entry{Name: managedmemory.Name, Build: func(context.Context) (managed.Runtime, error) {
 			return managedmemory.NewWithStore(config.MemoryStore, managedmemory.Config{}), nil
 		}},
-		runtimes.Entry{Name: AnthropicManaged, Aliases: []string{"anthropic"}, Build: func(context.Context) (managed.Runtime, error) {
+		runtimes.Entry{Name: AnthropicManaged, Build: func(context.Context) (managed.Runtime, error) {
 			if strings.TrimSpace(config.Anthropic.APIKey) == "" {
 				return nil, fmt.Errorf("ANTHROPIC_API_KEY is required")
 			}
