@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 
 const p = (d: string, key?: string) => <path key={key ?? d.slice(0, 8)} d={d} />
 
-export const ICONS = {
+const ICONS = {
   folder: p('M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'),
   globe: [
     <circle key="c" cx="12" cy="12" r="9" />,

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CRITERIA, inner, outer, rate, releaseTone, scoreOf, unresolved, type Claim, type Findings } from './findings'
+import { CRITERIA, inner, rate, releaseTone, scoreOf, unresolved, type Claim, type Findings } from './findings'
 
 const claim = (over: Partial<Claim>): Claim => ({
   claim: 'c',
@@ -25,10 +25,9 @@ const findings = (over: Partial<Findings> = {}): Findings => ({
   ...over,
 })
 
-test('inner and outer split the boundary', () => {
+test('inner keeps only the loop an outcome means something for', () => {
   const f = findings()
   expect(inner(f).map((c) => c.claim)).toEqual(['accuracy', 'ordering', 'latency'])
-  expect(outer(f).map((c) => c.claim)).toEqual(['preferred'])
 })
 
 test('unresolved is what did not cleanly reproduce', () => {

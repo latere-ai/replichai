@@ -211,7 +211,7 @@ export function checkoutErrLabel(t: T, e: unknown): string {
 
 // profileErrorText maps a server validation code to the message for the field
 // that is wrong, so a refusal points somewhere rather than saying "invalid".
-export function profileErrorText(t: T, code: string): string {
+function profileErrorText(t: T, code: string): string {
   if (code.includes('invalid_contact')) return t('errInvalidContact')
   if (code.includes('invalid_orcid')) return t('errInvalidOrcid')
   if (code.includes('invalid_scholar')) return t('errInvalidScholar')

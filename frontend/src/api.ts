@@ -619,7 +619,7 @@ export const getPublicProfile = (handle: string) =>
 // The current responsibility-attestation text version the sign-off records. v2
 // added the signer snapshot and the published contact, so the text a signer
 // affirms changed with it (006n).
-export const ATTESTATION_VERSION = 'v2'
+const ATTESTATION_VERSION = 'v2'
 
 // The signer as the publish wizard confirmed them. The contact is required; the
 // rest are optional. The signer's own identity is not here — the server derives
