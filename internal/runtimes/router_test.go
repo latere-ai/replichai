@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -140,7 +141,7 @@ func TestRouterRejectsInvalidConstructionRoutesAndReferences(t *testing.T) {
 	if _, err := router.ForRef(badRef); !errors.Is(err, managed.ErrInvalidSpec) {
 		t.Fatalf("invalid ref = %v", err)
 	}
-	if _, err := router.ForRef(runtimeRef("missing")); err == nil || !stringsContains(err.Error(), "runtime-a") {
+	if _, err := router.ForRef(runtimeRef("missing")); err == nil || !strings.Contains(err.Error(), "runtime-a") {
 		t.Fatalf("missing ref runtime = %v", err)
 	}
 }
@@ -156,13 +157,4 @@ func TestRouterDetectsInstalledRuntimeIdentityDrift(t *testing.T) {
 
 func runtimeRef(runtime managed.RuntimeName) managed.SessionRef {
 	return managed.SessionRef{Runtime: runtime, ID: "session", Revision: 1, LocatorVersion: 1}
-}
-
-func stringsContains(value, part string) bool {
-	for index := 0; index+len(part) <= len(value); index++ {
-		if value[index:index+len(part)] == part {
-			return true
-		}
-	}
-	return false
 }
