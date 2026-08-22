@@ -39,7 +39,7 @@
 ## Acceptance criteria
 
 1. `docker compose up` brings up Postgres + the server locally, and a submitted paper walks `submitted → done`; verified, and reproducible with `make smoke`.
-2. The prod overlay builds (`kubectl kustomize deploy/prod`) into the `latere` namespace with host `replichai.latere.ai`, the `replichai-config` and `replichai-db` secrets, and `PROVIDER=anthropic`.
+2. The prod overlay builds (`kubectl kustomize deploy/prod`) into the `latere` namespace with host `replichai.latere.ai`, the `replichai-config` and `replichai-db` secrets, and `REPLICHAI_RUNTIME=anthropic-managed`.
 3. Production is fail-closed: the manifest sets no `DEV`, and the release smoke fails if `/reproductions` is not refused — so a dev-bypass build cannot ship to prod unnoticed.
 4. One connection string: the manifest `DATABASE_URL` (from the terraform secret) overrides any `.env` value, so the app and cluster cannot disagree.
 5. Migrations apply at pod startup; a job survives a restart (Postgres durability) — verified live.
