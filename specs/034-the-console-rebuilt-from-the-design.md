@@ -1,6 +1,6 @@
 # 034 — The console, rebuilt from the design
 
-**Status:** built. Every acceptance criterion holds; the whole browser suite (17 files) passes at both viewports, and the wallet, settings, registry and trash screens were shot by hand to check what the shared primitives did to screens the design does not show.
+**Status:** built. Every acceptance criterion holds; the whole browser suite passed at both viewports (17 files then; 21 today, the rest added by 040 and 043), and the wallet, settings, registry and trash screens were shot by hand to check what the shared primitives did to screens the design does not show.
 
 Four things came out of the build. `.legend-swatch.empty` also matched the app's own `.empty` no-content block and inherited its padding, which drew a 35×70px box where a 7px swatch belonged — a class name is an interface, and `empty` was already taken. The old `.row-owner`/`.row-modified` rules were fixed column widths with a hide-below-760px, which is exactly wrong once they ride the title's meta line; they are gone rather than overridden. `matches` collided with the transcript module's own import and silently rebound the transcript's event filter, which typechecking caught and nothing else would have. And three tests encoded values the design changed — the folded rail's 56px, the topbar's 52px, and the spend tile's container — each updated with the reason, and in every case the guarantee kept rather than the number.
 

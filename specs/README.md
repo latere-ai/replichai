@@ -148,9 +148,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 001 | [Paper identity and slugs](001-paper-identity-and-slugs.md) | implemented | — |
 | 002 | [Publishing reproductions](002-publishing-reproductions.md) | implemented | 001 |
 | 003 | [The reproduction registry](003-reproduction-registry.md) | implemented | 001, 002 |
-| 004 | [Port the core to Go](004-go-port.md) | implemented | — |
+| 004 | [Port the core to Go](004-go-port.md) | implemented; its Python half deleted | — |
 | 005 | [Capture and publish the reproduction transcript](005-transcript.md) | implemented | 002, 006f |
-| 006 | [The web application](006-web-application.md) | draft | 002, (003, 005) |
+| 006 | [The web application](006-web-application.md) | built through its children | 002, (003, 005) |
 | 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | built | 006b, (003, 005) |
 | 006b | [Job model and persistence](006b-job-model-and-persistence.md) | built | 002, 004 |
 | 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | implemented | 006b |
@@ -232,8 +232,8 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 041a | [One managed-session contract](041a-one-managed-session-contract.md) | implemented | 041, 004, 005, 031 |
 | 041b | [One managed-session lifecycle](041b-one-managed-session-lifecycle.md) | implemented | 041a, 005, 006f, 014a |
 | 041c | [A session remembers its runtime](041c-a-session-remembers-its-runtime.md) | implemented | 041a, 041b, 006b, 031, 039 |
-| 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented | 041a, 041c, 011, 031, 006s, 039 |
-| 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented | 041a–041d |
+| 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
+| 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half-done | 041a–041d |
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
 | 042 | [The site a machine that is not a browser can read](042-the-site-a-crawler-can-read.md) | built | 013, 028, 006r |

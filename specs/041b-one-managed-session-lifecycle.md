@@ -12,6 +12,8 @@ Audit, experiments, and model cohorts each resolve a model, ensure a workspace, 
 
 `CloseRun` also combines three different acts: interrupt live work, archive/delete remote resources, and make evidence potentially unreadable. Audit defers it inside `Run`, while server publication asks for the transcript only after `Run` returns. Anthropic archive happens to retain events; an OpenAI release that deletes a container need not.
 
+The split lands in `managed.Runtime`, not in `provider.Provider`. `CloseRun` survives at the provider boundary [014a](014a-managed-runs-close-truthfully.md) designed, and stays the teardown call on the legacy path: `internal/managed/legacy` maps both `Cancel` and `Release` onto it, `internal/audit` still polls and closes a `provider.RunHandle` directly, and `engineRunner.Close` falls back to it when there is no controller or no locator. This spec wraps 014a; it does not retire it.
+
 ## Decision: one controller owns the ordering
 
 `internal/managed.Controller` is the only application-facing lifecycle API. It receives a `RuntimeRouter`, clock, retry policy, cleanup timeout, and observer. It exposes complete execution and restart entry points rather than the adapter's individual methods:
@@ -60,7 +62,7 @@ One `WaitPolicy` governs all callers:
 
 The controller enforces reference equality, state monotonicity, terminal stability, usage monotonicity, and graded-verdict invariants on every observation. An adapter contract violation is permanent and names the runtime.
 
-Runtime `failed` is a normal terminal observation, not a poll error. It still passes through retention and release, and its final cumulative usage is returned for settlement. A poll outage that exhausts policy triggers cancellation; cancellation failure does not erase the original outage.
+Runtime `failed` is a normal terminal observation, not a poll error. It still passes through retention and release, and its final cumulative usage is returned for settlement. A poll outage that exhausts policy triggers cancellation; cancellation failure does not erase the original outage. The two exhaustion budgets are recorded apart: running out of silence yields `ReasonTimedOut`, running out of consecutive faults yields the runtime failure reason, and silence wins when both blow on the same poll. A session that stopped answering timed out — it did not fail.
 
 ## Cancellation and release
 
