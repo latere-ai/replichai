@@ -37,7 +37,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, body any) {
 	}
 }
 
-func TestTheNeutralVariableSuppliesTheCredential(t *testing.T) {
+func TestTheOptionSuppliesTheCredential(t *testing.T) {
 	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Get("x-api-key")
@@ -45,32 +45,55 @@ func TestTheNeutralVariableSuppliesTheCredential(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	t.Setenv("REPLICHAI_API_KEY", "from-neutral-var")
-	p, err := New(WithAPIBase(server.URL))
+	p, err := New(WithAPIKey("from-option"), WithAPIBase(server.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	_, _ = p.ResolveModel(context.Background(), "best")
-	if got != "from-neutral-var" {
-		t.Errorf("credential = %q, want the value from REPLICHAI_API_KEY", got)
+	if got != "from-option" {
+		t.Errorf("credential = %q, want the value from WithAPIKey", got)
 	}
 }
 
-func TestAnUnsetVariableDefersToTheSDK(t *testing.T) {
-	// An operator who already has the backend's own credential exported, or a
-	// logged-in CLI profile, should not have to copy the secret under a second
-	// name. Construction therefore succeeds and a genuinely missing credential
-	// fails on the first request instead.
-	t.Setenv("REPLICHAI_API_KEY", "")
-	if _, err := New(); err != nil {
-		t.Fatalf("an unset variable must not fail construction: %v", err)
-	}
-}
-
-func TestNewReadsTheCredentialFromTheEnvironment(t *testing.T) {
+// The adapter must not read the environment itself. internal/runtimes decides
+// which variable belongs to which runtime; a second, unscoped path here would
+// let a key or an API root meant for one backend reach another. The options are
+// therefore left deliberately incomplete: whatever the environment names must
+// not fill the gap.
+func TestTheEnvironmentCannotSupplyCredentials(t *testing.T) {
 	t.Setenv("REPLICHAI_API_KEY", "from-env")
-	if _, err := New(); err != nil {
+	t.Setenv("REPLICHAI_API_BASE", "https://named-by-the-environment.invalid")
+
+	var gotURL, gotKey string
+	p, err := New(WithAPIKey("from-option"), WithRequestOptions(
+		option.WithMaxRetries(0),
+		option.WithMiddleware(func(r *http.Request, _ option.MiddlewareNext) (*http.Response, error) {
+			gotURL, gotKey = r.URL.String(), r.Header.Get("x-api-key")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"data":[],"has_more":false}`)),
+			}, nil
+		})))
+	if err != nil {
 		t.Fatalf("New: %v", err)
+	}
+	_, _ = p.ResolveModel(context.Background(), "best")
+
+	if strings.Contains(gotURL, "named-by-the-environment.invalid") {
+		t.Errorf("request went to %q, the API root named by the environment", gotURL)
+	}
+	if gotKey != "from-option" {
+		t.Errorf("credential = %q, want the value from WithAPIKey", gotKey)
+	}
+}
+
+func TestNoCredentialDefersToTheSDK(t *testing.T) {
+	// An operator with a logged-in CLI profile should not have to restate the
+	// secret. Construction therefore succeeds and a genuinely missing
+	// credential fails on the first request instead.
+	if _, err := New(); err != nil {
+		t.Fatalf("a missing credential must not fail construction: %v", err)
 	}
 }
 
