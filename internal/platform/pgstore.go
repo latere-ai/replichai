@@ -27,22 +27,6 @@ func NewPGStore(pool *pgxpool.Pool, auth Authority) *PGStore {
 	return &PGStore{pool: pool, auth: auth, clock: time.Now}
 }
 
-// requireAdmin re-checks the caller's tier, so an admin-only write holds even
-// if a route were mounted without the tier guard.
-func (s *PGStore) requireAdmin(ctx context.Context, p access.Principal) error {
-	if s.auth == nil {
-		return nil
-	}
-	tier, _, err := s.auth.Resolve(ctx, p)
-	if err != nil {
-		return err
-	}
-	if tier != access.TierAdmin {
-		return ErrNotAdmin
-	}
-	return nil
-}
-
 // Settings reads the platform row, fail-closed: a missing row or a failing
 // query yields the conservative default rather than unlimited, and returns the
 // error alongside so the caller can log it.
@@ -81,7 +65,7 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 	if err := next.validate(); err != nil {
 		return err
 	}
-	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+	if err := requireAdmin(ctx, s.auth, byAdmin); err != nil {
 		return err
 	}
 	if len(next.Rates.Models) == 0 {
