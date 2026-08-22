@@ -61,6 +61,8 @@ const projects = [
     published_sessions: 2,
     running: 0,
     latest_phase: 'done',
+    // Which paper the project is about (043), as the list carries it.
+    papers: [{ title: 'The Placebo Effect of Artificial Intelligence', authors: ['Ada Lovelace', 'Grace Hopper'], venue: 'CHI', year: 2024 }],
   },
   {
     id: 'mine-1',
@@ -75,6 +77,10 @@ const projects = [
     published_sessions: 0,
     running: 0,
     latest_phase: 'failed',
+    // A paper nobody could look up. Its row must carry no citation line at all
+    // rather than an empty one — the owner completes a record on the project
+    // screen, not from a list row.
+    papers: [{ title: 'Point of no Undo' }],
   },
 ]
 
@@ -134,6 +140,7 @@ try {
           ownerShown: !!owner?.getClientRects().length,
           modified: modified?.textContent.trim() || '',
           modifiedTip: modified?.getAttribute('data-tip') || '',
+          cite: row.querySelector('[data-test="row-citation"]')?.textContent.trim() ?? null,
         }
       }),
     )
@@ -156,6 +163,13 @@ try {
 
   // Order follows the column the reader can see.
   if (rows[0].title !== projects[0].title) fail(`the first row is "${rows[0].title}", want the most recently modified "${projects[0].title}"`)
+
+  // 043: the owner's own list cites the paper too. Two projects can carry the
+  // same typed title; the citation is what tells them apart at a glance.
+  for (const want of ['Ada Lovelace', 'CHI', '2024']) {
+    if (!rows[0].cite?.includes(want)) fail(`the dashboard row does not cite ${want}: ${rows[0].cite ?? 'no citation at all'}`)
+  }
+  if (rows[1].cite !== null) fail(`a project whose paper has no record still rendered a citation: ${JSON.stringify(rows[1].cite)}`)
 
   // Owner: "You" for your own, the other person's name for theirs, linking to
   // their public page.

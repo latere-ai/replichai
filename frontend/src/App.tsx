@@ -1052,6 +1052,11 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
               <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
                 <div className="row-main">
                   <div className="row-title">{p.title}</div>
+                  {/* Which paper the project is about (043), directly under its
+                      title, exactly as the registry sets it. A title is a name
+                      its owner typed and two projects can carry the same one;
+                      the citation is what tells them apart at a glance. */}
+                  <RowCitation i18n={i18n} papers={p.papers} />
                   {/* One line of what the project is about, where its owner has
                       said (038). It sits above the facts rather than among them:
                       it is the only part of the row somebody wrote. */}
@@ -1375,10 +1380,15 @@ function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
 
 /* ─── Public registry (zone) ─── */
 
-// RowCitation is the registry row's half of what a landing card says: the first
-// paper's citation, and how many others the project holds. It renders nothing
-// when no source could fill the record in — the stranger reading this list is
-// not the person who can complete it.
+// RowCitation is a list row's half of what a landing card says: the first
+// paper's citation, and how many others the project holds. Both lists of
+// projects render it — the registry and the owner's own dashboard — because a
+// row is scanned for which paper it is about before anything else about it.
+//
+// It renders nothing when no source could fill the record in. On the registry
+// that is the end of it; on the dashboard the invitation to complete a record
+// lives on the project screen, addressed to the owner who can act on it, rather
+// than in a list row that would repeat it once per project.
 function RowCitation({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
   const { t } = i18n
   const { bits, more } = listCitation(papers, t('etAl'))
