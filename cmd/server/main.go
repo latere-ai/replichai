@@ -198,7 +198,7 @@ func run() error {
 		log.Printf("reproductions: reading the %s org on GitHub", forgeOwner)
 	} else {
 		reproSource = registry.NewFSSource(*reproDir)
-		log.Printf("reproductions: reading filesystem dir %q (set REPLICHAI_GITHUB_TOKEN to read the forge)", *reproDir)
+		log.Printf("reproductions: reading filesystem dir %q (set REPLICHAI_GITHUB_TOKEN to read the forge)", *reproDir) //nolint:gosec // G706: -repro-dir/REPRO_DIR is read once at boot, and %q escapes control characters, so no newline can forge a log line.
 	}
 
 	notifier, err := buildNotifier(baseURL)
@@ -250,10 +250,13 @@ func run() error {
 
 	srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
+		// This runs only after ctx is cancelled, so the shutdown deadline cannot
+		// be derived from it: a child of a cancelled context is born cancelled,
+		// and Shutdown would drop live connections instead of draining them.
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(shutCtx)
+		_ = srv.Shutdown(shutCtx) //nolint:contextcheck // the fresh context is the point: ctx is already cancelled here, so a derived one would give the drain no time at all.
 	}()
 
 	log.Printf("listening on %s (base %s)", *addr, baseURL)
@@ -654,7 +657,10 @@ func loadAppKey(v string) ([]byte, error) {
 	if strings.Contains(v, "-----BEGIN") {
 		return []byte(v), nil
 	}
-	b, err := os.ReadFile(strings.TrimSpace(v))
+	// G703: v is REPLICHAI_GITHUB_APP_KEY from the process environment, read at
+	// boot by the one caller (newForgeClient). It is deployment configuration,
+	// not request input, and naming a file is exactly what the variable is for.
+	b, err := os.ReadFile(strings.TrimSpace(v)) //nolint:gosec // G703: the only caller passes REPLICHAI_GITHUB_APP_KEY, boot-time deployment config that is meant to name a .pem path.
 	if err != nil {
 		return nil, fmt.Errorf("reading REPLICHAI_GITHUB_APP_KEY file %q: %w", v, err)
 	}
@@ -666,7 +672,6 @@ func envBool(key string) bool {
 	return v == "1" || v == "true" || v == "yes"
 }
 
-// splitList splits a comma- or space-separated list, dropping blanks.
 // draftingModel builds the drafting seam over whatever the admin configured
 // (039). Nil when nothing is configured or no credential is present, which is
 // exactly what the route reads as "this deployment does not draft".
@@ -730,6 +735,7 @@ func (d *configuredDrafter) Complete(ctx context.Context, r draft.Request) (draf
 	return m.Complete(ctx, r)
 }
 
+// splitList splits a comma- or space-separated list, dropping blanks.
 func splitList(s string) []string {
 	var out []string
 	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {

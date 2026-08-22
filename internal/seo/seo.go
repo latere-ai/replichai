@@ -219,7 +219,13 @@ func WriteShell(w http.ResponseWriter, r *http.Request, index []byte) {
 	if status != http.StatusOK {
 		w.WriteHeader(status)
 	}
-	_, _ = w.Write(Describe(index, page, described))
+	// G705: this response is HTML on purpose — it is the app shell. Safety comes
+	// from escaping, not from the content type: `index` is the frontend build
+	// embedded at compile time (internal/spa) and never anything a request
+	// carried, and every value Page.Head interpolates goes through
+	// html.EscapeString, with the JSON-LD document written by json.Marshal,
+	// which escapes `<`, `>` and `&` so a title cannot close the script.
+	_, _ = w.Write(Describe(index, page, described)) //nolint:gosec // G705: the shell is build-time bytes and every interpolated value is escaped in Page.Head.
 }
 
 // Describe substitutes the head region for a page the router resolved. A page
