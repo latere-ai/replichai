@@ -37,7 +37,7 @@ func resultWithFiles(t *testing.T, files map[string]string) audit.Result {
 	}
 }
 
-func planFrom(t *testing.T, files map[string]string) PublishPlan {
+func planFrom(t *testing.T, files map[string]string) Plan {
 	t.Helper()
 	plan, err := PlanPublication(resultWithFiles(t, files), pleasQLarify(), "a3f9")
 	if err != nil {
