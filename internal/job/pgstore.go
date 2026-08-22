@@ -87,6 +87,33 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 // jobColumns is the column list every read selects, in scan order.
 const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier`
 
+// encodeStatus serialises a run status for the status column.
+//
+// The error is surfaced rather than dropped because json.Marshal returns nil
+// bytes when it fails: writing that would put a NULL over the row's usage, and
+// a session's cost is derived from it, so the charge would silently disappear.
+// The field that can refuse to encode is Status.SessionRef, a json.RawMessage
+// holding whatever the caller put there.
+func encodeStatus(status provider.RunStatus) ([]byte, error) {
+	raw, err := json.Marshal(status)
+	if err != nil {
+		return nil, fmt.Errorf("encode status: %w", err)
+	}
+	return raw, nil
+}
+
+// encodePhaseAt serialises the phase timeline for the phase_at column. Same
+// reasoning as encodeStatus: time.Time refuses to encode a year outside
+// [0,9999], and the clock behind these timestamps is injectable, so a bad one
+// must fail the write rather than erase when each phase was entered.
+func encodePhaseAt(phaseAt map[Phase]time.Time) ([]byte, error) {
+	raw, err := json.Marshal(phaseAt)
+	if err != nil {
+		return nil, fmt.Errorf("encode phase_at: %w", err)
+	}
+	return raw, nil
+}
+
 // scanJob reads one row in jobColumns order.
 func scanJob(row pgx.Row) (Job, error) {
 	var (
@@ -140,8 +167,14 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 		return Job{}, err
 	}
 	now := s.clock()
-	status, _ := json.Marshal(provider.RunStatus{})
-	phaseAt, _ := json.Marshal(map[Phase]time.Time{PhaseSubmitted: now})
+	status, err := encodeStatus(provider.RunStatus{})
+	if err != nil {
+		return Job{}, err
+	}
+	phaseAt, err := encodePhaseAt(map[Phase]time.Time{PhaseSubmitted: now})
+	if err != nil {
+		return Job{}, err
+	}
 	card, err := s.snapshot(ctx)
 	if err != nil {
 		return Job{}, err
@@ -260,8 +293,14 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 		}
 		j.PhaseAt[to] = now
 
-		status, _ := json.Marshal(j.Status)
-		phaseAt, _ := json.Marshal(j.PhaseAt)
+		status, err := encodeStatus(j.Status)
+		if err != nil {
+			return err
+		}
+		phaseAt, err := encodePhaseAt(j.PhaseAt)
+		if err != nil {
+			return err
+		}
 		if _, err = tx.Exec(ctx, `
 			UPDATE jobs SET phase=$2, ref=$3, project_id=$4, repo_name=$5, error=$6,
 				status=$7, updated_at=$8, phase_at=$9
@@ -278,7 +317,10 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 
 // Observe records the latest status without a phase change.
 func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunStatus) error {
-	raw, _ := json.Marshal(status)
+	raw, err := encodeStatus(status)
+	if err != nil {
+		return err
+	}
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE jobs SET
 			status = $2,
