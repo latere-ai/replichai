@@ -5,8 +5,8 @@ go 1.27.0
 require (
 	github.com/anthropics/anthropic-sdk-go v1.59.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/stripe/stripe-go/v82 v82.5.1
 	golang.org/x/oauth2 v0.36.0
+	latere.ai/x/pay v0.1.0
 	latere.ai/x/pkg v0.39.0
 )
 
@@ -26,6 +26,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
+	github.com/stripe/stripe-go/v85 v85.2.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

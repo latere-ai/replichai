@@ -20,12 +20,13 @@ import (
 	"github.com/latere-ai/replichai/internal/draft"
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/paper"
-	"github.com/latere-ai/replichai/internal/payment"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/seo"
+
+	"latere.ai/x/pay"
 )
 
 // TopupPolicy supplies the purchase spread and floor the checkout route applies
@@ -291,7 +292,7 @@ type Deps struct {
 	// Payments opens a hosted checkout and verifies its webhook (022b). Nil
 	// leaves the checkout route reporting payments_unconfigured — a deployment
 	// that does not sell credits still runs.
-	Payments payment.Provider
+	Payments pay.Provider
 	// Platform supplies the purchase spread and floor. Nil leaves the checkout
 	// route and the wallet quote at zero, which an offline run wants.
 	Platform TopupPolicy
@@ -337,7 +338,7 @@ type Router struct {
 	notifier    Notifier
 	credits     credit.Store
 	reserve     credit.Reserve
-	payments    payment.Provider
+	payments    pay.Provider
 	policy      TopupPolicy
 	baseURL     string
 	sseInterval time.Duration
