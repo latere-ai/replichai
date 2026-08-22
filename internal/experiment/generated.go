@@ -95,7 +95,7 @@ func (g Generated) Collect(_ context.Context, decl instrument.Instrument) (Cohor
 		return CohortData{}, err
 	}
 
-	for row := 0; row < n; row++ {
+	for row := range n {
 		group := groupControl
 		if row%2 == 1 {
 			group = groupTreatment

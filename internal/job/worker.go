@@ -261,7 +261,7 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 	go w.sweep(ctx)
 	go w.heartbeat(ctx)
 	done := make(chan struct{})
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			defer func() { done <- struct{}{} }()
 			for ctx.Err() == nil {
@@ -277,7 +277,7 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 			}
 		}()
 	}
-	for i := 0; i < workers; i++ {
+	for range workers {
 		<-done
 	}
 }

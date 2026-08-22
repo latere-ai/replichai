@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -104,7 +103,7 @@ func (rt *Router) archiveSession(r *http.Request, zw *zip.Writer, s job.Job, not
 		notes.fail(s, fmt.Sprintf("could not list %s: %v", repo, err))
 		return
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 	written := 0
 	for _, path := range files {
 		raw, err := rt.repro.Artifact(r.Context(), repo, path)

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1669,7 +1669,7 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 		}
 		out = append(out, v)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].ModifiedAt.After(out[j].ModifiedAt) })
+	slices.SortStableFunc(out, func(a, b ProjectView) int { return b.ModifiedAt.Compare(a.ModifiedAt) })
 	return out, nil
 }
 
@@ -2374,11 +2374,14 @@ func (rt *Router) listTrash(w http.ResponseWriter, r *http.Request) {
 	// list shows. This screen shows the deleted time, so it sorts on that: a
 	// project trashed today belongs at the top however long ago it was last
 	// worked in.
-	sort.SliceStable(views, func(i, j int) bool {
-		if views[i].DeletedAt == nil || views[j].DeletedAt == nil {
-			return views[j].DeletedAt == nil
+	slices.SortStableFunc(views, func(a, b ProjectView) int {
+		if a.DeletedAt == nil || b.DeletedAt == nil {
+			if b.DeletedAt == nil {
+				return -1
+			}
+			return 1
 		}
-		return views[i].DeletedAt.After(*views[j].DeletedAt)
+		return b.DeletedAt.Compare(*a.DeletedAt)
 	})
 	writeJSON(w, http.StatusOK, views)
 }
@@ -2930,7 +2933,7 @@ func (rt *Router) listSessionArtifacts(w http.ResponseWriter, r *http.Request) {
 	if files == nil {
 		files = []string{}
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 	writeJSON(w, http.StatusOK, map[string][]string{"files": files})
 }
 

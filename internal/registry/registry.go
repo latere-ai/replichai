@@ -11,7 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -139,8 +139,8 @@ func (r *Registry) load(ctx context.Context) (*snapshot, error) {
 	}
 	for key := range snap.byKey {
 		recs := snap.byKey[key]
-		sort.SliceStable(recs, func(i, j int) bool {
-			return recs[i].manifest.Reproduction.Created.Before(recs[j].manifest.Reproduction.Created)
+		slices.SortStableFunc(recs, func(a, b record) int {
+			return a.manifest.Reproduction.Created.Compare(b.manifest.Reproduction.Created)
 		})
 	}
 	r.snap = snap

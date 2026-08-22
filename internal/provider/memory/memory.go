@@ -7,7 +7,8 @@ package memory
 import (
 	"context"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/latere-ai/replichai/internal/provider"
@@ -163,11 +164,7 @@ func (p *Provider) ListArtifacts(ctx context.Context, h provider.RunHandle) ([]p
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	paths := make([]string, 0, len(p.Files))
-	for path := range p.Files {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
+	paths := slices.Sorted(maps.Keys(p.Files))
 	arts := make([]provider.Artifact, 0, len(paths))
 	for i, path := range paths {
 		arts = append(arts, provider.Artifact{ID: fmt.Sprintf("artifact-%d", i+1), Path: path})
