@@ -1,6 +1,6 @@
 # 044b — The server harvests what the session produced
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** the server `Retain` hook commits the session's output files into the mounted repository, through `VerifyTree`. One new function in `internal/publish`, one hook change in `cmd/server/runner.go`.
 

@@ -1,6 +1,6 @@
 # 044c — A lease says the driver is alive, not that something changed
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** `Store.Touch`, a worker heartbeat over the jobs it drives, yielding a lease it has lost, and a fast-forward retry in `github.CommitFiles`.
 

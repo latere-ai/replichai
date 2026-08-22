@@ -1,6 +1,6 @@
 # 044d — An empty repository says so
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** `FinalizeLive` distinguishes a reproduction with unreadable findings from a repository with no reproduction in it, and both the manifest and `UNVERIFIED.md` say which.
 
