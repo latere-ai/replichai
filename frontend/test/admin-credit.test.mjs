@@ -95,12 +95,12 @@ try {
     const card = document.querySelector('[data-test="save-policy"]')?.closest('.card')
     if (!card) return null
     const btn = card.querySelector('[data-test="save-policy"]')
-    const rows = [...card.querySelectorAll('.field-row')]
+    const rows = [...card.querySelectorAll('.policy-row')]
     const bottom = (el) => el.getBoundingClientRect().bottom
     return {
       fields: rows.length,
       belowEveryField: rows.every((r) => btn.getBoundingClientRect().top >= bottom(r) - 1),
-      // Nothing may sit inside a field row with it: that is what made it read
+      // Nothing may sit inside a policy row with it: that is what made it read
       // as one field's control.
       insideAField: rows.some((r) => r.contains(btn)),
       last: card.querySelectorAll('button, a').length > 0 && [...card.querySelectorAll('button')].pop() === btn,
