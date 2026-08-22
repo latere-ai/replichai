@@ -35,6 +35,14 @@ type Rates struct {
 	Free bool `json:"free,omitempty"`
 }
 
+// MeterRate prices one non-token meter — a container second, a hosted tool
+// call — in the same micro-USD per million units the token rates use, so the
+// whole bill still comes out of one division.
+//
+// A meter the card holds no entry for is unpriced rather than free:
+// Rates.PriceManaged refuses usage that reports it, because a runtime billing
+// on a meter nobody put on the card is a card that is out of date, not a
+// session that costs nothing.
 type MeterRate struct {
 	Meter managed.Meter `json:"meter"`
 	Rate  int64         `json:"rate"`
@@ -152,9 +160,9 @@ type Card struct {
 // the dearest rates on the card — five times its real price, on the tier chosen
 // for being cheap. Anything else is charged at the dearest rates, class by
 // class: never at zero, which would make a vendor's new model id free compute,
-// and never by refusing to start, which would make it an outage. The synthesized
-// entry keeps the requested model's name, so a snapshot records what was asked
-// for and the amount records what it was charged as.
+// and never by refusing to start, which would make it an outage. The
+// synthesised entry keeps the requested model's name, so a snapshot records
+// what was asked for and the amount records what it was charged as.
 //
 // An empty card cannot price anything and is ErrNoRates. That is fail-closed on
 // purpose: tokens nobody can price are not free tokens.
@@ -162,6 +170,13 @@ func (c Card) For(model string) (Rates, error) {
 	return c.ForRef(managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(model)})
 }
 
+// ForRef is For over a provider-qualified model, and the form the pricing path
+// works in; For is the bare-id convenience that assumes Anthropic.
+//
+// The fail-expensive fallback draws only on entries sharing the model's provider
+// and billing variant, so one provider's prices can never stand in for
+// another's, and a card holding nothing comparable is ErrNoRates rather than a
+// dearest-of-everything guess.
 func (c Card) ForRef(model managed.ModelRef) (Rates, error) {
 	if hit, ok := c.PricedRef(model); ok {
 		return hit, nil
@@ -214,6 +229,10 @@ func (c Card) Priced(model string) (Rates, bool) {
 	return c.PricedRef(managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(model)})
 }
 
+// PricedRef is Priced over a provider-qualified model: the exact-or-dated-
+// snapshot lookup, with no fallback. A ref that does not name a model is not
+// priced, and an exact match is preferred over a snapshot however the entries
+// happen to be ordered.
 func (c Card) PricedRef(model managed.ModelRef) (Rates, bool) {
 	if !model.Valid() {
 		return Rates{}, false

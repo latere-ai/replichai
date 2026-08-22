@@ -189,8 +189,8 @@ type Entry struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Actor for entries the system writes rather than a person: a hold taken at
-// enqueue, and the release and charge that settle it.
+// ActorSystem is the actor recorded on entries the system writes rather than a
+// person: a hold taken at enqueue, and the release and charge that settle it.
 const ActorSystem = "system"
 
 // Authority answers what a caller may do platform-wide. Satisfied by
