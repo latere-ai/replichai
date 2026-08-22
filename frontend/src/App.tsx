@@ -96,7 +96,7 @@ import {
   type Transcript,
   type Usage,
 } from './api'
-import { type I18n, useI18n } from './i18n'
+import { type I18n, type TKey, useI18n } from './i18n'
 import {
   createOutcome,
   creditMoveErrLabel,
@@ -140,7 +140,7 @@ import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTa
 import { useHead } from './head'
 import { citationBits, gradeable, groupByPaper, listCitation, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
-import { useTheme, type ThemeMode } from './theme'
+import { THEME_MODES, useTheme, type ThemeMode } from './theme'
 import { absoluteTime, elapsed, relativeTime } from './when'
 import { useDrawer, useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
@@ -217,16 +217,22 @@ export default function App() {
   return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
 }
 
+// How each appearance is drawn. THEME_MODES fixes which ones exist and in what
+// order; this fixes what they look like, so adding a fourth is a type error here
+// until somebody answers it. Keeping the list in one place is the point: it used
+// to be written out again here, and the two could drift.
+const THEME_FACE: Record<ThemeMode, { icon: IconName; label: TKey; hint: TKey }> = {
+  auto: { icon: 'monitor', label: 'themeAuto', hint: 'themeAutoHint' },
+  light: { icon: 'sun', label: 'themeLight', hint: 'themeLight' },
+  dark: { icon: 'moon', label: 'themeDark', hint: 'themeDark' },
+}
+
 // ThemeSwitcher offers the three appearances directly rather than cycling
 // through them: "auto" is a real choice, not the absence of one, and a person
 // who has pinned light should be able to see that they have.
 function ThemeSwitcher({ i18n, theme, compact }: { i18n: I18n; theme: ReturnType<typeof useTheme>; compact?: boolean }) {
   const { t } = i18n
-  const options: { value: ThemeMode; label: string; icon: IconName; hint: string }[] = [
-    { value: 'auto', label: t('themeAuto'), icon: 'monitor', hint: t('themeAutoHint') },
-    { value: 'light', label: t('themeLight'), icon: 'sun', hint: t('themeLight') },
-    { value: 'dark', label: t('themeDark'), icon: 'moon', hint: t('themeDark') },
-  ]
+  const options = THEME_MODES.map((value) => ({ value, icon: THEME_FACE[value].icon, label: t(THEME_FACE[value].label), hint: t(THEME_FACE[value].hint) }))
   return <Segmented value={theme.mode} options={options} onChange={theme.setMode} label={t('theme')} compact={compact} />
 }
 
