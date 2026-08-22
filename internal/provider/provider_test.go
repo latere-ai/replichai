@@ -2,7 +2,6 @@ package provider
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
 )
 
@@ -150,5 +149,3 @@ func TestArtifactRecognizesCompiledResidue(t *testing.T) {
 		}
 	}
 }
-
-var errSentinel = errors.New("sentinel")

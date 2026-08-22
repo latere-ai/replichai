@@ -1420,21 +1420,6 @@ func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, proj)
 }
 
-// enqueueErrorCode maps an Enqueue failure to the machine-readable code the
-// per-paper session result carries.
-func enqueueErrorCode(err error) string {
-	switch {
-	case errors.Is(err, job.ErrActiveSession):
-		return "active_session"
-	case errors.Is(err, job.ErrNoCredits):
-		return "no_credits"
-	case errors.Is(err, job.ErrEmptyRef):
-		return "missing_url"
-	default:
-		return "enqueue_failed"
-	}
-}
-
 // nonEmpty trims and drops blank entries, preserving order.
 func nonEmpty(in []string) []string {
 	out := make([]string, 0, len(in))

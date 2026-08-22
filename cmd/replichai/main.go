@@ -347,13 +347,6 @@ func shortDigest(d string) string {
 	return d
 }
 
-// finalize runs after the audit: verify what was committed, write the manifest,
-// and invite the collaborator.
-func (p *publisher) finalize(ctx context.Context, result audit.Result, events []provider.Event, invite string, stdout *os.File) error {
-	return finalizePublication(ctx, p.gh, p.owner, p.name, p.id,
-		result.MethodDigest, result.Grade(), events, invite, stdout)
-}
-
 // finalizePublication verifies the committed tree, writes replication.json,
 // commits the transcript, and invites the collaborator — the system-authored
 // attestation (verdict + evidence) beside the agent's work. It reads the
