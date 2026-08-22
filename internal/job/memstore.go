@@ -387,6 +387,23 @@ func (s *MemStore) Adopt(_ context.Context, id, worker string, ttl time.Duration
 	return true, nil
 }
 
+// Touch refreshes this worker's lease and reports whether it still holds it,
+// under the lock that is this store's whole concurrency story.
+func (s *MemStore) Touch(_ context.Context, id, worker string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok || j.Phase.Terminal() {
+		return false, nil
+	}
+	held, leased := s.leases[id]
+	if !leased || held.by != worker {
+		return false, nil
+	}
+	s.leases[id] = lease{by: worker, at: s.clock()}
+	return true, nil
+}
+
 // Advance moves a job through the one transition function, refusing anything the
 // state machine forbids.
 func (s *MemStore) Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error {

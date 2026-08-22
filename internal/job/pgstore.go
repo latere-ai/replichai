@@ -311,6 +311,20 @@ func (s *PGStore) Adopt(ctx context.Context, id, worker string, ttl time.Duratio
 	return tag.RowsAffected() == 1, nil
 }
 
+// Touch refreshes this worker's lease and reports whether it still holds it. The
+// whole decision is the WHERE clause: a row that went terminal, or one another
+// replica has adopted, matches nothing and reports held=false.
+func (s *PGStore) Touch(ctx context.Context, id, worker string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE jobs SET adopted_at=$3
+		WHERE id=$1 AND adopted_by=$2 AND phase NOT IN ('done','failed')`,
+		id, worker, s.clock())
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // ListByPrincipal returns a principal's jobs, newest first.
 func (s *PGStore) ListByPrincipal(ctx context.Context, principal string) ([]Job, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+

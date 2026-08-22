@@ -119,6 +119,17 @@ type Store interface {
 	// bounds how long a dead one keeps its run to itself, not how long a run may
 	// take.
 	Adopt(ctx context.Context, id, worker string, ttl time.Duration) (bool, error)
+	// Touch refreshes the lease worker holds on a job, and reports whether it
+	// still holds it. It is the driver saying *I am alive*, which is a different
+	// claim from Observe's *this changed*: a run that is thinking reports no new
+	// status for minutes at a time, and without a heartbeat that silence is
+	// indistinguishable from a dead process to a reconciling replica (044c).
+	//
+	// It never steals. Only a non-terminal row already adopted by this worker is
+	// refreshed, and adopted_by is not written — so held=false means the row went
+	// terminal or somebody else now owns it, and in both cases the caller must
+	// stop driving rather than race the new owner to the finish.
+	Touch(ctx context.Context, id, worker string) (held bool, err error)
 	// Advance moves a job to a new phase through the one transition function,
 	// applying mutate to set fields (the error on failure, the repo on
 	// publishing, the latest status). It refuses a transition the state machine
@@ -128,9 +139,9 @@ type Store interface {
 	// so a reader who connects mid-run sees where it is. Progress is not a
 	// transition.
 	//
-	// It also refreshes an existing lease. An observation is the driver saying it
-	// is still there, and it arrives on every poll, so the lease stays fresh for
-	// as long as the run does without a second heartbeat to keep in step. A job
+	// It also refreshes an existing lease, for the driver's own convenience. It is
+	// not what keeps a lease alive: an observation arrives only when something
+	// changed, so a quiet run makes none, and Touch is the heartbeat (044c). A job
 	// nobody has leased stays unleased.
 	Observe(ctx context.Context, id string, status provider.RunStatus) error
 	// Active returns the jobs that are not terminal, so a restart can find work
