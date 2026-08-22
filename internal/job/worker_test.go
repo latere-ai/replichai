@@ -30,7 +30,7 @@ type fakeRunner struct {
 	// A run that holds here is a quiet one: it reports nothing further, which is
 	// what a real agent does while it is thinking.
 	runExecute func(context.Context) error
-	onResume    func() // fires inside Resume; holds a rejoined run open while a test looks
+	onResume   func() // fires inside Resume; holds a rejoined run open while a test looks
 }
 
 func (f *fakeRunner) record(s string) {
