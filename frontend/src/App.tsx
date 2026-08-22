@@ -300,7 +300,7 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
   }
 
   return (
-    <div className="screen" style={{ maxWidth: 720, margin: '0 auto' }}>
+    <div className="screen measured form">
       <div className="screen-head">
         <a className="btn ghost" href="/">
           <Ico name="globe" size={13} /> <Wordmark />
@@ -1522,7 +1522,7 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
   }
 
   return (
-    <div className="screen">
+    <div className="screen measured form">
       <div className="submit-form">
         <div className="screen-head">
           <h1 className="screen-title">{t('newProject')}</h1>
@@ -1635,7 +1635,7 @@ function SettingsScreen({
     { k: 'profile', label: t('settingsProfile') },
   ]
   return (
-    <div className="screen">
+    <div className="screen measured form">
       <div className="screen-head">
         <h1 className="screen-title">{t('settings')}</h1>
       </div>
@@ -1646,7 +1646,7 @@ function SettingsScreen({
           </button>
         ))}
       </div>
-      <div className="stack" style={{ maxWidth: 520 }}>
+      <div className="stack">
         {cur === 'account' && <AccountCard i18n={i18n} me={me} theme={theme} />}
         {cur === 'profile' && <ProfileCard i18n={i18n} />}
       </div>
@@ -1877,13 +1877,13 @@ function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged:
   }
 
   return (
-    <div className="screen">
+    <div className="screen measured">
       <div className="screen-head">
         <h1 className="screen-title">{t('navAdmin')}</h1>
         <p className="screen-desc">{t('adminIntro')}</p>
       </div>
       {err && <p className="err small">{err}</p>}
-      <div className="stack" style={{ maxWidth: 720 }}>
+      <div className="stack">
         <PlatformPolicy i18n={i18n} settings={settings} onSave={(next) => run(() => setPlatformSettings(next))} />
         {solvency !== null && (
           <div className="card card-pad" data-tip={t('solvencyTitle')}>
@@ -1964,22 +1964,22 @@ function PlatformPolicy({
       <span className="eyebrow eyebrow-ico" style={{ color: 'var(--warn)' }}>
         <Ico name="wallet" size={12} /> {t('platformPolicy')}
       </span>
-      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('startReserveHint')}
-      </p>
-      <div className="field-row">
-        <label className="admin-label" htmlFor="start-reserve">
-          {t('startReserve')}
-        </label>
+      <div className="policy-row">
+        <div className="policy-copy">
+          <label className="admin-label" htmlFor="start-reserve">
+            {t('startReserve')}
+          </label>
+          <p className="policy-hint">{t('startReserveHint')}</p>
+        </div>
         <NumberField id="start-reserve" value={reserve} onChange={setReserve} min={0} ariaLabel={t('startReserve')} />
       </div>
-      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('overdraftHint')}
-      </p>
-      <div className="field-row">
-        <label className="admin-label" htmlFor="overdraft-cap">
-          {t('overdraftCap')}
-        </label>
+      <div className="policy-row">
+        <div className="policy-copy">
+          <label className="admin-label" htmlFor="overdraft-cap">
+            {t('overdraftCap')}
+          </label>
+          <p className="policy-hint">{t('overdraftHint')}</p>
+        </div>
         <NumberField id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
       </div>
       {/* Which model writes a project's description (039). Three fields and no
@@ -1987,13 +1987,13 @@ function PlatformPolicy({
           because a settings row is read by every admin and lands in every
           backup. The model id must also appear in the rate card below, or the
           deployment refuses to draft rather than guessing a price. */}
-      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('draftModelHint')}
-      </p>
-      <div className="field-row">
-        <label className="admin-label" htmlFor="draft-provider">
-          {t('draftProvider')}
-        </label>
+      <div className="policy-row">
+        <div className="policy-copy">
+          <label className="admin-label" htmlFor="draft-provider">
+            {t('draftProvider')}
+          </label>
+          <p className="policy-hint">{t('draftModelHint')}</p>
+        </div>
         <Select
           value={provider}
           options={[
@@ -2008,14 +2008,16 @@ function PlatformPolicy({
       </div>
       {provider !== '' && (
         <>
-          <div className="field-row">
-            <label className="admin-label" htmlFor="draft-model">
-              {t('draftModel')}
-            </label>
+          <div className="policy-row">
+            <div className="policy-copy">
+              <label className="admin-label" htmlFor="draft-model">
+                {t('draftModel')}
+              </label>
+              {provider === 'anthropic' && <p className="policy-hint">{t('draftUsesAgentKey')}</p>}
+            </div>
             <input
               id="draft-model"
-              className="text"
-              style={{ flex: 1 }}
+              className="text policy-input"
               value={model}
               placeholder={t('draftModelPlaceholder')}
               onChange={(e) => setModel(e.target.value)}
@@ -2026,14 +2028,19 @@ function PlatformPolicy({
               one this deployment already runs its sessions on, so choosing it
               is a model id and nothing else. */}
           {provider !== 'anthropic' && (
-            <div className="field-row">
-              <label className="admin-label" htmlFor="draft-base-url">
-                {t('draftBaseURL')}
-              </label>
+            <div className="policy-row">
+              <div className="policy-copy">
+                <label className="admin-label" htmlFor="draft-base-url">
+                  {t('draftBaseURL')}
+                </label>
+                {/* The key note belongs to the vendor's own address, not to the
+                    model id: it is the row that says this is somebody else's
+                    endpoint. */}
+                <p className="policy-hint">{t('draftNeedsOwnKey')}</p>
+              </div>
               <input
                 id="draft-base-url"
-                className="text"
-                style={{ flex: 1 }}
+                className="text policy-input"
                 value={baseURL}
                 placeholder={t('draftBaseURLPlaceholder')}
                 onChange={(e) => setBaseURL(e.target.value)}
@@ -2041,9 +2048,6 @@ function PlatformPolicy({
               />
             </div>
           )}
-          <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-            {provider === 'anthropic' ? t('draftUsesAgentKey') : t('draftNeedsOwnKey')}
-          </p>
         </>
       )}
       {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
@@ -3536,12 +3540,12 @@ function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; re
   const credits = me.credits
   const balance = credits ? credits.wallet : 0
   return (
-    <div className="screen">
+    <div className="screen measured">
       <div className="screen-head">
         <h1 className="screen-title">{t('walletHeading')}</h1>
         <p className="screen-desc">{t('walletDesc')}</p>
       </div>
-      <div className="stack" style={{ maxWidth: 560 }}>
+      <div className="stack">
         <div className="card card-pad">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <div>
@@ -3596,11 +3600,14 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
         <div className="muted small">{t('statementEmpty')}</div>
       ) : (
         <>
-          <div className="usage-rows" style={{ maxHeight: 380, overflowY: 'auto' }}>
+          {/* No scroll region inside the page's own scroll: the server caps
+              what it returns, so the list has an end and the page can hold it.
+              A box that scrolled at 380px hid the history it exists to show. */}
+          <div className="usage-rows">
             {entries.map((e) => {
               const label = ledgerLabel(t, e)
               return (
-                <div className="usage-line" key={e.id}>
+                <div className="usage-line ledger" key={e.id}>
                   <span className="muted small">
                     {label.kind === 'plain' ? (
                       label.text
@@ -3617,8 +3624,8 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
                       </>
                     )}
                   </span>
+                  <span className="muted small ledger-when">{new Date(e.created_at).toLocaleDateString()}</span>
                   <span className="v">
-                    <span className="muted small">{new Date(e.created_at).toLocaleDateString()}</span>
                     <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
                   </span>
                 </div>

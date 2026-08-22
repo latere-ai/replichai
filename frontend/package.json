@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "bun test src",
-    "test:browser": "node test/transcript-layout.test.mjs && node test/tooltip.test.mjs && node test/routing.test.mjs && node test/sidebar.test.mjs && node test/card-stack.test.mjs && node test/session-stop.test.mjs && node test/admin-credit.test.mjs && node test/landing.test.mjs && node test/public-shell.test.mjs && node test/projects-list.test.mjs && node test/trash.test.mjs && node test/findings.test.mjs && node test/credits-card.test.mjs && node test/mobile.test.mjs && node test/model-tier.test.mjs && node test/publish-blockers.test.mjs && node test/session-delete.test.mjs && node test/paper-move.test.mjs && node test/paper-record.test.mjs && node test/description.test.mjs",
+    "test:browser": "node test/transcript-layout.test.mjs && node test/tooltip.test.mjs && node test/routing.test.mjs && node test/sidebar.test.mjs && node test/card-stack.test.mjs && node test/session-stop.test.mjs && node test/admin-credit.test.mjs && node test/landing.test.mjs && node test/public-shell.test.mjs && node test/projects-list.test.mjs && node test/trash.test.mjs && node test/findings.test.mjs && node test/credits-card.test.mjs && node test/mobile.test.mjs && node test/model-tier.test.mjs && node test/publish-blockers.test.mjs && node test/session-delete.test.mjs && node test/paper-move.test.mjs && node test/paper-record.test.mjs && node test/description.test.mjs && node test/page-measure.test.mjs",
     "brand": "node scripts/brand.mjs"
   },
   "dependencies": {

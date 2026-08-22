@@ -873,6 +873,28 @@ h1.screen-title {
   font-size: 15px;
 }
 
+/* ── Page measure ── */
+/* A screen that holds one column of cards used to pin that column to the left
+   edge and cap it narrow, so most of a wide display was empty and the content
+   that did fit was cramped — a statement's project titles wrapped over three
+   lines beside 900px of nothing. The column is centred and given a real width
+   here, once, so every single-column screen shares the same measure instead of
+   each carrying its own inline cap. Wide screens read their content; the ones
+   that hold a form keep a narrower measure, because a text field stretched to
+   1000px is worse than one at 700. */
+/* The measure is on the children, not on the scroll container: capping
+   .screen itself would pull its scrollbar in to the column's edge and leave it
+   floating in the middle of the panel on any platform that reserves space for
+   one. */
+.screen.measured > * {
+  max-width: var(--measure, 960px);
+  margin-inline: auto;
+  width: 100%;
+}
+.screen.measured.form {
+  --measure: 760px;
+}
+
 /* ── Stat cards ── */
 /* The boundary band (034). Two cards where three counters were: the one number
    the product exists to produce, decomposed, and what the money buys. */
@@ -1820,6 +1842,58 @@ input.text.title-input {
   align-self: center;
   flex: 1;
 }
+
+/* A policy setting is a control and the paragraph that explains it. Stacked,
+   every paragraph ran the card's full width and pushed the next control a
+   screen further down; beside its control the same words use width the card
+   already had, and the whole policy is readable in one view. */
+.policy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 28px;
+  align-items: center;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+.policy-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.policy-copy .admin-label {
+  flex: none;
+  /* .admin-label centres itself for the flex row it was written for; in this
+     column that would centre the name over its own explanation. */
+  align-self: start;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.policy-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fg-2);
+  max-width: 76ch;
+}
+.policy-row > :not(.policy-copy) {
+  justify-self: end;
+}
+.policy-input.text {
+  width: 300px;
+  max-width: 100%;
+}
+/* Narrow: the control drops under its explanation rather than squeezing it.
+   900px, not 760: the rail is still in flow at 820, so the card itself is
+   already too narrow for two columns while the viewport looks wide. */
+@media (max-width: 900px) {
+  .policy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .policy-row > :not(.policy-copy) {
+    justify-self: start;
+  }
+}
 input.text.amount-input {
   width: 88px;
   flex: none;
@@ -1912,7 +1986,6 @@ textarea::placeholder {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-width: 720px;
 }
 .submit-input-row {
   display: flex;
@@ -2758,6 +2831,26 @@ input.submit-input {
 }
 .usage-line svg {
   flex: none;
+}
+
+/* A statement line is three facts — what moved, when, and how much — and the
+   wallet is now wide enough to give each of them a column. Packed into one
+   flex row against a 560px cap, the "what" wrapped over three lines while the
+   date and the amount were crushed together on the right. */
+.usage-line.ledger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  gap: 0 20px;
+  align-items: baseline;
+}
+.usage-line.ledger .ledger-when {
+  justify-self: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.usage-line.ledger .v {
+  margin-left: 0;
+  justify-self: end;
 }
 /* The token-usage rows are a breakdown, so each gets the swatch of the slice it
    names — the same colours the totals are read against. */
