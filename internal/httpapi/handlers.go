@@ -258,7 +258,7 @@ func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 	added := PaperResult{Ref: body.URL, Key: key}
 	// No placeholder: adding a paper to a project that already exists fills in
 	// that paper's title and never touches the project's own name.
-	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, "", []PaperResult{added}) })
+	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, "", []PaperResult{added}) }) //nolint:contextcheck // background hands the closure a fresh context on purpose: r.Context() is cancelled when this response is written, which is when the enrichment starts.
 	writeJSON(w, http.StatusCreated, added)
 }
 
@@ -999,7 +999,7 @@ func defaultTitle(url string) string { return strings.TrimSpace(url) }
 // resolvePaper previews a reference against the source (006j): it returns the
 // resolved identity so the New-project screen shows the real title before
 // anything is created. A bad reference is a 400; an unreachable source is a 502,
-// kept distinct so the UI can say "couldn't reach the source."
+// kept distinct so the UI can say "couldn't reach the source".
 func (rt *Router) resolvePaper(w http.ResponseWriter, r *http.Request) {
 	if rt.resolver == nil {
 		writeError(w, http.StatusNotImplemented, "resolve_unavailable")
@@ -1100,7 +1100,7 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	}
 	// Titles land after the answer: a create must not wait on somebody else's
 	// web server, and the papers are already recorded without them.
-	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, placeholder, results) })
+	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, placeholder, results) }) //nolint:contextcheck // background hands the closure a fresh context on purpose: r.Context() is cancelled when this response is written, which is when the enrichment starts.
 
 	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
 
@@ -1460,14 +1460,14 @@ func nonEmpty(in []string) []string {
 	return out
 }
 
-// ProjectView is a project in a list, carrying a session summary so the list
-// shows status (how many sessions, how many running, the newest phase) at a
-// glance without a per-project read on the client.
 // SpendWindowDays is how far back the projects screen's spend tile looks. A
 // window needs a stated edge or the number means nothing; thirty days is the
 // one the tile is labelled with, so the two cannot drift.
 const SpendWindowDays = 30
 
+// ProjectView is a project in a list, carrying a session summary so the list
+// shows status (how many sessions, how many running, the newest phase) at a
+// glance without a per-project read on the client.
 type ProjectView struct {
 	project.Project
 	SessionCount int `json:"session_count"`
@@ -2102,15 +2102,15 @@ func (rt *Router) signerIsPublic(ctx context.Context, principal string) bool {
 type BlockReason string
 
 const (
-	// BlockUnfinished: the session has a repository but no manifest. The run
+	// BlockUnfinished means the session has a repository but no manifest. The run
 	// never finalized — it failed, was cancelled, or is still going. Nothing is
 	// wrong with its content; there is no content yet.
 	BlockUnfinished BlockReason = "unfinished"
-	// BlockUnreadable: the manifest could not be read at all. A forge that did
-	// not answer is our problem, not the owner's, and it is temporary.
+	// BlockUnreadable means the manifest could not be read at all. A forge that
+	// did not answer is our problem, not the owner's, and it is temporary.
 	BlockUnreadable BlockReason = "unreadable"
-	// BlockNotClear: the manifest was read and 002's redistribution review is not
-	// clear. The only reason that is genuinely about what the reproduction
+	// BlockNotClear means the manifest was read and 002's redistribution review
+	// is not clear. The only reason that is genuinely about what the reproduction
 	// contains; PublishBlocker.Review carries which review state it was.
 	BlockNotClear BlockReason = "not_clear"
 )
@@ -3000,22 +3000,48 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 	// Serve images with a real image type so the browser renders them; serve
 	// everything else as plain text (never text/html — a committed .html must not
 	// execute on our origin). nosniff stops the browser from re-sniffing it.
+	//
+	// The content type is not enough on its own. An SVG is a document, not just a
+	// picture: opened directly in a tab it runs whatever <script> it carries, on
+	// this origin, against whoever opened the link — and nosniff cannot help,
+	// because image/svg+xml is what we declared, not what was guessed. These
+	// bytes are an agent's commit in a repository, so they are as untrusted as
+	// the markdown the client already scrubs. The sandbox directive answers it:
+	// with no allow-scripts the document cannot execute, and with no
+	// allow-same-origin it lands in an opaque origin with no access to ours.
+	// default-src 'none' stops it fetching anything of its own — including its
+	// stylesheets, so an SVG opened directly renders unstyled. That is the
+	// hostile path, not the one the app uses, and it is the right trade.
+	//
+	// The header goes on every artifact response rather than on the svg branch,
+	// so a type added to artifactContentType later inherits the guard instead of
+	// having to remember it. It does not affect the app's own rendering: a
+	// response CSP is not applied as a document policy when the bytes arrive
+	// through <img src>, which is how the client shows a committed image.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Type", artifactContentType(path))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(raw)
+	// G705: repoRelative has already refused anything that could leave the one
+	// repository, and the response is typed, nosniffed and sandboxed above, so
+	// these bytes cannot execute as a document on this origin.
+	_, _ = w.Write(raw) //nolint:gosec // G705: the response is sandboxed by CSP and never typed text/html, so committed bytes cannot script this origin.
 }
 
 // repoRelative reports whether a path names a file inside a repository and
 // nothing else.
 //
 // It is deliberately strict rather than clever: no absolute path, no `.` or `..`
-// segment, no backslash, and no percent sign. The last one is what stops a
-// double-encoded `%252e%252e` — the query decoder unescapes once, so a surviving
-// `%2e%2e` would be handed on and decoded again by whoever reads it. A committed
+// segment, no backslash, no percent sign, and no `?` or `#`. The percent is what
+// stops a double-encoded `%252e%252e` — the query decoder unescapes once, so a
+// surviving `%2e%2e` would be handed on and decoded again by whoever reads it.
+// The `?` and `#` are there because the reader pastes this string into a forge
+// URL: a `?` would start a query on the contents API, where `ref` picks which
+// branch or commit to read, and a `#` would truncate the URL to the repository
+// root. Neither is a character in a committed filename. A committed
 // artifact with a percent in its name is not worth the ambiguity.
 func repoRelative(p string) bool {
-	if p == "" || strings.HasPrefix(p, "/") || strings.ContainsAny(p, `\%`) {
+	if p == "" || strings.HasPrefix(p, "/") || strings.ContainsAny(p, `\%?#`) {
 		return false
 	}
 	for seg := range strings.SplitSeq(p, "/") {
