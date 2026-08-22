@@ -129,6 +129,7 @@ internal/profile/    the researcher identity a public sign-off is published unde
 internal/notify/     what the platform says to somebody who is not looking at it
 internal/draft/      one short model call, for drafting a project description
 internal/httpapi/    the HTTP surface: submit, stream, read, publish, pay
+internal/seo/        the head the server writes, the sitemap, and the addresses Go knows
 internal/spa/        embeds and serves the built frontend
 frontend/            the researcher UI — bun + React + Vite
 method/              the audit itself — instructions, rubric, task template (data, not code)
