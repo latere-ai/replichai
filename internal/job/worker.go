@@ -349,6 +349,12 @@ func (w *Worker) heartbeat(ctx context.Context) {
 // is what keeps a wrongful adoption from becoming two drivers racing to publish.
 // A store error is left alone — the next tick is soon, and a transient database
 // blip must not cancel a healthy run.
+//
+// A row that went terminal reports the same held=false and means something
+// else entirely: a run that just finished, in the moment between its own final
+// transition and the driver deregistering. That is every successful run, so it
+// is passed over silently — logging it would put "yielding session X" in the log
+// after each success, and the one time that line matters is during an incident.
 func (w *Worker) beat(ctx context.Context) {
 	for _, id := range w.drivingIDs() {
 		held, err := w.store.Touch(ctx, id, w.id)
@@ -356,10 +362,14 @@ func (w *Worker) beat(ctx context.Context) {
 			log.Printf("worker: heartbeat %s: %v", id, err)
 			continue
 		}
-		if !held {
-			log.Printf("worker: yielding session %s: its lease is held elsewhere", id)
-			w.interrupt(id)
+		if held {
+			continue
 		}
+		if j, err := w.store.Get(ctx, id); err == nil && j.Phase.Terminal() {
+			continue // finished under us; drive is already unwinding
+		}
+		log.Printf("worker: yielding session %s: its lease is held elsewhere", id)
+		w.interrupt(id)
 	}
 }
 

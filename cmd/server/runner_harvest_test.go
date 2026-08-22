@@ -100,6 +100,12 @@ func TestRetainHarvestsARunThatNeverPushed(t *testing.T) {
 	if m.Findings == nil || !m.Findings.Present {
 		t.Errorf("manifest findings = %+v, want present", m.Findings)
 	}
+	// The ordering 044b and 044d share: finalize reads a tree the harvest has
+	// already contributed to, so a run recovered through the output directory is
+	// not then reported as having committed nothing.
+	if m.Findings == nil || !m.Findings.Reproduction {
+		t.Errorf("a recovered run was recorded as an empty repository: %+v", m.Findings)
+	}
 	if _, ok := forge.files[publish.UnverifiedFile]; ok {
 		t.Errorf("a recovered run wrote an UNVERIFIED note:\n%s", forge.files[publish.UnverifiedFile])
 	}

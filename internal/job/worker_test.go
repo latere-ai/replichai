@@ -1,8 +1,11 @@
 package job
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -772,5 +775,33 @@ func TestADriverYieldsASessionItHasLost(t *testing.T) {
 	case <-yielded:
 	case <-time.After(2 * time.Second):
 		t.Fatal("the driver kept running a session whose lease it had lost")
+	}
+}
+
+// A run that simply finished reports the same lost lease a stolen one does —
+// the row went terminal between its own last transition and the driver
+// deregistering, which is every successful run. It must not be announced as a
+// yield: the one time that line matters is during an incident.
+func TestAFinishedRunIsNotAnnouncedAsAYield(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-a")
+	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
+	_ = s.Advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = "over" })
+
+	w := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-a"))
+	// The job is still registered as driven here: the phase landed, the deferred
+	// deregistration has not run yet, and a tick falls in between.
+	_, done := w.track(ctx, j.ID)
+	defer done()
+	w.beat(ctx)
+
+	if strings.Contains(buf.String(), "yielding session") {
+		t.Errorf("a finished run was logged as a yield: %q", buf.String())
 	}
 }

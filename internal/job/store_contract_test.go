@@ -95,6 +95,15 @@ func runStoreContract(t *testing.T, s Store) {
 	if won, err := s.Adopt(ctx, claimed.ID, "pod-b", time.Minute); err != nil || won {
 		t.Fatalf("Adopt of a just-claimed job = %v/%v, want it refused", won, err)
 	}
+	// Claim names the driver, not just the moment. Almost every job in production
+	// arrives through Claim rather than Adopt, and the worker's heartbeat asks
+	// "do I still hold this?" by name — so a claim that recorded a timestamp and
+	// no holder would make every ordinary run report its lease lost and yield
+	// itself within a third of the ttl (044c). Adopt's own predicate cannot see
+	// the difference, which is why this is asserted here.
+	if held, err := s.Touch(ctx, claimed.ID, "pod-a"); err != nil || !held {
+		t.Fatalf("Touch of a job this worker claimed = %v/%v, want it held", held, err)
+	}
 	// A driver says it is alive without saying anything changed. Observe fires
 	// only on a changed status, so a quiet run would otherwise let its lease go
 	// cold while it was working perfectly well, and a replica beside it would
