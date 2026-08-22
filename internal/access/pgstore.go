@@ -304,29 +304,6 @@ func scanGrants(rows pgx.Rows) ([]Grant, error) {
 	return out, rows.Err()
 }
 
-// LinkedAccount returns a principal's proven forge login.
-func (s *PGAccess) LinkedAccount(ctx context.Context, principalSub, forge string) (string, bool, error) {
-	var login string
-	err := s.pool.QueryRow(ctx,
-		`SELECT login FROM forge_links WHERE principal=$1 AND forge=$2`, principalSub, forge).Scan(&login)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-	return login, true, nil
-}
-
-// LinkAccount records a proven forge login against a principal.
-func (s *PGAccess) LinkAccount(ctx context.Context, principalSub, forge, login string) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO forge_links (principal, forge, login) VALUES ($1,$2,$3)
-		ON CONFLICT (principal, forge) DO UPDATE SET login=EXCLUDED.login`,
-		principalSub, forge, login)
-	return err
-}
-
 // upsert writes a grant's tier while preserving any binding, and clears any
 // revocation: granting is how an admin re-admits somebody, so the two cannot be
 // true of one row at once.
