@@ -637,3 +637,29 @@ func TestDefaultPackagesAreIndependentCopies(t *testing.T) {
 		t.Errorf("DefaultPackages leaked mutable state: %v", second)
 	}
 }
+
+// TestMountProtocolDemandsAPush pins the push as its own instruction with its
+// own consequence (044a). A run once read this protocol, committed five times
+// into the mount and pushed nothing, and every commit died with the sandbox —
+// because the push was a subordinate clause of the commit sentence. It must not
+// be edited back down into one.
+func TestMountProtocolDemandsAPush(t *testing.T) {
+	protocol := mountProtocol(DefaultMountPath)
+	for _, want := range []string{
+		`Run "git push" immediately after every commit`,
+		"discarded when this session ends",
+		"Committing is not publishing",
+		`"git status -sb"`,
+		"ahead of origin/main",
+	} {
+		if !strings.Contains(protocol, want) {
+			t.Errorf("mount protocol missing %q:\n%s", want, protocol)
+		}
+	}
+	// The push must not be buried in the sentence that asks for the commit.
+	for _, line := range strings.Split(protocol, "\n") {
+		if strings.Contains(line, "small, meaningful commits") && strings.Contains(line, "git push") {
+			t.Errorf("the push is back inside the commit instruction:\n%s", line)
+		}
+	}
+}
