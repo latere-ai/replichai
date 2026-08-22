@@ -11,7 +11,7 @@ package github
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // G505: git object ids are sha1 by protocol; this hash is compared against GitHub's own blob sha and nothing else.
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -305,7 +305,7 @@ func (c *Client) FileUnchanged(ctx context.Context, owner, name, path string, co
 // the same id GitHub reports for a file, so two can be compared without
 // downloading either.
 func gitBlobSHA(content []byte) string {
-	h := sha1.New()
+	h := sha1.New() //nolint:gosec // G401: git defines the blob id as sha1; the digest only decides whether a commit would be a no-op, and is never stored or trusted as evidence.
 	fmt.Fprintf(h, "blob %d\x00", len(content))
 	h.Write(content)
 	return hex.EncodeToString(h.Sum(nil))
