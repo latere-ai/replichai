@@ -1,7 +1,12 @@
 package runtimes
 
+// LookupEnv is the environment reader credential resolution goes through, so a
+// caller can pass the process environment or a fixed map in a test.
 type LookupEnv func(string) (string, bool)
 
+// ProviderCredentials holds the runtime-scoped credentials and endpoint
+// configuration read out of the environment. Every field belongs to exactly one runtime, so nothing here is a
+// generic credential another runtime could pick up.
 type ProviderCredentials struct {
 	AnthropicKey  string
 	AnthropicBase string
