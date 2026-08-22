@@ -47,9 +47,9 @@ replichai rates                             # what a session costs, per model
 replichai providers
 ```
 
-`REPLICHAI_RUNTIME` selects the managed execution runtime. Today the choices are
-`memory` and `anthropic-managed`; `PROVIDER=anthropic` and `REPLICHAI_API_KEY`
-remain deprecated transition aliases. Runtime credentials are namespaced so a
+`REPLICHAI_RUNTIME` selects the managed execution runtime, and `--runtime`
+overrides it per command. Today the choices are `memory` and
+`anthropic-managed`. Each runtime reads only the variables named for it, so a
 future OpenAI runtime can never receive an Anthropic key accidentally.
 
 The audit writes a reproduction repository into `runs/<paper>/`:
