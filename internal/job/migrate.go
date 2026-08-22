@@ -80,7 +80,7 @@ ALTER TABLE jobs ADD COLUMN tier TEXT NOT NULL DEFAULT '';
 `},
 	{7, `
 -- A session the owner threw away (032). Soft, like projects.deleted_at: the row
--- is what credit_entries.job_id points at, and deleting a session must not
+-- is what ledger_entries.grp points at, and deleting a session must not
 -- delete the record of what it cost.
 ALTER TABLE jobs ADD COLUMN deleted_at TIMESTAMPTZ;
 -- Every read that hides deleted sessions is scoped by project or by principal
