@@ -18,17 +18,11 @@ type MemStore struct {
 	clock    func() time.Time
 }
 
-// MemOption configures a MemStore.
-type MemOption func(*MemStore)
-
-// WithClock sets the time source, for deterministic tests.
-func WithClock(f func() time.Time) MemOption { return func(s *MemStore) { s.clock = f } }
-
 // NewMemStore builds an in-memory platform store seeded with the conservative
 // default. auth may be nil, in which case every caller is treated as an admin —
 // for offline runs with no access store wired, never for a served deployment.
-func NewMemStore(auth Authority, opts ...MemOption) *MemStore {
-	s := &MemStore{
+func NewMemStore(auth Authority) *MemStore {
+	return &MemStore{
 		settings: Settings{
 			StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard(),
 			SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
@@ -36,10 +30,6 @@ func NewMemStore(auth Authority, opts ...MemOption) *MemStore {
 		auth:  auth,
 		clock: time.Now,
 	}
-	for _, opt := range opts {
-		opt(s)
-	}
-	return s
 }
 
 // requireAdmin re-checks the caller's tier, so an admin-only write holds even

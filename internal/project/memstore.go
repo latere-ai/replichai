@@ -27,11 +27,6 @@ type MemStore struct {
 // MemOption configures a MemStore.
 type MemOption func(*MemStore)
 
-// WithClock sets the time source, so tests get deterministic timestamps.
-func WithClock(f func() time.Time) MemOption {
-	return func(s *MemStore) { s.clock = f }
-}
-
 // WithSessions wires the store that holds a paper's sessions, so a move takes
 // them with it (035). Without it MovePaper returns ErrNoSessionMover.
 func WithSessions(m SessionMover) MemOption {

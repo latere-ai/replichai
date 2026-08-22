@@ -30,24 +30,14 @@ type freezeGrant struct {
 	grantedAt time.Time
 }
 
-// MemOption configures a MemStore.
-type MemOption func(*MemStore)
-
-// WithClock sets the time source, for deterministic tests.
-func WithClock(f func() time.Time) MemOption { return func(s *MemStore) { s.clock = f } }
-
 // NewMemStore builds an empty in-memory access store.
-func NewMemStore(opts ...MemOption) *MemStore {
-	s := &MemStore{
+func NewMemStore() *MemStore {
+	return &MemStore{
 		grants:         map[string]Grant{},
 		principalEmail: map[string]string{},
 		overrides:      map[string]freezeGrant{},
 		clock:          time.Now,
 	}
-	for _, opt := range opts {
-		opt(s)
-	}
-	return s
 }
 
 // SeedGrant creates or promotes a grant at a tier with no admin check — the

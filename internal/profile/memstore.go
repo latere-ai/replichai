@@ -14,21 +14,9 @@ type MemStore struct {
 	clock    func() time.Time
 }
 
-// MemOption configures a MemStore.
-type MemOption func(*MemStore)
-
-// WithClock sets the time source, so tests get deterministic timestamps.
-func WithClock(f func() time.Time) MemOption {
-	return func(s *MemStore) { s.clock = f }
-}
-
 // NewMemStore builds an empty in-memory store.
-func NewMemStore(opts ...MemOption) *MemStore {
-	s := &MemStore{profiles: map[string]Profile{}, clock: time.Now}
-	for _, opt := range opts {
-		opt(s)
-	}
-	return s
+func NewMemStore() *MemStore {
+	return &MemStore{profiles: map[string]Profile{}, clock: time.Now}
 }
 
 // Get returns a principal's profile, or the zero profile if they have none.
