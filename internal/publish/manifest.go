@@ -46,6 +46,11 @@ type Manifest struct {
 type Findings struct {
 	Present  bool     `json:"present"`
 	Problems []string `json:"problems,omitempty"` // why it could not be read, when it could not
+	// Reproduction reports whether the repository holds a reproduction at all —
+	// any path the run committed itself. A run that pushed nothing still gets a
+	// manifest, because it happened and it cost money; what the manifest must not
+	// do is imply a reproduction is there to read (044d).
+	Reproduction bool `json:"reproduction"`
 }
 
 // ManifestPaper is the paper's identity, straight from paper.Identity (001).

@@ -255,7 +255,9 @@ func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 // publishes. The manifest is the system's word and must not depend on the
 // agent's JSON.
 func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
-	forge := newFakeForge([]string{"README.md"})
+	// A real reproduction in the tree, with no verdict.json beside it — the case
+	// the findings note is written for, as opposed to an empty repository (044d).
+	forge := newFakeForge([]string{"README.md", "REPRODUCIBILITY.md", "src/run.py"})
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
 		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
@@ -276,6 +278,9 @@ func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
 	note := string(forge.files[UnverifiedFile])
 	if !strings.Contains(note, FindingsFile) || !strings.Contains(note, "(system)") {
 		t.Errorf("UNVERIFIED.md does not attribute the note to the system: %q", note)
+	}
+	if !rep.Reproduction || !strings.Contains(note, "exist only as prose in this repository") {
+		t.Errorf("a tree holding a reproduction was reported as empty: %q", note)
 	}
 }
 
@@ -348,5 +353,87 @@ func TestFinalizeLiveDoesNotStackTheUnverifiedNote(t *testing.T) {
 	// The agent's own content survives beside it.
 	if !strings.Contains(second, "The dataset link 404s.") {
 		t.Error("appending the note destroyed the agent's own UNVERIFIED.md content")
+	}
+}
+
+// ── an empty repository (044d) ───────────────────────────────────────────────
+
+// The incident's repository: the run committed nothing, so the tree holds only
+// what the system put there before it started. Saying "the findings exist only
+// as prose in this repository" would promise prose that is not there.
+func TestFinalizeLiveReportsARunThatCommittedNothing(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", IdentityFile})
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if rep.Reproduction {
+		t.Fatal("a tree holding only the system's own files reported a reproduction")
+	}
+	var m Manifest
+	_ = json.Unmarshal(forge.files[ManifestFile], &m)
+	if m.Findings == nil || m.Findings.Reproduction {
+		t.Fatalf("manifest findings = %+v, want reproduction false", m.Findings)
+	}
+	note := string(forge.files[UnverifiedFile])
+	if !strings.Contains(note, "committed nothing to this repository") {
+		t.Errorf("UNVERIFIED.md does not say the repository is empty: %q", note)
+	}
+	if strings.Contains(note, "exist only as prose in this repository") {
+		t.Errorf("UNVERIFIED.md promises prose that is not there: %q", note)
+	}
+}
+
+// Re-finalizing an empty repository reads a tree that now holds the manifest and
+// the transcript — the system's own files, which must not read as a
+// reproduction — and converges rather than stacking a second note.
+func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", IdentityFile})
+	events := []provider.Event{{Kind: "message", Content: "hello"}}
+	first, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+	if err != nil || first.Reproduction {
+		t.Fatalf("first finalize = %+v, %v", first, err)
+	}
+
+	// The second pass sees everything the first one wrote.
+	forge.tree = append(forge.tree, ManifestFile, UnverifiedFile, TranscriptMD, TranscriptJSONL,
+		transcriptDir+"/001.md")
+	second, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+	if err != nil {
+		t.Fatalf("re-finalize: %v", err)
+	}
+	if second.Reproduction {
+		t.Error("the system's own files read as a reproduction on re-finalize")
+	}
+	note := string(forge.files[UnverifiedFile])
+	if n := strings.Count(note, findingsHeading); n != 1 {
+		t.Errorf("the system note appears %d times, want once:\n%s", n, note)
+	}
+}
+
+// One agent-authored path is enough. The question the system can answer is
+// whether a reproduction is there at all, not whether it is any good.
+func TestHoldsReproduction(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tree []string
+		want bool
+	}{
+		{"empty repository", []string{"README.md", IdentityFile}, false},
+		{"only the system's files", []string{"README.md", IdentityFile, ManifestFile,
+			UnverifiedFile, TranscriptMD, TranscriptJSONL, transcriptDir + "/001.md"}, false},
+		{"nothing at all", nil, false},
+		{"a report", []string{"README.md", "REPRODUCIBILITY.md"}, true},
+		{"source only", []string{"src/run.py"}, true},
+		{"findings only", []string{FindingsFile}, true},
+		{"a file that merely starts like the transcript dir", []string{"transcripts.md"}, true},
+	} {
+		if got := holdsReproduction(tc.tree); got != tc.want {
+			t.Errorf("%s: holdsReproduction(%v) = %v, want %v", tc.name, tc.tree, got, tc.want)
+		}
 	}
 }
