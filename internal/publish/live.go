@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -262,4 +264,105 @@ func commitManifestIfChanged(ctx context.Context, forge LiveForge, owner, name s
 		return false, fmt.Errorf("commit manifest: %w", err)
 	}
 	return true, nil
+}
+
+// outputsMessage names a harvest in the history, so a reader can tell files the
+// system recovered from files the agent pushed itself.
+const outputsMessage = "chore: reproduction outputs"
+
+// OutputsReport is what a harvest did with each path it was handed, so the
+// caller can say what it recovered and what it would not carry.
+type OutputsReport struct {
+	// Committed is what landed, in path order.
+	Committed []string
+	// Refused is what VerifyTree flagged, or what named an unsafe path. These
+	// are never committed: a harvested file has not passed the mount's
+	// redistribution boundary, so it passes the same gate on the way in that the
+	// committed tree passes on the way out (006f, 009).
+	Refused []string
+	// Skipped is what the committed tree already holds. A pushed file is the
+	// agent's considered work; a copy in the output directory may predate its
+	// last revision, so what the agent published wins.
+	Skipped []string
+}
+
+// Recovered reports whether the harvest put anything into the repository.
+func (r OutputsReport) Recovered() bool { return len(r.Committed) > 0 }
+
+// CommitOutputs commits what a session produced outside the mounted repository
+// — the files it wrote to the runtime's output directory — into the repository,
+// in one commit (044b).
+//
+// It exists because an agent may write its reproduction, copy it out, and never
+// push: the mount is the only surface that survives the sandbox, and a run that
+// committed locally and never pushed leaves a repository holding nothing. The
+// output directory is the second copy, and this is what reads it.
+//
+// It never overwrites what the agent pushed, and it commits nothing VerifyTree
+// flags. Idempotent: re-running it over a repository that already holds these
+// files commits nothing, because every path is then already in the tree.
+func CommitOutputs(ctx context.Context, forge LiveForge, owner, name string, files map[string][]byte) (OutputsReport, error) {
+	var rep OutputsReport
+	if len(files) == 0 {
+		return rep, nil
+	}
+	head, err := forge.HeadCommit(ctx, owner, name)
+	if err != nil {
+		return rep, fmt.Errorf("read head commit: %w", err)
+	}
+	tree, err := forge.TreePaths(ctx, owner, name, head)
+	if err != nil {
+		return rep, fmt.Errorf("read committed tree: %w", err)
+	}
+	present := make(map[string]bool, len(tree))
+	for _, p := range tree {
+		present[p] = true
+	}
+
+	paths := make([]string, 0, len(files))
+	for p := range files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	clean := make(map[string][]byte, len(paths))
+	for _, p := range paths {
+		normal, ok := safeRepoPath(p)
+		if !ok || len(VerifyTree([]string{normal})) > 0 {
+			rep.Refused = append(rep.Refused, p)
+			continue
+		}
+		if present[normal] {
+			rep.Skipped = append(rep.Skipped, normal)
+			continue
+		}
+		clean[normal] = files[p]
+		rep.Committed = append(rep.Committed, normal)
+	}
+	if len(clean) == 0 {
+		return rep, nil
+	}
+	if _, err := forge.CommitFiles(ctx, owner, name, outputsMessage, clean); err != nil {
+		return rep, fmt.Errorf("commit outputs: %w", err)
+	}
+	return rep, nil
+}
+
+// safeRepoPath normalizes a path handed in from outside the repository and
+// reports whether it may be committed at all. An absolute path, a path that
+// climbs out of the tree, and anything under the repository's own .git are
+// refused rather than cleaned into something that looks harmless.
+func safeRepoPath(p string) (string, bool) {
+	s := strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
+	if s == "" || strings.HasPrefix(s, "/") {
+		return "", false
+	}
+	s = path.Clean(s)
+	if s == "." || s == ".." || strings.HasPrefix(s, "../") {
+		return "", false
+	}
+	if s == ".git" || strings.HasPrefix(s, ".git/") {
+		return "", false
+	}
+	return s, true
 }

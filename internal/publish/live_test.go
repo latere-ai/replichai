@@ -18,7 +18,8 @@ type fakeLiveForge struct {
 	head  string
 	tree  []string
 	files map[string][]byte
-	puts  int // PutFile calls
+	puts  int      // PutFile calls
+	msgs  []string // CommitFiles messages, in order
 }
 
 func newFakeForge(tree []string) *fakeLiveForge {
@@ -44,7 +45,8 @@ func (f *fakeLiveForge) PutFile(_ context.Context, _, _, path, _ string, content
 	return nil
 }
 
-func (f *fakeLiveForge) CommitFiles(_ context.Context, _, _, _ string, files map[string][]byte) (bool, error) {
+func (f *fakeLiveForge) CommitFiles(_ context.Context, _, _, message string, files map[string][]byte) (bool, error) {
+	f.msgs = append(f.msgs, message)
 	for p, c := range files {
 		f.files[p] = c
 	}
