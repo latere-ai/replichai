@@ -101,24 +101,6 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 	}
 }
 
-// firstSessionError reads the first per-paper error code out of a create
-// response.
-func firstSessionError(t *testing.T, body []byte) string {
-	t.Helper()
-	var got struct {
-		Sessions []struct {
-			Error string `json:"error"`
-		} `json:"sessions"`
-	}
-	if err := json.Unmarshal(body, &got); err != nil {
-		t.Fatalf("decode create response: %v (%s)", err, body)
-	}
-	if len(got.Sessions) == 0 {
-		t.Fatalf("no per-paper results in %s", body)
-	}
-	return got.Sessions[0].Error
-}
-
 // countProjects counts the projects in a list response.
 func countProjects(t *testing.T, body []byte) int {
 	t.Helper()
