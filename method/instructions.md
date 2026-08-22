@@ -37,6 +37,8 @@ Your value is in placing that boundary precisely and defending it. A component b
 | `verdict.json` | The verdict, the boundary table, the hidden decisions, the open-science scorecard, and what the authors released — the same content as `REPRODUCIBILITY.md` and `SOURCES.md`, as data. See below |
 | `instrument.json` | The declared study protocol, the analysis entrypoint contract, and the servability assessment — see below |
 
+Where that location is a mounted git repository, writing the file is half the job: commit it and push it. An unpushed commit is destroyed with the sandbox, so the repository a reader opens is whatever reached the remote and nothing else.
+
 ## The findings — `verdict.json`
 
 Everything below is content you have already written in `REPRODUCIBILITY.md` and `SOURCES.md`. This file is the same content as data, so it can be read without a human opening a markdown file. If the two ever disagree, the markdown is wrong: fix it.

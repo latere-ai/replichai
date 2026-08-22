@@ -52,13 +52,20 @@ const (
 // reproduction into it and push, keeping third-party downloads out. This
 // bounded workspace is what makes a live push safe — third-party data is never
 // committed, so the publisher's gate can verify after the fact (006f).
+//
+// The push is its own step, and says what happens without it (044a). Asking for
+// it inside the commit sentence produced a run that committed five times and
+// pushed nothing: every local commit died with the sandbox, and the grader —
+// which reads files, not remotes — passed it.
 func mountProtocol(mountPath string) string {
 	return fmt.Sprintf(`
 
 A git repository is mounted at %[1]s, and its commit history is published as part of the result. Treat it as the home of your reproduction:
 
 - Write your reproduction files (README.md, REPRODUCIBILITY.md, src/, UNVERIFIED.md, SOURCES.md, instrument.json) inside %[1]s.
-- Commit your progress with git as you finish each part — small, meaningful commits — and run "git push" so the history is preserved. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
+- Commit your progress with git as you finish each part — small, meaningful commits. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
+- Run "git push" immediately after every commit. A commit that is not pushed is discarded when this session ends: the sandbox is destroyed and only what reached the remote survives. Committing is not publishing.
+- Before you finish, run "git status -sb" and confirm the branch is not ahead of origin/main. If it is, push. Record that output — criterion 9 is graded on it.
 - Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use /tmp. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, mountPath)
 }
 
