@@ -107,13 +107,17 @@ linters:
   exclusions:
     rules:
       # Tests exercise error paths deliberately and read fixture files by
-      # constructed path; neither is a finding there.
+      # constructed path; neither is a finding there. They also marshal literals
+      # they wrote a line earlier, where a checked error is noise, and build
+      # small fixture slices where a preallocation says nothing.
       - path: _test\.go
         linters:
           - gosec
           - errcheck
           - unparam
           - noctx
+          - errchkjson
+          - prealloc
 
 formatters:
   enable:
