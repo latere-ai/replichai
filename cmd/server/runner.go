@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -323,6 +324,13 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 			if evidence.Status.Verdict != nil {
 				grade = providerGrade(evidence.Status.Verdict.Grade)
 			}
+			// Harvest before finalizing (044b). The mount is not the only way out
+			// of a session: an agent may write its reproduction, copy it to the
+			// runtime's output directory, and never push — and then the sandbox is
+			// released and the output directory is the only copy left. Finalize
+			// reads verdict.json from the committed tree, so a recovered one has to
+			// be in the tree before the manifest is written.
+			harvestOutputs(ctx, e.gh, owner, name, j.ID, evidence)
 			_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), grade, providerEvents(evidence.Events), time.Now)
 			return err
 		},
@@ -638,4 +646,40 @@ func (e *engineRunner) isPlaceholderTitle(ctx context.Context, p project.Project
 		}
 	}
 	return false
+}
+
+// harvestOutputs commits what the session wrote to the runtime's output
+// directory into the mounted repository, before the manifest is written (044b).
+//
+// It is best-effort and never fails the retention. The transcript and the
+// manifest are the durable evidence a run always owes; a harvest is a recovery
+// on top of them, and refusing to write the evidence because the recovery could
+// not be fetched would lose more than it saves. What it does instead is say so
+// in the log, which is the only place a failed recovery can be noticed.
+func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, evidence managed.EvidenceReader) {
+	files := map[string][]byte{}
+	for _, artifact := range evidence.Artifacts {
+		if artifact.IsCompiled() {
+			continue
+		}
+		body, err := evidence.Fetch(ctx, artifact)
+		if err != nil {
+			// One unreadable artifact must not cost the rest of them.
+			log.Printf("harvest: session %s: fetch %s: %v", jobID, artifact.Path, err)
+			continue
+		}
+		files[artifact.Path] = body
+	}
+	rep, err := publish.CommitOutputs(ctx, gh, owner, name, files)
+	if err != nil {
+		log.Printf("harvest: session %s: commit outputs: %v", jobID, err)
+		return
+	}
+	if len(rep.Refused) > 0 {
+		log.Printf("harvest: session %s: refused %v", jobID, rep.Refused)
+	}
+	if rep.Recovered() {
+		log.Printf("harvest: session %s: recovered %d file(s) the run did not push: %v",
+			jobID, len(rep.Committed), rep.Committed)
+	}
 }
