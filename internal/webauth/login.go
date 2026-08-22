@@ -281,7 +281,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := httpapi.IdentityFrom(r)
 		if !ok || id.Sub == "" {
-			writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
+			writeJSON(w, map[string]any{"authenticated": false})
 			return
 		}
 		tier, _, _ := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
@@ -317,7 +317,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 				log.Printf("me: reading frozen for %s: %v", id.Sub, err)
 			}
 		}
-		writeJSON(w, http.StatusOK, body)
+		writeJSON(w, body)
 	}
 }
 
@@ -356,9 +356,22 @@ func randToken() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
-// writeJSON writes v as a JSON response.
-func writeJSON(w http.ResponseWriter, status int, v any) {
+// writeJSON writes v as a 200 JSON response. Every answer this package sends
+// through it is a 200 — the failures go out as plain text through http.Error —
+// so the status is not a parameter: one would only ever be passed
+// http.StatusOK, and a caller reading it might believe otherwise.
+//
+// The value is encoded before the status line is committed, so a body that
+// cannot become JSON answers 500 rather than a 200 whose payload is empty and
+// whose caller cannot tell.
+func writeJSON(w http.ResponseWriter, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("writeJSON: encoding a %T response: %v", v, err)
+		http.Error(w, "response encoding failed", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
 }
