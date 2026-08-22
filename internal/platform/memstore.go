@@ -33,12 +33,17 @@ func NewMemStore(auth Authority) *MemStore {
 }
 
 // requireAdmin re-checks the caller's tier, so an admin-only write holds even
-// if a route were mounted without the tier guard.
-func (s *MemStore) requireAdmin(ctx context.Context, p access.Principal) error {
-	if s.auth == nil {
+// if a route were mounted without the tier guard. Shared by both stores: the
+// check is the same belt-and-braces one wherever the settings row lives, and a
+// second copy is a second thing to keep in step.
+//
+// A nil authority means every caller is an admin — the offline run with no
+// access store wired, never a served deployment.
+func requireAdmin(ctx context.Context, auth Authority, p access.Principal) error {
+	if auth == nil {
 		return nil
 	}
-	tier, _, err := s.auth.Resolve(ctx, p)
+	tier, _, err := auth.Resolve(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -60,7 +65,7 @@ func (s *MemStore) SetSettings(ctx context.Context, byAdmin access.Principal, ne
 	if err := next.validate(); err != nil {
 		return err
 	}
-	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+	if err := requireAdmin(ctx, s.auth, byAdmin); err != nil {
 		return err
 	}
 	s.mu.Lock()
