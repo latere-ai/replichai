@@ -20,6 +20,15 @@ type Cohort interface {
 	Collect(ctx context.Context, decl instrument.Instrument) (CohortData, error)
 }
 
+// The seam is only a seam if the compiler checks it. Nothing holds a Cohort
+// yet — the kind travels as Pilot.Kind and each caller knows its concrete
+// cohort — so without these the two implementations could drift apart and the
+// interface would still compile.
+var (
+	_ Cohort = Generated{}
+	_ Cohort = (*ModelCohort)(nil)
+)
+
 // CohortData is the trial data a cohort produced: the CSV bytes the analysis
 // consumes, and the header so a caller can check conformance before running.
 type CohortData struct {
