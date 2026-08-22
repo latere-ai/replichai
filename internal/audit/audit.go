@@ -425,7 +425,7 @@ func (a *Auditor) finish(ctx context.Context, h provider.RunHandle, paper, dst s
 // finalize-time report. Content that is not JSON at all is reported as one
 // violation rather than failing the whole audit over a malformed file.
 func validateInstrument(dir string) (present bool, violations []instrument.Violation, err error) {
-	raw, err := os.ReadFile(filepath.Join(dir, InstrumentFile))
+	raw, err := os.ReadFile(filepath.Join(dir, InstrumentFile)) //nolint:gosec // G304: InstrumentFile is a package constant, and dir is the audit's own artifact destination (workDir/<job id> or the CLI's -out), never a name carried in a request
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil, nil
 	}
