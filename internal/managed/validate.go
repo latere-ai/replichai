@@ -13,6 +13,11 @@ import (
 	"strings"
 )
 
+// DefaultMaxLocatorBytes is the locator bound callers pass when they have no
+// runtime-specific limit to hand, and the one SessionRef.Validate substitutes
+// when it is given none. A locator is adapter-owned recovery metadata that core
+// code stores verbatim, so a bound is what stops an adapter turning the
+// checkpoint into a payload store.
 const DefaultMaxLocatorBytes = 64 << 10
 
 var (
@@ -23,6 +28,12 @@ var (
 
 func invalid(field, message string) error { return &InvalidSpecError{Field: field, Message: message} }
 
+// Validate reports whether the specification is complete and consistent on its
+// own terms: one model form, a task and instructions, a sandbox whose network
+// mode agrees with its domains and secrets, and resources whose destinations do
+// not collide. It asks nothing about a runtime — that is ValidateCapabilities —
+// and it is pure and cheap, so every adapter can repeat it before a remote
+// write rather than trusting the caller to have run it.
 func (s SessionSpec) Validate() error {
 	pref := strings.TrimSpace(s.Model.Preference)
 	if (pref == "") == (s.Model.Exact == nil) {
@@ -198,6 +209,12 @@ func safeRelativePath(value string) error {
 	return nil
 }
 
+// Validate reports whether the reference is a usable durable handle: a
+// canonical runtime, a non-empty id, a positive revision and locator version,
+// and a locator within maxBytes (DefaultMaxLocatorBytes when maxBytes is not
+// positive) that parses as JSON and carries no secret-bearing key. The locator
+// travels through storage and logs untouched, so a credential inside it is
+// refused at this boundary rather than later.
 func (r SessionRef) Validate(maxBytes int) error {
 	if CanonicalRuntimeName(string(r.Runtime)) == "" || r.Runtime != CanonicalRuntimeName(string(r.Runtime)) {
 		return invalid("ref.runtime", "must be canonical and non-empty")
@@ -252,6 +269,12 @@ func secretKey(value any) bool {
 	return false
 }
 
+// ValidateCapabilities refuses a specification the named runtime cannot
+// execute, after first checking the specification is valid at all. It is the
+// gate that keeps the contract honest: an unsupported package manager, network
+// mode, evaluation request, repository access mode, or oversized attachment
+// fails here, before anything remote is created, instead of being dropped and
+// run around.
 func ValidateCapabilities(runtime RuntimeName, capabilities Capabilities, spec SessionSpec) error {
 	if err := spec.Validate(); err != nil {
 		return err
