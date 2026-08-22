@@ -1,6 +1,6 @@
 # 005 — Capture and publish the reproduction transcript
 
-**Status:** implemented (`c33af42`)
+**Status:** implemented (`c33af42`). The Outcome's caveat that private-by-default plus the owner's review is "the real guard" no longer stands alone: [009](009-secret-containment-when-the-agent-commits-live.md) made a leaked secret bar the public flip outright, through `ReviewSecretInTranscript` and `RedistributionFrom`
 **Scope:** capturing the agent's full session transcript and publishing it into the reproduction repository as first-class evidence.
 **Depends on:** [002](002-publishing-reproductions.md) (the redistribution gate), [006f](006f-taking-a-reproduction-out.md) (the finalize step it hooks into).
 
@@ -74,7 +74,7 @@ Diffing two reproductions' transcripts; a web viewer for the transcript (that is
 Implemented across three commits (`f22fd2a` the provider seam, `5723402` the render + gate, `c33af42` the finalize wiring), tested offline.
 
 - **`provider.Event` + `Transcript`** on the contract. The anthropic adapter reads `Sessions.Events.ListAutoPaging` and translates each event *generically* from its raw JSON — a namespaced type becomes a neutral role+kind, best-effort text is pulled from content blocks, the original is preserved in `Raw` — so the many event shapes needed no per-variant mapping and nothing is lost. The memory adapter returns a settable `Events` slice.
-- **`RenderTranscript`** produces `transcript.jsonl` (the lossless canonical stream) and `TRANSCRIPT.md` (a narrative). **`TranscriptLeaks`** flags events carrying a high-signal secret.
+- **`RenderTranscriptFiles`** produces `transcript.jsonl` (the lossless canonical stream) and `TRANSCRIPT.md` (a narrative). **`TranscriptLeaks`** flags events carrying a high-signal secret.
 - **Finalize commits the transcript**, in the same system-authored moment as the manifest, idempotently. Both publish paths (`audit --publish` and `finish`) fetch it best-effort and commit it.
 - **Chunked and interlinked, committed atomically.** A full run's transcript is many megabytes as one file — unreadable, and past the Contents API's inline and timeout limits. So `RenderTranscriptFiles` produces a navigable set — `TRANSCRIPT.md` an index linking `transcript/NNN.md` chunks (40 events each, prev/index/next links, per-event content capped), with `transcript.jsonl` the canonical machine stream — and `github.CommitFiles` writes the whole set in one atomic Git Data API commit (blob → tree → commit → ref), with no per-file size limit and no commit spam. Each event renders as a `<details>` block so the agent's own markdown cannot collide with the transcript's structure.
 

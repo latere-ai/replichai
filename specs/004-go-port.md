@@ -1,6 +1,6 @@
 # 004 — Port the core to Go
 
-**Status:** implemented (`7a5a23f`)
+**Status:** implemented (`7a5a23f`), and since outlived by `6b6fd90`, which deleted `reference/python/`. The layout block, the whole Conformance section, and acceptance criterion 5 oblige this port to agree with a Python implementation that no longer exists — read them as the history of how the port was checked, not as a standing obligation. Three smaller drifts: the contract has gained `Transcript` ([005](005-transcript.md)), the amendment's `DefaultName` const is gone, and the default is now chosen a layer up, where the runtime catalog names `anthropic-managed` over a provider still called `anthropic` ([041c](041c-a-session-remembers-its-runtime.md))
 **Scope:** moving the orchestrator, provider contract, and CLI from Python to Go, before specs 001–003 are built.
 
 ## Why now

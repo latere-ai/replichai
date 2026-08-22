@@ -150,9 +150,14 @@ kubectl -n latere set image deploy/replichai replichai=ghcr.io/latere-ai/replich
 kubectl -n latere rollout status deploy/replichai
 ```
 
-## Access note
+## `DEV` stays unset
 
-The gate is **fail-closed**: with no OIDC login wired yet (006c's login front
-door is the remaining piece), production admits nobody. `DEV` is deliberately
-unset — enabling it would admit every request as a synthetic principal on a
-public domain. Land the login before expecting anyone to sign in.
+The gate is **fail-closed**, and the one way to open it by accident is `DEV`.
+It exists so a developer can work without an identity provider, and it admits
+every request as a synthetic principal — on a public domain that is not a
+relaxed gate, it is no gate. It is therefore never set in an overlay, and
+`test/release-smoke.sh` drives `/projects` against the deployed base URL after
+every tagged release and fails unless it is refused, so the bypass reaching
+production is a failed release rather than a quiet hole.
+
+Who may sign in once the gate is doing its job is above.
