@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bufio"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -193,7 +194,7 @@ func TestSSEResumesFromLastEventID(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := readAllString(resp.Body)
+	body := readAllString(resp.Body)
 	if !strings.Contains(body, "id: 42") {
 		t.Errorf("reconnect should resume ids after 41, got:\n%s", body)
 	}
@@ -214,14 +215,11 @@ func TestSSEMissingJob(t *testing.T) {
 	}
 }
 
-func readAllString(r interface{ Read([]byte) (int, error) }) (string, error) {
-	var b strings.Builder
-	buf := make([]byte, 4096)
-	for {
-		n, err := r.Read(buf)
-		b.Write(buf[:n])
-		if err != nil {
-			return b.String(), nil
-		}
-	}
+// readAllString drains r and returns what arrived. A stream cut off mid-flight
+// is the thing under test, so a read error is not a failure here: the partial
+// body is the observation. io.ReadAll returns exactly that — what it read, plus
+// the error we are choosing to ignore.
+func readAllString(r io.Reader) string {
+	b, _ := io.ReadAll(r)
+	return string(b)
 }

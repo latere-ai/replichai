@@ -422,7 +422,7 @@ func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string
 	}
 	vs, verr := instrument.Validate(raw)
 	if verr != nil {
-		return true, []instrument.Violation{{Field: audit.InstrumentFile, Message: verr.Error()}}, nil
+		return true, []instrument.Violation{{Field: audit.InstrumentFile, Message: verr.Error()}}, nil //nolint:nilerr // a malformed instrument is one violation to report, not a failed check
 	}
 	return true, vs, nil
 }
