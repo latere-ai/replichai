@@ -1894,11 +1894,6 @@ input.text.title-input {
     justify-self: start;
   }
 }
-input.text.amount-input {
-  width: 88px;
-  flex: none;
-  text-align: right;
-}
 .field-row {
   display: flex;
   gap: 8px;
@@ -2000,12 +1995,6 @@ input.submit-input {
   background: var(--bg-surface);
   color: var(--fg-1);
   font: 500 13px/1 var(--font-mono);
-}
-.submit-options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
 }
 .field {
   display: flex;
