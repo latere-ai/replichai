@@ -18,22 +18,15 @@ const en = {
     // auth
     // The landing (017). The claim is a question because that is the question
     // the product answers, and the lead says what it does that nothing else in
-    // the field does: it runs the paper. The three points are the inner/outer
-    // boundary — the thing worth putting in front of somebody before they have
-    // an account — and the card promises only what 006q made true, that signing
-    // in is open and a session is what spends.
+    // the field does: it runs the paper. The two titles label the inner/outer
+    // boundary in the hero legend — the thing worth putting in front of
+    // somebody before they have an account — and the card promises only what
+    // 006q made true, that signing in is open and a session is what spends.
     landingClaim: 'Does the paper actually reproduce?',
     landingLead:
       'Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart.',
     landingInnerTitle: 'The inner loop',
-    landingInnerBody:
-      'The algorithm, model, or analysis pipeline. Implemented, run, and published as its own repository with the agent’s own commit history.',
     landingOuterTitle: 'The outer loop',
-    landingOuterBody:
-      'The study that validates it with people. Named, bounded, and never simulated — pretending otherwise is the most common way reproducibility claims go wrong.',
-    landingVerdictTitle: 'The verdict',
-    landingVerdictBody:
-      'Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number.',
     // The landing as a place (029): the section headings, the figure captions,
     // and the close. The claim, the lead, and the three points above are 017's
     // and are reused verbatim — the argument did not change, only how much room
@@ -320,9 +313,6 @@ const en = {
     // projects
     projectsIntro:
       'A project holds a paper and every replication session run against it. Each session is a durable, inspectable run — its trajectory and token usage are yours to check, never a score to rank papers by.',
-    statWallet: 'Credits',
-    statementShow: 'Statement',
-    statementHide: 'Hide',
     statementEmpty: 'Nothing yet \u2014 a platform admin adds credits to your account.',
     ledgerTopup: 'Added by an admin',
     ledgerAllocate: 'Allocated to a project',
@@ -332,12 +322,10 @@ const en = {
     // project still exists and plain text once it is purged.
     ledgerAllocateTo: 'Allocated to',
     ledgerReclaimFrom: 'Taken back from',
-    // The merged list (018). Ownership is a column, not a place to look, so the
-    // owner of your own project is "You" — the common row, and the one nobody
-    // should have to read a name to recognise.
+    // The merged list (018). Ownership is shown in the row rather than being a
+    // place to look, so the owner of your own project reads "You" — the common
+    // case, and the one nobody should have to read a name to recognise.
     colPaper: 'Paper',
-    colOwner: 'Owner',
-    colModified: 'Last modified',
     colStatus: 'Status',
     colVisibility: 'Visibility',
     ownerYou: 'You',
