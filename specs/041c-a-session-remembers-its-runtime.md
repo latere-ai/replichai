@@ -73,7 +73,7 @@ Credentials are provider-scoped constructor input:
 | Lux model access | `LUX_API_KEY` or a request-scoped Latere bearer, plus `LUX_BASE_URL` |
 | Cella sandbox | a token source / request-scoped delegated bearer, plus `CELLA_BASE_URL` |
 
-`REPLICHAI_API_KEY` and `REPLICHAI_API_BASE` are accepted only by the legacy `anthropic` configuration alias during the transition and produce a deprecation warning. They are never shared between catalog entries.
+During the transition the generic pair was readable only through the legacy `anthropic` alias, under a deprecation warning, and never shared between catalog entries. The transition is over: see the outcome below.
 
 Drafting remains separate. `DRAFT_API_KEY` wins. A configured draft may reuse a runtime credential only when the credential's model provider equals the draft provider (Anthropic-to-Anthropic or OpenAI-to-OpenAI); selecting an OpenAI runtime can never make its key an Anthropic fallback. Latere/Lux credentials are used by drafting only when drafting is explicitly configured for Lux.
 
