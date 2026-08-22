@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -64,7 +65,11 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 			if revoked {
 				return nil
 			}
-			tier, granted = Tier(t), true
+			bound, err := decodeTier(t)
+			if err != nil {
+				return err
+			}
+			tier, granted = bound, true
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -91,10 +96,16 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 		if revoked { // a ban is not an invitation to bind
 			return nil
 		}
+		// Decoded before the UPDATE: binding is one-way, so a row carrying a tier
+		// this package never wrote must not consume the principal on its way out.
+		seeded, err := decodeTier(t)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `UPDATE access_grants SET principal=$1 WHERE email=$2`, p.Sub, email); err != nil {
 			return err
 		}
-		tier, granted = Tier(t), true
+		tier, granted = seeded, true
 		return nil
 	})
 	return tier, granted, err
@@ -289,6 +300,33 @@ func (s *PGAccess) OverridesActiveFor(ctx context.Context, emails []string) (map
 	return out, rows.Err()
 }
 
+// errTierRange reports a tier column holding a value no tier of this package
+// names. It is an error rather than a silent TierNone because the grants table
+// is the authorisation decision: a value nobody here could have written is
+// corruption, and corruption in an ACL should be read about, not interpreted.
+var errTierRange = errors.New("access: grant tier out of range")
+
+// decodeTier turns a scanned SMALLINT into a Tier, failing closed on anything
+// outside the closed set of tiers.
+//
+// The column is SMALLINT with no CHECK, so it can hold whatever an out-of-band
+// write left there, and a plain Tier(t) conversion would truncate rather than
+// refuse: a 259 arrives as 3, which is TierAdmin, and so would -253. Comparing
+// against the tiers themselves means a value this package never wrote can only
+// ever be refused, never promoted.
+func decodeTier(t int16) (Tier, error) {
+	switch t {
+	case int16(TierNone):
+		return TierNone, nil
+	case int16(TierUser):
+		return TierUser, nil
+	case int16(TierAdmin):
+		return TierAdmin, nil
+	default:
+		return TierNone, fmt.Errorf("%w: %d", errTierRange, t)
+	}
+}
+
 // scanGrants reads a rows cursor of the grant columns into Grants, in order.
 func scanGrants(rows pgx.Rows) ([]Grant, error) {
 	var out []Grant
@@ -298,7 +336,11 @@ func scanGrants(rows pgx.Rows) ([]Grant, error) {
 		if err := rows.Scan(&g.Email, &g.Principal, &t, &g.GrantedBy, &g.GrantedAt, &g.RevokedAt, &g.RevokedBy); err != nil {
 			return nil, err
 		}
-		g.Tier = Tier(t)
+		tier, err := decodeTier(t)
+		if err != nil {
+			return nil, fmt.Errorf("grant %s: %w", g.Email, err)
+		}
+		g.Tier = tier
 		out = append(out, g)
 	}
 	return out, rows.Err()

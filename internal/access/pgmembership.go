@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -73,7 +74,11 @@ func (m *PGMembership) Role(ctx context.Context, p Principal, project string) (R
 		err := tx.QueryRow(ctx,
 			`SELECT role FROM project_members WHERE project=$1 AND principal=$2`, project, p.Sub).Scan(&r)
 		if err == nil {
-			role, found = Role(r), true
+			bound, err := decodeRole(r)
+			if err != nil {
+				return err
+			}
+			role, found = bound, true
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -95,11 +100,17 @@ func (m *PGMembership) Role(ctx context.Context, p Principal, project string) (R
 		if principal != nil {
 			return nil
 		}
+		// Decoded before the UPDATE: binding is one-way, so a row carrying a role
+		// this package never wrote must not consume the principal on its way out.
+		seeded, err := decodeRole(r)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE project_members SET principal=$1 WHERE project=$2 AND email=$3`, p.Sub, project, email); err != nil {
 			return err
 		}
-		role, found = Role(r), true
+		role, found = seeded, true
 		return nil
 	})
 	return role, found, err
@@ -121,7 +132,11 @@ func (m *PGMembership) List(ctx context.Context, project string) ([]Member, erro
 		if err := rows.Scan(&mem.Email, &r, &principal); err != nil {
 			return nil, err
 		}
-		mem.Role, mem.Bound = Role(r), principal != nil
+		role, err := decodeRole(r)
+		if err != nil {
+			return nil, fmt.Errorf("member %s of %s: %w", mem.Email, project, err)
+		}
+		mem.Role, mem.Bound = role, principal != nil
 		out = append(out, mem)
 	}
 	return out, rows.Err()
@@ -168,6 +183,32 @@ func (m *PGMembership) Projects(ctx context.Context, principalSub string) ([]str
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// errRoleRange reports a role column holding a value no role of this package
+// names. It is an error rather than a silent RoleNone for the same reason a bad
+// tier is: the row decides what somebody may touch in a project, so a value
+// nobody here could have written is corruption to be reported, not read.
+var errRoleRange = errors.New("access: member role out of range")
+
+// decodeRole turns a scanned SMALLINT into a Role, failing closed on anything
+// outside the closed set of roles.
+//
+// The column is SMALLINT with no CHECK, so it can hold whatever an out-of-band
+// write left there, and a plain Role(r) conversion would truncate rather than
+// refuse: a 258 arrives as 2, which is RoleLead — ownership of the project and
+// its membership list.
+func decodeRole(r int16) (Role, error) {
+	switch r {
+	case int16(RoleNone):
+		return RoleNone, nil
+	case int16(RoleCollaborator):
+		return RoleCollaborator, nil
+	case int16(RoleLead):
+		return RoleLead, nil
+	default:
+		return RoleNone, fmt.Errorf("%w: %d", errRoleRange, r)
+	}
 }
 
 func (m *PGMembership) upsert(ctx context.Context, project, email string, r Role) error {
