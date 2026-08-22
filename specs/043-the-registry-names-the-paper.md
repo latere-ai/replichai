@@ -2,11 +2,11 @@
 
 **Status:** built. All eight criteria hold.
 
-**Scope:** the public list — `GET /public`, and the two screens that read it: the landing's published strip and the `/registry` screen. No new storage: every fact this puts on a card is already in `project_papers`.
+**Scope:** the lists — `GET /public`, and every screen that renders a project row: the landing's published strip, the `/registry` screen, and the owner's own dashboard. No new storage: every fact this puts on a card is already in `project_papers`.
 
 **Depends on:** [037](037-a-paper-carries-its-bibliography.md) (the bibliography this reads), [028](028-the-registry-opens.md) (the list it goes on), [033](033-the-landing-rebuilt-from-the-design.md) (the cards).
 
-The store method turned out to be the whole of the backend. `projectViews` already reads three summaries for the whole page — sessions, modified times, spend — so the bibliography became a fourth, and every list that renders a project row gained it at once rather than the two this spec asked for.
+The store method turned out to be the whole of the backend. `projectViews` already reads three summaries for the whole page — sessions, modified times, spend — so the bibliography became a fourth, and `/projects` gained it at the same moment `/public` did. The dashboard renders it too, for the reason it was worth having on a public card: a project's title is a name its owner typed, two of them can be the same name, and the citation is what tells the rows apart at a glance.
 
 One thing the design did not anticipate: the count and the line have to fail together. A project holding two papers where neither carries a record would otherwise render `+1 more` under nothing at all, which reads as a card that half loaded. `listCitation` returns a zero count whenever it returns no bits, so there is one condition to render on rather than two that can disagree.
 
@@ -38,10 +38,10 @@ The project's own title is not a substitute. It is a name somebody typed. Severa
 2. A caller with no session gets them — asserted by a test that sends no principal.
 3. The list is built with one store call for all projects, not one per project.
 4. A landing card shows the first paper's authors, venue and year under the project title, and `+N more` when the project holds more than one.
-5. A `/registry` row shows the same line, beside the signer and the session count it already carries.
+5. A `/registry` row shows the same line, beside the signer and the session count it already carries, and so does a row on the owner's own projects list.
 6. A project whose papers have no record renders no citation line and no stray separators.
 7. `citation()` lives in `papers.ts` and is unit-tested for: no record, authors only, four authors (*et al.*), venue and year only, year only.
-8. `frontend/test/landing.test.mjs` asserts 4 and 6 in a real browser.
+8. `frontend/test/landing.test.mjs`, `public-shell.test.mjs` and `projects-list.test.mjs` assert 4, 5 and 6 in a real browser — the card, the registry row signed out, and the dashboard row.
 
 ## Not in scope
 
