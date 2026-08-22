@@ -14,6 +14,13 @@ type ModelResolver interface {
 	ResolveModel(ctx context.Context, pref string) (string, error)
 }
 
+// QualifiedModelResolver is ModelResolver's provider-qualified form: it answers
+// with a ModelRef, so a card can tell two providers' identically-named models
+// apart instead of pricing whichever it happens to name first.
+//
+// It is optional. A resolver that does not implement it is read through
+// ModelResolver and its answer attributed to Anthropic, which is what a bare
+// model id meant before the managed contract existed.
 type QualifiedModelResolver interface {
 	ResolveModelRef(ctx context.Context, pref string) (managed.ModelRef, error)
 }
