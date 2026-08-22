@@ -11,11 +11,18 @@ import (
 // legacy tier-pricing seam until provider-qualified cards land.
 type ModelResolver struct{ Runtime managed.Runtime }
 
+// ResolveModel answers with the bare model id, which is all the unqualified
+// credit.ModelResolver seam accepts. Callers that can carry provenance should
+// take ResolveModelRef instead.
 func (resolver ModelResolver) ResolveModel(ctx context.Context, preference string) (string, error) {
 	ref, err := resolver.ResolveModelRef(ctx, preference)
 	return ref.ID, err
 }
 
+// ResolveModelRef resolves a preference to the qualified model the runtime will
+// actually run. A catalogue that maps one preference onto two different models
+// is an error rather than an arbitrary pick, because a session is priced on
+// that choice being determinate.
 func (resolver ModelResolver) ResolveModelRef(ctx context.Context, preference string) (managed.ModelRef, error) {
 	models, err := resolver.Runtime.Models(ctx)
 	if err != nil {
