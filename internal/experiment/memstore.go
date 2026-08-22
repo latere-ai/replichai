@@ -23,6 +23,8 @@ func NewMemStore() *MemStore {
 	}
 }
 
+// CreateExperiment stores a copy of a new experiment row, refusing to
+// overwrite one that already exists.
 func (s *MemStore) CreateExperiment(_ context.Context, e *Experiment) error {
 	if e.ID == "" {
 		return ErrNoID
@@ -36,6 +38,8 @@ func (s *MemStore) CreateExperiment(_ context.Context, e *Experiment) error {
 	return nil
 }
 
+// GetExperiment returns a copy of one experiment row; a row that is not there
+// is ErrNotFound.
 func (s *MemStore) GetExperiment(_ context.Context, id string) (*Experiment, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -47,6 +51,8 @@ func (s *MemStore) GetExperiment(_ context.Context, id string) (*Experiment, err
 	return &c, nil
 }
 
+// UpdateExperiment replaces an existing experiment row with a copy of e; it
+// never creates one.
 func (s *MemStore) UpdateExperiment(_ context.Context, e *Experiment) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -57,6 +63,9 @@ func (s *MemStore) UpdateExperiment(_ context.Context, e *Experiment) error {
 	return nil
 }
 
+// ListExperiments returns copies of every experiment belonging to one project.
+// The order follows map iteration, so it is arbitrary and a caller that needs a
+// stable one must sort.
 func (s *MemStore) ListExperiments(_ context.Context, projectID string) ([]*Experiment, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,6 +79,8 @@ func (s *MemStore) ListExperiments(_ context.Context, projectID string) ([]*Expe
 	return out, nil
 }
 
+// CreateDataset stores a copy of a new dataset row, refusing to overwrite one
+// that already exists.
 func (s *MemStore) CreateDataset(_ context.Context, d *Dataset) error {
 	if d.ID == "" {
 		return ErrNoID
@@ -83,6 +94,8 @@ func (s *MemStore) CreateDataset(_ context.Context, d *Dataset) error {
 	return nil
 }
 
+// GetDataset returns a copy of one dataset row; a row that is not there is
+// ErrNotFound.
 func (s *MemStore) GetDataset(_ context.Context, id string) (*Dataset, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -94,6 +107,7 @@ func (s *MemStore) GetDataset(_ context.Context, id string) (*Dataset, error) {
 	return &c, nil
 }
 
+// DeleteDataset drops one dataset row; a row that is not there is ErrNotFound.
 func (s *MemStore) DeleteDataset(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,7 +118,9 @@ func (s *MemStore) DeleteDataset(_ context.Context, id string) error {
 	return nil
 }
 
-// MemArtifactStore is an in-memory ArtifactStore.
+// MemArtifactStore holds artifact bodies in a map, for tests and for running
+// before a blob store exists. Like MemStore it copies on the way in and out, so
+// the slice a caller stores or reads back is never the one held here.
 type MemArtifactStore struct {
 	mu    sync.Mutex
 	blobs map[string][]byte
@@ -115,6 +131,8 @@ func NewMemArtifactStore() *MemArtifactStore {
 	return &MemArtifactStore{blobs: map[string][]byte{}}
 }
 
+// Put stores a copy of content under key and returns its checksum, so the
+// caller keeping the bytes afterwards cannot change what was stored.
 func (a *MemArtifactStore) Put(_ context.Context, key string, content []byte) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -122,6 +140,8 @@ func (a *MemArtifactStore) Put(_ context.Context, key string, content []byte) (s
 	return Checksum(content), nil
 }
 
+// Get returns a copy of the content stored under key, reporting false when
+// there is none.
 func (a *MemArtifactStore) Get(_ context.Context, key string) ([]byte, bool, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -132,6 +152,8 @@ func (a *MemArtifactStore) Get(_ context.Context, key string) ([]byte, bool, err
 	return append([]byte(nil), b...), true, nil
 }
 
+// Delete removes the content stored under key; removing a key that is not there
+// is a no-op.
 func (a *MemArtifactStore) Delete(_ context.Context, key string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -139,6 +161,8 @@ func (a *MemArtifactStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+// DeletePrefix removes every stored key beginning with prefix — how a dataset
+// deletion reaches an experiment's derived artifacts.
 func (a *MemArtifactStore) DeletePrefix(_ context.Context, prefix string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
