@@ -207,7 +207,6 @@ type Capabilities struct {
 	Cancellation       bool
 	MaxAttachmentBytes int64
 	MaxLocatorBytes    int
-	BillableMeters     []Meter
 }
 
 type Runtime interface {
