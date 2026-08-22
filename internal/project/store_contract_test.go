@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -263,10 +264,10 @@ func runTrashContract(t *testing.T, s Store) {
 	}
 
 	// Gone from both lists a reader reaches it through.
-	if mine, err := s.ListByOwner(ctx, "tidy-owner"); err != nil || containsID(mine, p.ID) {
+	if mine, err := s.ListByOwner(ctx, "tidy-owner"); err != nil || slices.ContainsFunc(mine, hasID(p.ID)) {
 		t.Errorf("a trashed project is still in its owner's list (%v)", err)
 	}
-	if pub, err := s.ListPublic(ctx); err != nil || containsID(pub, p.ID) {
+	if pub, err := s.ListPublic(ctx); err != nil || slices.ContainsFunc(pub, hasID(p.ID)) {
 		t.Errorf("a trashed project is still in the public zone (%v)", err)
 	}
 	// Still readable by id: restore, purge, and the owner's read-only view all
@@ -279,7 +280,7 @@ func runTrashContract(t *testing.T, s Store) {
 		t.Error("Get of a trashed project does not report it trashed")
 	}
 	trashed, err := s.ListTrashed(ctx, "tidy-owner")
-	if err != nil || !containsID(trashed, p.ID) {
+	if err != nil || !slices.ContainsFunc(trashed, hasID(p.ID)) {
 		t.Errorf("ListTrashed = %v, %v; want the project", trashed, err)
 	}
 	// Somebody else's trash is not yours.
@@ -309,7 +310,7 @@ func runTrashContract(t *testing.T, s Store) {
 	if back.Visibility != VisibilityPublic || back.SignedOffBy != "tidy-owner" {
 		t.Errorf("Restore did not return the project whole: %+v", back)
 	}
-	if mine, _ := s.ListByOwner(ctx, "tidy-owner"); !containsID(mine, p.ID) {
+	if mine, _ := s.ListByOwner(ctx, "tidy-owner"); !slices.ContainsFunc(mine, hasID(p.ID)) {
 		t.Error("a restored project is not back in its owner's list")
 	}
 	if err := s.Restore(ctx, p.ID); err != nil {
@@ -323,15 +324,6 @@ func runTrashContract(t *testing.T, s Store) {
 	if err := s.Restore(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Restore of a missing project = %v, want ErrNotFound", err)
 	}
-}
-
-func containsID(ps []Project, id string) bool {
-	for _, p := range ps {
-		if p.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 // runModifiedContract asserts what a project's modified time must do (018): it
@@ -928,3 +920,8 @@ func TestMovingAPaperNeedsASessionMover(t *testing.T) {
 // ptr is how a PaperEdit says "this field is present" — including when the
 // value it is set to is the zero one.
 func ptr[T any](v T) *T { return &v }
+
+// hasID matches a project by id, so a membership check reads as one.
+func hasID(id string) func(Project) bool {
+	return func(p Project) bool { return p.ID == id }
+}
