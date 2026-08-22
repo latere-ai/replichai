@@ -71,7 +71,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Designed, not built — the outer loop as a product:** [023](023-the-outer-loop-as-a-product.md) wires the built experiment engine to a person. The engine (007b/007c) and the job seam (`KindExperiment`) exist; nothing user-facing reaches them. The chain fills exactly the "still open in the server" gap below — [023a](023a-experiments-persisted-and-dispatched.md) the Postgres stores and the dispatching runner (and it keys an experiment to the *session* that produced its instrument, not the project — 015's rule), [023b](023b-the-experiment-http-surface.md) the authenticated routes, [023c](023c-running-an-experiment-from-the-app.md) the screen. It ships the two sources with live input first — `synthetic:generated` and `uploaded` — and [023d](023d-ground-truth-for-a-cohort.md) enables `synthetic:model` and `released` behind the held-released-data gate. A census of every published `instrument.json` found 0/26 servable components and 0/3 papers' released data held, so hosting (007d) and the ground-truth sources are blocked on *corpus* — a paper to reproduce, not code to write.
 
-**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c product halves land as the [023](023-the-outer-loop-as-a-product.md) chain. 006c's forge-account link lands with its consumer, 006f.
+**Designed, not built:** 006d (PDF ingestion) and the hosted-study spec 007d. The 007b/007c product halves land as the [023](023-the-outer-loop-as-a-product.md) chain. 006c's forge-account link was **deleted** rather than deferred: it waited two specs for the consumer that was supposed to justify it, and 006f invites the login the request names instead.
 
 **Built — money comes in without an admin:** [022](022-money-comes-in-without-an-admin.md) (six leaves, 022a–022f) adds the front door 011 left locked. A person buys credits into their own wallet with a card: a Stripe hosted Checkout session creates the charge, a signed webhook is the one thing that posts the credit, and the ledger dedupes that post on an `external_ref` so a retried delivery cannot double it. Margin is a visible spread at purchase (you pay $20, your wallet gains $18), which keeps the rate card raw so a session's cost still reconciles against vendor rates. The checkout is created in **USD** (a credit is prepaid USD compute) and an EU customer pays the euro equivalent via Stripe Adaptive Pricing — a dashboard toggle, so no code charges, reads, or converts EUR; EU-consumer VAT is a flagged, deferred spec. Refunds are a negative `adjust` and may take a wallet negative — and a negative wallet **freezes the account** into view-only mode (every write refused `402 account_frozen` bar the top-up that thaws it), with a one-shot admin override and a frozen/negative filter on the admin people table, so a chargeback-after-spend cannot quietly keep costing compute. Coupling a customer payment to the platform's own Anthropic account is a stated non-goal, replaced by a solvency number on the console. Supersedes only 011's closing line — admin top-up stays as the way a grant or comp enters a wallet.
 
@@ -87,7 +87,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 ## Architecture at a glance
 
-**The neutral core, the named edges.** The orchestrator (`internal/audit`) and the contract (`internal/provider`) name only roles; the one backend adapter (`internal/provider/anthropic`) and the composition root (`cmd/`) name the vendor. A `memory` provider runs nothing, so the whole orchestrator is testable offline.
+**The neutral core, the named edges.** The orchestrator (`internal/audit`) and the contracts (`internal/managed`, `internal/provider`) name only roles; the adapters and the composition root (`internal/runtimes/builtin`, `cmd/`) name the vendor, and a test walks the import graph to keep it that way. A `memory` runtime runs nothing, so the whole orchestrator is testable offline.
 
 **The package map:**
 
@@ -97,7 +97,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/method` | the method — instructions, rubric, task template, experiment doctrine — and its digest |
 | `internal/instrument` | the `instrument.json` schema and its validation (007a) |
 | `internal/verdict` | the `verdict.json` schema — the findings as data (021a) |
-| `internal/provider` | the neutral backend contract; `anthropic` and `memory` adapters |
+| `internal/provider` | the original backend contract; its neutral half is still everyone's event vocabulary (041) |
+| `internal/managed` | the vendor-neutral managed-session contract and the controller that drives one (041a, 041b) |
+| `internal/runtimes` | the explicit runtime catalog and durable router — no registry, no `init` (041, 041c) |
 | `internal/audit` | the orchestrator: run an audit, optionally into a mounted repo |
 | `internal/experiment` | run a reproduction's declared analysis on new data (007b); never imported by `audit` |
 | `internal/publish` | the manifest, the redistribution gate, naming, the filesystem forge |
@@ -114,6 +116,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | `internal/draft` | one short model call — a prompt in, a paragraph and a token count out (039) |
 | `internal/httpapi` | the HTTP server: submit, status, SSE, read surfaces, the gate seam (006a) |
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
+| `internal/seo` | the head the server writes, the sitemap, and the addresses Go knows (042) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
 | `frontend/` | the researcher UI — bun + React, i18n scaffolding (English only today) (006e) |
 | `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers`, `rates` |
@@ -134,7 +137,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 - **The project is the tenant** — no org in the product; each user owns private projects (owner + invited contributors), private by default, made public by the owner. One backend credential pays for every run. The app owns the ownership model; artifacts live in a `Store` (the GitHub forge for the MVP, [drive](https://drive.latere.ai) later, behind one seam — 008). (006)
 - **The registry is derived, not stored** — read the org's manifests; no second source of truth. Job-lifecycle state (a later web concern) is the only thing that gets a database. (003, 006b)
-- **Ownership by invitation, never delegation** — GitHub OAuth proves identity only; the org invites the user's linked login as a collaborator. The service never holds a user's repo credentials. (006f, 006c)
+- **Ownership by invitation, never delegation** — GitHub OAuth proves identity only; the org invites the login the request names, and ownership comes from that invitation rather than from anything the platform stored about the account. The service never holds a user's repo credentials. (006f, 006c)
 - **The redistribution gate fails closed** — third-party data is never published; the method keeps downloads out of the mounted repo, and the verifier bars a leaked repo from ever going public. (002, 006f)
 - **Never simulate the outer loop** — outer-loop execution is a downstream engine, `verdict`/`rate` stay audit-only, a synthetic cohort is labelled indelibly. Regression-tested in `evals/case-01`. (007)
 - **Open sign-in, metered spending** — anyone signs in with a latere account and is granted `user`; what limits them is money, not a guest list, and they arrive with none. The gate stays fail-closed and per-request. (006c, 006q, 011)
@@ -143,6 +146,12 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 ## The spec map
 
+Three tables, by how finished the work is rather than by number. A spec's number still tells you when it was written; this tells you what you can rely on. Within each table the order is numeric.
+
+### Done (78)
+
+Built, and every acceptance criterion it set itself holds.
+
 | # | Spec | Status | Depends on |
 |---|---|---|---|
 | 001 | [Paper identity and slugs](001-paper-identity-and-slugs.md) | implemented | — |
@@ -150,13 +159,10 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 003 | [The reproduction registry](003-reproduction-registry.md) | implemented | 001, 002 |
 | 004 | [Port the core to Go](004-go-port.md) | implemented; its Python half deleted | — |
 | 005 | [Capture and publish the reproduction transcript](005-transcript.md) | implemented | 002, 006f |
-| 006 | [The web application](006-web-application.md) | built through its children | 002, (003, 005) |
 | 006a | [HTTP API and streaming](006a-http-api-and-streaming.md) | built | 006b, (003, 005) |
 | 006b | [Job model and persistence](006b-job-model-and-persistence.md) | built | 002, 004 |
 | 006c | [Identity, tiers, and the access gate](006c-identity-and-access.md) | implemented | 006b |
-| 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
 | 006e | [Frontend](006e-frontend.md) | implemented | 006a |
-| 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | built; hardening in 009 | 002, 004, 006g, (006c) |
 | 006g | [Projects and replication sessions](006g-projects-and-replication-sessions.md) | implemented, deployed | 006b, 006c |
 | 006h | [Session transcript viewer](006h-session-transcript-viewer.md) | implemented, deployed | 006g, 005, 003 |
 | 006i | [Server-side mount and publish](006i-server-side-mount-and-publish.md) | built | 006f, 006b |
@@ -170,13 +176,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 006q | [Sign-in is open, budget is not](006q-sign-in-is-open-budget-is-not.md) | built; half superseded by 011 | 006c, 006l, 006k |
 | 006r | [The public profile](006r-the-public-profile.md) | built | 006n, 006f |
 | 006s | [Reading a session in time](006s-reading-a-session-in-time.md) | built | 006h, 006g |
-| 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007a | [The study protocol as an artifact](007a-the-study-protocol-as-an-artifact.md) | implemented | 004 |
-| 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |
-| 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | engine built | 007b |
-| 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
-| 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
-| 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | commits 1–2 shipped; 3 deferred | 002, 005, 006f, 006i |
 | 010 | [Deployment and release](010-deployment-and-release.md) | built | 006a, 006b, 006c |
 | 011 | [What a session costs](011-what-a-session-costs.md) | built | 006b, 006c, 006g, 006k, 006h |
 | 012 | [A project holds papers](012-a-project-holds-papers.md) | built | 006g, 006j, 006c, 011, 001 |
@@ -186,7 +186,6 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 014c | [Publication requires evidence](014c-publication-requires-evidence.md) | built | 002, 005, 006i, 009 |
 | 014d | [An auth outage is not sign-out](014d-an-auth-outage-is-not-sign-out.md) | built | 006c, 006e, 013 |
 | 015 | [A verdict belongs to a session](015-a-verdict-belongs-to-a-session.md) | built | 012, 013, 006f, 006s |
-| 016 | [A paper that is not published yet](016-a-paper-that-is-not-published-yet.md) | deferred (ideation) | 001, 006d, 012, 007b, 008 |
 | 017 | [The first screen](017-the-first-screen.md) | built | 006e, 006q, 013 |
 | 018 | [One list of projects](018-one-list-of-projects.md) | built | 006g, 006f, 006r, 013 |
 | 019 | [A project can be thrown away](019-a-project-can-be-thrown-away.md) | built | 006g, 006o, 011, 013, 018 |
@@ -204,17 +203,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 022d | [The freeze, server-side](022d-a-negative-wallet-is-frozen.md) | built | 022c |
 | 022e | [Buying credits](022e-buying-credits.md) | built | 022b |
 | 022f | [The frozen account, in the UI](022f-the-frozen-account-in-the-ui.md) | built | 022c, 022d, 022e |
-| 023 | [The outer loop, as a product](023-the-outer-loop-as-a-product.md) | draft | 007b, 007c, 006b, 015 |
-| 023a | [Experiments persisted and dispatched](023a-experiments-persisted-and-dispatched.md) | draft | 007b, 007c, 006b, 015 |
-| 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
-| 023c | [Running an experiment from the app](023c-running-an-experiment-from-the-app.md) | draft | 023b, 006e, 013, 021 |
-| 023d | [Ground truth for a cohort](023d-ground-truth-for-a-cohort.md) | draft | 023c, 007c |
 | 024 | [Settings is a place, and the ledger names its projects](024-settings-is-a-place.md) | built | 013, 011, 018, 019 |
 | 024a | [Settings as a destination, with sub-tabs](024a-settings-as-a-destination.md) | built | 013 |
 | 024b | [The ledger names its project](024b-the-ledger-names-its-project.md) | built | 024a, 011, 019 |
-| 025 | [The solvency an operator can act on](025-the-solvency-an-operator-can-act-on.md) | designed | 022c, 006k, 022d |
-| 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
-| 027 | [EU VAT, and the invoice that comes with it](027-eu-vat-and-the-invoice.md) | designed | 022b, 022c, 022e, 006k, 011 |
 | 028 | [The registry opens](028-the-registry-opens.md) | built | 006f, 006r, 013, 017, 018, 021, 011 |
 | 029 | [The landing is a place](029-the-landing-is-a-place.md) | built | 028, 017, 013, 006q |
 | 030 | [The app on a phone](030-the-app-on-a-phone.md) | built | 006e, 013, 017 |
@@ -228,14 +219,9 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 038 | [A project says what it is about](038-a-project-says-what-it-is-about.md) | built | 018, 006j, 028 |
 | 039 | [A description can be drafted](039-a-description-can-be-drafted.md) | built | 038, 037, 011, 006k, 031 |
 | 040 | [The landing in light, and the shared footer](040-the-landing-in-light.md) | built | 033 |
-| 041 | [The runtime is not the model vendor](041-the-runtime-is-not-the-model-vendor.md) | normalization built; adapters designed | 004, 005, 006b, 011, 014a, 031 |
 | 041a | [One managed-session contract](041a-one-managed-session-contract.md) | implemented | 041, 004, 005, 031 |
 | 041b | [One managed-session lifecycle](041b-one-managed-session-lifecycle.md) | implemented | 041a, 005, 006f, 014a |
 | 041c | [A session remembers its runtime](041c-a-session-remembers-its-runtime.md) | implemented | 041a, 041b, 006b, 031, 039 |
-| 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
-| 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half-done | 041a–041d |
-| 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
-| 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
 | 042 | [The site a machine that is not a browser can read](042-the-site-a-crawler-can-read.md) | built | 013, 028, 006r |
 | 042a | [The head the server writes](042a-the-head-the-server-writes.md) | built | 042 |
 | 042b | [robots.txt, and a sitemap of the public zone](042b-robots-and-the-sitemap.md) | built | 042a |
@@ -246,6 +232,43 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 | 044b | [The server harvests what the session produced](044b-the-server-harvests-the-session.md) | built | 044, 006i, 009 |
 | 044c | [A lease says the driver is alive](044c-a-lease-says-it-is-alive.md) | built | 044, 006b, 041b |
 | 044d | [An empty repository says so](044d-an-empty-repository-says-so.md) | built | 044, 021a, 044b |
+
+### Half done (8)
+
+Shipped and load-bearing, but each is knowingly short of what its own spec asked for. The status column says which part is missing — read these before assuming the spec describes the code.
+
+| # | Spec | Status | Depends on |
+|---|---|---|---|
+| 006 | [The web application](006-web-application.md) | built through its children | 002, (003, 005) |
+| 006f | [Taking a reproduction out](006f-taking-a-reproduction-out.md) | built; hardening in 009 | 002, 004, 006g, (006c) |
+| 007b | [Experiments over instruments](007b-experiments-over-instruments.md) | engine built | 007a, 006f |
+| 007c | [The synthetic pilot](007c-the-synthetic-pilot.md) | engine built | 007b |
+| 009 | [Secret containment when the agent commits live](009-secret-containment-when-the-agent-commits-live.md) | commits 1–2 shipped; 3 deferred | 002, 005, 006f, 006i |
+| 041 | [The runtime is not the model vendor](041-the-runtime-is-not-the-model-vendor.md) | normalization built; adapters designed | 004, 005, 006b, 011, 014a, 031 |
+| 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
+| 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half-done | 041a–041d |
+
+### Not built (15)
+
+Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
+
+| # | Spec | Status | Depends on |
+|---|---|---|---|
+| 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
+| 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
+| 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
+| 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
+| 016 | [A paper that is not published yet](016-a-paper-that-is-not-published-yet.md) | deferred (ideation) | 001, 006d, 012, 007b, 008 |
+| 023 | [The outer loop, as a product](023-the-outer-loop-as-a-product.md) | draft | 007b, 007c, 006b, 015 |
+| 023a | [Experiments persisted and dispatched](023a-experiments-persisted-and-dispatched.md) | draft | 007b, 007c, 006b, 015 |
+| 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
+| 023c | [Running an experiment from the app](023c-running-an-experiment-from-the-app.md) | draft | 023b, 006e, 013, 021 |
+| 023d | [Ground truth for a cohort](023d-ground-truth-for-a-cohort.md) | draft | 023c, 007c |
+| 025 | [The solvency an operator can act on](025-the-solvency-an-operator-can-act-on.md) | designed | 022c, 006k, 022d |
+| 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
+| 027 | [EU VAT, and the invoice that comes with it](027-eu-vat-and-the-invoice.md) | designed | 022b, 022c, 022e, 006k, 011 |
+| 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
+| 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
 
 **Built:** [044](044-a-run-that-produced-nothing.md) is the record of the run that cost $2.21, took twenty minutes, and left a repository holding nothing but the five commits the system wrote itself. Four defects, each independently fatal, and the interesting part is how ordinary each one is. The agent committed five times into the mount and never pushed, and a tool result in its own transcript says so in as many words; the mount protocol asks for a push in a subordinate clause and the rubric grades eight criteria none of which is *did this leave the sandbox*. The agent had also copied its deliverable — `verdict.json` included — into the output directory, where the CLI would have harvested it and the server, which binds `evidence.Artifacts` and reads only `evidence.Events`, threw it away seconds before releasing the sandbox holding the only other copy. Meanwhile a second replica adopted the still-healthy run, because the lease is refreshed only by an observation and the controller emits one only when something *changed*, so five quiet minutes read as a dead process — and the two drivers' finalizes raced, the loser's `422` recording `failed` over the winner's success. The session then reported *the run did not write verdict.json*, which is true, and describes a findings problem where the truth was an empty repository. Its four children fix them one apiece: [044a](044a-the-mount-is-pushed.md) makes the push its own step and a graded criterion, [044b](044b-the-server-harvests-the-session.md) commits the outputs through the same `VerifyTree` gate the mount has, [044c](044c-a-lease-says-it-is-alive.md) heartbeats the jobs a worker drives and yields the one it has lost, and [044d](044d-an-empty-repository-says-so.md) makes finalize say which of the two things went wrong. 044a and 044b are both needed and fail differently: prevention that depends on the agent's discipline, and recovery that does not.
 
@@ -259,7 +282,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **The engine (001–005) — done.** 001 decides what a paper *is*; 002 decides where a reproduction *goes* and gates what may be republished; 003 relates repeat reproductions of one paper by identity; 004 is the record of why the core is Go. 005 closed the evidence layer: the agent's full session transcript is fetched and committed, by the system, in the same finalize step as the manifest — so each reproduction is claim + evidence + verdict.
 
-**The web application (006) — built, deployed, and taking money.** A service that wraps the engine: sign in, put papers in a project, start a session per paper, watch it stream, read the verdict, take the repository out, publish it under your name, and pay for the compute it burned. 006 itself stays a draft because it is the container: what it argued for now lives in nineteen children (006a–006s) and in the numbered specs from 011 up, each of which carries its own status. The one child still unbuilt is **006d**, dropping a PDF to submit.
+**The web application (006) — built, deployed, and taking money.** A service that wraps the engine: sign in, put papers in a project, start a session per paper, watch it stream, read the verdict, take the repository out, publish it under your name, and pay for the compute it burned. 006 itself is not open work: it is the container, and what it argued for now lives in nineteen children (006a–006s) and in the numbered specs from 011 up, each carrying its own status. The one child still unbuilt is **006d**, dropping a PDF to submit.
 
 Sign-in is open ([006q](006q-sign-in-is-open-budget-is-not.md)): anyone with a Latere account may sign in and is granted the ordinary user tier. What limits them is the meter, not a guest list, and they arrive with nothing to spend until they buy credits ([022](022-money-comes-in-without-an-admin.md)) or an admin grants them.
 
@@ -275,7 +298,7 @@ Nothing on this list blocks the loop the product exists for: a paper goes in, a 
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input — `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop.
 
-**The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md)).** 041a–041e now normalize managed execution behind one contract, make a session remember its runtime, qualify models and meters, and isolate Anthropic behind explicit composition. The umbrella's two alternative adapters (041f, 041g) remain design-only and unreachable until implemented deliberately.
+**The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md)).** 041a–041e normalize managed execution behind one contract, make a session remember its runtime, and qualify models and meters. Two halves are knowingly short. The Anthropic adapter was never built at `internal/managed/anthropic` — the SDK stays in `internal/provider/anthropic` behind `managed/legacy`, and `internal/audit` still calls the old resource contract directly, so 041e's criteria 4 and 8 are open. And meters are not declared in capabilities: `Capabilities.BillableMeters` was dropped once nothing set it and nothing read it, leaving 041d without the enqueue-time preflight its criterion 4 asked for. The two alternative adapters (041f, 041g) remain design-only.
 
 **Blocked on corpus, not on code.** [023d](023d-ground-truth-for-a-cohort.md) (a cohort with ground truth) and [007d](007d-hosting-a-study.md) (hosting a study for real participants) wait on papers, not on packages: a census of every published `instrument.json` found 0/26 servable components and 0/3 papers whose released data is held. Until the golden set gains a fully servable study, neither can be checked against anything. The same gap is recorded in [`BACKLOG.md`](BACKLOG.md) item 3.
 
