@@ -100,7 +100,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	fs.SetOutput(stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
-		providerName = fs.String("provider", defaultCLIRuntime, "managed runtime to use (deprecated name; use --runtime in new automation)")
+		runtimeName  = fs.String("runtime", defaultCLIRuntime, "managed runtime to use")
 		methodDir    = fs.String("method", "", "path to a method directory")
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long a run may take")
@@ -112,7 +112,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	)
 	// flag stops parsing at the first non-flag argument, so a plain
 	// fs.Parse would silently drop every flag in
-	// `replichai audit <paper> --provider memory` -- the natural way to type
+	// `replichai audit <paper> --runtime memory` -- the natural way to type
 	// it. Collect positionals and keep parsing what follows each one.
 	var positional []string
 	for rest := args; ; {
@@ -135,7 +135,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	if err != nil {
 		return err
 	}
-	controller, _, err := controllerFor(ctx, *providerName, *interval)
+	controller, _, err := controllerFor(ctx, *runtimeName, *interval)
 	if err != nil {
 		return err
 	}
@@ -452,14 +452,14 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	fs := flag.NewFlagSet("finish", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		session      = fs.String("session", "", "legacy session id to reattach to")
-		sessionRef   = fs.String("session-ref", "", "complete session reference printed by audit --detach")
-		providerName = fs.String("provider", defaultCLIRuntime, "managed runtime for a legacy --session id")
-		methodDir    = fs.String("method", "", "the method directory the audit used")
-		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
-		verdictFlag  = fs.String("verdict", "", "override the recorded verdict when no session is polled")
-		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
-		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long to wait for the session")
+		session     = fs.String("session", "", "legacy session id to reattach to")
+		sessionRef  = fs.String("session-ref", "", "complete session reference printed by audit --detach")
+		runtimeName = fs.String("runtime", defaultCLIRuntime, "managed runtime for a legacy --session id")
+		methodDir   = fs.String("method", "", "the method directory the audit used")
+		invite      = fs.String("invite", "", "GitHub login to invite as a collaborator")
+		verdictFlag = fs.String("verdict", "", "override the recorded verdict when no session is polled")
+		interval    = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
+		timeout     = fs.Duration("timeout", audit.DefaultTimeout, "how long to wait for the session")
 	)
 	var positional []string
 	for rest := args; ; {
@@ -518,7 +518,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 			return errors.New("set only one of --session-ref or legacy --session")
 		}
 		var ref managed.SessionRef
-		rawRuntime := *providerName
+		rawRuntime := *runtimeName
 		if *sessionRef != "" {
 			ref, err = decodeSessionRef(*sessionRef)
 			rawRuntime = string(ref.Runtime)
@@ -785,7 +785,7 @@ a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
 
 flags for audit:
   -out            directory for artifacts (default "runs")
-  -provider       managed runtime to use (default "anthropic-managed")
+  -runtime        managed runtime to use (default "anthropic-managed")
   -method         path to a method directory
   -interval       gap between status checks
   -timeout        how long a run may take
@@ -796,7 +796,7 @@ flags for audit:
   -detach         with -publish, start the run and return; finish it later
 
 flags for rates:
-  -provider       managed runtime to ask (default "anthropic-managed")
+  -runtime        managed runtime to ask (default "anthropic-managed")
   -database-url   read the live rate card from a deployment (default $DATABASE_URL)
   -json           machine-readable output
 
