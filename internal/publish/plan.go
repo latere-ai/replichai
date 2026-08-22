@@ -11,10 +11,10 @@ import (
 // DefaultOrg is the GitHub organisation reproductions are published under.
 const DefaultOrg = "open-hai"
 
-// PublishPlan is everything that will be published, computed before anything is
+// Plan is everything that will be published, computed before anything is
 // created. Include holds worker-written paths relative to SourceDir; Publish
 // reads their bytes from there.
-type PublishPlan struct {
+type Plan struct {
 	RepoName   string
 	SourceDir  string
 	Include    []string
@@ -35,13 +35,13 @@ var ErrNoName = errors.New("cannot name the repository")
 // network, no repository, no clock, and no file reads — every artifact is
 // classified by its path alone. The suffix is supplied so naming is
 // deterministic and testable.
-func PlanPublication(result audit.Result, id paper.Identity, suffix string) (PublishPlan, error) {
+func PlanPublication(result audit.Result, id paper.Identity, suffix string) (Plan, error) {
 	if id.Slug == "" || suffix == "" {
-		return PublishPlan{}, fmt.Errorf("%w: slug=%q suffix=%q", ErrNoName, id.Slug, suffix)
+		return Plan{}, fmt.Errorf("%w: slug=%q suffix=%q", ErrNoName, id.Slug, suffix)
 	}
 	name := repoName(id.Slug, suffix)
 
-	plan := PublishPlan{RepoName: name, SourceDir: result.ArtifactDir}
+	plan := Plan{RepoName: name, SourceDir: result.ArtifactDir}
 	for _, a := range result.Artifacts {
 		// Compiled residue and known-secret files never enter the plan at all —
 		// neither published nor listed as withheld.

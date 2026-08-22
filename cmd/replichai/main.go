@@ -673,7 +673,7 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 	}
 
 	forge := publish.NewFSForge(*out, publish.DefaultOrg)
-	var opts []publish.PublishOption
+	var opts []publish.Option
 	if *live {
 		opts = append(opts, publish.Live())
 	}

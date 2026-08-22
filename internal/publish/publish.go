@@ -30,8 +30,8 @@ type Published struct {
 	Existed bool // the repository already existed (idempotent re-publish)
 }
 
-// PublishOption configures Publish.
-type PublishOption func(*publishConfig)
+// Option configures Publish.
+type Option func(*publishConfig)
 
 type publishConfig struct {
 	live bool
@@ -39,10 +39,10 @@ type publishConfig struct {
 }
 
 // Live makes Publish create and push for real. Without it, Publish previews.
-func Live() PublishOption { return func(c *publishConfig) { c.live = true } }
+func Live() Option { return func(c *publishConfig) { c.live = true } }
 
 // WithClock overrides the source of the manifest's created stamp.
-func WithClock(now func() time.Time) PublishOption {
+func WithClock(now func() time.Time) Option {
 	return func(c *publishConfig) { c.now = now }
 }
 
@@ -50,7 +50,7 @@ func WithClock(now func() time.Time) PublishOption {
 // creates nothing; Live() makes it real. When live it creates the private
 // repository if absent, then pushes — pushing even when the repository already
 // existed, so a run that failed mid-push completes on retry.
-func Publish(ctx context.Context, plan PublishPlan, forge Forge, opts ...PublishOption) (Published, error) {
+func Publish(ctx context.Context, plan Plan, forge Forge, opts ...Option) (Published, error) {
 	cfg := publishConfig{now: time.Now}
 	for _, o := range opts {
 		o(&cfg)
@@ -83,7 +83,7 @@ func Publish(ctx context.Context, plan PublishPlan, forge Forge, opts ...Publish
 
 // assemble builds the files to push: the manifest with its created stamp, every
 // included file (swept for secrets), and EXCLUDED.md when anything was withheld.
-func assemble(plan PublishPlan, now time.Time) ([]File, error) {
+func assemble(plan Plan, now time.Time) ([]File, error) {
 	m := plan.Manifest
 	m.Reproduction.Created = now.UTC()
 	manifestJSON, err := json.MarshalIndent(m, "", "  ")
