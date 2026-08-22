@@ -43,11 +43,11 @@ export type Findings = {
   released?: Release[]
 }
 
-// inner and outer split the boundary. They are separate calls rather than one
-// grouping so a caller cannot accidentally render outer rows through a code
-// path that assumes an outcome means something.
+// inner is the half of the boundary an outcome means something for. There is no
+// matching outer(): the one place that shows outer rows renders the whole
+// boundary in one table and marks them per row, so a list of them has never
+// been needed.
 export const inner = (f: Findings): Claim[] => (f.boundary ?? []).filter((c) => c.loop === 'inner')
-export const outer = (f: Findings): Claim[] => (f.boundary ?? []).filter((c) => c.loop === 'outer')
 
 // unresolved is what did not cleanly reproduce: an inner-loop claim that is
 // blocked, only partly verified, or verified while still disagreeing with the
