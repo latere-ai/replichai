@@ -62,8 +62,47 @@ linters:
         - G306
     misspell:
       # US spelling: "artifact" is the domain term used by the research
-      # community, the backend API, and this project's own documents.
+      # community, the backend API, and this project's own documents. It is
+      # the only word we hold to US spelling, so the locale stays US and the
+      # British forms this project writes everywhere else are listed below.
       locale: US
+      # Prose here is British English on purpose. These are spellings, not
+      # mistakes; `artefact` is deliberately absent so the one word that must
+      # stay American keeps being enforced.
+      ignore-rules:
+        - analyse
+        - authorised
+        - authorises
+        - behaviour
+        - behavioural
+        - cancelled
+        - cancelling
+        - catalogue
+        - centre
+        - honoured
+        - honouring
+        - labelled
+        - labelling
+        - licence
+        - marshalling
+        - materialised
+        - organisation
+        - organised
+        - recognisable
+        - recognise
+        - reorganises
+        - reorganising
+        - serialise
+        - serialised
+        - serialises
+        - summarise
+        - summarised
+        - summarises
+        - summarising
+        - synthesised
+        - synthesises
+        - travelled
+        - unrecognised
 
   exclusions:
     rules:

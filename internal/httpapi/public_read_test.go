@@ -24,7 +24,7 @@ import (
 // whoever the test happened to be.
 
 // denyAll refuses every gated request, which is what makes "this route is open"
-// a fact rather than an artefact of a permissive test gate.
+// a fact rather than an artifact of a permissive test gate.
 var denyAll = GateFunc(func(*http.Request) (bool, string) { return false, "no_access" })
 
 // closedTo returns a second router over the same stores whose gate refuses
