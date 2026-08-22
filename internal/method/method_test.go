@@ -2,6 +2,7 @@ package method
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,9 +16,7 @@ func writeMethod(t *testing.T, root string, overrides map[string]string) string 
 		"rubric.md":        "1. Verdict.",
 		"task-template.md": "Audit {{PAPER}} and report.",
 	}
-	for name, text := range overrides {
-		files[name] = text
-	}
+	maps.Copy(files, overrides)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

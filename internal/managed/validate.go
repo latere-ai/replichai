@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -244,10 +245,8 @@ func secretKey(value any) bool {
 			}
 		}
 	case []any:
-		for _, child := range typed {
-			if secretKey(child) {
-				return true
-			}
+		if slices.ContainsFunc(typed, secretKey) {
+			return true
 		}
 	}
 	return false

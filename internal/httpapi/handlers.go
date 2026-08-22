@@ -1169,13 +1169,11 @@ func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder strin
 // context of its own so a client hanging up cannot cancel a write that is
 // already half done. The WaitGroup is what lets a test wait for it.
 func (rt *Router) background(f func(context.Context)) {
-	rt.bg.Add(1)
-	go func() {
-		defer rt.bg.Done()
+	rt.bg.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), backgroundWork)
 		defer cancel()
 		f(ctx)
-	}()
+	})
 }
 
 // WaitBackground blocks until every background task scheduled so far has
@@ -1512,7 +1510,7 @@ type ProjectView struct {
 	// ModifiedAt is when this project last changed: the newest of its creation,
 	// its papers' additions, and its sessions' updates (018). Derived on every
 	// read — see project.Store.ModifiedAt for why it is not a column.
-	ModifiedAt time.Time `json:"modified_at,omitempty"`
+	ModifiedAt time.Time `json:"modified_at"`
 }
 
 // listProjects reports every project the caller may work in — their own and the
@@ -3003,7 +3001,7 @@ func repoRelative(p string) bool {
 	if p == "" || strings.HasPrefix(p, "/") || strings.ContainsAny(p, `\%`) {
 		return false
 	}
-	for _, seg := range strings.Split(p, "/") {
+	for seg := range strings.SplitSeq(p, "/") {
 		if seg == "" || seg == "." || seg == ".." {
 			return false
 		}
@@ -3035,7 +3033,7 @@ func artifactContentType(path string) string {
 // line fails the parse, so a corrupt transcript is a 500, not a silent gap.
 func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	events := []provider.Event{}
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}

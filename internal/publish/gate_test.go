@@ -86,7 +86,7 @@ func TestIsSecretName(t *testing.T) {
 
 func TestSuffixShape(t *testing.T) {
 	seen := map[string]bool{}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		s, err := NewSuffix()
 		if err != nil {
 			t.Fatalf("NewSuffix: %v", err)

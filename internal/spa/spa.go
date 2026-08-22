@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -110,12 +111,7 @@ var packedExt = []string{".woff2", ".woff", ".png", ".jpg", ".webp", ".gz", ".ic
 
 func packed(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	for _, e := range packedExt {
-		if ext == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(packedExt, ext)
 }
 
 // gzipResponse sends the body through the compressor while headers and status

@@ -91,19 +91,19 @@ func TestResolvePinsToACommit(t *testing.T) {
 // stored Instrument would trip here rather than silently persisting src/ and
 // instrument.json against 003's no-drift rule.
 func TestStoredExperimentHoldsNoDeclaration(t *testing.T) {
-	declType := reflect.TypeOf(Instrument{})
-	stored := reflect.TypeOf(Experiment{})
-	for i := 0; i < stored.NumField(); i++ {
-		if stored.Field(i).Type == declType {
+	declType := reflect.TypeFor[Instrument]()
+	stored := reflect.TypeFor[Experiment]()
+	for field := range stored.Fields() {
+		if field.Type == declType {
 			t.Errorf("Experiment.%s stores a resolved Instrument — persist a reference, not a copy",
-				stored.Field(i).Name)
+				field.Name)
 		}
 	}
 	// The reference carries only repo + commit, no declaration.
-	refType := reflect.TypeOf(InstrumentRef{})
-	for i := 0; i < refType.NumField(); i++ {
-		if refType.Field(i).Type == declType || refType.Field(i).Type == reflect.TypeOf(instrument.Instrument{}) {
-			t.Errorf("InstrumentRef.%s embeds a declaration — it must be a bare reference", refType.Field(i).Name)
+	refType := reflect.TypeFor[InstrumentRef]()
+	for field := range refType.Fields() {
+		if field.Type == declType || field.Type == reflect.TypeFor[instrument.Instrument]() {
+			t.Errorf("InstrumentRef.%s embeds a declaration — it must be a bare reference", field.Name)
 		}
 	}
 }

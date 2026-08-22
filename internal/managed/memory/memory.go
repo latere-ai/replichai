@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -216,10 +217,8 @@ func (r *Runtime) FetchArtifact(ctx context.Context, ref managed.SessionRef, art
 	if err != nil {
 		return nil, err
 	}
-	for _, listed := range artifacts {
-		if listed == artifact {
-			return append([]byte(nil), r.config.Files[artifact.Path]...), nil
-		}
+	if slices.Contains(artifacts, artifact) {
+		return append([]byte(nil), r.config.Files[artifact.Path]...), nil
 	}
 	return nil, &managed.NotFoundError{Runtime: Name, ID: artifact.ID}
 }

@@ -253,8 +253,8 @@ const findingsHeading = "## Findings not recorded as data (system)"
 // withoutFindingsNote drops a previously written system section, which runs to
 // the end of the file — it is always appended last.
 func withoutFindingsNote(s string) string {
-	if i := strings.Index(s, findingsHeading); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, findingsHeading); ok {
+		return before
 	}
 	return s
 }

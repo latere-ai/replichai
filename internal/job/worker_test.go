@@ -265,8 +265,7 @@ func TestReconcileLeavesARunAnotherWorkerIsDriving(t *testing.T) {
 // next deploy.
 func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	s := NewMemStore()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "pod-gone") // the pod that had it is not coming back
 	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
@@ -526,7 +525,7 @@ func TestCancelKeepsTheJobRetryableWhenBackendCloseFails(t *testing.T) {
 func TestStartProcessesThePool(t *testing.T) {
 	s := NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, _ = s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 	}
 
@@ -717,8 +716,7 @@ func equal(a, b []string) bool {
 // the loser recorded a failure over the winner's published success.
 func TestAQuietRunKeepsItsLease(t *testing.T) {
 	s := NewMemStore()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	const ttl = 60 * time.Millisecond
@@ -749,8 +747,7 @@ func TestAQuietRunKeepsItsLease(t *testing.T) {
 // driving on to a second finalize of the same backend session.
 func TestADriverYieldsASessionItHasLost(t *testing.T) {
 	s := NewMemStore()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	const ttl = 60 * time.Millisecond

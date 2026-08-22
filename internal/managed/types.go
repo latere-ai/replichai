@@ -165,8 +165,8 @@ type Status struct {
 	Ref            SessionRef     `json:"ref"`
 	Model          ModelRef       `json:"model"`
 	State          State          `json:"state"`
-	StartedAt      time.Time      `json:"started_at,omitempty"`
-	FinishedAt     time.Time      `json:"finished_at,omitempty"`
+	StartedAt      time.Time      `json:"started_at"`
+	FinishedAt     time.Time      `json:"finished_at"`
 	Usage          Usage          `json:"usage"`
 	TerminalReason TerminalReason `json:"terminal_reason,omitempty"`
 	Error          string         `json:"error,omitempty"`

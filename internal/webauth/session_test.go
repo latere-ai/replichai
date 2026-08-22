@@ -62,11 +62,11 @@ func TestNewCodecRejectsBadKey(t *testing.T) {
 // AC3: the session carries no tier. Asserted structurally so a future "cache the
 // tier for speed" change cannot break revocation-on-next-request.
 func TestSessionCarriesNoTier(t *testing.T) {
-	ty := reflect.TypeOf(Session{})
-	for i := 0; i < ty.NumField(); i++ {
-		name := strings.ToLower(ty.Field(i).Name)
+	ty := reflect.TypeFor[Session]()
+	for field := range ty.Fields() {
+		name := strings.ToLower(field.Name)
 		if strings.Contains(name, "tier") || strings.Contains(name, "role") || strings.Contains(name, "grant") {
-			t.Errorf("Session has field %q — authority must be re-resolved, never cached in the session", ty.Field(i).Name)
+			t.Errorf("Session has field %q — authority must be re-resolved, never cached in the session", field.Name)
 		}
 	}
 }

@@ -42,12 +42,10 @@ func TestConcurrentMigratorsDoNotCollide(t *testing.T) {
 	var wg, start sync.WaitGroup
 	start.Add(1)
 	for i := range racers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			start.Wait() // release them together
 			errs[i] = Migrate(ctx, pool)
-		}()
+		})
 	}
 	start.Done()
 	wg.Wait()

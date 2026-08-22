@@ -147,15 +147,15 @@ func TestPilotIsNotAnOutcome(t *testing.T) {
 	// The types do not convert: neither embeds or holds the other, so a pilot
 	// cannot flow into a path that consumes a run outcome. Asserted structurally
 	// (like the stored-declaration guard) so the boundary cannot silently erode.
-	pilotT, outcomeT := reflect.TypeOf(Pilot{}), reflect.TypeOf(Outcome{})
-	for i := 0; i < pilotT.NumField(); i++ {
-		if pilotT.Field(i).Type == outcomeT {
-			t.Errorf("Pilot.%s holds an Outcome — the pilot boundary would erode", pilotT.Field(i).Name)
+	pilotT, outcomeT := reflect.TypeFor[Pilot](), reflect.TypeFor[Outcome]()
+	for field := range pilotT.Fields() {
+		if field.Type == outcomeT {
+			t.Errorf("Pilot.%s holds an Outcome — the pilot boundary would erode", field.Name)
 		}
 	}
-	for i := 0; i < outcomeT.NumField(); i++ {
-		if outcomeT.Field(i).Type == pilotT {
-			t.Errorf("Outcome.%s holds a Pilot — the pilot boundary would erode", outcomeT.Field(i).Name)
+	for field := range outcomeT.Fields() {
+		if field.Type == pilotT {
+			t.Errorf("Outcome.%s holds a Pilot — the pilot boundary would erode", field.Name)
 		}
 	}
 }

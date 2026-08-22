@@ -1,6 +1,9 @@
 package managed
 
-import "context"
+import (
+	"context"
+	"maps"
+)
 
 type secretContextKey struct{}
 
@@ -8,9 +11,7 @@ type secretContextKey struct{}
 // carry only stable references; values are never serialized into a spec or ref.
 func WithSecrets(ctx context.Context, values map[string]string) context.Context {
 	copyValues := make(map[string]string, len(values))
-	for ref, value := range values {
-		copyValues[ref] = value
-	}
+	maps.Copy(copyValues, values)
 	return context.WithValue(ctx, secretContextKey{}, copyValues)
 }
 

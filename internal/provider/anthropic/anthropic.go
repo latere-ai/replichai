@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -295,9 +296,9 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 				failures = append(failures, fmt.Errorf("rollback session %s: %w", sessionID, err))
 			}
 		}
-		for index := len(uploaded) - 1; index >= 0; index-- {
-			if _, err := p.client.Beta.Files.Delete(cleanupCtx, uploaded[index], anthropic.BetaFileDeleteParams{}); err != nil {
-				failures = append(failures, fmt.Errorf("rollback file %s: %w", uploaded[index], err))
+		for _, u := range slices.Backward(uploaded) {
+			if _, err := p.client.Beta.Files.Delete(cleanupCtx, u, anthropic.BetaFileDeleteParams{}); err != nil {
+				failures = append(failures, fmt.Errorf("rollback file %s: %w", u, err))
 			}
 		}
 		return errors.Join(failures...)
@@ -602,8 +603,8 @@ func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 	})
 	_, archiveErr := p.client.Beta.Sessions.Archive(ctx, h.ID, anthropic.BetaSessionArchiveParams{})
 	failures := []error{closeRunError("interrupt", interruptErr), closeRunError("archive", archiveErr)}
-	for index := len(h.Files) - 1; index >= 0; index-- {
-		_, err := p.client.Beta.Files.Delete(ctx, h.Files[index], anthropic.BetaFileDeleteParams{})
+	for _, v := range slices.Backward(h.Files) {
+		_, err := p.client.Beta.Files.Delete(ctx, v, anthropic.BetaFileDeleteParams{})
 		failures = append(failures, releaseError("delete file", err))
 	}
 	return errors.Join(failures...)
@@ -645,8 +646,7 @@ func closeRunError(operation string, err error) error {
 	if err == nil {
 		return nil
 	}
-	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*anthropic.Error](err); ok {
 		switch apiErr.StatusCode {
 		case http.StatusNotFound, http.StatusConflict:
 			return nil

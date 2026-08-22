@@ -10,7 +10,7 @@ RUN bun run build   # vite outputs to ../internal/spa/dist
 # Stage 2: build the server statically, embedding the built frontend. Runs on
 # the native build platform and cross-compiles to the target arch — no
 # emulation, so a linux/amd64 image builds fast on an arm64 host.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./

@@ -78,7 +78,7 @@ func renderIndex(events []provider.Event, chunks int) []byte {
 	m.WriteString("The agent's full session, as recorded by the backend — the evidence behind the verdict. The canonical machine-readable form is [`transcript.jsonl`](transcript.jsonl); the parts below are the human-readable narrative.\n\n")
 	fmt.Fprintf(&m, "%d events across %d part(s).\n\n", len(events), chunks)
 	m.WriteString("| Part | Events | Opens with |\n|---|---|---|\n")
-	for c := 0; c < chunks; c++ {
+	for c := range chunks {
 		start, end := c*eventsPerChunk, min((c+1)*eventsPerChunk, len(events))
 		fmt.Fprintf(&m, "| [%03d](%s/%03d.md) | %d–%d | %s |\n",
 			c+1, transcriptDir, c+1, start+1, end, firstMessageSnippet(events[start:end]))
