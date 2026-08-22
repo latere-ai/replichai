@@ -481,27 +481,28 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("draft: project %s: %v", proj.ID, err)
+		// A model that answered with nothing burned tokens to do it, so the
+		// project pays before the request is refused — the alternative leaves
+		// the deployment funding compute nobody is billed for. Every other
+		// failure produced no usage to charge for.
+		if errors.Is(err, draft.ErrEmptyDraft) {
+			if _, ok := rt.chargeDraft(w, r, proj.ID, rates, got.Usage); !ok {
+				return
+			}
+			writeError(w, http.StatusBadGateway, "drafting_empty")
+			return
+		}
 		writeError(w, http.StatusBadGateway, "drafting_failed")
 		return
 	}
 
-	// Charged before the answer is handed over, and idempotent per call: the
-	// reference is minted here, so a client that retries a *request* pays twice
-	// (it was two calls) while a retried write of one call pays once.
-	cost := rates.Price(got.Usage)
-	if rt.credits != nil && cost > 0 {
-		ref, mintErr := draftRef(proj.ID)
-		if mintErr != nil {
-			writeError(w, http.StatusInternalServerError, "draft_charge_failed")
-			return
-		}
-		if err := rt.credits.Spend(r.Context(), credit.Pot(proj.ID), cost, ref, principal(r)); err != nil {
-			// The tokens are spent and unaccounted for. That is a fault worth
-			// hearing about, but the draft is still handed over: refusing it
-			// would charge the project nothing and give it nothing.
-			log.Printf("draft: charging project %s %d micro-USD: %v", proj.ID, cost, err)
-		}
+	cost, ok := rt.chargeDraft(w, r, proj.ID, rates, got.Usage)
+	if !ok {
+		return
 	}
+	// A Model that hands back a blank with no error is still refused rather
+	// than stored: the interface is exported, and only the models in this
+	// repository promise ErrEmptyDraft.
 	if strings.TrimSpace(got.Text) == "" {
 		writeError(w, http.StatusBadGateway, "drafting_empty")
 		return
@@ -511,6 +512,34 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 		Model       string `json:"model"`
 		CostMicro   int64  `json:"cost_micro"`
 	}{got.Text, got.Model, cost})
+}
+
+// chargeDraft bills a project for the tokens one drafting call spent, reporting
+// the cost and whether the request may go on. It runs on the way out of every
+// call the model actually answered — with prose or with nothing — because what
+// is charged for is the tokens, not the usefulness of what came back.
+//
+// The charge is idempotent per call: the reference is minted here, so a client
+// that retries a *request* pays twice (it was two calls) while a retried write
+// of one call pays once.
+func (rt *Router) chargeDraft(w http.ResponseWriter, r *http.Request, projectID string, rates credit.Rates, usage provider.Usage) (int64, bool) {
+	cost := rates.Price(usage)
+	if rt.credits == nil || cost <= 0 {
+		return cost, true
+	}
+	ref, mintErr := draftRef(projectID)
+	if mintErr != nil {
+		writeError(w, http.StatusInternalServerError, "draft_charge_failed")
+		return 0, false
+	}
+	if err := rt.credits.Spend(r.Context(), credit.Pot(projectID), cost, ref, principal(r)); err != nil {
+		// The tokens are spent and unaccounted for. That is a fault worth
+		// hearing about, but it does not change the answer: refusing a draft
+		// that was written would charge the project nothing and give it
+		// nothing, and refusing one that was not is already happening.
+		log.Printf("draft: charging project %s %d micro-USD: %v", projectID, cost, err)
+	}
+	return cost, true
 }
 
 // beginDraft claims the one drafting slot a project has, reporting whether it
