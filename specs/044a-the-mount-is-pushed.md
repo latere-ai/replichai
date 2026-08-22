@@ -1,6 +1,6 @@
 # 044a — The mount is pushed, not just committed
 
-**Status:** designed.
+**Status:** built.
 
 **Scope:** the mount protocol's push instruction, and a rubric criterion that grades the pushed state. No code outside `internal/audit` and `method/`.
 

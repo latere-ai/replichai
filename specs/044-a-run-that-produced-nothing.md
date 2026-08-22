@@ -1,6 +1,6 @@
 # 044 — A run that produced nothing must not report success
 
-**Status:** designed; children carry the work.
+**Status:** built. All four children shipped.
 
 **Scope:** the incident of 2026-08-22, its four independent defects, and the four children that fix them. No new product surface.
 
@@ -59,3 +59,24 @@ The boundary is what 044b must not weaken. Everything it commits goes through `p
 
 - Pushing on the agent's behalf. `managed.Runtime` is `Events` / `ListArtifacts` / `FetchArtifact` / `Cancel` / `Release` with no exec, so nothing outside the sandbox can reach `/workspace/repro`. Harvesting the mount directory is not available and this spec does not pretend otherwise.
 - Retrying a failed run. A run that produced nothing has still spent its money; what changes here is that it is reported as what it was.
+
+## Outcome
+
+All four shipped, one commit apiece plus the store change 044c needed first.
+
+| Child | Commits | What landed |
+| --- | --- | --- |
+| 044a | `044a: the mount is pushed…` | `mountProtocol` states the push as its own step with its consequence, `method/rubric.md` gains criterion 9, and a test refuses to let the push slide back into the commit sentence. |
+| 044b | `044b: the server harvests…` | `publish.CommitOutputs` and `harvestOutputs` in the server's `Retain` hook. |
+| 044c | `044c: a lease can be refreshed…`, `044c: a driver heartbeats…`, `044c: a commit retries…` | `Store.Touch` on both stores and the contract test; `Worker.heartbeat`/`beat`; the fast-forward retry in `github.CommitFiles`. |
+| 044d | `044d: an empty repository says so` | `holdsReproduction`, `Findings.Reproduction`, and the second wording for `UNVERIFIED.md`. |
+
+Three things worth recording that the design did not anticipate.
+
+**The incident's test is exact, not analogous.** `TestRetainHarvestsARunThatNeverPushed` runs the real `engineRunner` over a repository holding only `README.md` and `.replichai/paper.json` and a runtime whose files exist only as session artifacts. Without the harvest it fails by printing the incident's own manifest — `Present:false Problems:[the run did not write verdict.json]` — and the incident's own `UNVERIFIED.md`, character for character. The regression test and the post-mortem are the same artifact.
+
+**The heartbeat belongs to the worker, not the controller.** The design assumed a new `managed.Hooks` member driven from the controller's poll loop. `w.running` already names every job the process drives, under the lock `driving` and `interrupt` share, so a ticker over it needs no contract change at all — and it covers the resolving phase, which no observation has ever reached and which `reconcile`'s own comment had already flagged as a cold lease waiting for a sweep. The narrower fix was also the wider one.
+
+**`Store.Observe`'s doc comment was the bug, written down.** It claimed an observation "arrives on every poll, so the lease stays fresh for as long as the run does without a second heartbeat to keep in step." That was the design; the controller's `!sameObservation` guard made it false, and nothing rechecked the sentence. The comment now says what the code does, and points at `Touch` for what it used to promise.
+
+**The `422` retry earned its place for an ordinary reason.** It was scoped as hardening against the two-driver race, where it is worthless — both drivers simply commit. What it actually covers is a single driver: this repository writes the manifest through the Contents API and the transcript through the Git Data API moments later, and GitHub's ref reads can lag that write. That path had been one replica lag away from the same `422` all along, with no second driver involved.
