@@ -28,7 +28,7 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-credential")
 	t.Setenv("ANTHROPIC_BASE_URL", backend.URL)
 
-	out := runRatesJSON(t, "-provider", "anthropic-managed", "-json")
+	out := runRatesJSON(t, "-runtime", "anthropic-managed", "-json")
 	byPref := map[credit.Preference]credit.Coverage{}
 	for _, c := range out.Checks {
 		byPref[c.Preference] = c
@@ -67,7 +67,7 @@ func TestRatesReportsACardThatCoversTheBackend(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-credential")
 	t.Setenv("ANTHROPIC_BASE_URL", backend.URL)
 
-	out := runRatesJSON(t, "-provider", "anthropic-managed", "-json")
+	out := runRatesJSON(t, "-runtime", "anthropic-managed", "-json")
 	for _, c := range out.Checks {
 		if !c.Named {
 			t.Errorf("%s (%s) reported inexact against a card that names it", c.Preference, c.Model)

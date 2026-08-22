@@ -215,7 +215,7 @@ func TestProvidersCommandListsProviders(t *testing.T) {
 func TestAuditReportsTheVerdict(t *testing.T) {
 	stdout, _, err := capture(t, "audit",
 		"https://arxiv.org/abs/1",
-		"--provider", "memory",
+		"--runtime", "memory",
 		"--method", writeMethod(t),
 		"--out", t.TempDir(),
 		"--interval", "0",
@@ -232,17 +232,30 @@ func TestAuditReportsTheVerdict(t *testing.T) {
 
 func TestAuditReportsABadMethodDirectory(t *testing.T) {
 	_, _, err := capture(t, "audit", "paper",
-		"--provider", "memory", "--method", filepath.Join(t.TempDir(), "absent"))
+		"--runtime", "memory", "--method", filepath.Join(t.TempDir(), "absent"))
 	if err == nil {
 		t.Fatal("expected an error for a missing method directory")
 	}
 }
 
-func TestAuditReportsAnUnknownProvider(t *testing.T) {
-	_, _, err := capture(t, "audit", "paper", "--provider", "nope",
+func TestAuditReportsAnUnknownRuntime(t *testing.T) {
+	_, _, err := capture(t, "audit", "paper", "--runtime", "nope",
 		"--method", writeMethod(t))
 	if err == nil || !strings.Contains(err.Error(), "is unavailable") {
-		t.Fatalf("want an unknown-provider error, got %v", err)
+		t.Fatalf("want an unknown-runtime error, got %v", err)
+	}
+}
+
+// The runtime is named by one flag. A --provider that still parsed would keep
+// two names for one choice alive in every script that copies this invocation.
+func TestTheDeprecatedProviderFlagIsGone(t *testing.T) {
+	for _, command := range [][]string{
+		{"audit", "paper", "--provider", "memory", "--method", writeMethod(t)},
+		{"rates", "--provider", "memory"},
+	} {
+		if _, _, err := capture(t, command...); err == nil {
+			t.Errorf("%v: --provider was accepted", command)
+		}
 	}
 }
 
@@ -377,7 +390,7 @@ func TestAuditPublishNeedsAToken(t *testing.T) {
 	// early, so this exercises the wiring entirely offline.
 	t.Setenv("REPLICHAI_GITHUB_TOKEN", "")
 	_, _, err := capture(t, "audit", "10.1145/3025453.3025912",
-		"--provider", "memory", "--method", writeMethod(t), "--publish")
+		"--runtime", "memory", "--method", writeMethod(t), "--publish")
 	if err == nil || !strings.Contains(err.Error(), "REPLICHAI_GITHUB_TOKEN") {
 		t.Fatalf("want a missing-token error, got %v", err)
 	}
@@ -385,7 +398,7 @@ func TestAuditPublishNeedsAToken(t *testing.T) {
 
 func TestAuditDetachNeedsPublish(t *testing.T) {
 	_, stderr, err := capture(t, "audit", "paper",
-		"--provider", "memory", "--method", writeMethod(t), "--detach")
+		"--runtime", "memory", "--method", writeMethod(t), "--detach")
 	if !errors.Is(err, errExitQuiet) {
 		t.Errorf("want errExitQuiet, got %v", err)
 	}
@@ -485,7 +498,7 @@ func TestFlagsAreAcceptedAfterThePaperReference(t *testing.T) {
 	out := t.TempDir()
 	stdout, _, err := capture(t, "audit",
 		"https://arxiv.org/abs/1",
-		"--provider", "memory",
+		"--runtime", "memory",
 		"--method", writeMethod(t),
 		"--out", out,
 		"--interval", "0",
