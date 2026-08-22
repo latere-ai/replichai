@@ -41,25 +41,8 @@ func (c *Client) CommitFiles(ctx context.Context, owner, name, message string, f
 	}
 	base := "/repos/" + owner + "/" + name
 
-	// The current head commit and its tree, so the new commit builds on it.
-	var ref struct {
-		Object struct {
-			SHA string `json:"sha"`
-		} `json:"object"`
-	}
-	if _, err := c.expect(ctx, http.MethodGet, base+"/git/ref/heads/"+branch, nil, &ref, http.StatusOK); err != nil {
-		return false, err
-	}
-	var commit struct {
-		Tree struct {
-			SHA string `json:"sha"`
-		} `json:"tree"`
-	}
-	if _, err := c.expect(ctx, http.MethodGet, base+"/git/commits/"+ref.Object.SHA, nil, &commit, http.StatusOK); err != nil {
-		return false, err
-	}
-
-	// A blob per file.
+	// A blob per file. Blobs are content-addressed, so they are made once and
+	// survive a retry unchanged.
 	type treeEntry struct {
 		Path string `json:"path"`
 		Mode string `json:"mode"`
@@ -78,26 +61,53 @@ func (c *Client) CommitFiles(ctx context.Context, owner, name, message string, f
 		entries = append(entries, treeEntry{Path: path, Mode: "100644", Type: "blob", SHA: blob.SHA})
 	}
 
-	// A tree on top of the base tree, then a commit, then move the branch.
-	var tree struct {
-		SHA string `json:"sha"`
+	// Read the head, build a commit on it, move the branch — and if the branch
+	// moved underneath us, do it again on the new head. GitHub answers a ref
+	// update that is not a fast-forward with 422, which happens for two ordinary
+	// reasons: its ref reads can lag a Contents API write by a moment, and this
+	// repository writes the manifest immediately before the transcript. One
+	// retry covers both. It does not make concurrent drivers safe — two of them
+	// would simply both commit — and the job lease is what prevents that (044c).
+	for attempt := 0; ; attempt++ {
+		var ref struct {
+			Object struct {
+				SHA string `json:"sha"`
+			} `json:"object"`
+		}
+		if _, err := c.expect(ctx, http.MethodGet, base+"/git/ref/heads/"+branch, nil, &ref, http.StatusOK); err != nil {
+			return false, err
+		}
+		var commit struct {
+			Tree struct {
+				SHA string `json:"sha"`
+			} `json:"tree"`
+		}
+		if _, err := c.expect(ctx, http.MethodGet, base+"/git/commits/"+ref.Object.SHA, nil, &commit, http.StatusOK); err != nil {
+			return false, err
+		}
+		var tree struct {
+			SHA string `json:"sha"`
+		}
+		if _, err := c.expect(ctx, http.MethodPost, base+"/git/trees",
+			map[string]any{"base_tree": commit.Tree.SHA, "tree": entries}, &tree, http.StatusCreated); err != nil {
+			return false, err
+		}
+		var newCommit struct {
+			SHA string `json:"sha"`
+		}
+		if _, err := c.expect(ctx, http.MethodPost, base+"/git/commits",
+			map[string]any{"message": message, "tree": tree.SHA, "parents": []string{ref.Object.SHA}}, &newCommit, http.StatusCreated); err != nil {
+			return false, err
+		}
+		status, err := c.expect(ctx, http.MethodPatch, base+"/git/refs/heads/"+branch,
+			map[string]any{"sha": newCommit.SHA}, nil, http.StatusOK)
+		if err == nil {
+			return true, nil
+		}
+		if attempt > 0 || status != http.StatusUnprocessableEntity {
+			return false, err
+		}
 	}
-	if _, err := c.expect(ctx, http.MethodPost, base+"/git/trees",
-		map[string]any{"base_tree": commit.Tree.SHA, "tree": entries}, &tree, http.StatusCreated); err != nil {
-		return false, err
-	}
-	var newCommit struct {
-		SHA string `json:"sha"`
-	}
-	if _, err := c.expect(ctx, http.MethodPost, base+"/git/commits",
-		map[string]any{"message": message, "tree": tree.SHA, "parents": []string{ref.Object.SHA}}, &newCommit, http.StatusCreated); err != nil {
-		return false, err
-	}
-	if _, err := c.expect(ctx, http.MethodPatch, base+"/git/refs/heads/"+branch,
-		map[string]any{"sha": newCommit.SHA}, nil, http.StatusOK); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // defaultBranch returns the repository's default branch name.
