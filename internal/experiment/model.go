@@ -74,7 +74,7 @@ func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (
 
 	spec := managed.SessionSpec{
 		Model:        managed.ModelSelector{Preference: "best"},
-		Instructions: m.instructions(decl), Task: m.task(decl),
+		Instructions: m.instructions(), Task: m.task(decl),
 		Sandbox:    managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkOpen}},
 		Evaluation: nil,
 	}
@@ -90,7 +90,7 @@ func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (
 
 // instructions is the cohort worker's standing doctrine: answer as a plausible
 // participant for the servable components only, and invent no demographics.
-func (m *ModelCohort) instructions(decl instrument.Instrument) string {
+func (m *ModelCohort) instructions() string {
 	var b strings.Builder
 	b.WriteString("You are a plausible participant in a study. Answer its trials as an ordinary person would, honestly and without inventing a fixed identity.\n\n")
 	b.WriteString(m.Config.PromptTemplate)
