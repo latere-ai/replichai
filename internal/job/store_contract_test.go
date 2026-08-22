@@ -95,6 +95,32 @@ func runStoreContract(t *testing.T, s Store) {
 	if won, err := s.Adopt(ctx, claimed.ID, "pod-b", time.Minute); err != nil || won {
 		t.Fatalf("Adopt of a just-claimed job = %v/%v, want it refused", won, err)
 	}
+	// A driver says it is alive without saying anything changed. Observe fires
+	// only on a changed status, so a quiet run would otherwise let its lease go
+	// cold while it was working perfectly well, and a replica beside it would
+	// adopt a live session (044c).
+	tj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "touched", Kind: KindAudit})
+	if _, err := s.Adopt(ctx, tj.ID, "pod-a", time.Minute); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	if held, err := s.Touch(ctx, tj.ID, "pod-a"); err != nil || !held {
+		t.Fatalf("Touch by the holder = %v/%v, want it held", held, err)
+	}
+	// Touching never steals: a worker that is not the holder is told so, and the
+	// holder's lease is left alone.
+	if held, err := s.Touch(ctx, tj.ID, "pod-b"); err != nil || held {
+		t.Fatalf("Touch by a non-holder = %v/%v, want it refused", held, err)
+	}
+	if won, err := s.Adopt(ctx, tj.ID, "pod-b", time.Minute); err != nil || won {
+		t.Fatalf("Adopt after a foreign Touch = %v/%v, want pod-a to still hold it", won, err)
+	}
+	// A row that went terminal under its driver reports the same thing a lost
+	// lease does — stop driving.
+	_ = s.Advance(ctx, tj.ID, PhaseFailed, func(jb *Job) { jb.Err = "done with" })
+	if held, err := s.Touch(ctx, tj.ID, "pod-a"); err != nil || held {
+		t.Fatalf("Touch of a terminal job = %v/%v, want it refused", held, err)
+	}
+
 	// A finished session is nobody's to drive.
 	_ = s.Advance(ctx, lj.ID, PhaseFailed, func(jb *Job) { jb.Err = "done with" })
 	if won, err := s.Adopt(ctx, lj.ID, "pod-c", time.Minute); err != nil || won {
