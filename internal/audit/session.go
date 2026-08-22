@@ -16,6 +16,9 @@ import (
 
 const repositoryCredentialRef = "audit-repository"
 
+// SessionMount is a git repository mounted into a managed session so the agent
+// commits its reproduction into it and pushes as it works, with that history
+// published as part of the result (006f).
 type SessionMount struct {
 	URL       string
 	Token     string
@@ -23,8 +26,13 @@ type SessionMount struct {
 	ReadOnly  bool
 }
 
+// Set reports whether a repository is to be mounted. A whitespace-only URL
+// counts as unset, so a blank value read from configuration does not request a
+// mount.
 func (mount SessionMount) Set() bool { return strings.TrimSpace(mount.URL) != "" }
 
+// SessionResult is everything one audit produced on the managed path, where the
+// run is a durable managed.Controller session rather than a provider run.
 type SessionResult struct {
 	Paper                string
 	Ref                  managed.SessionRef
@@ -38,17 +46,25 @@ type SessionResult struct {
 	Released             bool
 }
 
+// Passed reports whether the run met the rubric.
 func (result SessionResult) Passed() bool { return result.Status.Passed() }
+
+// Grade reports the verdict's grade, or GradeUnknown when none was recorded.
 func (result SessionResult) Grade() managed.Grade {
 	if result.Status.Verdict == nil {
 		return managed.GradeUnknown
 	}
 	return result.Status.Verdict.Grade
 }
+
+// InstrumentOK reports whether the run wrote a schema-valid instrument.json.
 func (result SessionResult) InstrumentOK() bool {
 	return result.InstrumentPresent && len(result.InstrumentViolations) == 0
 }
 
+// SessionAuditor runs the same audit as Auditor, but through
+// managed.Controller: the run is a durable session that can be started
+// detached and resumed later, and the controller owns waiting and release.
 type SessionAuditor struct {
 	controller   *managed.Controller
 	method       method.Method
@@ -60,12 +76,16 @@ type SessionAuditor struct {
 	hooks        managed.Hooks
 }
 
+// SessionOption configures a SessionAuditor.
 type SessionOption func(*SessionAuditor)
 
+// WithSessionModel overrides the model tier requested for the session.
 func WithSessionModel(preference string) SessionOption {
 	return func(a *SessionAuditor) { a.model = preference }
 }
 
+// WithSessionMaxRevisions overrides how many times the worker may revise. A
+// value of zero or less is ignored, leaving DefaultMaxRevisions in place.
 func WithSessionMaxRevisions(maximum int) SessionOption {
 	return func(a *SessionAuditor) {
 		if maximum > 0 {
@@ -74,22 +94,36 @@ func WithSessionMaxRevisions(maximum int) SessionOption {
 	}
 }
 
+// WithSessionTimeout overrides how long a run may take before it is abandoned,
+// re-arming the deadline if WithoutSessionTimeout had removed it.
 func WithSessionTimeout(timeout time.Duration) SessionOption {
 	return func(a *SessionAuditor) { a.timeout, a.unbounded = timeout, false }
 }
 
+// WithoutSessionTimeout removes the wall-clock deadline: the run ends when the
+// managed session ends, and nothing else. The session is the source of truth
+// for whether the work succeeded, and a clock here is only a weaker second
+// opinion about it.
 func WithoutSessionTimeout() SessionOption {
 	return func(a *SessionAuditor) { a.unbounded = true }
 }
 
+// WithSessionMount mounts a repository into the session so the worker commits
+// its reproduction directly, with the history published as part of the result.
+// It shapes the session at creation, so it reaches Start and Run only.
 func WithSessionMount(mount SessionMount) SessionOption {
 	return func(a *SessionAuditor) { a.mount = mount }
 }
 
+// WithSessionHooks installs the caller's lifecycle hooks. Run and Resume wrap
+// the Retain hook: artifacts and the instrument check land in the result first,
+// and the caller's own Retain runs after them.
 func WithSessionHooks(hooks managed.Hooks) SessionOption {
 	return func(a *SessionAuditor) { a.hooks = hooks }
 }
 
+// NewSessionAuditor builds a SessionAuditor over controller, applying options
+// on top of the package defaults.
 func NewSessionAuditor(controller *managed.Controller, m method.Method, options ...SessionOption) *SessionAuditor {
 	auditor := &SessionAuditor{
 		controller: controller, method: m, model: DefaultModelPreference,
@@ -101,6 +135,9 @@ func NewSessionAuditor(controller *managed.Controller, m method.Method, options 
 	return auditor
 }
 
+// Start creates the durable session for paper and returns its ref without
+// waiting. It is the detached path: no deadline applies and no evidence is
+// retained, so whoever Resumes the session collects the artifacts.
 func (a *SessionAuditor) Start(ctx context.Context, paper string) (managed.SessionRef, error) {
 	spec, ctx, err := a.spec(ctx, paper)
 	if err != nil {
@@ -109,6 +146,10 @@ func (a *SessionAuditor) Start(ctx context.Context, paper string) (managed.Sessi
 	return a.controller.Start(ctx, spec, a.hooks)
 }
 
+// Run audits paper end to end and writes the collected artifacts under
+// destination. A deadline overrun is reported as ErrTimedOut joined to the
+// context error, unless the auditor is unbounded. The result is populated even
+// when err is non-nil, so a failed run still carries what was retained.
 func (a *SessionAuditor) Run(ctx context.Context, paper, destination string) (SessionResult, error) {
 	spec, startCtx, err := a.spec(ctx, paper)
 	if err != nil {
@@ -126,6 +167,9 @@ func (a *SessionAuditor) Run(ctx context.Context, paper, destination string) (Se
 	return result, err
 }
 
+// Resume picks up an already-created session and waits for it as Run does. The
+// specification is fixed when the session is created, so the mount and model
+// options have no effect here; the hooks, destination and timeout still do.
 func (a *SessionAuditor) Resume(ctx context.Context, ref managed.SessionRef, paper, destination string) (SessionResult, error) {
 	runCtx, cancel := a.runContext(ctx)
 	defer cancel()
