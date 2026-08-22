@@ -105,7 +105,8 @@ func (s *MemStore) takeReserve(ctx context.Context, project, jobID string) error
 	return nil
 }
 
-// NewMemStore builds an empty in-memory store.
+// NewMemStore builds an empty in-memory store that reads the wall clock and is
+// unmetered. Options replace those defaults; see WithClock and WithCredits.
 func NewMemStore(opts ...MemOption) *MemStore {
 	s := &MemStore{jobs: map[string]Job{}, deleted: map[string]bool{}, leases: map[string]lease{}, clock: time.Now}
 	for _, opt := range opts {
@@ -267,7 +268,6 @@ func (s *MemStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// StatusByProjects summarises the sessions of each named project.
 // SpendSince sums each project's session costs from `since` onwards. Cost comes
 // from the same withCost the read paths use, so the tile and the row can never
 // disagree about what a session cost.
@@ -293,6 +293,14 @@ func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) 
 	return out, nil
 }
 
+// StatusByProjects summarises the sessions of each named project: how many
+// there are, how many are still running, how many have a repository name (set
+// once publishing begins), and where the newest one stands.
+//
+// Deleted sessions are left out, unlike SpendSince. A tile counting sessions is
+// answering "what is in this project", and a removed session is not; a tile
+// counting money is answering "what was charged", and a removed session still
+// was.
 func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string]ProjectStatus, error) {
 	want := make(map[string]bool, len(ids))
 	for _, id := range ids {

@@ -215,6 +215,12 @@ type Job struct {
 	PhaseAt map[Phase]time.Time `json:"phase_at,omitempty"`
 }
 
+// LegacyRuntime is the runtime attributed to rows carrying only a run_id, from
+// before a session recorded a managed.SessionRef.
+//
+// It is a constant rather than today's configured default on purpose: what ran
+// those sessions is a fact about the past, and reading it from configuration
+// would let a later runtime change silently re-attribute finished work.
 const LegacyRuntime managed.RuntimeName = "anthropic-managed"
 
 // ManagedSessionRef returns the complete durable reference. Historical rows

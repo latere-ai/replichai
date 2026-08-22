@@ -66,7 +66,9 @@ func (s *MemStore) SeedGrant(_ context.Context, email string, tier Tier) error {
 	return nil
 }
 
-// SeedAdmin bootstraps an admin grant.
+// SeedAdmin is SeedGrant at TierAdmin: the startup path that writes the
+// platform-admin list. It inherits SeedGrant's rules, so a revoked address is
+// not re-admitted by appearing on that list again.
 func (s *MemStore) SeedAdmin(ctx context.Context, email string) error {
 	return s.SeedGrant(ctx, email, TierAdmin)
 }
@@ -139,8 +141,6 @@ func (s *MemStore) Grant(ctx context.Context, byAdmin Principal, email string, t
 	return nil
 }
 
-// Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
-// records rather than deletes.
 // OverrideActive reports whether an uncleared freeze override is in force.
 func (s *MemStore) OverrideActive(_ context.Context, email string) (bool, error) {
 	s.mu.Lock()
@@ -169,6 +169,8 @@ func (s *MemStore) ClearOverride(_ context.Context, email string) error {
 	return nil
 }
 
+// Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
+// records rather than deletes.
 func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
