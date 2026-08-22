@@ -23,8 +23,14 @@ const Name managed.RuntimeName = "memory"
 // with Name left it untyped and one edit away from inheriting the wrong type.
 const OutputDir = "/workspace/outputs/"
 
+// FailurePoint names a runtime boundary that can be made to fail. Keying
+// Config.Failures by one lets a test drive the error path of a single call
+// without standing up a fake runtime around the real one.
 type FailurePoint string
 
+// The failure points, one per boundary a caller can reach. Each names the
+// method it interrupts; the injected error surfaces from that method before it
+// touches the store.
 const (
 	FailValidate FailurePoint = "validate"
 	FailStart    FailurePoint = "start"
@@ -36,6 +42,10 @@ const (
 	FailRelease  FailurePoint = "release"
 )
 
+// Config is the scripted behaviour of one Runtime: which model it advertises,
+// how many polls a session runs for, what verdict and artifacts it produces,
+// and where it fails. NewWithStore fills in the zero values, so the zero
+// Config is a usable happy path.
 type Config struct {
 	Model           managed.ModelRef
 	PollsBeforeDone int
@@ -45,6 +55,11 @@ type Config struct {
 	Failures        map[FailurePoint]error
 }
 
+// Store holds the sessions. It lives outside Runtime on purpose: that is what
+// makes this runtime restartable, because a Runtime rebuilt around the same
+// Store (as the builtin catalogue does on every lookup) still finds the
+// sessions an earlier Runtime started. Keeping the map on Runtime would have
+// made every rebuild silently lose them.
 type Store struct {
 	mu       sync.Mutex
 	next     uint64
@@ -60,15 +75,26 @@ type session struct {
 	released  bool
 }
 
+// NewStore returns an empty Store, ready to be shared by every Runtime that
+// should see the same sessions.
 func NewStore() *Store { return &Store{sessions: make(map[string]*session)} }
 
+// Runtime is the in-process managed-session runtime. It is safe for
+// concurrent use: all session state is guarded by its Store's mutex, and the
+// Config is read-only after construction.
 type Runtime struct {
 	store  *Store
 	config Config
 }
 
+// New returns a Runtime on the default Config with a private Store, for the
+// common case where one test owns the whole session lifecycle.
 func New() *Runtime { return NewWithStore(NewStore(), Config{}) }
 
+// NewWithStore returns a Runtime over an existing Store, which is how a test
+// simulates a restart or injects failures. A nil store gets a fresh one.
+// Unset Config fields take their defaults here rather than at use: one model,
+// one poll to completion, and empty file and failure maps.
 func NewWithStore(store *Store, config Config) *Runtime {
 	if store == nil {
 		store = NewStore()
@@ -88,8 +114,13 @@ func NewWithStore(store *Store, config Config) *Runtime {
 	return &Runtime{store: store, config: config}
 }
 
+// Name is the runtime name stamped into every SessionRef this runtime issues
+// and the one validateRef demands back.
 func (r *Runtime) Name() managed.RuntimeName { return Name }
 
+// Capabilities advertises every capability the managed contract defines, so a
+// spec exercising any of them is accepted here and the path under test is the
+// caller's, not a capability rejection.
 func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error) {
 	if err := contextError(ctx); err != nil {
 		return managed.Capabilities{}, err
@@ -116,6 +147,8 @@ func (r *Runtime) capabilities() managed.Capabilities {
 	}
 }
 
+// Models reports the single configured model under all three preferences, so
+// any preference a spec asks for resolves.
 func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
@@ -123,6 +156,9 @@ func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 	return []managed.Model{{Ref: r.config.Model, Preferences: []string{"best", "balanced", "fast"}}}, nil
 }
 
+// Validate checks the spec against the advertised capabilities and rejects an
+// exact model that is not the configured one. It has no context to honour, so
+// it reads the capabilities directly rather than through Capabilities.
 func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if err := r.failure(FailValidate); err != nil {
 		return err
@@ -136,6 +172,9 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	return nil
 }
 
+// Start validates the spec before recording anything, so a rejected spec
+// leaves no session behind. Session ids come from a counter on the Store and
+// are therefore stable for a given sequence of Starts.
 func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.SessionRef, error) {
 	if err := contextError(ctx); err != nil {
 		return managed.SessionRef{}, err
@@ -161,6 +200,13 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	return ref, nil
 }
 
+// Poll advances the session by one step and reports the state it reaches. A
+// cancelled session fails immediately; otherwise the session runs until
+// Config.PollsBeforeDone polls have been counted and then completes. A spec
+// carrying an evaluation also gets a verdict at the configured grade, treating
+// an unset grade as passed and anything other than passed as an evaluation
+// failure. Timestamps are fixed and reported usage grows by one per poll, so
+// the sequence is both reproducible and monotonic as the controller requires.
 func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
 	if err := r.before(ctx, FailPoll, ref); err != nil {
 		return managed.Status{}, err
@@ -199,6 +245,8 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	return status, nil
 }
 
+// Events returns the configured transcript, copied, so a caller mutating the
+// slice it gets back cannot rewrite what the next call reports.
 func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed.Event, error) {
 	if err := r.before(ctx, FailEvents, ref); err != nil {
 		return nil, err
@@ -206,6 +254,9 @@ func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed
 	return append([]managed.Event(nil), r.config.Events...), nil
 }
 
+// ListArtifacts reports the configured files sorted by path, which fixes the
+// generated artifact ids: the same file keeps the same id across calls, and
+// FetchArtifact can compare whole artifact values.
 func (r *Runtime) ListArtifacts(ctx context.Context, ref managed.SessionRef) ([]managed.Artifact, error) {
 	if err := r.before(ctx, FailList, ref); err != nil {
 		return nil, err
@@ -218,6 +269,10 @@ func (r *Runtime) ListArtifacts(ctx context.Context, ref managed.SessionRef) ([]
 	return artifacts, nil
 }
 
+// FetchArtifact returns a copy of the file body, and only for an artifact
+// equal in full to one ListArtifacts returned. Matching the whole value rather
+// than the id or the path alone means a caller cannot fetch a path it never
+// saw listed; a mismatch is a NotFoundError.
 func (r *Runtime) FetchArtifact(ctx context.Context, ref managed.SessionRef, artifact managed.Artifact) ([]byte, error) {
 	if err := r.before(ctx, FailFetch, ref); err != nil {
 		return nil, err
@@ -232,6 +287,8 @@ func (r *Runtime) FetchArtifact(ctx context.Context, ref managed.SessionRef, art
 	return nil, &managed.NotFoundError{Runtime: Name, ID: artifact.ID}
 }
 
+// Cancel marks the session cancelled. Nothing else changes until the next
+// Poll, which is where the cancellation becomes a terminal state.
 func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 	if err := r.before(ctx, FailCancel, ref); err != nil {
 		return err
@@ -246,6 +303,10 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 	return nil
 }
 
+// Release retires the session and is idempotent: an unknown or already
+// released session is not an error. That is why it repeats the checks by hand
+// instead of going through before, which would turn the second call into a
+// NotFoundError.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	if err := contextError(ctx); err != nil {
 		return err
@@ -266,6 +327,9 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	return nil
 }
 
+// Specs returns the specs of every live session in the Store, ordered by
+// session id. It is outside the managed.Runtime contract and exists so a test
+// can assert on what the caller actually submitted.
 func (r *Runtime) Specs() []managed.SessionSpec {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
