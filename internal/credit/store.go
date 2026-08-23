@@ -438,9 +438,9 @@ func kindFor(e ledger.Entry) Kind {
 	case reasonTopup:
 		return KindTopup
 	case reasonAllocate:
-		return kindByDirection(e, KindAllocate, KindAllocate)
+		return KindAllocate
 	case reasonReclaim:
-		return kindByDirection(e, KindReclaim, KindReclaim)
+		return KindReclaim
 	case reasonHold:
 		if e.Kind == ledger.KindRelease {
 			return KindRelease
@@ -460,16 +460,6 @@ func kindFor(e ledger.Entry) Kind {
 	default:
 		return Kind(e.Kind)
 	}
-}
-
-// kindByDirection exists so a transfer's two sides can be named differently if
-// this product ever needs it. Today both sides of an allocate read as
-// "allocate", which is what the statement showed before.
-func kindByDirection(_ ledger.Entry, out, in Kind) Kind {
-	if out != in {
-		return out
-	}
-	return out
 }
 
 // requireAdmin refuses a caller who is not a platform admin.
