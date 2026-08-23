@@ -7,22 +7,56 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// legacySchema is the ledger as it stood before it moved to latere.ai/x/pay:
-// migration v1 plus the v2 project columns and the v3 external reference.
+// legacySchema is the ledger exactly as it stood before it moved to
+// latere.ai/x/pay: migrations v1, v2 and v3 of the deleted
+// internal/credit/migrate.go, concatenated.
+//
+// It is a verbatim copy, comments and all, taken from `git show` of the commit
+// that deleted it, and it is frozen. Do not tidy it. The backfill's whole job
+// is to read what production actually holds, so a test that reads a *tidier*
+// shape than production tests nothing: the first draft of this constant was
+// retyped from memory and silently dropped two indexes, which is exactly the
+// class of error that would let a broken migration pass here and fail on
+// deploy.
 const legacySchema = `
 CREATE TABLE credit_entries (
-	id           TEXT PRIMARY KEY,
-	holder       TEXT NOT NULL,
-	amount       BIGINT NOT NULL,
-	kind         TEXT NOT NULL,
-	job_id       TEXT,
-	actor        TEXT NOT NULL,
-	created_at   TIMESTAMPTZ NOT NULL,
-	project_id   TEXT,
-	project_name TEXT,
-	external_ref TEXT
+	id         TEXT PRIMARY KEY,
+	-- "user:<email>" or "project:<id>". One namespaced column rather than two
+	-- nullable ones, so a balance is one predicate and a level added later does
+	-- not reshape the table.
+	holder     TEXT NOT NULL,
+	-- Signed micro-USD. Positive adds to the holder, negative takes; a balance
+	-- is therefore a sum and never a case analysis over kinds.
+	amount     BIGINT NOT NULL,
+	kind       TEXT NOT NULL,
+	-- The session this entry is about, on hold/release/charge/adjust. No foreign
+	-- key: the ledger outlives what it records.
+	job_id     TEXT,
+	actor      TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL
 );
+
+-- Every balance is a fold over one holder, so this is the index that makes the
+-- whole model affordable.
+CREATE INDEX credit_entries_holder ON credit_entries (holder);
+
+-- Settlement is exactly-once per session: a retried or concurrent terminal
+-- transition may not charge twice. A correction is an 'adjust', which carries
+-- no such constraint, so reconciling a session that settled from last-observed
+-- usage stays possible.
 CREATE UNIQUE INDEX credit_entries_one_charge ON credit_entries (job_id) WHERE kind = 'charge';
+
+-- Settlement finds a session's open hold by its job; so does the watchdog.
+CREATE INDEX credit_entries_job ON credit_entries (job_id) WHERE job_id IS NOT NULL;
+
+-- v2: the project an allocate or reclaim moved credits to or from, and a
+-- snapshot of its name at that moment.
+ALTER TABLE credit_entries ADD COLUMN project_id TEXT;
+ALTER TABLE credit_entries ADD COLUMN project_name TEXT;
+
+-- v3: a payment provider's reference for an entry money entered or left
+-- through. The partial unique index is what dedupes a retried webhook.
+ALTER TABLE credit_entries ADD COLUMN external_ref TEXT;
 CREATE UNIQUE INDEX credit_entries_external_ref ON credit_entries (external_ref) WHERE external_ref IS NOT NULL;
 `
 
