@@ -18,10 +18,7 @@ package credit
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -163,11 +160,6 @@ const (
 	KindAdjust Kind = "adjust"
 )
 
-// commits reports whether a kind moves money out of what a holder may still
-// commit without having spent it yet. Holds and their releases are exactly
-// that: an available balance counts them, a settled balance does not.
-func (k Kind) commits() bool { return k == KindHold || k == KindRelease }
-
 // Entry is one line of the ledger. Nothing here is ever updated or deleted; a
 // mistake is corrected by another entry, which is what keeps the history and
 // the balance the same fact.
@@ -295,22 +287,10 @@ type Store interface {
 	Unwind(ctx context.Context, project, email string) error
 }
 
-// defaultEntryLimit caps a statement view that asked for no limit.
-const defaultEntryLimit = 200
-
 // normalizeEmail lowercases and trims, so a wallet funded one way matches a
 // login typed another — the rule access and platform both follow.
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
-}
-
-// newID mints a ledger entry identifier.
-func newID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("mint credit entry id: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
 }
 
 // checkMove validates the shape of a transfer before any authority or balance
