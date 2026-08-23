@@ -304,7 +304,7 @@ func settlePool(t *testing.T) *pgxpool.Pool {
 		pool.Close()
 		t.Fatalf("credit migrate: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `TRUNCATE jobs, credit_entries`); err != nil {
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs, ledger_entries`); err != nil {
 		pool.Close()
 		t.Fatalf("truncate: %v", err)
 	}

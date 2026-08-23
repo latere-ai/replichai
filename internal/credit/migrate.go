@@ -6,116 +6,130 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"latere.ai/x/pay/ledger/pgledger"
 )
 
-// migrations are the ledger schema (011), versioned and applied at startup
-// alongside the job, access, platform, profile and project schemas. It depends
-// on none of them: an entry names its holder and its session as opaque strings,
-// with no foreign key, because a ledger must outlive the thing it is about.
-// Deleting a project must not delete the record of what its sessions cost.
-var migrations = []struct {
-	version int
-	sql     string
-}{
-	{1, `
-CREATE TABLE credit_entries (
-	id         TEXT PRIMARY KEY,
-	-- "user:<email>" or "project:<id>". One namespaced column rather than two
-	-- nullable ones, so a balance is one predicate and a level added later does
-	-- not reshape the table.
-	holder     TEXT NOT NULL,
-	-- Signed micro-USD. Positive adds to the holder, negative takes; a balance
-	-- is therefore a sum and never a case analysis over kinds.
-	amount     BIGINT NOT NULL,
-	kind       TEXT NOT NULL,
-	-- The session this entry is about, on hold/release/charge/adjust. No foreign
-	-- key: the ledger outlives what it records.
-	job_id     TEXT,
-	actor      TEXT NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL
-);
-
--- Every balance is a fold over one holder, so this is the index that makes the
--- whole model affordable.
-CREATE INDEX credit_entries_holder ON credit_entries (holder);
-
--- Settlement is exactly-once per session: a retried or concurrent terminal
--- transition may not charge twice. A correction is an 'adjust', which carries
--- no such constraint, so reconciling a session that settled from last-observed
--- usage stays possible.
-CREATE UNIQUE INDEX credit_entries_one_charge ON credit_entries (job_id) WHERE kind = 'charge';
-
--- Settlement finds a session's open hold by its job; so does the watchdog.
-CREATE INDEX credit_entries_job ON credit_entries (job_id) WHERE job_id IS NOT NULL;
-`},
-	{2, `
--- The project an allocate or reclaim moved credits to or from, and a snapshot
--- of its name at that moment (024b). Additive over live rows: both nullable, so
--- every entry written before this reads as having no project and falls back to
--- the generic label. No foreign key — the ledger outlives the project, which is
--- the whole point of snapshotting the name rather than joining for it.
-ALTER TABLE credit_entries ADD COLUMN project_id TEXT;
-ALTER TABLE credit_entries ADD COLUMN project_name TEXT;
-`},
-	{3, `
--- A payment provider's reference for an entry money entered or left through:
--- the Stripe payment_intent on a purchased top-up, the refund or dispute id on
--- a clawed-back one (022a). It is how a retried webhook is deduped — the insert
--- itself refuses a second row for the same reference, so a balance that is a
--- fold cannot double. Null on every internally-moved entry (allocate, hold,
--- charge…): the partial index ignores them, so the uniqueness binds only where
--- an outside system's id is the idempotency key. The same shape as the
--- exactly-once charge index above.
-ALTER TABLE credit_entries ADD COLUMN external_ref TEXT;
-CREATE UNIQUE INDEX credit_entries_external_ref ON credit_entries (external_ref) WHERE external_ref IS NOT NULL;
-`},
+// Migrate applies the shared ledger's schema and then carries this product's
+// existing rows into it.
+//
+// The ledger moved to latere.ai/x/pay, and its table is `ledger_entries` with a
+// vocabulary split in two: Kind is mechanical (does this commit, what sign is
+// it) and Reason is editorial. `credit_entries` holds live balances, so the
+// rows have to come along, and a balance that is a fold cannot survive losing
+// one of them.
+//
+// Forward-only and idempotent. `credit_entries` is left in place: it is the
+// only way back if the fold does not reconcile, and dropping it in the same
+// release as the copy would remove the evidence at exactly the moment somebody
+// needs it. A later release drops it, once the balances have been read from the
+// new table in production for long enough to trust them.
+func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	if err := pgledger.Migrate(ctx, pool); err != nil {
+		return err
+	}
+	return backfill(ctx, pool)
 }
 
-// migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
-// old and new pods at once, so two processes migrate the same database
-// concurrently: both find a version missing, both run its DDL, and the loser
-// dies on "relation already exists".
-//
-// Each namespace has its own id so the migrators only ever serialise against
-// another copy of themselves; 1 through 5 are job, access, platform, profile and
-// project. A collision here would silently serialise unrelated migrators and
-// show up only under a rolling deploy.
-const migrationLock = 6
+// backfillLock serialises the copy the way the schema migrations serialise
+// their DDL: a rolling deploy runs two pods at once and both would otherwise
+// copy the same rows.
+const backfillLock int64 = 0x1ED6E5
 
-// Migrate applies the ledger schema. It uses its own version namespace table so
-// it composes with the other stores' migrations on one database without either
-// owning the other's versions.
-func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS credit_migrations (
-			version    INT PRIMARY KEY,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-		)`); err != nil {
-		return fmt.Errorf("create credit migrations table: %w", err)
-	}
-	for _, m := range migrations {
-		var exists bool
-		if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-			// The check lives inside the transaction, behind the lock: read
-			// outside it, two servers starting together both see "missing".
-			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
-				return err
-			}
-			if err := tx.QueryRow(ctx,
-				`SELECT EXISTS (SELECT 1 FROM credit_migrations WHERE version = $1)`, m.version).Scan(&exists); err != nil {
-				return err
-			}
-			if exists {
-				return nil
-			}
-			if _, err := tx.Exec(ctx, m.sql); err != nil {
-				return err
-			}
-			_, err := tx.Exec(ctx, `INSERT INTO credit_migrations (version) VALUES ($1)`, m.version)
+// backfill copies credit_entries into ledger_entries, once.
+//
+// The kind mapping is the whole of it. Every historical kind becomes a
+// mechanical Kind plus the Reason that names it, so a statement rendered from
+// the new table reads exactly as it did from the old one.
+func backfill(ctx context.Context, pool *pgxpool.Pool) error {
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, backfillLock); err != nil {
 			return err
-		}); err != nil {
-			return fmt.Errorf("apply credit migration %d: %w", m.version, err)
 		}
+		var legacy bool
+		if err := tx.QueryRow(ctx, `SELECT to_regclass('credit_entries') IS NOT NULL`).Scan(&legacy); err != nil {
+			return fmt.Errorf("look for the legacy ledger: %w", err)
+		}
+		if !legacy {
+			return nil // a fresh database has nothing to carry
+		}
+		var done bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM ledger_entries WHERE actor = $1)`, backfillMarker).Scan(&done); err != nil {
+			return err
+		}
+		if done {
+			return nil
+		}
+		if _, err := tx.Exec(ctx, backfillSQL); err != nil {
+			return fmt.Errorf("carry the ledger across: %w", err)
+		}
+		// A zero-amount marker row records that the copy happened. It is inert
+		// in every fold: the balance of its holder is unchanged, and its own
+		// holder namespace belongs to nobody.
+		_, err := tx.Exec(ctx, `
+			INSERT INTO ledger_entries (id, holder, amount, kind, reason, actor, created_at)
+			VALUES ($1, 'system:migration', 0, 'adjust', 'backfill', $2, now())`,
+			backfillMarker+"-marker", backfillMarker)
+		return err
+	})
+}
+
+// backfillMarker is the actor on the row that records the copy.
+const backfillMarker = "credit-to-ledger-backfill"
+
+// backfillSQL carries every legacy row across.
+//
+// The id is preserved, so the copy is idempotent under its primary key and an
+// operator can match a row in one table to its twin in the other. `external_ref`
+// becomes `ref` and `job_id` becomes `grp`; the two project columns become
+// labels, which is what the shared ledger stores and never interprets.
+const backfillSQL = `
+INSERT INTO ledger_entries (id, holder, amount, kind, reason, ref, grp, actor, labels, created_at)
+SELECT
+	c.id,
+	c.holder,
+	c.amount,
+	CASE c.kind
+		WHEN 'topup'    THEN 'credit'
+		WHEN 'allocate' THEN 'transfer'
+		WHEN 'reclaim'  THEN 'transfer'
+		WHEN 'hold'     THEN 'hold'
+		WHEN 'release'  THEN 'release'
+		WHEN 'charge'   THEN 'debit'
+		WHEN 'draft'    THEN 'debit'
+		WHEN 'adjust'   THEN 'adjust'
+		ELSE 'adjust'
+	END,
+	c.kind,
+	NULLIF(c.external_ref, ''),
+	NULLIF(c.job_id, ''),
+	c.actor,
+	CASE
+		WHEN COALESCE(c.project_id, '') = '' AND COALESCE(c.project_name, '') = '' THEN NULL
+		ELSE jsonb_strip_nulls(jsonb_build_object(
+			'project_id',   NULLIF(c.project_id, ''),
+			'project_name', NULLIF(c.project_name, '')))
+	END,
+	c.created_at
+FROM credit_entries c
+ON CONFLICT (id) DO NOTHING`
+
+// Reconcile reports whether the copied ledger folds to the same outstanding
+// total as the legacy one.
+//
+// It exists because "the balances came across" is a claim, and the only honest
+// form of it is a number compared against a number. An operator runs this after
+// deploying and before anyone trusts the new table.
+func Reconcile(ctx context.Context, pool *pgxpool.Pool) (legacy, carried int64, err error) {
+	const settled = `kind NOT IN ('hold','release')`
+	if err = pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(amount), 0) FROM credit_entries WHERE `+settled).Scan(&legacy); err != nil {
+		return 0, 0, fmt.Errorf("fold the legacy ledger: %w", err)
 	}
-	return nil
+	if err = pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE `+settled).Scan(&carried); err != nil {
+		return 0, 0, fmt.Errorf("fold the carried ledger: %w", err)
+	}
+	return legacy, carried, nil
 }

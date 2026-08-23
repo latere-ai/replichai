@@ -62,7 +62,7 @@ type Store interface {
 	// Idempotent: a project with no sessions is not an error.
 	DeleteByProject(ctx context.Context, projectID string) error
 	// Delete removes one session from the app (032). It is a *soft* delete: the
-	// row stays, because credit_entries.job_id points at it and 019's rule is
+	// row stays, because ledger_entries.grp points at it and 019's rule is
 	// that removing something must not remove the record of what it cost. What
 	// changes is that Get, ListByProject, ListByPrincipal and StatusByProjects
 	// stop returning it — one gate in the store rather than a filter per caller,

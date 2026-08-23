@@ -182,7 +182,7 @@ func TestPGStoreGateContract(t *testing.T) {
 	if err := credit.Migrate(ctx, pool); err != nil {
 		t.Fatalf("credit migrate: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `TRUNCATE jobs, credit_entries`); err != nil {
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs, ledger_entries`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	ledger := credit.NewPGStore(pool, nil, nil)
@@ -190,7 +190,7 @@ func TestPGStoreGateContract(t *testing.T) {
 	fund(t, ledger, "rich", testReserve)
 	runGateContract(t, NewPGStore(pool, WithPGCredits(ledger, fixedReserve(testReserve))), ledger)
 
-	if _, err := pool.Exec(ctx, `TRUNCATE jobs, credit_entries`); err != nil {
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs, ledger_entries`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	fund(t, ledger, "race", 3*testReserve)
