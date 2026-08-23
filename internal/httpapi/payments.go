@@ -10,8 +10,10 @@ import (
 
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/notify"
-	"github.com/latere-ai/replichai/internal/payment"
 	"github.com/latere-ai/replichai/internal/platform"
+
+	"latere.ai/x/pay"
+	"latere.ai/x/pay/money"
 )
 
 // microPerCent converts the ledger's micro-USD to the whole cents a card
@@ -50,15 +52,16 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotImplemented, "payments_unconfigured")
 		return
 	}
-	url, err := rt.payments.CreateCheckout(r.Context(), payment.CheckoutParams{
+	out, err := rt.payments.CreateCheckout(r.Context(), pay.CheckoutParams{
 		Email:       id.Email,
-		AmountMinor: cents,
-		Currency:    payment.USD,
+		Amount:      money.Micro(gross),
+		Currency:    money.USD,
+		Description: "replichai credits",
 		SuccessURL:  rt.baseURL + "/wallet?checkout=success",
 		CancelURL:   rt.baseURL + "/wallet",
 		Meta:        map[string]string{"credited_micro": strconv.FormatInt(credited, 10)},
 	})
-	if errors.Is(err, payment.ErrUnconfigured) {
+	if errors.Is(err, pay.ErrUnconfigured) {
 		writeError(w, http.StatusNotImplemented, "payments_unconfigured")
 		return
 	}
@@ -67,7 +70,7 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "checkout_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"url": url})
+	writeJSON(w, http.StatusOK, map[string]string{"url": out.URL})
 }
 
 // stripeWebhook is the one thing that credits a purchase (022b). It is off the
@@ -85,8 +88,8 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	ev, err := rt.payments.ParseWebhook(body, r.Header.Get("Stripe-Signature"))
-	if errors.Is(err, payment.ErrUnconfigured) {
+	ev, err := rt.payments.ParseWebhook(body, r.Header)
+	if errors.Is(err, pay.ErrUnconfigured) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -95,12 +98,12 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch ev.Kind {
-	case payment.EventCheckoutCompleted:
+	case pay.KindPaid:
 		if code := rt.creditPurchase(r, ev); code != http.StatusOK {
 			writeError(w, code, "topup_failed") // let Stripe retry
 			return
 		}
-	case payment.EventChargeRefunded, payment.EventDisputeCreated:
+	case pay.KindRefunded, pay.KindDisputed:
 		if code := rt.reversePurchase(r, ev); code != http.StatusOK {
 			writeError(w, code, "refund_failed") // let Stripe retry
 			return
@@ -113,7 +116,7 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 // verified event's metadata. Returns 200 when there is nothing to post (so a
 // malformed event is acknowledged, not retried) or when the post succeeds, and
 // 500 only on a store error worth retrying.
-func (rt *Router) creditPurchase(r *http.Request, ev payment.Event) int {
+func (rt *Router) creditPurchase(r *http.Request, ev pay.Event) int {
 	credited, perr := strconv.ParseInt(ev.Meta["credited_micro"], 10, 64)
 	if ev.Email == "" || perr != nil || credited <= 0 {
 		log.Printf("stripe webhook: unusable checkout metadata (email=%q credited=%q)", ev.Email, ev.Meta["credited_micro"])
@@ -122,7 +125,7 @@ func (rt *Router) creditPurchase(r *http.Request, ev payment.Event) int {
 	if rt.credits == nil {
 		return http.StatusOK
 	}
-	if err := rt.credits.TopupPaid(r.Context(), ev.Email, credited, ev.PaymentIntent, "stripe:"+ev.PaymentIntent); err != nil {
+	if err := rt.credits.TopupPaid(r.Context(), ev.Email, credited, ev.Ref, "stripe:"+ev.Ref); err != nil {
 		log.Printf("stripe webhook: topup for %s: %v", ev.Email, err)
 		return http.StatusInternalServerError
 	}
@@ -134,25 +137,25 @@ func (rt *Router) creditPurchase(r *http.Request, ev payment.Event) int {
 // credited, not the euros paid), keyed on the reversal's own id so it dedupes
 // independently. A refund of a purchase this ledger never recorded is
 // acknowledged and dropped, not retried.
-func (rt *Router) reversePurchase(r *http.Request, ev payment.Event) int {
+func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	if rt.credits == nil {
 		return http.StatusOK
 	}
-	orig, ok, err := rt.credits.EntryByExternalRef(r.Context(), ev.PaymentIntent)
+	orig, ok, err := rt.credits.EntryByExternalRef(r.Context(), ev.Ref)
 	if err != nil {
-		log.Printf("stripe webhook: look up purchase %q: %v", ev.PaymentIntent, err)
+		log.Printf("stripe webhook: look up purchase %q: %v", ev.Ref, err)
 		return http.StatusInternalServerError
 	}
 	email, isWallet := credit.WalletEmail(orig.Holder)
-	if !ok || !isWallet || orig.Amount <= 0 || ev.RefundID == "" {
-		log.Printf("stripe webhook: refund for an unknown or unreversable purchase (pi=%q ref=%q)", ev.PaymentIntent, ev.RefundID)
+	if !ok || !isWallet || orig.Amount <= 0 || ev.ReversalRef == "" {
+		log.Printf("stripe webhook: refund for an unknown or unreversable purchase (pi=%q ref=%q)", ev.Ref, ev.ReversalRef)
 		return http.StatusOK
 	}
 	// Whether this reversal is the one that puts the account in the red: read the
 	// balance before, so the freeze email is sent once, on the crossing, and not
 	// again on a further refund of an already-negative wallet.
 	before, _ := rt.credits.Balance(r.Context(), orig.Holder)
-	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.RefundID, "stripe:refund:"+ev.RefundID); err != nil {
+	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.ReversalRef, "stripe:refund:"+ev.ReversalRef); err != nil {
 		log.Printf("stripe webhook: refund for %s: %v", email, err)
 		return http.StatusInternalServerError
 	}

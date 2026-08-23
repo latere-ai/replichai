@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -453,47 +454,66 @@ func TestWalletEmailInvertsWallet(t *testing.T) {
 	}
 }
 
-// writeHold and writeSettlement post the entries the enqueue gate and the
-// settlement will post once they exist, so the ledger's own invariants are
-// pinned before anything depends on them.
+// hold and writeSettlement drive the real operations, whichever shape the
+// store exposes them in. They replace a helper that used to write entries past
+// the public API because the enqueue gate and settlement did not exist yet.
 func writeHold(t *testing.T, s Store, h Holder, job string, amount int64) {
 	t.Helper()
-	post(t, s, Entry{Holder: h, Amount: -amount, Kind: KindHold, JobID: job, Actor: ActorSystem})
-}
-
-func writeSettlement(t *testing.T, s Store, h Holder, job string, held, cost int64) {
-	t.Helper()
-	post(t, s, Entry{Holder: h, Amount: held, Kind: KindRelease, JobID: job, Actor: ActorSystem})
-	post(t, s, Entry{Holder: h, Amount: -cost, Kind: KindCharge, JobID: job, Actor: ActorSystem})
-}
-
-// post writes one entry directly, reaching past the public API on purpose:
-// these kinds are the system's, and the operations that will write them land in
-// later commits. It keeps this test about the ledger's arithmetic.
-func post(t *testing.T, s Store, e Entry) {
-	t.Helper()
+	ctx := context.Background()
 	switch st := s.(type) {
 	case *MemStore:
-		st.mu.Lock()
-		defer st.mu.Unlock()
-		if err := st.append(e); err != nil {
-			t.Fatalf("append: %v", err)
+		if err := st.Hold(ctx, h, job, amount); err != nil {
+			t.Fatalf("Hold: %v", err)
 		}
 	case *PGStore:
-		ctx := context.Background()
-		tx, err := st.pool.Begin(ctx)
-		if err != nil {
-			t.Fatalf("begin: %v", err)
-		}
-		defer func() { _ = tx.Rollback(ctx) }()
-		if err := st.insertTx(ctx, tx, e); err != nil {
-			t.Fatalf("insert: %v", err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			t.Fatalf("commit: %v", err)
-		}
+		inTx(t, st, func(tx pgx.Tx) error { return st.HoldTx(ctx, tx, h, job, amount) })
 	default:
 		t.Fatalf("unknown store %T", s)
+	}
+}
+
+// writeSettlement settles a session, which releases whatever it still holds and
+// charges what it cost. held is no longer passed: the store works out what is
+// outstanding, which is the guarantee worth testing.
+func writeSettlement(t *testing.T, s Store, h Holder, job string, _, cost int64) {
+	t.Helper()
+	settle(t, s, h, job, cost)
+}
+
+// adjust posts a correction, which is the one write with no uniqueness
+// constraint so reconciliation stays possible after a session has settled.
+func adjust(t *testing.T, s Store, h Holder, amount int64) {
+	t.Helper()
+	ctx := context.Background()
+	// A negative correction is a refund-shaped adjustment; the wrapper exposes
+	// it as RefundPaid, keyed on its own reference.
+	email, ok := WalletEmail(h)
+	if ok {
+		if err := s.RefundPaid(ctx, email, amount, "adj-"+string(h), ActorSystem); err != nil {
+			t.Fatalf("RefundPaid: %v", err)
+		}
+		return
+	}
+	// A pot correction is a spend with no session behind it.
+	if err := s.Spend(ctx, h, amount, "adj-"+string(h), ActorSystem); err != nil {
+		t.Fatalf("Spend: %v", err)
+	}
+}
+
+// inTx runs fn inside a committed transaction against the Postgres store.
+func inTx(t *testing.T, st *PGStore, fn func(pgx.Tx) error) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := st.pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(tx); err != nil {
+		t.Fatalf("in tx: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
 	}
 }
 
@@ -606,7 +626,7 @@ func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 			// And a correction afterwards is still possible: reconciliation
 			// posts the difference as an adjustment, which carries no
 			// uniqueness constraint precisely so this stays open.
-			post(t, s, Entry{Holder: Pot("p1"), Amount: -1 * Dollar, Kind: KindAdjust, JobID: "job-1", Actor: ActorSystem})
+			adjust(t, s, Pot("p1"), 1*Dollar)
 			if n, _ := s.Balance(ctx, Pot("p1")); n != 7*Dollar {
 				t.Errorf("balance after an adjustment = %d, want %d", n, 7*Dollar)
 			}
@@ -626,18 +646,12 @@ func settle(t *testing.T, s Store, h Holder, job string, cost int64) bool {
 		}
 		return ok
 	case *PGStore:
-		tx, err := st.pool.Begin(ctx)
-		if err != nil {
-			t.Fatalf("begin: %v", err)
-		}
-		defer func() { _ = tx.Rollback(ctx) }()
-		ok, err := st.SettleTx(ctx, tx, h, job, cost)
-		if err != nil {
-			t.Fatalf("SettleTx: %v", err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			t.Fatalf("commit: %v", err)
-		}
+		var ok bool
+		inTx(t, st, func(tx pgx.Tx) error {
+			var err error
+			ok, err = st.SettleTx(ctx, tx, h, job, cost)
+			return err
+		})
 		return ok
 	default:
 		t.Fatalf("unknown store %T", s)

@@ -10,14 +10,16 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/credit"
-	"github.com/latere-ai/replichai/internal/payment"
 	"github.com/latere-ai/replichai/internal/platform"
+
+	"latere.ai/x/pay"
+	"latere.ai/x/pay/money"
 )
 
 // paymentsDeps wires a router over a real ledger, a fake payment provider, and
 // the real platform policy (whose seeded spread is 5% + $0.30 and floor $5), so
 // these tests exercise the credit path the server actually runs.
-func paymentsDeps(t *testing.T) (Deps, *Router, credit.Store, *payment.MemProvider) {
+func paymentsDeps(t *testing.T) (Deps, *Router, credit.Store, *pay.MemProvider) {
 	t.Helper()
 	d := testDeps(allowAll)
 	members, ok := d.Members.(credit.Members)
@@ -25,7 +27,7 @@ func paymentsDeps(t *testing.T) (Deps, *Router, credit.Store, *payment.MemProvid
 		t.Fatalf("the test membership store %T cannot answer roles", d.Members)
 	}
 	ledger := credit.NewMemStore(nil, members)
-	prov := &payment.MemProvider{URL: "https://pay.test/session", Secret: "whsec"}
+	prov := &pay.MemProvider{URL: "https://pay.test/session", Secret: "whsec"}
 	d.Credits = ledger
 	d.Payments = prov
 	d.Platform = platform.NewMemStore(nil)
@@ -47,12 +49,14 @@ func TestStartCheckoutQuotesAndOpensASession(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || got.URL != "https://pay.test/session" {
 		t.Fatalf("checkout body = %s, %v; want the session URL", w.Body, err)
 	}
-	if len(prov.Calls) != 1 {
-		t.Fatalf("provider calls = %d, want 1", len(prov.Calls))
+	if len(prov.Checkouts()) != 1 {
+		t.Fatalf("provider calls = %d, want 1", len(prov.Checkouts()))
 	}
-	c := prov.Calls[0]
-	if c.Email != payer.Email || c.Currency != payment.USD || c.AmountMinor != 2000 {
-		t.Fatalf("checkout params = %+v; want the payer, USD, 2000 cents", c)
+	c := prov.Checkouts()[0]
+	// The port carries the amount in micro-USD; converting to the processor's
+	// minor units is the adapter's job now, not this handler's.
+	if c.Email != payer.Email || c.Currency != money.USD || c.Amount != 20*money.Dollar {
+		t.Fatalf("checkout params = %+v; want the payer, USD, $20", c)
 	}
 	if c.Meta["credited_micro"] != "18700000" {
 		t.Fatalf("credited_micro = %q, want 18700000 (gross − 5%% − $0.30)", c.Meta["credited_micro"])
@@ -70,8 +74,8 @@ func TestStartCheckoutRefusesBelowTheFloor(t *testing.T) {
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "below_min") {
 		t.Fatalf("below floor = %d %s, want 400 below_min", w.Code, w.Body)
 	}
-	if len(prov.Calls) != 0 {
-		t.Fatalf("a below-floor amount reached the processor: %+v", prov.Calls)
+	if len(prov.Checkouts()) != 0 {
+		t.Fatalf("a below-floor amount reached the processor: %+v", prov.Checkouts())
 	}
 }
 
@@ -88,14 +92,14 @@ func TestStartCheckoutUnconfigured(t *testing.T) {
 
 func TestStripeWebhookCreditsOnceAndRefusesABadSignature(t *testing.T) {
 	_, rt, ledger, _ := paymentsDeps(t)
-	body, _ := json.Marshal(payment.Event{
-		Kind: payment.EventCheckoutCompleted, Email: payer.Email, PaymentIntent: "pi_1",
+	body, _ := json.Marshal(pay.Event{
+		Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_1",
 		Meta: map[string]string{"credited_micro": "18700000"},
 	})
 	post := func(sig string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
-		r.Header.Set("Stripe-Signature", sig)
+		r.Header.Set(pay.MemHeader, sig)
 		rt.Handler().ServeHTTP(w, r)
 		return w
 	}
@@ -130,11 +134,11 @@ func TestStripeWebhookCreditsOnceAndRefusesABadSignature(t *testing.T) {
 // go negative, and a retried refund does not over-claw.
 func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
 	_, rt, ledger, _ := paymentsDeps(t)
-	deliver := func(v payment.Event) int {
+	deliver := func(v pay.Event) int {
 		body, _ := json.Marshal(v)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
-		r.Header.Set("Stripe-Signature", "whsec")
+		r.Header.Set(pay.MemHeader, "whsec")
 		rt.Handler().ServeHTTP(w, r)
 		return w.Code
 	}
@@ -144,11 +148,11 @@ func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
 	}
 
 	// A purchase credits $18.70.
-	if code := deliver(payment.Event{Kind: payment.EventCheckoutCompleted, Email: payer.Email, PaymentIntent: "pi_1", Meta: map[string]string{"credited_micro": "18700000"}}); code != http.StatusOK {
+	if code := deliver(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_1", Meta: map[string]string{"credited_micro": "18700000"}}); code != http.StatusOK {
 		t.Fatalf("purchase = %d, want 200", code)
 	}
 	// The refund names the purchase by its payment_intent and carries its own id.
-	refund := payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_1", RefundID: "re_1"}
+	refund := pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"}
 	if code := deliver(refund); code != http.StatusOK {
 		t.Fatalf("refund = %d, want 200", code)
 	}
@@ -161,7 +165,7 @@ func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
 
 	// A refund for a purchase this ledger never recorded is acknowledged and
 	// dropped — not retried, not a crash.
-	if code := deliver(payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_unknown", RefundID: "re_x"}); code != http.StatusOK {
+	if code := deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_unknown", ReversalRef: "re_x"}); code != http.StatusOK {
 		t.Fatalf("refund of unknown purchase = %d, want 200", code)
 	}
 }
@@ -175,18 +179,18 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 	nf := &fakeNotifier{}
 	d.Notifier = nf
 	rt := NewRouter(d)
-	deliver := func(v payment.Event) {
+	deliver := func(v pay.Event) {
 		body, _ := json.Marshal(v)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
-		r.Header.Set("Stripe-Signature", "whsec")
+		r.Header.Set(pay.MemHeader, "whsec")
 		rt.Handler().ServeHTTP(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("webhook %s = %d (%s)", v.Kind, w.Code, w.Body)
 		}
 	}
 	purchase := func(pi string, credited int64) {
-		deliver(payment.Event{Kind: payment.EventCheckoutCompleted, Email: payer.Email, PaymentIntent: pi, Meta: map[string]string{"credited_micro": itoa(credited)}})
+		deliver(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: pi, Meta: map[string]string{"credited_micro": itoa(credited)}})
 	}
 
 	// $5 bought and committed to a project, so the wallet is back at 0 and the
@@ -195,7 +199,7 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 	if err := ledger.Fund(ctx, payer.Email, "proj-1", "P", 5*credit.Dollar); err != nil {
 		t.Fatalf("Fund: %v", err)
 	}
-	deliver(payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_1", RefundID: "re_1"})
+	deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"})
 	if got := nf.frozenSends(); len(got) != 1 || got[0] != payer.Email {
 		t.Fatalf("after the crossing, freeze emails = %v; want one to the payer", got)
 	}
@@ -203,7 +207,7 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 	// A second purchase (unspent) then its refund drops the wallet further but
 	// does not email again — the account was already frozen.
 	purchase("pi_2", 2*credit.Dollar)
-	deliver(payment.Event{Kind: payment.EventChargeRefunded, PaymentIntent: "pi_2", RefundID: "re_2"})
+	deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_2", ReversalRef: "re_2"})
 	if got := nf.frozenSends(); len(got) != 1 {
 		t.Fatalf("a further refund of an already-frozen account emailed again: %v", got)
 	}

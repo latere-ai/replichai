@@ -27,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	// Aliased: "email" is a loop variable in the seeding code below, and a
 	// package with the same name would read as a shadowing accident.
+	paystripe "latere.ai/x/pay/stripe"
 	xemail "latere.ai/x/pkg/email"
 	"latere.ai/x/pkg/oidclogin"
 
@@ -39,7 +40,6 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/notify"
-	"github.com/latere-ai/replichai/internal/payment/stripe"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/profile"
 	"github.com/latere-ai/replichai/internal/project"
@@ -209,7 +209,10 @@ func run() error {
 	// The payment processor reads its keys from the environment; with none it is
 	// a refusing adapter, so the checkout route reports payments_unconfigured and
 	// the rest of the app runs unmetered (022b).
-	payments := stripe.New()
+	payments := paystripe.New(paystripe.Config{
+		SecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+		WebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
+	})
 
 	// The drafting model an admin configured, with the deployment's own key
 	// (039). It is resolved per request rather than at boot: an admin who
