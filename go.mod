@@ -7,7 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	golang.org/x/oauth2 v0.36.0
 	latere.ai/x/pay v0.1.0
-	latere.ai/x/pkg v0.40.0
+	latere.ai/x/pkg v0.41.0
 )
 
 require (
