@@ -80,6 +80,8 @@ func (s Store) Save(token Token) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
+	//nolint:gosec // this file is the credential store; writing the credential
+	// into it is the point, and it is created 0600 below.
 	body, err := json.MarshalIndent(token, "", "  ")
 	if err != nil {
 		return err
@@ -310,6 +312,10 @@ func (s *Session) Bearer(ctx context.Context, ttl time.Duration) (string, bool, 
 	}
 	actor, err := s.mintActor(ctx, token.AccessToken, ttl)
 	if err != nil {
+		// A provider that will not mint an audience-scoped token is not a
+		// failure to sign in: the stored credential still authenticates, and
+		// the caller is told the short-lived one was not obtained.
+		//nolint:nilerr // the fallback is the documented behaviour, and it is reported
 		return token.AccessToken, false, nil
 	}
 	return actor, true, nil

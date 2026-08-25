@@ -37,7 +37,7 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 
 	t.Run("a stage runs, exits, and reports its status", func(t *testing.T) {
 		subject := newSubject(t)
-		spec := subject.spec(t, "worker-0", subject.Print("hello sandbox", 0))
+		spec := subject.spec(t, subject.Print("hello sandbox", 0))
 		handle, err := subject.Driver.Launch(context.Background(), spec)
 		if err != nil {
 			t.Fatalf("Launch: %v", err)
@@ -54,7 +54,7 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 	t.Run("a non-zero exit is reported, not swallowed", func(t *testing.T) {
 		subject := newSubject(t)
 		handle, err := subject.Driver.Launch(context.Background(),
-			subject.spec(t, "worker-0", subject.Print("failing", 3)))
+			subject.spec(t, subject.Print("failing", 3)))
 		if err != nil {
 			t.Fatalf("Launch: %v", err)
 		}
@@ -67,7 +67,7 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 	t.Run("output is readable from an offset", func(t *testing.T) {
 		subject := newSubject(t)
 		handle, err := subject.Driver.Launch(context.Background(),
-			subject.spec(t, "worker-0", subject.Print("abcdefgh", 0)))
+			subject.spec(t, subject.Print("abcdefgh", 0)))
 		if err != nil {
 			t.Fatalf("Launch: %v", err)
 		}
@@ -85,7 +85,7 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 	t.Run("a running stage can be stopped", func(t *testing.T) {
 		subject := newSubject(t)
 		handle, err := subject.Driver.Launch(context.Background(),
-			subject.spec(t, "worker-0", subject.Wait(30*time.Second)))
+			subject.spec(t, subject.Wait(30*time.Second)))
 		if err != nil {
 			t.Fatalf("Launch: %v", err)
 		}
@@ -105,7 +105,7 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 
 	t.Run("discard is idempotent and leaves the session directory", func(t *testing.T) {
 		subject := newSubject(t)
-		spec := subject.spec(t, "worker-0", subject.Print("done", 0))
+		spec := subject.spec(t, subject.Print("done", 0))
 		handle, err := subject.Driver.Launch(context.Background(), spec)
 		if err != nil {
 			t.Fatalf("Launch: %v", err)
@@ -155,8 +155,11 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 
 // spec builds a stage whose log lives where the runtime would put it: inside
 // the session's evidence directory, which no stage may write.
-func (s *Subject) spec(t *testing.T, name string, argv []string) sandbox.StageSpec {
+const stageName = "worker-0"
+
+func (s *Subject) spec(t *testing.T, argv []string) sandbox.StageSpec {
 	t.Helper()
+	name := stageName
 	logDir := filepath.Join(s.Dir, "session", "raw")
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)

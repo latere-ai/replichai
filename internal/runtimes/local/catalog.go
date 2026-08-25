@@ -89,6 +89,7 @@ func ReadCatalogFile(path string) (CatalogFile, error) {
 	if strings.TrimSpace(path) == "" {
 		return DefaultCatalogFile(), nil
 	}
+	//nolint:gosec // the path is the model catalogue the operator named
 	body, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return DefaultCatalogFile(), nil

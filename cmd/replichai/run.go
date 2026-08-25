@@ -15,6 +15,7 @@ import (
 	"github.com/latere-ai/replichai/internal/batch"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -159,6 +160,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 	r.mu.Unlock()
 
 	var outcome batch.Outcome
+	if key, keyErr := paper.Key(entry.Reference()); keyErr == nil {
+		outcome.PaperKey = key
+	}
 	if pub != nil {
 		capabilities, capErr := runtime.Capabilities(ctx)
 		if capErr != nil {

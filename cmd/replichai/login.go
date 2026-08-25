@@ -139,8 +139,10 @@ func openBrowser(url string) {
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
+		//nolint:gosec,noctx // the URL is the identity provider's own verification URI
 		command = exec.Command("open", url)
 	case "linux":
+		//nolint:gosec,noctx // the URL is the identity provider's own verification URI
 		command = exec.Command("xdg-open", url)
 	default:
 		return

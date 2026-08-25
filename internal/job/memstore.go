@@ -116,8 +116,6 @@ func NewMemStore(opts ...MemOption) *MemStore {
 	return s
 }
 
-// Enqueue records a new submitted job, refusing a paper already running under
-// the double-trigger guard and a submit past the payer's quota.
 // ImportLocal records a session executed on somebody's own machine. It is a
 // separate entry point from Enqueue rather than a flag on it, and the reason
 // is the credit seam: Enqueue takes the start reserve inside the write, and a
@@ -184,6 +182,8 @@ func applyImport(j *Job, in Import, now time.Time) {
 	}
 }
 
+// Enqueue records a new submitted job, refusing a paper already running under
+// the double-trigger guard and a submit past the payer's quota.
 func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef

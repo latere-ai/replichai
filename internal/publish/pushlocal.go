@@ -142,6 +142,7 @@ func (push LocalPush) git(ctx context.Context, args ...string) (string, error) {
 }
 
 func (push LocalPush) gitWithAskpass(ctx context.Context, askpass string, args ...string) (string, error) {
+	//nolint:gosec // a fixed git verb over this package's own arguments
 	command := exec.CommandContext(ctx, "git", append([]string{"-C", push.Workspace}, args...)...)
 	command.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
@@ -181,6 +182,9 @@ func writeAskpass(token string) (string, func(), error) {
 		cleanup()
 		return "", func() {}, err
 	}
+	// 0o700, not 0o600: git execs this helper, so it needs the execute bit.
+	// It is owner-only and removed as soon as the push is over.
+	//nolint:gosec // an askpass helper must be executable
 	if err := os.Chmod(path, 0o700); err != nil {
 		cleanup()
 		return "", func() {}, err
@@ -198,6 +202,7 @@ func shellQuote(value string) string {
 func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 	outputs := make(map[string][]byte)
 	for _, name := range []string{"environment.json"} {
+		//nolint:gosec // the path is this program's own session directory
 		body, err := os.ReadFile(filepath.Join(sessionDir, "session", name))
 		if err != nil {
 			continue
@@ -206,12 +211,16 @@ func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 	}
 	entries, err := os.ReadDir(filepath.Join(sessionDir, "grade"))
 	if err != nil {
+		// A session that was never graded has no verdict to commit, which is
+		// a fact about the run rather than a failure to read it.
+		//nolint:nilerr // an ungraded session contributes no verdict file
 		return outputs, nil
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "verdict-") {
 			continue
 		}
+		//nolint:gosec // the path is this program's own session directory
 		body, err := os.ReadFile(filepath.Join(sessionDir, "grade", entry.Name()))
 		if err != nil {
 			continue

@@ -89,6 +89,9 @@ linters:
         - honoured
         - honouring
         - honours
+        - initialise
+        - initialised
+        - initialises
         - labelled
         - labelling
         - licence

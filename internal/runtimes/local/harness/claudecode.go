@@ -165,7 +165,11 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 	base := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
 	var parsed claudeLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
+		// A line this build cannot parse becomes a raw event rather than an
+		// error: a transcript that drops what it does not understand is not
+		// evidence, and the harness's stream is not this program's to define.
 		base.Role, base.Kind, base.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
+		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return []managed.Event{base}, nil
 	}
 	// total_cost_usd is the harness's own figure and is decoded separately so
@@ -206,7 +210,7 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 // line's raw payload is attached to the first, which is the one that carries
 // its usage.
 func claudeContentEvents(base managed.Event, parsed claudeLine, model managed.ModelRef, role managed.Role) []managed.Event {
-	var events []managed.Event
+	events := make([]managed.Event, 0, len(parsed.Message.Content))
 	for _, block := range parsed.Message.Content {
 		event := base
 		event.Role = role

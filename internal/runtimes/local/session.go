@@ -94,6 +94,9 @@ func CreateSession(root, id string, environ []string) (*Session, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create session directory: %w", err)
 	}
+	// 0o700, not 0o600: it is a directory, and a directory without the
+	// execute bit cannot be entered.
+	//nolint:gosec // a private directory needs the execute bit
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("secure session directory: %w", err)
 	}
@@ -210,7 +213,7 @@ func (s *Session) AppendEvents(events []managed.Event) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // this session's own transcript
 	if err != nil {
 		return fmt.Errorf("open transcript: %w", err)
 	}
@@ -307,7 +310,7 @@ func (s *Session) Fetch(artifact managed.Artifact) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	body, err := os.ReadFile(target)
+	body, err := os.ReadFile(target) //nolint:gosec // containedPath refused anything outside the workspace
 	if os.IsNotExist(err) {
 		return nil, &managed.NotFoundError{Runtime: Name, ID: artifact.Path}
 	}
@@ -337,7 +340,7 @@ func (s *Session) writeJSON(name string, value any) error {
 }
 
 func (s *Session) readJSON(name string, into any) error {
-	body, err := os.ReadFile(filepath.Join(s.dir, name))
+	body, err := os.ReadFile(filepath.Join(s.dir, name)) //nolint:gosec // a fixed name under this session's own directory
 	if os.IsNotExist(err) {
 		return &managed.NotFoundError{Runtime: Name, ID: s.id}
 	}
@@ -359,6 +362,7 @@ func initRepository(workspace string, environ []string) error {
 		{"config", "commit.gpgsign", "false"},
 	}
 	for _, args := range steps {
+		//nolint:gosec,noctx // a fixed git verb over this package's own arguments
 		command := exec.Command("git", append([]string{"-C", workspace}, args...)...)
 		command.Env = append(append([]string(nil), environ...), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
 		if output, err := command.CombinedOutput(); err != nil {

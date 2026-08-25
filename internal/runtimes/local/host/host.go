@@ -142,7 +142,9 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	script := fmt.Sprintf("# replichai-stage:%s\n%s\nprintf %%s $? > %s\n",
 		token, shellJoin(command), shellQuote(statusPath))
 
-	launcher := exec.Command("/bin/sh", "-c", script)
+	// The script is built here from a shell-quoted argv: every element is
+	// quoted by shellJoin, so nothing in a task or a model id is interpreted.
+	launcher := exec.Command("/bin/sh", "-c", script) //nolint:gosec,noctx // a quoted argv, and the stage outlives this process by design
 	launcher.Dir = spec.Workdir
 	launcher.Env = s.environment(spec)
 	log, err := os.OpenFile(spec.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -232,8 +234,11 @@ func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset i
 	if err != nil {
 		return nil, err
 	}
+	//nolint:gosec // the path comes from this package's own stage handle
 	file, err := os.Open(logPath)
 	if os.IsNotExist(err) {
+		// A stage that has written nothing yet has an empty read, not a
+		// failure: the caller polls.
 		return io.NopCloser(strings.NewReader("")), nil
 	}
 	if err != nil {
@@ -276,6 +281,7 @@ func (s *Sandbox) Version(ctx context.Context, argv []string) (string, error) {
 	if len(argv) == 0 {
 		return "", errors.New("no version command")
 	}
+	//nolint:gosec // the argv is the harness's own version command from its adapter
 	output, err := exec.CommandContext(ctx, argv[0], argv[1:]...).Output()
 	if err != nil {
 		return "", err
@@ -313,6 +319,7 @@ func parseHandle(handle sandbox.StageHandle) (int, string, string, error) {
 }
 
 func readStatus(path string) (int, bool) {
+	//nolint:gosec // the path comes from this package's own stage handle
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return 0, false
@@ -335,6 +342,7 @@ func alive(pid int) bool {
 // stage that was launched. The wrapper's own command line carries the marker,
 // so a pid the operating system handed to somebody else fails the test.
 func belongsTo(pid int, token string) bool {
+	//nolint:gosec,noctx // a fixed command over an integer pid; liveness has no deadline to honour
 	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
 	if err != nil {
 		return false

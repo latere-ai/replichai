@@ -47,6 +47,7 @@ func (s State) Save(path string) error {
 
 // LoadState reads a project's progress back.
 func LoadState(path string) (State, error) {
+	//nolint:gosec // the path is this batch's own state file
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return State{}, err

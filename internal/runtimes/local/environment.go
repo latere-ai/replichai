@@ -1,9 +1,11 @@
 package local
 
 import (
+	"context"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
@@ -78,10 +80,10 @@ type EnvironmentNetwork struct {
 
 // NewEnvironment starts the record with what is knowable before the first
 // stage runs. The rest is filled in as the session proceeds.
-func NewEnvironment(driver sandbox.DriverName, harnessName harness.Name, model managed.ModelRef, gateway harness.Gateway, mode string) Environment {
+func NewEnvironment(ctx context.Context, driver sandbox.DriverName, harnessName harness.Name, model managed.ModelRef, gateway harness.Gateway, mode string) Environment {
 	return Environment{
 		Sandbox: EnvironmentSandbox{Driver: driver, NetworkMode: mode},
-		Host:    EnvironmentHost{OS: runtime.GOOS, Arch: runtime.GOARCH, Kernel: kernelVersion()},
+		Host:    EnvironmentHost{OS: runtime.GOOS, Arch: runtime.GOARCH, Kernel: kernelVersion(ctx)},
 		Harness: EnvironmentHarness{Name: harnessName, Auth: gateway.Auth, Gateway: gateway.Name},
 		Model:   model,
 	}
@@ -89,8 +91,10 @@ func NewEnvironment(driver sandbox.DriverName, harnessName harness.Name, model m
 
 // kernelVersion is best effort: an unavailable one leaves the field empty
 // rather than failing a run over a description of the machine.
-func kernelVersion() string {
-	output, err := exec.Command("uname", "-r").Output()
+func kernelVersion(parent context.Context) string {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "uname", "-r").Output()
 	if err != nil {
 		return ""
 	}

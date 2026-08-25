@@ -218,7 +218,7 @@ func grepTree(t *testing.T, dir, want string) []string {
 	var found []string
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry cannot hold the token; keep walking
 		}
 		body, readErr := os.ReadFile(path)
 		if readErr == nil && strings.Contains(string(body), want) {

@@ -146,7 +146,7 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 		return err
 	}
 	if _, _, err := r.config.Catalog.Resolve(r.config.Harness.Name(), spec.Model); err != nil {
-		return fmt.Errorf("%w: %s", managed.ErrInvalidSpec, err)
+		return fmt.Errorf("%w: %w", managed.ErrInvalidSpec, err)
 	}
 	return nil
 }
@@ -175,7 +175,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if err := session.writeJSON(specFile, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
-	record := NewEnvironment(r.config.Sandbox.Name(), r.config.Harness.Name(), model, gateway, string(spec.Sandbox.Network.Mode))
+	record := NewEnvironment(ctx, r.config.Sandbox.Name(), r.config.Harness.Name(), model, gateway, string(spec.Sandbox.Network.Mode))
 	record.Harness.Version = r.harnessVersion(ctx)
 	if err := session.WriteEnvironment(record); err != nil {
 		return managed.SessionRef{}, err
@@ -226,7 +226,7 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	}
 
 	current := &locator.Stages[len(locator.Stages)-1]
-	usage, err := r.drain(session, locator.Harness, current)
+	usage, err := r.drain(ctx, session, locator.Harness, current)
 	if err != nil {
 		return managed.Status{}, err
 	}
@@ -422,11 +422,11 @@ func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]s
 // decodes it, appends it to the transcript, and returns the usage it reported.
 // The pump's position is journalled, so a restart resumes rather than
 // re-decoding — which is what keeps event ids stable across a restart.
-func (r *Runtime) drain(session *Session, harnessName harness.Name, record *StageRecord) (managed.Usage, error) {
+func (r *Runtime) drain(ctx context.Context, session *Session, harnessName harness.Name, record *StageRecord) (managed.Usage, error) {
 	if harnessName != r.config.Harness.Name() {
 		return managed.Usage{}, fmt.Errorf("session was started with harness %q, this runtime has %q", harnessName, r.config.Harness.Name())
 	}
-	stream, err := r.config.Sandbox.Output(context.Background(), record.Handle, record.Offset)
+	stream, err := r.config.Sandbox.Output(ctx, record.Handle, record.Offset)
 	if err != nil {
 		if errors.Is(err, sandbox.ErrGone) {
 			return managed.Usage{}, nil
