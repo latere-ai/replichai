@@ -78,6 +78,18 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	case "run":
 		return runRun(ctx, args[1:], stdout, stderr)
 
+	case "login":
+		return runLogin(ctx, args[1:], stdout, stderr)
+
+	case "whoami":
+		return runWhoami(ctx, args[1:], stdout, stderr)
+
+	case "logout":
+		return runLogout(ctx, args[1:], stdout, stderr)
+
+	case "org":
+		return runOrg(ctx, args[1:], stdout, stderr)
+
 	case "resolve":
 		return runResolve(ctx, args[1:], stdout, stderr)
 
@@ -846,6 +858,7 @@ usage:
   replichai resolve <paper-ref>
   replichai publish <artifact-dir> <paper-ref> [flags]
   replichai finish <owner>/<repo> <paper-ref> --session <id> [flags]
+  replichai login | whoami | logout | org [<org-uuid>|--personal]
   replichai providers
   replichai rates [flags]
 
