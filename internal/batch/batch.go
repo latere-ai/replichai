@@ -236,6 +236,10 @@ type Options struct {
 	Resume bool
 	// Clock is the time source.
 	Clock func() time.Time
+	// Publishing says the project publishes each reproduction, so a report
+	// can tell a run that produced no repository from one that was never
+	// asked for one.
+	Publishing bool
 	// Progress is called after every state change, so a caller can print
 	// and a test can watch.
 	Progress func(State)
@@ -261,10 +265,11 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 		parallel = 1
 	}
 
-	state := State{Version: stateVersion, Project: file.Project, StartedAt: options.Clock()}
+	state := State{Version: stateVersion, Project: file.Project, Publishing: options.Publishing, StartedAt: options.Clock()}
 	if options.Resume {
 		if previous, err := LoadState(options.StatePath); err == nil {
 			state = previous.mergedWith(entries, options.Clock())
+			state.Publishing = options.Publishing
 		}
 	}
 	if len(state.Entries) != len(entries) {
