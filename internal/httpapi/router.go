@@ -78,6 +78,9 @@ var DenyAll Gate = GateFunc(func(*http.Request) (bool, string) { return false, "
 // handlers, which is what the no-engine-logic dependency test enforces.
 type JobStore interface {
 	Enqueue(ctx context.Context, s job.Submission) (job.Job, error)
+	// ImportLocal files a session that was executed on somebody's own
+	// machine (045k). It never reaches the credit ledger.
+	ImportLocal(ctx context.Context, in job.Import) (job.Job, error)
 	Get(ctx context.Context, id string) (job.Job, error)
 	ListByPrincipal(ctx context.Context, principal string) ([]job.Job, error)
 	ListByProject(ctx context.Context, projectID string) ([]job.Job, error)
