@@ -22,6 +22,10 @@ import (
 type Script struct {
 	// WorkerExit is the exit code every worker and revision stage reports.
 	WorkerExit int
+	// BootstrapExit is the exit code the bootstrap stage reports, so a
+	// session whose dependencies will not install is testable apart from
+	// one whose agent failed.
+	BootstrapExit int
 	// Grades are the grades successive judge stages write, in order. A
 	// judge past the end of the slice repeats the last one.
 	Grades []string
@@ -138,6 +142,9 @@ func (s *Sandbox) produce(entry *stage) error {
 	switch entry.role {
 	case "judge":
 		return s.writeVerdict(entry)
+	case "bootstrap":
+		entry.exit = s.script.BootstrapExit
+		return nil
 	default:
 		entry.exit = s.script.WorkerExit
 		workspace := writablePath(entry.spec, "/workspace")

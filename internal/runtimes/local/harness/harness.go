@@ -34,15 +34,26 @@ type Stage string
 
 // The stages.
 const (
-	StageWorker   Stage = "worker"
-	StageRevision Stage = "revision"
-	StageJudge    Stage = "judge"
+	// StageBootstrap prepares the workspace before any agent runs: the
+	// language environment and the packages the specification declared. It
+	// is a stage rather than a step inside Start so it is journalled,
+	// observable and cancellable like every other piece of work — and so a
+	// failure to install a dependency fails the session with a reason
+	// rather than surfacing an hour later as an agent that cannot import.
+	StageBootstrap Stage = "bootstrap"
+	StageWorker    Stage = "worker"
+	StageRevision  Stage = "revision"
+	StageJudge     Stage = "judge"
 )
 
 // Writes reports whether a stage may write the workspace. Only the judge may
 // not, which is the whole mechanism behind a grader that cannot edit what it
 // grades (045f).
 func (s Stage) Writes() bool { return s != StageJudge }
+
+// Agentic reports whether a stage runs a harness. The bootstrap does not: it
+// runs a fixed script the runtime builds, and no model is involved.
+func (s Stage) Agentic() bool { return s != StageBootstrap }
 
 // Dialect is the wire protocol a model endpoint speaks. A harness speaks one
 // family of them, and the model catalogue refuses a pairing that disagrees
