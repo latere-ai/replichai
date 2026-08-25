@@ -73,7 +73,9 @@ Every session gets a fresh directory under `REPLICHAI_SESSION_ROOT` (default `~/
 
 ```
 7f3a91c2/
-  workspace/          the only writable place the agent has — and the repository
+  workspace/          the agent's work, and the repository
+  tmp/                downloads — the paper, datasets, anything third-party
+  venv/               the session's language environment, outside the repository
   grade/              writable by the judge stage only (045f)
   session/            never writable by any stage
     events.jsonl      the normalized transcript, append-only
@@ -83,7 +85,7 @@ Every session gets a fresh directory under `REPLICHAI_SESSION_ROOT` (default `~/
     raw/<stage>.log   the stage's own stream, byte-for-byte
 ```
 
-The split is the point. `workspace/` is what the agent writes and what becomes the repository. `session/` is evidence, authored by the host, and no stage can write it. Anything that blurs those two turns the transcript into something the subject of the audit can edit.
+The split is the point. `workspace/` is what becomes the repository, and everything the agent needs but must not publish — downloads, the language environment — is writable and adjacent rather than inside it. `session/` is evidence, authored by the host, and no stage can write it. Anything that blurs those two turns the transcript into something the subject of the audit can edit.
 
 `workspace/` is `git init`-ed by the host before the first stage, with `init.defaultBranch=main` and a committer identity already configured, so a run cannot stall on git refusing an empty `user.email`. There is no remote ([045g](045g-the-host-pushes.md)).
 

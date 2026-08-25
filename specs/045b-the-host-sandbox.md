@@ -26,6 +26,7 @@ One writable root, one readable root, and everything else denied.
 | the harness's own config (`~/.claude`, `~/.codex`) | read-only | the login already on the machine |
 | system toolchain paths (`/usr`, `/bin`, `/opt/homebrew`, `/nix`, …) | read-only | python, node, git, compilers |
 | `<session>/tmp`, bound to `TMPDIR` | read-write | downloads, the paper PDF, everything the method says to keep out of the workspace |
+| `<session>/venv` | read-write | the session's Python environment, deliberately not inside the repository |
 | everything else under `$HOME` | denied | |
 
 The deny list is explicit and independent of the default, because a default that widens by accident is how a rule like this fails: `~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.netrc`, `~/.gnupg`, `~/.docker/config.json`, `~/.config/replichai` (the cloud token, [045i](045i-signing-in-from-the-terminal.md)), `~/.git-credentials`, and any `.env` anywhere. It is a table with a test that asserts each entry is unreadable from inside a real sandbox, not a comment in a profile generator.
@@ -34,7 +35,11 @@ Two consequences worth stating plainly:
 
 **The harness config is readable, and that is the hole.** A model told to read `~/.claude` can read all of it, including other projects' local settings and any history the harness keeps there. That is the price of using the login already on the machine, and the alternative — snapshotting the config into the sandbox — breaks refreshed OAuth tokens on long runs, which is worse. The allowance is narrowed to the harness's own directory and is stated in the run's `environment.json`, so it is a disclosed property of a local run rather than a surprise.
 
-**Global installs fail, and should.** `pip install` outside a virtualenv writes to a denied path. The runtime therefore creates `workspace/.venv` before the first stage and puts it first on `PATH`, so the method's declared packages install where they belong and are visible in the reproduction. `.venv` is excluded from the published tree by the redistribution gate the same way any build residue is. `apt` is not a supported package manager under this driver, and `ValidateCapabilities` refuses a specification that asks for one.
+**Global installs fail, and should.** `pip install` outside a virtualenv writes to a denied path. The runtime therefore creates a virtual environment before the first stage and puts it first on `PATH`, so the method's declared packages install somewhere the agent can use.
+
+It goes at `<session>/venv`, **outside the workspace**, not at `workspace/.venv`. The agent is told to commit its work, and one `git add -A` would put a few hundred megabytes of interpreter into the repository's history before any gate saw it — and `VerifyTree` would then flag the archives inside it and bar the repository from ever being made public ([045g](045g-the-host-pushes.md)). Keeping the environment out of the repository is a path choice, which is free; keeping it out by filtering is a rule that has to keep working. The sandbox grants that path read-write already, so nothing about installing changes.
+
+`apt` is not a supported package manager under this driver, and `ValidateCapabilities` refuses a specification that asks for one.
 
 ## The network policy
 
@@ -131,7 +136,7 @@ Two reproductions of one paper that disagree are a finding. Two reproductions on
 2. A stage attempting to write `session/`, read `~/.ssh/id_ed25519`, or read a `.env` outside the workspace fails, asserted by tests that run each one inside a real sandbox on macOS and Linux.
 3. Each entry in the deny list has a case in that test. A new entry with no case fails the suite.
 4. A stage can read and use the harness's own config directory, and a run using a subscription login completes with no model API key present in its environment.
-5. `pip install` without a virtualenv fails inside the sandbox; the runtime's `workspace/.venv` is created before the first stage, is first on `PATH`, and is excluded from the published tree.
+5. `pip install` without a virtualenv fails inside the sandbox. The session's virtual environment is created at `<session>/venv` before the first stage and is first on `PATH`; a test asserts no path under the workspace is a virtual environment, so the exclusion is a location rather than a filter that could stop working.
 6. Under `allowlist`, a request to an unlisted domain fails and a request to a listed one succeeds. Under `open`, `session/network.log` records the hosts reached and is not writable by the stage.
 7. A detached stage survives `SIGKILL` of the launching process; `Observe` from a fresh process reports the exit status; a recycled pid is not mistaken for the stage.
 8. All four preflight conditions produce a `NotReadyError` whose message names the install commands for the running platform and the `--sandbox container` alternative, tested with nothing installed.

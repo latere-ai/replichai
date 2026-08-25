@@ -84,7 +84,7 @@ flowchart LR
 
 The parent is met when its children are, and additionally:
 
-1. `internal/runtimes/builtin` composes `local` alongside `memory` and `anthropic-managed`, and the new runtime passes `internal/managed/contracttest.Run` unchanged under **both** sandbox drivers.
+1. `internal/runtimes/builtin` composes `local` alongside `memory` and `anthropic-managed`, and the new runtime passes `internal/managed/contracttest.Run` unchanged under **both** sandbox drivers. CI runs the suite as a matrix — one runner with `srt` and its dependencies installed, one with Podman — because a conformance claim about a driver nothing exercises is not one.
 2. `replichai audit <paper> --runtime local --publish` produces, on a machine with a harness already installed and logged in and nothing else, the same seven output files as the hosted path, in a GitHub repository whose history is the agent's own commits plus the system's finalize commits.
 3. The same command with `--sandbox container` produces the same result on a machine with only Podman and one model key.
 4. No leaf introduces a code path in which a forge credential, a cloud credential, or a file outside the workspace and the harness's own configuration is readable from inside a sandbox that has network access and a shell.
