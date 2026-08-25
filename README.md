@@ -48,9 +48,75 @@ replichai providers
 ```
 
 `REPLICHAI_RUNTIME` selects the managed execution runtime, and `--runtime`
-overrides it per command. Today the choices are `memory` and
-`anthropic-managed`. Each runtime reads only the variables named for it, so a
-future OpenAI runtime can never receive an Anthropic key accidentally.
+overrides it per command. The choices are `memory`, `anthropic-managed`, and
+`local`. Each runtime reads only the variables named for it, so a future
+OpenAI runtime can never receive an Anthropic key accidentally.
+
+## Run it on your own machine
+
+`--runtime local` runs the whole session here: the coding agent you already
+have installed, confined to one folder, on whatever model you point it at.
+
+```bash
+replichai audit https://arxiv.org/abs/2603.01795 --runtime local
+```
+
+On a machine where `claude login` has already happened, that needs no API key
+and no configuration. What it needs is a sandbox:
+
+```bash
+npm install -g @anthropic-ai/sandbox-runtime   # srt: the default sandbox
+brew install ripgrep                           # macOS; on Linux also bubblewrap and socat
+```
+
+If something is missing, the run refuses and prints the commands that would fix
+it, for your platform.
+
+| Flag | What it chooses |
+|---|---|
+| `--sandbox host` (default) | `srt` — Seatbelt on macOS, bubblewrap on Linux — around the harness on your machine |
+| `--sandbox container` | an OCI container (Podman, then Docker), for a toolchain pinned identically everywhere |
+| `--harness claude-code` (default) or `codex` | which agent runs |
+| `--model best` or `--model provider/id` | which model, from your own `~/.config/replichai/models.yaml` |
+
+The agent never gets a GitHub token: it commits into a folder that outlives the
+sandbox, and the system verifies and pushes that folder afterwards. An
+open-weights model behind an OpenAI-compatible gateway is a row in the model
+file, paired with `codex`.
+
+## Run a whole project
+
+```bash
+replichai run papers.yaml --parallel 4 --publish
+```
+
+`papers.yaml` is one paper per line, or a list with per-paper overrides:
+
+```yaml
+project: chi-2026-audit
+model: best
+publish: {owner: open-hai}
+papers:
+  - https://arxiv.org/abs/2603.01795
+  - doi: 10.1145/3654777.3676417
+    model: fast
+```
+
+Each paper gets its own session and its own repository. One failing never stops
+the rest; `--resume` picks up what did not finish, and a report is written as
+it goes.
+
+## Put the results in the app
+
+```bash
+replichai login                       # device-code sign-in at auth.latere.ai
+replichai project create "CHI 2026 audit"
+replichai push papers.yaml --project <id>
+```
+
+A session you ran yourself appears in the app as an ordinary session, marked as
+locally executed. Nothing about it is billed: you bought that compute from the
+vendor.
 
 The audit writes a reproduction repository into `runs/<paper>/`:
 
@@ -111,6 +177,10 @@ internal/paper/      resolving a reference to a stable identity and a slug
 internal/method/     loading the method from disk
 internal/managed/    the vendor-neutral managed-session contract and controller
 internal/runtimes/   explicit runtime catalog, durable router, and composition
+internal/runtimes/local/  the same engine on your own machine: sandbox drivers,
+                     harness adapters, the model catalogue
+internal/batch/      one project: many papers, in parallel, resumable
+internal/cloud/      signing in from the terminal, and the API client
 internal/provider/   the transitional Anthropic protocol adapter behind managed
 internal/publish/    the manifest, the redistribution gate, the transcript, the forge seam
 internal/registry/   the derived registry of published reproductions
