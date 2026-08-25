@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"maps"
 	"slices"
@@ -117,6 +118,72 @@ func NewMemStore(opts ...MemOption) *MemStore {
 
 // Enqueue records a new submitted job, refusing a paper already running under
 // the double-trigger guard and a submit past the payer's quota.
+// ImportLocal records a session executed on somebody's own machine. It is a
+// separate entry point from Enqueue rather than a flag on it, and the reason
+// is the credit seam: Enqueue takes the start reserve inside the write, and a
+// boolean asking it not to would be one forgotten branch away from charging an
+// operator for compute they bought themselves. This function has no path to
+// takeReserve at all.
+func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
+	if strings.TrimSpace(in.Ref) == "" {
+		return Job{}, ErrEmptyRef
+	}
+	if !in.Phase.Terminal() {
+		return Job{}, fmt.Errorf("%w: a session in phase %q is not a record", ErrIllegalTransition, in.Phase)
+	}
+	if strings.TrimSpace(in.Runtime) == "" || strings.TrimSpace(in.ExternalID) == "" {
+		return Job{}, fmt.Errorf("%w: an imported session needs a runtime and an id", ErrEmptyRef)
+	}
+	now := s.clock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Idempotent on (runtime, external id): a re-push of the same session
+	// updates its row, which is what makes an interrupted upload resumable
+	// by running it again.
+	key := in.Runtime + "/" + in.ExternalID
+	for _, id := range s.order {
+		existing := s.jobs[id]
+		if existing.Origin.OrDefault() != OriginLocal || existing.Status.Runtime+"/"+existing.ExternalID != key {
+			continue
+		}
+		applyImport(&existing, in, now)
+		s.jobs[id] = existing
+		return existing.withCost(), nil
+	}
+	id, err := newID()
+	if err != nil {
+		return Job{}, err
+	}
+	imported := Job{
+		ID: id, Kind: KindAudit, Principal: in.Principal, ProjectID: in.Project, Ref: in.Ref,
+		PaperKey: in.PaperKey, Origin: OriginLocal, ExternalID: in.ExternalID,
+		CreatedAt: now, UpdatedAt: now, PhaseAt: map[Phase]time.Time{},
+	}
+	applyImport(&imported, in, now)
+	s.jobs[id] = imported
+	s.order = append(s.order, id)
+	return imported.withCost(), nil
+}
+
+// applyImport writes what the operator's machine reported onto the row. The
+// times are when the work happened over there, not when the record arrived.
+func applyImport(j *Job, in Import, now time.Time) {
+	j.Phase, j.Status, j.RepoName, j.Err = in.Phase, in.Status, in.RepoName, in.Err
+	j.Ref, j.PaperKey, j.ProjectID = in.Ref, in.PaperKey, in.Project
+	j.UpdatedAt = now
+	if j.PhaseAt == nil {
+		j.PhaseAt = map[Phase]time.Time{}
+	}
+	if !in.StartedAt.IsZero() {
+		j.CreatedAt = in.StartedAt
+		j.PhaseAt[PhaseSubmitted] = in.StartedAt
+	}
+	if !in.FinishedAt.IsZero() {
+		j.PhaseAt[in.Phase] = in.FinishedAt
+	}
+}
+
 func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
@@ -268,7 +335,7 @@ func (s *MemStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// SpendSince sums each project's session costs from `since` onwards. Cost comes
+// SpendSince sums each project's metered session costs from `since` onwards. Cost comes
 // from the same withCost the read paths use, so the tile and the row can never
 // disagree about what a session cost.
 //
@@ -286,6 +353,13 @@ func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) 
 	for _, id := range s.order {
 		j := s.jobs[id]
 		if !want[j.ProjectID] || j.UpdatedAt.Before(since) {
+			continue
+		}
+		// A locally-executed session is not counted. The rail asks what
+		// this project has been costing, and this deployment charged
+		// nothing for it — the opposite answer to 035's moved session,
+		// which keeps counting because the ledger still holds its charge.
+		if !j.Origin.Metered() {
 			continue
 		}
 		out[j.ProjectID] += j.withCost().Cost

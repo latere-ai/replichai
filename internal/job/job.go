@@ -175,16 +175,25 @@ type ProjectStatus struct {
 
 // Job is the durable record of one submission.
 type Job struct {
-	ID        string             `json:"id"`
-	Kind      Kind               `json:"kind"`
-	Principal string             `json:"principal"`            // who submitted it; an opaque OIDC sub (006c)
-	ProjectID string             `json:"project_id,omitempty"` // the project it belongs to (006g)
-	Ref       string             `json:"ref"`                  // the paper reference, or an experiment id
-	PaperKey  string             `json:"paper_key,omitempty"`  // the offline paper identity the session targets, keying the double-trigger guard (006g)
-	Phase     Phase              `json:"phase"`
-	Status    provider.RunStatus `json:"status"`              // latest observation while running
-	RepoName  string             `json:"repo_name,omitempty"` // set once publishing begins
-	Err       string             `json:"error,omitempty"`     // set with the failed phase
+	ID        string `json:"id"`
+	Kind      Kind   `json:"kind"`
+	Principal string `json:"principal"`            // who submitted it; an opaque OIDC sub (006c)
+	ProjectID string `json:"project_id,omitempty"` // the project it belongs to (006g)
+	Ref       string `json:"ref"`                  // the paper reference, or an experiment id
+	PaperKey  string `json:"paper_key,omitempty"`  // the offline paper identity the session targets, keying the double-trigger guard (006g)
+	Phase     Phase  `json:"phase"`
+	// Origin says where the work happened (045k). Platform is a session
+	// this deployment ran and metered; local is one somebody ran on their
+	// own machine with their own model credential and pushed the record
+	// here. Empty reads as platform, which is what every row written before
+	// the column existed is.
+	Origin Origin `json:"origin,omitempty"`
+	// ExternalID is the runtime's own session id for an imported session,
+	// and is what makes a re-push idempotent. Empty for a platform session.
+	ExternalID string             `json:"external_id,omitempty"`
+	Status     provider.RunStatus `json:"status"`              // latest observation while running
+	RepoName   string             `json:"repo_name,omitempty"` // set once publishing begins
+	Err        string             `json:"error,omitempty"`     // set with the failed phase
 	// Tier is the model tier this session runs on, chosen by whoever started it
 	// (031). Empty is not a missing value: it is a session nobody chose for —
 	// every run before the choice existed, and every caller that omits it — and
