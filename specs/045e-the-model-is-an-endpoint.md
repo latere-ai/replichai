@@ -1,6 +1,6 @@
 # 045e — The model is an endpoint, not a vendor
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** how a local session picks and reaches a model — the operator-declared catalogue that `Models()` answers from, the three credential sources (the harness's own login, a vendor key, a gateway key), how a key reaches a stage without landing in `ps` or in a specification, and what a session records about the model when nobody is billing for it. Adds `--model` to `replichai audit`.
 
@@ -114,3 +114,22 @@ Where the harness reports a cost of its own — Claude Code's `result` line carr
 - Serving the model. What runs behind the endpoint is the operator's business.
 - Automatic discovery from a gateway's `/models` endpoint. It would be a convenience over the declared file, not a replacement, and tier assignment would still be the operator's.
 - Per-stage model overrides. The judge runs the worker's model ([045f](045f-the-grader-cannot-edit-what-it-grades.md)).
+
+## Outcome
+
+Built as `internal/runtimes/local/catalog.go`. The declared catalogue, the
+dialect-and-harness agreement check, the one-model-per-preference rule, the
+credential resolution at construction and the redaction of every configured
+credential from the transcript are as specced. `--model` reaches
+`WithSessionModel` from both `audit` and `run`.
+
+**The credential file is written by the driver, not by this layer.** The host
+driver passes credentials through the launcher's environment and the container
+driver through a `0600` env file it removes once the container is running; the
+catalogue's job ends at resolving the value. The acceptance criterion asking
+that no stage invocation carry a credential in argv is met by both drivers'
+argv tests rather than by one test here.
+
+The default catalogue is the harness's own login on three Anthropic models, so
+a first run on a machine where `claude login` has happened needs no
+configuration and no API key.

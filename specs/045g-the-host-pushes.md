@@ -1,6 +1,6 @@
 # 045g — The host pushes, the sandbox holds no token
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** how a local session's work reaches GitHub — no remote inside the sandbox, no forge credential inside the sandbox, and a push performed by the host after the run, through the same redistribution gate and the same finalize the hosted path uses. The workspace instruction protocol that replaces the mount protocol, and the ordering that keeps release from destroying what has not been pushed.
 
@@ -108,3 +108,25 @@ replichai finish <owner>/<repo> <paper> --session <session-id>
 - Signing commits. The agent's commits are the agent's; attributing them further is [006n](006n-who-signed-off.md)'s business, not the transport's.
 - Pushing during the run. It is possible — the host could push after each commit — and it buys nothing here, because nothing is at risk of being lost.
 - Changing the hosted path. 006f, 044a and 044b stand as they are.
+
+## Outcome
+
+Built as `internal/publish/pushlocal.go` and the `--publish` branch in
+`cmd/replichai`. `LocalPush` verifies the committed tree with `VerifyTree`,
+pushes it with a credential that reaches git through an askpass helper and
+never through argv or `.git/config`, and removes the remote afterwards — so a
+session directory kept under the retention policy carries neither a credential
+nor a push target. A workspace with no commits is [044d](044d-an-empty-repository-says-so.md)'s
+outcome reached before the push rather than found as an empty repository after
+it.
+
+`--publish` decides on the runtime's capability rather than its name: a runtime
+declaring read-write repositories is mounted, one that does not is pushed from
+here.
+
+**The retry path is `finish`, and `finish` does not yet reattach by session
+directory.** A failed push prints the command and keeps the workspace, and the
+command it prints is the existing `finish`, which reattaches by session
+reference. A local run that has already ended has a reference; one whose
+process died between capture and push does not, and for that case the workspace
+is on disk and the operator has no single command yet.

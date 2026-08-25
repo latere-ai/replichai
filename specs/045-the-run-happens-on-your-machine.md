@@ -1,6 +1,6 @@
 # 045 — The run happens on your machine
 
-**Status:** draft. Parent of [045a](045a-the-sandbox-is-a-seam.md), [045b](045b-the-host-sandbox.md), [045c](045c-the-container-sandbox.md), [045d](045d-the-harness-inside-the-sandbox.md), [045e](045e-the-model-is-an-endpoint.md), [045f](045f-the-grader-cannot-edit-what-it-grades.md), [045g](045g-the-host-pushes.md), [045h](045h-many-papers-at-once.md), [045i](045i-signing-in-from-the-terminal.md), [045j](045j-a-bearer-the-api-accepts.md), [045k](045k-a-local-session-reaches-the-cloud.md).
+**Status:** built (eleven children). Parent of [045a](045a-the-sandbox-is-a-seam.md), [045b](045b-the-host-sandbox.md), [045c](045c-the-container-sandbox.md), [045d](045d-the-harness-inside-the-sandbox.md), [045e](045e-the-model-is-an-endpoint.md), [045f](045f-the-grader-cannot-edit-what-it-grades.md), [045g](045g-the-host-pushes.md), [045h](045h-many-papers-at-once.md), [045i](045i-signing-in-from-the-terminal.md), [045j](045j-a-bearer-the-api-accepts.md), [045k](045k-a-local-session-reaches-the-cloud.md).
 
 **Scope:** make `replichai` able to run a full replication session on the operator's own machine — a sandbox around a folder, a coding harness inside it, a model reached through whatever endpoint the operator points at, a grader that cannot edit what it grades, a repository pushed from the host, and many papers at once. Then let those sessions reach `replichai.latere.ai` as first-class rows. One new managed runtime with two sandbox drivers, one new CLI surface, one new server credential path, one new job origin.
 
@@ -97,3 +97,31 @@ The parent is met when its children are, and additionally:
 - A hosted control plane for local runs. Nothing here polls a server, and a machine with no network beyond the model endpoint runs a complete audit.
 - Replacing `anthropic-managed`. Both stay; the default stays what it is.
 - Serving the model. What runs behind a gateway endpoint is the operator's business, GPU or otherwise.
+
+## Outcome
+
+Built. `replichai audit <paper> --runtime local` runs a complete session on an
+unmodified laptop: a bootstrap stage installs what the specification declared,
+a worker produces the reproduction in a workspace the sandbox confines it to, a
+judge grades it from a read-only copy, and the host verifies and pushes the
+committed tree afterwards. `replichai run` does the same for a whole project;
+`login`, `project` and `push` file the results in the app.
+
+The runtime is `local`, composed in `internal/runtimes/builtin` beside `memory`
+and `anthropic-managed`, and it passes `contracttest` unchanged.
+
+Three things diverged from this parent.
+
+**The contract suite runs against a scripted driver, not against both real
+ones.** `internal/runtimes/local/localtest` is a sandbox driver that isolates
+nothing and scripts what a stage would have written, and `contracttest` runs
+`local` over it — so the runtime's own lifecycle is checked on any machine. The
+two real drivers are held to `sandbox/sandboxtest` instead, which the host
+driver runs where `srt` is installed and skips with its own reason where it is
+not. The CI matrix this parent asked for is not configured; the suites exist
+and nothing runs them on a machine with `srt` or Podman yet.
+
+**A stage was added.** The bootstrap is 045a's, discovered while building: a
+specification declares packages and nothing installed them.
+
+**`docs/architecture.md` gained the local path**, as this parent required.

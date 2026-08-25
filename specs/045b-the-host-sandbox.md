@@ -1,6 +1,6 @@
 # 045b — The host sandbox
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** the default `Sandbox` driver — the harness already installed on the machine, confined by `srt` (Seatbelt on macOS, bubblewrap with seccomp on Linux) to the session's workspace and an allow-only network. The path policy, the deny list, the network policy, detached process lifetime, the readiness preflight and the message it prints, and `environment.json` — the answer to what an unpinned environment is allowed to leave unrecorded.
 
@@ -149,3 +149,25 @@ Two reproductions of one paper that disagree are a finding. Two reproductions on
 - A stronger network claim than domain filtering. The caveats are inherited and disclosed.
 - Sandboxing the host push. The push runs after the sandbox is gone and is the host's own act ([045g](045g-the-host-pushes.md)).
 - Installing the harness. The preflight says how; it does not run `npm install` on the operator's behalf.
+
+## Outcome
+
+Built as `internal/runtimes/local/host`. The path policy, the deny list and its
+test, the network modes, the detached lifetime and the preflight are all as
+specced. The venv moved outside the workspace, as the correction to this spec
+already recorded, and the bootstrap that fills it is 045a's.
+
+One acceptance criterion is not met.
+
+**`environment.json` does not record the domains a run reached.** The record
+carries the sandbox driver, the host, the harness and its credential kind, the
+model, and the packages the bootstrap resolved. It does not carry
+`network.domains_reached`, because nothing reads srt's proxy log. The field is
+in the schema and stays empty, which is honest but is not the disclosure this
+spec argued for: under an open policy the point was that an artifact hunt is
+defensible by being visible.
+
+**The deny-list test asserts the profile, not the kernel.** Every entry is
+checked to reach the settings file srt reads. Whether srt then enforces it is
+srt's contract, and running one process per entry inside a real sandbox is what
+the driver contract suite would do on a machine that has it.

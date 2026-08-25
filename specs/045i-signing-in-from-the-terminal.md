@@ -1,6 +1,6 @@
 # 045i — Signing in from the terminal
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** `replichai login`, `whoami`, `logout`, `org` — the OAuth2 device-code flow against `auth.latere.ai`, where the token is stored, how it is refreshed, and how a short-lived actor token is minted for the API. The client half only; the server half is [045j](045j-a-bearer-the-api-accepts.md).
 
@@ -86,3 +86,21 @@ Where auth refuses the mint — an older deployment, an audience it does not kno
 - Machine credentials for CI. A service account is a different principal kind and its own spec; CI today runs the local path with no cloud sync.
 - Authorising anything. The token identifies; `internal/access` authorises.
 - A browser-based login for the CLI. The device flow is the terminal's answer.
+
+## Outcome
+
+Built as `internal/cloud` and the `login`, `whoami`, `logout` and `org`
+commands. The device-code flow, the private credential file under replichai's
+own client id, the refresh that keeps a previous refresh token, the
+organisation switch through the refresh grant, and the actor-token mint with
+its reported fallback are as specced.
+
+**An auth outage is not a sign-out**, tested both ways: a server error and a
+network failure leave the credential in place, and only `invalid_grant` clears
+it.
+
+**The credential's directory is on the host sandbox's deny list**, so a running
+session cannot read it — asserted in `045b`'s deny-list test rather than here.
+
+`whoami` reads the stored token without a network call, so it answers the same
+when the provider is unreachable.

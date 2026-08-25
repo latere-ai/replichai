@@ -1,6 +1,6 @@
 # 045k — A local session reaches the cloud
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** `replichai push` and the ingest surface behind it — a terminal-executed session becoming a `jobs` row with `origin = local`, filed under a project and a paper, carrying its verdict, its instrument, its transcript, its environment record and its repository. What ingest must not touch: the credit ledger. Project creation and listing from the terminal.
 
@@ -108,3 +108,25 @@ Publishing and sign-off are unchanged. An owner's deliberate act with a recorded
 - Importing a session this deployment could not verify. The repository is on the forge and the manifest is readable; deeper attestation of a run somebody else executed is a real question and a separate one.
 - Charging for imported sessions. Nothing here touches money.
 - Importing from anywhere but this CLI. There is no public import format.
+
+## Outcome
+
+Built as `job.Origin`, `ImportLocal` on both stores, migration 9, one gated
+route, and `replichai project` / `replichai push`. The reserve skip is
+structural: `ImportLocal` has no path to the credit seam at all, proved by a
+test whose seam fails when touched. `SpendSince` excludes a local session in
+both stores. Re-pushing updates one row, and only a terminal session may be
+imported.
+
+**Evidence is not uploaded; it stays in the repository.** This spec listed the
+transcript, the environment record and the grade file among what is ingested,
+with a 32 MiB cap. What ships carries the record — identity, execution, model,
+usage, verdict, repository — and nothing else, because the evidence is already
+in the pushed repository and this deployment has no blob store to put a second
+copy in. The cap that shipped is 1 MiB on the record itself. A session pushed
+without `--publish` therefore reaches the app as a verdict with no evidence
+behind it, which is a real gap rather than a simplification.
+
+**The imported session is not labelled in the UI.** The origin is stored, the
+API returns it, and no screen shows it. A reader comparing two reproductions
+cannot yet see that one ran somewhere this deployment did not control.
