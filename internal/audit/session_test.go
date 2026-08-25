@@ -187,3 +187,42 @@ func sessionController(t *testing.T, runtime managed.Runtime) *managed.Controlle
 		InitialDelay: 0, MaxDelay: 0, MaxTemporaryErrors: 2, MaxSilence: time.Millisecond, CleanupTimeout: time.Second,
 	}))
 }
+
+// A session with no mount is told it has no remote, and told not to push.
+// Rubric criterion 9 keys on a remote being configured, so the instructions
+// and the rubric are read together by the grader and have to agree about what
+// is present — otherwise every local run fails a criterion it cannot satisfy.
+func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
+	protocol := workspaceProtocol("/s/workspace")
+	for _, want := range []string{
+		"There is no remote",
+		"nothing to push",
+		"Criterion 9 does not apply",
+		"not destroyed when this session ends",
+		`"git log --oneline -5"`,
+		"OUTSIDE /s/workspace",
+	} {
+		if !strings.Contains(protocol, want) {
+			t.Errorf("the workspace protocol is missing %q:\n%s", want, protocol)
+		}
+	}
+	// It must not tell an agent with no remote to push to one. That
+	// instruction is what would put a forge credential back in the sandbox.
+	if strings.Contains(protocol, "git push") {
+		t.Errorf("the workspace protocol asks for a push:\n%s", protocol)
+	}
+}
+
+// The mount protocol and the workspace protocol are mutually exclusive: a
+// session either pushes from inside or is pushed from outside, and being told
+// both would be being told to do two different things with one repository.
+func TestOnlyOneRepositoryProtocolReachesASession(t *testing.T) {
+	mounted := mountProtocol("/workspace/repro")
+	workspace := workspaceProtocol("/s/workspace")
+	if strings.Contains(mounted, "no remote") {
+		t.Error("the mount protocol denies the remote it mounts")
+	}
+	if strings.Contains(workspace, "origin/main") {
+		t.Error("the workspace protocol names a remote branch")
+	}
+}
