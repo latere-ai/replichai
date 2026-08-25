@@ -84,7 +84,7 @@ func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 	}
 }
 
-// The load-bearing subtlety: Card.For synthesises a fallback entry carrying the
+// The subtlety that matters: Card.For synthesises a fallback entry carrying the
 // *requested* model's name, so an exact match and a fallback are identical by
 // name. A check comparing names would call every model named, and the whole
 // report would be silently useless.

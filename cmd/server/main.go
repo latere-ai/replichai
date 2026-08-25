@@ -446,7 +446,7 @@ func firstLine(s string) string {
 // a project that has gone negative cannot begin anything until it is topped up.
 // This is the bound on how negative one runaway can take it.
 //
-// The projection is project-wide, and that is the load-bearing part. Accrued
+// The projection is project-wide, and that is the part that matters. Accrued
 // spend does not reach the ledger until a session settles, so a watchdog that
 // subtracted only the observing session's own cost would let N concurrent runs
 // each stay above the floor and jointly sail past it.
@@ -464,7 +464,7 @@ func spendBackstop(st stores) job.Budget {
 		if p, err := st.projects.Get(ctx, j.ProjectID); err == nil && p.CreditCap > 0 {
 			floor = p.CreditCap
 		}
-		// Accrued is read *before* the balance, and the order is load-bearing.
+		// Accrued is read *before* the balance, and the order matters.
 		// The two come from different tables on different connections, so a
 		// session settling between them lands on one side or the other: read
 		// this way round it is counted in the accrual and again in the balance,

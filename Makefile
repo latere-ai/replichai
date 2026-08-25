@@ -79,7 +79,7 @@ down:
 # `replichai` destroys the local rows you were working with. The recipe creates
 # the scratch database on first use, so a fresh `make up` needs no extra step.
 #
-# -p 1 is load-bearing. Packages otherwise build and run in parallel, and both
+# -p 1 is required. Packages otherwise build and run in parallel, and both
 # the access and platform contracts truncate access_grants — sharing one
 # database, they would race each other into spurious failures.
 #

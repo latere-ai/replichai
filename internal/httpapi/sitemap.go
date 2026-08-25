@@ -23,7 +23,7 @@ import (
 
 // sitemapTTL is how long a crawler may reuse the file. The queries behind it are
 // the registry's own and are small, but a crawler asks often enough to make that
-// a load-bearing read; an hour is short enough that a publication appears the
+// a hot read; an hour is short enough that a publication appears the
 // same day it happens.
 const sitemapTTL = "public, max-age=3600"
 

@@ -41,7 +41,7 @@ export function groupByPaper(papers: ProjectPaper[], sessions: Job[]): Grouped {
 // isGradeable reports whether a session produced a result worth reading a
 // verdict for: it finished, and it has a repository to read the manifest from.
 //
-// Both halves are load-bearing. A repository name alone means publishing
+// Both halves are needed. A repository name alone means publishing
 // *began* — `repo_name` is set as the phase opens, and `publishing → failed` is
 // a legal transition — so a half-written repository carries one too. And a
 // failed session is terminal, so "terminal" is not the test either. The line

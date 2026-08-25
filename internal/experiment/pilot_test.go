@@ -140,7 +140,7 @@ func TestCapsAdmit(t *testing.T) {
 // AC7: a Pilot is a distinct type from Outcome — the boundary is the compiler's,
 // not a reviewer's — and its Kind is required, not optional.
 func TestPilotIsNotAnOutcome(t *testing.T) {
-	// Kind is load-bearing: a zero Pilot is never written.
+	// Kind is required: a zero Pilot is never written.
 	if _, err := (Pilot{}).Export(); err == nil {
 		t.Error("a Pilot with no cohort_kind must not export")
 	}

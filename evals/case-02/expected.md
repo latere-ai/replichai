@@ -45,7 +45,7 @@ Reproducing the analysis is **not** the same as re-validating the effect. A run 
 
 ### 4. What reproduces, component by component
 
-The load-bearing expectation is the per-component conclusion, not a single number: accuracy preprocessing, the accuracy LMM, the DDM fitting, the Table 1 ANOVA, and the questionnaire ANOVAs all reproduce from the released data; the reaction-time GLMM is the one that resists — Run 2 could not recover the reported null without the exact Gamma/log crossed-random-effects specification chosen by BIC. A run that reaches those component-level conclusions passes, whatever overall rate it reports. Do not treat any particular rate (Run 2's was 5/6) as a target; the number depends on how the analysis is sliced and is not comparable across papers or runs. The shortfall must come from specific model-specification gaps, never from "it's a study paper".
+The expectation is the per-component conclusion, not a single number: accuracy preprocessing, the accuracy LMM, the DDM fitting, the Table 1 ANOVA, and the questionnaire ANOVAs all reproduce from the released data; the reaction-time GLMM is the one that resists — Run 2 could not recover the reported null without the exact Gamma/log crossed-random-effects specification chosen by BIC. A run that reaches those component-level conclusions passes, whatever overall rate it reports. Do not treat any particular rate (Run 2's was 5/6) as a target; the number depends on how the analysis is sliced and is not comparable across papers or runs. The shortfall must come from specific model-specification gaps, never from "it's a study paper".
 
 ### 5. The instrument (007a)
 

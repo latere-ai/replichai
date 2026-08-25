@@ -57,7 +57,7 @@ The consequence in product terms: LLM cohorts exist for work that happens *after
 
 `instrument.json` is additive. A paper whose protocol cannot be extracted and whose analysis cannot be declared produces a reproduction exactly as good as it produces today, plus an honest record of why it is not an instrument. This is the same posture as `UNVERIFIED.md`: the wall is the finding.
 
-**An experiment binds one instrument to one data source.** This is the load-bearing generalisation, and it is why this is one mechanism rather than four features:
+**An experiment binds one instrument to one data source.** This is the central generalisation, and it is why this is one mechanism rather than four features:
 
 | Data source | Where the data comes from | What a result establishes | May be published |
 |---|---|---|---|
@@ -92,7 +92,7 @@ Rejected: having a project invitation seed a seed-tier grant. It is the obvious 
 
 But that bundle is *agent-written code served to the public*. It never runs on the origin that holds the session cookie: it is served from a distinct origin under a strict CSP, and the platform's own pages embed it only in a sandboxed frame. An agent-authored script and an authenticated session must not be able to reach each other.
 
-**An experiment run reuses the provider sandbox; it does not add a second execution substrate.** Running agent-written analysis code over a researcher's uploaded dataset is untrusted code over untrusted data. The platform already has exactly one component built to contain that: the managed-agent sandbox behind `provider.Provider`. An experiment run is a provider run with the instrument repository mounted ([006f](006f-taking-a-reproduction-out.md)'s `RepoMount`) and the dataset attached as a session resource, carrying a *minimal* task — execute the declared entrypoint, capture its real output — not the audit method.
+**An experiment run reuses the provider sandbox; it does not add a second execution path.** Running agent-written analysis code over a researcher's uploaded dataset is untrusted code over untrusted data. The platform already has exactly one component built to contain that: the managed-agent sandbox behind `provider.Provider`. An experiment run is a provider run with the instrument repository mounted ([006f](006f-taking-a-reproduction-out.md)'s `RepoMount`) and the dataset attached as a session resource, carrying a *minimal* task — execute the declared entrypoint, capture its real output — not the audit method.
 
 Rejected: a container runner inside the server. It is a second sandbox to secure, size, and operate, for code the existing sandbox already isolates better than a shared server process would.
 

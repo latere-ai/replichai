@@ -13,7 +13,7 @@ This spec does all of that, on the mechanism a live spike proved rather than a h
 
 ## What the spike established
 
-A throwaway run (2026-07-25) confirmed the load-bearing mechanic: the managed-agents backend mounts a GitHub repository into the agent's sandbox — `BetaSessionNewParams.Resources`, a `github_repository` resource carrying the repo URL, an `AuthorizationToken`, and a mount path — and **the agent commits and pushes its progress live**. An agent told only to "write a file, commit, push" landed commit `1e76be1` on a real private repo under `open-hai`. So the sandbox has network to push, the mount is writable, and the token authenticates the push. The published repository can carry agent-authored history because the agent authors it in place.
+A throwaway run (2026-07-25) confirmed the mechanic this depends on: the managed-agents backend mounts a GitHub repository into the agent's sandbox — `BetaSessionNewParams.Resources`, a `github_repository` resource carrying the repo URL, an `AuthorizationToken`, and a mount path — and **the agent commits and pushes its progress live**. An agent told only to "write a file, commit, push" landed commit `1e76be1` on a real private repo under `open-hai`. So the sandbox has network to push, the mount is writable, and the token authenticates the push. The published repository can carry agent-authored history because the agent authors it in place.
 
 ## Decisions
 

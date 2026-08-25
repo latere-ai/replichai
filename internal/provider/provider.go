@@ -72,7 +72,7 @@ type WorkerSpec struct {
 //
 // An audit uses Task/Rubric/MaxRevisions/Mount. An experiment (007b) reuses the
 // same contract with an empty rubric and no revision budget, a read-only mount,
-// and a dataset in Attachments — one substrate, not a second execution path.
+// and a dataset in Attachments — one contract, not a second execution path.
 type RunSpec struct {
 	Task         string
 	Rubric       string

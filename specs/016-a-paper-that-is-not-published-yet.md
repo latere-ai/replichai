@@ -54,7 +54,7 @@ The tree already has the right seam. `experiment.ArtifactStore` (`internal/exper
 
 **Branch 2 — replichai's own prefix in the shared bucket.** An S3 `ArtifactStore` against `latere-storage` under a `replichai/` prefix, the same product-namespaced pattern `cella/` and `lux/` already use. If taken, the infra changes are known and small, and they are named here so nobody rediscovers them:
 
-- a `replichai-*` lifecycle rule, which must slot **after** `lux-` in `storage.tf` — the block order is load-bearing and alphabetical, per the 2026-06 drift incident recorded in that file's comment;
+- a `replichai-*` lifecycle rule, which must slot **after** `lux-` in `storage.tf` — the block order is significant and alphabetical, per the 2026-06 drift incident recorded in that file's comment;
 - a second entry in `allowed_origins` on `digitalocean_spaces_bucket_cors_configuration.storage`, which today permits the drive origin only — needed **only** if the SPA PUTs presigned parts directly rather than proxying through the API;
 - a scoped `digitalocean_spaces_key` for the service, per the `images_catalog` precedent;
 - **not** the CDN. `cdn.latere.ai` serves public objects; see Embargo.

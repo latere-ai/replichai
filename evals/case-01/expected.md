@@ -36,7 +36,7 @@ Note the trap deliberately: the arXiv landing page carries **no** code or data a
 
 ### 4. The rate is not the regression target
 
-This paper has been audited more than once under the same method and produced very different overall rates — 40% over five components, 79% over seven — while every run agreed on the load-bearing facts: the verdict, the empty repository, the inner/outer boundary, and the component-level conclusion that the pragmatic-repair core is reproducible only by reimplementation and the visual interface is not. The scalar swings because the decomposition is a judgment, not a measurement. Grade this case on the component-level conclusions and the discriminating fact in §1; do not treat the rate as a value to reproduce.
+This paper has been audited more than once under the same method and produced very different overall rates — 40% over five components, 79% over seven — while every run agreed on the facts that matter: the verdict, the empty repository, the inner/outer boundary, and the component-level conclusion that the pragmatic-repair core is reproducible only by reimplementation and the visual interface is not. The scalar swings because the decomposition is a judgment, not a measurement. Grade this case on the component-level conclusions and the discriminating fact in §1; do not treat the rate as a value to reproduce.
 
 ### 5. The instrument (007a)
 
