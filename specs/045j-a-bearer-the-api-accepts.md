@@ -1,6 +1,6 @@
 # 045j — A bearer the API accepts
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** the server half of terminal access — a bearer credential path beside the existing cookie session, resolving to the same principal, gated by the same `internal/access` policy. One authentication seam, two credential sources. No new authorisation model and no new routes.
 
@@ -66,3 +66,22 @@ A JWKS fetch that fails does not fail open. `jwtauth`'s cache serves the last kn
 - Machine credentials for CI. A service principal is a different principal kind and its own spec.
 - Rate limiting per credential. Named, not solved here.
 - Any change to what a principal may do. This leaf is about how a request proves who it is, and nothing else.
+
+## Outcome
+
+Built as `internal/webauth/bearer.go`, mounted in `cmd/server` around the
+existing cookie middleware. One principal, two sources; precedence is total,
+and a request carrying a bearer has its cookie removed rather than consulted.
+A deployment with no issuer configured refuses every bearer rather than
+accepting an unverified one.
+
+**There was no CSRF check to skip.** This spec argued that CSRF applies to the
+cookie path only. The deployment's protection is `SameSite=Lax` on the session
+cookie, not a token, so nothing had to be conditioned: a bearer request carries
+no cookie and the cookie's own protection is untouched. The acceptance
+criterion asking for it both ways is met vacuously, which is worth saying
+rather than ticking.
+
+**Validation is `jwtauth`'s.** Issuer, audience, expiry and the JWKS cache are
+the library's; this package contributes the precedence rule, the identity
+mapping and the refusal vocabulary.

@@ -1,6 +1,6 @@
 # 045f — The grader cannot edit what it grades
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** how a local session is graded — a judge stage in its own sandbox with the workspace read-only, the verdict it writes, the revision loop, and how the result becomes `managed.Verdict`. Includes the one-line correction to `method/rubric.md`'s ninth criterion that the local path forces. This is what lets `local` declare `Capabilities.Evaluation: true` honestly.
 
@@ -117,3 +117,23 @@ What the local path loses by passing trivially is a graded self-report that the 
 - A grader that is not the same harness. The seam allows it; a second implementation is not worth its cost until there is a reason.
 - Multi-judge panels or majority verdicts. One judge, one verdict, recorded.
 - Any rubric change beyond criterion 9's condition. The other eight criteria are untouched, and the rubric still travels with the run.
+
+## Outcome
+
+Built. The judge is a stage of its own with the workspace read-only and one
+writable directory; the verdict is validated before it is believed; a round
+that cannot be parsed is retried once and then fails the session rather than
+finishing it undecided; the revision loop spends its budget exactly.
+
+**The round had two definitions and they disagreed by one.** The launch told
+the judge to write `verdict-1.json` and the read looked for `verdict-0.json`,
+so every session was graded twice and the first verdict was discarded as
+missing. There is one definition now, `currentRound`, used by both.
+
+**Criterion 9 was reworded**, as the correction to this spec recorded, and
+`method/rubric.md` now keys it on a remote being configured.
+
+**The read-only mount is asserted against the stage specification, not against
+a kernel.** A test drives the judge's `StageSpec` and fails if the workspace is
+writable or the evidence directory is present at all. Running a write inside a
+real sandbox is the driver contract suite's, on a machine that has one.

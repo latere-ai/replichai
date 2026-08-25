@@ -1,6 +1,6 @@
 # 045h — Many papers at once
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** `replichai run`, the batch driver: a list of papers, a concurrency cap, one isolated session each, resumable state, partial-failure semantics, and a report at the end. The name allocation race two concurrent sessions create, and what arbitrates it.
 
@@ -112,3 +112,26 @@ Plus the totals a person actually asks for: how many passed, how many produced a
 - Scheduling or retrying failed entries automatically. `--resume` is manual and deliberate.
 - Running a batch on the hosted runtime. Nothing prevents it — the driver is runtime-agnostic — but the concurrency and quota questions there are the platform's, not this leaf's.
 - Uploading the batch as it runs. Sync is [045k](045k-a-local-session-reaches-the-cloud.md) and happens after, on purpose: a run that needs the network to record its own progress is a run that fails when the network does.
+
+## Outcome
+
+Built as `internal/batch` and `replichai run`. Both input forms, the per-paper
+overrides, the concurrency cap, the state file rewritten atomically after every
+change, the report written continuously, and the non-zero exit on a partial
+failure are as specced.
+
+**Resume skips only what finished.** This spec said terminal entries; what
+shipped retries failed ones, because retrying what failed is the reason to
+resume. A retried paper keeps its repository and its session reference, so it
+publishes into the repository the first attempt created rather than allocating
+a second.
+
+**The name race is guarded within a batch and not across machines.** Preparation
+is serialised, so two papers in one batch cannot allocate one name. The
+cross-machine case — a creation refused for a name in use, retried with the next
+suffix — is not implemented: `newPublisher` still reuses an existing repository
+on `ErrRepoExists`, which is right for a re-run of one paper and wrong for a
+collision between two.
+
+**The pool does not refuse an oversized parallelism.** `--parallel` is honoured
+exactly; nothing compares it against what the machine or the engine can carry.

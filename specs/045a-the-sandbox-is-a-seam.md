@@ -1,6 +1,6 @@
 # 045a — The sandbox is a seam
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** `local`, a `managed.Runtime` that executes a session on the operator's own machine, and the `Sandbox` driver interface it runs everything through. The session directory, the capability declaration assembled from the driver, the locator, the transcript pump, cancellation and release. The two drivers are [045b](045b-the-host-sandbox.md) and [045c](045c-the-container-sandbox.md); the harness is [045d](045d-the-harness-inside-the-sandbox.md).
 
@@ -185,3 +185,28 @@ Release must not run before the push. The ordering is stated in [045g](045g-the-
 - Resource limits as a product surface. Concurrency and per-stage limits are the batch driver's ([045h](045h-many-papers-at-once.md)).
 - Interactive attach to a running stage. Sessions are non-interactive.
 - Running the runtime inside the server. `cmd/server` continues to compose the hosted runtimes; a session executed locally reaches the app through [045k](045k-a-local-session-reaches-the-cloud.md), not by the server shelling out.
+
+## Outcome
+
+Built as `internal/runtimes/local`. The driver interface is what this spec
+describes, with one addition and one correction.
+
+**`Capabilities` allocates the session the next `Start` will use.** The
+contract has a caller read the output directory and then start a session that
+writes to it, and on this runtime that directory is per-session — the workspace
+of a directory that does not exist until it is made. So `Capabilities` reserves
+one and `Start` consumes it, which is what makes the two calls agree. A
+`Capabilities` never followed by a `Start` leaves an empty directory for
+`sessions prune`. This is not in the spec above and is the one place the local
+runtime holds state between two contract calls.
+
+**The harness version is read through the driver, not the harness.** This spec
+and 045d put a `Detect` on the harness; what shipped is `VersionArgv` on the
+harness and an optional `Version` on the driver, because where the harness
+lives differs by driver — a binary on the host, a program inside an image — and
+only the driver knows which.
+
+**A bootstrap stage runs first.** `internal/runtimes/local/bootstrap.go`
+prepares the language environment and installs the specification's declared
+packages before any agent runs, journalled and observable like every other
+stage. It is not in the sequence this spec drew.

@@ -29,6 +29,21 @@ replichai finish <owner>/<repo> <paper> --session-ref <ref>
 
 This was proven end to end: a real reproduction (`open-hai/short-form-videos-…-wtmk`) with agent-authored history, an independent manifest, and a collaborator invitation. `audit --publish` blocks; `--detach` starts it and hands you a `finish` command to run later, since the agent commits independently of the CLI.
 
+**And the same engine on the operator's own machine (045):**
+
+```
+replichai audit <paper> --runtime local [--sandbox host|container] [--harness claude-code|codex] [--model best]
+   bootstrap stage: the declared packages, into the session's own environment
+   → worker stage: the harness, confined to one workspace by srt (or a container)
+   → judge stage: the same harness, workspace read-only, verdict to grade/
+   → the host verifies the committed tree and pushes it — no forge credential
+     ever enters the sandbox
+replichai run <project-file> --parallel 4 [--publish] [--resume]
+replichai login | project create | push <project-file> --project <id>
+```
+
+The local runtime is a peer of `anthropic-managed`, not a fork: it satisfies the same `managed.Runtime` contract and passes the same conformance suite. Nothing about it touches the credit ledger — the operator bought that compute from the vendor themselves.
+
 **Implemented:** the engine — 001 (identity), 002 (publishing + the redistribution gate), 003 (registry), 004 (the Go port), 005 (transcript), 007a (the instrument), 007b/007c (experiments and the synthetic pilot — engine halves) — and the application on top of it: 006a (HTTP + SSE), 006b (job model + Postgres), 006c (OIDC login + the fail-closed access gate), 006e (the frontend), 006f/006i (the mount publish, from the CLI and from the server), and everything the numbered specs from 011 up have added to them. **010** provisions production — domain, database, k8s manifests, and a tag-triggered deploy pipeline.
 
 **The app runs end to end**: `docker compose up` (or `make up`) brings up Postgres + the server, which serves the React frontend (006e) and the API. A researcher signs in, submits a paper URL, and watches its phases stream live to `done` behind the real fail-closed gate. Production is provisioned and fail-closed.
@@ -150,7 +165,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 Three tables, by how finished the work is rather than by number. A spec's number still tells you when it was written; this tells you what you can rely on. Within each table the order is numeric.
 
-### Done (78)
+### Done (90)
 
 Built, and every acceptance criterion it set itself holds.
 
@@ -234,6 +249,18 @@ Built, and every acceptance criterion it set itself holds.
 | 044b | [The server harvests what the session produced](044b-the-server-harvests-the-session.md) | built | 044, 006i, 009 |
 | 044c | [A lease says the driver is alive](044c-a-lease-says-it-is-alive.md) | built | 044, 006b, 041b |
 | 044d | [An empty repository says so](044d-an-empty-repository-says-so.md) | built | 044, 021a, 044b |
+| 045 | [The run happens on your machine](045-the-run-happens-on-your-machine.md) | built (eleven children) | 041a–041c, 044, 009, 006b, 011 |
+| 045a | [The sandbox is a seam](045a-the-sandbox-is-a-seam.md) | built | 041a, 041b, 041c |
+| 045b | [The host sandbox](045b-the-host-sandbox.md) | built | 045a |
+| 045c | [The container sandbox](045c-the-container-sandbox.md) | built | 045a, 045b |
+| 045d | [The harness inside the sandbox](045d-the-harness-inside-the-sandbox.md) | built | 045a, 045b, 005 |
+| 045e | [The model is an endpoint](045e-the-model-is-an-endpoint.md) | built | 045a, 045d, 041d, 031, 011 |
+| 045f | [The grader cannot edit what it grades](045f-the-grader-cannot-edit-what-it-grades.md) | built | 045a, 045b, 045d, 002 |
+| 045g | [The host pushes](045g-the-host-pushes.md) | built | 045a, 006f, 044a, 044b, 044d, 009 |
+| 045h | [Many papers at once](045h-many-papers-at-once.md) | built | 045a, 045g, 003, 012 |
+| 045i | [Signing in from the terminal](045i-signing-in-from-the-terminal.md) | built | 006c, 014d |
+| 045j | [A bearer the API accepts](045j-a-bearer-the-api-accepts.md) | built | 045i, 006a, 006c |
+| 045k | [A local session reaches the cloud](045k-a-local-session-reaches-the-cloud.md) | built | 045j, 045g, 006b, 012, 015, 011, 005 |
 
 ### Half done (8)
 
@@ -250,7 +277,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
 | 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half-done | 041a–041d |
 
-### Not built (27)
+### Not built (15)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
@@ -271,18 +298,6 @@ Designed, deferred, or still an argument. Nothing here is in the product; [What 
 | 027 | [EU VAT, and the invoice that comes with it](027-eu-vat-and-the-invoice.md) | designed | 022b, 022c, 022e, 006k, 011 |
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
-| 045 | [The run happens on your machine](045-the-run-happens-on-your-machine.md) | draft | 041a–041c, 044, 009, 006b, 011 |
-| 045a | [The sandbox is a seam](045a-the-sandbox-is-a-seam.md) | draft | 041a, 041b, 041c |
-| 045b | [The host sandbox](045b-the-host-sandbox.md) | draft | 045a |
-| 045c | [The container sandbox](045c-the-container-sandbox.md) | draft | 045a, 045b |
-| 045d | [The harness inside the sandbox](045d-the-harness-inside-the-sandbox.md) | draft | 045a, 045b, 005 |
-| 045e | [The model is an endpoint](045e-the-model-is-an-endpoint.md) | draft | 045a, 045d, 041d, 031, 011 |
-| 045f | [The grader cannot edit what it grades](045f-the-grader-cannot-edit-what-it-grades.md) | draft | 045a, 045b, 045d, 002 |
-| 045g | [The host pushes](045g-the-host-pushes.md) | draft | 045a, 006f, 044a, 044b, 044d, 009 |
-| 045h | [Many papers at once](045h-many-papers-at-once.md) | draft | 045a, 045g, 003, 012 |
-| 045i | [Signing in from the terminal](045i-signing-in-from-the-terminal.md) | draft | 006c, 014d |
-| 045j | [A bearer the API accepts](045j-a-bearer-the-api-accepts.md) | draft | 045i, 006a, 006c |
-| 045k | [A local session reaches the cloud](045k-a-local-session-reaches-the-cloud.md) | draft | 045j, 045g, 006b, 012, 015, 011, 005 |
 
 **Built:** [044](044-a-run-that-produced-nothing.md) is the record of the run that cost $2.21, took twenty minutes, and left a repository holding nothing but the five commits the system wrote itself. Four defects, each independently fatal, and the interesting part is how ordinary each one is. The agent committed five times into the mount and never pushed, and a tool result in its own transcript says so in as many words; the mount protocol asked for a push in a subordinate clause and the rubric graded eight criteria, none of which was *did this leave the sandbox*. The agent had also copied its deliverable — `verdict.json` included — into the output directory, where the CLI would have harvested it and the server, which binds `evidence.Artifacts` and reads only `evidence.Events`, threw it away seconds before releasing the sandbox holding the only other copy. Meanwhile a second replica adopted the still-healthy run, because the lease is refreshed only by an observation and the controller emits one only when something *changed*, so five quiet minutes read as a dead process — and the two drivers' finalizes raced, the loser's `422` recording `failed` over the winner's success. The session then reported *the run did not write verdict.json*, which is true, and describes a findings problem where the truth was an empty repository. Its four children fix them one apiece: [044a](044a-the-mount-is-pushed.md) makes the push its own step and a graded criterion, [044b](044b-the-server-harvests-the-session.md) commits the outputs through the same `VerifyTree` gate the mount has, [044c](044c-a-lease-says-it-is-alive.md) heartbeats the jobs a worker drives and yields the one it has lost, and [044d](044d-an-empty-repository-says-so.md) makes finalize say which of the two things went wrong. 044a and 044b are both needed and fail differently: prevention that depends on the agent's discipline, and recovery that does not.
 
@@ -312,7 +327,7 @@ Nothing on this list blocks the loop the product exists for: a paper goes in, a 
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input — `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop. Its parent [007](007-from-reproduction-to-replication.md) stays a draft on purpose: it is the argument, and the 023 chain is what gets built from it.
 
-**The run on your own machine ([045](045-the-run-happens-on-your-machine.md), eleven children).** The engine executes on one vendor's managed backend and nowhere else, so a contributor without that account cannot run the method, the model cannot be an open-weights one, and a twenty-paper replication project is twenty sessions against somebody else's concurrency limit. 045 adds `local`: a managed runtime whose sandbox is a driver — `srt` around the harness already installed on the machine by default, a container when the toolchain has to be pinned — and whose model is whatever endpoint the operator declares. Two properties come free from running on a host directory rather than in a disposable one: the workspace survives the sandbox, so [044](044-a-run-that-produced-nothing.md)'s unpushed-commits failure cannot happen and the host pushes afterwards, which means no forge credential ever enters the sandbox and [009](009-secret-containment-when-the-agent-commits-live.md)'s one-hour token constraint does not apply. The cloud half (045i–045k) is independent of the runtime: a device login, a bearer path beside the cookie the API has always used, and an `origin = local` job row that skips the ledger structurally, because those tokens were bought from the vendor by the operator.
+**Built:** [045](045-the-run-happens-on-your-machine.md) makes the engine run on the operator's own machine, which is what lets anybody who is not us exercise the method, run it on an open-weights model, and take a twenty-paper project through without asking a vendor for concurrency. The runtime is `local` and its sandbox is a driver: `srt` around the harness already installed and logged in on the machine by default, an OCI container when the toolchain has to be pinned. Two properties come free from running against a host directory rather than a disposable one — the workspace survives the sandbox, so [044](044-a-run-that-produced-nothing.md)'s unpushed-commits failure cannot happen, and the push happens afterwards from outside, so no forge credential ever enters a sandbox and [009](009-secret-containment-when-the-agent-commits-live.md)'s one-hour token constraint does not apply. What an unpinned toolchain costs is answered by recording it: every run writes `environment.json` as system-authored evidence. Three things surfaced only in the building. Rubric criterion 9 keyed on a repository being *mounted*, which a local session's instructions satisfy by naming a local repository — so every local run would have failed a criterion it had no remote to satisfy; the condition now names a remote, which is what it always meant. A specification declared packages and nothing installed them, so the bootstrap became a stage. And an agent-authored repository must go through `VerifyTree`, not `Classify`: the allowlist is for a harvested output directory and would have stripped the LICENSE, the requirements file and the tests out of a real project. Each leaf carries its own Outcome; the gaps worth knowing are that evidence is not uploaded to the app (it stays in the pushed repository), the harness image is not published, and no screen yet labels an imported session as locally executed.
 
 **The runtime seam ([041](041-the-runtime-is-not-the-model-vendor.md)).** 041a–041e normalize managed execution behind one contract, make a session remember its runtime, and qualify models and meters. Two halves are knowingly short. The Anthropic adapter was never built at `internal/managed/anthropic` — the SDK stays in `internal/provider/anthropic` behind `managed/legacy`, and `internal/audit` still calls the old resource contract directly, so 041e's criteria 4 and 8 are open. And meters are not declared in capabilities. `Capabilities.BillableMeters` was deleted because no runtime ever set it and no caller ever read it — `Capabilities` carries no json tags either, so there was no wire contract to break. Deleting it did not regress anything; it made visible that 041d's criterion 4, the enqueue-time preflight over declared meters, had never been met. The two alternative adapters (041f, 041g) remain design-only.
 

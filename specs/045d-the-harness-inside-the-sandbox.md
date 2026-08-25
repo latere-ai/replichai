@@ -1,6 +1,6 @@
 # 045d — The harness inside the sandbox
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** the `Harness` seam inside `local` — how one agentic coding CLI becomes argv, environment, configuration files, and a decoder from its stream to `managed.Event` — and two adapters: Claude Code and Codex. Model endpoints and credentials are [045e](045e-the-model-is-an-endpoint.md); the judge stage is [045f](045f-the-grader-cannot-edit-what-it-grades.md).
 
@@ -157,3 +157,20 @@ The model credential is the one that has to be inside, because without it the ha
 - Interactive attach to a running harness. Sessions are non-interactive.
 - Teaching a harness the method. `method/` is data and reaches the harness as instructions, unchanged.
 - MCP servers inside the sandbox.
+
+## Outcome
+
+Built as `internal/runtimes/local/harness`, with both adapters. Event ids come
+from the stage's unique name rather than its role — a session that grades twice
+would otherwise issue one id twice — and every line of a recorded stream
+produces at least one event carrying its raw payload, asserted by counting.
+
+**`Detect` became `VersionArgv`.** This spec put version detection on the
+harness; it belongs to the driver, because where the harness lives differs by
+driver. The harness names the command and the driver runs it.
+
+**The Codex decoder is written against an unversioned stream.** It accepts two
+envelope shapes and turns anything else into a raw event, and its fixture is
+one this repository wrote rather than one captured from a released Codex. The
+Claude Code fixture is the shape that CLI documents. Both are fixtures, not
+recordings, and the first real run against either is what will confirm them.

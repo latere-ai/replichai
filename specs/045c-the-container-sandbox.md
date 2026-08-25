@@ -1,6 +1,6 @@
 # 045c — The container sandbox
 
-**Status:** draft.
+**Status:** built.
 
 **Scope:** the second `Sandbox` driver — an OCI container, Podman by default and Docker supported, giving a toolchain pinned identically on every machine. The engine driver, the readiness preflight and the message it prints, the harness image, file ownership under rootless mappings, and what it does and does not declare. Opt-in with `--sandbox container`.
 
@@ -135,3 +135,24 @@ The stage's raw output is the container's stdout, read with `logs --since` and p
 - Building the image. It is published from its own repository and pinned by digest.
 - A remote engine over `DOCKER_HOST`/`CONTAINER_HOST`. The driver would work; the session directory would not, because it is a host path. Refused explicitly rather than half-working.
 - Making this the default. It is the pinned option, chosen deliberately.
+
+## Outcome
+
+Built as `internal/runtimes/local/container`, opt-in with `--sandbox container`.
+The engine probe at construction, the three distinguished failures, capabilities
+from the image's own label, the uid mapping per engine, and the refusal of the
+allowlist mode are as specced, and all of it is testable with no engine
+installed through a scripted engine seam.
+
+Two things are short.
+
+**The file-ownership assertion is not made.** The uid mapping is passed to both
+engines and asserted in the argv; nothing checks afterwards that every file
+under the workspace is owned by the caller. That check needs a real engine.
+
+**`Toolchain()` is read from the image and not yet written into the run's
+environment record**, so a container run records its driver and image but not
+the pinned interpreter versions the label carries.
+
+The image itself is not published: `DefaultImage` names a tag that does not
+exist yet, so this driver is code without an artifact to run.
