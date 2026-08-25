@@ -81,6 +81,7 @@ func (s State) mergedWith(entries []Resolved, now time.Time) State {
 			// Failed, running or pending: keep what is needed to
 			// reattach and drop the phase, so the paper is tried again
 			// against the repository it already has.
+			merged.Entries[index].PaperKey = previous.PaperKey
 			merged.Entries[index].Session = previous.Session
 			merged.Entries[index].Directory = previous.Directory
 			merged.Entries[index].Repo = previous.Repo
