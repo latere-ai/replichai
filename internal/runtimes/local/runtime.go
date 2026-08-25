@@ -813,3 +813,18 @@ func sessionID() (string, error) {
 	}
 	return hex.EncodeToString(buffer), nil
 }
+
+// Workspace is the directory a referenced session worked in. It is what lets a
+// later process publish a session it did not start: the reference names the
+// session, the session names its directory, and the push happens from there.
+//
+// It is deliberately not on the managed contract. A hosted runtime has no
+// directory to name, and a caller that needs one is asking a question only a
+// local runtime can answer.
+func (r *Runtime) Workspace(ref managed.SessionRef) (string, error) {
+	session, _, err := r.attach(ref)
+	if err != nil {
+		return "", err
+	}
+	return session.Workspace(), nil
+}

@@ -205,7 +205,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			// then release. The workspace holds the only copy of the work
 			// until the push has taken it.
 			if !mounts {
-				if err := pushWorkspace(ctx, pub, capabilities.OutputDir, stdout, stderr); err != nil {
+				if err := pushWorkspace(ctx, pub, capabilities.OutputDir, paper, evidence.Status.Ref, stdout, stderr); err != nil {
 					return err
 				}
 			}
@@ -399,11 +399,17 @@ func shortDigest(d string) string {
 // attestation (verdict + evidence) beside the agent's work. It reads the
 // repository from GitHub, so it works whether the run finished in-process or is
 // picked up afterwards by finish.
+// workspaceReader is a runtime that can name the directory a referenced
+// session worked in. Only a local runtime can: a hosted one has no directory.
+type workspaceReader interface {
+	Workspace(managed.SessionRef) (string, error)
+}
+
 // pushWorkspace publishes what the agent committed into a local repository it
 // never had a remote for. The system's own outputs — the environment record
 // and the judge's verdict — are committed after it, so the agent's history
 // stays the agent's and the system's evidence is visibly the system's.
-func pushWorkspace(ctx context.Context, pub *publisher, workspace string, stdout, stderr *os.File) error {
+func pushWorkspace(ctx context.Context, pub *publisher, workspace, paperRef string, ref managed.SessionRef, stdout, stderr *os.File) error {
 	push := publish.LocalPush{Workspace: workspace, RemoteURL: pub.mount.URL, Token: pub.mount.Token}
 	pushed, err := push.Run(ctx)
 	if errors.Is(err, publish.ErrNothingCommitted) {
@@ -415,8 +421,11 @@ func pushWorkspace(ctx context.Context, pub *publisher, workspace string, stdout
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "  ! %v\n", err)
-		fmt.Fprintf(stderr, "    the workspace is kept at %s; retry with:\n      replichai finish %s %q\n",
-			workspace, pub.repoFullName(), pub.id)
+		fmt.Fprintf(stderr, "    the workspace is kept at %s\n", workspace)
+		if encoded, encodeErr := encodeSessionRef(ref); encodeErr == nil && ref.ID != "" {
+			fmt.Fprintf(stderr, "    retry with:\n      replichai finish %s %q --runtime local --session-ref %s\n",
+				pub.repoFullName(), paperRef, encoded)
+		}
 		return err
 	}
 	fmt.Fprintf(stdout, "pushed:    %d commit(s) to %s (%s)\n", pushed.Commits, pushed.Branch, pushed.Head[:min(7, len(pushed.Head))])
@@ -433,6 +442,25 @@ func pushWorkspace(ctx context.Context, pub *publisher, workspace string, stdout
 		fmt.Fprintf(stdout, "evidence:  %s\n", strings.Join(report.Committed, ", "))
 	}
 	return nil
+}
+
+// finishLocalPush pushes a local session's workspace during finish. It is a
+// no-op for a runtime that mounted a repository: the agent pushed as it went,
+// and there is nothing here to send.
+func finishLocalPush(ctx context.Context, runtime managed.Runtime, gh *github.Client, owner, name string,
+	ref managed.SessionRef, stdout, stderr *os.File) error {
+	reader, ok := runtime.(workspaceReader)
+	if !ok {
+		return nil
+	}
+	workspace, err := reader.Workspace(ref)
+	if err != nil {
+		return err
+	}
+	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
+	pub := &publisher{gh: gh, owner: owner, name: name,
+		mount: provider.RepoMount{URL: "https://github.com/" + owner + "/" + name + ".git", Token: token}}
+	return pushWorkspace(ctx, pub, workspace, "", ref, stdout, stderr)
 }
 
 func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
@@ -624,6 +652,13 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 				return nil
 			},
 			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+				// A session that was never mounted has committed into a
+				// directory nobody has pushed. Finalizing without pushing
+				// would verify an empty repository and record 044d's
+				// outcome over a run that produced a reproduction.
+				if err := finishLocalPush(ctx, runtime, gh, owner, name, evidence.Status.Ref, stdout, stderr); err != nil {
+					return err
+				}
 				if evidence.Status.Verdict != nil {
 					verdict = provider.Grade(evidence.Status.Verdict.Grade)
 				}

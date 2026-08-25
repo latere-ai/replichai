@@ -180,7 +180,7 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		opts = append(opts, audit.WithSessionHooks(managed.Hooks{
 			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
 				if !mounts {
-					if err := pushWorkspace(ctx, pub, capabilities.OutputDir, r.stdout, r.stderr); err != nil {
+					if err := pushWorkspace(ctx, pub, capabilities.OutputDir, entry.Reference(), evidence.Status.Ref, r.stdout, r.stderr); err != nil {
 						return err
 					}
 				}

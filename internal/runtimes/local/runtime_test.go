@@ -515,3 +515,58 @@ func sessionDir(t *testing.T, ref managed.SessionRef) string {
 }
 
 func jsonUnmarshal(body []byte, into any) error { return json.Unmarshal(body, into) }
+
+// A later process can name the directory a referenced session worked in, which
+// is what lets it publish a session it did not start. Without it, finishing a
+// local run finalizes a repository nothing ever pushed to.
+func TestAReferencedSessionNamesItsWorkspace(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{})
+	ref := start(t, runtime, spec(false))
+	status := runToTerminal(t, runtime, ref)
+
+	workspace, err := runtime.Workspace(status.Ref)
+	if err != nil {
+		t.Fatalf("Workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "REPRODUCIBILITY.md")); err != nil {
+		t.Fatalf("the named workspace does not hold the reproduction: %v", err)
+	}
+	// A reference from another runtime is refused rather than answered with
+	// somebody else's directory.
+	stranger := status.Ref
+	stranger.Runtime = "anthropic-managed"
+	if _, err := runtime.Workspace(stranger); !errors.Is(err, managed.ErrRuntimeMismatch) {
+		t.Fatalf("Workspace on a foreign ref = %v", err)
+	}
+	// And after release the reference no longer resolves.
+	if err := runtime.Release(context.Background(), status.Ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if _, err := runtime.Workspace(status.Ref); !errors.Is(err, managed.ErrNotFound) {
+		t.Fatalf("Workspace after release = %v", err)
+	}
+}
+
+// Release runs after the caller's own retention work, and a retention policy
+// that discards must not destroy a workspace whose push failed. The hook that
+// pushes runs inside Retain, and a Retain that fails stops the controller
+// before Release.
+func TestAFailedRetainStopsBeforeRelease(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{})
+	ref := start(t, runtime, spec(false))
+	status := runToTerminal(t, runtime, ref)
+	dir := sessionDir(t, status.Ref)
+
+	// The retention decision is read from the session, so a run that ended
+	// well and a run whose publication failed are distinguishable — and the
+	// default keeps either way.
+	if _, err := os.Stat(filepath.Join(dir, "workspace", "REPRODUCIBILITY.md")); err != nil {
+		t.Fatalf("the reproduction is not there to begin with: %v", err)
+	}
+	if err := runtime.Release(context.Background(), status.Ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "workspace", "REPRODUCIBILITY.md")); err != nil {
+		t.Fatalf("the default policy destroyed the reproduction: %v", err)
+	}
+}
