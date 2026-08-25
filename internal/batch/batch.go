@@ -114,6 +114,7 @@ func (f File) Entries() ([]Resolved, error) {
 // reference is read as a list, so the smallest useful input is one paper per
 // line; anything else is YAML.
 func ReadFile(path string) (File, error) {
+	//nolint:gosec // the path is the project file the operator named
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return File{}, fmt.Errorf("read project: %w", err)

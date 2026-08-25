@@ -1,6 +1,7 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -237,7 +238,7 @@ func TestTheLocatorSurvivesTheContractsSecretCheck(t *testing.T) {
 // The environment record carries no credential, only which kind was used.
 func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 	session := newSession(t)
-	record := NewEnvironment(sandbox.Host, harness.ClaudeCode,
+	record := NewEnvironment(context.Background(), sandbox.Host, harness.ClaudeCode,
 		managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
 		harness.Gateway{Name: "lux", Auth: harness.AuthAPIKey, Key: "sk-secret"},
 		sandbox.NetworkOpen)

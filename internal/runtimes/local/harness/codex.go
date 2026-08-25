@@ -184,6 +184,7 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 
 	var envelope codexLine
 	if err := json.Unmarshal(line, &envelope); err != nil {
+		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return raw(), nil
 	}
 	body := envelope.Msg
@@ -195,6 +196,7 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 	}
 	var parsed codexEvent
 	if err := json.Unmarshal(body, &parsed); err != nil {
+		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return raw(), nil
 	}
 	kind := firstNonEmpty(parsed.Type, envelope.Type)

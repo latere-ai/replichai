@@ -76,7 +76,7 @@ func (v JudgeVerdict) Verdict() (managed.Verdict, error) {
 
 // ReadVerdict reads and validates one grading round's output.
 func ReadVerdict(gradeDir string, round int) (JudgeVerdict, managed.Verdict, error) {
-	body, err := os.ReadFile(filepath.Join(gradeDir, VerdictFile(round)))
+	body, err := os.ReadFile(filepath.Join(gradeDir, VerdictFile(round))) //nolint:gosec // this package's own grade directory
 	if os.IsNotExist(err) {
 		return JudgeVerdict{}, managed.Verdict{}, fmt.Errorf("the judge wrote no %s", VerdictFile(round))
 	}

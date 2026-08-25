@@ -306,6 +306,10 @@ func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sand
 	output, err := s.config.Run(ctx, []string{string(s.engine), "inspect", "--format",
 		"{{.State.Running}}|{{.State.ExitCode}}", handle.ID}, nil)
 	if err != nil {
+		// A container the engine no longer holds is gone, which is an
+		// observation rather than a failure to make one — and gone is not
+		// finished, so it never reads as success.
+		//nolint:nilerr // a missing container is an observation
 		return sandbox.StageStatus{Gone: true}, nil
 	}
 	running, code, _ := strings.Cut(strings.TrimSpace(string(output)), "|")
@@ -314,6 +318,9 @@ func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sand
 	}
 	exit, err := strconv.Atoi(strings.TrimSpace(code))
 	if err != nil {
+		// An exit code the engine did not report is unknowable, and an
+		// unknowable exit must not read as success.
+		//nolint:nilerr // an unreadable exit code is gone, not zero
 		return sandbox.StageStatus{Gone: true}, nil
 	}
 	return sandbox.StageStatus{ExitCode: exit}, nil
@@ -328,6 +335,10 @@ func (s *Sandbox) Output(ctx context.Context, handle sandbox.StageHandle, offset
 	}
 	body, err := s.config.Run(ctx, []string{string(s.engine), "logs", handle.ID}, nil)
 	if err != nil {
+		// A container with no log yet, or one already removed, has nothing
+		// to say rather than something to fail about: the caller polls, and
+		// an error here would fail a session over an empty transcript.
+		//nolint:nilerr // an unreadable log is an empty read, not a failure
 		return io.NopCloser(strings.NewReader("")), nil
 	}
 	if offset >= int64(len(body)) {
@@ -415,6 +426,9 @@ func contains(values []string, want string) bool {
 }
 
 func realRunner(ctx context.Context, argv []string, stdin io.Reader) ([]byte, error) {
+	//nolint:gosec // the argv is this package's own engine command, built from
+	// a fixed verb table and a StageSpec the runtime computed; nothing in it
+	// comes from a model or from a paper.
 	command := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	command.Stdin = stdin
 	var stderr bytes.Buffer

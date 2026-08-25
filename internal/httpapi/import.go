@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -68,7 +69,7 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	var body importedSession
 	decoder := json.NewDecoder(io.LimitReader(r.Body, MaxImportBytes+1))
 	if err := decoder.Decode(&body); err != nil {
-		if err == io.ErrUnexpectedEOF || strings.Contains(err.Error(), "too large") {
+		if errors.Is(err, io.ErrUnexpectedEOF) || strings.Contains(err.Error(), "too large") {
 			writeError(w, http.StatusRequestEntityTooLarge, "record_too_large")
 			return
 		}
