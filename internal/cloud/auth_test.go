@@ -287,3 +287,64 @@ func TestScopesAreIdentityOnly(t *testing.T) {
 		t.Fatalf("scopes = %v", Scopes)
 	}
 }
+
+// A store with no credential answers "not signed in" rather than an I/O
+// error: that is the fact a caller acts on.
+func TestAnEmptyStoreIsSignedOut(t *testing.T) {
+	store := Store{Dir: t.TempDir()}
+	if _, err := store.Load(); !errors.Is(err, ErrSignedOut) {
+		t.Fatalf("Load = %v", err)
+	}
+	// A file holding no access token is the same thing.
+	if err := store.Save(Token{Issuer: "https://auth.example"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if _, err := store.Load(); !errors.Is(err, ErrSignedOut) {
+		t.Fatalf("a credential-less file = %v", err)
+	}
+	// So is a credential with no refresh token that has expired: there is
+	// nothing left to refresh with.
+	if err := store.Save(Token{AccessToken: "a", Expiry: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	session := &Session{AuthURL: "https://auth.example", Store: store, HTTP: http.DefaultClient}
+	if _, err := session.Current(context.Background()); !errors.Is(err, ErrSignedOut) {
+		t.Fatalf("Current = %v", err)
+	}
+}
+
+// A credential still in date is used as it stands, with no call to the
+// provider at all — so an ordinary command works with the network down.
+func TestAValidCredentialNeedsNoNetwork(t *testing.T) {
+	p := &provider{approved: true}
+	s := session(t, p)
+	if _, err := s.Login(context.Background(), nil); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	before := p.tokenCalls
+	s.AuthURL = "http://127.0.0.1:1"
+	token, err := s.Current(context.Background())
+	if err != nil || token.AccessToken == "" {
+		t.Fatalf("Current = %+v, %v", token, err)
+	}
+	if p.tokenCalls != before {
+		t.Fatalf("a valid credential was refreshed anyway")
+	}
+}
+
+// Expiry has a minute of margin, so a call does not start with a credential
+// that dies in flight.
+func TestExpiryHasMargin(t *testing.T) {
+	now := time.Now()
+	if (Token{Expiry: now.Add(2 * time.Minute)}).Expired(now) {
+		t.Error("a credential with two minutes left was called expired")
+	}
+	if !(Token{Expiry: now.Add(30 * time.Second)}).Expired(now) {
+		t.Error("a credential dying in thirty seconds was called usable")
+	}
+	// A credential with no stated expiry is not expired: the provider did
+	// not say, and guessing would sign a person out for nothing.
+	if (Token{}).Expired(now) {
+		t.Error("a credential with no expiry was called expired")
+	}
+}
