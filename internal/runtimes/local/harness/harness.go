@@ -153,9 +153,11 @@ type Harness interface {
 	Files(Stage, Request) ([]File, error)
 
 	// Decode turns one line of the harness's stream into zero or more
-	// normalized events. An unrecognised line becomes one event of kind
-	// KindRaw carrying the line, never nothing.
-	Decode(Stage, int, []byte) ([]managed.Event, error)
+	// normalized events. stream is the stage's unique name rather than its
+	// role: one session may run several judges, and ids derived from the
+	// role alone would collide. An unrecognised line becomes one event of
+	// kind KindRaw carrying the line, never nothing.
+	Decode(stream string, index int, line []byte) ([]managed.Event, error)
 }
 
 // KindRaw is the event kind for a stream line this build does not recognise.
@@ -175,8 +177,9 @@ const MaxContentBytes = 256 << 10
 // EventID derives a stable id from a line's position in its stage's stream.
 // Position rather than content: two identical tool results are two events, and
 // a content hash would merge them. Re-reading a stream therefore neither
-// duplicates an entry nor changes what one means.
-func EventID(stage Stage, index int) string { return fmt.Sprintf("%s-%d", stage, index) }
+// duplicates an entry nor changes what one means. stream is the stage's unique
+// name, so a session that grades twice does not issue one id twice.
+func EventID(stream string, index int) string { return fmt.Sprintf("%s-%d", stream, index) }
 
 // Truncate shortens content to MaxContentBytes, marking what it removed. The
 // marker names the raw log, because that is where the whole value still is.

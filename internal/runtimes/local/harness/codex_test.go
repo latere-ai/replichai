@@ -65,7 +65,7 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 // A failing command shows its exit code. A tool result carrying only stdout
 // hides the failure the reproduction turned on.
 func TestCodexToolResultKeepsTheExitCode(t *testing.T) {
-	events, err := NewCodex().Decode(StageWorker, 0,
+	events, err := NewCodex().Decode("worker-0", 0,
 		[]byte(`{"id":"1","msg":{"type":"exec_command_end","stdout":"out","stderr":"boom","exit_code":2}}`))
 	if err != nil || len(events) != 1 {
 		t.Fatalf("Decode = %v, %v", events, err)

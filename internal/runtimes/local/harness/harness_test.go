@@ -21,18 +21,18 @@ func (s stub) Argv(Stage, Request) ([]string, error) {
 }
 func (s stub) Env(Stage, Request) (map[string]string, []string, error) { return nil, nil, nil }
 func (s stub) Files(Stage, Request) ([]File, error)                    { return nil, nil }
-func (s stub) Decode(Stage, int, []byte) ([]managed.Event, error)      { return nil, nil }
+func (s stub) Decode(string, int, []byte) ([]managed.Event, error)     { return nil, nil }
 
 // An id is derived from position, not content: two identical tool results are
 // two events, and a content hash would merge them into one.
 func TestEventIDIsPositional(t *testing.T) {
-	if a, b := EventID(StageWorker, 3), EventID(StageWorker, 3); a != b {
+	if a, b := EventID("worker-0", 3), EventID("worker-0", 3); a != b {
 		t.Fatalf("id is not stable across reads: %q, %q", a, b)
 	}
-	if a, b := EventID(StageWorker, 3), EventID(StageJudge, 3); a == b {
-		t.Fatal("two stages share an id at the same index")
+	if a, b := EventID("judge-1", 3), EventID("judge-3", 3); a == b {
+		t.Fatal("two stages of the same role share an id at the same index")
 	}
-	if a, b := EventID(StageWorker, 3), EventID(StageWorker, 4); a == b {
+	if a, b := EventID("worker-0", 3), EventID("worker-0", 4); a == b {
 		t.Fatal("two positions share an id")
 	}
 }

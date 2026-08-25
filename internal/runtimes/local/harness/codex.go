@@ -171,12 +171,12 @@ func (t *codexTokens) usage(model managed.ModelRef) managed.Usage {
 }
 
 // Decode reads one line of the stream.
-func (CodexHarness) Decode(stage Stage, index int, line []byte) ([]managed.Event, error) {
+func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Event, error) {
 	trimmed := strings.TrimSpace(string(line))
 	if trimmed == "" {
 		return nil, nil
 	}
-	event := managed.Event{ID: EventID(stage, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
+	event := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
 	raw := func() []managed.Event {
 		event.Role, event.Kind, event.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
 		return []managed.Event{event}
