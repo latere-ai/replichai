@@ -181,7 +181,10 @@ func (p Phase) Terminal() bool { return p == Done || p == Failed }
 
 // EntryState is what happened to one paper.
 type EntryState struct {
-	Paper     string             `json:"paper"`
+	Paper string `json:"paper"`
+	// PaperKey is the offline paper identity, carried so a push files the
+	// record against the paper without resolving it again.
+	PaperKey  string             `json:"paper_key,omitempty"`
 	Phase     Phase              `json:"state"`
 	Session   string             `json:"session,omitempty"`
 	Directory string             `json:"directory,omitempty"`
@@ -205,6 +208,10 @@ func (e EntryState) Wall() time.Duration {
 
 // Outcome is what a runner reports about one paper.
 type Outcome struct {
+	// PaperKey is the offline paper identity the session targeted. It is
+	// carried so a later push files the record against the paper without
+	// resolving it over the network a second time.
+	PaperKey  string
 	Session   string
 	Directory string
 	Repo      string
@@ -337,6 +344,7 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			record := &state.Entries[index]
 			record.Finished = options.Clock()
 			record.Session, record.Directory = outcome.Session, outcome.Directory
+			record.PaperKey = outcome.PaperKey
 			record.Repo, record.Grade = outcome.Repo, outcome.Grade
 			record.Model, record.Usage, record.Ref = outcome.Model, outcome.Usage, outcome.Ref
 			if err != nil {
