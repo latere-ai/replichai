@@ -597,3 +597,57 @@ func TestAuditAcceptsAModel(t *testing.T) {
 		}
 	}
 }
+
+// Retention keeps a session directory by default, because the workspace is the
+// reproduction. That makes them accumulate, so listing and pruning are how the
+// space is reclaimed — without them the only tool is rm -rf.
+func TestSessionsAreListableAndPrunable(t *testing.T) {
+	root := t.TempDir()
+	old := filepath.Join(root, "7f3a91c2")
+	recent := filepath.Join(root, "a91c27f3")
+	for _, dir := range []string{old, recent} {
+		if err := os.MkdirAll(filepath.Join(dir, "workspace"), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "workspace", "README.md"), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	past := time.Now().Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	stdout, _, err := capture(t, "sessions", "ls", "--session-root", root)
+	if err != nil {
+		t.Fatalf("sessions ls: %v", err)
+	}
+	for _, want := range []string{"7f3a91c2", "a91c27f3"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("listing is missing %q:\n%s", want, stdout)
+		}
+	}
+
+	// A dry run removes nothing, which is what makes it safe to check first.
+	if _, _, err := capture(t, "sessions", "prune", "--session-root", root, "--older-than", "168h", "--dry-run"); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Fatalf("a dry run removed a session: %v", err)
+	}
+
+	if _, _, err := capture(t, "sessions", "prune", "--session-root", root, "--older-than", "168h"); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("the old session survived the prune: %v", err)
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Fatalf("prune took a session inside the window: %v", err)
+	}
+	// A root that was never used is no sessions, not a failure: a machine
+	// that has never run one locally is not broken.
+	if _, _, err := capture(t, "sessions", "ls", "--session-root", filepath.Join(root, "never")); err != nil {
+		t.Fatalf("an unused root = %v", err)
+	}
+}

@@ -206,6 +206,11 @@ harness and an optional `Version` on the driver, because where the harness
 lives differs by driver — a binary on the host, a program inside an image — and
 only the driver knows which.
 
+**`replichai sessions ls` and `sessions prune` shipped with it.** Retention
+defaults to keeping a directory, which makes them accumulate by design, so
+reclaiming the space had to be something other than `rm -rf`. A `Capabilities`
+never followed by a `Start` leaves an empty one, and prune takes those too.
+
 **A bootstrap stage runs first.** `internal/runtimes/local/bootstrap.go`
 prepares the language environment and installs the specification's declared
 packages before any agent runs, journalled and observable like every other
