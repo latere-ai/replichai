@@ -37,15 +37,21 @@ func newEngine() *engine {
 
 func (e *engine) run(_ context.Context, argv []string, _ io.Reader) ([]byte, error) {
 	e.calls = append(e.calls, argv)
+	command := strings.Join(argv[1:], " ")
 	for key, err := range e.fail {
-		if strings.Contains(strings.Join(argv[1:], " "), key) {
+		if strings.Contains(command, key) {
 			return nil, err
 		}
 	}
-	for key, answer := range e.answers {
-		if strings.HasPrefix(strings.Join(argv[1:], " "), key) {
-			return []byte(answer), nil
+	// Longest prefix wins, so "run --rm" is not answered by "run".
+	best, answer := "", ""
+	for key, scripted := range e.answers {
+		if strings.HasPrefix(command, key) && len(key) > len(best) {
+			best, answer = key, scripted
 		}
+	}
+	if best != "" {
+		return []byte(answer), nil
 	}
 	return nil, fmt.Errorf("unscripted command %v", argv)
 }
@@ -345,5 +351,102 @@ func TestWindowsIsRefused(t *testing.T) {
 	_, err := New(context.Background(), Config{Platform: sandbox.Windows, Look: found("podman"), Run: newEngine().run})
 	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "WSL2") {
 		t.Fatalf("New = %v", err)
+	}
+}
+
+// Stopping and discarding are idempotent, and neither touches the session
+// directory: that belongs to the runtime, and the push may not have happened.
+func TestStopAndDiscardAreIdempotent(t *testing.T) {
+	e := newEngine()
+	e.answers["stop"] = ""
+	e.answers["rm"] = ""
+	driver := build(t, Config{}, e)
+	handle, err := driver.Launch(context.Background(), stage())
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	for range 2 {
+		if err := driver.Stop(context.Background(), handle); err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+		if err := driver.Discard(context.Background(), handle); err != nil {
+			t.Fatalf("Discard: %v", err)
+		}
+	}
+	// Even an engine that refuses both leaves the driver reporting success:
+	// the controller cancels without knowing the state, and a container that
+	// is already gone is the outcome it wanted.
+	e.fail["stop"] = errors.New("no such container")
+	e.fail["rm"] = errors.New("no such container")
+	if err := driver.Stop(context.Background(), handle); err != nil {
+		t.Fatalf("Stop on a gone container: %v", err)
+	}
+	if err := driver.Discard(context.Background(), handle); err != nil {
+		t.Fatalf("Discard on a gone container: %v", err)
+	}
+	// A handle from the other driver is refused by both.
+	other := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:1@2"}
+	if err := driver.Stop(context.Background(), other); !errors.Is(err, sandbox.ErrMismatch) {
+		t.Errorf("Stop = %v", err)
+	}
+	if err := driver.Discard(context.Background(), other); !errors.Is(err, sandbox.ErrMismatch) {
+		t.Errorf("Discard = %v", err)
+	}
+}
+
+// The harness version is read from the image, so a run records what the image
+// holds rather than what the operator's machine happens to have.
+func TestVersionIsReadFromTheImage(t *testing.T) {
+	e := newEngine()
+	e.answers["run --rm"] = "2.1.4 (Claude Code)\n"
+	driver := build(t, Config{}, e)
+	version, err := driver.Version(context.Background(), []string{"claude", "--version"})
+	if err != nil || version != "2.1.4 (Claude Code)" {
+		t.Fatalf("Version = %q, %v", version, err)
+	}
+	if _, err := driver.Version(context.Background(), nil); err == nil {
+		t.Fatal("an empty version command was accepted")
+	}
+	joined := strings.Join(e.lastMatching("run --rm"), " ")
+	if !strings.Contains(joined, DefaultImage) {
+		t.Errorf("the version was not read from the image: %s", joined)
+	}
+}
+
+// A stage with no command is refused, and a machine whose engine stopped
+// between construction and a launch is refused with its own instructions.
+func TestLaunchRefusesAnEmptyStageAndAStoppedEngine(t *testing.T) {
+	e := newEngine()
+	driver := build(t, Config{}, e)
+	empty := stage()
+	empty.Argv = nil
+	if _, err := driver.Launch(context.Background(), empty); err == nil {
+		t.Fatal("a stage with no command was launched")
+	}
+	e.fail["info"] = errors.New("cannot connect to podman socket")
+	if _, err := driver.Launch(context.Background(), stage()); !errors.Is(err, sandbox.ErrNotReady) {
+		t.Fatalf("Launch on a stopped engine = %v", err)
+	}
+}
+
+// A stage naming a credential it does not carry is refused rather than started
+// without it: a run that fails forty seconds in for want of a key is worse
+// than one that never starts.
+func TestAStageMissingItsCredentialIsRefused(t *testing.T) {
+	e := newEngine()
+	driver := build(t, Config{}, e)
+	spec := stage()
+	spec.Env = map[string]string{"TMPDIR": "/tmp-session"}
+	if _, err := driver.Launch(context.Background(), spec); err == nil {
+		t.Fatal("a stage naming a credential it does not carry was launched")
+	}
+	// A closed network reaches the engine as one.
+	spec = stage()
+	spec.Network = sandbox.Network{Mode: sandbox.NetworkNone}
+	if _, err := driver.Launch(context.Background(), spec); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if !strings.Contains(strings.Join(e.lastMatching("run "), " "), "--network none") {
+		t.Error("a closed network did not reach the engine")
 	}
 }

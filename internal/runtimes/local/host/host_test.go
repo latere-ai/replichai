@@ -280,3 +280,102 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 		t.Fatalf("a lost stage = %+v, %v", got, err)
 	}
 }
+
+// Stopping and discarding a stage that is already finished, or one this
+// driver never launched, are both fine: the controller cancels and releases
+// without knowing the state.
+func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+		Look: func(string) (string, error) { return "/bin/echo", nil }})
+	dir := t.TempDir()
+	handle := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:999999:worker-9:" + filepath.Join(dir, "worker-9.log")}
+	for range 2 {
+		if err := driver.Stop(context.Background(), handle); err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+		if err := driver.Discard(context.Background(), handle); err != nil {
+			t.Fatalf("Discard: %v", err)
+		}
+	}
+	// A handle from the other driver is refused rather than acted on: two
+	// drivers' handles are both opaque strings.
+	other := sandbox.StageHandle{Driver: sandbox.Container, ID: "replichai-x"}
+	if err := driver.Stop(context.Background(), other); !errors.Is(err, sandbox.ErrMismatch) {
+		t.Errorf("Stop = %v", err)
+	}
+	if _, err := driver.Output(context.Background(), other, 0); !errors.Is(err, sandbox.ErrMismatch) {
+		t.Errorf("Output = %v", err)
+	}
+	// A malformed handle is refused rather than parsed into a pid nobody
+	// meant.
+	malformed := sandbox.StageHandle{Driver: sandbox.Host, ID: "not-a-handle"}
+	if _, err := driver.Observe(context.Background(), malformed); !errors.Is(err, sandbox.ErrNotReady) {
+		t.Errorf("Observe = %v", err)
+	}
+}
+
+// The stage's own output is readable from an offset, out of a file the stage
+// has no write access to.
+func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+		Look: func(string) (string, error) { return "/bin/echo", nil }})
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "worker-0.log")
+	if err := os.WriteFile(logPath, []byte("hello sandbox"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	handle := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:1:worker-0:" + logPath}
+	stream, err := driver.Output(context.Background(), handle, 6)
+	if err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	defer func() { _ = stream.Close() }()
+	body := make([]byte, 32)
+	n, _ := stream.Read(body)
+	if string(body[:n]) != "sandbox" {
+		t.Fatalf("output from offset = %q", body[:n])
+	}
+	// A stage that has written nothing yet reads empty rather than failing:
+	// the caller polls.
+	absent := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:1:worker-1:" + filepath.Join(dir, "absent.log")}
+	stream, err = driver.Output(context.Background(), absent, 0)
+	if err != nil {
+		t.Fatalf("Output on an absent log: %v", err)
+	}
+	defer func() { _ = stream.Close() }()
+	if n, _ := stream.Read(body); n != 0 {
+		t.Fatalf("an absent log returned %q", body[:n])
+	}
+}
+
+// A stage with no command is refused, and so is a launch on a machine whose
+// sandbox went missing between construction and the launch.
+func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
+	ready := func(string) (string, error) { return "/bin/echo", nil }
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: ready})
+	dir := t.TempDir()
+	spec := sandbox.StageSpec{Name: "worker-0", Workdir: dir, LogPath: filepath.Join(dir, "worker-0.log")}
+	if _, err := driver.Launch(context.Background(), spec); err == nil {
+		t.Fatal("a stage with no command was launched")
+	}
+	missing := New(Config{Platform: sandbox.Darwin, Home: t.TempDir(), Look: found()})
+	spec.Argv = []string{"claude"}
+	if _, err := missing.Launch(context.Background(), spec); !errors.Is(err, sandbox.ErrNotReady) {
+		t.Fatalf("Launch on an unready machine = %v", err)
+	}
+}
+
+// The version is read by running the harness's own version command, outside
+// the sandbox: it is this program's question about its own dependency, not
+// the agent's work.
+func TestVersionRunsTheHarnessVersionCommand(t *testing.T) {
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+		Look: func(string) (string, error) { return "/bin/echo", nil }})
+	version, err := driver.Version(context.Background(), []string{"echo", "2.1.4"})
+	if err != nil || version != "2.1.4" {
+		t.Fatalf("Version = %q, %v", version, err)
+	}
+	if _, err := driver.Version(context.Background(), nil); err == nil {
+		t.Fatal("an empty version command was accepted")
+	}
+}
