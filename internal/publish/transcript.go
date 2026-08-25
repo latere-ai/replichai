@@ -27,6 +27,11 @@ const (
 // megabytes as one file.
 func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 	files := make(map[string][]byte)
+	// The transcript is the one published artifact whose content the system
+	// did not choose, and one credential is readable by design: the host
+	// sandbox grants the harness its own configuration so an existing login
+	// works. Everything published is swept first.
+	events, removed := redactEvents(events)
 
 	var j bytes.Buffer
 	for i, e := range events {
@@ -55,7 +60,7 @@ func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 		files[fmt.Sprintf("%s/%03d.md", transcriptDir, c+1)] = m.Bytes()
 	}
 
-	files[TranscriptMD] = renderIndex(events, chunks)
+	files[TranscriptMD] = renderIndex(events, chunks, removed)
 	return files, nil
 }
 
@@ -72,10 +77,13 @@ func chunkNav(c, chunks int) string {
 }
 
 // renderIndex is TRANSCRIPT.md: a table of contents linking each chunk.
-func renderIndex(events []provider.Event, chunks int) []byte {
+func renderIndex(events []provider.Event, chunks, redactions int) []byte {
 	var m bytes.Buffer
 	m.WriteString("# Reproduction transcript\n\n")
 	m.WriteString("The agent's full session, as recorded by the backend — the evidence behind the verdict. The canonical machine-readable form is [`transcript.jsonl`](transcript.jsonl); the parts below are the human-readable narrative.\n\n")
+	if note := redactedNote(redactions); note != "" {
+		m.WriteString(note + "\n\n")
+	}
 	fmt.Fprintf(&m, "%d events across %d part(s).\n\n", len(events), chunks)
 	m.WriteString("| Part | Events | Opens with |\n|---|---|---|\n")
 	for c := range chunks {
