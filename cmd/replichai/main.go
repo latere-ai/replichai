@@ -138,7 +138,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	if err != nil {
 		return err
 	}
-	controller, _, err := controllerFor(ctx, *runtimeName, *interval, local)
+	controller, runtime, err := controllerFor(ctx, *runtimeName, *interval, local)
 	if err != nil {
 		return err
 	}
@@ -154,18 +154,40 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		audit.WithSessionHooks(hooks),
 	}
 
-	// When publishing, create the repository up front and mount it, so the
-	// worker commits its reproduction into it as it runs.
+	// When publishing, the repository is created up front either way. Whether
+	// it is also mounted depends on the runtime: one that can take a writable
+	// repository has the agent commit and push into it as it runs (006f); one
+	// that cannot is given a local repository with no remote, and the host
+	// pushes what was committed once the session has ended (045g). The
+	// capability decides, not the runtime's name, so a future runtime that can
+	// mount is handled by this same branch.
 	var pub *publisher
 	if *doPublish {
 		pub, err = newPublisher(ctx, *owner, paper, m.Digest(), *timeout, stderr)
 		if err != nil {
 			return err
 		}
-		opts = append(opts, audit.WithSessionMount(audit.SessionMount{
-			URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
-		}))
+		capabilities, capErr := runtime.Capabilities(ctx)
+		if capErr != nil {
+			return capErr
+		}
+		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
+		if mounts {
+			opts = append(opts, audit.WithSessionMount(audit.SessionMount{
+				URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
+			}))
+		} else {
+			opts = append(opts, audit.WithLocalWorkspace())
+		}
 		hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
+			// Capture, then verify, then push, then finalize — and only
+			// then release. The workspace holds the only copy of the work
+			// until the push has taken it.
+			if !mounts {
+				if err := pushWorkspace(ctx, pub, capabilities.OutputDir, stdout, stderr); err != nil {
+					return err
+				}
+			}
 			grade := provider.GradeUnknown
 			if evidence.Status.Verdict != nil {
 				grade = provider.Grade(evidence.Status.Verdict.Grade)
@@ -356,6 +378,42 @@ func shortDigest(d string) string {
 // attestation (verdict + evidence) beside the agent's work. It reads the
 // repository from GitHub, so it works whether the run finished in-process or is
 // picked up afterwards by finish.
+// pushWorkspace publishes what the agent committed into a local repository it
+// never had a remote for. The system's own outputs — the environment record
+// and the judge's verdict — are committed after it, so the agent's history
+// stays the agent's and the system's evidence is visibly the system's.
+func pushWorkspace(ctx context.Context, pub *publisher, workspace string, stdout, stderr *os.File) error {
+	push := publish.LocalPush{Workspace: workspace, RemoteURL: pub.mount.URL, Token: pub.mount.Token}
+	pushed, err := push.Run(ctx)
+	if errors.Is(err, publish.ErrNothingCommitted) {
+		// 044d's outcome, reached before the push rather than found as an
+		// empty repository afterwards. The finalize still runs and records
+		// that the run produced nothing.
+		fmt.Fprintln(stderr, "  ! the run committed nothing; the repository will record that")
+		return nil
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "  ! %v\n", err)
+		fmt.Fprintf(stderr, "    the workspace is kept at %s; retry with:\n      replichai finish %s %q\n",
+			workspace, pub.repoFullName(), pub.id)
+		return err
+	}
+	fmt.Fprintf(stdout, "pushed:    %d commit(s) to %s (%s)\n", pushed.Commits, pushed.Branch, pushed.Head[:min(7, len(pushed.Head))])
+
+	outputs, err := publish.WorkspaceOutputs(filepath.Dir(workspace))
+	if err != nil || len(outputs) == 0 {
+		return err
+	}
+	report, err := publish.CommitOutputs(ctx, pub.gh, pub.owner, pub.name, outputs)
+	if err != nil {
+		return err
+	}
+	if len(report.Committed) > 0 {
+		fmt.Fprintf(stdout, "evidence:  %s\n", strings.Join(report.Committed, ", "))
+	}
+	return nil
+}
+
 func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
 	repoFull := owner + "/" + name
 
