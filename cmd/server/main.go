@@ -313,7 +313,10 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 		mux.HandleFunc("GET /logout", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, baseURL+"/", http.StatusFound)
 		})
-		return webauth.DevMiddleware(devSub, devEmail)(guarded), nil
+		// The dev bypass refuses to run off loopback, and adding a second
+		// credential path must not add a second way past that: the bearer
+		// middleware sits inside it, not beside it.
+		return webauth.DevMiddleware(devSub, devEmail)(bearer(guarded)), nil
 	}
 
 	login, err := buildLogin(ctx, acc, baseURL)
@@ -324,7 +327,25 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	mux.HandleFunc("GET /login", login.HandleLogin)
 	mux.HandleFunc("GET /callback", login.HandleCallback)
 	mux.HandleFunc("GET /logout", login.HandleLogout)
-	return login.Middleware(guarded), nil
+	// One principal, two credential sources. The bearer runs first and, where
+	// one is presented, the cookie is not consulted at all (045j).
+	return bearer(login.Middleware(guarded)), nil
+}
+
+// bearer is the terminal's credential path. A deployment that configures no
+// issuer refuses every bearer rather than accepting an unverified one, and
+// serves the cookie path unchanged.
+func bearer(next http.Handler) http.Handler {
+	issuer := os.Getenv("AUTH_ISSUER")
+	jwks := os.Getenv("AUTH_JWKS_URL")
+	if issuer != "" && jwks == "" {
+		jwks = strings.TrimRight(issuer, "/") + "/.well-known/jwks.json"
+	}
+	audience := envOr("REPLICHAI_TOKEN_AUDIENCE", "replichai.latere.ai")
+	if issuer == "" || jwks == "" {
+		return webauth.Bearer(nil)(next)
+	}
+	return webauth.Bearer(webauth.NewValidator(issuer, jwks, []string{audience}))(next)
 }
 
 // buildLogin constructs the OIDC login from the AUTH_* environment. A missing
