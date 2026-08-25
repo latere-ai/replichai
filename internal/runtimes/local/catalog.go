@@ -4,6 +4,7 @@
 package local
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -108,7 +109,7 @@ func ReadCatalogFile(path string) (CatalogFile, error) {
 // forty seconds into a run through somebody else's 400.
 func NewCatalog(file CatalogFile, registry *harness.Registry, lookup LookupEnv) (*Catalog, error) {
 	if lookup == nil {
-		lookup = os.LookupEnv
+		return nil, errors.New("the model catalogue needs an environment reader; configuration arrives from the composition root")
 	}
 	catalog := &Catalog{gateways: make(map[string]harness.Gateway, len(file.Gateways))}
 	for name, config := range file.Gateways {

@@ -5,7 +5,6 @@ package builtin
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -59,8 +58,15 @@ type LocalConfig struct {
 	Root string
 	// Retention is what Release does with a session directory.
 	Retention string
-	// Lookup reads the environment for gateway credentials.
+	// Home is the operator's home directory, denied wholesale by the host
+	// sandbox and searched for the harness's own configuration.
+	Home string
+	// Lookup reads the environment for gateway credentials. It is required:
+	// this package is inside the seam, and configuration arrives from the
+	// composition root rather than being read here.
 	Lookup local.LookupEnv
+	// Environ is the base environment a stage and git inherit.
+	Environ []string
 }
 
 // Config is what a composition root hands this package to compose the
@@ -101,11 +107,7 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 	if err != nil {
 		return nil, err
 	}
-	lookup := config.Lookup
-	if lookup == nil {
-		lookup = os.LookupEnv
-	}
-	catalog, err := local.NewCatalog(file, registry, lookup)
+	catalog, err := local.NewCatalog(file, registry, config.Lookup)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +116,7 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 		return nil, err
 	}
 	return local.New(local.Config{
-		Sandbox: driver, Harness: agent, Catalog: catalog,
+		Sandbox: driver, Harness: agent, Catalog: catalog, Environ: config.Environ,
 		Root: config.Root, Retention: local.Retention(config.Retention),
 	})
 }
@@ -130,10 +132,9 @@ func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness
 			Engine: container.Engine(config.Engine), Image: config.Image,
 		})
 	case sandbox.Host, "":
-		home, _ := os.UserHomeDir()
 		return host.New(host.Config{
-			Home: home, HarnessBinary: agent.Binary(),
-			ConfigDirs: harnessConfigDirs(home, agent.Name()),
+			Home: config.Home, HarnessBinary: agent.Binary(), Environ: config.Environ,
+			ConfigDirs: harnessConfigDirs(config.Home, agent.Name()),
 		}), nil
 	default:
 		return nil, fmt.Errorf("unknown sandbox %q; available: host, container", config.Sandbox)

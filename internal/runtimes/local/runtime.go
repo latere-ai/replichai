@@ -41,6 +41,11 @@ type Config struct {
 	Catalog   *Catalog
 	Root      string
 	Retention Retention
+	// Environ is the environment stages and git inherit. It arrives from
+	// the composition root rather than being read here: a second, unscoped
+	// source of configuration inside the seam is how a credential meant for
+	// one runtime reaches another.
+	Environ []string
 	// Clock is the time source, so a test does not depend on wall time.
 	Clock func() time.Time
 }
@@ -399,8 +404,8 @@ func (r *Runtime) stagePaths(session *Session, role harness.Stage) []sandbox.Pat
 }
 
 // stageEnv adds what every stage needs whichever harness it runs: a temporary
-// directory inside the session, and the session's virtual environment first on
-// PATH so an install lands outside the repository.
+// directory inside the session, and the session's virtual environment, so an
+// install lands outside the repository.
 func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]string {
 	merged := map[string]string{
 		"TMPDIR":       session.Tmp(),
@@ -633,7 +638,7 @@ func (r *Runtime) reserve() (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	session, err := CreateSession(r.config.Root, id)
+	session, err := CreateSession(r.config.Root, id, r.config.Environ)
 	if err != nil {
 		return nil, err
 	}

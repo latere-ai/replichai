@@ -48,11 +48,17 @@ func (options *localOptions) bind(fs *flag.FlagSet) {
 		"with --runtime local: keep, on-failure, or discard a session directory after release")
 }
 
+// config is where the process environment is read and handed down as values.
+// Nothing inside the runtime seam reads it: a second, unscoped source of
+// configuration in there is how a credential meant for one runtime reaches
+// another, whatever the variable is called.
 func (options localOptions) config() builtin.LocalConfig {
+	home, _ := os.UserHomeDir()
 	return builtin.LocalConfig{
 		Sandbox: sandbox.DriverName(options.sandbox), Harness: options.harness,
 		Engine: options.engine, Image: options.image, ModelsFile: options.models,
 		Root: options.root, Retention: options.retention,
+		Home: home, Lookup: os.LookupEnv, Environ: os.Environ(),
 	}
 }
 
