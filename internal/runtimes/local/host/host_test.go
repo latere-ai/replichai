@@ -248,6 +248,13 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 	if !strings.HasPrefix(handle.ID, "pid:") || handle.Driver != sandbox.Host {
 		t.Fatalf("handle = %+v", handle)
 	}
+	// The status is renamed into place rather than written where it is read.
+	// Written in place it is observable empty — the process has exited, the
+	// file exists, and nothing is in it yet — which reads as a stage the
+	// driver lost, and fails a session that actually finished.
+	if !strings.Contains(readScript(t, spec), "mv -f") {
+		t.Fatalf("the stage's status is not written atomically:\n%s", readScript(t, spec))
+	}
 	deadline := time.Now().Add(10 * time.Second)
 	var status sandbox.StageStatus
 	for time.Now().Before(deadline) {
@@ -279,6 +286,26 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 	if got, err := fresh.Observe(context.Background(), lost); err != nil || !got.Gone {
 		t.Fatalf("a lost stage = %+v, %v", got, err)
 	}
+}
+
+// readScript is the wrapper the driver would run for a stage, so a test can
+// assert how it records its own exit without racing it.
+func readScript(t *testing.T, spec sandbox.StageSpec) string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Dir(spec.LogPath))
+	if err != nil {
+		t.Fatalf("read stage directory: %v", err)
+	}
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	// The settings file is written beside the log, which is what proves the
+	// stage was built rather than only launched.
+	if !slices.Contains(names, spec.Name+".srt.json") {
+		t.Fatalf("no sandbox profile was written: %v", names)
+	}
+	return wrapperScript(spec.Name, spec.Argv, filepath.Join(filepath.Dir(spec.LogPath), spec.Name+".status"))
 }
 
 // Stopping and discarding a stage that is already finished, or one this
