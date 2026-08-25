@@ -30,6 +30,47 @@ type Submission struct {
 	Tier credit.Preference
 }
 
+// Import is a session somebody executed on their own machine, arriving as a
+// record rather than as work to do (045k).
+//
+// It is a distinct type from Submission, and ImportLocal is a distinct entry
+// point from Enqueue, because the difference is structural rather than a flag:
+// no reserve is taken, nothing is priced, and no worker will ever claim it. A
+// boolean on Submission would be one forgotten `if` away from charging an
+// operator for compute they bought themselves.
+type Import struct {
+	// Principal is who is filing the record — the session's owner.
+	Principal string
+	// Project is the project it belongs to.
+	Project string
+	// Ref is the paper reference.
+	Ref string
+	// PaperKey is the offline paper identity, which files the session
+	// against a paper the project already holds.
+	PaperKey string
+	// Runtime is the managed runtime that executed it.
+	Runtime string
+	// ExternalID is that runtime's own session id. Together with Runtime it
+	// is what makes a re-push update the same row rather than create a
+	// second.
+	ExternalID string
+	// Phase is where the session ended. Only a terminal phase may be
+	// imported: a run still going is not a record, and a non-terminal row
+	// would be a job no worker owns and no lease heartbeats.
+	Phase Phase
+	// Status is the last observation: model, usage, verdict, times.
+	Status provider.RunStatus
+	// RepoName is the repository the reproduction was pushed to, which is
+	// where its evidence lives.
+	RepoName string
+	// Err is why it failed, where it did.
+	Err string
+	// StartedAt and FinishedAt are when the work happened on the operator's
+	// machine, not when it arrived here.
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
+
 // Store is where jobs live. It is an interface so the HTTP layer (006a) and the
 // worker test against an in-memory fake with no database; the Postgres
 // implementation lands against this same contract (006b's build sequence).
@@ -37,6 +78,13 @@ type Submission struct {
 // The queue is the table: a worker claims a submitted job and drives it through
 // the phases, writing each transition back. There is no external broker.
 type Store interface {
+	// ImportLocal records a session that was executed elsewhere. It never
+	// takes a credit reserve and never prices anything: the compute was
+	// bought from the vendor by whoever ran it. Re-importing the same
+	// (runtime, external id) updates that row rather than creating a
+	// second, so an interrupted upload is resumed by running it again.
+	ImportLocal(ctx context.Context, in Import) (Job, error)
+
 	// Enqueue records a new submission as a submitted job — a session in a
 	// project. A submit for a paper already running (in the project, or anywhere
 	// the principal owns) is refused with ErrActiveSession rather than opening a

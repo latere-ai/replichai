@@ -103,6 +103,21 @@ CREATE INDEX jobs_live_by_principal ON jobs (principal, created_at DESC) WHERE d
 ALTER TABLE jobs ADD COLUMN adopted_by TEXT NOT NULL DEFAULT '';
 ALTER TABLE jobs ADD COLUMN adopted_at TIMESTAMPTZ;
 `},
+	{9, `
+-- Where a session's work happened (045k). Platform is a session this
+-- deployment ran and metered; local is one somebody ran on their own machine,
+-- with their own model credential, and pushed the record here. The default
+-- backfills every existing row correctly, because every existing row is one
+-- this deployment ran.
+ALTER TABLE jobs ADD COLUMN origin TEXT NOT NULL DEFAULT 'platform';
+-- The runtime's own session id for an imported session. With the runtime it is
+-- what makes a re-push update the same row rather than create a second, so an
+-- interrupted upload is resumed by running it again.
+ALTER TABLE jobs ADD COLUMN external_id TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, external_id)
+	WHERE external_id <> '';
+CREATE INDEX jobs_origin ON jobs (origin);
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

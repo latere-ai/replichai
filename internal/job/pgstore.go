@@ -85,7 +85,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, origin, external_id`
 
 // encodeStatus serialises a run status for the status column.
 //
@@ -123,7 +123,8 @@ func scanJob(row pgx.Row) (Job, error) {
 		ratesRaw   []byte
 	)
 	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
-		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw, &j.Tier)
+		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw, &j.Tier,
+		&j.Origin, &j.ExternalID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -207,6 +208,58 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 		return Job{}, err
 	}
 	return j, nil
+}
+
+// ImportLocal records a session executed on somebody's own machine. It is a
+// separate statement from Enqueue rather than a flag on it, and the reason is
+// visible here: this function never calls takeReserveTx, and there is no
+// branch in it that could. The compute was bought from the vendor by whoever
+// ran it, so nothing about it reaches the ledger.
+func (s *PGStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
+	if strings.TrimSpace(in.Ref) == "" {
+		return Job{}, ErrEmptyRef
+	}
+	if !in.Phase.Terminal() {
+		return Job{}, fmt.Errorf("%w: a session in phase %q is not a record", ErrIllegalTransition, in.Phase)
+	}
+	if strings.TrimSpace(in.Runtime) == "" || strings.TrimSpace(in.ExternalID) == "" {
+		return Job{}, fmt.Errorf("%w: an imported session needs a runtime and an id", ErrEmptyRef)
+	}
+	id, err := newID()
+	if err != nil {
+		return Job{}, err
+	}
+	now := s.clock()
+	started, finished := in.StartedAt, in.FinishedAt
+	if started.IsZero() {
+		started = now
+	}
+	if finished.IsZero() {
+		finished = now
+	}
+	status, err := encodeStatus(in.Status)
+	if err != nil {
+		return Job{}, err
+	}
+	phaseAt, err := encodePhaseAt(map[Phase]time.Time{PhaseSubmitted: started, in.Phase: finished})
+	if err != nil {
+		return Job{}, err
+	}
+	// Idempotent on (origin, external id), which the partial unique index
+	// enforces: a re-push updates the row rather than opening a second
+	// session for one run.
+	row := s.pool.QueryRow(ctx, `
+		INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error,
+		                  created_at, updated_at, phase_at, rate_card, tier, origin, external_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'{}','',$14,$15)
+		ON CONFLICT (origin, external_id) WHERE external_id <> '' DO UPDATE SET
+			project_id = EXCLUDED.project_id, ref = EXCLUDED.ref, paper_key = EXCLUDED.paper_key,
+			phase = EXCLUDED.phase, status = EXCLUDED.status, repo_name = EXCLUDED.repo_name,
+			error = EXCLUDED.error, updated_at = EXCLUDED.updated_at, phase_at = EXCLUDED.phase_at
+		RETURNING `+jobColumns,
+		id, KindAudit, in.Principal, in.Project, in.Ref, in.PaperKey, in.Phase, status, in.RepoName, in.Err,
+		started, now, phaseAt, OriginLocal, in.ExternalID)
+	return scanJob(row)
 }
 
 // checkQuotaTx refuses a submission past the payer's allowance, holding an
@@ -482,8 +535,13 @@ func (s *PGStore) SpendSince(ctx context.Context, ids []string, since time.Time)
 	if len(ids) == 0 {
 		return map[string]int64{}, nil
 	}
+	// A locally-executed session is left out. The rail asks what this
+	// project has been costing, and this deployment charged nothing for one
+	// — the opposite answer to 035's moved session, which keeps counting
+	// because the ledger still holds its charge.
 	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+
-		` FROM jobs WHERE project_id = ANY($1) AND updated_at >= $2`, ids, since)
+		` FROM jobs WHERE project_id = ANY($1) AND updated_at >= $2 AND origin <> $3`,
+		ids, since, OriginLocal)
 	if err != nil {
 		return nil, err
 	}
