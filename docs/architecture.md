@@ -82,9 +82,32 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Managed-session contract** (`internal/managed/`) is the seam: one `SessionSpec` starts one session and returns a provider-tagged, versioned `SessionRef`. That complete reference is persisted before the first poll and routes every later poll, transcript, artifact, cancel, and release back to its owning runtime, even after a restart or default change.
 
-**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Two runtimes ship today: `anthropic-managed`, which adapts the existing Managed Agents backend, and `memory`, a deterministic reference runtime. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
+**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship today: `anthropic-managed`, which adapts the existing Managed Agents backend; `memory`, a deterministic reference runtime; and `local`, which runs a session on the operator's own machine. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
 Every operation that can block takes a `context.Context` and honours cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are separately designed and intentionally not part of this refactor.
+
+**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed`, held to the same conformance suite, and the choices that vary inside it are not part of its name:
+
+```
+                    ┌─ bootstrap stage   the declared packages, into the session's
+                    │                    own environment — never the workspace
+managed session ────┼─ worker stage      the harness, confined to one directory
+   (local)          │                    · srt on the host (default), or a container
+                    ├─ judge stage       the same harness, workspace read-only,
+                    │                    verdict to a directory the worker never sees
+                    └─ host, afterwards  verify the committed tree, push it,
+                                         commit the system's own evidence
+```
+
+- **The sandbox is a driver** (`sandbox/`, `host/`, `container/`). The default is `srt` — Seatbelt on macOS, bubblewrap with seccomp on Linux — around the harness already installed and logged in on the machine: no image, no virtual machine, and an allow-only network the container driver cannot enforce. The container driver is opt-in, for a toolchain pinned identically everywhere.
+- **The harness is an adapter** (`harness/`). Claude Code and Codex contribute argv, environment, configuration and a decoder from their own stream to normalized events. Neither owns any lifecycle.
+- **The model is an endpoint** (`catalog.go`). The operator declares gateways and models in `models.yaml`; with no file, the default is the harness's own login. An open-weights model behind an OpenAI-compatible gateway is a row in that file.
+- **The session directory is the durable state.** `workspace/` becomes the repository; `tmp/` and `venv/` are what the agent needs and must not publish; `session/` is host-authored evidence no stage can write. A detached run is recovered from the directory and a process handle alone.
+- **Nothing local touches the ledger.** The compute was bought from the vendor by whoever ran it.
+
+**Batching** (`internal/batch/`) runs a whole project: a list of papers, a concurrency cap, one isolated session each, resumable state, and a report. Preparation is serialised and execution is not, because allocating a repository name is a read of what exists followed by a decision.
+
+**The terminal's identity** (`internal/cloud/`) is the device-code flow against `auth.latere.ai`, its own client and its own credential file. `internal/webauth`'s bearer middleware is the other half: one principal, two credential sources, and a request carrying a bearer never consults a cookie. A locally-executed session reaches the app as an ordinary `jobs` row with `origin = local`, filed through `ImportLocal`, which has no path to the credit ledger.
 
 **Publishing** (`internal/publish/`) owns the manifest, the redistribution gate, repository naming, and the transcript rendering. It is split so that everything decidable without a network is pure: `Classify` and `PlanPublication` touch no repository and no clock; `Publish` and `FinalizeLive` are the only parts that create anything, and they do so through `Forge`, a seam over repository hosting that mirrors the provider seam.
 
