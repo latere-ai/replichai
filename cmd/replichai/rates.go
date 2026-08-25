@@ -42,7 +42,7 @@ func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error
 		return errExitQuiet
 	}
 
-	_, runtime, err := controllerFor(ctx, *runtimeName, 0)
+	_, runtime, err := controllerFor(ctx, *runtimeName, 0, localOptions{})
 	if err != nil {
 		return fmt.Errorf("runtime %q: %w", *runtimeName, err)
 	}

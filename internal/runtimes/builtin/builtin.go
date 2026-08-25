@@ -5,6 +5,8 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -12,6 +14,11 @@ import (
 	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/provider/anthropic"
 	"github.com/latere-ai/replichai/internal/runtimes"
+	"github.com/latere-ai/replichai/internal/runtimes/local"
+	"github.com/latere-ai/replichai/internal/runtimes/local/container"
+	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
+	"github.com/latere-ai/replichai/internal/runtimes/local/host"
+	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
 // AnthropicManaged names the runtime that executes sessions against
@@ -30,6 +37,32 @@ type AnthropicConfig struct {
 	BaseURL string
 }
 
+// LocalConfig holds what the local runtime needs to run a session on this
+// machine. Every field has a default, so an operator who says nothing gets the
+// host sandbox, the Claude Code harness, and the harness's own login.
+type LocalConfig struct {
+	// Sandbox selects the isolation mechanism: host (the default) or
+	// container. It is not part of the runtime's name — both satisfy the
+	// same contract, and a name encoding one would have to be migrated to
+	// use the other.
+	Sandbox sandbox.DriverName
+	// Harness selects the agentic CLI: claude-code (the default) or codex.
+	Harness string
+	// Engine names the container engine where the container sandbox is
+	// selected. Empty tries podman, then docker.
+	Engine string
+	// Image overrides the harness image.
+	Image string
+	// ModelsFile is the operator's model catalogue.
+	ModelsFile string
+	// Root is where session directories are made.
+	Root string
+	// Retention is what Release does with a session directory.
+	Retention string
+	// Lookup reads the environment for gateway credentials.
+	Lookup local.LookupEnv
+}
+
 // Config is what a composition root hands this package to compose the
 // catalogue. Every field is optional: Config{} still yields a catalogue whose
 // names resolve, which is how both binaries validate the operator's choice
@@ -38,6 +71,89 @@ type AnthropicConfig struct {
 type Config struct {
 	MemoryStore *managedmemory.Store
 	Anthropic   AnthropicConfig
+	Local       LocalConfig
+}
+
+// Harnesses is the set of agentic CLIs this build can drive. It is the one
+// place they are named, the way this package is the one place adapters are.
+func Harnesses() (*harness.Registry, error) {
+	return harness.NewRegistry(harness.NewClaudeCode(), harness.NewCodex())
+}
+
+// buildLocal composes the local runtime: a sandbox driver, a harness, and the
+// operator's model catalogue. Anything unresolvable — no engine, no srt, no
+// harness installed, a catalogue that does not validate — fails here, which is
+// before a paper is fetched.
+func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error) {
+	registry, err := Harnesses()
+	if err != nil {
+		return nil, err
+	}
+	selected := config.Harness
+	if strings.TrimSpace(selected) == "" {
+		selected = string(harness.ClaudeCode)
+	}
+	agent, err := registry.Lookup(selected)
+	if err != nil {
+		return nil, err
+	}
+	file, err := local.ReadCatalogFile(config.ModelsFile)
+	if err != nil {
+		return nil, err
+	}
+	lookup := config.Lookup
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	catalog, err := local.NewCatalog(file, registry, lookup)
+	if err != nil {
+		return nil, err
+	}
+	driver, err := buildSandbox(ctx, config, agent)
+	if err != nil {
+		return nil, err
+	}
+	return local.New(local.Config{
+		Sandbox: driver, Harness: agent, Catalog: catalog,
+		Root: config.Root, Retention: local.Retention(config.Retention),
+	})
+}
+
+// buildSandbox picks the isolation mechanism. The host driver is the default
+// because it needs no image and no virtual machine and reuses the login
+// already on the machine; the container driver is chosen deliberately, for a
+// pinned toolchain.
+func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness) (sandbox.Sandbox, error) {
+	switch sandbox.DriverName(strings.ToLower(strings.TrimSpace(string(config.Sandbox)))) {
+	case sandbox.Container:
+		return container.New(ctx, container.Config{
+			Engine: container.Engine(config.Engine), Image: config.Image,
+		})
+	case sandbox.Host, "":
+		home, _ := os.UserHomeDir()
+		return host.New(host.Config{
+			Home: home, HarnessBinary: agent.Binary(),
+			ConfigDirs: harnessConfigDirs(home, agent.Name()),
+		}), nil
+	default:
+		return nil, fmt.Errorf("unknown sandbox %q; available: host, container", config.Sandbox)
+	}
+}
+
+// harnessConfigDirs is the one read allowance inside the operator's home
+// directory: the harness's own configuration, which is what makes its existing
+// login usable. It is narrowed to that directory and disclosed in the run's
+// environment record rather than left implicit.
+func harnessConfigDirs(home string, name harness.Name) []string {
+	if home == "" {
+		return nil
+	}
+	switch name {
+	case harness.Codex:
+		return []string{filepath.Join(home, ".codex")}
+	default:
+		return []string{filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json")}
+	}
 }
 
 // Catalog composes the runtimes this build ships with. It is the one place
@@ -49,6 +165,9 @@ func Catalog(config Config) (*runtimes.Catalog, error) {
 	return runtimes.NewCatalog(
 		runtimes.Entry{Name: managedmemory.Name, Build: func(context.Context) (managed.Runtime, error) {
 			return managedmemory.NewWithStore(config.MemoryStore, managedmemory.Config{}), nil
+		}},
+		runtimes.Entry{Name: local.Name, Build: func(ctx context.Context) (managed.Runtime, error) {
+			return buildLocal(ctx, config.Local)
 		}},
 		runtimes.Entry{Name: AnthropicManaged, Build: func(context.Context) (managed.Runtime, error) {
 			if strings.TrimSpace(config.Anthropic.APIKey) == "" {
