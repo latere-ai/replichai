@@ -124,9 +124,15 @@ it.
 declaring read-write repositories is mounted, one that does not is pushed from
 here.
 
-**The retry path is `finish`, and `finish` does not yet reattach by session
-directory.** A failed push prints the command and keeps the workspace, and the
-command it prints is the existing `finish`, which reattaches by session
-reference. A local run that has already ended has a reference; one whose
-process died between capture and push does not, and for that case the workspace
-is on disk and the operator has no single command yet.
+**The retry path works, and it needed a runtime method to.** A failed push
+keeps the workspace and prints a `finish` command carrying the session
+reference. `finish` then pushes before it finalizes — without that it would
+have verified a repository nothing ever pushed to and recorded
+[044d](044d-an-empty-repository-says-so.md)'s outcome over a run that produced
+a reproduction. The workspace of a session a later process did not start is
+named by `local.Runtime.Workspace(ref)`, deliberately off the managed contract:
+a hosted runtime has no directory, and a caller asking for one is asking
+something only a local runtime can answer.
+
+A run whose process died between capture and push has no reference to print,
+and for that case the workspace is on disk and there is no single command.
