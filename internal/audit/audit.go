@@ -69,6 +69,33 @@ A git repository is mounted at %[1]s, and its commit history is published as par
 - Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use /tmp. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, mountPath)
 }
 
+// workspaceProtocol tells the worker how to use a workspace that is a git
+// repository with no remote (045g). It replaces mountProtocol rather than
+// editing it: the two describe different arrangements, and a run that has no
+// remote must not be told to push to one.
+//
+// The push sentence is gone because there is nothing to push to, and inventing
+// a remote so the instruction could stay would put a forge credential back
+// inside the sandbox to satisfy a sentence. What replaces it is a check the
+// agent can genuinely fail — uncommitted work is dropped — and a system check
+// it cannot influence: the host verifies the committed tree and publishes it
+// after the session ends.
+//
+// It says "no remote" outright, because that is the condition rubric criterion
+// 9 keys on. The two texts are read together by the grader, so they have to
+// agree about what is present.
+func workspaceProtocol(workspace string) string {
+	return fmt.Sprintf(`
+
+Your reproduction lives at %[1]s, which is a git repository on the machine running this session. There is no remote, and %[1]s is not destroyed when this session ends.
+
+- Write your reproduction files (README.md, REPRODUCIBILITY.md, src/, UNVERIFIED.md, SOURCES.md, verdict.json, instrument.json) inside %[1]s.
+- Commit your progress with git as you finish each part — small, meaningful commits. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
+- There is nothing to push. The system publishes what you committed, after this session ends, and verifies it independently. Criterion 9 does not apply to this run.
+- Before you finish, run "git status" and confirm nothing is uncommitted, then record "git log --oneline -5". Uncommitted work is not part of the history that gets published.
+- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use the temporary directory. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, workspace)
+}
+
 // DefaultPackages are installed into every sandbox: enough to pull a paper
 // down and read it, with anything domain-specific installed per run.
 func DefaultPackages() map[string][]string {

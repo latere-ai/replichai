@@ -74,6 +74,10 @@ type SessionAuditor struct {
 	unbounded    bool
 	mount        SessionMount
 	hooks        managed.Hooks
+	// workspaceIsARepository says the runtime hands the session a git
+	// repository it does not mount — the local path, where the host pushes
+	// what was committed once the session has ended.
+	workspaceIsARepository bool
 }
 
 // SessionOption configures a SessionAuditor.
@@ -106,6 +110,14 @@ func WithSessionTimeout(timeout time.Duration) SessionOption {
 // opinion about it.
 func WithoutSessionTimeout() SessionOption {
 	return func(a *SessionAuditor) { a.unbounded = true }
+}
+
+// WithLocalWorkspace says the session's output directory is a git repository
+// with no remote, which the host publishes after the run. It is what selects
+// the workspace protocol over the mount protocol, and the two are mutually
+// exclusive: a session either pushes from inside or is pushed from outside.
+func WithLocalWorkspace() SessionOption {
+	return func(a *SessionAuditor) { a.workspaceIsARepository = true }
 }
 
 // WithSessionMount mounts a repository into the session so the worker commits
@@ -204,8 +216,13 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		outputDir = mount.MountPath
 	}
 	instructions := a.method.InstructionsFor(outputDir)
-	if mount.Set() {
+	switch {
+	case mount.Set():
 		instructions += mountProtocol(mount.MountPath)
+	case a.workspaceIsARepository:
+		// No mount, and the runtime's output directory is a git
+		// repository the host will publish afterwards (045g).
+		instructions += workspaceProtocol(outputDir)
 	}
 	spec := managed.SessionSpec{
 		Model: managed.ModelSelector{Preference: a.model}, Instructions: instructions, Task: task,
