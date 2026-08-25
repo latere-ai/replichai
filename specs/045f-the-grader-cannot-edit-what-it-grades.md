@@ -2,7 +2,7 @@
 
 **Status:** draft.
 
-**Scope:** how a local session is graded — a judge stage in its own sandbox with the workspace read-only, the verdict it writes, the revision loop, and how the result becomes `managed.Verdict`. This is what lets `local` declare `Capabilities.Evaluation: true` honestly.
+**Scope:** how a local session is graded — a judge stage in its own sandbox with the workspace read-only, the verdict it writes, the revision loop, and how the result becomes `managed.Verdict`. Includes the one-line correction to `method/rubric.md`'s ninth criterion that the local path forces. This is what lets `local` declare `Capabilities.Evaluation: true` honestly.
 
 **Depends on:** [045a](045a-the-sandbox-is-a-seam.md), [045b](045b-the-host-sandbox.md), [045d](045d-the-harness-inside-the-sandbox.md), [002](002-publishing-reproductions.md) (who authors what).
 
@@ -77,11 +77,25 @@ Every stage is an entry in the locator journal ([045a](045a-the-sandbox-is-a-sea
 
 Usage accumulates across stages, monotonically. Wall-clock and stage count both grow with the budget, which is the honest cost of grading and is reported in the batch summary ([045h](045h-many-papers-at-once.md)).
 
-## Criterion 9 grades trivially here, and something stronger replaces it
+## Criterion 9 says "mounted" and means "has a remote"
 
-`method/rubric.md`'s ninth criterion opens *"Where a git repository is mounted"* and states that a run without one has no remote to reach and passes trivially. The local path mounts no repository ([045g](045g-the-host-pushes.md)), so it passes — and it should: the failure it was written for, commits destroyed with the sandbox, cannot happen when the workspace is a host directory.
+`method/rubric.md`'s ninth criterion is conditional:
 
-That is a weakening of what the criterion checks, and it is replaced rather than dropped. On the local path the host verifies the pushed tree after the run, outside the model's reach entirely, and an empty repository is recorded as such ([044d](044d-an-empty-repository-says-so.md)). A system check is stronger evidence than a graded self-report, so the local path ends up with the better of the two — which is the same argument [044](044-a-run-that-produced-nothing.md) made when it added recovery that does not depend on the agent's discipline beside prevention that does.
+> **Published.** *Where a git repository is mounted* — **the run's instructions say so, and name its path.** A run without one has no remote to reach and passes this criterion trivially.
+
+Read against the local path, the condition is met and should not be. `workspaceProtocol` ([045g](045g-the-host-pushes.md)) opens by telling the agent its reproduction lives in a git repository and naming the path — which is exactly the test the criterion operationalises. A judge reading the rubric and those instructions concludes the criterion applies, looks for the recorded `git log --oneline origin/main -1`, finds none, and fails it. Every local run would come back with one spurious failed criterion, and the revision loop above would then spend a whole extra worker stage trying to fix something the agent has no remote to fix.
+
+The condition is wrong, not the local path. What criterion 9 grades is whether the work reached a remote; a repository being *present* was only ever a proxy for a remote being *configured*, and the two stopped being the same thing the moment a session got a local repository. So the condition is reworded, one line:
+
+```
+9. **Published.** *Where a git remote is configured* — the run's instructions
+   say so, and name it. A run with no remote has nothing to reach and passes
+   this criterion trivially. With one, the reproduction reached it. …
+```
+
+Everything after the condition is unchanged, and the hosted path grades exactly as it does today: `mountProtocol` names a remote, so the criterion applies. This is the smallest edit that makes both paths correct by construction, and it is preferable to a disclaimer in the instructions, which would leave the rubric saying one thing and the instructions saying another.
+
+What the local path loses by passing trivially is a graded self-report that the work left the sandbox. What replaces it is stronger: the host verifies the tree and pushes it after the run, outside the model's reach entirely, and an empty repository is recorded as such ([044d](044d-an-empty-repository-says-so.md)) — the same argument [044](044-a-run-that-produced-nothing.md) made when it added recovery that does not depend on the agent's discipline beside prevention that does.
 
 ## Acceptance criteria
 
@@ -94,10 +108,12 @@ That is a weakening of what the criterion checks, and it is replaced rather than
 7. Usage after a three-stage session equals the sum of the stages, and no poll reports a decrease.
 8. `grade/verdict-<n>.json` records the grading model, and finalize commits it as system-authored.
 9. Killing the process between two stages and re-attaching by `SessionRef` resumes at the next stage rather than re-running the worker.
+10. A local run's judge verdict does not fail criterion 9. Tested against a fixture workspace holding commits and no remote, graded with the reworded rubric, asserting the criterion is reported passed with the no-remote evidence.
+11. The hosted path's criterion 9 is unchanged: the same fixture with a remote configured and commits ahead of it still fails.
 
 ## Not in scope
 
 - A grader model different from the worker's. Named above with what would have to change first.
 - A grader that is not the same harness. The seam allows it; a second implementation is not worth its cost until there is a reason.
 - Multi-judge panels or majority verdicts. One judge, one verdict, recorded.
-- Changing `method/rubric.md`. The rubric travels with the run and is the same nine criteria the hosted path grades.
+- Any rubric change beyond criterion 9's condition. The other eight criteria are untouched, and the rubric still travels with the run.

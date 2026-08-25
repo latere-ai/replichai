@@ -29,8 +29,9 @@ machine running this session. It is not destroyed when this session ends.
 - Commit your progress as you finish each part — small, meaningful commits.
 - There is no remote and nothing to push. The system publishes what you
   committed, after this session ends, and verifies it independently.
-- Before you finish, run "git status" and confirm nothing is uncommitted.
-  Uncommitted work is not part of the history that gets published.
+- Before you finish, run "git status" and confirm nothing is uncommitted,
+  and record "git log --oneline -5". Uncommitted work is not part of the
+  history that gets published.
 - Keep every download (the paper PDF, datasets, benchmarks, any third-party
   file) OUTSIDE <workspace>; use the temporary directory. Never "git add"
   third-party data: the repository must contain only your own work.
@@ -38,12 +39,20 @@ machine running this session. It is not destroyed when this session ends.
 
 The push sentence is gone because there is nothing to push to, and inventing a remote so the instruction could stay would put a token back inside the sandbox to satisfy a sentence. What replaces it is a real check the agent can fail — uncommitted work is genuinely dropped — and a system check it cannot influence.
 
+The protocol also says *no remote* in as many words, because that is the condition rubric criterion 9 keys on once [045f](045f-the-grader-cannot-edit-what-it-grades.md) corrects it. The two texts are read together by the judge, so they have to agree about what is present.
+
+## Who decides not to mount
+
+`runAudit` creates the repository and mounts it as one act: `newPublisher` allocates the name, creates the private repository, and returns a mount the auditor turns into a read-write `ResourceRepository`. Against `local`, whose `RepositoryModes` declares `rw: false` ([045a](045a-the-sandbox-is-a-seam.md)), that specification is refused by `ValidateCapabilities` — so `--runtime local --publish` fails at validation, before a paper is fetched, unless the two halves are separated.
+
+They are separated where they belong, in the composition root: **allocation and creation stay unconditional** — the local path needs the repository, because it is the push target — and **mounting becomes conditional on the runtime declaring read-write repositories**. A runtime that does not gets no repository resource, gets `workspaceProtocol` instead of `mountProtocol`, and gets its tree pushed by the host afterwards. One capability read decides all three, so a future runtime that can mount is handled by the same branch rather than by a runtime name test.
+
 ## What the host does
 
 ```mermaid
 flowchart TB
   T["session terminal"] --> C["capture: events, artifacts,<br/>grade/verdict-n.json, environment.json"]
-  C --> V["verify the workspace tree<br/>publish.Classify — the same gate"]
+  C --> V["verify the committed tree<br/>publish.VerifyTree — the same backstop"]
   V -->|"empty or no commits"| E["record it (044d);<br/>do not report success"]
   V -->|"a tree to publish"| N["allocate a name (registry),<br/>create the private repo"]
   N --> P["push refs/heads/main<br/>from the host"]
@@ -52,7 +61,11 @@ flowchart TB
   I --> R["release the session"]
 ```
 
-**The gate is the one that already exists.** `publish.Classify` decides what may be redistributed; the local path runs the workspace tree through it before the first push rather than verifying after the fact, which is strictly earlier than the hosted path manages. A file the gate refuses is not pushed and is named in the run's output.
+**The gate is the one that already exists, and it is the right half of it.** `internal/publish` has two, and they are not interchangeable. `Classify`/`PlanPublication` is an allowlist over a *harvested output directory* — the fixed report files plus `src/`, everything else third-party — and running an agent-authored repository through it would strip the `LICENSE`, the `requirements.txt`, the tests and the configs that make it a real project. `VerifyTree` is the backstop for exactly that case: a denylist over a committed tree, flagging the paper, a dataset, model weights, an archive or a leaked secret, and presuming everything else is the reproduction's own work.
+
+So the local path uses `VerifyTree`, which is what [006f](006f-taking-a-reproduction-out.md) and [044b](044b-the-server-harvests-the-session.md) already apply to committed trees — and applies it *before* the first push rather than after, which is strictly earlier than the hosted path can manage. A flagged path is not pushed and is named in the run's output, so the operator can fix it and retry rather than owning a repository that may never be made public.
+
+`environment.json` and `grade/verdict-<n>.json` are system-authored and pass `VerifyTree` on their face, which is the second reason not to route them through the allowlist: neither is in `workerReports`, and the environment record is this deck's whole answer to whether a run was clean.
 
 **The push is a host act with a short-lived credential.** The token reaches `git` through a `0600` askpass helper named by `GIT_ASKPASS`, never in argv (visible in `ps`), never in the URL (it lands in `.git/config` and in the reflog), and never written into the workspace's git configuration. The remote is added, the push is made, and the remote is removed, so a workspace directory left on disk under the `keep` retention policy carries no credential and no push target.
 
@@ -80,13 +93,14 @@ replichai finish <owner>/<repo> <paper> --session <session-id>
 
 1. No `StageSpec` under either driver carries a forge credential, and no workspace git configuration contains a remote while a stage is running. A test asserts both.
 2. `workspaceProtocol` is used exactly when the specification carries no repository resource, and `mountProtocol` exactly when it does. A test pins that the workspace protocol contains no push instruction and does contain the uncommitted-work consequence.
-3. The workspace tree is run through `publish.Classify` before the first push; a file the gate refuses is not pushed and is named in the output.
+3. The workspace tree is run through `publish.VerifyTree` before the first push; a flagged path is not pushed and is named in the output. A test asserts an agent-authored repository holding `LICENSE`, `requirements.txt` and a test directory pushes whole, which is what routing it through `Classify` instead would have broken.
 4. The push token never appears in argv, in `.git/config`, in the reflog, or in the session directory after the push. A test inspects all four.
 5. The remote is removed after the push, and a retained session directory has no remote configured.
 6. A workspace with no commits produces the [044d](044d-an-empty-repository-says-so.md) outcome, distinguishing an agent that produced nothing from a publish that failed.
 7. A push failure leaves the session directory intact under every retention policy and prints a working `finish` command; running it completes the publication.
-8. `publish.FinalizeLive` is called by the local path, not reimplemented, and `environment.json` and the judge's verdict are in the system-authored commit.
-9. Release never runs before a successful push or a recorded failure.
+8. `publish.FinalizeLive` is called by the local path, not reimplemented, and `environment.json` and the judge's verdict are in the system-authored commit and survive `VerifyTree`.
+9. `--runtime local --publish` reaches the push. A test asserts the repository is created and no repository resource is added when the runtime declares `rw: false`, and that the mount is added when it declares `rw: true`.
+10. Release never runs before a successful push or a recorded failure.
 
 ## Not in scope
 
