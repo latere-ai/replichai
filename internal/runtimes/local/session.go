@@ -38,6 +38,8 @@ const (
 	statusFile      = "session/status.json"
 	locatorFile     = "session/locator.json"
 	environmentFile = "session/environment.json"
+	releasedFile    = "session/released.json"
+	specFile        = "session/spec.json"
 )
 
 // LocatorVersion is the shape of the recovery metadata a SessionRef carries.

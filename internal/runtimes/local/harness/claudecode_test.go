@@ -31,7 +31,7 @@ func decodeFixture(t *testing.T, h Harness, path string) ([]managed.Event, manag
 			continue
 		}
 		lines++
-		decoded, err := h.Decode(StageWorker, index, scanner.Bytes())
+		decoded, err := h.Decode("worker-0", index, scanner.Bytes())
 		if err != nil {
 			t.Fatalf("decode line %d: %v", index, err)
 		}

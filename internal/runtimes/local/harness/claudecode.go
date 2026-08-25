@@ -157,12 +157,12 @@ func (u *claudeUsage) usage(model managed.ModelRef) managed.Usage {
 // Decode reads one line of the stream. A line this build does not recognise
 // becomes one raw event rather than nothing: a transcript that silently drops
 // what it cannot parse is not evidence.
-func (ClaudeCodeHarness) Decode(stage Stage, index int, line []byte) ([]managed.Event, error) {
+func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]managed.Event, error) {
 	trimmed := strings.TrimSpace(string(line))
 	if trimmed == "" {
 		return nil, nil
 	}
-	base := managed.Event{ID: EventID(stage, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
+	base := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
 	var parsed claudeLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
 		base.Role, base.Kind, base.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
