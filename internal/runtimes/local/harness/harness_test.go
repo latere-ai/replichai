@@ -115,3 +115,27 @@ func TestOutsideTheWorkspace(t *testing.T) {
 		}
 	}
 }
+
+// Folding is an elementwise maximum, so a harness that repeats its running
+// total cannot double-count and two consecutive observations never decrease.
+func TestFoldIsMonotonicAndDoesNotDoubleCount(t *testing.T) {
+	model := managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"}
+	total := managed.Usage{}
+	for range 3 {
+		total = Fold(total, managed.Usage{Model: model, InputFresh: 100, Output: 20,
+			Extra:   map[managed.Meter]int64{"stage": 2},
+			Details: map[string]int64{"vendor_cost_micro_usd": 5}})
+	}
+	if total.InputFresh != 100 || total.Output != 20 || total.Extra["stage"] != 2 || total.Details["vendor_cost_micro_usd"] != 5 {
+		t.Fatalf("a repeated total was counted more than once: %+v", total)
+	}
+	grown := Fold(total, managed.Usage{Model: model, InputFresh: 300, Output: 90})
+	if !grown.MonotonicFrom(total) || grown.InputFresh != 300 {
+		t.Fatalf("growth = %+v", grown)
+	}
+	// A late report that is smaller does not walk the total backwards.
+	shrunk := Fold(grown, managed.Usage{Model: model, InputFresh: 1, Output: 1})
+	if !shrunk.MonotonicFrom(grown) {
+		t.Fatalf("a smaller report reduced the total: %+v", shrunk)
+	}
+}

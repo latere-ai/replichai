@@ -278,3 +278,34 @@ func Outside(workspace, destination string) bool {
 	destination = path.Clean(destination)
 	return destination != workspace && !strings.HasPrefix(destination, workspace+"/")
 }
+
+// Fold accumulates one event's usage report into a session total. A harness
+// reports its own running totals rather than deltas — Claude Code's result
+// line carries the session's, and each assistant line carries its message's —
+// so the fold is an elementwise maximum rather than a sum. That is monotonic
+// by construction, which is what the contract demands of two consecutive
+// observations, and it cannot double-count a total that is repeated.
+func Fold(total, next managed.Usage) managed.Usage {
+	if next.Model.Valid() {
+		total.Model = next.Model
+	}
+	total.InputFresh = max(total.InputFresh, next.InputFresh)
+	total.InputCached = max(total.InputCached, next.InputCached)
+	total.CacheWrite = max(total.CacheWrite, next.CacheWrite)
+	total.CacheWrite5m = max(total.CacheWrite5m, next.CacheWrite5m)
+	total.CacheWrite1h = max(total.CacheWrite1h, next.CacheWrite1h)
+	total.Output = max(total.Output, next.Output)
+	for meter, value := range next.Extra {
+		if total.Extra == nil {
+			total.Extra = make(map[managed.Meter]int64, len(next.Extra))
+		}
+		total.Extra[meter] = max(total.Extra[meter], value)
+	}
+	for name, value := range next.Details {
+		if total.Details == nil {
+			total.Details = make(map[string]int64, len(next.Details))
+		}
+		total.Details[name] = max(total.Details[name], value)
+	}
+	return total
+}
