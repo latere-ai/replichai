@@ -58,8 +58,11 @@ func originOf(p string) Origin {
 }
 
 // secretNames and secretExts are filenames that must never be published. This
-// is a filename check, not a proof of secret-freedom — a key pasted into a
-// worker-written file is caught only by the publish-time content sweep.
+// is a filename check, not a proof of secret-freedom. Content is swept
+// separately, and only where the system chose neither the file nor its
+// contents: RedactSecrets runs over the transcript before it is committed. A
+// key pasted into a worker-written file is caught by neither, and the control
+// there is that a stage is given only the credentials it needs.
 var (
 	secretNames = map[string]bool{
 		"id_rsa": true, "id_dsa": true, "id_ecdsa": true, "id_ed25519": true,
