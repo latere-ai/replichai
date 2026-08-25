@@ -27,6 +27,7 @@ type runner struct {
 	maxPrepareOverlap atomic.Int32
 	fail              map[string]error
 	hold              chan struct{}
+	repoless          bool
 }
 
 func newRunner() *runner { return &runner{fail: map[string]error{}} }
@@ -69,8 +70,12 @@ func (r *runner) Execute(_ context.Context, entry Resolved) (Outcome, error) {
 	if err, ok := r.fail[entry.Reference()]; ok {
 		return Outcome{}, err
 	}
+	repo := "open-hai/" + strings.TrimPrefix(entry.Reference(), "10.")
+	if r.repoless {
+		repo = ""
+	}
 	return Outcome{
-		Session: "s-" + entry.Reference(), Repo: "open-hai/" + strings.TrimPrefix(entry.Reference(), "10."),
+		Session: "s-" + entry.Reference(), Repo: repo,
 		Grade: "passed", Model: managed.ModelRef{Provider: "anthropic", ID: entry.Model},
 		Usage: managed.Usage{InputFresh: 100, Output: 20, Details: map[string]int64{"vendor_cost_micro_usd": 1000}},
 	}, nil
@@ -285,6 +290,31 @@ func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 	}
 }
 
+// A project that was never asked to publish is not reported as having failed
+// to publish.
+func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
+	r := newRunner()
+	r.repoless = true
+	state, err := Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, r,
+		Options{Parallel: 1, StatePath: filepath.Join(t.TempDir(), "batch.json")})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := state.Summarise().Empty; got != 0 {
+		t.Fatalf("a run with no publishing reported %d empty repositories", got)
+	}
+	if strings.Contains(state.Report(), "without publishing") {
+		t.Fatalf("the report blames a run for not publishing:\n%s", state.Report())
+	}
+	// Asked to publish and producing nothing is a different thing, and is
+	// reported.
+	state, _ = Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, r,
+		Options{Parallel: 1, Publishing: true, StatePath: filepath.Join(t.TempDir(), "batch.json")})
+	if got := state.Summarise().Empty; got != 1 {
+		t.Fatalf("a publishing run that produced nothing reported %d empty repositories", got)
+	}
+}
+
 // The report's totals equal the entries, and the vendor's cost is labelled as
 // the vendor's rather than as something replichai charged.
 func TestTheReportTotalsTheEntries(t *testing.T) {
@@ -295,6 +325,12 @@ func TestTheReportTotalsTheEntries(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	totals := state.Summarise()
+	// The pass count reads the grade's name. Grade is a uint8, so a bare
+	// conversion yields the rune at that code point and every batch reports
+	// zero passes.
+	if totals.Passed != 2 {
+		t.Fatalf("passed = %d of %d", totals.Passed, totals.Papers)
+	}
 	if totals.Usage.InputFresh != 200 || totals.Usage.Output != 40 {
 		t.Fatalf("totals = %+v", totals.Usage)
 	}

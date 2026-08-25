@@ -75,6 +75,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	case "audit":
 		return runAudit(ctx, args[1:], stdout, stderr)
 
+	case "run":
+		return runRun(ctx, args[1:], stdout, stderr)
+
 	case "resolve":
 		return runResolve(ctx, args[1:], stdout, stderr)
 
@@ -839,6 +842,7 @@ func usage(w *os.File) {
 
 usage:
   replichai audit <paper-ref> [flags]
+  replichai run <project-file> [flags]
   replichai resolve <paper-ref>
   replichai publish <artifact-dir> <paper-ref> [flags]
   replichai finish <owner>/<repo> <paper-ref> --session <id> [flags]
@@ -858,6 +862,15 @@ flags for audit:
   -owner          GitHub owner for -publish (default "`+publish.DefaultOrg+`")
   -invite         GitHub login to invite as a collaborator
   -detach         with -publish, start the run and return; finish it later
+  -model          model to run on: a tier (best, balanced, fast) or provider/id
+  -sandbox        with -runtime local: host (srt) or container (podman, docker)
+  -harness        with -runtime local: claude-code or codex
+
+flags for run (a project file is one paper per line, or a papers: list in YAML):
+  -parallel       how many papers to run at once
+  -resume         skip the papers that already finished
+  -publish        publish each reproduction to its own repository
+  everything audit takes, applied to every paper in the project
 
 flags for rates:
   -runtime        managed runtime to ask (default "anthropic-managed")

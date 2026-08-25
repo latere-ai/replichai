@@ -17,8 +17,12 @@ const stateVersion = 1
 // State is a project's progress, rewritten after every change so a batch
 // killed at any point leaves a file that is both valid and current.
 type State struct {
-	Version    int          `json:"version"`
-	Project    string       `json:"project,omitempty"`
+	Version int    `json:"version"`
+	Project string `json:"project,omitempty"`
+	// Publishing says the batch was asked to publish. Without it an
+	// ordinary local run would be reported as having failed to publish
+	// something it was never asked to.
+	Publishing bool         `json:"publishing,omitempty"`
 	StartedAt  time.Time    `json:"started_at"`
 	FinishedAt time.Time    `json:"finished_at,omitzero"`
 	Entries    []EntryState `json:"entries"`
@@ -119,10 +123,13 @@ func (s State) Summarise() Totals {
 		default:
 			totals.Pending++
 		}
-		if entry.Grade == string(managed.GradePassed) {
+		// Grade.String(), not a conversion: Grade is a uint8, and
+		// string(GradePassed) is the rune at that code point rather than
+		// the word "passed" — which counted every batch as zero passes.
+		if entry.Grade == managed.GradePassed.String() {
 			totals.Passed++
 		}
-		if entry.Phase == Done && entry.Repo == "" {
+		if s.Publishing && entry.Phase == Done && entry.Repo == "" {
 			totals.Empty++
 		}
 		totals.Usage.Add(entry.Usage)
@@ -181,7 +188,7 @@ func (s State) Report() string {
 				fmt.Fprintf(&b, "- %s failed: %s\n", entry.Paper, oneLine(entry.Error))
 			case !entry.Phase.Terminal():
 				fmt.Fprintf(&b, "- %s did not run.\n", entry.Paper)
-			case entry.Repo == "":
+			case s.Publishing && entry.Repo == "":
 				fmt.Fprintf(&b, "- %s finished without publishing a repository.\n", entry.Paper)
 			}
 		}
