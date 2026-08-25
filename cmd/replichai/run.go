@@ -17,6 +17,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/publish"
 )
 
 // runRun drives a whole replication project: a list of papers, run in
@@ -33,7 +34,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long one paper may take")
 		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "revision budget per paper")
 		doPublish    = fs.Bool("publish", false, "publish each reproduction to its own repository")
-		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", "open-hai"), "GitHub owner for --publish")
+		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
 		resume       = fs.Bool("resume", false, "skip the papers that already finished")
 		local        localOptions

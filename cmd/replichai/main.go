@@ -90,6 +90,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	case "org":
 		return runOrg(ctx, args[1:], stdout, stderr)
 
+	case "sessions":
+		return runSessions(ctx, args[1:], stdout, stderr)
+
 	case "project":
 		return runProject(ctx, args[1:], stdout, stderr)
 
@@ -900,6 +903,7 @@ usage:
   replichai publish <artifact-dir> <paper-ref> [flags]
   replichai finish <owner>/<repo> <paper-ref> --session <id> [flags]
   replichai login | whoami | logout | org [<org-uuid>|--personal]
+  replichai sessions ls | replichai sessions prune [--older-than 7d]
   replichai project create <title> | replichai project ls
   replichai push <project-file> --project <id>
   replichai providers

@@ -46,6 +46,7 @@ import (
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
+	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 	"github.com/latere-ai/replichai/internal/spa"
 	"github.com/latere-ai/replichai/internal/webauth"
 )
@@ -99,7 +100,7 @@ func run() error {
 		return err
 	}
 	credentials := runtimes.ResolveCredentials(os.LookupEnv)
-	catalog, err := builtin.Catalog(builtin.Config{Anthropic: builtin.AnthropicConfig{
+	catalog, err := builtin.Catalog(builtin.Config{Local: serverLocalConfig(), Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
 	}})
 	if err != nil {
@@ -330,6 +331,28 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	// One principal, two credential sources. The bearer runs first and, where
 	// one is presented, the cookie is not consulted at all (045j).
 	return bearer(login.Middleware(guarded)), nil
+}
+
+// serverLocalConfig is what the local runtime needs where an operator selects
+// it here. The catalogue registers the name whether or not it is configured, so
+// without this a REPLICHAI_RUNTIME=local server would refuse with a message
+// about composition roots rather than about the machine.
+func serverLocalConfig() builtin.LocalConfig {
+	home, _ := os.UserHomeDir()
+	root := os.Getenv("REPLICHAI_SESSION_ROOT")
+	if root == "" {
+		root = filepath.Join(home, ".replichai", "sessions")
+	}
+	return builtin.LocalConfig{
+		Sandbox:    sandbox.DriverName(os.Getenv("REPLICHAI_SANDBOX")),
+		Harness:    os.Getenv("REPLICHAI_HARNESS"),
+		Engine:     os.Getenv("REPLICHAI_CONTAINER_ENGINE"),
+		Image:      os.Getenv("REPLICHAI_HARNESS_IMAGE"),
+		ModelsFile: os.Getenv("REPLICHAI_MODELS_FILE"),
+		Retention:  os.Getenv("REPLICHAI_SESSION_RETENTION"),
+		Root:       root, Home: home,
+		Lookup: os.LookupEnv, Environ: os.Environ(),
+	}
 }
 
 // bearer is the terminal's credential path. A deployment that configures no
