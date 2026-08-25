@@ -6,7 +6,7 @@ The MVP proves the loop on **single-study, machine-runnable-inner-loop papers** 
 
 ## 1. A paper is not one study
 
-The engine and the 007 series lean on *paper → an inner loop → a reproduction*. Real papers — across HCI, psychology, and the social sciences — often carry **multiple studies**: chained (Study 2's design depends on Study 1's finding) or parallel (several studies triangulating one claim). This assumption is load-bearing and currently unquestioned.
+The engine and the 007 series lean on *paper → an inner loop → a reproduction*. Real papers — across HCI, psychology, and the social sciences — often carry **multiple studies**: chained (Study 2's design depends on Study 1's finding) or parallel (several studies triangulating one claim). This assumption runs through everything and is currently unquestioned.
 
 Open questions:
 - **What is the unit?** Paper, study, or experiment? The project model (006) can already hold multiple runs — does a paper map to one project with *N* studies, or to *N* reproductions? A paper→study hierarchy likely has to appear somewhere in identity/registry keying.
@@ -36,7 +36,7 @@ The public zone (006, 007) assumes an owner may publish *"this paper's inner loo
 Open questions:
 - **Right of reply.** Can an author attach a response to a published run, visible on the same page? Does that make them a participant in a project they do not own, and what does that do to the access model (006c, 006n)?
 - **Correction and supersession.** We ran the wrong commit, or missed a data file the authors would have pointed us to. Who can trigger a re-run — only the owner? Does a corrected verdict *replace* the wrong one, or supersede it with the original still reachable? 006o withdraws a publication; it does not revise one.
-- **What the artifact claims for itself.** A verdict nobody is obliged to accept still needs to state its own status precisely: what was run, on what, and what it does *not* assert. Closer to a lab notebook than a ruling, and the wording is load-bearing.
+- **What the artifact claims for itself.** A verdict nobody is obliged to accept still needs to state its own status precisely: what was run, on what, and what it does *not* assert. Closer to a lab notebook than a ruling, and the wording decides what it claims.
 
 This is not hypothetical caution. [`docs/landscape.md`](../docs/landscape.md) found it twice from independent directions: the frontier labs avoid audit products because being a researcher's co-pilot and their auditor are incompatible postures, and the incumbents' real edge was **mandate** — the standing to be the entity whose verdict counts — rather than technology.
 

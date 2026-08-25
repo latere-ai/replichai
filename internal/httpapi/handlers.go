@@ -1142,7 +1142,7 @@ func (rt *Router) recordPaper(r *http.Request, projectID, principal, ref string)
 // network fetches is exactly the half-failure paper.Key was chosen to avoid — a
 // four-paper create would wait on the slowest source, and a client that timed
 // out would be left with the papers recorded and nothing to show for it.
-// Nothing here is load-bearing: every title it writes, the first session's
+// Nothing here is essential: every title it writes, the first session's
 // Resolve phase would write anyway.
 //
 // The client's own preview is never trusted onto the record. The New-project

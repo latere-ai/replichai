@@ -17,7 +17,7 @@ The seed phase needs a number. It also needs the number to survive the two ways 
 
 ## Decisions
 
-**The check lives inside `Enqueue`, in the same transaction as the insert.** Not in a handler, not in a middleware. Two reasons, and the second is the load-bearing one:
+**The check lives inside `Enqueue`, in the same transaction as the insert.** Not in a handler, not in a middleware. Two reasons, and the second is the stronger one:
 
 - A handler check is bypassable. `Enqueue` is the single narrowest point every session passes through — the two HTTP doors and any third one added later — so a new submit path inherits the cap instead of quietly escaping it. This is the same structural argument 006c makes for the gate.
 - A read-then-insert check races. Two concurrent submits both read "4 of 5 used" and both insert. Counting inside the writing transaction, next to the double-trigger guard that already lives there, makes the cap exact rather than approximate.

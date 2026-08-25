@@ -25,7 +25,7 @@ PATCH /me/profile { … }  → the saved profile
 
 Both are gated (an invited user's own record) and neither takes a principal in the body — the profile written is always the caller's.
 
-**The profile is a default; the sign-off is a snapshot.** This is the load-bearing decision. The wizard *prefills* from the profile, but what the owner confirms is copied onto the project row at sign-off and never read from the profile again. Changing your institution next year does not silently rewrite what an already-published attestation claimed — the record keeps saying what you signed. This is the same rule the manifest already follows: a verdict is an artifact, not a view.
+**The profile is a default; the sign-off is a snapshot.** This is the central decision. The wizard *prefills* from the profile, but what the owner confirms is copied onto the project row at sign-off and never read from the profile again. Changing your institution next year does not silently rewrite what an already-published attestation claimed — the record keeps saying what you signed. This is the same rule the manifest already follows: a verdict is an artifact, not a view.
 
 New columns on `projects`, all written by `SetPublic`, all empty for the v1 sign-offs that predate this spec:
 

@@ -10,7 +10,7 @@ Resolve the paper to a stable identity, ask the registry whether this paper has 
 
 The repository is then mounted into the sandbox, and the agent commits into it as it works. Its history is part of the result: a reproduction that arrives as one squashed drop says nothing about how it was reached.
 
-That makes the workspace boundary load-bearing. The agent writes its reproduction inside the mounted repository and keeps every download — the paper PDF, datasets, benchmarks, anything third-party — outside it, in `/tmp`. Nothing filters the push, so this discipline is what keeps the repository publishable, and it is checked afterwards rather than assumed.
+The workspace boundary is therefore what keeps the result clean. The agent writes its reproduction inside the mounted repository and keeps every download — the paper PDF, datasets, benchmarks, anything third-party — outside it, in `/tmp`. Nothing filters the push, so this discipline is what keeps the repository publishable, and it is checked afterwards rather than assumed.
 
 ## 1. Acquire the paper
 
@@ -55,7 +55,7 @@ Worth scoring separately: whether released code still *runs*. Code that exists b
 
 ## 7. Write the verdict
 
-A per-component reproduction table for the inner loop: each component the boundary marked inner, scored *reproduced*, *partial*, or *blocked*, with the evidence or the specific blocker. This table is the load-bearing result, not a single number.
+A per-component reproduction table for the inner loop: each component the boundary marked inner, scored *reproduced*, *partial*, or *blocked*, with the evidence or the specific blocker. This table is the result, not a single number.
 
 How many components an inner loop has is itself a judgment, so the scalar rate is treated as a summary, not a measurement. The same paper, audited twice under an identical method, honestly decomposes into different counts — in one pair of runs, five and seven — and any rate derived from it swings with the slicing (there, 40% and 79%) while the verdict, the boundary, and the component-level conclusions stay put. A rate is therefore reported only as a derived footnote to the table, labelled as a summary of one particular decomposition, and never compared across papers or across runs. The rubric grades the table, not the number.
 

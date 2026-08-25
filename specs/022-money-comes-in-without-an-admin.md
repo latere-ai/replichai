@@ -112,7 +112,7 @@ flowchart TD
     H --> I[Stripe stops retrying]
 ```
 
-A duplicate delivery hits the index, inserts nothing, and the webhook still returns `200` so Stripe stops retrying. At-most-once insert over a folded balance is exactly-once crediting, with no stored counter to drift. Every other entry (`allocate`, `hold`, `charge`, an admin `topup`) leaves `external_ref` NULL, and the partial index ignores them — the column is dead weight for internal moves and load-bearing only where an outside system's identifier is the idempotency key.
+A duplicate delivery hits the index, inserts nothing, and the webhook still returns `200` so Stripe stops retrying. At-most-once insert over a folded balance is exactly-once crediting, with no stored counter to drift. Every other entry (`allocate`, `hold`, `charge`, an admin `topup`) leaves `external_ref` NULL, and the partial index ignores them — the column is dead weight for internal moves and is used only where an outside system's identifier is the idempotency key.
 
 This is the single highest-risk part of the spec. It is also the smallest: one column, one index, one `ON CONFLICT`.
 

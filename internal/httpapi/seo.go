@@ -19,7 +19,7 @@ import (
 // address to what it is *about* before the shell goes out, and hand the shell a
 // seo.Page to render in place of its default head.
 //
-// Two rules govern every builder here, and both are load-bearing.
+// Two rules govern every builder here, and neither is optional.
 //
 // The first is that a page is described only when the thing at that address is
 // public — `Visibility == public && !Trashed()`, or a profile whose owner turned

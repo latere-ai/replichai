@@ -27,7 +27,7 @@ It allows everything, disallows the operator screens (`/new`, `/wallet`, `/setti
 
 **`lastmod` is the modified time already computed for the registry** (018's `ModifiedAt` over the project, its papers and its sessions), and a session's is its `UpdatedAt`. A date the app cannot substantiate is worse than no date, so a zero time omits the element rather than emitting today.
 
-**It is read from the store on request, cached for an hour.** The public zone is small and the query is the registry's own. `Cache-Control: public, max-age=3600` keeps a crawler from making it a load-bearing query, and an hour is short enough that a publication appears the same day.
+**It is read from the store on request, cached for an hour.** The public zone is small and the query is the registry's own. `Cache-Control: public, max-age=3600` keeps a crawler from making it a hot query, and an hour is short enough that a publication appears the same day.
 
 **A failed read is a 500, not an empty sitemap.** An empty `<urlset>` is a statement that there is nothing to index, and a crawler will believe it.
 

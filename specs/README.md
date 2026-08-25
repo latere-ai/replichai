@@ -135,7 +135,7 @@ This was proven end to end: a real reproduction (`open-hai/short-form-videos-…
 
 **Two publish paths, on purpose.** The *mount* path (006f) is the real one: the agent commits into a live GitHub repo, and the gate becomes a post-run *verifier* (`VerifyTree`, a blocklist of third-party data, because an agent-authored repo is a full project, not a fixed file set). The *filesystem* path (002: `Forge`/`FSForge`, `Classify` allow-list, the `publish` CLI command) stays as the offline, no-backend way to exercise publishing.
 
-## Load-bearing decisions (audit these)
+## Decisions to audit
 
 - **The project is the tenant** — no org in the product; each user owns private projects (owner + invited contributors), private by default, made public by the owner. One backend credential pays for every run. The app owns the ownership model; artifacts live in a `Store` (the GitHub forge for the MVP, [drive](https://drive.latere.ai) later, behind one seam — 008). (006)
 - **The registry is derived, not stored** — read the org's manifests; no second source of truth. Job-lifecycle state (a later web concern) is the only thing that gets a database. (003, 006b)
@@ -237,7 +237,7 @@ Built, and every acceptance criterion it set itself holds.
 
 ### Half done (8)
 
-Shipped and load-bearing, but each is knowingly short of what its own spec asked for. The status column says which part is missing — read these before assuming the spec describes the code.
+Shipped and in use, but each is knowingly short of what its own spec asked for. The status column says which part is missing — read these before assuming the spec describes the code.
 
 | # | Spec | Status | Depends on |
 |---|---|---|---|

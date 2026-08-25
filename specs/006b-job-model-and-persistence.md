@@ -10,7 +10,7 @@ An audit runs for hours, and the browser that submitted it will be long gone. Th
 
 ## Decisions
 
-**Jobs live in Postgres; reproductions never do.** The database holds work *in flight* — a paper submitted, now resolving, now running — and the deployment's own authorisation trail. It does not hold finished reproductions: those are their published repositories, read back through 003. This split is the load-bearing rule. A job row is disposable; deleting it loses a bit of history, not a reproduction. The registry stays derived, so nothing in Postgres can drift from what the forge actually holds.
+**Jobs live in Postgres; reproductions never do.** The database holds work *in flight* — a paper submitted, now resolving, now running — and the deployment's own authorisation trail. It does not hold finished reproductions: those are their published repositories, read back through 003. This split is the central rule. A job row is disposable; deleting it loses a bit of history, not a reproduction. The registry stays derived, so nothing in Postgres can drift from what the forge actually holds.
 
 **A job is the unit of *execution*, and it runs an audit or an experiment.** [007](007-from-reproduction-to-replication.md) puts a project / instrument / experiment model *above* the job; it does not replace the job. A job gains a `Kind` and a project, and the phases below are identical for both kinds — the same claim path, the same transition function, the same progress observation, a different callee. This spec is written with that in place because 007 landed before it was built; retrofitting a kind onto a live table would have been a migration.
 

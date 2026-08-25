@@ -264,7 +264,7 @@ func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 	}
 }
 
-// The load-bearing decision: a missing file is recorded and the run still
+// The decision that matters: a missing file is recorded and the run still
 // publishes. The manifest is the system's word and must not depend on the
 // agent's JSON.
 func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
