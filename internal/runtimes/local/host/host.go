@@ -138,9 +138,13 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	token := spec.Name
 	statusPath := s.statusPath(spec.LogPath, spec.Name)
 	_ = os.Remove(statusPath)
+	_ = os.Remove(statusPath + ".part")
 	command := append([]string{srt, "--settings", settingsPath}, spec.Argv...)
-	script := fmt.Sprintf("# replichai-stage:%s\n%s\nprintf %%s $? > %s\n",
-		token, shellJoin(command), shellQuote(statusPath))
+	// The status is written to a temporary file and renamed, so it appears
+	// whole or not at all. Written in place it can be observed empty — the
+	// process has exited, the file exists, and nothing is in it yet — which
+	// reads as a stage the driver lost.
+	script := wrapperScript(token, command, statusPath)
 
 	// The script is built here from a shell-quoted argv: every element is
 	// quoted by shellJoin, so nothing in a task or a model id is interpreted.
@@ -163,6 +167,19 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	// work at all.
 	_ = launcher.Process.Release()
 	return sandbox.StageHandle{Driver: sandbox.Host, ID: fmt.Sprintf("pid:%d:%s:%s", pid, token, spec.LogPath)}, nil
+}
+
+// wrapperScript is what the driver actually runs: the stage's command, and the
+// record of how it exited.
+//
+// The status is written to a temporary file and renamed, so it appears whole or
+// not at all. Written where it is read it can be observed empty — the process
+// has exited, the file exists, and nothing is in it yet — which reads as a
+// stage the driver lost and fails a session that actually finished.
+func wrapperScript(token string, command []string, statusPath string) string {
+	return fmt.Sprintf("# replichai-stage:%s\n%s\ncode=$?\nprintf %%s $code > %s\nmv -f %s %s\n",
+		token, shellJoin(command),
+		shellQuote(statusPath+".part"), shellQuote(statusPath+".part"), shellQuote(statusPath))
 }
 
 // profile is the whole access decision for one stage.
@@ -214,13 +231,21 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 	if err != nil {
 		return sandbox.StageStatus{}, err
 	}
-	if code, ok := readStatus(s.statusPath(logPath, token)); ok {
+	statusPath := s.statusPath(logPath, token)
+	if code, ok := readStatus(statusPath); ok {
 		return sandbox.StageStatus{ExitCode: code}, nil
 	}
 	if !alive(pid) || !belongsTo(pid, token) {
-		// No status file and no process: the stage went away without
-		// recording why. That is not success, and the runtime treats an
-		// unknowable exit as a failure rather than reporting one.
+		// The wrapper records its status before it exits, so a process that
+		// is gone should have left one. Look once more before calling the
+		// stage lost: the two observations race, and an exit read as gone
+		// would fail a session that actually finished.
+		if code, ok := readStatus(statusPath); ok {
+			return sandbox.StageStatus{ExitCode: code}, nil
+		}
+		// No status and no process: the stage went away without recording
+		// why. That is not success, and an unknowable exit must not read as
+		// one.
 		return sandbox.StageStatus{Gone: true}, nil
 	}
 	return sandbox.StageStatus{Running: true}, nil
