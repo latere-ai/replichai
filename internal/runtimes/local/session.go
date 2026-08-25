@@ -86,7 +86,7 @@ type Session struct {
 // subdirectories a run needs. The workspace is initialised as a git repository
 // with a committer already configured, so a run cannot stall on git refusing
 // an empty user.email — and with no remote, because the host pushes (045g).
-func CreateSession(root, id string) (*Session, error) {
+func CreateSession(root, id string, environ []string) (*Session, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, errors.New("a session needs an id")
 	}
@@ -103,7 +103,7 @@ func CreateSession(root, id string) (*Session, error) {
 			return nil, fmt.Errorf("create %s: %w", child, err)
 		}
 	}
-	if err := initRepository(session.Workspace()); err != nil {
+	if err := initRepository(session.Workspace(), environ); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -351,7 +351,7 @@ func (s *Session) readJSON(name string, into any) error {
 // set and no remote. The identity is here so a run cannot stall on git
 // refusing to commit; the absence of a remote is the whole containment
 // argument of 045g.
-func initRepository(workspace string) error {
+func initRepository(workspace string, environ []string) error {
 	steps := [][]string{
 		{"init", "--initial-branch=main"},
 		{"config", "user.name", "replichai"},
@@ -360,7 +360,7 @@ func initRepository(workspace string) error {
 	}
 	for _, args := range steps {
 		command := exec.Command("git", append([]string{"-C", workspace}, args...)...)
-		command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		command.Env = append(append([]string(nil), environ...), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
 		if output, err := command.CombinedOutput(); err != nil {
 			return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 		}

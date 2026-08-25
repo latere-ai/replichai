@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -56,13 +57,13 @@ func TestLocalIsComposedAndRefusesAnUnusableMachine(t *testing.T) {
 		}
 	}
 	// An unknown sandbox names the ones that exist.
-	catalog, _ = Catalog(Config{Local: LocalConfig{Sandbox: "vm", Root: t.TempDir()}})
+	catalog, _ = Catalog(Config{Local: LocalConfig{Sandbox: "vm", Root: t.TempDir(), Lookup: os.LookupEnv}})
 	_, err = catalog.Build(context.Background(), "local")
 	if err == nil || !strings.Contains(err.Error(), "host, container") {
 		t.Fatalf("an unknown sandbox = %v", err)
 	}
 	// An unknown harness lists the installed ones.
-	catalog, _ = Catalog(Config{Local: LocalConfig{Harness: "nope", Root: t.TempDir()}})
+	catalog, _ = Catalog(Config{Local: LocalConfig{Harness: "nope", Root: t.TempDir(), Lookup: os.LookupEnv}})
 	_, err = catalog.Build(context.Background(), "local")
 	if err == nil || !strings.Contains(err.Error(), "claude-code, codex") {
 		t.Fatalf("an unknown harness = %v", err)

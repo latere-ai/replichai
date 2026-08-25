@@ -16,7 +16,7 @@ import (
 
 func newSession(t *testing.T) *Session {
 	t.Helper()
-	session, err := CreateSession(t.TempDir(), "7f3a91c2")
+	session, err := CreateSession(t.TempDir(), "7f3a91c2", os.Environ())
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

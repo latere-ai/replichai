@@ -29,7 +29,8 @@ func build(t *testing.T, script localtest.Script) (*local.Runtime, *localtest.Sa
 		t.Fatalf("NewCatalog: %v", err)
 	}
 	runtime, err := local.New(local.Config{
-		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog, Root: t.TempDir(),
+		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
+		Root: t.TempDir(), Environ: os.Environ(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -272,7 +273,7 @@ func TestAFreshRuntimeFinishesADetachedSession(t *testing.T) {
 	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
 	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, func(string) (string, bool) { return "", false })
 	root := t.TempDir()
-	config := local.Config{Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog, Root: root}
+	config := local.Config{Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog, Root: root, Environ: os.Environ()}
 
 	starter, err := local.New(config)
 	if err != nil {
@@ -324,7 +325,7 @@ func TestAReferenceFromAnotherDriverIsRefused(t *testing.T) {
 	other := &containerNamed{Sandbox: localtest.New(localtest.Script{})}
 	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
 	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, func(string) (string, bool) { return "", false })
-	stranger, err := local.New(local.Config{Sandbox: other, Harness: harness.NewClaudeCode(), Catalog: catalog, Root: t.TempDir()})
+	stranger, err := local.New(local.Config{Sandbox: other, Harness: harness.NewClaudeCode(), Catalog: catalog, Root: t.TempDir(), Environ: os.Environ()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -364,7 +365,7 @@ func TestDiscardRetentionRemovesTheDirectory(t *testing.T) {
 	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, func(string) (string, bool) { return "", false })
 	runtime, err := local.New(local.Config{
 		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
-		Root: t.TempDir(), Retention: local.RetainNever,
+		Root: t.TempDir(), Retention: local.RetainNever, Environ: os.Environ(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

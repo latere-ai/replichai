@@ -32,6 +32,9 @@ type Config struct {
 	ConfigDirs []string
 	// Look resolves an executable, defaulting to exec.LookPath.
 	Look func(string) (string, error)
+	// Environ is the base environment a stage inherits — PATH above all.
+	// It arrives from the composition root rather than being read here.
+	Environ []string
 }
 
 // Sandbox is the srt driver.
@@ -41,9 +44,6 @@ type Sandbox struct{ config Config }
 func New(config Config) *Sandbox {
 	if config.Platform == "" {
 		config.Platform = sandbox.CurrentPlatform()
-	}
-	if config.Home == "" {
-		config.Home, _ = os.UserHomeDir()
 	}
 	if config.Look == nil {
 		config.Look = exec.LookPath
@@ -194,12 +194,8 @@ func (s *Sandbox) profile(spec sandbox.StageSpec) Profile {
 // passed through the environment of the launcher rather than on a command
 // line, so they never appear in the process table.
 func (s *Sandbox) environment(spec sandbox.StageSpec) []string {
-	base := []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + s.config.Home,
-		"LANG=" + os.Getenv("LANG"),
-		"TERM=dumb",
-	}
+	base := append([]string(nil), s.config.Environ...)
+	base = append(base, "HOME="+s.config.Home, "TERM=dumb")
 	for name, value := range spec.Env {
 		base = append(base, name+"="+value)
 	}
