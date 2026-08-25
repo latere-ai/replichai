@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"flag"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -526,5 +528,72 @@ func TestDetachedSessionReferenceRoundTripsOpaqueLocator(t *testing.T) {
 	}
 	if _, err := decodeSessionRef("not base64!"); err == nil {
 		t.Fatal("invalid session reference accepted")
+	}
+}
+
+// The local runtime is reachable from the terminal, and its choices are flags
+// rather than parts of its name: one runtime, whichever sandbox and harness an
+// operator picked.
+func TestLocalRuntimeIsInstalledAndConfigurable(t *testing.T) {
+	catalog, name, err := runtimeCatalog("local", localOptions{})
+	if err != nil {
+		t.Fatalf("runtimeCatalog: %v", err)
+	}
+	if name != "local" {
+		t.Fatalf("canonical name = %q", name)
+	}
+	found := false
+	for _, installed := range catalog.Names() {
+		if installed == "local" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the local runtime is not installed: %v", catalog.Names())
+	}
+
+	// Every local choice has an environment default, so a machine's habits
+	// are set once rather than typed on every run.
+	t.Setenv("REPLICHAI_SANDBOX", "container")
+	t.Setenv("REPLICHAI_HARNESS", "codex")
+	t.Setenv("REPLICHAI_SESSION_ROOT", "/tmp/sessions-from-the-environment")
+	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var options localOptions
+	options.bind(fs)
+	if err := fs.Parse(nil); err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if options.sandbox != "container" || options.harness != "codex" {
+		t.Fatalf("the environment did not reach the options: %+v", options)
+	}
+	if options.root != "/tmp/sessions-from-the-environment" {
+		t.Errorf("session root = %q", options.root)
+	}
+	// A flag beats the environment.
+	fs = flag.NewFlagSet("audit", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	options = localOptions{}
+	options.bind(fs)
+	if err := fs.Parse([]string{"--sandbox", "host"}); err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if options.sandbox != "host" {
+		t.Fatalf("the flag did not beat the environment: %+v", options)
+	}
+}
+
+// audit takes a model, which is what makes the choice of model reachable at
+// all: the option existed and nothing on the command line reached it.
+func TestAuditAcceptsAModel(t *testing.T) {
+	for _, value := range []string{"best", "anthropic/claude-opus-5"} {
+		_, _, err := capture(t, "audit", "https://arxiv.org/abs/2603.01795",
+			"--runtime", "memory", "--model", value, "--out", t.TempDir())
+		// The memory runtime resolves only its own tiers, so an exact
+		// reference is refused there — what matters is that the flag was
+		// parsed and reached the session rather than being unknown.
+		if err != nil && strings.Contains(err.Error(), "flag provided but not defined") {
+			t.Fatalf("--model %q is not a flag: %v", value, err)
+		}
 	}
 }

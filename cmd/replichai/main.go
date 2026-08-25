@@ -59,7 +59,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return runRates(ctx, args[1:], stdout, stderr)
 
 	case "providers":
-		catalog, _, err := runtimeCatalog(defaultCLIRuntime)
+		catalog, _, err := runtimeCatalog(defaultCLIRuntime, localOptions{})
 		if err != nil {
 			return err
 		}
@@ -109,7 +109,10 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
 		detach       = fs.Bool("detach", false, "with --publish, start the run and return; finish it later")
+		model        = fs.String("model", audit.DefaultModelPreference, "model to run on: a tier (best, balanced, fast) or provider/id")
+		local        localOptions
 	)
+	local.bind(fs)
 	// flag stops parsing at the first non-flag argument, so a plain
 	// fs.Parse would silently drop every flag in
 	// `replichai audit <paper> --runtime memory` -- the natural way to type
@@ -135,7 +138,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	if err != nil {
 		return err
 	}
-	controller, _, err := controllerFor(ctx, *runtimeName, *interval)
+	controller, _, err := controllerFor(ctx, *runtimeName, *interval, local)
 	if err != nil {
 		return err
 	}
@@ -145,6 +148,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		return nil
 	}}
 	opts := []audit.SessionOption{
+		audit.WithSessionModel(*model),
 		audit.WithSessionMaxRevisions(*maxRevisions),
 		audit.WithSessionTimeout(*timeout),
 		audit.WithSessionHooks(hooks),
@@ -460,7 +464,9 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		verdictFlag = fs.String("verdict", "", "override the recorded verdict when no session is polled")
 		interval    = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout     = fs.Duration("timeout", audit.DefaultTimeout, "how long to wait for the session")
+		local       localOptions
 	)
+	local.bind(fs)
 	var positional []string
 	for rest := args; ; {
 		if err := fs.Parse(rest); err != nil {
@@ -526,7 +532,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 				return err
 			}
 		}
-		controller, runtime, err := controllerFor(ctx, rawRuntime, *interval)
+		controller, runtime, err := controllerFor(ctx, rawRuntime, *interval, local)
 		if err != nil {
 			return err
 		}
