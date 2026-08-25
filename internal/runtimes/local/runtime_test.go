@@ -108,12 +108,20 @@ func TestTheOutputDirectoryIsTheSessionsOwnWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	stages := driver.Stages()
-	if len(stages) != 1 || stages[0].Workdir != capabilities.OutputDir {
-		t.Fatalf("the session did not run in the advertised output directory: %q vs %q",
-			stages[0].Workdir, capabilities.OutputDir)
-	}
+	// The bootstrap runs first and never touches the workspace; the worker
+	// runs in the directory the caller was told about.
 	runToTerminal(t, runtime, ref)
+	worker := stageNamed(t, driver, "worker")
+	if worker.Workdir != capabilities.OutputDir {
+		t.Fatalf("the session did not run in the advertised output directory: %q vs %q",
+			worker.Workdir, capabilities.OutputDir)
+	}
+	bootstrap := stageNamed(t, driver, "bootstrap")
+	for _, path := range bootstrap.Paths {
+		if path.Host == capabilities.OutputDir {
+			t.Fatalf("the bootstrap was given the workspace: %+v", path)
+		}
+	}
 
 	// A second session gets its own directory rather than reusing the first.
 	second, err := runtime.Capabilities(context.Background())
@@ -136,9 +144,9 @@ func TestAGradedSessionRunsAWorkerThenAJudge(t *testing.T) {
 	if status.TerminalReason != managed.ReasonSucceeded {
 		t.Errorf("terminal reason = %q", status.TerminalReason)
 	}
-	stages := driver.Stages()
-	if len(stages) != 2 || !strings.HasPrefix(stages[0].Name, "worker") || !strings.HasPrefix(stages[1].Name, "judge") {
-		t.Fatalf("stages = %v", names(stages))
+	if got := names(driver.Stages()); len(got) != 3 ||
+		!strings.HasPrefix(got[0], "bootstrap") || !strings.HasPrefix(got[1], "worker") || !strings.HasPrefix(got[2], "judge") {
+		t.Fatalf("stages = %v", got)
 	}
 	// The verdict names the model that produced it, so a reader can see
 	// when the grader and the worker were the same thing.
@@ -154,7 +162,7 @@ func TestTheJudgeCannotWriteWhatItGrades(t *testing.T) {
 	runToTerminal(t, runtime, start(t, runtime, spec(true)))
 
 	stages := driver.Stages()
-	worker, judge := stages[0], stages[1]
+	worker, judge := stageNamed(t, driver, "worker"), stageNamed(t, driver, "judge")
 	for _, path := range judge.Paths {
 		if path.Destination() == "/workspace" && path.Access != sandbox.ReadOnly {
 			t.Fatalf("the judge can write the workspace: %+v", path)
@@ -261,8 +269,51 @@ func TestAFailedWorkerFailsTheSession(t *testing.T) {
 	if !strings.Contains(status.Error, "exited 3") {
 		t.Errorf("error = %q", status.Error)
 	}
-	if len(driver.Stages()) != 1 {
+	if len(driver.Stages()) != 2 {
 		t.Fatalf("a failed worker was graded anyway: %v", names(driver.Stages()))
+	}
+}
+
+// A dependency that will not install fails the session before any agent runs,
+// with a reason — rather than surfacing an hour later as an agent that cannot
+// import what the method told it to use.
+func TestAFailedBootstrapFailsBeforeAnyAgentRuns(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{BootstrapExit: 1})
+	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	if status.State != managed.StateFailed || status.TerminalReason != managed.ReasonRuntimeFailed {
+		t.Fatalf("status = %+v", status)
+	}
+	if !strings.Contains(status.Error, "dependencies are not installed") {
+		t.Errorf("error = %q", status.Error)
+	}
+	if got := names(driver.Stages()); len(got) != 1 {
+		t.Fatalf("an agent ran after a failed bootstrap: %v", got)
+	}
+}
+
+// The bootstrap installs what the specification declared, into the session's
+// own environment rather than the workspace: nothing installed belongs in the
+// reproduction, and one `git add -A` must not be able to commit an
+// interpreter.
+func TestTheBootstrapInstallsOutsideTheWorkspace(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{})
+	runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	bootstrap := stageNamed(t, driver, "bootstrap")
+	script := strings.Join(bootstrap.Argv, " ")
+	if !strings.Contains(script, "python3 -m venv") || !strings.Contains(script, "pypdf") {
+		t.Fatalf("the declared package was not installed: %s", script)
+	}
+	if !strings.Contains(script, "pip") || !strings.Contains(script, "freeze") {
+		t.Errorf("the bootstrap records nothing about what it resolved: %s", script)
+	}
+	for _, path := range bootstrap.Paths {
+		if strings.HasSuffix(path.Host, "/workspace") {
+			t.Fatalf("the bootstrap can reach the workspace: %+v", path)
+		}
+	}
+	// No credential reaches a stage that talks to no model.
+	if len(bootstrap.EnvFile) != 0 {
+		t.Errorf("the bootstrap carries a credential: %v", bootstrap.EnvFile)
 	}
 }
 
@@ -431,6 +482,19 @@ func TestANotReadyDriverRefusesWithInstructions(t *testing.T) {
 	if len(driver.Stages()) != 0 {
 		t.Fatal("a stage was launched on a machine that is not ready")
 	}
+}
+
+// stageNamed is the first stage of one role. Tests ask by role rather than by
+// index, so inserting a stage into the sequence does not rewrite them.
+func stageNamed(t *testing.T, driver *localtest.Sandbox, role string) sandbox.StageSpec {
+	t.Helper()
+	for _, stage := range driver.Stages() {
+		if strings.HasPrefix(stage.Name, role) {
+			return stage
+		}
+	}
+	t.Fatalf("no %s stage ran: %v", role, names(driver.Stages()))
+	return sandbox.StageSpec{}
 }
 
 func names(stages []sandbox.StageSpec) []string {

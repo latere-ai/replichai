@@ -182,7 +182,10 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	}
 
 	locator := Locator{Driver: r.config.Sandbox.Name(), Harness: r.config.Harness.Name()}
-	if err := r.launch(ctx, session, &locator, spec, model, gateway, harness.StageWorker, spec.Task); err != nil {
+	// The bootstrap runs first and as a stage of its own, so a dependency
+	// that will not install fails the session with a reason rather than
+	// surfacing an hour later as an agent that cannot import.
+	if err := r.launch(ctx, session, &locator, spec, model, gateway, harness.StageBootstrap, spec.Task); err != nil {
 		return managed.SessionRef{}, err
 	}
 	status := managed.Status{
@@ -262,6 +265,14 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 	spec managed.SessionSpec, model managed.ModelRef, gateway harness.Gateway) error {
 	current := locator.Stages[len(locator.Stages)-1]
 	switch current.Role {
+	case harness.StageBootstrap:
+		if *current.Exit != 0 {
+			r.finish(status, managed.StateFailed, managed.ReasonRuntimeFailed,
+				fmt.Sprintf("the bootstrap exited %d; the session's dependencies are not installed", *current.Exit))
+			return nil
+		}
+		r.recordPackages(session)
+		return r.launch(ctx, session, locator, spec, model, gateway, harness.StageWorker, spec.Task)
 	case harness.StageWorker, harness.StageRevision:
 		if *current.Exit != 0 {
 			r.finish(status, managed.StateFailed, managed.ReasonRuntimeFailed,
@@ -329,17 +340,25 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 	if role == harness.StageJudge {
 		request.Instructions = ""
 	}
-	argv, err := r.config.Harness.Argv(role, request)
-	if err != nil {
-		return err
-	}
-	env, secrets, err := r.config.Harness.Env(role, request)
-	if err != nil {
-		return err
-	}
-	files, err := r.config.Harness.Files(role, request)
-	if err != nil {
-		return err
+	var (
+		argv    []string
+		env     map[string]string
+		secrets []string
+		files   []harness.File
+		err     error
+	)
+	if role.Agentic() {
+		if argv, err = r.config.Harness.Argv(role, request); err != nil {
+			return err
+		}
+		if env, secrets, err = r.config.Harness.Env(role, request); err != nil {
+			return err
+		}
+		if files, err = r.config.Harness.Files(role, request); err != nil {
+			return err
+		}
+	} else {
+		argv = r.bootstrapArgv(spec, session)
 	}
 	for _, file := range files {
 		if !harness.Outside(session.Workspace(), file.Path) {
@@ -367,8 +386,13 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 	if stage.Network.Mode == "" {
 		stage.Network.Mode = sandbox.NetworkNone
 	}
-	if role == harness.StageJudge {
+	switch role {
+	case harness.StageJudge:
 		stage.Workdir = session.Grade()
+	case harness.StageBootstrap:
+		// The bootstrap never touches the workspace: nothing it installs
+		// belongs in the reproduction.
+		stage.Workdir, stage.Paths = session.Venv(), r.bootstrapPaths(session)
 	}
 	handle, err := r.config.Sandbox.Launch(ctx, stage)
 	if err != nil {
@@ -695,6 +719,28 @@ func (r *Runtime) harnessVersion(ctx context.Context) string {
 		return version
 	}
 	return ""
+}
+
+// recordPackages folds what the bootstrap actually resolved into the run's
+// environment record. Asking for numpy is not the same as having numpy 2.1.0,
+// and the record is what makes two reproductions comparable.
+func (r *Runtime) recordPackages(session *Session) {
+	manifest, err := os.ReadFile(filepath.Join(session.Venv(), PackageManifest))
+	if err != nil {
+		return
+	}
+	record, err := session.ReadEnvironment()
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(manifest), "\n") {
+		name, version, found := strings.Cut(strings.TrimSpace(line), "==")
+		if !found || name == "" {
+			continue
+		}
+		record.Packages = append(record.Packages, EnvironmentPkg{Manager: "pip", Name: name, Version: version})
+	}
+	_ = session.WriteEnvironment(record)
 }
 
 func readSpec(session *Session) (managed.SessionSpec, error) {
