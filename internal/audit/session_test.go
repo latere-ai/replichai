@@ -202,6 +202,8 @@ func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 		`"git log --oneline -5"`,
 		"OUTSIDE /s/workspace",
 		`"$TMPDIR"`,
+		"EGRESS_BLOCKED",
+		"never as \"no artifact",
 	} {
 		if !strings.Contains(protocol, want) {
 			t.Errorf("the workspace protocol is missing %q:\n%s", want, protocol)
