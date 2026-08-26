@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -259,5 +260,52 @@ func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 	}
 	if back.Toolchain["python"] != "3.13.2" {
 		t.Errorf("toolchain = %v", back.Toolchain)
+	}
+}
+
+// A local run builds in the directory that becomes the repository, so the
+// dependency tree it installs sits in the repository root. Keeping it out of a
+// commit is the repository's own rule, not something the agent has to
+// remember, and an agent that writes its own .gitignore must not be able to
+// undo it.
+func TestAnInstalledDependencyTreeCannotBeCommitted(t *testing.T) {
+	session := newSession(t)
+	workspace := session.Workspace()
+
+	packages := filepath.Join(workspace, "venv", "lib", "python3.13", "site-packages", "numpy")
+	if err := os.MkdirAll(packages, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for path, body := range map[string]string{
+		filepath.Join(packages, "__init__.py"):       "x",
+		filepath.Join(workspace, "node_modules.txt"): "not a tree",
+		filepath.Join(workspace, "src.py"):           "the reproduction",
+		// The agent authors its own ignore file, replacing anything seeded
+		// there. The rule must survive that.
+		filepath.Join(workspace, ".gitignore"): "*.log\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	command := exec.Command("git", "-C", workspace, "add", "-A")
+	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, output)
+	}
+	staged, err := exec.Command("git", "-C", workspace, "diff", "--cached", "--name-only").Output()
+	if err != nil {
+		t.Fatalf("git diff: %v", err)
+	}
+	listed := strings.Fields(string(staged))
+	for _, path := range listed {
+		if strings.HasPrefix(path, "venv/") {
+			t.Errorf("the dependency tree was staged: %v", listed)
+			break
+		}
+	}
+	if !slices.Contains(listed, "src.py") || !slices.Contains(listed, "node_modules.txt") {
+		t.Errorf("the reproduction's own files were not staged: %v", listed)
 	}
 }
