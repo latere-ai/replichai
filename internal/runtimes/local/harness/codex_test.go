@@ -28,16 +28,13 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 		}
 		ids[first[index].ID] = true
 	}
-	if usage.InputFresh != 2700 || usage.InputCached != 1000 || usage.Output != 720 {
+	// The fixture is a recorded run, so these are the numbers Codex itself
+	// reported for it.
+	if usage.InputFresh != 40212 || usage.InputCached != 30208 || usage.Output != 79 {
 		t.Fatalf("usage = %+v", usage)
 	}
-	// Reasoning output is decomposition of the output bucket, not a bucket:
-	// it is already counted in Output and pricing never iterates Details.
-	if usage.Details["reasoning_output"] != 300 {
-		t.Errorf("reasoning tokens = %d", usage.Details["reasoning_output"])
-	}
-	if usage.Extra["reasoning_output"] != 0 {
-		t.Error("reasoning tokens became a billable meter")
+	if len(usage.Extra) != 0 {
+		t.Error("a non-token figure became a billable meter")
 	}
 
 	// Every line produced an event carrying its raw payload, including the
@@ -55,10 +52,43 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 	for _, event := range first {
 		kinds = append(kinds, event.Kind)
 	}
-	for _, want := range []managed.EventKind{managed.KindThinking, managed.KindMessage, managed.KindToolUse, managed.KindToolResult, KindResult, KindRaw} {
+	// The kinds a real run produced: a thread and a turn opening, the
+	// agent's messages, the command it ran and what came back, the turn's
+	// result, and the two lines this build has no case for.
+	for _, want := range []managed.EventKind{managed.KindMessage, managed.KindToolUse, managed.KindToolResult, KindResult, KindRaw} {
 		if !slices.Contains(kinds, want) {
 			t.Errorf("no event of kind %q in %v", want, kinds)
 		}
+	}
+}
+
+// Reasoning is mapped where a run emits it. The recorded fixture is a trivial
+// task that produced none, so the mapping is asserted directly rather than
+// left to whether a model happened to think out loud.
+func TestCodexMapsReasoning(t *testing.T) {
+	events, err := NewCodex().Decode("worker-0", 0,
+		[]byte(`{"type":"item.completed","item":{"id":"item_9","type":"reasoning","text":"The paper is on arXiv."}}`))
+	if err != nil || len(events) != 1 || events[0].Kind != managed.KindThinking {
+		t.Fatalf("Decode = %+v, %v", events, err)
+	}
+	if events[0].Content != "The paper is on arXiv." {
+		t.Errorf("content = %q", events[0].Content)
+	}
+}
+
+// A started item and its completion are the same item; recording both would
+// say the same thing twice. A command is the exception: what it was and what
+// it returned are two different facts.
+func TestCodexDoesNotDoubleRecordAnItem(t *testing.T) {
+	started, err := NewCodex().Decode("worker-0", 0,
+		[]byte(`{"type":"item.started","item":{"id":"item_0","type":"agent_message","text":"hello"}}`))
+	if err != nil || len(started) != 0 {
+		t.Fatalf("a started message was recorded before it completed: %+v", started)
+	}
+	command, err := NewCodex().Decode("worker-0", 1,
+		[]byte(`{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"ls","status":"in_progress"}}`))
+	if err != nil || len(command) != 1 || command[0].Kind != managed.KindToolUse {
+		t.Fatalf("a started command was not recorded: %+v", command)
 	}
 }
 
@@ -66,7 +96,7 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 // hides the failure the reproduction turned on.
 func TestCodexToolResultKeepsTheExitCode(t *testing.T) {
 	events, err := NewCodex().Decode("worker-0", 0,
-		[]byte(`{"id":"1","msg":{"type":"exec_command_end","stdout":"out","stderr":"boom","exit_code":2}}`))
+		[]byte(`{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"false","aggregated_output":"boom","exit_code":2,"status":"completed"}}`))
 	if err != nil || len(events) != 1 {
 		t.Fatalf("Decode = %v, %v", events, err)
 	}
@@ -121,11 +151,53 @@ func TestCodexConfigCarriesTheGatewayNotTheKey(t *testing.T) {
 	}
 }
 
+// Codex refuses a directory it has not been told to trust, and a session's
+// workspace is a repository it has never seen. The sandbox is the boundary, so
+// its own trust prompt is skipped rather than worked around.
+func TestCodexSkipsItsOwnTrustCheck(t *testing.T) {
+	argv, err := NewCodex().Argv(StageWorker, Request{
+		Task: "reproduce it", Paths: Paths{Workspace: "/s/workspace", Home: "/s/home"},
+	})
+	if err != nil {
+		t.Fatalf("Argv: %v", err)
+	}
+	if !slices.Contains(argv, "--skip-git-repo-check") {
+		t.Fatalf("argv = %v", argv)
+	}
+}
+
 // Codex is the harness an open-weights model behind an OpenAI-compatible
 // gateway pairs with, and it does not answer for the Anthropic dialect.
 func TestCodexSpeaksTheOpenAIDialects(t *testing.T) {
 	h := NewCodex()
 	if !Speaks(h, DialectOpenAIResponses) || !Speaks(h, DialectOpenAIChat) || Speaks(h, DialectAnthropic) {
 		t.Fatalf("dialects = %v", h.Dialects())
+	}
+}
+
+// Codex keeps its token in a file under its own configuration directory, so
+// the existing grant already covers it and nothing further is opened. Its
+// standing instructions are withheld for the same reason every harness's are.
+func TestCodexLoginProfile(t *testing.T) {
+	login := NewCodex().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
+	if len(login.Reads) != 0 {
+		t.Errorf("codex opened %v to reach a token that is already readable", login.Reads)
+	}
+	if len(login.Denies) != 1 || !strings.Contains(login.Denies[0], "AGENTS.md") {
+		t.Errorf("denies = %v", login.Denies)
+	}
+	// Its scratch area, and its own configuration directory: Codex writes
+	// its aliases, its app-server and its session records there and fails
+	// to start where it cannot.
+	joined := strings.Join(login.Writes, " ")
+	for _, want := range []string{"codex-501", "/Users/x/.codex"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("%s is not writable: %v", want, login.Writes)
+		}
+	}
+	// It does not read an injected certificate authority, so its own
+	// endpoints are tunnelled rather than inspected — still allowlisted.
+	if len(login.TLSPassthrough) == 0 {
+		t.Error("a client that will not trust the sandbox's authority has no passthrough")
 	}
 }

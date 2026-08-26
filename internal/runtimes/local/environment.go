@@ -75,6 +75,11 @@ type EnvironmentPkg struct {
 // EnvironmentNetwork is where the run went. Under an open policy the driver's
 // proxy log is the source, so an artifact hunt is defensible by being visible.
 type EnvironmentNetwork struct {
+	// Allowed is where the run was permitted to go. Under an open policy it
+	// is empty, which means everywhere; under an allowlist it is the whole
+	// of the run's reach, and a hunt that found nothing had this much room
+	// to look.
+	Allowed        []string `json:"allowed,omitempty"`
 	DomainsReached []string `json:"domains_reached,omitempty"`
 }
 

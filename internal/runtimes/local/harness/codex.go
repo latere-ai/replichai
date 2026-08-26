@@ -48,7 +48,11 @@ func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	argv := []string{"codex", "exec", "--json", "--sandbox", "danger-full-access", "--cd", workdir}
+	// --skip-git-repo-check: Codex refuses to run in a directory it does not
+	// consider trusted, and the workspace is a fresh repository it has never
+	// seen. The boundary here is the sandbox, not Codex's own trust list.
+	argv := []string{"codex", "exec", "--json", "--skip-git-repo-check",
+		"--sandbox", "danger-full-access", "--cd", workdir}
 	if request.Model.ID != "" {
 		argv = append(argv, "--model", request.Model.ID)
 	}
@@ -58,7 +62,15 @@ func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 // Env points Codex at its session-scoped configuration and supplies the
 // gateway credential under the fixed name the provider block reads.
 func (CodexHarness) Env(_ Stage, request Request) (map[string]string, []string, error) {
-	env := map[string]string{"CODEX_HOME": request.Paths.Home}
+	env := map[string]string{}
+	// Codex keeps its token in a file under CODEX_HOME. Redirecting it to a
+	// session-scoped directory is how a session gets an isolated
+	// configuration — and it is also how a session loses the login, because
+	// an empty directory holds no token and the endpoint answers 401. The
+	// redirect happens only where a credential is being supplied instead.
+	if request.Gateway.Auth != AuthHarness {
+		env["CODEX_HOME"] = request.Paths.Home
+	}
 	switch request.Gateway.Auth {
 	case AuthHarness, AuthNone:
 		return env, nil, nil
@@ -78,6 +90,11 @@ func (CodexHarness) Env(_ Stage, request Request) (map[string]string, []string, 
 // CODEX_HOME, outside the workspace, so neither is committed by the agent and
 // published as part of the reproduction.
 func (CodexHarness) Files(_ Stage, request Request) ([]File, error) {
+	// Where the login is the operator's own, so is the configuration: the
+	// session writes none, because nothing would read it.
+	if request.Gateway.Auth == AuthHarness {
+		return nil, nil
+	}
 	files := []File{{
 		Path: filepath.Join(request.Paths.Home, "config.toml"),
 		Mode: 0o600,
@@ -116,36 +133,66 @@ wire_api = %q
 %s`, gateway.BaseURL, wire, key)
 }
 
-// codexLine is the subset of the stream this adapter reads. Codex has carried
-// more than one envelope across versions — a msg-wrapped event and a flat one
-// — so both are accepted and anything else becomes a raw event.
+// Needs is what Codex requires of the machine: nothing to reach its own login,
+// which is a file inside the configuration directory the sandbox already
+// grants, and a scratch area under the temporary root.
+//
+// The operator's standing instructions are denied for the same reason they are
+// for any harness: they are not the method.
+func (CodexHarness) Needs(machine Machine) Needs {
+	// Codex is a Rust binary and does not read an injected certificate
+	// authority, so a sandbox that terminates TLS to inspect egress breaks
+	// every request it makes. Its own endpoints are tunnelled opaquely
+	// instead — still allowlisted, just not inspected.
+	needs := Needs{TLSPassthrough: []string{
+		"chatgpt.com", "*.chatgpt.com", "api.openai.com", "auth.openai.com",
+	}}
+	if machine.TempDir != "" {
+		needs.Writes = append(needs.Writes,
+			filepath.Join(machine.TempDir, fmt.Sprintf("codex-%d", machine.UID)))
+	}
+	if machine.Home != "" {
+		// Codex writes its own state — its aliases, its app-server, its
+		// session records — into its configuration directory, and fails
+		// to start where it cannot.
+		needs.Writes = append(needs.Writes, filepath.Join(machine.Home, ".codex"))
+		needs.Denies = []string{filepath.Join(machine.Home, ".codex", "AGENTS.md")}
+	}
+	return needs
+}
+
+// codexLine is the subset of the stream this adapter reads.
+//
+// Codex emits a flat envelope: a type, and for the events that carry one, an
+// item. Older builds wrapped the same content in a msg field, so both are
+// accepted and anything else becomes a raw event rather than a guess.
 type codexLine struct {
-	ID   string          `json:"id"`
-	Type string          `json:"type"`
-	Msg  json.RawMessage `json:"msg"`
-	Item json.RawMessage `json:"item"`
-}
-
-type codexEvent struct {
 	Type     string          `json:"type"`
-	Message  string          `json:"message"`
-	Text     string          `json:"text"`
-	Command  []string        `json:"command"`
-	Stdout   string          `json:"stdout"`
-	Stderr   string          `json:"stderr"`
-	ExitCode *int            `json:"exit_code"`
-	Reason   string          `json:"reason"`
-	Info     *codexTokenInfo `json:"info"`
+	ThreadID string          `json:"thread_id"`
+	Msg      json.RawMessage `json:"msg"`
+	Item     json.RawMessage `json:"item"`
+	Usage    *codexTokens    `json:"usage"`
 }
 
-type codexTokenInfo struct {
-	Total *codexTokens `json:"total_token_usage"`
-	Last  *codexTokens `json:"last_token_usage"`
+// codexItem is one thing the agent did.
+type codexItem struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Message  string `json:"message"`
+	Command  string `json:"command"`
+	Output   string `json:"aggregated_output"`
+	ExitCode *int   `json:"exit_code"`
+	Status   string `json:"status"`
+	Path     string `json:"path"`
+	Reason   string `json:"reason"`
 }
 
+// codexTokens is what a turn consumed, as Codex reports it.
 type codexTokens struct {
 	InputTokens          int64 `json:"input_tokens"`
 	CachedInputTokens    int64 `json:"cached_input_tokens"`
+	CacheWriteTokens     int64 `json:"cache_write_input_tokens"`
 	OutputTokens         int64 `json:"output_tokens"`
 	ReasoningOutputTokes int64 `json:"reasoning_output_tokens"`
 }
@@ -162,6 +209,7 @@ func (t *codexTokens) usage(model managed.ModelRef) managed.Usage {
 		Model:       model,
 		InputFresh:  t.InputTokens,
 		InputCached: t.CachedInputTokens,
+		CacheWrite:  t.CacheWriteTokens,
 		Output:      t.OutputTokens,
 	}
 	if t.ReasoningOutputTokes > 0 {
@@ -187,47 +235,59 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return raw(), nil
 	}
-	body := envelope.Msg
+	switch envelope.Type {
+	case "thread.started", "turn.started", "session_configured":
+		event.Role, event.Kind = managed.RoleSystem, managed.EventKind("system")
+		event.Content = Truncate(strings.TrimSpace(envelope.Type + " " + envelope.ThreadID))
+		return []managed.Event{event}, nil
+	case "turn.completed", "turn.failed":
+		event.Role, event.Kind = managed.RoleSystem, KindResult
+		event.Content = Truncate(envelope.Type)
+		usage := envelope.Usage.usage(managed.ModelRef{})
+		event.Usage = &usage
+		return []managed.Event{event}, nil
+	}
+
+	body := envelope.Item
 	if len(body) == 0 {
-		body = envelope.Item
+		body = envelope.Msg
 	}
 	if len(body) == 0 {
-		body = line
+		return raw(), nil
 	}
-	var parsed codexEvent
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	var item codexItem
+	if err := json.Unmarshal(body, &item); err != nil {
 		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return raw(), nil
 	}
-	kind := firstNonEmpty(parsed.Type, envelope.Type)
-	model := managed.ModelRef{}
-	switch kind {
-	case "agent_message", "assistant_message", "agent_message_delta":
+	// A started item is the same item as its completion, and the completion
+	// carries the result; recording both would double the transcript and
+	// say nothing twice.
+	if envelope.Type == "item.started" && item.Type != "command_execution" {
+		return nil, nil
+	}
+	switch item.Type {
+	case "agent_message", "assistant_message":
 		event.Role, event.Kind = managed.RoleAgent, managed.KindMessage
-		event.Content = Truncate(firstNonEmpty(parsed.Message, parsed.Text))
-	case "agent_reasoning", "reasoning":
+		event.Content = Truncate(firstNonEmpty(item.Text, item.Message))
+	case "reasoning", "agent_reasoning":
 		event.Role, event.Kind = managed.RoleAgent, managed.KindThinking
-		event.Content = Truncate(firstNonEmpty(parsed.Text, parsed.Message))
-	case "exec_command_begin", "command_begin":
-		event.Role, event.Kind, event.Tool = managed.RoleAgent, managed.KindToolUse, "exec"
-		event.Content = Truncate(strings.Join(parsed.Command, " "))
-	case "exec_command_end", "command_end":
-		event.Role, event.Kind, event.Tool = managed.RoleUser, managed.KindToolResult, "exec"
-		event.Content = Truncate(codexCommandResult(parsed))
-	case "token_count":
-		event.Role, event.Kind = managed.RoleSystem, managed.EventKind("usage")
-		total := (*codexTokens)(nil)
-		if parsed.Info != nil {
-			total = parsed.Info.Total
+		event.Content = Truncate(firstNonEmpty(item.Text, item.Message))
+	case "command_execution":
+		event.Tool = "exec"
+		if envelope.Type == "item.started" || item.ExitCode == nil {
+			event.Role, event.Kind = managed.RoleAgent, managed.KindToolUse
+			event.Content = Truncate(item.Command)
+			break
 		}
-		usage := total.usage(model)
-		event.Usage = &usage
-	case "task_complete", "turn_complete", "task_failed":
+		event.Role, event.Kind = managed.RoleUser, managed.KindToolResult
+		event.Content = Truncate(codexCommandResult(item))
+	case "file_change", "patch_apply":
+		event.Role, event.Kind, event.Tool = managed.RoleAgent, managed.KindToolUse, "edit"
+		event.Content = Truncate(firstNonEmpty(item.Path, item.Text))
+	case "error":
 		event.Role, event.Kind = managed.RoleSystem, KindResult
-		event.Content = Truncate(firstNonEmpty(parsed.Message, parsed.Text, parsed.Reason))
-	case "task_started", "turn_started", "session_configured":
-		event.Role, event.Kind = managed.RoleSystem, managed.EventKind("system")
-		event.Content = Truncate(kind)
+		event.Content = Truncate(firstNonEmpty(item.Message, item.Reason, item.Text))
 	default:
 		return raw(), nil
 	}
@@ -235,16 +295,12 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 }
 
 // codexCommandResult renders an executed command's outcome, keeping the exit
-// code visible: a tool result that shows only stdout hides the failure.
-func codexCommandResult(parsed codexEvent) string {
+// code visible: a tool result that shows only output hides the failure.
+func codexCommandResult(item codexItem) string {
 	var b strings.Builder
-	if parsed.ExitCode != nil {
-		fmt.Fprintf(&b, "exit %d\n", *parsed.ExitCode)
+	if item.ExitCode != nil {
+		fmt.Fprintf(&b, "exit %d\n", *item.ExitCode)
 	}
-	b.WriteString(parsed.Stdout)
-	if strings.TrimSpace(parsed.Stderr) != "" {
-		b.WriteString("\n")
-		b.WriteString(parsed.Stderr)
-	}
+	b.WriteString(item.Output)
 	return strings.TrimSpace(b.String())
 }

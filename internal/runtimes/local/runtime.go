@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +43,10 @@ type Config struct {
 	Catalog   *Catalog
 	Root      string
 	Retention Retention
+	// Machine is the little a harness needs to know about where it runs in
+	// order to say what it needs of it: the platform, the operator's home,
+	// the temporary root, and the user id.
+	Machine harness.Machine
 	// Environ is the environment stages and git inherit. It arrives from
 	// the composition root rather than being read here: a second, unscoped
 	// source of configuration inside the seam is how a credential meant for
@@ -153,9 +159,9 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 }
 
 // loginCarrier is a sandbox that knows whether a stage inside it can reach the
-// login the harness on this machine already holds. It is an optional interface
-// rather than a capability, because it is a fact about this machine and this
-// harness rather than about the specification.
+// operator's own machine at all. It is an optional interface rather than a
+// capability, because it is a fact about the sandbox rather than about the
+// specification.
 type loginCarrier interface{ CarriesHarnessLogin() bool }
 
 // carriesCredential refuses a session that would start with no way to
@@ -171,9 +177,8 @@ func (r *Runtime) carriesCredential(model managed.ModelRef, gateway harness.Gate
 		return nil
 	}
 	return fmt.Errorf(
-		"%w: %s/%s is declared to use the %s harness's own login, and the %s sandbox cannot reach it on this machine — "+
-			"the credential is in the operating system's keychain, and opening that to a session would open every "+
-			"credential in it. Declare a gateway with a key_env in the model catalogue, or use --sandbox container",
+		"%w: %s/%s is declared to use the %s harness's own login, and a %s sandbox cannot reach it: it holds none of "+
+			"this machine's files. Declare a gateway with a key_env in the model catalogue instead",
 		managed.ErrUnsupported, model.Provider, model.ID, r.config.Harness.Name(), r.config.Sandbox.Name())
 }
 
@@ -201,7 +206,12 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if err := session.writeJSON(specFile, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
-	record := NewEnvironment(ctx, r.config.Sandbox.Name(), r.config.Harness.Name(), model, gateway, string(spec.Sandbox.Network.Mode))
+	effective := r.network(spec, gateway)
+	record := NewEnvironment(ctx, r.config.Sandbox.Name(), r.config.Harness.Name(), model, gateway, effective.Mode)
+	// What a run was allowed to reach is part of what it is: a hunt with a
+	// bound and a hunt without one find different things, and a reader
+	// comparing two reproductions is entitled to know which they have.
+	record.Network.Allowed = effective.Domains
 	record.Harness.Version = r.harnessVersion(ctx)
 	if err := session.WriteEnvironment(record); err != nil {
 		return managed.SessionRef{}, err
@@ -399,14 +409,39 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		}
 	}
 	name := fmt.Sprintf("%s-%d", role, len(locator.Stages))
+	paths := r.stagePaths(session, role)
+	stageNetwork := r.network(spec, gateway)
+	var denied []string
+	if role.Agentic() {
+		needs := r.config.Harness.Needs(r.config.Machine)
+		// The harness's own scratch area. Every stage that runs one gets
+		// it: without it Claude Code's shell tool fails before running
+		// anything, and an agent that cannot run a command cannot
+		// reproduce a paper.
+		for _, path := range needs.Writes {
+			paths = append(paths, sandbox.Path{Host: path, Access: sandbox.ReadWrite})
+		}
+		stageNetwork.Passthrough = needs.TLSPassthrough
+		// The operator's own sign-in is reached only by a session that
+		// uses it; one carrying its own credential is granted none of it.
+		if gateway.Auth == harness.AuthHarness {
+			for _, path := range needs.Reads {
+				paths = append(paths, sandbox.Path{Host: path, Access: sandbox.ReadOnly})
+			}
+		}
+		// Withheld either way: the operator's standing instructions and
+		// plugins are not the method.
+		denied = needs.Denies
+	}
 	stage := sandbox.StageSpec{
 		Name:    name,
 		Argv:    argv,
 		Env:     r.stageEnv(session, env),
 		EnvFile: secrets,
 		Workdir: session.Workspace(),
-		Paths:   r.stagePaths(session, role),
-		Network: sandbox.Network{Mode: string(spec.Sandbox.Network.Mode), Domains: spec.Sandbox.Network.AllowedDomains},
+		Paths:   paths,
+		Denied:  denied,
+		Network: stageNetwork,
 		LogPath: session.RawLog(name),
 	}
 	if stage.Network.Mode == "" {
@@ -428,6 +463,58 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		Role: role, Name: name, Handle: handle, StartedAt: r.config.Clock(),
 	})
 	return session.WriteLocator(*locator)
+}
+
+// network is the egress policy a stage runs under. Under an allowlist the
+// model's own endpoint is added: a session that cannot reach the model it was
+// told to run on does nothing at all, and the caller who wrote the allowlist
+// does not know which endpoint the catalogue resolved. The effective list is
+// recorded in the run's environment record rather than left implicit.
+func (r *Runtime) network(spec managed.SessionSpec, gateway harness.Gateway) sandbox.Network {
+	network := sandbox.Network{
+		Mode:    string(spec.Sandbox.Network.Mode),
+		Domains: append([]string(nil), spec.Sandbox.Network.AllowedDomains...),
+	}
+	if network.Mode != sandbox.NetworkAllowlist {
+		return network
+	}
+	for _, host := range gatewayHosts(gateway) {
+		if !slices.Contains(network.Domains, host) {
+			network.Domains = append(network.Domains, host)
+		}
+	}
+	return network
+}
+
+// gatewayHosts are the endpoints a session must reach to talk to its model. A
+// gateway with no base URL is the harness's own vendor, whose endpoints the
+// harness knows and this package does not, so the harness's own defaults are
+// named here rather than guessed at request time.
+func gatewayHosts(gateway harness.Gateway) []string {
+	if gateway.BaseURL == "" {
+		return defaultVendorHosts(gateway.Dialect)
+	}
+	parsed, err := url.Parse(gateway.BaseURL)
+	if err != nil || parsed.Hostname() == "" {
+		return nil
+	}
+	return []string{parsed.Hostname()}
+}
+
+// defaultVendorHosts are where a harness talks when nobody redirected it.
+func defaultVendorHosts(dialect harness.Dialect) []string {
+	switch dialect {
+	case harness.DialectAnthropic:
+		return []string{"api.anthropic.com", "statsig.anthropic.com", "sentry.io"}
+	default:
+		// Codex signs in against ChatGPT and streams over a websocket on
+		// the same host, so the whole of it is named rather than the API
+		// host alone.
+		return []string{
+			"api.openai.com", "auth.openai.com",
+			"chatgpt.com", "*.chatgpt.com", "*.oaistatic.com", "*.oaiusercontent.com",
+		}
+	}
 }
 
 // stagePaths is the sandbox's whole access decision. The judge gets the
@@ -461,6 +548,12 @@ func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]s
 		"TMPDIR":       session.Tmp(),
 		"VIRTUAL_ENV":  session.Venv(),
 		"REPLICHAI_WS": session.Workspace(),
+		// git reads the operator's global configuration unless told not
+		// to, and the sandbox denies it — so every git command a stage
+		// runs fails on a file it has no business reading. The
+		// reproduction's own repository is configured by the runtime.
+		"GIT_CONFIG_GLOBAL": os.DevNull,
+		"GIT_CONFIG_SYSTEM": os.DevNull,
 	}
 	for name, value := range env {
 		merged[name] = value

@@ -22,6 +22,7 @@ func (s stub) Argv(Stage, Request) ([]string, error) {
 func (s stub) Env(Stage, Request) (map[string]string, []string, error) { return nil, nil, nil }
 func (s stub) Files(Stage, Request) ([]File, error)                    { return nil, nil }
 func (s stub) Decode(string, int, []byte) ([]managed.Event, error)     { return nil, nil }
+func (s stub) Needs(Machine) Needs                                     { return Needs{} }
 
 // An id is derived from position, not content: two identical tool results are
 // two events, and a content hash would merge them into one.

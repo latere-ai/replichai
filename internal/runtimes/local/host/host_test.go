@@ -519,25 +519,44 @@ func TestAStageWithNoEnvironmentIsRefused(t *testing.T) {
 	}
 }
 
-// The harness's own login is not a credential every sandbox can carry. On
-// macOS Claude Code keeps it in the login Keychain, and the only way to reach
-// that is to open the whole keychain to the session — every credential the
-// operator has, not the one the harness needs.
-func TestTheHostSandboxSaysWhetherItCarriesAHarnessLogin(t *testing.T) {
-	if New(Config{Platform: sandbox.Darwin}).CarriesHarnessLogin() {
-		t.Error("the macOS sandbox claims it can reach a keychain login")
+// The operator's own sign-in is reachable here — a stage runs on their own
+// filesystem — and what it takes is granted per session rather than standing
+// open. A session carrying its own credential gets none of it, and the
+// keychain is never in the profile unless the run is actually using the login
+// that lives there.
+func TestTheLoginGrantIsTiedToTheSessionThatNeedsIt(t *testing.T) {
+	if !New(Config{Platform: sandbox.Darwin}).CarriesHarnessLogin() {
+		t.Error("the host sandbox refuses a login on the operator's own machine")
 	}
-	if !New(Config{Platform: sandbox.Linux}).CarriesHarnessLogin() {
-		t.Error("the Linux sandbox refuses a login kept in a file it already reads")
-	}
-	// And the keychain is never in the profile: widening the read allowance
-	// to reach one credential would hand over all of them.
+	// A stage the runtime did not add login paths to opens nothing extra:
+	// the driver grants what the StageSpec carries and no more.
 	settings := Render(New(Config{Platform: sandbox.Darwin, Home: "/Users/x"}).profile(sandbox.StageSpec{
 		Paths: []sandbox.Path{{Host: "/s/workspace", Access: sandbox.ReadWrite}},
 	}))
 	for _, path := range append(settings.Filesystem.AllowRead, settings.Filesystem.AllowWrite...) {
 		if strings.Contains(path, "Keychain") {
-			t.Fatalf("the profile opens the keychain: %v", path)
+			t.Fatalf("a session that does not use the login still opened the keychain: %v", path)
+		}
+	}
+	// One that does carries it as a read-only path, and its denials reach
+	// the profile: the keychain is readable, the operator's own standing
+	// instructions are not.
+	withLogin := Render(New(Config{Platform: sandbox.Darwin, Home: "/Users/x"}).profile(sandbox.StageSpec{
+		Paths: []sandbox.Path{
+			{Host: "/s/workspace", Access: sandbox.ReadWrite},
+			{Host: "/Users/x/Library/Keychains", Access: sandbox.ReadOnly},
+		},
+		Denied: []string{"/Users/x/.claude/CLAUDE.md", "/Users/x/.claude/plugins"},
+	}))
+	if !slices.Contains(withLogin.Filesystem.AllowRead, "/Users/x/Library/Keychains") {
+		t.Fatalf("the login is unreachable: %v", withLogin.Filesystem.AllowRead)
+	}
+	if slices.Contains(withLogin.Filesystem.AllowWrite, "/Users/x/Library/Keychains") {
+		t.Fatalf("the keychain is writable: %v", withLogin.Filesystem.AllowWrite)
+	}
+	for _, want := range []string{"/Users/x/.claude/CLAUDE.md", "/Users/x/.claude/plugins"} {
+		if !slices.Contains(withLogin.Filesystem.DenyRead, want) {
+			t.Errorf("%s reaches the run: %v", want, withLogin.Filesystem.DenyRead)
 		}
 	}
 }
