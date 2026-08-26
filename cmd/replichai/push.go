@@ -65,10 +65,21 @@ func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error 
 	fs := flag.NewFlagSet("push", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	projectID := fs.String("project", "", "the project to file the sessions under")
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	// The documented form puts the flag after the file, and flag stops at the
+	// first argument that is not one. Parsing round the positionals is what
+	// audit and run already do, and it is what makes the usage line true.
+	var positional []string
+	for rest := args; ; {
+		if err := fs.Parse(rest); err != nil {
+			return errExitQuiet
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		positional = append(positional, fs.Arg(0))
+		rest = fs.Args()[1:]
 	}
-	if fs.NArg() != 1 {
+	if len(positional) != 1 {
 		fmt.Fprintln(stderr, "push takes one project file or batch state")
 		return errExitQuiet
 	}
@@ -76,7 +87,7 @@ func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error 
 		fmt.Fprintln(stderr, "push needs --project; `replichai project ls` lists them")
 		return errExitQuiet
 	}
-	statePath := fs.Arg(0)
+	statePath := positional[0]
 	if filepath.Base(statePath) != "batch.json" {
 		statePath = filepath.Join(batch.Root(statePath), "batch.json")
 	}
