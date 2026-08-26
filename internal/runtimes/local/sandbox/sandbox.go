@@ -69,6 +69,10 @@ type Network struct {
 	// Domains is the allowlist. It is meaningful only in allowlist mode and
 	// a driver rejects it in the other two.
 	Domains []string
+	// Passthrough are domains reached without the sandbox terminating TLS.
+	// They remain subject to the allowlist; what is dropped is the
+	// inspection, for clients that will not trust an injected authority.
+	Passthrough []string
 }
 
 // The network modes a StageSpec can carry.
@@ -100,6 +104,10 @@ type StageSpec struct {
 	// Paths is every path the stage may read or write. Anything absent is
 	// denied.
 	Paths []Path
+	// Denied are paths that must stay unreadable even though something in
+	// Paths would otherwise cover them. A driver that grants a directory in
+	// order to reach one file inside it uses this to cut back the rest.
+	Denied []string
 	// Network is the egress policy.
 	Network Network
 	// LogPath is the host file the driver writes the stage's combined

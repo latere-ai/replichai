@@ -108,6 +108,41 @@ func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
 	return []File{{Path: filepath.Join(request.Paths.Home, "settings.json"), Mode: 0o600, Body: settings}}, nil
 }
 
+// Needs is what Claude Code requires of the machine.
+//
+// The login: on macOS the credential is in the login Keychain rather than in a
+// file, so the keychain has to be readable — read-only, and only for a session
+// that actually uses that sign-in. It is a real widening and the narrowest one
+// that works; without it the harness answers "not logged in".
+//
+// The scratch area: Claude Code creates a directory per working directory
+// under the temporary root, and its shell tool fails before running anything
+// if it cannot. A session whose agent cannot run a command cannot reproduce a
+// paper, so this is not optional.
+//
+// The denials: the operator's standing instructions are not the method, and a
+// reproduction that silently inherits them is not reproducing the paper. Their
+// plugins are not the method either, and they run code.
+func (ClaudeCodeHarness) Needs(machine Machine) Needs {
+	needs := Needs{}
+	if machine.TempDir != "" {
+		needs.Writes = append(needs.Writes,
+			filepath.Join(machine.TempDir, fmt.Sprintf("claude-%d", machine.UID)))
+	}
+	if machine.Home == "" {
+		return needs
+	}
+	needs.Denies = []string{
+		filepath.Join(machine.Home, ".claude", "CLAUDE.md"),
+		filepath.Join(machine.Home, ".claude", "plugins"),
+		filepath.Join(machine.Home, ".claude", "settings.json"),
+	}
+	if machine.Platform == "darwin" {
+		needs.Reads = []string{filepath.Join(machine.Home, "Library", "Keychains")}
+	}
+	return needs
+}
+
 // claudeLine is the subset of the stream this adapter reads. Everything else
 // survives in the event's Raw payload, which is the transcript's evidence.
 type claudeLine struct {

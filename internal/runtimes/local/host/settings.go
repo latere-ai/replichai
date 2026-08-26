@@ -31,12 +31,21 @@ type Settings struct {
 type NetworkSettings struct {
 	AllowedDomains []string `json:"allowedDomains"`
 	DeniedDomains  []string `json:"deniedDomains"`
+	// TLSTerminate carries the domains left uninspected. srt stands in the
+	// middle of egress with its own authority to inspect it, which a client
+	// that does not read the injected trust store refuses outright.
+	TLSTerminate *TLSSettings `json:"tlsTerminate,omitempty"`
 	// AllowLocalBinding stays false: a reproduction that binds a local
 	// port is talking to something outside the sandbox's account.
 	AllowLocalBinding bool `json:"allowLocalBinding"`
 	// AllowAllUnixSockets stays false. A unix socket is a hole straight
 	// through the boundary to whatever service is listening.
 	AllowAllUnixSockets bool `json:"allowAllUnixSockets"`
+}
+
+// TLSSettings names what egress is not inspected.
+type TLSSettings struct {
+	ExcludeDomains []string `json:"excludeDomains"`
 }
 
 // FilesystemSettings is the path policy. srt reads allowRead as an override of
@@ -78,6 +87,11 @@ type Profile struct {
 	Reads []string
 	// Writes are the paths it may write.
 	Writes []string
+	// Denies are paths withheld from a read grant that would otherwise
+	// cover them: srt keeps a denial more specific than its allowance,
+	// which is how one file is withheld from a directory that has to be
+	// readable for another.
+	Denies []string
 	// DenyWrites are paths inside a writable tree that stay read-only. The
 	// evidence directory is the one that matters: srt's allow-only write
 	// pattern would otherwise let a writable parent carry it.
@@ -102,7 +116,7 @@ type Profile struct {
 func Render(profile Profile) Settings {
 	settings := Settings{
 		Filesystem: FilesystemSettings{
-			DenyRead:   expandAll(profile.Home, append([]string{"~"}, AlwaysDenyRead...)),
+			DenyRead:   expandAll(profile.Home, append(append([]string{"~"}, AlwaysDenyRead...), profile.Denies...)),
 			AllowRead:  unique(profile.Reads),
 			AllowWrite: unique(profile.Writes),
 			DenyWrite:  unique(profile.DenyWrites),
@@ -111,6 +125,9 @@ func Render(profile Profile) Settings {
 	switch profile.Network.Mode {
 	case sandbox.NetworkAllowlist:
 		settings.Network.AllowedDomains = unique(profile.Network.Domains)
+		if passthrough := unique(profile.Network.Passthrough); len(passthrough) > 0 {
+			settings.Network.TLSTerminate = &TLSSettings{ExcludeDomains: passthrough}
+		}
 	default:
 		settings.Network.AllowedDomains = []string{}
 	}

@@ -220,3 +220,38 @@ func TestClaudeCodeCredentialChannels(t *testing.T) {
 		t.Fatal("a gateway declaring a key and holding none was accepted")
 	}
 }
+
+// The operator's own sign-in is reachable, and their own instructions are not.
+// A reproduction that silently inherits a machine's global CLAUDE.md is not
+// reproducing the paper, and a plugin is code the method never asked for.
+func TestClaudeCodesLoginProfile(t *testing.T) {
+	login := NewClaudeCode().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
+	if len(login.Reads) != 1 || !strings.Contains(login.Reads[0], "Keychains") {
+		t.Fatalf("macOS reads = %v, want the keychain: the credential is not in a file there", login.Reads)
+	}
+	// Elsewhere the credential is in a file the configuration grant already
+	// covers, so nothing further is opened.
+	if reads := NewClaudeCode().Needs(Machine{Platform: "linux", Home: "/home/x"}).Reads; len(reads) != 0 {
+		t.Errorf("linux opened %v", reads)
+	}
+	for _, want := range []string{"CLAUDE.md", "plugins", "settings.json"} {
+		found := false
+		for _, deny := range login.Denies {
+			if strings.Contains(deny, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s reaches the run: %v", want, login.Denies)
+		}
+	}
+	// The harness's own scratch area is writable, or its shell tool fails
+	// before it runs anything and the agent cannot reproduce a paper.
+	if len(login.Writes) != 1 || !strings.Contains(login.Writes[0], "claude-501") {
+		t.Errorf("no scratch area: %v", login.Writes)
+	}
+	// With no home there is nothing to grant and nothing to withhold.
+	if empty := NewClaudeCode().Needs(Machine{Platform: "darwin"}); len(empty.Reads) != 0 || len(empty.Denies) != 0 {
+		t.Errorf("a homeless machine granted %+v", empty)
+	}
+}

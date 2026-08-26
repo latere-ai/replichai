@@ -228,7 +228,7 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		Model: managed.ModelSelector{Preference: a.model}, Instructions: instructions, Task: task,
 		Sandbox: managed.SandboxSpec{
 			Packages: []managed.Package{{Manager: "pip", Name: "pypdf"}, {Manager: "pip", Name: "requests"}},
-			Network:  managed.NetworkPolicy{Mode: managed.NetworkOpen},
+			Network:  networkFor(capabilities),
 		},
 		Evaluation: &managed.EvaluationSpec{Rubric: a.method.Rubric, MaxRevisions: a.maxRevisions},
 	}
@@ -247,6 +247,23 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		ctx = managed.WithSecrets(ctx, map[string]string{repositoryCredentialRef: mount.Token})
 	}
 	return spec, ctx, spec.Validate()
+}
+
+// networkFor is the egress policy this runtime can actually enforce.
+//
+// The hunt wants to go anywhere, and a runtime that can offer that is given
+// the open policy. One that cannot — a host sandbox is allow-only by
+// construction and refuses a wildcard — is given the declared bound instead of
+// a specification it would refuse outright. The alternative is a local audit
+// that cannot start, which is worse than a hunt whose limits are recorded.
+func networkFor(capabilities managed.Capabilities) managed.NetworkPolicy {
+	if capabilities.NetworkModes[managed.NetworkOpen] {
+		return managed.NetworkPolicy{Mode: managed.NetworkOpen}
+	}
+	if capabilities.NetworkModes[managed.NetworkAllowlist] {
+		return managed.NetworkPolicy{Mode: managed.NetworkAllowlist, AllowedDomains: ArtifactDomains()}
+	}
+	return managed.NetworkPolicy{Mode: managed.NetworkNone}
 }
 
 func (a *SessionAuditor) retentionHooks(result *SessionResult, destination string) managed.Hooks {

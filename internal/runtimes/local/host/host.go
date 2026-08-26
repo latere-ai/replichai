@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
@@ -92,19 +93,11 @@ func (s *Sandbox) Preflight(context.Context) error {
 	return nil
 }
 
-// CarriesHarnessLogin reports whether a stage in this sandbox can reach the
-// credential the harness on this machine is already signed in with.
-//
-// On macOS it cannot, and the sandbox must not be widened until it can. Claude
-// Code keeps its login in the login Keychain rather than in a file, and
-// reaching it needs read and write on ~/Library/Keychains — which is not the
-// harness's credential, it is every credential the operator has: their signing
-// keys, their password manager's, their mail. The read allowance this driver
-// grants is scoped to one directory on purpose, and a keychain is not one.
-//
-// Where a harness keeps its credential in a file under its own configuration
-// directory, the existing allowance already covers it.
-func (s *Sandbox) CarriesHarnessLogin() bool { return s.config.Platform != sandbox.Darwin }
+// CarriesHarnessLogin reports whether a stage here can reach the credential
+// the harness on this machine is already signed in with. It can: a stage runs
+// on the operator's own filesystem, and the runtime grants read on exactly the
+// paths the harness says its login lives in.
+func (s *Sandbox) CarriesHarnessLogin() bool { return true }
 
 // Capabilities is what this driver can enforce and install. It declares the
 // allowlist mode, which the container driver cannot, and refuses apt, which it
@@ -247,6 +240,10 @@ func (s *Sandbox) profile(spec sandbox.StageSpec) Profile {
 			profile.Writes = append(profile.Writes, path.Host)
 		}
 	}
+	// srt keeps a denial that is more specific than the allowance it falls
+	// inside, which is what lets one file be withheld from a directory that
+	// has to be readable for another.
+	profile.Denies = append(profile.Denies, spec.Denied...)
 	// The evidence directory is never in Paths, so it is already outside
 	// every allowWrite entry. It is denied explicitly as well, because a
 	// future path that grants a writable parent would otherwise carry it.
@@ -282,20 +279,27 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 	if code, ok := readStatus(statusPath); ok {
 		return sandbox.StageStatus{ExitCode: code}, nil
 	}
-	if !alive(pid) || !belongsTo(pid, token) {
-		// The wrapper records its status before it exits, so a process that
-		// is gone should have left one. Look once more before calling the
-		// stage lost: the two observations race, and an exit read as gone
-		// would fail a session that actually finished.
+	if alive(pid) && belongsTo(pid, token) {
+		return sandbox.StageStatus{Running: true}, nil
+	}
+	// Not obviously alive, and no status yet. The wrapper records its status
+	// before it exits, so these two observations race: the process can be
+	// gone while the rename that records why has not landed, and `ps` can
+	// miss a process that is on its way out. Give it a bounded moment rather
+	// than reporting a stage lost that in fact finished — an exit read as
+	// gone fails a run that succeeded.
+	for range 10 {
+		time.Sleep(20 * time.Millisecond)
 		if code, ok := readStatus(statusPath); ok {
 			return sandbox.StageStatus{ExitCode: code}, nil
 		}
-		// No status and no process: the stage went away without recording
-		// why. That is not success, and an unknowable exit must not read as
-		// one.
-		return sandbox.StageStatus{Gone: true}, nil
+		if alive(pid) && belongsTo(pid, token) {
+			return sandbox.StageStatus{Running: true}, nil
+		}
 	}
-	return sandbox.StageStatus{Running: true}, nil
+	// No status and no process: the stage went away without recording why.
+	// That is not success, and an unknowable exit must not read as one.
+	return sandbox.StageStatus{Gone: true}, nil
 }
 
 // Output streams the stage's log from an offset. The log is written by this

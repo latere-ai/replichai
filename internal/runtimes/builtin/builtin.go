@@ -5,6 +5,7 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -118,6 +119,13 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 	return local.New(local.Config{
 		Sandbox: driver, Harness: agent, Catalog: catalog, Environ: config.Environ,
 		Root: config.Root, Retention: local.Retention(config.Retention),
+		Machine: harness.Machine{
+			Platform: string(sandbox.CurrentPlatform()), Home: config.Home,
+			// The shared root, not os.TempDir(): that honours TMPDIR,
+			// which a session sets to its own directory, and a harness
+			// puts its scratch under the shared one regardless.
+			TempDir: "/tmp", UID: os.Getuid(),
+		},
 	})
 }
 

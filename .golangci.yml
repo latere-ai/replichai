@@ -120,6 +120,7 @@ linters:
         - synthesised
         - synthesises
         - travelled
+        - tunnelled
         - unrecognised
 
   exclusions:

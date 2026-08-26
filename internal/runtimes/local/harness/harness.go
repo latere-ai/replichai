@@ -138,6 +138,59 @@ type File struct {
 	Body []byte
 }
 
+// Needs is what a harness requires of the machine it runs on beyond the
+// session's own directories.
+//
+// It exists because a harness is a real program with a real installation, and
+// two of its requirements are not guessable. "Already logged in" is not one
+// thing: Codex keeps its token in a file under its own configuration
+// directory, which the sandbox already grants, while Claude Code on macOS
+// keeps its in the login Keychain, which is a different file entirely. And a
+// harness keeps a scratch area of its own outside the workspace — Claude Code
+// creates one per working directory under the temporary root, and without it
+// every shell command fails before it runs.
+type Needs struct {
+	// Reads are paths granted read-only so the operator's existing login
+	// works. They are granted only where a session uses that login: one
+	// carrying its own credential gets none of them.
+	Reads []string
+	// Writes are paths the harness needs to write to work at all, outside
+	// the session's own directories. They are granted to every stage,
+	// because a harness that cannot run a command is not a harness.
+	Writes []string
+	// TLSPassthrough are domains this harness must reach without the
+	// sandbox terminating TLS. A sandbox that inspects egress does it by
+	// standing in the middle with its own certificate authority, which a
+	// client that does not read the injected trust store refuses — a Rust
+	// or Go binary, typically, where a Node one accepts it. Those domains
+	// are still subject to the allowlist; only the inspection is dropped.
+	TLSPassthrough []string
+	// Denies are paths that must stay unreadable even though a broader
+	// grant covers them. The operator's standing instructions would
+	// otherwise be loaded into every reproduction as if they were the
+	// method, and their plugins would run code the method never asked for.
+	Denies []string
+}
+
+// Machine is the little a harness needs to know about where it is running in
+// order to say what it needs. It is passed in rather than read, because this
+// package is inside the runtime seam and configuration arrives from the
+// composition root.
+type Machine struct {
+	// Platform is the operating system, as Go names it.
+	Platform string
+	// Home is the operator's home directory.
+	Home string
+	// TempDir is the machine's shared temporary root — /tmp on a unix — and
+	// deliberately not what TMPDIR says. A harness puts its scratch area
+	// under the shared root whatever a session sets TMPDIR to, so a grant
+	// derived from TMPDIR names a directory the harness never uses.
+	TempDir string
+	// UID is the operator's user id, which is how a harness names a
+	// scratch area that is theirs and not another user's.
+	UID int
+}
+
 // Harness is one agentic CLI the runtime can drive inside a sandbox.
 type Harness interface {
 	// Name is the canonical harness name.
@@ -164,6 +217,11 @@ type Harness interface {
 
 	// Files are the configuration files to write before the stage starts.
 	Files(Stage, Request) ([]File, error)
+
+	// Needs is what this harness requires of the machine: where the
+	// operator's existing login lives, where its own scratch area is, and
+	// what to withhold from the run whatever else is granted.
+	Needs(Machine) Needs
 
 	// Decode turns one line of the harness's stream into zero or more
 	// normalized events. stream is the stage's unique name rather than its

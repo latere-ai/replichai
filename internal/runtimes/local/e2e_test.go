@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	goruntime "runtime"
+
+	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
@@ -17,42 +20,61 @@ import (
 // One real session, against the real thing: srt confining a real Claude Code,
 // bootstrap through worker through judge, on this machine.
 //
-// It needs a credential the sandbox can carry. The harness's own login is not
-// one on macOS — it lives in the login Keychain, and opening that to a session
-// would open every credential in it — so this test runs where a key is
-// supplied and says why where none is.
+// It uses the login the operator already has: no API key, nothing configured.
+// That is the case the host sandbox exists to serve, and the one most likely
+// to break silently, so it is the one that gets driven against the real thing.
 func TestRealEndToEnd(t *testing.T) {
-	if os.Getenv("ANTHROPIC_API_KEY") == "" {
-		t.Skip("set ANTHROPIC_API_KEY to run one real session end to end")
-	}
+	runRealSession(t, harness.NewClaudeCode(), "claude")
+}
+
+// The same session, driven by the other harness. Codex keeps its login in a
+// file rather than a keychain and speaks a different stream, so the two are
+// not one test with a parameter changed: they exercise different halves of
+// what the seam has to absorb.
+func TestRealEndToEndWithCodex(t *testing.T) {
+	runRealSession(t, harness.NewCodex(), "codex")
+}
+
+func runRealSession(t *testing.T, agent harness.Harness, binary string) {
+	t.Helper()
 	home, _ := os.UserHomeDir()
 	driver := host.New(host.Config{
-		Home: home, HarnessBinary: "claude", Environ: os.Environ(),
-		ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json")},
+		Home: home, HarnessBinary: binary, Environ: os.Environ(),
+		ConfigDirs: []string{
+			filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json"),
+			filepath.Join(home, ".codex"),
+		},
 	})
 	if err := driver.Preflight(context.Background()); err != nil {
 		t.Skipf("not ready: %v", err)
 	}
-	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
-	// A gateway the sandbox can carry: the key travels in the stage's
-	// environment, which srt passes through untouched.
+	registry, _ := harness.NewRegistry(agent)
+	// The harness's own login, which is what an operator gets with no
+	// configuration at all.
 	catalog, err := local.NewCatalog(local.CatalogFile{
 		Gateways: map[string]local.GatewayConfig{
-			"anthropic": {BaseURL: "https://api.anthropic.com", Dialect: "anthropic", KeyEnv: "ANTHROPIC_API_KEY"},
+			"harness-login": {Dialect: dialectOf(agent), Auth: "harness"},
 		},
 		Models: []local.ModelConfig{{
-			Provider: "anthropic", ID: "claude-sonnet-5", Gateway: "anthropic",
-			Harness: "claude-code", Preferences: []string{"balanced"},
+			Provider: "vendor", ID: defaultModelOf(agent), Gateway: "harness-login",
+			Harness: string(agent.Name()), Preferences: []string{"balanced"},
 		}},
 	}, registry, os.LookupEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := t.TempDir()
+	root := "/tmp/replichai-e2e"
+	_ = os.RemoveAll(root)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("session root: %s", root)
 	runtime, err := local.New(local.Config{
-		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
+		Sandbox: driver, Harness: agent, Catalog: catalog,
 		Root: root, Environ: os.Environ(),
+		Machine: harness.Machine{
+			Platform: goruntime.GOOS, Home: home, TempDir: "/tmp", UID: os.Getuid(),
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,9 +90,10 @@ func TestRealEndToEnd(t *testing.T) {
 		Instructions: "You are terse. Do exactly what the task says and stop.",
 		Task:         "Write a file called hello.txt in " + capabilities.OutputDir + " containing exactly the word ok. Then commit it with git. Then say done.",
 		Sandbox: managed.SandboxSpec{
+			// What the audit asks for, resolved against what this driver
+			// can enforce.
 			Network: managed.NetworkPolicy{
-				Mode:           managed.NetworkAllowlist,
-				AllowedDomains: []string{"api.anthropic.com", "statsig.anthropic.com", "sentry.io"},
+				Mode: managed.NetworkAllowlist, AllowedDomains: audit.ArtifactDomains(),
 			},
 		},
 		Evaluation: &managed.EvaluationSpec{
@@ -118,4 +141,15 @@ func TestRealEndToEnd(t *testing.T) {
 	if status.State != managed.StateDone {
 		t.Fatalf("the session did not finish: %v %q", status.State, status.Error)
 	}
+}
+
+// dialectOf is the wire protocol a harness speaks, for a catalogue built here.
+func dialectOf(agent harness.Harness) string { return string(agent.Dialects()[0]) }
+
+// defaultModelOf is a model each harness will accept without configuration.
+func defaultModelOf(agent harness.Harness) string {
+	if agent.Name() == harness.Codex {
+		return "gpt-5.6-sol"
+	}
+	return "claude-sonnet-5"
 }

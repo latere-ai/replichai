@@ -1,10 +1,9 @@
-{"id":"0","msg":{"type":"task_started"}}
-{"id":"1","msg":{"type":"agent_reasoning","text":"The paper is on arXiv."}}
-{"id":"2","msg":{"type":"agent_message","message":"I will fetch the paper."}}
-{"id":"3","msg":{"type":"exec_command_begin","command":["bash","-lc","curl -s https://arxiv.org/abs/2603.01795"],"cwd":"/s/workspace"}}
-{"id":"4","msg":{"type":"exec_command_end","stdout":"HTTP 200 ok","stderr":"","exit_code":0}}
-{"id":"5","msg":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1200,"cached_input_tokens":400,"output_tokens":300,"reasoning_output_tokens":120,"total_tokens":1900},"last_token_usage":{"input_tokens":600,"cached_input_tokens":200,"output_tokens":150,"reasoning_output_tokens":60,"total_tokens":950}}}}
+{"type":"thread.started","thread_id":"01a03f2d-0a78-7a30-b701-0aa7ae01f76f"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll create `note.txt` with the requested content."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'echo hi > note.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'echo hi > note.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Done."}}
+{"type":"turn.completed","usage":{"input_tokens":40212,"cached_input_tokens":30208,"cache_write_input_tokens":0,"output_tokens":79,"reasoning_output_tokens":0}}
 this line is not json at all
-{"id":"6","msg":{"type":"some_future_event","payload":{"a":1}}}
-{"id":"7","msg":{"type":"token_count","info":{"total_token_usage":{"input_tokens":2700,"cached_input_tokens":1000,"output_tokens":720,"reasoning_output_tokens":300,"total_tokens":4420},"last_token_usage":{"input_tokens":1500,"cached_input_tokens":600,"output_tokens":420,"reasoning_output_tokens":180,"total_tokens":2520}}}}
-{"id":"8","msg":{"type":"task_complete","last_agent_message":"Reproduction written."}}
+{"type":"some.future.event","payload":{"a":1}}
