@@ -172,3 +172,25 @@ and nothing runs them on a machine with `srt` or Podman yet.
 specification declares packages and nothing installed them.
 
 **`docs/architecture.md` gained the local path**, as this parent required.
+
+**A whole audit was run.** arXiv 2603.01795 (`PleaSQLarify`, CHI '26), on the
+default one-hour budget, `--runtime local` with `claude-code` on the operator's
+own login and no API key: 17m44s, 527 events, verdict `partial` on a boundary
+table of eight inner-loop components, five verified against a reimplementation
+the agent wrote and ran. The judge graded it `passed`. All seven output files
+were produced, and `verdict.json` and `instrument.json` both validated except
+for one field of the wrong shape, which is recorded below.
+
+That run found three things no test in this deck could have found, because all
+of them need a workspace that has actually installed something:
+
+- The workspace is the repository *and* the build directory, and nothing
+  system-owned separated them. A 258 MB virtualenv sat in the repository root,
+  kept out of the commit only because the agent chose to write a `.gitignore`.
+  The rule now belongs to the repository (`.git/info/exclude`), the harvest
+  skips the same trees, and `publish.VerifyTree` bars a tree that carries one.
+- The harvest copied 8200 files out of that workspace. Twenty-four were the
+  reproduction.
+- `instrument.json`'s `plan` was prose where the schema wants a list, and the
+  validator called a well-formed document invalid JSON. A shape mismatch is now
+  a violation naming the field, and the method states the shape.
