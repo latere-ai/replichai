@@ -158,3 +158,13 @@ built.
 **`CanMint` was added.** The composition root has to know whether the forge
 credential can mint before it wires the provisioner, and the only other way to
 find out would have been to mint a token nobody asked for.
+
+**The real forge is unexercised.** Every test here runs against a fake: the
+route against a fake provisioner, the chain against a bare repository on disk,
+the mint against a fake GitHub App. What has not run is `forgeProvisioner`
+against a real installation — that `Prepare` and `MintRepoToken` compose, that
+GitHub grants `contents:write` on a repository created seconds earlier, and that
+a push authenticated by an installation token is accepted. The push half is the
+least uncertain of the three: `LocalPush.remoteWithUser` already defaults the
+user part to `x-access-token`, which is what an installation token needs. One
+`--publish --project` run against the real org would close all three.
