@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -36,6 +37,10 @@ type Script struct {
 	SilentRounds map[int]bool
 	// PollsBeforeExit is how many observations a stage stays running for.
 	PollsBeforeExit int
+	// WorkerCommits makes the worker commit what it wrote, as a real one
+	// does. The push path has nothing to send otherwise, so a test that
+	// reaches it needs a workspace with history in it.
+	WorkerCommits bool
 	// FailLaunch makes Launch fail, which is how a driver that cannot start
 	// anything is exercised.
 	FailLaunch error
@@ -151,8 +156,14 @@ func (s *Sandbox) produce(entry *stage) error {
 		if workspace == "" || entry.exit != 0 {
 			return nil
 		}
-		return os.WriteFile(filepath.Join(workspace, "REPRODUCIBILITY.md"),
-			[]byte("# Reproduction\n\nWritten by "+entry.spec.Name+".\n"), 0o600)
+		if err := os.WriteFile(filepath.Join(workspace, "REPRODUCIBILITY.md"),
+			[]byte("# Reproduction\n\nWritten by "+entry.spec.Name+".\n"), 0o600); err != nil {
+			return err
+		}
+		if !s.script.WorkerCommits {
+			return nil
+		}
+		return commit(workspace, entry.spec.Env, entry.spec.Name)
 	}
 }
 
@@ -295,4 +306,23 @@ func writablePath(spec sandbox.StageSpec, guest string) string {
 		}
 	}
 	return ""
+}
+
+// commit is the one thing this driver runs a process for. A worker that leaves
+// its work uncommitted is not a worker, and the host's push reads a committed
+// tree rather than a directory. It runs git in the stage's own environment,
+// because a driver that reads this process's is not standing in for one that
+// is handed everything it may see.
+func commit(workspace string, environ map[string]string, stage string) error {
+	for _, args := range [][]string{{"add", "-A"}, {"commit", "-m", "Reproduction written by " + stage}} {
+		command := exec.Command("git", append([]string{"-C", workspace}, args...)...) //nolint:gosec,noctx // a fixed git verb over this package's own arguments
+		command.Env = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null"}
+		for name, value := range environ {
+			command.Env = append(command.Env, name+"="+value)
+		}
+		if output, err := command.CombinedOutput(); err != nil {
+			return fmt.Errorf("git %v: %w: %s", args, err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
 }
