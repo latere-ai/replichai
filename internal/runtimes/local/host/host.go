@@ -156,6 +156,10 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 		return sandbox.StageHandle{}, fmt.Errorf("open stage log: %w", err)
 	}
 	defer func() { _ = log.Close() }()
+	// Stdin stays nil, which gives the stage the null device. It matters:
+	// a harness reading an inherited stdin waits on it — Claude Code stalls
+	// three seconds and says so — and a detached stage whose stdin is a pipe
+	// nobody closes waits for good.
 	launcher.Stdout, launcher.Stderr = log, log
 	launcher.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := launcher.Start(); err != nil {
