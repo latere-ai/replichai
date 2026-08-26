@@ -112,6 +112,7 @@ func (rt *Router) routes() {
 	rt.gatedHandle("POST", "/projects/{id}/description/draft", rt.draftDescription)
 	rt.gatedHandle("POST", "/projects/{id}/sessions", rt.startSession)
 	rt.gatedHandle("POST", "/projects/{id}/sessions/import", rt.importSession)
+	rt.gatedHandle("POST", "/projects/{id}/repository", rt.provisionRepository)
 	rt.gatedHandle("GET", "/models", rt.listModels)
 	rt.gatedHandle("PATCH", "/projects/{id}", rt.renameProject)
 	rt.gatedHandle("GET", "/projects", rt.listProjects)
