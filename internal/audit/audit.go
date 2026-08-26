@@ -93,7 +93,7 @@ Your reproduction lives at %[1]s, which is a git repository on the machine runni
 - Commit your progress with git as you finish each part — small, meaningful commits. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
 - There is nothing to push. The system publishes what you committed, after this session ends, and verifies it independently. Criterion 9 does not apply to this run.
 - Before you finish, run "git status" and confirm nothing is uncommitted, then record "git log --oneline -5". Uncommitted work is not part of the history that gets published.
-- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use the temporary directory. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, workspace)
+- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s. Put them in "$TMPDIR", which is writable and is discarded with the session. Never "git add" or commit third-party data: the repository must contain only your own reproduction work, and a tree carrying a paper or a dataset is refused at publication.`, workspace)
 }
 
 // DefaultPackages are installed into every sandbox: enough to pull a paper
