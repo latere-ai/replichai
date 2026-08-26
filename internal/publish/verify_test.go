@@ -41,6 +41,28 @@ func TestVerifyTreeFlagsThirdPartyDataAndSecrets(t *testing.T) {
 	}
 }
 
+// A local run installs its dependencies into the directory that becomes the
+// repository. Every file in that tree ends in .py or .so, so the extension
+// rules never see it — and it is still a few hundred megabytes of somebody
+// else's code. A tree that carries one is barred from being made public.
+func TestVerifyTreeFlagsAnInstalledDependencyTree(t *testing.T) {
+	tree := []string{
+		"README.md", "src/main.py", "requirements.txt",
+		"venv/lib/python3.13/site-packages/numpy/__init__.py",
+		"node_modules/left-pad/index.js",
+	}
+	flagged := VerifyTree(tree)
+	slices.Sort(flagged)
+	want := []string{"node_modules/left-pad/index.js", "venv/lib/python3.13/site-packages/numpy/__init__.py"}
+	if !slices.Equal(flagged, want) {
+		t.Errorf("flagged = %v, want %v", flagged, want)
+	}
+	// A file merely named after one is the reproduction's own.
+	if flagged := VerifyTree([]string{"docs/node_modules.md", "src/venv_setup.py"}); len(flagged) != 0 {
+		t.Errorf("named after a tree is not a tree, flagged %v", flagged)
+	}
+}
+
 func TestManifestForReflectsCleanliness(t *testing.T) {
 	id := paper.Identity{Key: "arxiv:2302.03714", Scheme: paper.SchemeArXiv, Title: "A Paper", Slug: "a-paper"}
 	when := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
