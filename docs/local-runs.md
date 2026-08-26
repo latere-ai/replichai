@@ -132,6 +132,25 @@ home denied. A run can read `/usr`, `/opt`, `/etc` and anything else outside
 that outlives it, and your machine pushes that folder afterwards. That is why
 `--publish` works locally without giving an agent write access to anything.
 
+**And with `--project`, no GitHub token needs to be on your machine either:**
+
+```bash
+replichai login
+replichai audit <paper> --runtime local --publish --project <id>
+```
+
+The platform allocates the repository, from the same registry a session started
+in the app allocates from, and hands back a credential that can write to that
+one repository and expires within the hour. Your machine pushes with it and
+gives it back when the run is finalized. Without `--project`, `--publish` uses
+`REPLICHAI_GITHUB_TOKEN` as before — an organisation token, so prefer the
+project path where you have one.
+
+Two things that credential cannot do: `--invite` needs permission to administer
+the repository, so add the collaborator in the app instead; and a deployment
+with no GitHub App configured cannot mint at all, in which case the terminal
+says which settings are missing and falls back to your own token.
+
 The one thing the read allowance costs: an agent that reads its own credential
 file puts the contents in its transcript. Everything published is swept for
 credential-shaped text first, and the transcript says so where something was
