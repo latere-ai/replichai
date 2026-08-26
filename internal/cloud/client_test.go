@@ -27,10 +27,10 @@ func TestEveryCallPresentsAnActorToken(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		presented = append(presented, r.Header.Get("Authorization"))
 		switch {
-		case r.URL.Path == "/api/projects" && r.Method == http.MethodPost:
-			writeJSON(w, map[string]string{"id": "p-1", "title": "Local work"})
-		case r.URL.Path == "/api/projects" && r.Method == http.MethodGet:
-			writeJSON(w, map[string]any{"projects": []map[string]string{{"id": "p-1", "title": "Local work"}}})
+		case r.URL.Path == "/projects" && r.Method == http.MethodPost:
+			writeJSON(w, map[string]string{"project_id": "p-1", "title": "Local work"})
+		case r.URL.Path == "/projects" && r.Method == http.MethodGet:
+			writeJSON(w, []map[string]string{{"id": "p-1", "title": "Local work"}})
 		case strings.HasSuffix(r.URL.Path, "/sessions/import"):
 			writeJSON(w, map[string]string{"job_id": "j-1"})
 		default:
@@ -85,11 +85,12 @@ func TestARefusalCarriesTheServersReason(t *testing.T) {
 
 // Filing a paper that is already there is not an error: a batch pushed twice
 // must not fail on the second attempt, which is the whole point of a push
-// being resumable.
+// being resumable. The reason is the app's own — a stub that invents one tests
+// nothing, which is how this client shipped speaking an API nobody serves.
 func TestFilingAPaperTwiceIsNotAFailure(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)
-		writeJSON(w, map[string]string{"error": "paper_already_in_project"})
+		writeJSON(w, map[string]string{"error": "paper_exists"})
 	}))
 	defer api.Close()
 	client := NewClient(signedIn(t), api.URL)

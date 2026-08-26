@@ -74,30 +74,38 @@ type UsageRecord struct {
 	Output       int64 `json:"output"`
 }
 
-// CreateProject opens a project to file work under.
+// CreateProject opens a project to file work under. The create answers with
+// the paper results and the seeded members beside the project, and the terminal
+// wants neither: what it needs is the id to file against.
 func (c *Client) CreateProject(ctx context.Context, title string) (Project, error) {
-	var out Project
-	err := c.call(ctx, http.MethodPost, "/api/projects", map[string]any{"title": title}, &out)
-	return out, err
+	var out struct {
+		ID    string `json:"project_id"`
+		Title string `json:"title"`
+	}
+	err := c.call(ctx, http.MethodPost, "/projects", map[string]any{"title": title}, &out)
+	return Project{ID: out.ID, Title: out.Title}, err
 }
 
-// ListProjects is what this principal owns.
+// ListProjects is what this principal owns. The list answers with a bare array
+// of the same view the web app renders, which carries far more than two fields;
+// everything past id and title is a screen's business, not a terminal's.
 func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
-	var out struct {
-		Projects []Project `json:"projects"`
-	}
-	if err := c.call(ctx, http.MethodGet, "/api/projects", nil, &out); err != nil {
+	var out []Project
+	if err := c.call(ctx, http.MethodGet, "/projects", nil, &out); err != nil {
 		return nil, err
 	}
-	return out.Projects, nil
+	return out, nil
 }
 
 // AddPaper files a paper under a project. A paper already there is not an
 // error: filing is idempotent, and a batch pushed twice must not fail on it.
+//
+// The refusal is recognised by the reason the app writes, not by an English
+// word in it. A message is prose and changes; paper_exists is the contract.
 func (c *Client) AddPaper(ctx context.Context, projectID, reference string) error {
-	err := c.call(ctx, http.MethodPost, "/api/projects/"+projectID+"/papers",
-		map[string]any{"ref": reference}, nil)
-	if err != nil && strings.Contains(err.Error(), "already") {
+	err := c.call(ctx, http.MethodPost, "/projects/"+projectID+"/papers",
+		map[string]any{"url": reference}, nil)
+	if err != nil && strings.Contains(err.Error(), "paper_exists") {
 		return nil
 	}
 	return err
@@ -110,7 +118,7 @@ func (c *Client) ImportSession(ctx context.Context, projectID string, record Imp
 	var out struct {
 		JobID string `json:"job_id"`
 	}
-	err := c.call(ctx, http.MethodPost, "/api/projects/"+projectID+"/sessions/import", record, &out)
+	err := c.call(ctx, http.MethodPost, "/projects/"+projectID+"/sessions/import", record, &out)
 	return out.JobID, err
 }
 
