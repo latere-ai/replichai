@@ -85,7 +85,7 @@ Your reports describe the study's protocol and your analysis in prose. `instrume
 - `design` — between/within, the factors and their levels, counterbalancing (prose).
 - `trials` — trial structure, counts, stimuli, timing (prose).
 - `measures` — each with `name`, `scale` (units or response scale), and `level` (`per_trial` or `per_participant`).
-- `plan` — the statistical models the paper declares.
+- `plan` — the statistical models the paper declares, as a **list of strings**, one model per entry (`["mixed-effects model with participant as random effect", "Wilcoxon signed-rank on SUS"]`). A paper that declares none gets an empty list, not a sentence saying so.
 - `reported` — the paper's **own** headline results, each an object with `metric`, `effect`, `test`, `value`, `interval`, `n`, and a **required** `citation` (the table, figure, or section). This is the ground truth a re-analysis is later checked against; every entry must cite, on the same terms as criterion 6.
 
 **`analysis`** — the entrypoint contract for `src/`, so it runs on a new dataset:
