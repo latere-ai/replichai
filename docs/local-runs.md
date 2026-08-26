@@ -24,7 +24,7 @@ happened you need no API key and no configuration file.
 npm install -g @anthropic-ai/claude-code       # the agent
 claude login
 npm install -g @anthropic-ai/sandbox-runtime   # srt, the sandbox
-brew install ripgrep
+brew install ripgrep                           # srt uses it to find files to deny
 ```
 
 **Linux**
@@ -42,7 +42,7 @@ If any of it is missing the run refuses before it fetches the paper, and prints
 the commands that would fix it on your platform. Check what it found with:
 
 ```bash
-srt "echo ok"
+srt echo ok
 claude --version
 ```
 
@@ -94,14 +94,33 @@ they cleaned themselves up.
 
 ## What the agent can and cannot reach
 
-Inside the sandbox it can read and write its own session directory, read the
-system toolchain, and reach the network. It cannot read your home directory
-beyond one allowance: the agent's own configuration (`~/.claude`, `~/.codex`),
-which is what makes your existing login work.
+Inside the sandbox it can write its own session directory and nothing else,
+read the system toolchain, and reach the network only where the policy allows.
+
+Your home directory is denied, with named exceptions:
+
+| Allowed | Why |
+|---|---|
+| the harness's own configuration (`~/.claude`, `~/.codex`) | it is where your existing login lives |
+| `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its login there rather than in a file, and only a session actually using that login is granted it |
+| the harness's scratch directory under `/tmp` | without it Claude Code's shell tool fails before running anything |
+| `~/.codex`, writable, for codex only | codex writes its own state back and will not start otherwise |
 
 Explicitly denied, and tested: `~/.ssh`, `~/.aws`, `~/.config/gcloud`,
 `~/.kube`, `~/.netrc`, `~/.gnupg`, `~/.docker/config.json`,
-`~/.git-credentials`, `~/.config/replichai`, and any `.env` anywhere.
+`~/.git-credentials`, `~/.config/replichai`, and any `.env`.
+
+Also denied, for a different reason: **your own standing instructions and
+plugins.** `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,
+`~/.claude/plugins` and `~/.codex/AGENTS.md` are withheld from every run. They
+are not the method, and a reproduction that silently inherits the habits of
+whoever ran it is not reproducing the paper. Codex reports the denial as an
+error line in its transcript; that is cosmetic and the run continues.
+
+**Outside your home directory, reads are allowed.** srt's default is to permit
+reads everywhere and restrict by denial, and this is that default with your
+home denied. A run can read `/usr`, `/opt`, `/etc` and anything else outside
+`$HOME`. If that matters for your machine, use `--sandbox container`.
 
 **No GitHub token ever enters the sandbox.** The agent commits into a folder
 that outlives it, and your machine pushes that folder afterwards. That is why
@@ -112,6 +131,22 @@ file puts the contents in its transcript. Everything published is swept for
 credential-shaped text first, and the transcript says so where something was
 removed. It is a backstop, not a guarantee — read a transcript before you make
 a repository public.
+
+## Where a run is allowed to go
+
+srt is allow-only: it has no "everything" mode and refuses a wildcard outright.
+So a local audit is given a **declared list** of the places an artifact hunt
+goes — preprint servers, publishers, code hosts, data repositories, package
+indexes, and the services that resolve an identifier — plus whatever endpoint
+your model is behind. The list is in
+[`internal/audit/domains.go`](../internal/audit/domains.go), and the effective
+policy is recorded in each run's `environment.json`.
+
+This costs something real, and the record is how you see it: a paper whose only
+artifact link is an author's personal university page is not reachable, and the
+hunt records it as *not fetched* rather than as *not released*. A container run
+has unrestricted egress and no such bound, which is one more reason the two
+drivers are not interchangeable.
 
 ## Choosing a model
 
@@ -242,6 +277,23 @@ intend to file.
 Pushing twice is safe — a session updates its row rather than opening a second
 — so a failed upload is retried by running the command again.
 
+## Codex
+
+`--harness codex` runs the same session through Codex instead, and it needs
+different things of the machine, which the code declares rather than assumes:
+
+- Its login is a file in `~/.codex`, so no keychain is involved.
+- It writes its own state back into `~/.codex`, so that directory is writable
+  for a codex run — a Claude Code run gets read-only.
+- It refuses a directory it has not been told to trust, and a session's
+  workspace is a repository it has never seen, so the trust check is skipped.
+  The sandbox is the boundary; Codex's own prompt is not.
+- It is a Rust binary and will not trust the sandbox's certificate authority,
+  so its endpoints are tunnelled rather than inspected.
+
+`~/.codex/AGENTS.md` is withheld like any standing instruction, and Codex
+reports that as an error line in its transcript. The run continues.
+
 ## When something goes wrong
 
 **"the host sandbox is not ready"** — the message names what is missing and the
@@ -258,6 +310,15 @@ the message lists what is installed.
 **The push failed** — the workspace is kept and the run prints a `finish`
 command that pushes it. Nothing is lost: the work is on disk.
 
+**`pip install` fails with a certificate error** — pip verifies through the
+operating system's trust service, which the sandbox does not open, so every
+certificate fails for pip while curl and Python's own client succeed on the
+same connection. The bootstrap passes `--trusted-host` for the indexes it
+installs from, which moves the verification rather than dropping it: the
+sandbox terminates TLS to those hosts, so it validates the real index
+certificate itself before handing pip a locally-signed connection. An index of
+your own needs the same treatment.
+
 **The run committed nothing** — that is recorded rather than reported as
 success. An empty repository is a real outcome, and the transcript in
 `session/events.jsonl` says what the agent did instead.
@@ -265,12 +326,18 @@ success. An empty repository is a real outcome, and the transcript in
 ## What is not there yet
 
 - **Evidence is not uploaded to the app.** A session pushed without
-  `--publish` arrives as a verdict with nothing behind it.
+  `--publish` arrives as a verdict with nothing behind it, because the evidence
+  lives in the repository the run pushed.
 - **The container image is not published.** `--sandbox container` is built and
-  needs an image that does not exist yet.
+  needs an image that does not exist yet, so the host sandbox is the only one
+  you can actually run today.
 - **The app does not label an imported session** as locally executed, though it
   stores the fact.
-- **`environment.json` does not record which domains a run reached.**
+- **`environment.json` records where a run was allowed to go, not where it
+  went.** Nothing reads the sandbox's proxy log.
+- **Reads outside your home directory are not restricted.** That is srt's
+  default posture with your home denied on top; tightening it to an allowlist
+  of the toolchain is a separate piece of work.
 
 ## Reference
 
