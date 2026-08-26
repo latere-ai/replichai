@@ -558,6 +558,11 @@ func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]s
 		// reproduction's own repository is configured by the runtime.
 		"GIT_CONFIG_GLOBAL": os.DevNull,
 		"GIT_CONFIG_SYSTEM": os.DevNull,
+		// Every pip in the session, not only the bootstrap's. A
+		// reproduction installs what the paper needs, and it hits the
+		// same wall: pip verifies through a trust service the sandbox
+		// does not open. The sandbox still validates the index itself.
+		"PIP_TRUSTED_HOST": strings.Join(PackageIndexHosts(), " "),
 	}
 	for name, value := range env {
 		merged[name] = value

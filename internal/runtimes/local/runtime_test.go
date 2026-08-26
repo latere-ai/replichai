@@ -595,3 +595,19 @@ func TestPollingTwiceWithOneReferenceStillAdvances(t *testing.T) {
 		}
 	}
 }
+
+// A reproduction installs what the paper needs, so the arrangement that makes
+// the bootstrap's install work has to apply to the agent's too. It failed for
+// the agent alone in a real audit, an hour after the bootstrap had succeeded.
+func TestEveryPipInTheSessionCanReachTheIndex(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{})
+	runToTerminal(t, runtime, start(t, runtime, spec(false)))
+	for _, stage := range driver.Stages() {
+		trusted := stage.Env["PIP_TRUSTED_HOST"]
+		for _, host := range local.PackageIndexHosts() {
+			if !strings.Contains(trusted, host) {
+				t.Errorf("stage %s cannot install from %s: %q", stage.Name, host, trusted)
+			}
+		}
+	}
+}
