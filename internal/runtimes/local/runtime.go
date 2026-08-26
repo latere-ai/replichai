@@ -228,7 +228,11 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 		Model: model, State: managed.StateRunning, StartedAt: r.config.Clock(),
 		Usage: managed.Usage{Model: model},
 	}
-	ref, err := r.reference(session, locator, 1)
+	revision, err := session.NextRevision()
+	if err != nil {
+		return managed.SessionRef{}, err
+	}
+	ref, err := r.reference(session, locator, revision)
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
@@ -278,7 +282,7 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	}
 	if observed.Running {
 		status.State = managed.StateRunning
-		return status, r.save(session, locator, status, ref)
+		return status, r.save(session, locator, &status, ref)
 	}
 	// A stage the driver has lost is not a stage that succeeded. Its exit is
 	// unknowable, and reporting success on an unknown exit is exactly the
@@ -293,7 +297,7 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	if err := r.advance(ctx, session, &locator, &status, spec, model, gateway); err != nil {
 		return managed.Status{}, err
 	}
-	return status, r.save(session, locator, status, ref)
+	return status, r.save(session, locator, &status, ref)
 }
 
 // advance decides what follows a finished stage.
@@ -749,18 +753,31 @@ func (r *Runtime) attach(ref managed.SessionRef) (*Session, Locator, error) {
 	return session, stored, nil
 }
 
-// save persists the journal and the status together, then stamps the
-// reference's revision so a checkpoint can be written with compare-and-swap.
-func (r *Runtime) save(session *Session, locator Locator, status managed.Status, ref managed.SessionRef) error {
+// save persists the journal and the status, and stamps the checkpoint onto the
+// status the caller is about to receive. It takes a pointer for that reason:
+// stamping a copy wrote the new checkpoint to disk and handed the caller the
+// old one, so the reference a caller threaded was always one observation
+// behind the journal it named.
+func (r *Runtime) save(session *Session, locator Locator, status *managed.Status, ref managed.SessionRef) error {
 	if err := session.WriteLocator(locator); err != nil {
 		return err
 	}
-	next, err := r.reference(session, locator, ref.Revision+1)
+	// The session's own counter, not one derived from the caller's
+	// reference: a caller may poll twice with the same reference, and a
+	// revision computed from it would repeat while the journal moved.
+	revision, err := session.NextRevision()
+	if err != nil {
+		return err
+	}
+	if revision <= ref.Revision {
+		revision = ref.Revision + 1
+	}
+	next, err := r.reference(session, locator, revision)
 	if err != nil {
 		return err
 	}
 	status.Ref = next
-	return session.WriteStatus(status)
+	return session.WriteStatus(*status)
 }
 
 func (r *Runtime) reference(session *Session, locator Locator, revision uint64) (managed.SessionRef, error) {

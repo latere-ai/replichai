@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +40,7 @@ const (
 	locatorFile     = "session/locator.json"
 	environmentFile = "session/environment.json"
 	releasedFile    = "session/released.json"
+	revisionFile    = "session/revision"
 	specFile        = "session/spec.json"
 )
 
@@ -200,6 +202,28 @@ func (s *Session) ReadEnvironment() (Environment, error) {
 	var record Environment
 	err := s.readJSON(environmentFile, &record)
 	return record, err
+}
+
+// NextRevision is the session's own monotonic checkpoint counter.
+//
+// It belongs to the session rather than being derived from whatever reference
+// a caller happens to hold. The contract allows a caller to poll twice with
+// the same reference, and a revision computed from that reference would come
+// back unchanged while the journal underneath it had moved — which the
+// controller reads, correctly, as a checkpoint that changed without saying so.
+func (s *Session) NextRevision() (uint64, error) {
+	current := uint64(0)
+	if body, err := os.ReadFile(filepath.Join(s.dir, revisionFile)); err == nil {
+		if parsed, err := strconv.ParseUint(strings.TrimSpace(string(body)), 10, 64); err == nil {
+			current = parsed
+		}
+	}
+	current++
+	if err := writeFileMode(filepath.Join(s.dir, revisionFile),
+		[]byte(strconv.FormatUint(current, 10)), 0o600); err != nil {
+		return 0, err
+	}
+	return current, nil
 }
 
 // AppendEvents adds decoded events to the transcript. The file is append-only

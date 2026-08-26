@@ -570,3 +570,28 @@ func TestAFailedRetainStopsBeforeRelease(t *testing.T) {
 		t.Fatalf("the default policy destroyed the reproduction: %v", err)
 	}
 }
+
+// A caller may poll twice with the same reference. The checkpoint it gets back
+// must still advance, because the journal underneath it has — otherwise the
+// controller sees a locator that changed without saying so and fails the run.
+func TestPollingTwiceWithOneReferenceStillAdvances(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 3})
+	ref := start(t, runtime, spec(true))
+
+	seen := map[uint64]string{}
+	for range 4 {
+		// Deliberately the same ref each time, as a caller that does not
+		// thread the returned one would.
+		status, err := runtime.Poll(context.Background(), ref)
+		if err != nil {
+			t.Fatalf("Poll: %v", err)
+		}
+		if previous, repeated := seen[status.Ref.Revision]; repeated && previous != string(status.Ref.Locator) {
+			t.Fatalf("revision %d came back twice with different journals", status.Ref.Revision)
+		}
+		seen[status.Ref.Revision] = string(status.Ref.Locator)
+		if status.Ref.Revision <= ref.Revision {
+			t.Fatalf("the checkpoint did not advance: %d after %d", status.Ref.Revision, ref.Revision)
+		}
+	}
+}
