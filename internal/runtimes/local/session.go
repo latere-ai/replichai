@@ -408,5 +408,36 @@ func initRepository(workspace string, environ []string) error {
 			return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 		}
 	}
-	return nil
+	return writeExcludes(workspace)
+}
+
+// vendoredPaths are the directories a build puts in the workspace that are
+// somebody else's code rather than the reproduction's. The agent builds in the
+// same directory that becomes the repository, so a dependency tree of a few
+// hundred megabytes sits in the repository root from the moment it installs
+// anything.
+var vendoredPaths = []string{
+	"venv/",
+	".venv/",
+	"env/",
+	"node_modules/",
+	"__pycache__/",
+	"*.pyc",
+	".DS_Store",
+}
+
+// writeExcludes keeps the vendored paths out of the repository by a rule the
+// agent does not own. It writes .git/info/exclude, not .gitignore: .gitignore
+// is a file of the reproduction, and an agent that writes its own replaces
+// whatever was seeded there. info/exclude is the repository's own, is never
+// committed, and survives anything the agent writes.
+func writeExcludes(workspace string) error {
+	dir := filepath.Join(workspace, ".git", "info")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("git excludes: %w", err)
+	}
+	body := "# Written by replichai. A dependency tree installed into the\n" +
+		"# workspace is not part of the reproduction.\n" +
+		strings.Join(vendoredPaths, "\n") + "\n"
+	return writeFileMode(filepath.Join(dir, "exclude"), []byte(body), 0o600)
 }
