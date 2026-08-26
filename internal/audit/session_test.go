@@ -201,6 +201,7 @@ func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 		"not destroyed when this session ends",
 		`"git log --oneline -5"`,
 		"OUTSIDE /s/workspace",
+		`"$TMPDIR"`,
 	} {
 		if !strings.Contains(protocol, want) {
 			t.Errorf("the workspace protocol is missing %q:\n%s", want, protocol)
