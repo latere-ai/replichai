@@ -76,7 +76,8 @@ at. Same method, same rubric, same output — and nobody is billed, because you
 bought the compute from the vendor yourself.
 
 ```bash
-npm install -g @anthropic-ai/sandbox-runtime   # the sandbox; see the guide for Linux
+npm install -g @anthropic-ai/sandbox-runtime   # the sandbox
+brew install ripgrep                           # it uses this; Linux also needs bubblewrap and socat
 replichai audit https://arxiv.org/abs/2603.01795 --runtime local
 ```
 
