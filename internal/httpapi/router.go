@@ -282,10 +282,14 @@ type Deps struct {
 	Profiles      ProfileStore
 	Reproductions ReproReader
 	RepoPublisher RepoPublisher
-	Canceler      Canceler
-	Live          LiveTranscript
-	Resolver      PaperResolver
-	Gate          Gate
+	// Repos provisions a repository for a session run on somebody else's
+	// machine (045l). Nil where the deployment cannot mint a scoped token, in
+	// which case the route says so and the terminal keeps its own credential.
+	Repos    RepoProvisioner
+	Canceler Canceler
+	Live     LiveTranscript
+	Resolver PaperResolver
+	Gate     Gate
 	// Credits is the ledger a new project is funded from (011). Nil leaves a
 	// project unfunded at creation, which an unmetered offline run wants.
 	Credits credit.Store
@@ -335,6 +339,7 @@ type Router struct {
 	profiles    ProfileStore
 	repro       ReproReader
 	repoPub     RepoPublisher
+	repos       RepoProvisioner
 	canceler    Canceler
 	live        LiveTranscript
 	resolver    PaperResolver
@@ -379,7 +384,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
 	rt.routes()
 	return rt
 }
