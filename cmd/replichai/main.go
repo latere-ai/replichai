@@ -927,6 +927,7 @@ flags for audit:
   -harness        with -runtime local: claude-code or codex
 
 flags for run (a project file is one paper per line, or a papers: list in YAML):
+  -runtime        managed runtime to use (default "local")
   -parallel       how many papers to run at once
   -resume         skip the papers that already finished
   -publish        publish each reproduction to its own repository
