@@ -15,6 +15,22 @@ import (
 // numpy is not the same as having numpy 2.1.0.
 const PackageManifest = "replichai-packages.txt"
 
+// PackageIndexHosts are the index hosts pip is told to accept without checking
+// the certificate itself.
+//
+// It reads worse than it is, and the alternative is that nothing installs at
+// all. pip verifies through the operating system's trust service, which the
+// sandbox does not open — every certificate fails, whatever bundle pip is
+// pointed at, while curl and Python's own client on the same connection
+// succeed. So the verification moves rather than disappearing: the sandbox
+// terminates TLS to these hosts, which means it validates the real index
+// certificate itself, outside the sandbox, before handing pip a connection
+// signed by its own authority. What pip skips is checking the local proxy it
+// was given; what nobody skips is checking the index.
+func PackageIndexHosts() []string {
+	return []string{"pypi.org", "files.pythonhosted.org"}
+}
+
 // bootstrapArgv is the fixed script that prepares a session before any agent
 // runs. It is built here rather than by a harness adapter: what a session
 // needs installed is the specification's, and no model is involved.
@@ -30,8 +46,12 @@ func (r *Runtime) bootstrapArgv(spec managed.SessionSpec, session *Session) []st
 	pip, npm := split(spec.Sandbox.Packages)
 	if len(pip) > 0 {
 		fmt.Fprintf(&script, "python3 -m venv %s\n", shellQuote(session.Venv()))
-		fmt.Fprintf(&script, "%s install --disable-pip-version-check --quiet %s\n",
-			shellQuote(session.Venv()+"/bin/pip"), shellJoin(pip))
+		trusted := make([]string, 0, len(PackageIndexHosts())*2)
+		for _, host := range PackageIndexHosts() {
+			trusted = append(trusted, "--trusted-host", host)
+		}
+		fmt.Fprintf(&script, "%s install --disable-pip-version-check --quiet %s %s\n",
+			shellQuote(session.Venv()+"/bin/pip"), shellJoin(trusted), shellJoin(pip))
 		fmt.Fprintf(&script, "%s freeze > %s\n",
 			shellQuote(session.Venv()+"/bin/pip"), shellQuote(session.Venv()+"/"+PackageManifest))
 	}

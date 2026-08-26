@@ -125,8 +125,13 @@ func Render(profile Profile) Settings {
 	switch profile.Network.Mode {
 	case sandbox.NetworkAllowlist:
 		settings.Network.AllowedDomains = unique(profile.Network.Domains)
-		if passthrough := unique(profile.Network.Passthrough); len(passthrough) > 0 {
-			settings.Network.TLSTerminate = &TLSSettings{ExcludeDomains: passthrough}
+		// Always declared, even with nothing to exclude. srt publishes its
+		// certificate authority to the standard per-tool trust variables
+		// only when termination is configured, and without them every
+		// HTTPS client in the sandbox rejects the proxy's certificate —
+		// which looks like a network failure rather than a trust one.
+		settings.Network.TLSTerminate = &TLSSettings{
+			ExcludeDomains: unique(profile.Network.Passthrough),
 		}
 	default:
 		settings.Network.AllowedDomains = []string{}
