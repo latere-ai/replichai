@@ -57,11 +57,22 @@ const migrationLock = 4
 
 // Migrate applies the profile schema. Safe to run on every startup.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS profile_migrations (
-			version    INT PRIMARY KEY,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-		)`); err != nil {
+	// Under the same lock the versions are applied under. IF NOT EXISTS is
+	// not atomic against a concurrent creator: two sessions both find the
+	// table absent, both run the DDL, and the loser dies on a duplicate key
+	// in pg_type — which is the crash this lock exists to prevent, one
+	// statement before the lock was taken.
+	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			CREATE TABLE IF NOT EXISTS profile_migrations (
+				version    INT PRIMARY KEY,
+				applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+			)`)
+		return err
+	}); err != nil {
 		return fmt.Errorf("create profile migrations table: %w", err)
 	}
 	for _, m := range migrations {
