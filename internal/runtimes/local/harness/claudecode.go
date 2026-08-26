@@ -61,7 +61,13 @@ func (ClaudeCodeHarness) Argv(stage Stage, request Request) ([]string, error) {
 // authenticates through the harness's own login there is no credential at all,
 // which is the case the host sandbox exists to serve.
 func (ClaudeCodeHarness) Env(_ Stage, request Request) (map[string]string, []string, error) {
-	env := map[string]string{}
+	// Claude Code puts its scratch area beside its temporary root — a
+	// directory per working directory, a marker file per shell — and the
+	// sandbox overrides TMPDIR to a shared path a session cannot write. So
+	// the root is pointed inside the session, where the siblings it derives
+	// land in a directory that is already writable and goes away with the
+	// run. Without this every shell command fails before it runs.
+	env := map[string]string{"CLAUDE_CODE_TMPDIR": request.Paths.HarnessTmp}
 	// The harness's own login lives in its own configuration directory.
 	// Redirecting the directory is how a session gets an isolated one — and
 	// it is also how a session loses the login, because an empty directory
@@ -115,20 +121,15 @@ func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
 // that actually uses that sign-in. It is a real widening and the narrowest one
 // that works; without it the harness answers "not logged in".
 //
-// The scratch area: Claude Code creates a directory per working directory
-// under the temporary root, and its shell tool fails before running anything
-// if it cannot. A session whose agent cannot run a command cannot reproduce a
-// paper, so this is not optional.
-//
 // The denials: the operator's standing instructions are not the method, and a
 // reproduction that silently inherits them is not reproducing the paper. Their
 // plugins are not the method either, and they run code.
 func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 	needs := Needs{}
-	if machine.TempDir != "" {
-		needs.Writes = append(needs.Writes,
-			filepath.Join(machine.TempDir, fmt.Sprintf("claude-%d", machine.UID)))
-	}
+	// Nothing under the shared temporary root: the scratch area is
+	// redirected into the session by CLAUDE_CODE_TMPDIR instead, so it is
+	// writable without granting anything outside the run and it is removed
+	// with the run.
 	if machine.Home == "" {
 		return needs
 	}

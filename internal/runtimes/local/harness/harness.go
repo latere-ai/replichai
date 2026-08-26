@@ -104,6 +104,9 @@ type Paths struct {
 	Workspace string
 	// Tmp is where downloads go, deliberately outside the repository.
 	Tmp string
+	// HarnessTmp is the temporary root the harness itself is pointed at,
+	// inside Tmp, so what it derives from one lands in the session.
+	HarnessTmp string
 	// Home is the harness's own configuration directory for this session.
 	Home string
 	// Evidence is the read-only workspace the judge grades.
