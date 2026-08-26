@@ -261,6 +261,11 @@ type Token struct {
 	Expires time.Time
 }
 
+// CanMint reports whether this client can mint a scoped token at all, without
+// minting one to find out. A boot-time probe that actually minted would create
+// a live credential nobody asked for.
+func (c *Client) CanMint() bool { return c.app != nil }
+
 // MintRepoToken mints a credential that can write to one repository and to
 // nothing else, for at most an hour (045l). It is the scope 009 designed and
 // never called: every other mint passes nil and gets the installation's whole

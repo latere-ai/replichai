@@ -688,3 +688,36 @@ func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, ev
 			jobID, len(rep.Committed), rep.Committed)
 	}
 }
+
+// forgeProvisioner allocates a repository for a session somebody is running on
+// their own machine, and mints a credential that can write to that repository
+// and to nothing else (045l).
+//
+// It calls githubForge.Prepare rather than allocating a name of its own: a
+// second implementation would let a local session and a hosted session decide
+// the same name for the same paper, and the collision would be silent until one
+// of them pushed.
+type forgeProvisioner struct {
+	forge githubForge
+	owner string
+}
+
+func (p forgeProvisioner) Provision(ctx context.Context, id paper.Identity) (httpapi.Provisioned, error) {
+	name, err := p.forge.Prepare(ctx, p.owner, id)
+	if err != nil {
+		return httpapi.Provisioned{}, err
+	}
+	minted, err := p.forge.MintRepoToken(ctx, name)
+	if errors.Is(err, github.ErrMintingUnavailable) {
+		return httpapi.Provisioned{}, httpapi.ErrMintingUnavailable
+	}
+	if err != nil {
+		return httpapi.Provisioned{}, err
+	}
+	return httpapi.Provisioned{
+		Repo:    p.owner + "/" + name,
+		URL:     "https://github.com/" + p.owner + "/" + name + ".git",
+		Token:   minted.Value,
+		Expires: minted.Expires,
+	}, nil
+}

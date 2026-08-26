@@ -159,8 +159,15 @@ func run() error {
 		return err
 	}
 	var runnerForge forge // nil interface when no forge — runner runs transcript-only
+	var repoProvisioner httpapi.RepoProvisioner
 	if forgeClient != nil {
 		runnerForge = githubForge{forgeClient}
+		// Nil where the credential is a PAT: it authenticates but cannot mint a
+		// sub-token of itself, and the route says so rather than handing the
+		// organisation's own token back over HTTP.
+		if forgeClient.CanMint() {
+			repoProvisioner = forgeProvisioner{forge: githubForge{forgeClient}, owner: forgeOwner}
+		}
 	}
 
 	runner := &engineRunner{
@@ -232,6 +239,7 @@ func run() error {
 		Profiles:      st.profiles,
 		Reproductions: &registryReader{source: reproSource},
 		RepoPublisher: repoPublisher,
+		Repos:         repoProvisioner,
 		Canceler:      worker,
 		Live:          liveTranscript{router: runtimeRouter},
 		Resolver:      paperResolver{fetch: newHTTPFetcher(30 * time.Second)},
