@@ -16,6 +16,7 @@ package instrument
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -228,6 +229,17 @@ var knownCriterion = func() map[Criterion]bool {
 func Validate(raw []byte) ([]Violation, error) {
 	var inst Instrument
 	if err := json.Unmarshal(raw, &inst); err != nil {
+		// A field of the wrong shape is not a syntax error, and saying so
+		// sends the reader hunting for a missing comma. It is also the one
+		// failure a revision can act on, so it is a violation naming the
+		// field rather than a refusal to read the document at all.
+		var mismatch *json.UnmarshalTypeError
+		if errors.As(err, &mismatch) {
+			return []Violation{{
+				Field:   mismatch.Field,
+				Message: fmt.Sprintf("is a JSON %s and must be %s", mismatch.Value, mismatch.Type),
+			}}, nil
+		}
 		return nil, fmt.Errorf("instrument.json is not valid JSON: %w", err)
 	}
 	var vs []Violation
