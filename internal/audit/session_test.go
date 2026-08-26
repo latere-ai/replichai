@@ -203,6 +203,8 @@ func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 		"OUTSIDE /s/workspace",
 		`"$TMPDIR"`,
 		"EGRESS_BLOCKED",
+		`"$VIRTUAL_ENV"`,
+		"do not create a virtualenv inside",
 		"never as \"no artifact",
 	} {
 		if !strings.Contains(protocol, want) {
