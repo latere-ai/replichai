@@ -132,4 +132,12 @@ argv tests rather than by one test here.
 
 The default catalogue is the harness's own login on three Anthropic models, so
 a first run on a machine where `claude login` has happened needs no
-configuration and no API key.
+configuration and no API key. That path is the one most likely to break
+silently, so it is the one the live end-to-end test drives.
+
+**What "the harness's own login" costs was not knowable from here.** This spec
+treats `auth: harness` as the absence of a credential to manage. On macOS it is
+a credential in the operating system's keychain, which the sandbox has to be
+opened to — read-only, and only for a session using that login. 045b carries
+the argument; the catalogue's job ends at saying which kind of credential a
+model is reached with, and that turned out to be the important thing it says.
