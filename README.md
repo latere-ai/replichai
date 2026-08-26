@@ -52,72 +52,6 @@ overrides it per command. The choices are `memory`, `anthropic-managed`, and
 `local`. Each runtime reads only the variables named for it, so a future
 OpenAI runtime can never receive an Anthropic key accidentally.
 
-## Run it on your own machine
-
-`--runtime local` runs the whole session here: the coding agent you already
-have installed, confined to one folder, on whatever model you point it at.
-
-```bash
-replichai audit https://arxiv.org/abs/2603.01795 --runtime local
-```
-
-On a machine where `claude login` has already happened, that needs no API key
-and no configuration. What it needs is a sandbox:
-
-```bash
-npm install -g @anthropic-ai/sandbox-runtime   # srt: the default sandbox
-brew install ripgrep                           # macOS; on Linux also bubblewrap and socat
-```
-
-If something is missing, the run refuses and prints the commands that would fix
-it, for your platform.
-
-| Flag | What it chooses |
-|---|---|
-| `--sandbox host` (default) | `srt` — Seatbelt on macOS, bubblewrap on Linux — around the harness on your machine |
-| `--sandbox container` | an OCI container (Podman, then Docker), for a toolchain pinned identically everywhere |
-| `--harness claude-code` (default) or `codex` | which agent runs |
-| `--model best` or `--model provider/id` | which model, from your own `~/.config/replichai/models.yaml` |
-
-The agent never gets a GitHub token: it commits into a folder that outlives the
-sandbox, and the system verifies and pushes that folder afterwards. An
-open-weights model behind an OpenAI-compatible gateway is a row in the model
-file, paired with `codex`.
-
-## Run a whole project
-
-```bash
-replichai run papers.yaml --parallel 4 --publish
-```
-
-`papers.yaml` is one paper per line, or a list with per-paper overrides:
-
-```yaml
-project: chi-2026-audit
-model: best
-publish: {owner: open-hai}
-papers:
-  - https://arxiv.org/abs/2603.01795
-  - doi: 10.1145/3654777.3676417
-    model: fast
-```
-
-Each paper gets its own session and its own repository. One failing never stops
-the rest; `--resume` picks up what did not finish, and a report is written as
-it goes.
-
-## Put the results in the app
-
-```bash
-replichai login                       # device-code sign-in at auth.latere.ai
-replichai project create "CHI 2026 audit"
-replichai push papers.yaml --project <id>
-```
-
-A session you ran yourself appears in the app as an ordinary session, marked as
-locally executed. Nothing about it is billed: you bought that compute from the
-vendor.
-
 The audit writes a reproduction repository into `runs/<paper>/`:
 
 | File | Contents |
@@ -133,6 +67,37 @@ The audit writes a reproduction repository into `runs/<paper>/`:
 The two JSON files are what the app reads to render a verdict without anyone opening a markdown file.
 
 Reproduction output is never committed to this repository. See [`docs/architecture.md`](docs/architecture.md).
+
+## Run it on your own machine
+
+`--runtime local` runs the whole session here instead: the coding agent you
+already have installed, confined to one folder, on whatever model you point it
+at. Same method, same rubric, same output — and nobody is billed, because you
+bought the compute from the vendor yourself.
+
+```bash
+npm install -g @anthropic-ai/sandbox-runtime   # the sandbox; see the guide for Linux
+replichai audit https://arxiv.org/abs/2603.01795 --runtime local
+```
+
+On a machine where `claude login` has already happened that needs no API key
+and no configuration. `--sandbox container` swaps the sandbox for Podman or
+Docker when a pinned toolchain matters; `--harness codex` and a gateway in
+`models.yaml` put an open-weights model behind the same run.
+
+A whole project at once, and the results in the app:
+
+```bash
+replichai run papers.yaml --parallel 4 --publish --resume
+replichai login && replichai push papers.yaml --project <id>
+```
+
+No GitHub token ever enters the sandbox: the agent commits into a folder that
+outlives it, and your machine verifies and pushes that folder afterwards.
+
+**[`docs/local-runs.md`](docs/local-runs.md)** is the guide — prerequisites per
+platform, what a run does, where files land, what the agent can and cannot
+reach, choosing a model, and what to do when something refuses.
 
 ## Publish a reproduction
 
@@ -205,7 +170,7 @@ frontend/            the researcher UI — bun + React + Vite
 method/              the audit itself — instructions, rubric, task template (data, not code)
 evals/               golden set: papers with known answers, used as a regression check
 deploy/              k8s kustomize for staging and prod
-docs/                architecture, procedure, landscape
+docs/                local runs, architecture, procedure, landscape
 specs/               designs, and the record of what got built
 ```
 
