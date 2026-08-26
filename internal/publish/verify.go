@@ -30,11 +30,30 @@ import (
 func VerifyTree(paths []string) []string {
 	var flagged []string
 	for _, p := range paths {
-		if isThirdPartyData(p) || isSecretName(p) {
+		if isThirdPartyData(p) || isVendored(p) || isSecretName(p) {
 			flagged = append(flagged, p)
 		}
 	}
 	return flagged
+}
+
+// vendoredDirs are directory names that hold somebody else's code rather than
+// the reproduction's. They matter because a local run builds in the directory
+// that becomes the repository: the dependency tree is in the repository root
+// from the moment anything is installed, and it is third-party redistribution
+// by the hundred megabyte even though every file in it ends in .py or .so.
+var vendoredDirs = map[string]bool{
+	"venv": true, ".venv": true, "node_modules": true, "site-packages": true,
+	"vendor": true, ".tox": true,
+}
+
+func isVendored(p string) bool {
+	for _, segment := range strings.Split(p, "/") {
+		if vendoredDirs[segment] {
+			return true
+		}
+	}
+	return false
 }
 
 // thirdPartyExts are file types that, committed into a reproduction repository,
