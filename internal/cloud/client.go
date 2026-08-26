@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -159,4 +160,32 @@ func (c *Client) call(ctx context.Context, method, path string, body, into any) 
 		return nil
 	}
 	return json.Unmarshal(payload, into)
+}
+
+// Repository is the repository the platform allocated for a paper, and the
+// credential to push it with (045l).
+type Repository struct {
+	Repo    string    `json:"repo"`
+	URL     string    `json:"url"`
+	Token   string    `json:"token"`
+	Expires time.Time `json:"expires_at"`
+}
+
+// ErrMintingUnavailable reports that the deployment cannot mint a scoped
+// credential, so the terminal has to supply its own. It is a deployment
+// setting, not a failure, which is why it is a named condition rather than a
+// status line the caller has to parse.
+var ErrMintingUnavailable = errors.New("this deployment cannot provision a repository")
+
+// ProvisionRepository asks the platform for the repository a local run will
+// push to. The terminal does not name it: it names a paper the project holds,
+// and the platform allocates from the same registry the hosted path uses.
+func (c *Client) ProvisionRepository(ctx context.Context, projectID, paperKey string) (Repository, error) {
+	var out Repository
+	err := c.call(ctx, http.MethodPost, "/projects/"+projectID+"/repository",
+		map[string]any{"paper_key": paperKey}, &out)
+	if err != nil && strings.Contains(err.Error(), "minting_unavailable") {
+		return Repository{}, ErrMintingUnavailable
+	}
+	return out, err
 }
