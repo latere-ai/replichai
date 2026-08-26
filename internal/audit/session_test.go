@@ -229,3 +229,51 @@ func TestOnlyOneRepositoryProtocolReachesASession(t *testing.T) {
 		t.Error("the workspace protocol names a remote branch")
 	}
 }
+
+// The hunt wants to go anywhere, and asks for what the runtime can actually
+// enforce. A host sandbox is allow-only by construction and refuses a
+// wildcard, so a specification demanding open egress would be refused outright
+// and the local audit could not start at all.
+func TestTheNetworkPolicyFollowsWhatTheRuntimeCanEnforce(t *testing.T) {
+	open := networkFor(managed.Capabilities{NetworkModes: map[managed.NetworkMode]bool{
+		managed.NetworkOpen: true, managed.NetworkAllowlist: true, managed.NetworkNone: true,
+	}})
+	if open.Mode != managed.NetworkOpen || len(open.AllowedDomains) != 0 {
+		t.Fatalf("a runtime that can offer open egress was given %+v", open)
+	}
+
+	bounded := networkFor(managed.Capabilities{NetworkModes: map[managed.NetworkMode]bool{
+		managed.NetworkAllowlist: true, managed.NetworkNone: true,
+	}})
+	if bounded.Mode != managed.NetworkAllowlist {
+		t.Fatalf("a runtime that cannot was given %q", bounded.Mode)
+	}
+	// The bound is the declared list, and it has to carry the places an
+	// artifact actually lives — a preprint server, a publisher, a code
+	// host, a data repository — or the hunt is decoration.
+	joined := strings.Join(bounded.AllowedDomains, " ")
+	for _, want := range []string{"arxiv.org", "doi.org", "github.com", "*.github.io", "zenodo.org", "osf.io", "pypi.org"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the hunt cannot reach %s", want)
+		}
+	}
+
+	// A runtime that can enforce neither gets a closed sandbox rather than
+	// a policy it would refuse.
+	closed := networkFor(managed.Capabilities{NetworkModes: map[managed.NetworkMode]bool{managed.NetworkNone: true}})
+	if closed.Mode != managed.NetworkNone || len(closed.AllowedDomains) != 0 {
+		t.Fatalf("closed = %+v", closed)
+	}
+
+	// Every domain is a shape srt accepts: a hostname or a single-label
+	// wildcard, never a bare wildcard or a top-level one, which it refuses
+	// outright and which would fail the whole run at launch.
+	for _, domain := range ArtifactDomains() {
+		if domain == "*" || strings.HasPrefix(domain, "*.") && strings.Count(domain, ".") < 2 {
+			t.Errorf("%q is too broad for the sandbox to accept", domain)
+		}
+		if strings.ContainsAny(domain, "/: ") {
+			t.Errorf("%q is not a bare hostname", domain)
+		}
+	}
+}
