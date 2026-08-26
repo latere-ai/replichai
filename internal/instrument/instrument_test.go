@@ -259,3 +259,36 @@ func TestCriteriaClosed(t *testing.T) {
 		t.Fatal("Criteria has duplicates or knownCriterion is out of sync")
 	}
 }
+
+// A field of the wrong shape is the failure a real run produced: the model
+// wrote prose where the schema wants a list. Reporting it as invalid JSON sends
+// the reader looking for a missing comma, and refusing to read the document at
+// all denies the revision the one thing it could have fixed.
+func TestAFieldOfTheWrongShapeIsAViolationNamingIt(t *testing.T) {
+	raw := []byte(`{
+	  "protocol": {"design": "within", "trials": "5 tasks", "measures": [],
+	    "plan": "Descriptive statistics only; no inferential model is declared.",
+	    "reported": []},
+	  "analysis": null,
+	  "servability": {"components": []},
+	  "absent_reasons": {"analysis": "no runnable analysis was recovered"}
+	}`)
+	vs, err := Validate(raw)
+	if err != nil {
+		t.Fatalf("a readable document must not fail to parse: %v", err)
+	}
+	if len(vs) != 1 {
+		t.Fatalf("violations = %+v, want exactly one", vs)
+	}
+	if vs[0].Field != "protocol.plan" {
+		t.Errorf("field = %q, want protocol.plan", vs[0].Field)
+	}
+	if !strings.Contains(vs[0].Message, "string") || !strings.Contains(vs[0].Message, "[]string") {
+		t.Errorf("message = %q, want it to name what was written and what is wanted", vs[0].Message)
+	}
+
+	// Genuinely malformed JSON is still unreadable, and still an error.
+	if _, err := Validate([]byte(`{"protocol":`)); err == nil {
+		t.Error("truncated JSON must still fail to parse")
+	}
+}
