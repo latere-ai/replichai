@@ -100,6 +100,53 @@ The parent is met when its children are, and additionally:
 
 ## Outcome
 
+Built, and then driven against a real sandbox and real harnesses until a
+session actually finished. `replichai audit <paper> --runtime local` runs a
+complete session on an unmodified laptop with the operator's existing login and
+no API key: a bootstrap stage installs what the specification declared, a
+worker produces the reproduction in a workspace the sandbox confines it to, a
+judge grades it from a read-only copy, and the host verifies and pushes the
+committed tree afterwards. `replichai run` does the same for a whole project;
+`login`, `project` and `push` file the results in the app.
+
+The runtime is `local`, composed in `internal/runtimes/builtin` beside `memory`
+and `anthropic-managed`, and it passes `contracttest` unchanged.
+
+**Everything that was wrong was wrong in the same way.** Every leaf here was
+written from documentation and reasoning, and every leaf survived its own tests
+— and a dozen defects were still waiting, each of them a fact about a real
+program that no fixture could have contained. srt refuses a wildcard, so the
+open network mode could not exist. Claude Code keeps its login in a keychain
+rather than a file, and needs a scratch directory or its shell tool fails
+before running anything. Codex is a Rust binary that will not trust an injected
+certificate authority. pip verifies through an operating-system service the
+sandbox does not open. `git` reads a global configuration the sandbox denies.
+A raw line that is not JSON cannot be stored in a `json.RawMessage`. A
+checkpoint derived from the caller's reference repeats while the journal moves.
+
+The leaves carry them individually. The general lesson belongs here: a spec
+deck for a component that composes *other people's programs* is a set of
+hypotheses, and the first real run is the experiment. Nothing in this deck was
+worth much until it had been run.
+
+**What is still short**, each recorded on its leaf: evidence is not uploaded to
+the app and stays in the pushed repository; the container image is not
+published, so that driver is code without an artifact; no screen labels an
+imported session as locally executed; `environment.json` records where a run
+was allowed to go and not where it went; and the CI matrix this parent asked
+for is not configured, so the driver suites run where a developer has the tools
+and nowhere else.
+
+## Not in scope
+
+- Running a harness on the host with no sandbox at all. There is no degraded mode: a run either has a boundary or does not happen.
+- Windows. macOS and Linux, on `arm64` and `amd64`. `srt` marks Windows alpha and the container path needs WSL2; the preflight says so and refuses.
+- A hosted control plane for local runs. Nothing here polls a server, and a machine with no network beyond the model endpoint runs a complete audit.
+- Replacing `anthropic-managed`. Both stay; the default stays what it is.
+- Serving the model. What runs behind a gateway endpoint is the operator's business, GPU or otherwise.
+
+## Outcome
+
 Built. `replichai audit <paper> --runtime local` runs a complete session on an
 unmodified laptop: a bootstrap stage installs what the specification declared,
 a worker produces the reproduction in a workspace the sandbox confines it to, a

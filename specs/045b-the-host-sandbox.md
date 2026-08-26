@@ -152,22 +152,65 @@ Two reproductions of one paper that disagree are a finding. Two reproductions on
 
 ## Outcome
 
-Built as `internal/runtimes/local/host`. The path policy, the deny list and its
-test, the network modes, the detached lifetime and the preflight are all as
-specced. The venv moved outside the workspace, as the correction to this spec
-already recorded, and the bootstrap that fills it is 045a's.
+Built as `internal/runtimes/local/host`, and then rewritten in the places a
+real `srt` and a real Claude Code disagreed with it. A session now runs end to
+end on an operator's own machine with their existing login and no API key. What
+that took is worth recording, because none of it was visible from a fixture.
 
-One acceptance criterion is not met.
+**There is no open network mode, and there cannot be.** srt is allow-only and
+refuses a wildcard outright — *"Overly broad patterns like `*.com` or `*` are
+not allowed"*. This spec's `open` mapping emitted exactly that, so every
+open-network run failed to start. The driver no longer declares the mode, and
+`internal/audit` asks for what the runtime can enforce: a declared list of the
+places an artifact hunt goes ([`domains.go`](../internal/audit/domains.go)),
+recorded in the run's environment record. A bounded hunt finds less than an
+unbounded one; the record is how a reader tells the two apart.
 
-**`environment.json` does not record the domains a run reached.** The record
-carries the sandbox driver, the host, the harness and its credential kind, the
-model, and the packages the bootstrap resolved. It does not carry
-`network.domains_reached`, because nothing reads srt's proxy log. The field is
-in the schema and stays empty, which is honest but is not the disclosure this
-spec argued for: under an open policy the point was that an artifact hunt is
-defensible by being visible.
+**The login is in a keychain, not a file.** The read allowance this spec
+designed reaches `~/.claude` and the credential is not there: on macOS it is in
+the login Keychain. So a harness declares what it needs of the machine
+(`harness.Needs`) and the runtime grants exactly that, read-only, and only to a
+session actually using that login. Codex needs nothing extra — its token is a
+file — and instead needs its own directory writable, because it writes state
+back and will not start otherwise.
 
-**The deny-list test asserts the profile, not the kernel.** Every entry is
-checked to reach the settings file srt reads. Whether srt then enforces it is
-srt's contract, and running one process per entry inside a real sandbox is what
-the driver contract suite would do on a machine that has it.
+**A harness needs a scratch area.** Claude Code creates one per working
+directory under the shared temporary root, and without it every shell command
+fails before it runs — an agent that can write a file but cannot run one, which
+for a reproduction is fatal. It is a declared need now.
+
+**The operator's own instructions are withheld.** `~/.claude/CLAUDE.md`,
+`~/.claude/settings.json`, `~/.claude/plugins` and `~/.codex/AGENTS.md` are
+denied to every run. They are not the method, and a reproduction that silently
+inherits the habits of whoever ran it is not reproducing the paper. This spec
+did not think of it; granting the configuration directory for the login is what
+raised it.
+
+**TLS termination has to be declared to be usable.** srt publishes its
+certificate authority to the standard per-tool trust variables only when
+termination is configured, so an undeclared block left every HTTPS client
+rejecting the proxy. It is always declared now. pip is the exception that
+survives: on macOS it verifies against the system trust store and ignores every
+certificate variable, so the package indexes are tunnelled rather than
+inspected.
+
+**Two things about the stage itself.** srt parses its own options anywhere in
+what it is handed, so the command is separated by `--`; and a stage with no
+`PATH` resolves nothing — not even srt, whose shebang needs node — which failed
+as an exit 127 with an empty log and is now refused with a reason.
+
+### Still short
+
+**`environment.json` records where a run was *allowed* to go, not where it
+went.** The allowlist is in the record; nothing reads srt's proxy log, so
+`domains_reached` stays empty.
+
+**The read posture is srt's default, not the tighter one this spec implies.**
+Reads are allowed everywhere except the home directory and the named deny list.
+A run can read `/usr`, `/etc`, or a checkout outside `$HOME`. Denying `/` and
+allowing back a toolchain is a real hardening and a spec of its own.
+
+**The deny list is asserted against the profile, and separately against a real
+sandbox for a sample.** Every entry is checked to reach the settings file; a
+per-entry test inside a live sandbox is what the driver contract suite would
+grow into on a machine that has one.

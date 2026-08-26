@@ -160,17 +160,44 @@ The model credential is the one that has to be inside, because without it the ha
 
 ## Outcome
 
-Built as `internal/runtimes/local/harness`, with both adapters. Event ids come
-from the stage's unique name rather than its role — a session that grades twice
-would otherwise issue one id twice — and every line of a recorded stream
-produces at least one event carrying its raw payload, asserted by counting.
+Built as `internal/runtimes/local/harness`, and then corrected against both
+real binaries. Event ids come from the stage's unique name rather than its
+role — a session that grades twice would otherwise issue one id twice — and
+every line of a recorded stream produces at least one event carrying its raw
+payload, asserted by counting.
 
-**`Detect` became `VersionArgv`.** This spec put version detection on the
-harness; it belongs to the driver, because where the harness lives differs by
-driver. The harness names the command and the driver runs it.
+**`Detect` became `VersionArgv`, and then `Needs`.** This spec put version
+detection on the harness; it belongs to the driver, because where the harness
+lives differs by driver. What the harness does own turned out to be larger and
+was not in this spec at all: a harness is a real installation with real
+requirements of the machine, and three of them are not guessable from outside.
+Where the operator's existing login lives — a file for Codex, the macOS
+Keychain for Claude Code. Where its own scratch area is, without which Claude
+Code's shell tool fails before running anything. And whether it will trust a
+certificate authority injected by the sandbox — Node does, the Rust binary does
+not. `harness.Needs` is where a harness says so, and the runtime grants exactly
+that.
 
-**The Codex decoder is written against an unversioned stream.** It accepts two
-envelope shapes and turns anything else into a raw event, and its fixture is
-one this repository wrote rather than one captured from a released Codex. The
-Claude Code fixture is the shape that CLI documents. Both are fixtures, not
-recordings, and the first real run against either is what will confirm them.
+**Both adapters had the same bug.** Each redirected the harness's own
+configuration directory to a session-scoped one, which is how a session gets an
+isolated configuration and also how it loses the login: an empty directory
+holds no credential, and the harness answers "not logged in". The redirect
+happens only where a credential is supplied instead.
+
+**The Codex decoder was written against a guessed format.** Its real stream is
+a flat envelope — `thread.started`, `turn.started`, `item.completed` carrying
+an item, `turn.completed` carrying the usage — and the guessed one read none of
+it, so every Codex session reported zero tokens. The fixture is a recorded run
+now, and the older envelope is still accepted.
+
+**Codex also refuses a directory it has not been told to trust.** A session's
+workspace is a repository it has never seen, so the trust check is skipped: the
+sandbox is the boundary, and a second one the model can be talked past adds
+nothing.
+
+**And a harness's standing instructions are withheld.** `~/.claude/CLAUDE.md`
+and `~/.codex/AGENTS.md` are denied to every run. This spec was careful that
+the *method* never reach the workspace as a file; it did not consider that the
+operator's own instructions would reach the agent through its configuration
+directory. A reproduction that silently inherits the habits of whoever ran it
+is not reproducing the paper.

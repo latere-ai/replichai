@@ -46,6 +46,12 @@ Oct 2025) into a platform that already holds verification contracts with Nature-
 Springer and SAGE. Aqua runs analyses with logged provenance; humans still gate the
 "verified reproducible" badge. That is one product decision away from being a competitor.
 
+**Corrected 25 Aug 2026.** Aqua is **not** a replication agent. It is a general
+in-platform research assistant for the user's own work: it does not audit a third
+party's paper and it does not gate the badge. The "one product decision away"
+reading above rests on a misreading of what shipped, and the paragraph should be
+rewritten before it is used in a pitch.
+
 **The generation-side labs are on a different thesis, and structurally so.** Claude Science
 (relaunched 30 Jun 2026), Gemini for Science (I/O, May 2026), FutureHouse/Edison Scientific
 (Kosmos, $70M seed at $250M), Sakana, Lila Sciences ($550M raised), Periodic Labs,
@@ -73,15 +79,50 @@ market synthetic panels using borrowed academic validation language ("Stanford-v
 88% match"). They sell: skip the people, simulate the population, get the answer today.
 The correction sits in preprints with no commercial packaging — Hullman et al.
 ([arXiv 2602.15785](https://arxiv.org/abs/2602.15785), 2026) distinguishing heuristic
-substitution from calibrated validation, and the persona-replication result that matched up
-to 81% of real effects *while also producing significant effects for up to 83% of null
-findings* ([arXiv 2408.16073](https://arxiv.org/abs/2408.16073)).
+substitution from calibrated validation, and the persona-replication result of Yeykelis et
+al. ([arXiv 2408.16073](https://arxiv.org/abs/2408.16073)), who built 19,447 AI personas to
+re-run 133 experiments from 14 *Journal of Marketing* papers.
 
-That last number is the empirical case for [007](../specs/007-from-reproduction-to-replication.md)'s
-"synthetic pilot, never evidence" rule, and it is worth citing by hand whenever the rule
-looks like fastidiousness.
+**Corrected 25 Aug 2026.** This paragraph previously said that study "matched up to 81% of
+real effects while also producing significant effects for up to 83% of null findings". Both
+figures were wrong, and the second inverted the paper's meaning. Checked against the PDF:
+81% appears nowhere, and 83% is the *success* rate on strongly significant findings ("with
+83% of the findings (54 out of 65) successfully replicated", for p < 0.001) — not a
+false-positive rate on nulls.
 
-**HCI is genuinely unclaimed, and the reason is uncomfortable.** [On the Computational
+What the paper actually reports is a better argument for
+[007](../specs/007-from-reproduction-to-replication.md)'s "synthetic pilot, never evidence"
+rule than the invented number was, because it is a *pattern* rather than one alarming
+figure. Personas reproduce 76% of original main effects (84/111) and 68% overall including
+interactions (90/133) — but accuracy tracks how strong the original effect was:
+
+| Original finding | Replicated by personas |
+|---|---|
+| p < 0.001 | 83% (54/65) |
+| p > 0.5 (i.e. originally null) | 55% (6/11) |
+| Main effects | 76% |
+| Interaction effects | 27% |
+
+The authors' own reading: personas "may be prone to both false positives and false
+negatives, indicating a potential risk when using them to detect or confirm less pronounced
+effects", and while they "may sometimes accurately identify the absence of an effect, they
+also risk introducing spurious findings".
+
+That is the citable case. A synthetic cohort is most reliable exactly where you least need
+it — on effects so strong they were never in doubt — and least reliable on weak effects,
+null results, and interactions, which is what a pilot is for. You cannot know in advance
+which regime a new study is in, so the pilot can never be the evidence.
+
+**Corrected 25 Aug 2026: HCI is no longer unclaimed.** Adar, Lee, Lei, Liao & Peng,
+*Revibing Code from Papers: Reimplementing HCI Artifacts*, UIST 2026
+([arXiv 2608.00450](https://arxiv.org/abs/2608.00450), 1 Aug 2026) reimplements HCI artifacts
+from papers and releases 27 of them. It also draws the inner/outer boundary squarely, which
+this document elsewhere claims nobody does: the machine rebuilds the interactive system, and
+participants are needed for the study that system is a baseline for. It stops at the artifact
+and neither runs the participant half nor authors an independent verdict. The paragraph below
+was written before it existed and is now false as stated.
+
+**HCI was genuinely unclaimed until Aug 2026, and the reason is uncomfortable.** [On the Computational
 Reproducibility of HCI](https://dl.acm.org/doi/full/10.1145/3772318.3791129) (CHI 2026,
 13 Apr 2026) found that only **76 CHI papers have ever shared both data and code**; 37 of
 those (49%) fully reproduced. Roughly **1% of CHI papers share reproducible materials at
