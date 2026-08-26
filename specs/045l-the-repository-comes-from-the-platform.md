@@ -1,6 +1,6 @@
 # 045l — The repository comes from the platform, not from your laptop
 
-**Status:** proposed.
+**Status:** built.
 
 **Scope:** how a session run on somebody's machine gets a GitHub repository and the credential to push it, without that person holding an organisation credential. Closes [009](009-secret-containment-when-the-agent-commits-live.md)'s deferred commit 3 for the local path only; the mounted path keeps the PAT and the constraint that deferred it stands.
 
@@ -126,3 +126,35 @@ The mounted path. It sets its credential once at session creation and the agent 
 Per-operator installations. One `open-hai` installation serves every operator; who may provision is decided by project membership, not by a forge identity.
 
 Revocation on a crash. A terminal killed between the mint and the revoke leaves a token that expires within the hour. That is the bound the design already accepts, and adding a server-side sweep would need the server to hold what it deliberately handed away.
+
+## Outcome
+
+Built. `replichai audit <paper> --publish --project <id> --runtime local` runs a
+local session against a repository the platform allocated, pushes with a
+credential scoped to that repository, and revokes it when the finalize is done.
+`--publish` without `--project` keeps `REPLICHAI_GITHUB_TOKEN`, and a deployment
+with no App falls back to it with the missing settings named.
+
+Four things diverged from the design above.
+
+**Filing the paper is part of asking for its repository.** The route refuses a
+paper the project does not hold, and a project created a moment ago holds none,
+so provisioning would have 404'd for every fresh project. The terminal files the
+paper first, using the idempotent `AddPaper` that `push` already uses. This was
+found by running the chain test, not by reading the design.
+
+**The lookup key is derived offline, not from the resolved identity.**
+`paper.Resolve` answers `10.1145/…` where the paper source is unreachable and
+`doi:10.1145/…` where it is not, while the app always files under the offline
+`paper.Key`. Asking with the resolved key made the lookup depend on a paper
+source being up. The terminal now derives it the way the app does.
+
+**`--invite` is refused on this path.** A minted credential carries
+`contents:write`; adding a collaborator is an `administration` call. Refusing
+before anything is created beats discovering it after the reproduction has been
+pushed. Inviting through the platform, which holds a credential that can, is not
+built.
+
+**`CanMint` was added.** The composition root has to know whether the forge
+credential can mint before it wires the provisioner, and the only other way to
+find out would have been to mint a token nobody asked for.
