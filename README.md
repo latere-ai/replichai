@@ -94,7 +94,10 @@ replichai login && replichai push papers.yaml --project <id>
 ```
 
 No GitHub token ever enters the sandbox: the agent commits into a folder that
-outlives it, and your machine verifies and pushes that folder afterwards.
+outlives it, and your machine verifies and pushes that folder afterwards. With
+`--publish --project <id>` no GitHub token needs to be on your machine at all —
+the platform allocates the repository and mints a credential that can write to
+that one repository and expires within the hour.
 
 **[`docs/local-runs.md`](docs/local-runs.md)** is the guide — prerequisites per
 platform, what a run does, where files land, what the agent can and cannot
