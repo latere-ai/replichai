@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/cloud"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
@@ -132,6 +133,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		doPublish    = fs.Bool("publish", false, "mount a GitHub repo and publish the reproduction to it")
 		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
+		projectID    = fs.String("project", "", "with --publish, the project the platform provisions the repository under")
 		detach       = fs.Bool("detach", false, "with --publish, start the run and return; finish it later")
 		model        = fs.String("model", audit.DefaultModelPreference, "model to run on: a tier (best, balanced, fast) or provider/id")
 		local        localOptions
@@ -187,10 +189,11 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	// mount is handled by this same branch.
 	var pub *publisher
 	if *doPublish {
-		pub, err = newPublisher(ctx, *owner, paper, m.Digest(), *timeout, stderr)
+		pub, err = publisherFor(ctx, *projectID, *owner, paper, m.Digest(), *invite, *timeout, stderr)
 		if err != nil {
 			return err
 		}
+		defer pub.done(context.WithoutCancel(ctx), stderr)
 		capabilities, capErr := runtime.Capabilities(ctx)
 		if capErr != nil {
 			return capErr
@@ -216,7 +219,14 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			if evidence.Status.Verdict != nil {
 				grade = provider.Grade(evidence.Status.Verdict.Grade)
 			}
-			return finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade, providerEventsFromManaged(evidence.Events), *invite, stdout)
+			if err := finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade,
+				providerEventsFromManaged(evidence.Events), *invite, stdout); err != nil {
+				return err
+			}
+			// The work the credential was minted for is done. It expires within
+			// the hour anyway; expiry is not a completion signal and this is.
+			pub.done(ctx, stderr)
+			return nil
 		}
 		opts = append(opts, audit.WithSessionHooks(hooks))
 		fmt.Fprintf(stderr, "  publishing to %s\n", pub.repoFullName())
@@ -273,6 +283,24 @@ type publisher struct {
 	name  string
 	id    paper.Identity
 	mount provider.RepoMount
+	// minted is the platform-issued credential, where the platform issued one
+	// (045l). It is revoked when the work it was minted for is done: the token
+	// expires within the hour regardless, but expiry is not a completion
+	// signal, and the holder revokes what it holds.
+	minted string
+	api    *cloud.Client
+}
+
+// done ends the platform-issued credential. A terminal killed before this runs
+// leaves a token that expires on its own, which is the bound the design accepts.
+func (p *publisher) done(ctx context.Context, stderr *os.File) {
+	if p.minted == "" {
+		return
+	}
+	if err := p.gh.RevokeToken(ctx, p.minted); err != nil {
+		fmt.Fprintf(stderr, "  could not revoke the push credential (it expires on its own): %v\n", err)
+	}
+	p.minted = ""
 }
 
 func (p *publisher) repoFullName() string { return p.owner + "/" + p.name }
@@ -322,10 +350,58 @@ func providerEventsFromManaged(events []managed.Event) []provider.Event {
 // newPublisher resolves the paper, warns about any prior reproduction, allocates
 // a collision-free name through the registry, and creates the private
 // repository. The GitHub token comes from REPLICHAI_GITHUB_TOKEN.
+// newPlatformPublisher asks the platform for the repository and the credential
+// to push it (045l). It is the path that leaves no organisation credential on
+// this machine: the token it returns can write to one repository, expires
+// within the hour, and is revoked when the push is done.
+//
+// A deployment that cannot mint says so, and the caller falls back to the
+// credential this machine holds — with the reason printed, because a security
+// property that quietly stops holding is worse than one never claimed.
+func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeout time.Duration, stderr *os.File) (*publisher, error) {
+	client, err := apiClient()
+	if err != nil {
+		return nil, err
+	}
+	id, err := paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: timeout}))
+	if err != nil {
+		return nil, err
+	}
+	// A session may only run against a paper the project holds, so filing it is
+	// part of asking for its repository — the same order push keeps, and
+	// filing is idempotent for the same reason.
+	if err := client.AddPaper(ctx, projectID, paperRef); err != nil {
+		return nil, err
+	}
+	// The key is derived offline, the way the app derives it when it files the
+	// paper. paper.Resolve degrades to an unqualified key when the paper source
+	// is unreachable, and a lookup key that depends on the network being up is
+	// a lookup that fails on a train.
+	key, err := paper.Key(paperRef)
+	if err != nil {
+		return nil, err
+	}
+	allocated, err := client.ProvisionRepository(ctx, projectID, key)
+	if err != nil {
+		return nil, err
+	}
+	owner, name, _ := strings.Cut(allocated.Repo, "/")
+	gh := github.New(allocated.Token)
+	if err := publish.RecordIdentity(ctx, gh, owner, name, id); err != nil {
+		fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
+	}
+	fmt.Fprintf(stderr, "  repository %s, credential expires %s\n",
+		allocated.Repo, allocated.Expires.Format(time.RFC3339))
+	return &publisher{
+		gh: gh, owner: owner, name: name, id: id, minted: allocated.Token, api: client,
+		mount: provider.RepoMount{URL: allocated.URL, Token: allocated.Token, MountPath: audit.DefaultMountPath},
+	}, nil
+}
+
 func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, timeout time.Duration, stderr *os.File) (*publisher, error) {
 	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	if token == "" {
-		return nil, fmt.Errorf("--publish needs REPLICHAI_GITHUB_TOKEN set")
+		return nil, fmt.Errorf("--publish needs REPLICHAI_GITHUB_TOKEN set, or --project so the platform can provide one")
 	}
 	id, err := paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: timeout}))
 	if err != nil {
@@ -921,6 +997,8 @@ flags for audit:
   -publish        mount a GitHub repo and publish the reproduction to it
   -owner          GitHub owner for -publish (default "`+publish.DefaultOrg+`")
   -invite         GitHub login to invite as a collaborator
+  -project        with --publish, the project the platform provisions the
+                  repository under, so no GitHub token is needed here
   -detach         with -publish, start the run and return; finish it later
   -model          model to run on: a tier (best, balanced, fast) or provider/id
   -sandbox        with -runtime local: host (srt) or container (podman, docker)
@@ -982,4 +1060,33 @@ func slugify(reference string) string {
 		return "paper"
 	}
 	return slug
+}
+
+// publisherFor chooses where the repository comes from (045l). Naming a project
+// asks the platform, which leaves no organisation credential on this machine.
+// Naming none keeps the credential this machine already holds.
+//
+// A deployment that cannot mint is not a failure: the terminal says which
+// setting is missing and uses its own credential where it has one, because a
+// run that refuses over a deployment setting helps nobody.
+func publisherFor(ctx context.Context, projectID, owner, paperRef, methodDigest, invite string,
+	timeout time.Duration, stderr *os.File) (*publisher, error) {
+	if projectID == "" {
+		return newPublisher(ctx, owner, paperRef, methodDigest, timeout, stderr)
+	}
+	// A minted credential carries contents:write and nothing else, and adding a
+	// collaborator is an administration call. Refusing here beats discovering
+	// it after the reproduction has been pushed.
+	if invite != "" {
+		return nil, errors.New("--invite needs a credential that can administer the repository; " +
+			"use --publish without --project, or add the collaborator in the app")
+	}
+	pub, err := newPlatformPublisher(ctx, projectID, paperRef, timeout, stderr)
+	if errors.Is(err, cloud.ErrMintingUnavailable) {
+		fmt.Fprintln(stderr, "  ! this deployment cannot provision a repository "+
+			"(it needs REPLICHAI_GITHUB_APP_ID and REPLICHAI_GITHUB_APP_KEY)")
+		fmt.Fprintln(stderr, "    falling back to REPLICHAI_GITHUB_TOKEN on this machine")
+		return newPublisher(ctx, owner, paperRef, methodDigest, timeout, stderr)
+	}
+	return pub, err
 }
