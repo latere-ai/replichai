@@ -92,14 +92,32 @@ func (s *Sandbox) Preflight(context.Context) error {
 	return nil
 }
 
+// CarriesHarnessLogin reports whether a stage in this sandbox can reach the
+// credential the harness on this machine is already signed in with.
+//
+// On macOS it cannot, and the sandbox must not be widened until it can. Claude
+// Code keeps its login in the login Keychain rather than in a file, and
+// reaching it needs read and write on ~/Library/Keychains — which is not the
+// harness's credential, it is every credential the operator has: their signing
+// keys, their password manager's, their mail. The read allowance this driver
+// grants is scoped to one directory on purpose, and a keychain is not one.
+//
+// Where a harness keeps its credential in a file under its own configuration
+// directory, the existing allowance already covers it.
+func (s *Sandbox) CarriesHarnessLogin() bool { return s.config.Platform != sandbox.Darwin }
+
 // Capabilities is what this driver can enforce and install. It declares the
 // allowlist mode, which the container driver cannot, and refuses apt, which it
 // has no privileged root to run.
 func (s *Sandbox) Capabilities() sandbox.Capabilities {
 	return sandbox.Capabilities{
 		PackageManagers: map[string]bool{"pip": true, "npm": true},
+		// No open mode. srt is allow-only and refuses a wildcard, so
+		// unrestricted egress is not something this driver can enforce or
+		// even express — and a driver declaring what it cannot enforce is
+		// the one thing the capability declaration exists to prevent.
 		NetworkModes: map[string]bool{
-			sandbox.NetworkNone: true, sandbox.NetworkAllowlist: true, sandbox.NetworkOpen: true,
+			sandbox.NetworkNone: true, sandbox.NetworkAllowlist: true,
 		},
 		MaxAttachmentBytes: 64 << 20,
 	}
@@ -115,6 +133,15 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	}
 	if len(spec.Argv) == 0 {
 		return sandbox.StageHandle{}, errors.New("a stage needs a command")
+	}
+	// A stage with no PATH cannot run anything, and it fails as an exit 127
+	// with an empty log — which is the unexplained failure this driver exists
+	// to not produce. srt is itself a script whose shebang resolves node, so
+	// even an absolute command is not enough.
+	if !hasPath(s.config.Environ) {
+		return sandbox.StageHandle{}, fmt.Errorf(
+			"%w: the host sandbox was composed with no environment, so a stage would have no PATH",
+			sandbox.ErrNotReady)
 	}
 	settingsPath := filepath.Join(filepath.Dir(spec.LogPath), spec.Name+".srt.json")
 	body, err := Render(s.profile(spec)).Encode()
@@ -139,7 +166,12 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	statusPath := s.statusPath(spec.LogPath, spec.Name)
 	_ = os.Remove(statusPath)
 	_ = os.Remove(statusPath + ".part")
-	command := append([]string{srt, "--settings", settingsPath}, spec.Argv...)
+	// The "--" is not decoration. srt parses options anywhere in what it is
+	// given unless separated, so a harness argv containing -d, -s, -c, -V or
+	// -h has them eaten: `srt --settings f echo -d -s -V` fails as an srt
+	// settings error rather than running echo. Today's harnesses happen to
+	// use long flags only, which is not a property to rely on.
+	command := append([]string{srt, "--settings", settingsPath, "--"}, spec.Argv...)
 	// The status is written to a temporary file and renamed, so it appears
 	// whole or not at all. Written in place it can be observed empty — the
 	// process has exited, the file exists, and nothing is in it yet — which
@@ -184,6 +216,17 @@ func wrapperScript(token string, command []string, statusPath string) string {
 	return fmt.Sprintf("# replichai-stage:%s\n%s\ncode=$?\nprintf %%s $code > %s\nmv -f %s %s\n",
 		token, shellJoin(command),
 		shellQuote(statusPath+".part"), shellQuote(statusPath+".part"), shellQuote(statusPath))
+}
+
+// hasPath reports whether the environment a stage inherits can resolve a
+// command at all.
+func hasPath(environ []string) bool {
+	for _, entry := range environ {
+		if name, value, found := strings.Cut(entry, "="); found && name == "PATH" && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // profile is the whole access decision for one stage.

@@ -19,7 +19,9 @@ func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 		want       []string
 	}{
 		{Darwin, Host, ConditionMissing, []string{"srt"},
-			[]string{"npm install -g @anthropic-ai/sandbox-runtime", "brew install ripgrep", `srt "echo ok"`, "--sandbox container"}},
+			// A bare command, not a string: srt takes a string only behind -c, so
+			// `srt "echo ok"` fails with "command not found: echo ok".
+			[]string{"npm install -g @anthropic-ai/sandbox-runtime", "brew install ripgrep", "srt echo ok", "--sandbox container"}},
 		{Linux, Host, ConditionMissing, []string{"bubblewrap", "socat"},
 			[]string{"apt-get install -y bubblewrap", "apt-get install -y socat", "--sandbox container"}},
 		{Darwin, Host, ConditionMissing, []string{"claude"},

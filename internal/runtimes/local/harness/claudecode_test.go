@@ -162,6 +162,8 @@ func TestClaudeCodeArgvCarriesTheRoleOutsideTheWorkspace(t *testing.T) {
 		t.Errorf("judge does not read the evidence copy: %v", judge)
 	}
 
+	request.Gateway.Auth = AuthAPIKey
+	request.Gateway.Key = "k"
 	files, err := h.Files(StageWorker, request)
 	if err != nil {
 		t.Fatalf("Files: %v", err)
@@ -187,8 +189,21 @@ func TestClaudeCodeCredentialChannels(t *testing.T) {
 	if err != nil || len(secrets) != 0 {
 		t.Fatalf("harness login demanded a credential: %v, %v", secrets, err)
 	}
-	if env["CLAUDE_CONFIG_DIR"] != "/s/home" {
-		t.Errorf("config dir = %q", env["CLAUDE_CONFIG_DIR"])
+	// The login lives in the harness's own configuration directory.
+	// Redirecting it to a session-scoped one is how a run loses the login:
+	// an empty directory holds no credential, and the harness answers "not
+	// logged in" — which is the whole default path, gone.
+	if _, redirected := env["CLAUDE_CONFIG_DIR"]; redirected {
+		t.Errorf("a harness login was pointed at an empty configuration directory: %v", env)
+	}
+	files, err := h.Files(StageWorker, Request{Gateway: Gateway{Auth: AuthHarness}, Paths: paths})
+	if err != nil || len(files) != 0 {
+		t.Errorf("a harness login wrote configuration nothing reads: %v, %v", files, err)
+	}
+
+	env, _, err = h.Env(StageWorker, Request{Gateway: Gateway{Auth: AuthAPIKey, Key: "k"}, Paths: paths})
+	if err != nil || env["CLAUDE_CONFIG_DIR"] != "/s/home" {
+		t.Errorf("a supplied credential did not get an isolated configuration: %v", env)
 	}
 
 	env, secrets, err = h.Env(StageWorker, Request{Gateway: Gateway{Auth: AuthAPIKey, Key: "k"}, Paths: paths})

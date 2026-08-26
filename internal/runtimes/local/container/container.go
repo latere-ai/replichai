@@ -196,6 +196,11 @@ func (s *Sandbox) readImage(ctx context.Context) error {
 	return nil
 }
 
+// CarriesHarnessLogin is false: a container has neither the operator's
+// configuration directory nor their credential store, which is the price of
+// the pinned toolchain. A session here is supplied a credential instead.
+func (s *Sandbox) CarriesHarnessLogin() bool { return false }
+
 // Preflight re-checks the engine, because a machine can be stopped between
 // construction and a launch.
 func (s *Sandbox) Preflight(ctx context.Context) error { return s.probe(ctx, s.engine) }

@@ -126,13 +126,21 @@ func TestNetworkModesRender(t *testing.T) {
 	if !slices.Contains(list.Network.AllowedDomains, "arxiv.org") || len(list.Network.AllowedDomains) != 2 {
 		t.Errorf("allowlist = %v", list.Network.AllowedDomains)
 	}
-	open := Render(Profile{Network: sandbox.Network{Mode: sandbox.NetworkOpen}})
-	if len(open.Network.AllowedDomains) != 1 || open.Network.AllowedDomains[0] != "*" {
-		t.Errorf("open = %v", open.Network.AllowedDomains)
+	// There is no open mode: srt refuses a wildcard, so a driver that
+	// declared one would emit a profile srt rejects — which is what it did
+	// until a real run met it.
+	if New(Config{Platform: sandbox.Darwin}).Capabilities().NetworkModes[sandbox.NetworkOpen] {
+		t.Error("the host driver claims it can leave egress unrestricted")
+	}
+	rendered := Render(Profile{Network: sandbox.Network{Mode: sandbox.NetworkOpen}})
+	for _, domain := range rendered.Network.AllowedDomains {
+		if strings.Contains(domain, "*") && domain == "*" {
+			t.Errorf("a wildcard srt refuses reached the settings: %v", rendered.Network.AllowedDomains)
+		}
 	}
 	// A unix socket is a hole straight through the boundary, and local
 	// binding is a service the sandbox is talking to from outside it.
-	if open.Network.AllowAllUnixSockets || open.Network.AllowLocalBinding {
+	if list.Network.AllowAllUnixSockets || list.Network.AllowLocalBinding {
 		t.Error("the network policy leaves a hole open by default")
 	}
 }
@@ -199,7 +207,9 @@ func TestHostDriverMeetsTheSandboxContract(t *testing.T) {
 	}
 	sandboxtest.Run(t, func(t *testing.T) *sandboxtest.Subject {
 		return &sandboxtest.Subject{
-			Driver: New(Config{Home: os.Getenv("HOME")}),
+			// The environment is the composition root's, here as anywhere:
+			// a stage with no PATH resolves nothing, not even the sandbox.
+			Driver: New(Config{Home: os.Getenv("HOME"), Environ: os.Environ()}),
 			Dir:    t.TempDir(),
 			Print: func(text string, code int) []string {
 				return []string{"/bin/sh", "-c", fmt.Sprintf("printf %%s %q; exit %d", text, code)}
@@ -225,7 +235,7 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 		}
 		return "/bin/echo", nil
 	}
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: stub})
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: stub, Environ: os.Environ()})
 	if err := driver.Preflight(context.Background()); err != nil {
 		t.Fatalf("preflight: %v", err)
 	}
@@ -312,7 +322,7 @@ func readScript(t *testing.T, spec sandbox.StageSpec) string {
 // driver never launched, are both fine: the controller cancels and releases
 // without knowing the state.
 func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: os.Environ(),
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
 	dir := t.TempDir()
 	handle := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:999999:worker-9:" + filepath.Join(dir, "worker-9.log")}
@@ -344,7 +354,7 @@ func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
 // The stage's own output is readable from an offset, out of a file the stage
 // has no write access to.
 func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: os.Environ(),
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "worker-0.log")
@@ -379,7 +389,7 @@ func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
 // sandbox went missing between construction and the launch.
 func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
 	ready := func(string) (string, error) { return "/bin/echo", nil }
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: ready})
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: ready, Environ: os.Environ()})
 	dir := t.TempDir()
 	spec := sandbox.StageSpec{Name: "worker-0", Workdir: dir, LogPath: filepath.Join(dir, "worker-0.log")}
 	if _, err := driver.Launch(context.Background(), spec); err == nil {
@@ -396,7 +406,7 @@ func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
 // the sandbox: it is this program's question about its own dependency, not
 // the agent's work.
 func TestVersionRunsTheHarnessVersionCommand(t *testing.T) {
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: os.Environ(),
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
 	version, err := driver.Version(context.Background(), []string{"echo", "2.1.4"})
 	if err != nil || version != "2.1.4" {
@@ -456,5 +466,78 @@ func TestAStageReadsTheNullDevice(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "stdin:[]") {
 		t.Fatalf("the stage did not read an empty stdin: %q", body)
+	}
+}
+
+// srt parses options anywhere in what it is given unless they are separated,
+// so a harness argv carrying -d, -s, -c, -V or -h has them eaten: without the
+// separator `srt --settings f echo -d -s -V` fails as an srt settings error
+// rather than running echo. Today's harnesses use long flags only, which is
+// not a property to rely on.
+func TestTheCommandIsSeparatedFromTheSandboxsOwnFlags(t *testing.T) {
+	argv := []string{"claude", "--print", "-d", "-s", "-c", "--", "reproduce it"}
+	script := wrapperScript("worker-0", append([]string{"/opt/srt", "--settings", "/s/p.json", "--"}, argv...),
+		"/s/session/raw/worker-0.status")
+	separator := strings.Index(script, "'--'")
+	first := strings.Index(script, "'claude'")
+	if separator < 0 || first < 0 || separator > first {
+		t.Fatalf("the command is not separated from the sandbox's own flags:\n%s", script)
+	}
+	// And every element of the command survives, in order.
+	previous := separator
+	for _, arg := range argv {
+		at := strings.Index(script[previous:], "'"+arg+"'")
+		if at < 0 {
+			t.Fatalf("%q did not reach the command line:\n%s", arg, script)
+		}
+		previous += at
+	}
+}
+
+// A stage with no PATH resolves nothing — not even the sandbox, whose own
+// shebang needs node. That failed as an exit 127 with an empty log, which is
+// the unexplained failure this driver exists not to produce.
+func TestAStageWithNoEnvironmentIsRefused(t *testing.T) {
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+		Look: func(string) (string, error) { return "/bin/echo", nil }})
+	dir := t.TempDir()
+	_, err := driver.Launch(context.Background(), sandbox.StageSpec{
+		Name: "worker-0", Argv: []string{"/bin/sh", "-c", "true"}, Workdir: dir,
+		LogPath: filepath.Join(dir, "worker-0.log"),
+	})
+	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "PATH") {
+		t.Fatalf("Launch with no environment = %v", err)
+	}
+	// One with an environment carrying no PATH is the same thing.
+	driver = New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: []string{"HOME=/x"},
+		Look: func(string) (string, error) { return "/bin/echo", nil }})
+	if _, err := driver.Launch(context.Background(), sandbox.StageSpec{
+		Name: "worker-0", Argv: []string{"/bin/sh"}, Workdir: dir,
+		LogPath: filepath.Join(dir, "worker-0.log"),
+	}); !errors.Is(err, sandbox.ErrNotReady) {
+		t.Fatalf("Launch with a PATH-less environment = %v", err)
+	}
+}
+
+// The harness's own login is not a credential every sandbox can carry. On
+// macOS Claude Code keeps it in the login Keychain, and the only way to reach
+// that is to open the whole keychain to the session — every credential the
+// operator has, not the one the harness needs.
+func TestTheHostSandboxSaysWhetherItCarriesAHarnessLogin(t *testing.T) {
+	if New(Config{Platform: sandbox.Darwin}).CarriesHarnessLogin() {
+		t.Error("the macOS sandbox claims it can reach a keychain login")
+	}
+	if !New(Config{Platform: sandbox.Linux}).CarriesHarnessLogin() {
+		t.Error("the Linux sandbox refuses a login kept in a file it already reads")
+	}
+	// And the keychain is never in the profile: widening the read allowance
+	// to reach one credential would hand over all of them.
+	settings := Render(New(Config{Platform: sandbox.Darwin, Home: "/Users/x"}).profile(sandbox.StageSpec{
+		Paths: []sandbox.Path{{Host: "/s/workspace", Access: sandbox.ReadWrite}},
+	}))
+	for _, path := range append(settings.Filesystem.AllowRead, settings.Filesystem.AllowWrite...) {
+		if strings.Contains(path, "Keychain") {
+			t.Fatalf("the profile opens the keychain: %v", path)
+		}
 	}
 }

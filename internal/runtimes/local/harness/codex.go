@@ -176,7 +176,7 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 	if trimmed == "" {
 		return nil, nil
 	}
-	event := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
+	event := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: Raw(line)}
 	raw := func() []managed.Event {
 		event.Role, event.Kind, event.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
 		return []managed.Event{event}
