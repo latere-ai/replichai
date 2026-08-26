@@ -73,7 +73,7 @@ Each session gets a directory under `~/.replichai/sessions/<id>/`:
 | | |
 |---|---|
 | `workspace/` | your reproduction, and a git repository. This is what gets published |
-| `tmp/` | downloads: the paper PDF, datasets, anything third-party |
+| `tmp/` | downloads: the paper PDF, datasets, anything third-party. `$TMPDIR` points here, and so does the agent's own scratch — so nothing either of them creates lands in the repository |
 | `venv/` | the language environment the bootstrap made |
 | `grade/` | the judge's verdict, one file per grading round |
 | `session/` | the transcript, the status, and what the run ran on. Nothing inside the sandbox can write here |
