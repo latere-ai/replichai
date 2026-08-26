@@ -52,8 +52,8 @@ Four steps, in order. Each is a separate process the runtime starts, watches
 and can stop, so a failure says which one failed.
 
 ```
-bootstrap   installs what the method declared — into the session's own
-            environment, never the workspace
+bootstrap   installs what the method declared into the session's own
+            environment at $VIRTUAL_ENV, never into the workspace
 worker      the agent: reads the paper, hunts for artifacts, writes and runs
             the reproduction, commits as it goes
 judge       the same agent again, in a fresh sandbox, with the workspace
@@ -74,7 +74,7 @@ Each session gets a directory under `~/.replichai/sessions/<id>/`:
 |---|---|
 | `workspace/` | your reproduction, and a git repository. This is what gets published |
 | `tmp/` | downloads: the paper PDF, datasets, anything third-party. `$TMPDIR` points here, and so does the agent's own scratch — so nothing either of them creates lands in the repository |
-| `venv/` | the language environment the bootstrap made |
+| `venv/` | the language environment the bootstrap made. The agent is told to use it rather than build its own, because a virtualenv committed into a reproduction is refused at publication |
 | `grade/` | the judge's verdict, one file per grading round |
 | `session/` | the transcript, the status, and what the run ran on. Nothing inside the sandbox can write here |
 
