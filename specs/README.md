@@ -167,7 +167,7 @@ This has been run, which is the only reason to believe any of it. A session driv
 
 Three tables, by how finished the work is rather than by number. A spec's number still tells you when it was written; this tells you what you can rely on. Within each table the order is numeric.
 
-### Done (90)
+### Done (91)
 
 Built, and every acceptance criterion it set itself holds.
 
@@ -251,7 +251,7 @@ Built, and every acceptance criterion it set itself holds.
 | 044b | [The server harvests what the session produced](044b-the-server-harvests-the-session.md) | built | 044, 006i, 009 |
 | 044c | [A lease says the driver is alive](044c-a-lease-says-it-is-alive.md) | built | 044, 006b, 041b |
 | 044d | [An empty repository says so](044d-an-empty-repository-says-so.md) | built | 044, 021a, 044b |
-| 045 | [The run happens on your machine](045-the-run-happens-on-your-machine.md) | built (eleven children) | 041a–041c, 044, 009, 006b, 011 |
+| 045 | [The run happens on your machine](045-the-run-happens-on-your-machine.md) | built (twelve children) | 041a–041c, 044, 009, 006b, 011 |
 | 045a | [The sandbox is a seam](045a-the-sandbox-is-a-seam.md) | built | 041a, 041b, 041c |
 | 045b | [The host sandbox](045b-the-host-sandbox.md) | built | 045a |
 | 045c | [The container sandbox](045c-the-container-sandbox.md) | built | 045a, 045b |
@@ -263,6 +263,7 @@ Built, and every acceptance criterion it set itself holds.
 | 045i | [Signing in from the terminal](045i-signing-in-from-the-terminal.md) | built | 006c, 014d |
 | 045j | [A bearer the API accepts](045j-a-bearer-the-api-accepts.md) | built | 045i, 006a, 006c |
 | 045k | [A local session reaches the cloud](045k-a-local-session-reaches-the-cloud.md) | built | 045j, 045g, 006b, 012, 015, 011, 005 |
+| 045l | [The repository comes from the platform](045l-the-repository-comes-from-the-platform.md) | built | 045g, 045j, 045k, 009, 006f, 003 |
 
 ### Half done (8)
 
@@ -279,14 +280,13 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
 | 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half-done | 041a–041d |
 
-### Not built (16)
+### Not built (15)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
 | # | Spec | Status | Depends on |
 |---|---|---|---|
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
-| 045l | [The repository comes from the platform](045l-the-repository-comes-from-the-platform.md) | proposed | 045g, 045j, 045k, 009, 006f, 003 |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
