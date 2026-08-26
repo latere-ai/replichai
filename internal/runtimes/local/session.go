@@ -24,13 +24,14 @@ import (
 // publish, and session/ is evidence — authored by the host, and never writable
 // by any stage.
 const (
-	workspaceDir = "workspace"
-	tmpDir       = "tmp"
-	venvDir      = "venv"
-	gradeDir     = "grade"
-	homeDir      = "home"
-	evidenceDir  = "session"
-	rawDir       = "session/raw"
+	workspaceDir  = "workspace"
+	tmpDir        = "tmp"
+	harnessTmpDir = "tmp/harness"
+	venvDir       = "venv"
+	gradeDir      = "grade"
+	homeDir       = "home"
+	evidenceDir   = "session"
+	rawDir        = "session/raw"
 )
 
 // The files under session/.
@@ -103,7 +104,10 @@ func CreateSession(root, id string, environ []string) (*Session, error) {
 		return nil, fmt.Errorf("secure session directory: %w", err)
 	}
 	session := &Session{dir: dir, id: id}
-	for _, child := range []string{workspaceDir, tmpDir, venvDir, gradeDir, homeDir, evidenceDir, rawDir} {
+	// tmp/harness is where a harness is pointed to keep its own scratch, so
+	// that what it derives from a temporary root lands inside the session
+	// rather than in the workspace it is meant to keep clean.
+	for _, child := range []string{workspaceDir, tmpDir, harnessTmpDir, venvDir, gradeDir, homeDir, evidenceDir, rawDir} {
 		if err := os.MkdirAll(filepath.Join(dir, child), 0o700); err != nil {
 			return nil, fmt.Errorf("create %s: %w", child, err)
 		}
@@ -137,6 +141,16 @@ func (s *Session) Workspace() string { return filepath.Join(s.dir, workspaceDir)
 // Tmp is where downloads go, deliberately outside the repository.
 func (s *Session) Tmp() string { return filepath.Join(s.dir, tmpDir) }
 
+// HarnessTmp is the temporary root a harness is pointed at. It sits inside the
+// session's own temporary directory, so whatever a harness derives from it —
+// Claude Code makes siblings, one per shell — lands somewhere writable and
+// goes away with the run.
+//
+// It matters more than it sounds: with the root outside the session, pip fell
+// back to the working directory and filled a reproduction's repository with
+// unpack caches.
+func (s *Session) HarnessTmp() string { return filepath.Join(s.dir, harnessTmpDir) }
+
 // Venv is the session's language environment, outside the repository so one
 // `git add -A` cannot commit it.
 func (s *Session) Venv() string { return filepath.Join(s.dir, venvDir) }
@@ -158,11 +172,12 @@ func (s *Session) RawLog(name string) string {
 // Paths is the set a harness builds a stage against.
 func (s *Session) Paths() harness.Paths {
 	return harness.Paths{
-		Workspace: s.Workspace(),
-		Tmp:       s.Tmp(),
-		Home:      s.Home(),
-		Evidence:  s.Workspace(),
-		Grade:     s.Grade(),
+		Workspace:  s.Workspace(),
+		Tmp:        s.Tmp(),
+		HarnessTmp: s.HarnessTmp(),
+		Home:       s.Home(),
+		Evidence:   s.Workspace(),
+		Grade:      s.Grade(),
 	}
 }
 

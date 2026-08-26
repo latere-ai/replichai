@@ -49,6 +49,12 @@ func ArtifactDomains() []string {
 		// Code hosts, which is where a released artifact usually is.
 		"github.com", "*.github.com",
 		"raw.githubusercontent.com", "objects.githubusercontent.com", "codeload.github.com",
+		// Project pages. A real run was blocked reaching a benchmark's
+		// own site at *.github.io, which is where a released artifact
+		// announces itself as often as the repository is.
+		"github.io", "*.github.io",
+		"gitlab.io", "*.gitlab.io",
+		"readthedocs.io", "*.readthedocs.io",
 		"gitlab.com", "*.gitlab.com",
 		"bitbucket.org", "*.bitbucket.org",
 		"huggingface.co", "*.huggingface.co",

@@ -183,7 +183,7 @@ func TestClaudeCodeArgvCarriesTheRoleOutsideTheWorkspace(t *testing.T) {
 // process table.
 func TestClaudeCodeCredentialChannels(t *testing.T) {
 	h := NewClaudeCode()
-	paths := Paths{Workspace: "/s/workspace", Home: "/s/home"}
+	paths := Paths{Workspace: "/s/workspace", Home: "/s/home", Tmp: "/s/tmp", HarnessTmp: "/s/tmp/harness"}
 
 	env, secrets, err := h.Env(StageWorker, Request{Gateway: Gateway{Auth: AuthHarness}, Paths: paths})
 	if err != nil || len(secrets) != 0 {
@@ -245,10 +245,11 @@ func TestClaudeCodesLoginProfile(t *testing.T) {
 			t.Errorf("%s reaches the run: %v", want, login.Denies)
 		}
 	}
-	// The harness's own scratch area is writable, or its shell tool fails
-	// before it runs anything and the agent cannot reproduce a paper.
-	if len(login.Writes) != 1 || !strings.Contains(login.Writes[0], "claude-501") {
-		t.Errorf("no scratch area: %v", login.Writes)
+	// Nothing outside the session is writable: the scratch area is
+	// redirected into it by the environment instead of granted under the
+	// shared temporary root.
+	if len(login.Writes) != 0 {
+		t.Errorf("the harness was granted a path outside the session: %v", login.Writes)
 	}
 	// With no home there is nothing to grant and nothing to withhold.
 	if empty := NewClaudeCode().Needs(Machine{Platform: "darwin"}); len(empty.Reads) != 0 || len(empty.Denies) != 0 {
