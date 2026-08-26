@@ -29,7 +29,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		out          = fs.String("out", "runs", "directory for artifacts")
 		runtimeName  = fs.String("runtime", "local", "managed runtime to use")
 		methodDir    = fs.String("method", "", "path to a method directory")
-		parallel     = fs.Int("parallel", 0, "how many papers to run at once (default: half the cores, capped at 4)")
+		parallel     = fs.Int("parallel", 0, fmt.Sprintf("how many papers to run at once (default %d here: half the cores, capped at 4)", batch.DefaultParallel()))
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long one paper may take")
 		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "revision budget per paper")

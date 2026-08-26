@@ -341,3 +341,24 @@ func TestTheReportTotalsTheEntries(t *testing.T) {
 		}
 	}
 }
+
+// The default pool is half the cores, capped, and never zero: an unset
+// --parallel must not mean one paper at a time on a sixteen-core machine, and
+// must not mean none at all.
+func TestTheDefaultPoolIsSized(t *testing.T) {
+	if got := DefaultParallel(); got < 1 || got > 4 {
+		t.Fatalf("DefaultParallel() = %d", got)
+	}
+	r := newRunner()
+	state, err := Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}}}, r,
+		Options{StatePath: filepath.Join(t.TempDir(), "batch.json")})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if state.Summarise().Done != 2 {
+		t.Fatalf("an unset --parallel ran %+v", state.Summarise())
+	}
+	if got := r.maxOverlap.Load(); got > int32(DefaultParallel()) {
+		t.Fatalf("%d papers ran at once with the default of %d", got, DefaultParallel())
+	}
+}

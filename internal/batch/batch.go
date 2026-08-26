@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -236,7 +237,10 @@ type Runner interface {
 
 // Options configure one run of a batch.
 type Options struct {
-	// Parallel is how many papers run at once.
+	// Parallel is how many papers run at once. Zero or less takes the
+	// default: half the machine's cores, capped at four, because a session
+	// is mostly waiting on a model and a little on a compiler, and a pool
+	// wider than that thrashes the disk more than it shortens the batch.
 	Parallel int
 	// StatePath is where the resumable state is written.
 	StatePath string
@@ -251,6 +255,19 @@ type Options struct {
 	// Progress is called after every state change, so a caller can print
 	// and a test can watch.
 	Progress func(State)
+}
+
+// DefaultParallel is how many papers run at once when nobody said: half the
+// cores, capped at four, and never less than one.
+func DefaultParallel() int {
+	half := runtime.NumCPU() / 2
+	if half > 4 {
+		return 4
+	}
+	if half < 1 {
+		return 1
+	}
+	return half
 }
 
 // ErrIncomplete reports that at least one paper failed. The batch itself
@@ -270,7 +287,7 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 	}
 	parallel := options.Parallel
 	if parallel <= 0 {
-		parallel = 1
+		parallel = DefaultParallel()
 	}
 
 	state := State{Version: stateVersion, Project: file.Project, Publishing: options.Publishing, StartedAt: options.Clock()}
