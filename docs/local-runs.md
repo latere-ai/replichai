@@ -74,13 +74,19 @@ Each session gets a directory under `~/.replichai/sessions/<id>/`:
 |---|---|
 | `workspace/` | your reproduction, and a git repository. This is what gets published |
 | `tmp/` | downloads: the paper PDF, datasets, anything third-party. `$TMPDIR` points here, and so does the agent's own scratch — so nothing either of them creates lands in the repository |
-| `venv/` | the language environment the bootstrap made. The agent is told to use it rather than build its own, because a virtualenv committed into a reproduction is refused at publication |
+| `venv/` | the language environment the bootstrap made. The agent is told to use it, and in practice sometimes installs a second one inside `workspace/` anyway. Either way a dependency tree is never committed, never harvested into your output directory, and refused at publication |
 | `grade/` | the judge's verdict, one file per grading round |
 | `session/` | the transcript, the status, and what the run ran on. Nothing inside the sandbox can write here |
 
 The split is the point. The agent works in `workspace/` and nothing else it
 needs can end up in the repository; the transcript is written by replichai from
 a stream the agent cannot reach, so the run cannot edit its own evidence.
+
+`workspace/` is the one directory that is both the build directory and the
+deliverable, so replichai keeps installed dependencies out of it by rules the
+agent does not own: the repository ignores them, the harvest skips them, and
+publication refuses a tree that carries one. A virtualenv is recognised by the
+`pyvenv.cfg` Python writes, so one under any name is caught.
 
 Directories are kept after a run, because the workspace *is* the reproduction:
 
