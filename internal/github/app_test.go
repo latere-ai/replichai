@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,11 +21,13 @@ import (
 // a test can prove App calls carry the JWT and REST calls carry the minted
 // installation token, never the other way round.
 type fakeApp struct {
-	mints       int       // installation-token mints
-	resolves    int       // installation lookups
-	tokenExp    time.Time // expiry the mint endpoint reports
-	lastMinted  string    // most recent minted token
-	restBearers []string  // Authorization bearers seen on REST endpoints
+	mints       int              // installation-token mints
+	resolves    int              // installation lookups
+	tokenExp    time.Time        // expiry the mint endpoint reports
+	lastMinted  string           // most recent minted token
+	restBearers []string         // Authorization bearers seen on REST endpoints
+	scopes      []map[string]any // the body of each mint, so a scope is asserted
+	revoked     []string         // tokens presented to DELETE /installation/token
 }
 
 func (f *fakeApp) handler() http.Handler {
@@ -44,6 +47,9 @@ func (f *fakeApp) handler() http.Handler {
 			return
 		}
 		f.mints++
+		var scope map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&scope)
+		f.scopes = append(f.scopes, scope)
 		f.lastMinted = "ghs_inst_" + itoa(f.mints)
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"token":      f.lastMinted,
@@ -58,6 +64,17 @@ func (f *fakeApp) handler() http.Handler {
 	mux.HandleFunc("GET /orgs/{owner}/repos", func(w http.ResponseWriter, r *http.Request) {
 		f.restBearers = append(f.restBearers, bearer(r))
 		writeJSON(w, http.StatusOK, []map[string]any{})
+	})
+	mux.HandleFunc("DELETE /installation/token", func(w http.ResponseWriter, r *http.Request) {
+		presented := bearer(r)
+		f.revoked = append(f.revoked, presented)
+		if presented != f.lastMinted {
+			// A token already revoked or expired is not a live credential.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		f.lastMinted = ""
+		w.WriteHeader(http.StatusNoContent)
 	})
 	return mux
 }
@@ -175,4 +192,69 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+// 045l AC1–AC3. The minted credential can write to one repository and to
+// nothing else, it is not the client's own installation token, and revoking it
+// is authenticated by the token itself.
+func TestMintRepoTokenIsScopedToOneRepositoryAndRevocable(t *testing.T) {
+	base := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	fa := &fakeApp{tokenExp: base.Add(time.Hour)}
+	srv := httptest.NewServer(fa.handler())
+	defer srv.Close()
+	c := appClientForTest(t, srv.URL, base)
+
+	// The client's own broad token, so the minted one can be told from it.
+	server, err := c.app.serverToken(context.Background())
+	if err != nil {
+		t.Fatalf("serverToken: %v", err)
+	}
+
+	minted, err := c.MintRepoToken(context.Background(), "a-paper-a3f9")
+	if err != nil {
+		t.Fatalf("MintRepoToken: %v", err)
+	}
+	if minted.Value == "" || minted.Value == server {
+		t.Fatalf("minted %q, want a value distinct from the server token %q", minted.Value, server)
+	}
+	if !minted.Expires.Equal(fa.tokenExp) {
+		t.Errorf("expires = %v, want %v", minted.Expires, fa.tokenExp)
+	}
+
+	scope := fa.scopes[len(fa.scopes)-1]
+	repositories, _ := scope["repositories"].([]any)
+	if len(repositories) != 1 || repositories[0] != "a-paper-a3f9" {
+		t.Errorf("repositories = %v, want exactly the one repository", scope["repositories"])
+	}
+	permissions, _ := scope["permissions"].(map[string]any)
+	if len(permissions) != 1 || permissions["contents"] != "write" {
+		t.Errorf("permissions = %v, want only contents:write", scope["permissions"])
+	}
+	if len(scope) != 2 {
+		t.Errorf("the mint asked for %v, want repositories and permissions and nothing else", scope)
+	}
+
+	if err := c.RevokeToken(context.Background(), minted.Value); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+	if len(fa.revoked) != 1 || fa.revoked[0] != minted.Value {
+		t.Errorf("revoked %v, want the minted token to authenticate its own revocation", fa.revoked)
+	}
+	// Revoking again is the outcome already reached, not a failure.
+	if err := c.RevokeToken(context.Background(), minted.Value); err != nil {
+		t.Errorf("revoking an already-revoked token = %v, want nil", err)
+	}
+}
+
+// A deployment with no App cannot mint, and says so rather than handing back
+// the credential it does have.
+func TestAPATClientCannotMint(t *testing.T) {
+	c := New("ghp_static_pat", WithBaseURL("http://127.0.0.1:1"))
+	minted, err := c.MintRepoToken(context.Background(), "a-paper-a3f9")
+	if !errors.Is(err, ErrMintingUnavailable) {
+		t.Fatalf("MintRepoToken = %v, want ErrMintingUnavailable", err)
+	}
+	if minted.Value != "" {
+		t.Errorf("a client that cannot mint returned %q", minted.Value)
+	}
 }
