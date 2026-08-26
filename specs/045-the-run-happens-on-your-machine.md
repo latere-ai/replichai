@@ -194,3 +194,13 @@ of them need a workspace that has actually installed something:
 - `instrument.json`'s `plan` was prose where the schema wants a list, and the
   validator called a well-formed document invalid JSON. A shape mismatch is now
   a violation naming the field, and the method states the shape.
+
+Two limits of that rule are known and left as they are. The repository's ignore
+file can only match by name, so a virtualenv under an unexpected name is still
+committed on a `--publish` run; the harvest and `VerifyTree` both catch it
+structurally, so the reproduction is still produced and pushed, but the
+repository is barred from ever being made public rather than being kept clean in
+the first place. And `VerifyTree` reads extensions, so a `.sqlite` the agent
+generated itself — this run made one as a synthetic fixture — is barred on the
+same terms as a downloaded dataset. Both are the gate behaving as designed: it
+is a backstop that never allow-lists, and the method is the primary control.
