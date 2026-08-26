@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -247,4 +248,64 @@ func joinB64(header, claims map[string]any) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(h) + "." + base64.RawURLEncoding.EncodeToString(c), nil
+}
+
+// ErrMintingUnavailable reports that this client cannot mint a scoped token.
+// A personal access token authenticates but cannot produce a sub-token of
+// itself: GitHub offers no such thing, and only a GitHub App can mint one.
+var ErrMintingUnavailable = errors.New("github: minting a scoped token needs a GitHub App")
+
+// Token is a credential with an end.
+type Token struct {
+	Value   string
+	Expires time.Time
+}
+
+// MintRepoToken mints a credential that can write to one repository and to
+// nothing else, for at most an hour (045l). It is the scope 009 designed and
+// never called: every other mint passes nil and gets the installation's whole
+// grant.
+//
+// contents:write is the entire permission set. Not administration, not a second
+// repository: a leaked minted token can push to the reproduction it was minted
+// for, until it expires, and can do nothing else anywhere.
+func (c *Client) MintRepoToken(ctx context.Context, name string) (Token, error) {
+	if c.app == nil {
+		return Token{}, ErrMintingUnavailable
+	}
+	c.app.mu.Lock()
+	defer c.app.mu.Unlock()
+	value, expires, err := c.app.mintLocked(ctx, map[string]any{
+		"repositories": []string{name},
+		"permissions":  map[string]string{"contents": "write"},
+	})
+	if err != nil {
+		return Token{}, err
+	}
+	return Token{Value: value, Expires: expires}, nil
+}
+
+// RevokeToken ends an installation token early. The token being revoked is what
+// authenticates the call, so revocation needs no further credential and cannot
+// be turned against anybody else's. A token already expired or already revoked
+// answers 401, which is the outcome asked for rather than a failure.
+func (c *Client) RevokeToken(ctx context.Context, token string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"/installation/token", nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Accept", "application/vnd.github+json")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = response.Body.Close() }()
+	_, _ = io.Copy(io.Discard, response.Body)
+	switch response.StatusCode {
+	case http.StatusNoContent, http.StatusUnauthorized, http.StatusNotFound:
+		return nil
+	default:
+		return fmt.Errorf("revoke token: unexpected status %d", response.StatusCode)
+	}
 }
