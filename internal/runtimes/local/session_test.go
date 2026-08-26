@@ -268,6 +268,52 @@ func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 // commit is the repository's own rule, not something the agent has to
 // remember, and an agent that writes its own .gitignore must not be able to
 // undo it.
+// The same tree must not be harvested either. A run of this shape produced
+// 8200 artifacts, 24 of which were the reproduction; the rest was the
+// virtualenv, copied file by file into the output directory.
+func TestAnInstalledDependencyTreeIsNotHarvested(t *testing.T) {
+	session := newSession(t)
+	workspace := session.Workspace()
+
+	// A virtualenv under a name nothing predicts, recognised by the marker
+	// Python itself writes, and one recognised by name.
+	for _, dir := range []string{"pyenv-3.13/lib/python3.13/site-packages/numpy", "node_modules/left-pad"} {
+		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	for path, body := range map[string]string{
+		"pyenv-3.13/pyvenv.cfg": "home = /usr/bin",
+		"pyenv-3.13/lib/python3.13/site-packages/numpy/__init__.py": "x",
+		"node_modules/left-pad/index.js":                            "x",
+		"README.md":                                                 "the reproduction",
+		"src/main.py":                                               "the reproduction",
+		"outputs/summary.json":                                      "{}",
+	} {
+		full := filepath.Join(workspace, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	artifacts, err := session.Artifacts()
+	if err != nil {
+		t.Fatalf("Artifacts: %v", err)
+	}
+	var paths []string
+	for _, artifact := range artifacts {
+		paths = append(paths, artifact.Path)
+	}
+	slices.Sort(paths)
+	want := []string{"README.md", "outputs/summary.json", "src/main.py"}
+	if !slices.Equal(paths, want) {
+		t.Errorf("harvested %v, want %v", paths, want)
+	}
+}
+
 func TestAnInstalledDependencyTreeCannotBeCommitted(t *testing.T) {
 	session := newSession(t)
 	workspace := session.Workspace()
