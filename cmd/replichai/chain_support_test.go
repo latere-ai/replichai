@@ -23,6 +23,7 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
@@ -36,7 +37,7 @@ const chainSub, chainEmail = "operator-sub", "operator@example.test"
 // startApp is the deployment the terminal talks to: the real router, the real
 // gate, and the real bearer middleware over a validator that accepts the actor
 // token the auth stub below mints. It returns the app and the auth service.
-func startApp(t *testing.T) (app, auth *httptest.Server) {
+func startApp(t *testing.T, provisioner httpapi.RepoProvisioner) (app, auth *httptest.Server) {
 	t.Helper()
 	ctx := t.Context()
 	acc := access.NewMemStore()
@@ -47,6 +48,7 @@ func startApp(t *testing.T) (app, auth *httptest.Server) {
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:        jobs,
 		Projects:    project.NewMemStore(project.WithSessions(jobs)),
+		Repos:       provisioner,
 		Gate:        webauth.Gate(acc),
 		SSEInterval: 10 * time.Millisecond,
 	})
@@ -266,4 +268,26 @@ func write(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// bareRepoProvisioner is the platform's half of 045l with the forge replaced by
+// a bare repository on this disk: it allocates a name, hands back a credential
+// with an end, and records what it issued so the test can assert the terminal
+// pushed with that credential and gave it back afterwards.
+type bareRepoProvisioner struct {
+	remote  string
+	issued  string
+	expires time.Time
+	fail    error
+}
+
+func (p *bareRepoProvisioner) Provision(_ context.Context, id paper.Identity) (httpapi.Provisioned, error) {
+	if p.fail != nil {
+		return httpapi.Provisioned{}, p.fail
+	}
+	p.issued = "ghs_scoped_" + id.Key
+	return httpapi.Provisioned{
+		Repo: "open-hai/a-paper-a3f9", URL: p.remote,
+		Token: p.issued, Expires: p.expires,
+	}, nil
 }
