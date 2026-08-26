@@ -406,3 +406,55 @@ func TestVersionRunsTheHarnessVersionCommand(t *testing.T) {
 		t.Fatal("an empty version command was accepted")
 	}
 }
+
+// A stage reads from the null device, never from whatever this process had.
+// A harness that reads an inherited stdin waits on it, and a detached stage
+// whose stdin is a pipe nobody closes waits for good.
+func TestAStageReadsTheNullDevice(t *testing.T) {
+	shim := filepath.Join(t.TempDir(), "srt")
+	// Stands in for srt: ignore the settings flag, report what stdin held.
+	script := "#!/bin/sh\nshift 2\nprintf 'stdin:[%s]' \"$(cat)\"\n"
+	if err := os.WriteFile(shim, []byte(script), 0o700); err != nil {
+		t.Fatalf("write shim: %v", err)
+	}
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+		Environ: os.Environ(),
+		Look: func(name string) (string, error) {
+			if name == "srt" {
+				return shim, nil
+			}
+			return "/bin/echo", nil
+		}})
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, "session", "raw")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	spec := sandbox.StageSpec{
+		Name: "worker-0", Argv: []string{"unused"}, Workdir: dir,
+		Network: sandbox.Network{Mode: sandbox.NetworkNone},
+		LogPath: filepath.Join(logDir, "worker-0.log"),
+	}
+	handle, err := driver.Launch(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := driver.Observe(context.Background(), handle)
+		if err != nil {
+			t.Fatalf("Observe: %v", err)
+		}
+		if !status.Running {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	body, err := os.ReadFile(spec.LogPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if !strings.Contains(string(body), "stdin:[]") {
+		t.Fatalf("the stage did not read an empty stdin: %q", body)
+	}
+}
