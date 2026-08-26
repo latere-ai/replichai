@@ -88,6 +88,12 @@ type Profile struct {
 
 // Render turns a profile into srt's settings file.
 //
+// There is no open mode. srt is allow-only and refuses a wildcard outright —
+// "Overly broad patterns like *.com or * are not allowed" — so a session that
+// asks for unrestricted egress cannot be expressed here at all. The driver
+// declares that rather than emitting a profile srt would reject, which is what
+// it did until a real run met it.
+//
 // The two halves run in opposite directions because srt's own precedence does:
 // denyRead is broad and allowRead cuts holes in it, so the whole home directory
 // is denied and the harness's own configuration is allowed back; allowWrite is
@@ -103,11 +109,6 @@ func Render(profile Profile) Settings {
 		},
 	}
 	switch profile.Network.Mode {
-	case sandbox.NetworkOpen:
-		// srt is allow-only, so "open" is stated as every domain rather
-		// than as an absent policy. Traffic still goes through the proxy,
-		// which is what makes an artifact hunt visible afterwards.
-		settings.Network.AllowedDomains = []string{"*"}
 	case sandbox.NetworkAllowlist:
 		settings.Network.AllowedDomains = unique(profile.Network.Domains)
 	default:

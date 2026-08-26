@@ -10,6 +10,8 @@
 package harness
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"path"
 	"sort"
@@ -191,6 +193,32 @@ const MaxContentBytes = 256 << 10
 // duplicates an entry nor changes what one means. stream is the stage's unique
 // name, so a session that grades twice does not issue one id twice.
 func EventID(stream string, index int) string { return fmt.Sprintf("%s-%d", stream, index) }
+
+// Raw preserves a stream line on an event. A json.RawMessage must hold valid
+// JSON or the event cannot be encoded at all, so a line that is not JSON — a
+// shell's error, a harness's stray print — is stored as a JSON string rather
+// than as bytes that would fail to marshal and take the whole transcript with
+// them.
+func Raw(line []byte) json.RawMessage {
+	trimmed := bytes.TrimSpace(line)
+	if json.Valid(trimmed) {
+		return json.RawMessage(append([]byte(nil), trimmed...))
+	}
+	encoded, err := json.Marshal(string(trimmed))
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return encoded
+}
+
+// PlainEvent is one line of output from a stage that runs no harness — the
+// bootstrap, whose output is a shell's, not a model's.
+func PlainEvent(stream string, index int, line []byte) managed.Event {
+	return managed.Event{
+		ID: EventID(stream, index), Role: managed.RoleSystem, Kind: KindRaw,
+		Content: Truncate(strings.TrimSpace(string(line))), Raw: Raw(line),
+	}
+}
 
 // Truncate shortens content to MaxContentBytes, marking what it removed. The
 // marker names the raw log, because that is where the whole value still is.

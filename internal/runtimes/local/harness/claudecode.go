@@ -61,7 +61,15 @@ func (ClaudeCodeHarness) Argv(stage Stage, request Request) ([]string, error) {
 // authenticates through the harness's own login there is no credential at all,
 // which is the case the host sandbox exists to serve.
 func (ClaudeCodeHarness) Env(_ Stage, request Request) (map[string]string, []string, error) {
-	env := map[string]string{"CLAUDE_CONFIG_DIR": request.Paths.Home}
+	env := map[string]string{}
+	// The harness's own login lives in its own configuration directory.
+	// Redirecting the directory is how a session gets an isolated one — and
+	// it is also how a session loses the login, because an empty directory
+	// holds no credential and the harness answers "not logged in". So the
+	// redirect happens only where a credential is being supplied instead.
+	if request.Gateway.Auth != AuthHarness {
+		env["CLAUDE_CONFIG_DIR"] = request.Paths.Home
+	}
 	switch request.Gateway.Auth {
 	case AuthHarness, AuthNone:
 		return env, nil, nil
@@ -85,6 +93,11 @@ func (ClaudeCodeHarness) Env(_ Stage, request Request) (map[string]string, []str
 // configuration directory. Nothing goes into the workspace: a file written
 // there is committed by the agent and published as part of the reproduction.
 func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
+	// Where the login is the operator's own, so is the configuration: the
+	// session writes none, because nothing would read it.
+	if request.Gateway.Auth == AuthHarness {
+		return nil, nil
+	}
 	settings, err := json.MarshalIndent(map[string]any{
 		"includeCoAuthoredBy": false,
 		"cleanupPeriodDays":   0,
@@ -162,7 +175,7 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 	if trimmed == "" {
 		return nil, nil
 	}
-	base := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: json.RawMessage(append([]byte(nil), line...))}
+	base := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: Raw(line)}
 	var parsed claudeLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
 		// A line this build cannot parse becomes a raw event rather than an

@@ -145,10 +145,36 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if err := managed.ValidateCapabilities(Name, r.capabilities("/workspace"), spec); err != nil {
 		return err
 	}
-	if _, _, err := r.config.Catalog.Resolve(r.config.Harness.Name(), spec.Model); err != nil {
+	model, gateway, err := r.config.Catalog.Resolve(r.config.Harness.Name(), spec.Model)
+	if err != nil {
 		return fmt.Errorf("%w: %w", managed.ErrInvalidSpec, err)
 	}
-	return nil
+	return r.carriesCredential(model, gateway)
+}
+
+// loginCarrier is a sandbox that knows whether a stage inside it can reach the
+// login the harness on this machine already holds. It is an optional interface
+// rather than a capability, because it is a fact about this machine and this
+// harness rather than about the specification.
+type loginCarrier interface{ CarriesHarnessLogin() bool }
+
+// carriesCredential refuses a session that would start with no way to
+// authenticate, rather than letting it fail as "not logged in" once a stage is
+// already running. The refusal names what to do instead: a credential the
+// specification can carry, which the sandbox passes through untouched.
+func (r *Runtime) carriesCredential(model managed.ModelRef, gateway harness.Gateway) error {
+	if gateway.Auth != harness.AuthHarness {
+		return nil
+	}
+	carrier, ok := r.config.Sandbox.(loginCarrier)
+	if !ok || carrier.CarriesHarnessLogin() {
+		return nil
+	}
+	return fmt.Errorf(
+		"%w: %s/%s is declared to use the %s harness's own login, and the %s sandbox cannot reach it on this machine — "+
+			"the credential is in the operating system's keychain, and opening that to a session would open every "+
+			"credential in it. Declare a gateway with a key_env in the model catalogue, or use --sandbox container",
+		managed.ErrUnsupported, model.Provider, model.ID, r.config.Harness.Name(), r.config.Sandbox.Name())
 }
 
 // Start creates the session and launches its first worker stage. It returns a
@@ -469,9 +495,16 @@ func (r *Runtime) drain(ctx context.Context, session *Session, harnessName harne
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 && err == nil {
 			read += int64(len(line))
-			decoded, decodeErr := r.config.Harness.Decode(record.Name, record.Lines, line)
-			if decodeErr != nil {
-				return usage, decodeErr
+			// A stage that runs no harness has no harness stream: the
+			// bootstrap is a shell, and its output is lines of text.
+			var decoded []managed.Event
+			if record.Role.Agentic() {
+				var decodeErr error
+				if decoded, decodeErr = r.config.Harness.Decode(record.Name, record.Lines, line); decodeErr != nil {
+					return usage, decodeErr
+				}
+			} else if strings.TrimSpace(string(line)) != "" {
+				decoded = []managed.Event{harness.PlainEvent(record.Name, record.Lines, line)}
 			}
 			record.Lines++
 			for index := range decoded {

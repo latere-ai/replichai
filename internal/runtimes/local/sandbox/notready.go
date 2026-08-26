@@ -148,7 +148,9 @@ var installs = map[string]map[Platform][]string{
 // verify is the command that proves a component now works, printed after the
 // install lines so an operator can check rather than re-run the whole audit.
 var verify = map[string]string{
-	"srt":    `srt "echo ok"`,
+	// A bare command, not a string: srt takes a string only behind -c, so
+	// `srt "echo ok"` fails with "command not found: echo ok".
+	"srt":    "srt echo ok",
 	"podman": "podman info",
 	"docker": "docker info",
 	"claude": "claude --version",
