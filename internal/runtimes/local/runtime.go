@@ -418,10 +418,10 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 	var denied []string
 	if role.Agentic() {
 		needs := r.config.Harness.Needs(r.config.Machine)
-		// The harness's own scratch area. Every stage that runs one gets
-		// it: without it Claude Code's shell tool fails before running
-		// anything, and an agent that cannot run a command cannot
-		// reproduce a paper.
+		// What the harness needs of the machine to run at all. Codex
+		// writes its own state back into its configuration directory and
+		// will not start otherwise; Claude Code needs nothing here,
+		// because its scratch is redirected into the session instead.
 		for _, path := range needs.Writes {
 			paths = append(paths, sandbox.Path{Host: path, Access: sandbox.ReadWrite})
 		}
