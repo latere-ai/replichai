@@ -279,13 +279,14 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
 | 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half-done | 041a–041d |
 
-### Not built (15)
+### Not built (16)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
 | # | Spec | Status | Depends on |
 |---|---|---|---|
 | 006d | [PDF ingestion](006d-pdf-ingestion.md) | draft | 001, 006a |
+| 045l | [The repository comes from the platform](045l-the-repository-comes-from-the-platform.md) | proposed | 045g, 045j, 045k, 009, 006f, 003 |
 | 007 | [From reproduction to replication](007-from-reproduction-to-replication.md) | draft | 002, 004, 006f |
 | 007d | [Hosting a study](007d-hosting-a-study.md) | draft | 007b, 006a–006c, 006e |
 | 008 | [Drive as the artifact data plane](008-drive-data-plane.md) | deferred | 006 (MVP first) |
