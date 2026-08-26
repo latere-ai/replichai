@@ -318,7 +318,7 @@ func (s *Session) Artifacts() ([]managed.Artifact, error) {
 		}
 		relative = filepath.ToSlash(relative)
 		if entry.IsDir() {
-			if relative == ".git" || strings.HasPrefix(relative, ".git/") || filepath.Base(path) == "__pycache__" {
+			if relative == ".git" || strings.HasPrefix(relative, ".git/") || isVendoredDir(path, entry.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -411,33 +411,44 @@ func initRepository(workspace string, environ []string) error {
 	return writeExcludes(workspace)
 }
 
-// vendoredPaths are the directories a build puts in the workspace that are
-// somebody else's code rather than the reproduction's. The agent builds in the
-// same directory that becomes the repository, so a dependency tree of a few
-// hundred megabytes sits in the repository root from the moment it installs
-// anything.
-var vendoredPaths = []string{
-	"venv/",
-	".venv/",
-	"env/",
-	"node_modules/",
-	"__pycache__/",
-	"*.pyc",
-	".DS_Store",
+// The agent builds in the same directory that becomes the repository, so an
+// installed dependency tree of a few hundred megabytes sits in the repository
+// root from the moment anything is installed. It is neither committed nor
+// harvested, and both of those follow from this one list.
+//
+// vendoredDirs are the names that always mean installed dependencies.
+var vendoredDirs = []string{"venv", ".venv", "node_modules", "__pycache__"}
+
+// isVendoredDir reports whether a directory holds installed dependencies
+// rather than the reproduction. A virtualenv is recognised by the marker
+// Python itself writes, so one under any name is caught; the other trees have
+// no marker and are recognised by name.
+func isVendoredDir(path, name string) bool {
+	if slices.Contains(vendoredDirs, name) {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(path, "pyvenv.cfg"))
+	return err == nil
 }
 
-// writeExcludes keeps the vendored paths out of the repository by a rule the
-// agent does not own. It writes .git/info/exclude, not .gitignore: .gitignore
-// is a file of the reproduction, and an agent that writes its own replaces
-// whatever was seeded there. info/exclude is the repository's own, is never
-// committed, and survives anything the agent writes.
+// writeExcludes keeps those trees out of the repository by a rule the agent
+// does not own. It writes .git/info/exclude, not .gitignore: .gitignore is a
+// file of the reproduction, and an agent that writes its own replaces whatever
+// was seeded there. info/exclude is the repository's own, is never committed,
+// and survives anything the agent writes. It can only match by name — git has
+// no structural test — so a virtualenv under an unexpected name is caught
+// instead by the harvest above and by publish.VerifyTree, which both look for
+// what is inside the tree rather than what it is called.
 func writeExcludes(workspace string) error {
 	dir := filepath.Join(workspace, ".git", "info")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("git excludes: %w", err)
 	}
 	body := "# Written by replichai. A dependency tree installed into the\n" +
-		"# workspace is not part of the reproduction.\n" +
-		strings.Join(vendoredPaths, "\n") + "\n"
+		"# workspace is not part of the reproduction.\n"
+	for _, name := range vendoredDirs {
+		body += name + "/\n"
+	}
+	body += "*.pyc\n.DS_Store\n"
 	return writeFileMode(filepath.Join(dir, "exclude"), []byte(body), 0o600)
 }
