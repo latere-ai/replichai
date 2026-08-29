@@ -3008,6 +3008,11 @@ input.submit-input {
   /* The loop pair at the luminance it needs against the ground it is on. */
   --loop-cool: var(--brand);
   --loop-warm: var(--err);
+
+  /* The page's own margin. The hero's slab sits 12px off the viewport and the
+     bands stand further in, because a slab is an object with an edge of its own
+     and a band is the page. One token so the two never drift apart again. */
+  --lp-gutter: clamp(20px, 3vw, 56px);
 }
 
 /* The dark half of the material: 033's values, unchanged. */
@@ -3246,10 +3251,18 @@ input.submit-input {
 
 /* ── Each band ────────────────────────────────────────────────────────────── */
 
+/* The page has one edge, and the hero sets it. 033 capped every band under the
+   hero at 1180px while the slab stayed full-bleed, so a wide display got a
+   full-width first screen followed by a column with 400px of nothing on either
+   side — the same page, told twice, at two different widths.
+
+   So the bands are the width of the page too, and what stops the prose from
+   running to 2560px is the measure it already carries: the ch caps on
+   .lp-head h2 and p, on .landing-lead, on every paragraph here. Width bought
+   this way lands where it is worth having — one more card in a grid, a wider
+   evidence column — rather than on a line nobody can track back to. */
 .lp-section {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 96px 32px 0;
+  padding: 96px var(--lp-gutter) 0;
 }
 .lp-head h2 {
   margin: 16px 0 12px;
@@ -3268,9 +3281,13 @@ input.submit-input {
   max-width: 52ch;
 }
 /* A band whose heading sits beside its content rather than above it. */
+/* auto-fit with two children always splits the band in half. That was
+   invisible at 1180px and is 350px of dead space beside a 44ch paragraph at
+   full width, so the pair is written at the two sizes the two things are: the
+   heading column is a heading column, the content column takes what is left. */
 .lp-split {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(288px, 1fr));
+  grid-template-columns: minmax(260px, 26rem) minmax(0, 1fr);
   gap: 56px;
   align-items: start;
 }
@@ -3453,9 +3470,11 @@ input.submit-input {
 
 /* ── A session, step by step ──────────────────────────────────────────────── */
 
+/* The steps read at a measure and the artifacts want the room, so this is the
+   same asymmetric pair as .lp-split rather than two halves. */
 .lp-walk-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: minmax(280px, 30rem) minmax(0, 1fr);
   gap: 64px;
   align-items: start;
   margin-top: 56px;
@@ -3526,7 +3545,10 @@ input.submit-input {
 .lp-plates {
   position: relative;
   width: 100%;
-  max-width: 400px;
+  /* The artifacts are the object on the panel's stage, so they grow with the
+     stage. A fixed 400px stack left a postage stamp in the middle of a
+     2000px-wide block once the bands stopped being capped. */
+  max-width: clamp(400px, 34vw, 680px);
   max-height: min(520px, 58vh);
   overflow-y: auto;
   display: grid;
@@ -3660,7 +3682,10 @@ input.submit-input {
 /* Tipped away from the reader and lit from above: the product shown as an
    object on a table rather than as a screenshot pasted on a page. */
 .lp-window {
-  max-width: 920px;
+  /* Four columns of real content: the one element on the page that gains from
+     every pixel it is given, up to the point where a row stops being one
+     glance. A cap the band can no longer strand it inside. */
+  max-width: min(1440px, 100%);
   margin: 0 auto;
   transform: perspective(2000px) rotateX(9deg);
   transform-origin: 50% 0;
@@ -3876,7 +3901,7 @@ input.submit-input {
 
 .lp-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(clamp(220px, 18vw, 400px), 1fr));
   gap: 12px;
 }
 .lp-field {
@@ -3923,7 +3948,7 @@ input.submit-input {
 }
 .lp-costs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(clamp(220px, 18vw, 400px), 1fr));
   gap: 12px;
 }
 .lp-cost {
@@ -3962,9 +3987,11 @@ input.submit-input {
   flex-wrap: wrap;
   margin-bottom: 36px;
 }
+/* The track grows with the page, so extra width becomes wider cards for a
+   while and then one more card, rather than an eight-across strip of slivers. */
 .lp-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(clamp(280px, 22vw, 440px), 1fr));
   gap: 12px;
 }
 .lp-card {
@@ -4130,6 +4157,11 @@ input.submit-input {
   }
   .lp-section {
     padding: 68px 20px 0;
+  }
+  /* One column, and the walkthrough's artifacts sit under its steps. */
+  .lp-split,
+  .lp-walk-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
   .lp-split {
     gap: 32px;

@@ -57,6 +57,9 @@ const fail = (msg) => {
 
 const DESKTOP = { width: 1440, height: 900 }
 const PHONE = { width: 390, height: 844 }
+// The widest screen the page claims to serve. 044 added it: nothing in this
+// suite could see a band that stopped at 1180px on a 2560px display.
+const WIDE = { width: 2560, height: 1440 }
 
 const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
 let browser
@@ -307,6 +310,62 @@ try {
     if (slab.h1 < 20) fail(`at ${viewport.width}px the hero slab carries no claim`)
     if (!slab.signin) fail(`at ${viewport.width}px the hero's sign-in is not inside the slab`)
     if (!slab.registry) fail(`at ${viewport.width}px the hero's registry link is not inside the slab`)
+    await page.close()
+  }
+
+  /* ── The page is one width, top to bottom (044) ── */
+
+  {
+    // The hero is full-bleed and every band under it used to be capped at
+    // 1180px, so a wide screen got a full-width first screen followed by a
+    // column with 400px of nothing on either side. The page has one edge now,
+    // and this is what says so: the gutter each band leaves is the page's own
+    // margin rather than the remainder of a cap, on the widest viewport we
+    // claim to serve.
+    const page = await open({ authenticated: false }, { viewport: WIDE })
+    await page.waitForSelector('.lp-section')
+    // Every band, including the ones a reveal observer has not reached yet:
+    // geometry is measured on the box, and a transparent box measures the same.
+    const bands = await page.evaluate(async () => {
+      const out = []
+      for (const band of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
+        band.scrollIntoView()
+        await new Promise((r) => setTimeout(r, 60))
+        // The band's own box is full width by construction once the cap is
+        // gone; what a reader sees is where its *contents* start and stop.
+        const kids = [...band.children].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 0)
+        if (!kids.length) continue
+        out.push({
+          name: band.dataset.test || band.className,
+          left: Math.min(...kids.map((r) => r.left)),
+          right: Math.max(...kids.map((r) => r.right)),
+        })
+      }
+      return out
+    })
+    if (bands.length < 5) fail(`only ${bands.length} bands were measured at ${WIDE.width}px; the page did not render`)
+    for (const b of bands) {
+      const rightGutter = WIDE.width - b.right
+      if (b.left > 96) fail(`at ${WIDE.width}px the band ${b.name} starts ${Math.round(b.left)}px in; the page has one edge and it is the hero's`)
+      if (Math.abs(b.left - rightGutter) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off centre: ${Math.round(b.left)}px left, ${Math.round(rightGutter)}px right`)
+    }
+    // The verdict table is the one element with four columns of real content,
+    // and it was the island that made the widening pointless: a 920px window
+    // in a 2560px frame.
+    const windowWidth = await page.evaluate(() => document.querySelector('.lp-window').getBoundingClientRect().width)
+    if (windowWidth < 1200) fail(`at ${WIDE.width}px the verdict window is ${Math.round(windowWidth)}px wide; the evidence does not take the room the page gives it`)
+    // Width bought with more columns is width spent well only up to a point. A
+    // grid that answers 2560px with a seven-across strip of slivers is the same
+    // waste, inverted — so the thing to measure is the card, not the track.
+    const cards = await page.evaluate(() => {
+      const widths = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().width))
+      return { fields: widths('.lp-field'), costs: widths('.lp-cost'), anatomy: widths('.lp-part') }
+    })
+    for (const [name, w] of Object.entries(cards)) {
+      if (!w.length) fail(`at ${WIDE.width}px the ${name} grid rendered no cards`)
+      const thin = w.filter((n) => n < 280)
+      if (thin.length) fail(`at ${WIDE.width}px ${thin.length} of the ${name} cards are under 280px wide (${w.join(', ')}); the grid shredded rather than filled`)
+    }
     await page.close()
   }
 
