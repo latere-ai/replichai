@@ -262,7 +262,7 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
         <div className="auth-card">
           <Mark size={40} className="auth-logo" />
           <h2>
-            <Seams text={t('profileNotFound')} />
+            <Seams i18n={i18n} k="profileNotFound" />
           </h2>
           <p>{t('profileNotFoundBody')}</p>
           <a className="btn ghost" href="/" style={{ justifyContent: 'center' }}>
@@ -371,7 +371,7 @@ function AuthUnavailable({ i18n, onRetry }: { i18n: I18n; onRetry: () => void })
       <div className="auth-card">
         <Mark size={40} className="auth-logo" />
         <h2>
-          <Seams text={i18n.t('authUnavailableTitle')} />
+          <Seams i18n={i18n} k="authUnavailableTitle" />
         </h2>
         <p>{i18n.t('authUnavailableBody')}</p>
         <button className="btn lg" onClick={onRetry} style={{ justifyContent: 'center' }}>
@@ -388,7 +388,7 @@ function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
       <div className="auth-card">
         <Mark size={40} className="auth-logo" />
         <h2>
-          <Seams text={i18n.t('noAccessTitle')} />
+          <Seams i18n={i18n} k="noAccessTitle" />
         </h2>
         <p>{i18n.t('noAccessBody', { email })}</p>
         {/* Signing out clears a session minted before sign-in was opened, and
@@ -959,7 +959,7 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
     <div className="screen">
       <div className="screen-head">
         <h1 className="screen-title">
-          <Seams text={t('navProjects')} />
+          <Seams i18n={i18n} k="navProjects" />
         </h1>
         <p className="screen-desc">{t('projectsIntro')}</p>
       </div>
@@ -1266,7 +1266,7 @@ function TrashScreen({ i18n, me }: { i18n: I18n; me: Me }) {
     <div className="screen">
       <div className="screen-head">
         <h1 className="screen-title">
-          <Seams text={t('navTrash')} />
+          <Seams i18n={i18n} k="navTrash" />
         </h1>
         <p className="screen-desc">{t('trashIntro')}</p>
       </div>
@@ -1427,7 +1427,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
     <div className="screen">
       <div className="screen-head">
         <h1 className="screen-title">
-          <Seams text={t('navPublic')} />
+          <Seams i18n={i18n} k="navPublic" />
         </h1>
         <p className="screen-desc">{t('publicIntro')}</p>
       </div>
@@ -1544,7 +1544,7 @@ function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (project
       <div className="submit-form">
         <div className="screen-head">
           <h1 className="screen-title">
-          <Seams text={t('newProject')} />
+          <Seams i18n={i18n} k="newProject" />
         </h1>
           <p className="screen-desc">{t('newProjectDesc')}</p>
         </div>
@@ -1658,7 +1658,7 @@ function SettingsScreen({
     <div className="screen measured form">
       <div className="screen-head">
         <h1 className="screen-title">
-          <Seams text={t('settings')} />
+          <Seams i18n={i18n} k="settings" />
         </h1>
       </div>
       <div className="detail-tabs" style={{ marginBottom: 18 }}>
@@ -1902,7 +1902,7 @@ function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsChanged:
     <div className="screen measured">
       <div className="screen-head">
         <h1 className="screen-title">
-          <Seams text={t('navAdmin')} />
+          <Seams i18n={i18n} k="navAdmin" />
         </h1>
         <p className="screen-desc">{t('adminIntro')}</p>
       </div>
@@ -2495,7 +2495,7 @@ function NotFound({ i18n, navigate }: { i18n: I18n; navigate: Navigate }) {
       <div className="card card-pad stack" style={{ maxWidth: 520, margin: '48px auto', textAlign: 'center', alignItems: 'center' }}>
         <Ico name="search" size={22} style={{ color: 'var(--fg-3)' }} />
         <h2 style={{ margin: 0 }}>
-          <Seams text={t('notFoundTitle')} />
+          <Seams i18n={i18n} k="notFoundTitle" />
         </h2>
         <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
           {t('notFoundBody')}
@@ -2523,7 +2523,7 @@ function NotReadable({ i18n, me }: { i18n: I18n; me: Me }) {
       <div className="card card-pad stack" style={{ maxWidth: 520, margin: '48px auto', textAlign: 'center', alignItems: 'center' }}>
         <Ico name="globe" size={22} style={{ color: 'var(--fg-3)' }} />
         <h2 style={{ margin: 0 }}>
-          <Seams text={t('notPublicTitle')} />
+          <Seams i18n={i18n} k="notPublicTitle" />
         </h2>
         <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
           {me.authenticated ? t('notPublicBodyIn') : t('notPublicBody')}
@@ -3571,7 +3571,7 @@ function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; re
     <div className="screen measured">
       <div className="screen-head">
         <h1 className="screen-title">
-          <Seams text={t('walletHeading')} />
+          <Seams i18n={i18n} k="walletHeading" />
         </h1>
         <p className="screen-desc">{t('walletDesc')}</p>
       </div>

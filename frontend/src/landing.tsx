@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { listPublic, type PaperCitation, type ProjectView } from './api'
 import { LatereMark, Lockup, Mark } from './brand'
 import { mountHeroScene } from './hero-scene'
-import type { I18n } from './i18n'
+import type { I18n, TKey } from './i18n'
 import { Ico } from './icons'
 import { listCitation } from './papers'
 import type { Theme, ThemeMode } from './theme'
@@ -77,14 +77,18 @@ const REDUCE = '(prefers-reduced-motion: reduce)'
 function Band({
   id,
   eyebrow,
-  title,
+  i18n,
+  titleKey,
   caption,
   className,
   children,
 }: {
   id: string
+  i18n: I18n
   eyebrow: string
-  title: string
+  // The key, not the sentence: the heading is set by Seams, which is the only
+  // thing that can read a seam.
+  titleKey: TKey
   caption?: string
   className?: string
   children: React.ReactNode
@@ -95,7 +99,7 @@ function Band({
       <div className="lp-head">
         <span className="lp-eyebrow">{eyebrow}</span>
         <h2>
-          <Seams text={title} />
+          <Seams i18n={i18n} k={titleKey} />
         </h2>
         {caption && <p>{caption}</p>}
       </div>
@@ -152,7 +156,7 @@ function HeroSlab({ i18n, href, theme }: { i18n: I18n; href: string; theme: Them
         <div className="lp-slab-foot">
           <div className="lp-hero-copy">
             <h1>
-              <Seams text={t('landingClaim')} />
+              <Seams i18n={i18n} k="landingClaim" />
             </h1>
             <p className="landing-lead">{t('landingLead')}</p>
             <div className="lp-cta">
@@ -195,7 +199,7 @@ const SHIPS = [
 function ShipsBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-ships" className="lp-split" eyebrow={t('lpShipsEyebrow')} title={t('lpShipsTitle')} caption={t('lpShipsCaption')}>
+    <Band id="lp-ships" i18n={i18n} className="lp-split" eyebrow={t('lpShipsEyebrow')} titleKey="lpShipsTitle" caption={t('lpShipsCaption')}>
       <ol className="lp-stack">
         {SHIPS.map((f, i) => (
           <li key={f.path} className={'warn' in f && f.warn ? 'lp-file warn' : 'lp-file'} style={{ '--i': i } as React.CSSProperties}>
@@ -249,7 +253,7 @@ function LoopsBand({ i18n }: { i18n: I18n }) {
         <div className="lp-panel-copy">
           <span className="lp-eyebrow">{t('lpLoopsEyebrow')}</span>
           <h2>
-            <Seams text={t('lpLoopsTitle')} />
+            <Seams i18n={i18n} k="lpLoopsTitle" />
           </h2>
           <p>{t('lpLoopsCaption')}</p>
           <div className="landing-points">
@@ -385,7 +389,7 @@ function WalkBand({ i18n }: { i18n: I18n }) {
       <div className="lp-head">
         <span className="lp-eyebrow">{t('lpPipelineEyebrow')}</span>
         <h2>
-          <Seams text={t('lpPipelineTitle')} />
+          <Seams i18n={i18n} k="lpPipelineTitle" />
         </h2>
         <p>{t('lpPipelineCaption')}</p>
       </div>
@@ -478,7 +482,7 @@ const PART_ICONS = { Claim: 'layers', Evidence: 'fileText', Verdict: 'shieldChec
 function VerdictBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-anatomy" eyebrow={t('lpAnatomyEyebrow')} title={t('lpAnatomyTitle')} caption={t('lpAnatomyCaption')}>
+    <Band id="lp-anatomy" i18n={i18n} eyebrow={t('lpAnatomyEyebrow')} titleKey="lpAnatomyTitle" caption={t('lpAnatomyCaption')}>
       <div className="lp-showcase">
         <div className="lp-window">
           <div className="lp-window-bar">
@@ -565,7 +569,7 @@ const FIELDS = [
 function WhoBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-who" className="lp-split" eyebrow={t('lpWhoEyebrow')} title={t('lpWhoTitle')} caption={t('lpWhoCaption')}>
+    <Band id="lp-who" i18n={i18n} className="lp-split" eyebrow={t('lpWhoEyebrow')} titleKey="lpWhoTitle" caption={t('lpWhoCaption')}>
       <div className="lp-fields">
         {FIELDS.map((f) => (
           <div key={f.key} className={f.accent ? 'lp-field accent' : 'lp-field'}>
@@ -592,7 +596,7 @@ function CostBand({ i18n }: { i18n: I18n }) {
         <div className="lp-head">
           <span className="lp-eyebrow">{t('lpCostEyebrow')}</span>
           <h2>
-            <Seams text={t('lpCostTitle')} />
+            <Seams i18n={i18n} k="lpCostTitle" />
           </h2>
           <p>{t('lpCostCaption')}</p>
         </div>
@@ -639,7 +643,7 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
         <div className="lp-head">
           <span className="lp-eyebrow">{t('lpStripEyebrow')}</span>
           <h2>
-            <Seams text={t('lpStripTitle')} />
+            <Seams i18n={i18n} k="lpStripTitle" />
           </h2>
           <p>{t('lpStripCaption')}</p>
         </div>
@@ -735,7 +739,7 @@ export function Landing({
         <div className="lp-close lp-block">
           <Mark size={46} className="lp-close-mark" />
           <h2>
-            <Seams text={t('lpCloseTitle')} />
+            <Seams i18n={i18n} k="lpCloseTitle" />
           </h2>
           <p>{t('lpCloseBody')}</p>
           <div className="lp-cta">

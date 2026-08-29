@@ -342,6 +342,19 @@ try {
       return bad
     })
     if (keys.length) fail(`the landing paints ${keys.length} untranslated keys at readers: ${JSON.stringify([...new Set(keys)])}`)
+    // The same claim about the other marker a reader must never meet. A seam is
+    // an instruction to whoever sets the line; t() takes it out for everybody
+    // else, and the tab once read "No page|at this address" because it did not.
+    const seam = await page.evaluate(() => {
+      const bad = []
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        if (n.textContent.includes('|')) bad.push(n.textContent.trim().slice(0, 60))
+      }
+      if (document.title.includes('|')) bad.push(`<title> ${document.title}`)
+      return bad
+    })
+    if (seam.length) fail(`the landing shows the seam marker to readers: ${JSON.stringify(seam)}`)
     await page.close()
   }
 
@@ -866,6 +879,33 @@ try {
   }
 
   /* ── The failure screens keep the plain card, and inherit the mark ── */
+
+  {
+    // A seam makes its segments unbreakable, and an unbreakable segment that
+    // does not fit *overflows* — it does not break anyway. These two titles are
+    // the narrowest headings in the product (a 420px card, less its padding, on
+    // a 320px phone), so they are where a seam placed one word too far to the
+    // right shows up as a card wider than the screen.
+    for (const [me, what] of [
+      [null, 'the auth-outage card'],
+      [{ authenticated: true, principal: 'p', email: 'nobody@example.com', tier: 'none' }, 'the no-access card'],
+    ]) {
+      const page = await open(me, { viewport: { width: 320, height: 700 } })
+      await page.waitForSelector('.auth-center .auth-card h2')
+      const fit = await page.evaluate(() => {
+        const h = document.querySelector('.auth-card h2')
+        const card = document.querySelector('.auth-card')
+        return {
+          over: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          spills: Math.round(h.scrollWidth) > Math.round(card.clientWidth),
+          text: h.textContent.trim(),
+        }
+      })
+      if (fit.over) fail(`at 320px ${what} pushes the page sideways; a seam in "${fit.text}" is holding a segment too wide to fit`)
+      if (fit.spills) fail(`at 320px the title of ${what} ("${fit.text}") is wider than the card it is in`)
+      await page.close()
+    }
+  }
 
   {
     const page = await open(null)
