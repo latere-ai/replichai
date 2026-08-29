@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { stepDollars, typedDollars } from './money'
 import { createPortal } from 'react-dom'
 import { Ico, type IconName } from './icons'
+import type { I18n, TKey } from './i18n'
 
 // The control set. Nothing here delegates to a browser-drawn widget: no native
 // checkbox, radio, select, number stepper, disclosure triangle, tooltip, or
@@ -26,9 +27,17 @@ import { Ico, type IconName } from './icons'
 // only place the line is allowed to break. A string with no seam renders as
 // itself, so every heading can be passed through this whether or not its copy
 // has anything to say about breaking yet.
-export function Seams({ text }: { text: string }) {
-  const parts = text.split('|')
-  if (parts.length === 1) return <>{text}</>
+//
+// It takes the key, not the text, because the seam is only legible to this
+// component: `t()` hands every other consumer the sentence with the seams
+// removed. A heading that forgets to come through here still reads correctly —
+// it just breaks wherever it likes, which is where this all started.
+//
+// It reads the string with no `vars`, so a heading with a {placeholder} in it
+// must not carry seams — the placeholder would render as itself. None do.
+export function Seams({ i18n, k }: { i18n: I18n; k: TKey }) {
+  const parts = i18n.raw(k).split('|')
+  if (parts.length === 1) return <>{parts[0]}</>
   const out: ReactNode[] = []
   parts.forEach((part, i) => {
     if (i > 0) out.push(' ')

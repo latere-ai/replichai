@@ -838,7 +838,9 @@ export function useI18n() {
     setLangState(l)
     document.documentElement.lang = l
   }, [])
-  const t = useCallback(
+  // raw is the string as it is written, seams and all. Only Seams (ui.tsx) has
+  // any use for it; everything else wants the sentence.
+  const raw = useCallback(
     (key: TKey, vars?: Record<string, string>) => {
       // Typed against TKey: a key with no string is a compile error rather than
       // a landing band that paints `landingVerdictBody` at a reader. The runtime
@@ -851,5 +853,12 @@ export function useI18n() {
     },
     [lang],
   )
-  return { lang, setLang, t }
+  // t is the sentence: seams removed. A seam is an instruction to whoever sets
+  // the line, and every other consumer — a tab title, an aria-label, a share
+  // card — wants the words. Stripping here rather than at each call site is what
+  // makes that true by default; the tab once read "No page|at this address".
+  // The seam stands *in place of* the space it may break at, so removing it puts
+  // the space back. Deleting it outright once produced "No pageat this address".
+  const t = useCallback((key: TKey, vars?: Record<string, string>) => raw(key, vars).replace(/\s*\|\s*/g, ' '), [raw])
+  return { lang, setLang, t, raw }
 }
