@@ -9,6 +9,38 @@ import { Ico, type IconName } from './icons'
 // the same on every platform — and each one keeps the role, state, and keyboard
 // behaviour the native element would have given us for free.
 
+/* ── Type ── */
+
+// Seams renders a heading that breaks where its copy says it may.
+//
+// CSS picks a break by width alone: the last space that fits. `text-wrap:
+// balance` only re-picks it to equalise line lengths, which is why the landing's
+// boundary band read "One loop closes. One never / will." at every viewport from
+// a phone to a 2560px display — the algorithm had no idea a sentence had ended
+// two words earlier. Where a heading comes apart is a fact about the language,
+// so it is written into the string as `|`, and each segment between seams is
+// rendered unbreakable. A translator moves the seam with the clause, which is
+// the half no stylesheet can follow.
+//
+// The space joining two segments sits *outside* both spans, because that is the
+// only place the line is allowed to break. A string with no seam renders as
+// itself, so every heading can be passed through this whether or not its copy
+// has anything to say about breaking yet.
+export function Seams({ text }: { text: string }) {
+  const parts = text.split('|')
+  if (parts.length === 1) return <>{text}</>
+  const out: ReactNode[] = []
+  parts.forEach((part, i) => {
+    if (i > 0) out.push(' ')
+    out.push(
+      <span key={i} className="seam">
+        {part}
+      </span>,
+    )
+  })
+  return <>{out}</>
+}
+
 /* ── Choice controls ── */
 
 // Check is a checkbox: a button that owns the checked state and paints its own

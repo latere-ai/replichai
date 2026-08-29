@@ -854,6 +854,13 @@ textarea {
   gap: 20px;
   cursor: default;
 }
+/* A segment between two seams (see Seams in ui.tsx). The heading's copy says
+   where it may break; this is what makes everywhere else unbreakable. The
+   joining space lives between two of these, in the heading itself, because that
+   is the one place a line is allowed to end. */
+.seam {
+  white-space: nowrap;
+}
 h1.screen-title {
   margin: 0;
   font-size: 21px;
@@ -3085,12 +3092,6 @@ input.submit-input {
 .landing .lp-bar-actions .btn:not(.ghost):hover {
   background: var(--brand);
   color: var(--brand-fg);
-}
-/* A segment between two seams. The heading's copy says where it may break; this
-   is what makes everywhere else unbreakable. The joining space lives between
-   two of these, in the heading, because that is the one place a line may end. */
-.landing .seam {
-  white-space: nowrap;
 }
 .lp-eyebrow {
   display: block;
