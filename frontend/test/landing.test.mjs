@@ -313,6 +313,38 @@ try {
     await page.close()
   }
 
+  /* ── Every word on the page is copy, not a key ── */
+
+  {
+    // t() falls back to the key when a locale has no string for it, which is
+    // right for a locale that is behind and wrong for a key that exists
+    // nowhere: the boundary band painted `landingVerdictBody` at readers for
+    // three weeks because the strings had been deleted as unused while the
+    // markup still asked for them. The compiler catches that now — t() is typed
+    // against TKey — and this is the same claim made about the rendered page,
+    // which is where a reader meets it.
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.lp-section')
+    const keys = await page.evaluate(async () => {
+      for (const b of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
+        b.scrollIntoView()
+        await new Promise((r) => setTimeout(r, 60))
+      }
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      const bad = []
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const text = n.textContent.trim()
+        // A key is one lowerCamelCase word: no space, no punctuation, and an
+        // interior capital. Real copy on this page is either a sentence, a
+        // filename, or a proper noun, and none of those match.
+        if (/^[a-z][a-zA-Z]{9,}$/.test(text) && /[A-Z]/.test(text)) bad.push(text)
+      }
+      return bad
+    })
+    if (keys.length) fail(`the landing paints ${keys.length} untranslated keys at readers: ${JSON.stringify([...new Set(keys)])}`)
+    await page.close()
+  }
+
   /* ── The page is one width, top to bottom (044) ── */
 
   {

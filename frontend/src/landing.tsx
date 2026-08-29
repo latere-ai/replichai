@@ -195,7 +195,7 @@ function ShipsBand({ i18n }: { i18n: I18n }) {
         {SHIPS.map((f, i) => (
           <li key={f.path} className={'warn' in f && f.warn ? 'lp-file warn' : 'lp-file'} style={{ '--i': i } as React.CSSProperties}>
             <span className="lp-file-name">{f.path}</span>
-            <span className="lp-file-body">{t(f.body as never)}</span>
+            <span className="lp-file-body">{t(f.body)}</span>
           </li>
         ))}
       </ol>
@@ -248,8 +248,8 @@ function LoopsBand({ i18n }: { i18n: I18n }) {
           <div className="landing-points">
             {POINTS.map((p) => (
               <div key={p.key} className={p.open ? 'landing-point open' : 'landing-point'}>
-                <h3>{t(`landing${p.key}Title` as never)}</h3>
-                <p>{t(`landing${p.key}Body` as never)}</p>
+                <h3>{t(`landing${p.key}Title`)}</h3>
+                <p>{t(`landing${p.key}Body`)}</p>
               </div>
             ))}
           </div>
@@ -385,10 +385,10 @@ function WalkBand({ i18n }: { i18n: I18n }) {
           {STEPS.map((s, i) => (
             <li key={s} className="lp-step" data-step={i}>
               <span className="lp-step-n">{t('lpStepN', { n: String(i + 1).padStart(2, '0') })}</span>
-              <h3>{t(`lpStep${s}` as never)}</h3>
-              <p>{t(`lpStep${s}Body` as never)}</p>
+              <h3>{t(`lpStep${s}`)}</h3>
+              <p>{t(`lpStep${s}Body`)}</p>
               <span className="lp-step-artifact">
-                <Ico name="check" size={11} w={2.4} /> {t(`lpStep${s}Artifact` as never)}
+                <Ico name="check" size={11} w={2.4} /> {t(`lpStep${s}Artifact`)}
               </span>
             </li>
           ))}
@@ -423,7 +423,7 @@ function WalkBand({ i18n }: { i18n: I18n }) {
                 {COMMITS.map(([sha, msg]) => (
                   <span key={sha}>
                     {/* A short hash is a hash in every language. */}
-                    <b>{sha}</b> {t(msg as never)}
+                    <b>{sha}</b> {t(msg)}
                   </span>
                 ))}
               </div>
@@ -510,14 +510,14 @@ function VerdictBand({ i18n }: { i18n: I18n }) {
                 <tbody>
                   {DEMO_ROWS.map((r) => (
                     <tr key={r.claim}>
-                      <td className="lp-td-claim">{t(r.claim as never)}</td>
+                      <td className="lp-td-claim">{t(r.claim)}</td>
                       <td>
-                        <span className={`lp-tag ${r.loopKind}`}>{t(r.loop as never)}</span>
+                        <span className={`lp-tag ${r.loopKind}`}>{t(r.loop)}</span>
                       </td>
                       <td>
-                        <span className={`lp-tag ${r.tone}`}>{t(r.outcome as never)}</span>
+                        <span className={`lp-tag ${r.tone}`}>{t(r.outcome)}</span>
                       </td>
-                      <td className="lp-td-ev">{t(r.ev as never)}</td>
+                      <td className="lp-td-ev">{t(r.ev)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -533,10 +533,10 @@ function VerdictBand({ i18n }: { i18n: I18n }) {
               <Ico name={PART_ICONS[p]} size={15} />
             </span>
             <div className="lp-part-copy">
-              <h3>{t(`lpPart${p}` as never)}</h3>
-              <p>{t(`lpPart${p}Body` as never)}</p>
+              <h3>{t(`lpPart${p}`)}</h3>
+              <p>{t(`lpPart${p}Body`)}</p>
             </div>
-            <span className="lp-part-by">{t(`lpPart${p}By` as never)}</span>
+            <span className="lp-part-by">{t(`lpPart${p}By`)}</span>
           </div>
         ))}
       </div>
@@ -560,8 +560,8 @@ function WhoBand({ i18n }: { i18n: I18n }) {
       <div className="lp-fields">
         {FIELDS.map((f) => (
           <div key={f.key} className={f.accent ? 'lp-field accent' : 'lp-field'}>
-            <h3>{t(`lpWho${f.key}` as never)}</h3>
-            <p>{t(`lpWho${f.key}Body` as never)}</p>
+            <h3>{t(`lpWho${f.key}`)}</h3>
+            <p>{t(`lpWho${f.key}Body`)}</p>
           </div>
         ))}
       </div>
@@ -590,8 +590,8 @@ function CostBand({ i18n }: { i18n: I18n }) {
             <div key={c} className="lp-cost">
               {/* A numeral needs no translation, so it is one. */}
               <span className="lp-cost-n">{String(i + 1).padStart(2, '0')}</span>
-              <h3>{t(`lpCost${c}` as never)}</h3>
-              <p>{t(`lpCost${c}Body` as never)}</p>
+              <h3>{t(`lpCost${c}`)}</h3>
+              <p>{t(`lpCost${c}Body`)}</p>
             </div>
           ))}
         </div>

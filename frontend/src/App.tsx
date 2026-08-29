@@ -6123,17 +6123,27 @@ function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
   }
   return <Initials email={me.email ?? ''} size={size} />
 }
+// The account roles the server sends, each named by a key TypeScript can check.
+// Built by concatenation this read `t('tier' + …)`, which compiled whatever it
+// produced — including `tierNone`, a key that never existed and painted its own
+// name in the pill.
+const TIER_KEY = { user: 'tierUser', admin: 'tierAdmin' } as const satisfies Record<string, TKey>
 function tierLabel(t: I18n['t'], tier?: string) {
-  return t('tier' + (tier ? tier[0].toUpperCase() + tier.slice(1) : 'None'))
+  return t(TIER_KEY[tier as keyof typeof TIER_KEY] ?? 'tierNone')
 }
+// A phase the client knows is named; one it does not is shown as itself. The
+// backend can add a phase before the client learns it, and `phase.reconciling`
+// on screen is an identifier leaking out, not a label.
+const isPhase = (p: string): p is Phase => (PHASE_ORDER as readonly string[]).includes(p)
 function phaseLabel(t: I18n['t'], phase: string) {
-  return t(`phase.${phase}`)
+  return isPhase(phase) ? t(`phase.${phase}`) : phase.replace(/_/g, ' ')
 }
 
 // PHASE_ORDER is the lifecycle spine the timeline walks. phase_at only ever
 // carries phases the session actually entered, so a missing phase is simply
 // skipped — the timeline never fabricates a step.
-const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed']
+const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed'] as const
+type Phase = (typeof PHASE_ORDER)[number]
 
 // fmtDur renders a millisecond span as a compact human duration.
 function fmtDur(ms: number): string {
@@ -6189,8 +6199,8 @@ function displayKind(kind: string) {
 // `outcome_evaluation_ongoing` sitting in a filter row is an identifier leaking
 // onto the screen, not a label (006s).
 function kindLabel(t: I18n['t'], kind: string) {
-  const map: Record<string, string> = {
-    message: 'message',
+  const map: Record<string, TKey> = {
+    message: 'messageLabel',
     thinking: 'thinkingLabel',
     tool_use: 'toolCall',
     tool_result: 'toolResult',

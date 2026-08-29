@@ -26,7 +26,14 @@ const en = {
     landingLead:
       'Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart.',
     landingInnerTitle: 'The inner loop',
+    landingInnerBody:
+      'The algorithm, model, or analysis pipeline. Implemented, run, and published as its own repository with the agent’s own commit history.',
     landingOuterTitle: 'The outer loop',
+    landingOuterBody:
+      'The study that validates it with people. Named, bounded, and never simulated — pretending otherwise is the most common way reproducibility claims go wrong.',
+    landingVerdictTitle: 'The verdict',
+    landingVerdictBody:
+      'Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number.',
     // The landing as a place (029): the section headings, the figure captions,
     // and the close. The claim, the lead, and the three points above are 017's
     // and are reused verbatim — the argument did not change, only how much room
@@ -776,6 +783,7 @@ const en = {
     scrubByEvents: 'Bar height is events recorded — nothing in this run was charged tokens.',
     // The sentence is the card's body; the label is what fits a filter row.
     thinking: 'thought for a moment (content not exposed by the backend)',
+    messageLabel: 'message',
     thinkingLabel: 'thinking',
     toolCall: 'tool call',
     toolResult: 'tool result',
@@ -797,6 +805,7 @@ const en = {
 
     tierUser: 'user',
     tierAdmin: 'admin',
+    tierNone: 'no access',
     'phase.submitted': 'submitted',
     'phase.resolving': 'resolving',
     'phase.running': 'running',
@@ -823,10 +832,11 @@ export function useI18n() {
     document.documentElement.lang = l
   }, [])
   const t = useCallback(
-    (key: string, vars?: Record<string, string>) => {
-      // Looked up by string, not TKey, so a dynamic key (a phase name built at
-      // runtime) still resolves; a missing key falls back to English, then to
-      // the key itself, so nothing renders blank.
+    (key: TKey, vars?: Record<string, string>) => {
+      // Typed against TKey: a key with no string is a compile error rather than
+      // a landing band that paints `landingVerdictBody` at a reader. The runtime
+      // fallback below is for a locale that is missing a key English has, not
+      // for a key that exists nowhere.
       const table = strings[lang] as Record<string, string>
       let s = table[key] ?? (strings.en as Record<string, string>)[key] ?? key
       if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])

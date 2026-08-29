@@ -14,7 +14,7 @@
 // exist yet.
 
 import { ApiError, type Credits, type CreatedProject, type PaperResult, type PublishBlocker } from './api'
-import type { I18n } from './i18n'
+import type { I18n, TKey } from './i18n'
 
 type T = I18n['t']
 
@@ -30,7 +30,7 @@ export function refusal(e: unknown): { status: number; code: string; offline: bo
 // generic is the last resort every flow shares: offline, or a fault on our side.
 // Each flow passes the sentence that names what did not happen, so the fallback
 // still says which action failed rather than "an error occurred".
-export function generic(t: T, e: unknown, fallbackKey: string): string {
+export function generic(t: T, e: unknown, fallbackKey: TKey): string {
   return refusal(e).offline ? t('errOffline') : t(fallbackKey)
 }
 
