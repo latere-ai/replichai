@@ -322,8 +322,18 @@ try {
     // and this is what says so: the gutter each band leaves is the page's own
     // margin rather than the remainder of a cap, on the widest viewport we
     // claim to serve.
-    const page = await open({ authenticated: false }, { viewport: WIDE })
-    await page.waitForSelector('.lp-section')
+    // With published work, so the registry strip is a band with contents to
+    // measure rather than one this loop skips.
+    const published = Array.from({ length: 6 }, (_, i) => ({
+      id: `p${i}`,
+      title: `Attention Is All You Need — decoder ablation ${i}`,
+      signed_off_name: 'Ada Lovelace',
+      session_count: 3,
+      visibility: 'public',
+      papers: [{ title: 'Attention Is All You Need', authors: ['Ashish Vaswani', 'Noam Shazeer'], venue: 'NeurIPS', year: 2017 }],
+    }))
+    const page = await open({ authenticated: false }, { viewport: WIDE, json: { '/public': published } })
+    await page.waitForSelector('[data-test="lp-strip"] .lp-card')
     // Every band, including the ones a reveal observer has not reached yet:
     // geometry is measured on the box, and a transparent box measures the same.
     const bands = await page.evaluate(async () => {
@@ -341,11 +351,15 @@ try {
           right: Math.max(...kids.map((r) => r.right)),
         })
       }
-      return out
+      // The page width a band can actually reach, which is the viewport less a
+      // classic scrollbar on a browser that draws one.
+      return { bands: out, page: document.documentElement.clientWidth }
     })
-    if (bands.length < 5) fail(`only ${bands.length} bands were measured at ${WIDE.width}px; the page did not render`)
-    for (const b of bands) {
-      const rightGutter = WIDE.width - b.right
+    // Every band on the page: the hero, seven sections, the close. A band that
+    // rendered nothing is skipped above and would otherwise go uncovered here.
+    if (bands.bands.length < 9) fail(`only ${bands.bands.length} bands were measured at ${WIDE.width}px; the page did not render`)
+    for (const b of bands.bands) {
+      const rightGutter = bands.page - b.right
       if (b.left > 96) fail(`at ${WIDE.width}px the band ${b.name} starts ${Math.round(b.left)}px in; the page has one edge and it is the hero's`)
       if (Math.abs(b.left - rightGutter) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off centre: ${Math.round(b.left)}px left, ${Math.round(rightGutter)}px right`)
     }
@@ -359,12 +373,12 @@ try {
     // waste, inverted — so the thing to measure is the card, not the track.
     const cards = await page.evaluate(() => {
       const widths = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().width))
-      return { fields: widths('.lp-field'), costs: widths('.lp-cost'), anatomy: widths('.lp-part') }
+      return { fields: widths('.lp-field'), costs: widths('.lp-cost'), anatomy: widths('.lp-part'), registry: widths('.lp-card') }
     })
     for (const [name, w] of Object.entries(cards)) {
       if (!w.length) fail(`at ${WIDE.width}px the ${name} grid rendered no cards`)
-      const thin = w.filter((n) => n < 280)
-      if (thin.length) fail(`at ${WIDE.width}px ${thin.length} of the ${name} cards are under 280px wide (${w.join(', ')}); the grid shredded rather than filled`)
+      const thin = w.filter((n) => n < 340)
+      if (thin.length) fail(`at ${WIDE.width}px ${thin.length} of the ${name} cards are under 340px wide (${w.join(', ')}); the grid shredded rather than filled`)
     }
     await page.close()
   }
