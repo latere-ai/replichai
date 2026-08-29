@@ -14,6 +14,13 @@ export type I18n = ReturnType<typeof useI18n>
 
 // en is the source of truth: every key the product uses, in English. A new
 // locale is typed against its keys, so it cannot omit one.
+// A `|` in a heading is a seam: a place the writer says the line may break.
+// Everything between two seams is rendered unbreakable, so a heading comes
+// apart at a clause and never mid-phrase. CSS cannot make that call — it breaks
+// at whatever space overflows, and `text-wrap: balance` only equalises the
+// resulting line lengths — and a translator moving the sentence into another
+// language moves the clause with it, which no stylesheet can follow. Only
+// headings carry seams; body copy has room to wrap wherever it likes.
 const en = {
     // auth
     // The landing (017). The claim is a question because that is the question
@@ -22,7 +29,7 @@ const en = {
     // boundary in the hero legend — the thing worth putting in front of
     // somebody before they have an account — and the card promises only what
     // 006q made true, that signing in is open and a session is what spends.
-    landingClaim: 'Does the paper actually reproduce?',
+    landingClaim: 'Does the paper|actually reproduce?',
     landingLead:
       'Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart.',
     landingInnerTitle: 'The inner loop',
@@ -38,10 +45,10 @@ const en = {
     // and the close. The claim, the lead, and the three points above are 017's
     // and are reused verbatim — the argument did not change, only how much room
     // it now has.
-    lpLoopsTitle: 'One loop closes. One never will.',
+    lpLoopsTitle: 'One loop closes.|One never will.',
     lpLoopsCaption:
       'The algorithm re-runs, so it is drawn closed. The study with people does not, so it is drawn open — and nothing here pretends otherwise.',
-    lpPipelineTitle: 'What a session actually does',
+    lpPipelineTitle: 'What a session|actually does',
     lpPipelineCaption:
       'Four steps, each leaving something you can open afterwards: the release it found, the repository it wrote, the transcript of how it got there.',
     lpStepPaper: 'The paper',
@@ -56,7 +63,7 @@ const en = {
     lpStepVerdict: 'The verdict',
     lpStepVerdictBody: 'What reproduced, what did not, and what could not be judged — component by component.',
     lpStepVerdictArtifact: 'A manifest and a transcript',
-    lpAnatomyTitle: 'A verdict you can take apart',
+    lpAnatomyTitle: 'A verdict you can|take apart',
     lpAnatomyCaption:
       'Three things, kept separate on purpose. Fuse them and you get a number to trust; keep them apart and you get a result to check.',
     lpPartClaim: 'The claim',
@@ -75,7 +82,7 @@ const en = {
     lpCardSigner: 'Reproduction signed by {name}',
     lpStripTitle: 'Published reproductions',
     lpStripCaption: 'Signed, opened, and readable without an account. Open one before you decide whether this is for you.',
-    lpCloseTitle: 'Read one before you sign up.',
+    lpCloseTitle: 'Read one|before you sign up.',
     lpCloseBody: 'Everything published here is open — the verdict, the repository, and the transcript that produced them.',
     // The rebuild (033). 029's copy above is the argument and is reused
     // untouched; everything here belongs to a band 029 did not have. The
@@ -92,7 +99,7 @@ const en = {
     // treats as worker-written, so this list and the gate cannot disagree; they
     // are filenames and are not translated.
     lpShipsEyebrow: 'What comes back',
-    lpShipsTitle: 'A repository, not a rating.',
+    lpShipsTitle: 'A repository,|not a rating.',
     lpShipsCaption:
       'An audit writes a reproduction repository you can clone. Five files, each answering one question, and one of them is a list of everything that could not be confirmed.',
     lpShipsReadme: 'What the paper is, what the reproduction is, how to run it.',
@@ -151,7 +158,7 @@ const en = {
     // decides whether this product fits is the shape of the paper, not the
     // department it came from.
     lpWhoEyebrow: 'Who it is for',
-    lpWhoTitle: 'Where a finding rests on what people did.',
+    lpWhoTitle: 'Where a finding rests on|what people did.',
     lpWhoCaption:
       'Built for research with human participants. A paper of that kind almost always contains two loops, and placing the boundary between them precisely — and defending it — is the point.',
     lpWhoHci: 'Human–computer interaction',
@@ -166,7 +173,7 @@ const en = {
     // The rate card is a database row behind an admin endpoint, and a number
     // typed here would be a number that drifts.
     lpCostEyebrow: 'What it costs',
-    lpCostTitle: 'A session is what spends.',
+    lpCostTitle: 'A session is|what spends.',
     lpCostCaption:
       'Not a seat, not a plan. A session is charged for the tokens it burned, and what it does not spend comes back.',
     lpCostSignIn: 'Sign in',

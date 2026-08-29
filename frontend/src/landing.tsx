@@ -27,6 +27,33 @@ import type { Theme, ThemeMode } from './theme'
 // first frame. `frontend/test/landing.test.mjs` asserts exactly that, so a new
 // band that dims or collapses has to say so in the same place.
 
+// Seams renders a heading that breaks where its copy says it may.
+//
+// CSS picks a break by width alone: the last space that fits. `text-wrap:
+// balance` only re-picks it to equalise line lengths, which is why the boundary
+// band read "One loop closes. One never / will." at every viewport from a phone
+// to a 2560px display — the algorithm had no idea a sentence ended two words
+// earlier. Where a heading comes apart is a fact about the language, so it is
+// written into the string as `|`, and each segment between seams is rendered
+// unbreakable. A translator moves the seam with the clause.
+//
+// The space that joins two segments sits *outside* both spans, because that is
+// the only place the line is allowed to break.
+function Seams({ text }: { text: string }) {
+  const parts = text.split('|')
+  if (parts.length === 1) return <>{text}</>
+  const out: React.ReactNode[] = []
+  parts.forEach((part, i) => {
+    if (i > 0) out.push(' ')
+    out.push(
+      <span key={i} className="seam">
+        {part}
+      </span>,
+    )
+  })
+  return <>{out}</>
+}
+
 // useReveal advances a section from its pre-reveal state to its resting one when
 // it first comes into view. It sets a class and nothing else: what the class
 // does, and whether it does anything at all, is the stylesheet's business — so a
@@ -93,7 +120,9 @@ function Band({
     <section className={className ? `lp-section ${className}` : 'lp-section'} data-test={id} ref={ref}>
       <div className="lp-head">
         <span className="lp-eyebrow">{eyebrow}</span>
-        <h2>{title}</h2>
+        <h2>
+          <Seams text={title} />
+        </h2>
         {caption && <p>{caption}</p>}
       </div>
       {children}
@@ -148,7 +177,9 @@ function HeroSlab({ i18n, href, theme }: { i18n: I18n; href: string; theme: Them
         </div>
         <div className="lp-slab-foot">
           <div className="lp-hero-copy">
-            <h1>{t('landingClaim')}</h1>
+            <h1>
+              <Seams text={t('landingClaim')} />
+            </h1>
             <p className="landing-lead">{t('landingLead')}</p>
             <div className="lp-cta">
               <a className="btn lg" data-test="lp-hero-signin" href={href}>
@@ -243,7 +274,9 @@ function LoopsBand({ i18n }: { i18n: I18n }) {
       <div className="lp-panel lp-block">
         <div className="lp-panel-copy">
           <span className="lp-eyebrow">{t('lpLoopsEyebrow')}</span>
-          <h2>{t('lpLoopsTitle')}</h2>
+          <h2>
+            <Seams text={t('lpLoopsTitle')} />
+          </h2>
           <p>{t('lpLoopsCaption')}</p>
           <div className="landing-points">
             {POINTS.map((p) => (
@@ -377,7 +410,9 @@ function WalkBand({ i18n }: { i18n: I18n }) {
     >
       <div className="lp-head">
         <span className="lp-eyebrow">{t('lpPipelineEyebrow')}</span>
-        <h2>{t('lpPipelineTitle')}</h2>
+        <h2>
+          <Seams text={t('lpPipelineTitle')} />
+        </h2>
         <p>{t('lpPipelineCaption')}</p>
       </div>
       <div className="lp-walk-grid">
@@ -582,7 +617,9 @@ function CostBand({ i18n }: { i18n: I18n }) {
       <div className="lp-panel lp-quiet">
         <div className="lp-head">
           <span className="lp-eyebrow">{t('lpCostEyebrow')}</span>
-          <h2>{t('lpCostTitle')}</h2>
+          <h2>
+            <Seams text={t('lpCostTitle')} />
+          </h2>
           <p>{t('lpCostCaption')}</p>
         </div>
         <div className="lp-costs">
@@ -627,7 +664,9 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
       <div className="lp-strip-head">
         <div className="lp-head">
           <span className="lp-eyebrow">{t('lpStripEyebrow')}</span>
-          <h2>{t('lpStripTitle')}</h2>
+          <h2>
+            <Seams text={t('lpStripTitle')} />
+          </h2>
           <p>{t('lpStripCaption')}</p>
         </div>
         <a className="btn ghost sm" href="/registry">
@@ -721,7 +760,9 @@ export function Landing({
       <section className="lp-close-wrap">
         <div className="lp-close lp-block">
           <Mark size={46} className="lp-close-mark" />
-          <h2>{t('lpCloseTitle')}</h2>
+          <h2>
+            <Seams text={t('lpCloseTitle')} />
+          </h2>
           <p>{t('lpCloseBody')}</p>
           <div className="lp-cta">
             <a className="btn lg" href={href}>

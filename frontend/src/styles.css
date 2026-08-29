@@ -3086,6 +3086,12 @@ input.submit-input {
   background: var(--brand);
   color: var(--brand-fg);
 }
+/* A segment between two seams. The heading's copy says where it may break; this
+   is what makes everywhere else unbreakable. The joining space lives between
+   two of these, in the heading, because that is the one place a line may end. */
+.landing .seam {
+  white-space: nowrap;
+}
 .lp-eyebrow {
   display: block;
   font: 600 10px/1 var(--font-mono);
@@ -3474,7 +3480,7 @@ input.submit-input {
    same asymmetric pair as .lp-split rather than two halves. */
 .lp-walk-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 30rem) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 34rem) minmax(0, 1fr);
   gap: 64px;
   align-items: start;
   margin-top: 56px;
@@ -3537,7 +3543,10 @@ input.submit-input {
   padding: 28px;
   display: grid;
   place-items: center;
-  min-height: min(560px, 62vh);
+  /* The stage is sticky and the steps scroll past it, so its height is what a
+     reader sees for the whole band. 560px read as a box with an artifact in it;
+     this reads as the panel the artifact belongs to. */
+  min-height: min(760px, 70vh);
   /* Ground, edge and shadow come from .lp-block, which this element also
      carries. 033 restated all three here, and the restatement won — the panel
      stayed #0f1113 whatever the material said. */
@@ -3547,9 +3556,11 @@ input.submit-input {
   width: 100%;
   /* The artifacts are the object on the panel's stage, so they grow with the
      stage. A fixed 400px stack left a postage stamp in the middle of a
-     2000px-wide block once the bands stopped being capped. */
-  max-width: clamp(400px, 34vw, 680px);
-  max-height: min(520px, 58vh);
+     2000px-wide block once the bands stopped being capped, and 680px was still
+     a stamp: at full width the release record and the manifest are things to
+     read, not thumbnails of things to read. */
+  max-width: clamp(400px, 46vw, 980px);
+  max-height: min(700px, 64vh);
   overflow-y: auto;
   display: grid;
   gap: 10px;
