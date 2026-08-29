@@ -186,7 +186,7 @@ const en = {
     signInBody: 'Sign in to give it a paper, watch the audit run, and sign the verdict that comes back.',
     signInNote: 'Built for research with human participants.',
     signInWith: 'Sign in with latere',
-    authUnavailableTitle: 'ReplicHAI is unavailable',
+    authUnavailableTitle: 'ReplicHAI|is unavailable',
     authUnavailableBody: 'We couldn’t check your session. You may be offline, or the service may be temporarily unavailable.',
     retry: 'Try again',
     // Sign-in is open (006q), so this screen is no longer "wait for an admin".
@@ -195,7 +195,7 @@ const en = {
     // already bound to another account all land here too. Naming a ban would
     // accuse somebody of something that did not happen, so the copy says what
     // is certain — no access right now — and offers the two things that help.
-    noAccessTitle: 'No access to this account',
+    noAccessTitle: 'No access|to this account',
     noAccessBody:
       "You're signed in as {email}, but this account cannot use replichai right now. Signing out and back in fixes most cases; if it persists, a platform admin has revoked access and can restore it.",
     // shell
@@ -439,7 +439,7 @@ const en = {
     // An address this app does not have (042c). It says what happened without
     // guessing why — a typo, a link that lost its tail, a page that was never
     // here — and offers the two places worth going next.
-    notFoundTitle: 'No page at this address',
+    notFoundTitle: 'No page|at this address',
     notFoundBody: 'This is not an address on replichai. The link may have been cut short, or the page may never have been here.',
     notFoundHome: 'Go to your projects',
     // submit / new project

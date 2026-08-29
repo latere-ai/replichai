@@ -8,6 +8,7 @@ import type { I18n } from './i18n'
 import { Ico } from './icons'
 import { listCitation } from './papers'
 import type { Theme, ThemeMode } from './theme'
+import { Seams } from './ui'
 
 // The landing (029, rebuilt by 033). It is a place, not a door.
 //
@@ -26,33 +27,6 @@ import type { Theme, ThemeMode } from './theme'
 // under `prefers-reduced-motion: reduce` is the *finished* page, never a frozen
 // first frame. `frontend/test/landing.test.mjs` asserts exactly that, so a new
 // band that dims or collapses has to say so in the same place.
-
-// Seams renders a heading that breaks where its copy says it may.
-//
-// CSS picks a break by width alone: the last space that fits. `text-wrap:
-// balance` only re-picks it to equalise line lengths, which is why the boundary
-// band read "One loop closes. One never / will." at every viewport from a phone
-// to a 2560px display — the algorithm had no idea a sentence ended two words
-// earlier. Where a heading comes apart is a fact about the language, so it is
-// written into the string as `|`, and each segment between seams is rendered
-// unbreakable. A translator moves the seam with the clause.
-//
-// The space that joins two segments sits *outside* both spans, because that is
-// the only place the line is allowed to break.
-function Seams({ text }: { text: string }) {
-  const parts = text.split('|')
-  if (parts.length === 1) return <>{text}</>
-  const out: React.ReactNode[] = []
-  parts.forEach((part, i) => {
-    if (i > 0) out.push(' ')
-    out.push(
-      <span key={i} className="seam">
-        {part}
-      </span>,
-    )
-  })
-  return <>{out}</>
-}
 
 // useReveal advances a section from its pre-reveal state to its resting one when
 // it first comes into view. It sets a class and nothing else: what the class
