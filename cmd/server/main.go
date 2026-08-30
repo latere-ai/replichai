@@ -60,6 +60,10 @@ import (
 const (
 	devSub   = "dev-user"
 	devEmail = "dev@local"
+
+	// serviceName labels every span, metric, and log record this binary emits,
+	// and is the name the trace backend groups them under.
+	serviceName = "replichai"
 )
 
 // version is the build's version string, stamped by the linker
@@ -96,7 +100,7 @@ func run() error {
 	// the standard OTEL_* environment and is a noop when none is set, which is
 	// what makes a local run and a test identical to production here.
 	logger, shutdownTelemetry, err := xotel.Bootstrap(ctx, xotel.Config{
-		ServiceName: "replichai",
+		ServiceName: serviceName,
 		Version:     xotel.Version(version),
 	})
 	if err != nil {
@@ -294,13 +298,23 @@ func run() error {
 		return err
 	}
 
-	// The tracing middleware sits outermost, so a span exists before any other
-	// middleware runs and every inbound request either continues the caller's
-	// trace or starts one the outbound calls below can join.
-	srv := &http.Server{Addr: *addr, Handler: xotel.Handler(handler, "replichai"), ReadHeaderTimeout: 10 * time.Second}
-
+	srv := newServer(*addr, handler)
 	logger.Info("listening", "addr", *addr, "base_url", baseURL)
 	return xotel.RunServer(ctx, srv, 10*time.Second, nil)
+}
+
+// newServer assembles the listening server around the fully wired surface. The
+// tracing middleware sits outermost, so a span exists before the auth
+// middleware, the freeze gate, or the mux runs, and every inbound request
+// either continues the caller's trace or starts one the outbound calls join.
+// The header deadline is separate from any handler timeout: it bounds a client
+// that opens a connection and then says nothing.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           xotel.Handler(handler, serviceName),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 }
 
 // buildHandler assembles the full HTTP surface: the gated operator router at /,
