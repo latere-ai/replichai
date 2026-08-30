@@ -36,6 +36,12 @@ jobs:
       # one built against an older Go refuses a `go 1.27` go.mod outright. This
       # compiles it with the same toolchain as the module it is linting.
       - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+      # .golangci.yml is generated from latere.ai/x/ci-gate and gitignored, so
+      # a fresh checkout has none. golangci-lint with no config does not do
+      # nothing -- it falls back to its own default linters, which is how this
+      # job started reporting errcheck in test files that the real config
+      # exempts.
+      - run: make lint-config
       - run: golangci-lint run --timeout 5m ./...
       # A grep, not a linter: no analyser knows that an http.Client without an
       # instrumented Transport breaks the trace at every service boundary.
