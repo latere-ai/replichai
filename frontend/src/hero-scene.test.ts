@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // The hero scene has two palettes (040), and the guard that matters is that
 // nothing paints outside them. A literal left behind in the geometry is a
 // colour that cannot follow the appearance — the exact bug 040 fixed in the

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package memory provides an in-process provider that runs nothing.
 //
 // It exists to exercise the orchestrator, to keep the test suite free of

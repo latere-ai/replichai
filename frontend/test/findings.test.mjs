@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the findings panes (021b, 021c).
 //
 // What it guards is the difference between a claim and an absence. Three things

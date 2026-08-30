@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package experiment runs a reproduction's declared analysis on new data.
 //
 // [007a] leaves an instrument — instrument.json plus src/ in a published

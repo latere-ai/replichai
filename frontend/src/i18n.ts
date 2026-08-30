@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { useCallback, useState } from 'react'
 
 // English only for now. To add a language: add its code to the Lang union and a

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package access is the deployment's own authorisation: who may sign in, who may
 // operate, and at what tier. Authentication is portable — an OIDC provider
 // proves who someone is — but authorisation is ours, decided against the

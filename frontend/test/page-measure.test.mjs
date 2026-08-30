@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression for the page measure on the single-column screens.
 //
 // The wallet capped its column at 560px and the admin console at 720px, both

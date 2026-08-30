@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for a project's description (038) and the draft
 // that offers to write one (039).
 //

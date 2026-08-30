@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package managed defines the provider-neutral contract for long-running,
 // sandboxed model sessions.
 package managed

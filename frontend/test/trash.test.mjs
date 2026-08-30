@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the trash (019).
 //
 // What it guards: removing a project is two steps on purpose, and the whole

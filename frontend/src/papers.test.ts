@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { expect, test } from 'bun:test'
 import { citationBits, gradeable, groupByPaper, isGradeable, listCitation } from './papers'
 import type { Job, ProjectPaper } from './api'

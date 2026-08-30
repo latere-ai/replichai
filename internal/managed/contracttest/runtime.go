@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package contracttest contains the black-box checks shared by managed
 // runtime adapters.
 package contracttest

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Money is micro-USD everywhere it travels: an integer count of millionths of a
 // dollar, never a float and never a formatted string (011). A rate is quoted per
 // million tokens, so the unit multiplies cleanly at the one place a session is

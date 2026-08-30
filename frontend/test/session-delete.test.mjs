@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for removing a session (032).
 //
 // What it guards is the dead end. A run that began publishing and never finished

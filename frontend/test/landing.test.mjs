@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the first screen (017, rebuilt by 029 and 033).
 //
 // What it guards: the landing is a page a researcher reads, and the way in never

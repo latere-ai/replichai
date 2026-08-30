@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package provider defines the contract between the audit orchestrator and
 // whatever backend actually runs the work.
 //

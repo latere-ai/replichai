@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // The hero scene (033): the mark as a field of particles, lit, in fog, over a
 // receding floor.
 //

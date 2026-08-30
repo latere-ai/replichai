@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package httpapi is the HTTP server that wraps the audit engine: submit a
 // paper, watch a job, read a result. It translates HTTP to the job model and
 // back and adds no engine logic — every handler depends on an interface (the

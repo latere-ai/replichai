@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the vertical rhythm between stacked cards.
 //
 // The bug it guards: a screen that renders two cards as siblings must put them

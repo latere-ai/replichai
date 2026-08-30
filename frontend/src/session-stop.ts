@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Stopping a session is not one instant act. The request signals the worker,
 // which closes the backend run and only then writes the terminal phase. The
 // control has to hold the whole of that wait, or a second click fires a second

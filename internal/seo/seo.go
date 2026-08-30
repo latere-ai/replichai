@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package seo writes the head of a document for a reader that never runs
 // JavaScript: a crawler, a link unfurler, a citation tool.
 //

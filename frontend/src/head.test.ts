@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { expect, test } from 'bun:test'
 import { canonicalOf, titleOf } from './head'
 import type { View } from './routes'

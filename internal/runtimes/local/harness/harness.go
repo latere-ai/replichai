@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package harness is the seam between the local runtime and one agentic coding
 // CLI (045d). A harness contributes what is specific to that program — how it
 // is invoked, what environment and configuration it needs, and how to read what

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Artifact rendering: markdown → sanitized HTML, code → syntax-highlighted,
 // images → served inline. Content comes from repositories (including public
 // ones), so every rendered HTML path is sanitized before it reaches the DOM.

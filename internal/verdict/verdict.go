@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package verdict is the schema for verdict.json — what a reproduction found,
 // as data rather than as prose.
 //

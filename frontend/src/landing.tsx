@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { SiteFooter } from 'latere-ui/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 

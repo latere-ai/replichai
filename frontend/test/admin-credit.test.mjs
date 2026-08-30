@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Browser regression for an admin adding credits to their own wallet.
 //
 // The admin people table and the header are fed by different endpoints. The

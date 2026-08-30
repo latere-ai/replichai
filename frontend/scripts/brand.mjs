@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Generates the raster brand assets that a vector cannot cover: the Apple touch
 // icon (iOS ignores SVG) and the social card (crawlers do not rasterise SVG).
 // Both come out of the same geometry the in-app mark uses, so the three can

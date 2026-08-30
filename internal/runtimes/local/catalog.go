@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package local runs a managed session on the operator's own machine: a
 // sandbox around a workspace directory, a coding harness inside it, and a
 // model reached through whatever endpoint the operator declares (045).

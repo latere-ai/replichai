@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package notify is what replichai says to somebody who is not looking at it.
 //
 // Everything else the platform does is a reply to a request: a person asks, the

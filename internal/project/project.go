@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package project is the entity a user owns and works inside: a research
 // container that holds one or more replication sessions (006g). A project is a
 // first-class, durable record — not a string threaded through a job row — so

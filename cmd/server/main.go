@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Command server is the replichai web application: it wraps the audit engine in
 // an HTTP API, runs submissions asynchronously through a Postgres-backed job
 // queue, streams their progress, and gates every operator route behind the

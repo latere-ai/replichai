@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package batch runs one replication project: a list of papers, a concurrency
 // cap, one isolated session each, resumable state, and a report at the end
 // (045h).

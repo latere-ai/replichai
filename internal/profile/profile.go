@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package profile is who a principal says they are: the researcher identity a
 // public sign-off is published under — display name, institution, the contact
 // address the public may write to, and the scholarly identifiers that make an

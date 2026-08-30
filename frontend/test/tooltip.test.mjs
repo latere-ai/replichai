@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the app's tooltip.
 //
 // The bug it guards: the bubble used to be a `::after` pseudo-element on the

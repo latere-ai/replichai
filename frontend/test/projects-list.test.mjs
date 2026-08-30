@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the merged projects list (018, restyled by 034).
 //
 // What it guards: the screen used to split a reader's work in two by a fact they

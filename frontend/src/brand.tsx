@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // The identity: one drawn mark and one wordmark, used wherever the product
 // names itself. It lives apart from `icons.tsx` on purpose — an icon inherits
 // `currentColor` so the same glyph can sit in a brand button and a muted row,

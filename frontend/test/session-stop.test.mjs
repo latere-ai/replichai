@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the Stop control on a running session.
 //
 // The bug it guards: stopping is not instant. POST /jobs/{id}/cancel returns as

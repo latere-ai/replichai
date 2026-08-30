@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package memory provides a deterministic, restartable managed-session
 // runtime for tests and local development.
 package memory

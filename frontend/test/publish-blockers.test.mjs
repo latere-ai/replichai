@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for a refused publish (006f's gate, on screen).
 //
 // What it guards is that a refusal is actionable. The public flip used to answer

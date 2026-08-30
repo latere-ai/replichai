@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { ReactNode } from 'react'
 
 // One stroke-drawn icon set, all on a 24×24 grid so a single stroke width reads

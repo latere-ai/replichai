@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package localtest is a scripted sandbox driver: it runs no process and
 // isolates nothing, and instead writes the stream a harness would have written
 // and the files a stage would have produced. It exists so the local runtime's

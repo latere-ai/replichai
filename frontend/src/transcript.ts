@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // The arithmetic behind the session screen (006s), kept out of the components
 // so it can be tested without a browser.
 //

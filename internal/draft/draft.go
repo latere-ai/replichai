@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package draft is one short model call: a prompt in, a paragraph and a token
 // count out (039).
 //

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 package runtimes
 
 // LookupEnv is the environment reader credential resolution goes through, so a

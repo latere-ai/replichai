@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Command replichai audits the reproducibility of research papers.
 //
 // This package owns argument parsing and output. All behavior lives in

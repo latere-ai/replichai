@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the app on a phone (030).
 //
 // What it guards: `.shell` is a flex row and `.rail` was `width: 236px;

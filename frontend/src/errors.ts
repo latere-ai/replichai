@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Every refusal the user can see, in one place.
 //
 // The rule this module exists to enforce: a message names what happened and what

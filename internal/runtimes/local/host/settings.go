@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package host is the default sandbox driver: the harness already installed on
 // the machine, confined by srt — Seatbelt on macOS, bubblewrap with seccomp on
 // Linux — to one workspace and an allow-only network (045b).

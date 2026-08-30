@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Vite empties internal/spa/dist/ on every build, and that directory holds one
 // tracked file: PLACEHOLDER, kept alive by a `!` negation against a gitignored
 // dist/*. So a plain `bun run build` deletes a tracked file, and because the

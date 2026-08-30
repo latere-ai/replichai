@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package job is the lifecycle of one submission: its states, the single
 // transition function that is the only writer of them, and the store it lives
 // in. A submission becomes a durable job so it outlives the request, the

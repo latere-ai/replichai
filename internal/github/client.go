@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package github is a small client for the handful of operations publishing a
 // reproduction needs: create a private repository, invite a collaborator, read
 // the head commit, and make a repository public. It is hand-rolled over

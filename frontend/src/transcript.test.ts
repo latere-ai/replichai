@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
 import { cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, seekTarget, splitTitle, totalOf } from './transcript'

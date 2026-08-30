@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // The shape of verdict.json (021a) as the app reads it, and the three questions
 // the panes ask of it.
 //

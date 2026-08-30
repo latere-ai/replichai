@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package cloud is the terminal's side of the platform: signing in against
 // auth.latere.ai with the device-code flow, keeping the credential, and
 // presenting it to replichai's own API (045i).
