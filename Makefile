@@ -19,10 +19,25 @@ test:
 	go vet ./...
 	go test ./...
 
+# fmt formats all Go sources in place.
+.PHONY: fmt
+fmt:
+	gofmt -w .
+
 # gofmt over the tree, through the shared checker.
 .PHONY: fmt-check
 fmt-check:
 	@go tool lateregate fmt-check
+
+# hooks installs the repository git hooks: the pre-commit guard rejects
+# unformatted Go files and code a standard library call already covers. It also
+# restores the local CLAUDE.md -> AGENTS.md symlink, which is gitignored and so
+# absent in a fresh clone.
+.PHONY: hooks
+hooks:
+	git config core.hooksPath .githooks
+	@[ -e CLAUDE.md ] || [ -L CLAUDE.md ] || ln -s AGENTS.md CLAUDE.md
+	@echo "installed git hooks (core.hooksPath=.githooks)"
 
 # Fails on code a standard library call already covers. Overlaps the modernize
 # linter but carries fixers it does not.
