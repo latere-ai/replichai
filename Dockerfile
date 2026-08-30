@@ -15,13 +15,17 @@ RUN bun run build   # vite outputs to ../internal/spa/dist
 # emulation, so a linux/amd64 image builds fast on an arm64 host.
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 ARG TARGETOS TARGETARCH
+# The version telemetry reports. .git is excluded from the build context, so
+# the toolchain can embed no VCS revision of its own and the value has to come
+# in from the builder. Left empty, the binary falls back to its build info.
+ARG VERSION=""
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/internal/spa/dist ./internal/spa/dist
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -o /out/server ./cmd/server
+    go build -trimpath -ldflags "-X main.version=${VERSION}" -o /out/server ./cmd/server
 
 # Stage 3: ship the binary on scratch with the method data and CA roots.
 FROM scratch

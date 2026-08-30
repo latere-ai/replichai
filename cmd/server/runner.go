@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -673,22 +673,22 @@ func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, ev
 		body, err := evidence.Fetch(ctx, artifact)
 		if err != nil {
 			// One unreadable artifact must not cost the rest of them.
-			log.Printf("harvest: session %s: fetch %s: %v", jobID, artifact.Path, err)
+			slog.ErrorContext(ctx, "harvest: fetching an artifact", "session", jobID, "path", artifact.Path, "error", err)
 			continue
 		}
 		files[artifact.Path] = body
 	}
 	rep, err := publish.CommitOutputs(ctx, gh, owner, name, files)
 	if err != nil {
-		log.Printf("harvest: session %s: commit outputs: %v", jobID, err)
+		slog.ErrorContext(ctx, "harvest: committing outputs", "session", jobID, "error", err)
 		return
 	}
 	if len(rep.Refused) > 0 {
-		log.Printf("harvest: session %s: refused %v", jobID, rep.Refused)
+		slog.WarnContext(ctx, "harvest: outputs refused", "session", jobID, "refused", rep.Refused)
 	}
 	if rep.Recovered() {
-		log.Printf("harvest: session %s: recovered %d file(s) the run did not push: %v",
-			jobID, len(rep.Committed), rep.Committed)
+		slog.InfoContext(ctx, "harvest: recovered files the run did not push",
+			"session", jobID, "count", len(rep.Committed), "files", rep.Committed)
 	}
 }
 
