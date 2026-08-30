@@ -55,3 +55,12 @@ golangci:
   own: >-
     nineteen linters, gosec and revive rule sets, and a spelling policy that
     a shared template cannot carry
+
+license:
+  spdx: AGPL-3.0-or-later
+  holder: Latere AI
+  # The frontend is part of the same work and carries the same terms.
+  extensions: ['.go', '.ts', '.tsx', '.mjs']
+  skip:
+    # The built bundle, generated from frontend/src on every build.
+    - dist

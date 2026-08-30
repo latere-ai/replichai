@@ -34,6 +34,11 @@ lint-modernize:
 spec-lint:
 	@go tool lateregate spec-lint
 
+# Every source file carries the SPDX notice declared in .lateregate.yaml.
+.PHONY: license
+license:
+	@go tool lateregate license
+
 # The suite with only the Go toolchain on PATH. A test that depends on what
 # happens to be installed passes locally and fails on a runner.
 .PHONY: test-hermetic
