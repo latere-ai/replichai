@@ -36,3 +36,22 @@ spec:
   status: [draft, designed, implemented, built, deferred, superseded]
   require: [title, status]
   exclude: [BACKLOG.md, README.md]
+
+golangci:
+  # This repository keeps its own .golangci.yml rather than the shared one, and
+  # this is the record of that decision rather than an omission.
+  #
+  # It runs about nineteen linters against the shared seven, and what it adds
+  # is not boilerplate: bodyclose and sqlclosecheck for a service with a
+  # database and HTTP clients, errorlint over wrapping, nilerr, gosec with
+  # G301/G306 excluded because a reproduction repository is meant to be read,
+  # a revive rule set, and a fifty-word British-English spelling list that
+  # argues why "artifact" alone stays American. It also exempts _test.go from
+  # six linters, with the reasoning written beside the rule.
+  #
+  # Rendering that from a shared template would either lose it or turn this
+  # file into a second golangci config. Revisit when the shared set is a
+  # superset of what is here.
+  own: >-
+    nineteen linters, gosec and revive rule sets, and a spelling policy that
+    a shared template cannot carry
