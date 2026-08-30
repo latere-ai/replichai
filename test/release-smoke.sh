@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Latere AI
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 #
 # Post-deploy release smoke for replichai.latere.ai.
 #
