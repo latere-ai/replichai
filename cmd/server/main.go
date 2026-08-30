@@ -294,22 +294,13 @@ func run() error {
 		return err
 	}
 
-	srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		// This runs only after ctx is cancelled, so the shutdown deadline cannot
-		// be derived from it: a child of a cancelled context is born cancelled,
-		// and Shutdown would drop live connections instead of draining them.
-		<-ctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutCtx) //nolint:contextcheck // the fresh context is the point: ctx is already cancelled here, so a derived one would give the drain no time at all.
-	}()
+	// The tracing middleware sits outermost, so a span exists before any other
+	// middleware runs and every inbound request either continues the caller's
+	// trace or starts one the outbound calls below can join.
+	srv := &http.Server{Addr: *addr, Handler: xotel.Handler(handler, "replichai"), ReadHeaderTimeout: 10 * time.Second}
 
 	logger.Info("listening", "addr", *addr, "base_url", baseURL)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
-	}
-	return nil
+	return xotel.RunServer(ctx, srv, 10*time.Second, nil)
 }
 
 // buildHandler assembles the full HTTP surface: the gated operator router at /,
