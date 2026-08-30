@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"time"
 
+	xotel "latere.ai/x/pkg/otel"
+
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
@@ -609,6 +611,13 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 	}
 }
 
+// httpClient is this package's outbound client. Its transport is instrumented,
+// so every request starts a client span and carries the W3C trace context to
+// the other side. http.DefaultClient is deliberately left alone: replacing its
+// transport would reach every package in the process, including ones that have
+// made no such decision.
+var httpClient = xotel.HTTPClient()
+
 // newHTTPFetcher is the network seam paper resolution uses — a plain timed GET.
 func newHTTPFetcher(timeout time.Duration) paper.Fetcher {
 	return paper.FetcherFunc(func(ctx context.Context, url string) ([]byte, error) {
@@ -618,7 +627,7 @@ func newHTTPFetcher(timeout time.Duration) paper.Fetcher {
 		if err != nil {
 			return nil, err
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return nil, err
 		}

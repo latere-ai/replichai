@@ -30,6 +30,8 @@ import (
 	"syscall"
 	"time"
 
+	xotel "latere.ai/x/pkg/otel"
+
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/cloud"
 	"github.com/latere-ai/replichai/internal/github"
@@ -953,6 +955,13 @@ func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	return nil, lastErr
 }
 
+// httpClient is this package's outbound client. Its transport is instrumented,
+// so every request starts a client span and carries the W3C trace context to
+// the other side. http.DefaultClient is deliberately left alone: replacing its
+// transport would reach every package in the process, including ones that have
+// made no such decision.
+var httpClient = xotel.HTTPClient()
+
 // fetchOnce performs one GET. retryable is true for a timeout, a network error,
 // or a 429/5xx — the failures a retry can recover from.
 func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, retryable bool, err error) {
@@ -963,7 +972,7 @@ func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, re
 		return nil, false, err
 	}
 	req.Header.Set("User-Agent", "replichai")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, true, err
 	}

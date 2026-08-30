@@ -139,7 +139,7 @@ func New(home, authURL string) *Session {
 	if authURL == "" {
 		authURL = DefaultAuthURL
 	}
-	return &Session{AuthURL: authURL, Store: DefaultStore(home), HTTP: http.DefaultClient, Now: time.Now}
+	return &Session{AuthURL: authURL, Store: DefaultStore(home), HTTP: httpClient, Now: time.Now}
 }
 
 func (s *Session) client() *oidc.Client {

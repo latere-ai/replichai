@@ -13,7 +13,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	xotel "latere.ai/x/pkg/otel"
 )
+
+// httpClient is this package's outbound client. Its transport is instrumented,
+// so every request starts a client span and carries the W3C trace context to
+// the other side. http.DefaultClient is deliberately left alone: replacing its
+// transport would reach every package in the process, including ones that have
+// made no such decision.
+var httpClient = xotel.HTTPClient()
 
 // DefaultAPIURL is the deployment a terminal talks to.
 const DefaultAPIURL = "https://replichai.latere.ai"
@@ -32,7 +41,7 @@ func NewClient(session *Session, baseURL string) *Client {
 	if baseURL == "" {
 		baseURL = DefaultAPIURL
 	}
-	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), Session: session, HTTP: http.DefaultClient}
+	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), Session: session, HTTP: httpClient}
 }
 
 // Project is a container of papers, as the API reports it.
