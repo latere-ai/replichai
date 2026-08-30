@@ -1,3 +1,8 @@
+---
+title: "The invitation that arrives"
+status: built
+---
+
 # 006p — The invitation that arrives
 
 **Status:** built. `latere.ai/x/pkg/email` (v0.39.0) owns transport only — `New` selects Mailgun → SMTP → log, `Sender.Send(ctx, to, subject, htmlBody)` delivers, `rejectCRLF` refuses a forged header, and the two SMTP paths now share one envelope exchange; 98.8% covered, including an in-process SMTP server for both TLS modes and a fuzz test on the header check. auth keeps its two messages and their escaping over that transport, its test-mode code-capturing log sender stays local, and its full suite passes unchanged (its `internal/email` at 100%). replichai's `internal/notify` owns what the platform says to somebody who is not looking at it; `POST /projects/{id}/members` sends the invitation best-effort behind a `Notifier` seam, and `buildNotifier` wires the transport from the environment, failing at startup on a key with no domain. Covered by `internal/notify` at 100%, seven handler tests (sent, named from the session, survives a failed send, not repeated for an existing member, sent again after a removal, silent when the add is refused, works with no notifier wired), and four startup-wiring tests. Config lands in `example.env`, `docker-compose.yml`, `deploy/base/deployment.yaml`, and `deploy/README.md` together.

@@ -1,3 +1,8 @@
+---
+title: "Settings is a place, and the ledger names its projects"
+status: built
+---
+
 # 024 — Settings is a place, and the ledger names its projects
 
 **Status:** built.

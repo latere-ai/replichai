@@ -1,3 +1,8 @@
+---
+title: "Job-state writes are required"
+status: built
+---
+
 # 014b — Job-state writes are required
 
 **Status:** built.

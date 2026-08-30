@@ -1,3 +1,7 @@
+---
+title: "Taking a reproduction out"
+---
+
 # 006f — Taking a reproduction out
 
 **Status:** the mount publish, verifier, and forge invite; the **owner public flip with its recorded sign-off, the optional forge repo flip (with a per-project opt-out), the public zone, and the per-project members API** (built and deployed); and the **two-tier model** in code and data (the trusted tier removed). The members API reconciles the membership store's authority to 006g's *owner* by seeding the owner as the project's lead (idempotent bridge), so ownership is the single authority. The mount carries the server token (`REPLICHAI_GITHUB_TOKEN`), as the CLI publish has always done. The **server-side backend mount-publish is now wired** ([006i](006i-server-side-mount-and-publish.md)): the live server creates the repo up front, mounts it so the agent commits live, and finalizes via shared `publish.FinalizeLive` — it no longer depends on CLI-produced repos. The **two-token mount split** below (a repo-scoped GitHub App token in the sandbox, replacing the org token) is the remaining hardening and is now being built under active spec [009](009-secret-containment-when-the-agent-commits-live.md), whose first commit (failing the public flip closed on a leaking transcript) has shipped.

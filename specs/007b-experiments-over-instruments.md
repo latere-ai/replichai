@@ -1,3 +1,8 @@
+---
+title: "Experiments over instruments"
+status: implemented
+---
+
 # 007b — Experiments over instruments
 
 **Status:** implemented (engine half — the Postgres store and the HTTP/UI surface remain, per Out of scope)

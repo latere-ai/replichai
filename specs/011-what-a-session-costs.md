@@ -1,3 +1,8 @@
+---
+title: "What a session costs"
+status: built
+---
+
 # 011 — What a session costs
 
 **Status:** built, with one bridge still standing after [041d](041d-models-and-meters-name-their-source.md): `provider.Usage` is what settlement still prices, through `Job.cost()` calling `Rates.Price`, while the normalized `managed.Usage` and `Rates.PriceManaged` wait to take over. Two things below have moved — the card is keyed by `managed.ModelRef` (provider, id, billing variant) rather than a bare model string, so "an unknown model fails expensive" reads against a *ref* and legacy string rows backfill to `anthropic`; and the five-class table names neither the unreported-lifetime cache write, charged at the dearer rate, nor the per-meter `Extra` rates a non-Anthropic runtime bills through. `provider.Usage` carries cache writes split by lifetime; `internal/credit` is the ledger (both stores against one contract, the advisory lock confirmed necessary by removing it); the gate lives inside `Enqueue` and the session counter, sponsorship and `jobs.charged_to` are gone. Settlement charges a session for the tokens it burned, priced from a card snapshotted at enqueue; the hidden floor is projected project-wide and published nowhere. The counter is retired from the specs, and the surfaces are in: a project shows what it holds and what it may still commit, credits move both ways under the ledger's own role rules, a wallet shows the statement that explains it, and a session says what it cost. Deliberately *not* here: payment — an admin is still how credits come into existence.

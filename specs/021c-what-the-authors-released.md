@@ -1,3 +1,8 @@
+---
+title: "What the authors released"
+status: built
+---
+
 # 021c — What the authors released
 
 **Status:** built. Every acceptance criterion holds. `ReleasedByAuthors` renders above the file browser, `none` and `dead` are toned apart and asserted to be, the scorecard renders all five criteria with the fetched URL or the places searched, and a session without findings renders the browser alone. Covered by `frontend/test/findings.test.mjs` alongside 021b, since both panes read one file and a single mocked session exercises both.

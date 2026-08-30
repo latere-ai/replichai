@@ -1,3 +1,8 @@
+---
+title: "robots.txt, and a sitemap of the public zone"
+status: built
+---
+
 # 042b — robots.txt, and a sitemap of the public zone
 
 **Status:** built. All eight criteria hold.

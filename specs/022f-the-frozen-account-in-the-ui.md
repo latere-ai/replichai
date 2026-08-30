@@ -1,3 +1,8 @@
+---
+title: "The frozen account, in the UI"
+status: built
+---
+
 # 022f — The frozen account, in the UI
 
 **Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Frontend (`frontend/src`). `Me.frozen` and `GrantView.frozen` ride the existing `/me` and `/admin/access` reads; a global `banner warn` (`frozen-banner`) appears when `me.frozen`, carrying a Top up button that opens 022e's one modal (`setTopUp` in `Shell`); the "New project" and per-paper "Start" controls are disabled with a tooltip while frozen, and the server's `402 account_frozen` maps to a distinct `errFrozen` message everywhere else. The admin console gained the outstanding-liability figure (`GET /admin/solvency`), an "Only owing" filter, a `Frozen` badge per row, and Unfreeze / Re-freeze buttons (`unfreezeAccount`/`refreezeAccount`). Typecheck clean, production build green, 120 frontend tests pass (incl. the `account_frozen` and checkout-error mappings).

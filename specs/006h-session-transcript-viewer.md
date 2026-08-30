@@ -1,3 +1,8 @@
+---
+title: "The session transcript viewer"
+status: implemented
+---
+
 # 006h — The session transcript viewer
 
 **Revised by [006s](006s-reading-a-session-in-time.md) and [021d](021d-watching-a-session-run.md).** The endpoint survives. What was replaced: the usage derivation (`stripRaw` is gone; per-event usage is parsed from `raw.model_usage`), the screen's whole structure, and this spec's decision that a finished session is static — `getSessionTranscript` now reads the backend's live event stream for a session still running, which this spec put out of scope.

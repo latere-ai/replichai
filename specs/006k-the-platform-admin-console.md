@@ -1,3 +1,8 @@
+---
+title: "The platform admin console"
+status: built
+---
+
 # 006k — The platform admin console
 
 **Status:** built, and its shape outlived its contents. `internal/platform` owns the single-row `platform_settings` (pinned by a check constraint, fail-closed to a compiled-in default), with mem and Postgres stores against one contract test. `webauth.MountAdmin` registers every admin route behind `RequireTier(admin)` and returns the set, so a route added without the guard fails the test. The frontend Admin tab (rail group "Platform", admin-only) drives grant, promote, revoke, the policy row, and the per-person grant. Verified against a real Postgres and by hand through the running app.

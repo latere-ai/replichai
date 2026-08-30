@@ -1,3 +1,8 @@
+---
+title: "A verdict that reads like one"
+status: built
+---
+
 # 021b — A verdict that reads like one
 
 **Status:** built. Every acceptance criterion holds. `frontend/src/findings.ts` owns the schema's client shape and the three questions asked of it (11 unit tests); `SessionFindings`, `MismatchLine` and `Decomposition` render the pane; `frontend/test/findings.test.mjs` drives it in Chrome. The assertions were mutation-checked rather than only stash-checked: letting outer claims into `unresolved` and dropping the mismatch rule each produce a specific, correct failure.

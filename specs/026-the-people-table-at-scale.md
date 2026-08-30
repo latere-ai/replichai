@@ -1,3 +1,7 @@
+---
+title: "The people table at scale"
+---
+
 # 026 — The people table at scale
 
 **Status:** designed, not built. A deferred follow-up to [022f](022f-the-frozen-account-in-the-ui.md) / [006k](006k-the-platform-admin-console.md); the current table is fine at beta scale (tens of accounts) and does not hold at 1000+. Recorded so the fix is known before the numbers force it.

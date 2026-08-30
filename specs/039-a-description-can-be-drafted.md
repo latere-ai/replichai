@@ -1,3 +1,8 @@
+---
+title: "A description can be drafted, by whichever model the deployment configures"
+status: built
+---
+
 # 039 — A description can be drafted, by whichever model the deployment configures
 
 **Status:** built. All nine criteria hold.

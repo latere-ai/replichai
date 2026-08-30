@@ -1,3 +1,8 @@
+---
+title: "The outer loop, as a product"
+status: draft
+---
+
 # 023 — The outer loop, as a product
 
 **Status:** draft. Parent of [023a](023a-experiments-persisted-and-dispatched.md), [023b](023b-the-experiment-http-surface.md), [023c](023c-running-an-experiment-from-the-app.md), [023d](023d-ground-truth-for-a-cohort.md).

@@ -1,3 +1,8 @@
+---
+title: "A verdict belongs to a session"
+status: built
+---
+
 # 015 — A verdict belongs to a session
 
 **Status:** built. Every acceptance criterion holds. `frontend/src/papers.ts` owns the join and the gradeable rule with `papers.test.ts` against it; `/p/{id}/s/{jobId}/{verdict,artifacts}` exist and `/p/{id}/artifacts` is gone; the project's verdict tab reads across papers; sessions nest under their paper. `routing.test.mjs` drives the reported defect in Chrome — two papers, each with a published session, each asserted to list *and render* its own files, which fails on the line this spec removes. Frontend unit tests went 74 → 83; the browser suite is green.

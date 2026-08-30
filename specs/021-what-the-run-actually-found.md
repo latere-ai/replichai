@@ -1,3 +1,8 @@
+---
+title: "What the run actually found"
+status: built
+---
+
 # 021 — What the run actually found
 
 **Status:** built. Parent of [021a](021a-the-findings-as-data.md), [021b](021b-a-verdict-that-reads-like-one.md), [021c](021c-what-the-authors-released.md), [021d](021d-watching-a-session-run.md), [021e](021e-the-project-rail.md).

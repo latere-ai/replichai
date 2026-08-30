@@ -1,3 +1,8 @@
+---
+title: "Sign-in is open, budget is not"
+status: built
+---
+
 # 006q — Sign-in is open, budget is not
 
 **Status:** built. Migration 3 adds `revoked_at`/`revoked_by` to `access_grants`; `Revoke` records instead of deleting (idempotent, and a second revocation does not rewrite the first), `Resolve` answers not-granted for a revoked row exactly as for a missing one, `Grant` clears the revocation, and `List` carries it so the console can show a ban and undo it. `Access.SelfGrant` admits a principal at `TierUser` on the OIDC callback — never promoting, never demoting, never re-admitting a revoked address — beside the 006f membership bind, and a failure costs the admission rather than the sign-in. A new arrival started with nothing to spend, and still does. Covered by a grant contract both stores answer to (in-memory and Postgres, the latter run against a real database), four callback tests (a stranger is admitted, a seeded admin is not demoted, a ban survives a re-login, a broken store still signs you in), and a per-route assertion of what an unfunded account still permits. The admin console, invite hint and revoked-access screen say what is now true.

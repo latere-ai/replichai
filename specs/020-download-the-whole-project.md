@@ -1,3 +1,8 @@
+---
+title: "Download the whole project"
+status: built
+---
+
 # 020 — Download the whole project
 
 **Status:** built. Every acceptance criterion holds. `internal/httpapi/archive.go` streams `GET /projects/{id}/archive` through `archive/zip` straight to the `ResponseWriter`; `archive_test.go` opens the returned bytes with `archive/zip` and asserts the entry names, the manifest, the 409, the view-rights gate, and the recorded failure. The projects list carries the download.

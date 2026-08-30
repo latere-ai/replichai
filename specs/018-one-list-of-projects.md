@@ -1,3 +1,8 @@
+---
+title: "One list of projects"
+status: built
+---
+
 # 018 — One list of projects
 
 **Status:** built. Every acceptance criterion holds. `GET /shared` and `listShared` are gone; `GET /projects` walks the owned projects and the bound memberships and decorates both through one `projectViews`. `job.Store.StatusByProject(owner)` became `StatusByProjects(ids)` and `project.Store` gained `ModifiedAt(ids)`, both with contract tests. `frontend/src/when.ts` renders the age (5 unit tests); `frontend/test/projects-list.test.mjs` drives the merged list, the Owner and Last-modified columns, the order, the tiles, and the narrow-screen fold in Chrome, and was verified to fail with the change stashed. The Go suite and the 9-file browser suite are green.

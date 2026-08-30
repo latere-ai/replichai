@@ -1,3 +1,8 @@
+---
+title: "Signing in from the terminal"
+status: built
+---
+
 # 045i — Signing in from the terminal
 
 **Status:** built.

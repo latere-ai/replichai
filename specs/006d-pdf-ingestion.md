@@ -1,3 +1,8 @@
+---
+title: "PDF ingestion"
+status: draft
+---
+
 # 006d — PDF ingestion
 
 **Status:** draft

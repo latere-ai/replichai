@@ -1,3 +1,8 @@
+---
+title: "The model is a choice"
+status: built
+---
+
 # 031 — The model is a choice
 
 **Status:** built.

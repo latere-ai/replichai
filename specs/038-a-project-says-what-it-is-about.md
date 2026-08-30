@@ -1,3 +1,8 @@
+---
+title: "A project says what it is about"
+status: built
+---
+
 # 038 — A project says what it is about
 
 **Status:** built. Six of the seven criteria hold as written; the seventh reads differently in practice than it did on paper.

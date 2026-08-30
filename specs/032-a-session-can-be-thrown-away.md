@@ -1,3 +1,8 @@
+---
+title: "A session can be thrown away"
+status: built
+---
+
 # 032 — A session can be thrown away
 
 **Status:** built. Every acceptance criterion holds. `jobs.deleted_at` (migration 7, with two partial indexes on the live rows), `Delete` on the job store and the filter on the four read paths, under a new `runDeleteContract` in the shared contract tests; `DELETE /jobs/{id}` in `internal/httpapi` with `session_delete_test.go` covering the guards, the repository close and the unblocked publish. The frontend has the row action, its dialog, the blocker-row delete, and `frontend/test/session-delete.test.mjs`, which drives the blocker delete through to a public project. Both suites were verified to fail with the change reverted — the store contract by mutating the filter out of `ListByProject`, the browser test against the previous `App.tsx`. Go (including the Postgres contract), the 129 unit tests and the 17-file browser suite are green.

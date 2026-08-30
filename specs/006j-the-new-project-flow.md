@@ -1,3 +1,8 @@
+---
+title: "The New-project flow"
+status: built
+---
+
 # 006j — The New-project flow
 
 **Superseded by [012](012-a-project-holds-papers.md) and [036](036-a-project-can-start-empty.md).** `POST /resolve` and the rename stand. Creating a project stopped enqueueing anything, so the best-effort-per-paper enqueue, the 422 partial success, `fundNewProject`/`undoProject`, the frontend's partial-success apparatus and the never-leave-an-empty-project rule are all gone — and a project may now be created with a title and no papers at all.

@@ -1,3 +1,8 @@
+---
+title: "A local session reaches the cloud"
+status: built
+---
+
 # 045k — A local session reaches the cloud
 
 **Status:** built.

@@ -1,3 +1,8 @@
+---
+title: "The landing in light, and the footer it shares with the rest of Latere"
+status: built
+---
+
 # 040 — The landing in light, and the footer it shares with the rest of Latere
 
 **Status:** built. All nine criteria hold.

@@ -1,3 +1,8 @@
+---
+title: "Identity, tiers, and the access gate"
+status: implemented
+---
+
 # 006c — Identity, tiers, and the access gate
 
 **The forge-account link below is gone, and the tier table has one wrong row.** The link was deferred to [006f](006f-taking-a-reproduction-out.md) as its only consumer; 006f invites the login the request names instead, and ownership is granted by the organisation's invitation. Nothing ever wrote or read it, so its two `Access` methods, both store implementations, the `forge_links` table (dropped in migration 5) and `/me`'s always-empty `linked_accounts` are all removed — with them go the `/{forge}` routes and acceptance criterion 5. Separately, [006q](006q-sign-in-is-open-budget-is-not.md) made a first sign-in self-grant `TierUser`, so the table below is wrong to say an admin sets it; migration 3 also added `revoked_at`/`revoked_by`, because a self-granting sign-in turns a deleted grant into a logout. The fail-closed gate, the two portable claims, seed-and-bind, and the one-way binding all hold.

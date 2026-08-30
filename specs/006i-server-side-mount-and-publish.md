@@ -1,3 +1,8 @@
+---
+title: "Server-side mount and publish"
+status: built
+---
+
 # 006i — Server-side mount and publish
 
 **Status:** built and verified in production — [009](009-secret-containment-when-the-agent-commits-live.md) records the first real web-submitted publishing run at 53 minutes, which is also where its mount-token constraint comes from. `engineRunner` now walks the live-mount flow: Resolve creates the private repo and records the paper identity (durable `RepoName`); Execute mounts it so the agent commits live; Publish finalizes through the shared `publish.FinalizeLive` (manifest + committed transcript). The CLI's finalize was extracted into that shared helper behind a `LiveForge` seam, so the two paths cannot drift. The forge sits behind a small runner-side interface, so the phase logic is covered with no network, and the `RepoName` phase handoff is covered end to end through the worker — including a restart-resume. A status-read failure at publish fails the phase (retries) rather than writing a sticky `unknown` manifest.

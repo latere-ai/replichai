@@ -1,3 +1,8 @@
+---
+title: "The first screen"
+status: built
+---
+
 # 017 — The first screen
 
 **Superseded by [029](029-the-landing-is-a-place.md), [033](033-the-landing-rebuilt-from-the-design.md) and [040](040-the-landing-in-light.md).** The mark and `index.html`'s description, icon and social card stand. The two-column landing below does not: it moved into its own module, was rebuilt from a design, and was redressed for light mode. `SignIn` is now `Landing`, the page links to the registry a signed-out reader can now read ([028](028-the-registry-opens.md)), and the webfont this spec put out of scope is self-hosted.

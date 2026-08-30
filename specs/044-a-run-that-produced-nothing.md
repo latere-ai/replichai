@@ -1,3 +1,8 @@
+---
+title: "A run that produced nothing must not report success"
+status: built
+---
+
 # 044 — A run that produced nothing must not report success
 
 **Status:** built. All four children shipped.

@@ -1,3 +1,8 @@
+---
+title: "A project holds papers"
+status: built
+---
+
 # 012 — A project holds papers
 
 **Status:** built. `project_papers` holds what a project is about, keyed by the same `paper.Key` a session already stores, so a paper needs no column on `jobs` and outlives every run against it. `POST /projects` records papers and enqueues nothing; `GET/POST/DELETE /projects/{id}/papers` and `POST /projects/{id}/sessions` are the four routes that replaced `POST /papers`. Credits left the create path entirely — `fundNewProject`, `undoProject`, the 422, and 006j's never-leave-an-empty-project rule are all gone, along with the frontend's partial-success apparatus. The project screen gained a Papers card where a run is started; the New-project screen records and navigates.

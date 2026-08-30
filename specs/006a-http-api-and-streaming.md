@@ -1,3 +1,8 @@
+---
+title: "HTTP API and progress streaming"
+status: built
+---
+
 # 006a — HTTP API and progress streaming
 
 **Read the route sketch below as history.** `POST /papers`, `POST /jobs/{id}/claim` and the whole `/reproductions/*` set are gone — replaced by [006g](006g-projects-and-replication-sessions.md)/[012](012-a-project-holds-papers.md) (projects and the papers they hold) and [006f](006f-taking-a-reproduction-out.md)/[006o](006o-withdrawing-a-publication.md) (the project's public flip and its withdrawal). The decisions hold: a submit returns immediately, progress streams over SSE, and one registration helper keeps the gated and open sets enumerable. One claim no longer does — sign-in, `/me` and `/admin/*` are mounted in `cmd/server`, outside this router.

@@ -1,3 +1,8 @@
+---
+title: "The landing, rebuilt from the design"
+status: built
+---
+
 # 033 — The landing, rebuilt from the design
 
 **Superseded in part by [040](040-the-landing-in-light.md).** The hero scene, the walkthrough and the artifact stack stand. Three things below were reversed: the slabs are no longer dark in both themes, `.lp-dark`/`.lp-on-dark` became `.lp-block`/`.lp-on-slab`, and this page's own footer strip is now the shared Latere `SiteFooter`.

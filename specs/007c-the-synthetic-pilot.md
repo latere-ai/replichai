@@ -1,3 +1,8 @@
+---
+title: "The synthetic pilot"
+status: implemented
+---
+
 # 007c — The synthetic pilot
 
 **Status:** implemented (engine half — the Postgres `NOT NULL cohort_kind` column and the HTTP/UI surface remain, per Out of scope)

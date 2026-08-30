@@ -1,3 +1,8 @@
+---
+title: "Running an experiment from the app"
+status: draft
+---
+
 # 023c — Running an experiment from the app
 
 **Status:** draft. A child of [023](023-the-outer-loop-as-a-product.md).

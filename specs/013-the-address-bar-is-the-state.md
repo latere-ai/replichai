@@ -1,3 +1,8 @@
+---
+title: "The address bar is the state"
+status: built
+---
+
 # 013 — The address bar is the state
 
 **Status:** built. `frontend/src/routes.ts` holds the `View` union with `pathOf`/`viewOf` and the `useRouter` hook; `App.tsx` reads its view from the address instead of from `useState`. `projectFromPath`, `publicHandleFromPath` and the `replaceState('/')` that discarded the path after startup are all gone, and with them `deeplink.test.ts` and `profile-page.test.ts`, whose coverage moved into `routes.test.ts`. No server change.

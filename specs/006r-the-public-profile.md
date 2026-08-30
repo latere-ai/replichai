@@ -1,3 +1,8 @@
+---
+title: "The public profile"
+status: built
+---
+
 # 006r — The public profile
 
 **Status:** built. Migration 2 adds `handle` (NULL when unset, so the unique index constrains only the people who chose one) and `public` (default false) to `profiles`; the store gains `ByHandle` and `PrincipalHandle`, with `ErrHandleTaken` raised from the unique index rather than a read-then-write, and one `ErrNotFound` for an unknown handle, a private profile, and a profile with no handle alike. `GET /profiles/{handle}` is open and lists the signer's public projects by filtering the public zone, so a withdrawal removes it from the page the moment it leaves the zone. `POST /projects/{id}/public` refuses `409 profile_not_public` before recording anything. The signer's name links to `/u/{handle}` through a `signer_handle` view field resolved per read and never snapshotted. `/u/{handle}` renders before every auth gate. `PATCH /me/profile` became a real patch on the way — it replaced, which would have let a settings save silently take somebody's page down. Covered by the profile store contract (both implementations, the Postgres half against a real database), six handler tests, and two frontend tests for the path parsing.

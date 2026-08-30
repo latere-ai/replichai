@@ -1,3 +1,8 @@
+---
+title: "Projects and replication sessions"
+status: implemented
+---
+
 # 006g — Projects and replication sessions
 
 **Superseded in part by [012](012-a-project-holds-papers.md) and [036](036-a-project-can-start-empty.md).** The entity layer stands: projects are first-class, a session carries a project foreign key, and the double-trigger guard is a partial unique index on `(project_id, paper_key)`. Three decisions below were reversed — `POST /papers` (four routes under `/projects/{id}` replaced it), the rule that a paper is a property of the session rather than of the project, and the rule that a project is born with its first session and is never empty. `ProjectStore.Sessions` was never built.

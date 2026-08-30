@@ -1,3 +1,8 @@
+---
+title: "Models and meters name their source"
+status: implemented
+---
+
 # 041d — Models and meters name their source
 
 **Status:** implemented with legacy billing bridges retained, and one path diverged. `Capabilities.BillableMeters` was deleted because no runtime ever set it and no caller ever read it, and `Capabilities` carries no json tags, so there was no wire contract either. Removing it regressed nothing — it made visible that acceptance criterion 4, the enqueue-time preflight over declared meters, had never been met, and the Outcome's "extra meters must be declared and priced" holds only for *priced*. Nor is there a `billing_review` state: an unpriced meter fails `Rates.PriceManaged` with a typed error instead. Extra-meter pricing, charge-once, and the provider-scoped fallback shipped as written.

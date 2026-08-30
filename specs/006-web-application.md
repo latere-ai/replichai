@@ -1,3 +1,8 @@
+---
+title: "The web application"
+status: built
+---
+
 # 006 — The web application
 
 **Superseded in part by [006q](006q-sign-in-is-open-budget-is-not.md).** Sign-in is open: a first sign-in self-grants the ordinary user tier, and what limits a person is the meter ([011](011-what-a-session-costs.md), [022](022-money-comes-in-without-an-admin.md)), not the invited set below. Two mechanisms this spec named were never wired: the forge-account link and `POST /jobs/{id}/claim`. The link's store side has since been deleted outright — see [006c](006c-identity-and-access.md). The rest — the project as the tenant, the derived registry, Postgres for job state — holds.

@@ -1,3 +1,8 @@
+---
+title: "Paper identity and slugs"
+status: implemented
+---
+
 # 001 — Paper identity and slugs
 
 **Status:** implemented (`8da41d8`)

@@ -1,3 +1,8 @@
+---
+title: "Settings as a destination, with sub-tabs"
+status: built
+---
+
 # 024a — Settings as a destination, with sub-tabs
 
 **Superseded in part by [022e](022e-buying-credits.md).** Settings is a destination with sub-tabs, as below — but two, not three. Credits moved to a dedicated `/wallet` screen, so `SettingsTab` is `'account' | 'profile'` and there is no `/settings/credits`.
