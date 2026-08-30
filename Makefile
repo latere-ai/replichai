@@ -40,14 +40,18 @@ spec-lint:
 test-hermetic:
 	@go tool lateregate hermetic
 
+# Named cover-pg, not cover: the shared go-verify pipeline probes for a `cover`
+# target and runs it on a runner that has no database, where this measures the
+# wrong thing. Coverage here needs the scratch Postgres, so it stays local.
+#
 # Statement coverage across the whole tree, with the Postgres contracts running
 # rather than skipping. This is the number to quote: `go test -cover ./...`
 # without a database silently skips every PG store contract, which costs
 # internal/access alone about forty points and makes the total meaningless.
 #
 # It needs the scratch database, so it shares db-contract's guard and -p 1.
-.PHONY: cover
-cover:
+.PHONY: cover-pg
+cover-pg:
 	@$(COMPOSE) exec -T postgres psql -U replichai -d postgres -tAc \
 		"SELECT 1 FROM pg_database WHERE datname='$(TEST_DB)'" | grep -q 1 || \
 		$(COMPOSE) exec -T postgres createdb -U replichai $(TEST_DB)

@@ -19,13 +19,13 @@ Beyond the unit suite there are four targets, each covering something the
 others cannot:
 
 ```bash
-make cover      # coverage with the Postgres contracts running rather than skipping
+make cover-pg   # coverage with the Postgres contracts running rather than skipping
 make e2e        # submit -> run -> done through the real server, pure Go
 make web-e2e    # the frontend's browser regressions, in headless Chrome
 make smoke      # the compose stack, end to end
 ```
 
-`make cover` is the number to quote. `go test -cover ./...` with no database
+`make cover-pg` is the number to quote. `go test -cover ./...` with no database
 silently skips every Postgres store contract, which costs `internal/access`
 alone about forty points and makes the total meaningless.
 

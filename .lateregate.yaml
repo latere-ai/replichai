@@ -5,20 +5,22 @@
 # race suite against a live Postgres, and the bun/Chrome frontend.
 
 hermetic:
-  # Nothing besides the toolchain. Verified: the suite passes with PATH
-  # stripped, because the Postgres contracts skip rather than shelling out
-  # when TEST_DATABASE_URL is unset.
-  allow: []
+  # The system directories, and nothing else. The suite reaches two binaries:
+  # git, for the publish and forge paths, and echo, which the local runtime
+  # uses as a stand-in command. Naming them is the point -- anything a test
+  # needs beyond these has to be added here, which is a decision rather than
+  # an accident.
+  allow: [/usr/bin, /bin]
 
 modernize:
   # Off for the reasons recorded in .golangci.yml.
   disable: [newexpr, errorsastype]
 
-# No cover section, and no cover target. `make cover` needs a live Postgres
-# through docker compose, because without it every PG store contract skips and
-# internal/access alone loses about forty points -- a number the repo's own
-# Makefile calls meaningless. A coverage gate over the skipped shape would
-# measure the wrong thing, so that job stays in this repo's own pipeline.
+# No cover section, and deliberately no `cover` target: the shared pipeline
+# probes for that name and would run it on a runner with no database, where
+# every PG store contract skips and internal/access alone loses about forty
+# points -- a number this repo's own Makefile calls meaningless. The real one
+# is `cover-pg`, which needs docker compose and stays local.
 
 # The spec tree carries YAML frontmatter, so spec-lint reads it.
 #
