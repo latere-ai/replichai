@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	xotel "latere.ai/x/pkg/otel"
+
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -120,7 +122,7 @@ func New(c Config, key string, client *http.Client) (Model, error) {
 		return nil, ErrNoCredential
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = &http.Client{Timeout: 60 * time.Second, Transport: xotel.Transport(nil)}
 	}
 	switch strings.ToLower(strings.TrimSpace(c.Provider)) {
 	case "anthropic":

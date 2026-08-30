@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	xotel "latere.ai/x/pkg/otel"
 )
 
 // DefaultBaseURL is GitHub's REST API root.
@@ -63,7 +65,7 @@ func WithBaseURL(base string) Option { return func(c *Client) { c.base = base } 
 // generous because a reproduction's transcript can be several megabytes, and the
 // Contents API base64-encodes the whole file into one request body.
 func New(token string, opts ...Option) *Client {
-	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute}}
+	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute, Transport: xotel.Transport(nil)}}
 	for _, o := range opts {
 		o(c)
 	}

@@ -10,7 +10,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	xotel "latere.ai/x/pkg/otel"
 )
+
+// httpClient is this package's outbound client. Its transport is instrumented,
+// so every request starts a client span and carries the W3C trace context to
+// the other side. http.DefaultClient is deliberately left alone: replacing its
+// transport would reach every package in the process, including ones that have
+// made no such decision.
+var httpClient = xotel.HTTPClient()
 
 // Endpoints are the issuer-advertised URLs this service uses.
 type Endpoints struct {
@@ -36,7 +45,7 @@ func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 	if err != nil {
 		return Endpoints{}, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return Endpoints{}, err
 	}
@@ -70,7 +79,7 @@ func HTTPUserInfo(endpoint string) UserInfoFunc {
 			return Profile{}, err
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return Profile{}, err
 		}
