@@ -29,16 +29,16 @@ func runLogin(ctx context.Context, args []string, stdout, stderr *os.File) error
 	}
 	session := cloud.New(homeDir(), *authURL)
 	token, err := session.Login(ctx, func(prompt cloud.Prompt) {
-		fmt.Fprintf(stdout, "Open %s and enter code:  %s\n", prompt.VerificationURI, prompt.UserCode)
+		_, _ = fmt.Fprintf(stdout, "Open %s and enter code:  %s\n", prompt.VerificationURI, prompt.UserCode)
 		if !*noBrowser {
 			openBrowser(prompt.VerificationURI)
 		}
-		fmt.Fprintln(stderr, "Waiting for approval…")
+		_, _ = fmt.Fprintln(stderr, "Waiting for approval…")
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "signed in as %s\n", identityOf(token))
+	_, _ = fmt.Fprintf(stdout, "signed in as %s\n", identityOf(token))
 	return nil
 }
 
@@ -52,18 +52,18 @@ func runWhoami(_ context.Context, args []string, stdout, stderr *os.File) error 
 	}
 	token, err := cloud.New(homeDir(), "").Store.Load()
 	if errors.Is(err, cloud.ErrSignedOut) {
-		fmt.Fprintln(stderr, "not signed in; run `replichai login`")
+		_, _ = fmt.Fprintln(stderr, "not signed in; run `replichai login`")
 		return errExitQuiet
 	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "%s\n", identityOf(token))
+	_, _ = fmt.Fprintf(stdout, "%s\n", identityOf(token))
 	context := token.Org
 	if context == "" {
 		context = "personal"
 	}
-	fmt.Fprintf(stdout, "context: %s\n", context)
+	_, _ = fmt.Fprintf(stdout, "context: %s\n", context)
 	return nil
 }
 
@@ -77,7 +77,7 @@ func runLogout(_ context.Context, args []string, stdout, stderr *os.File) error 
 	if err := cloud.New(homeDir(), "").Logout(); err != nil {
 		return err
 	}
-	fmt.Fprintln(stdout, "signed out")
+	_, _ = fmt.Fprintln(stdout, "signed out")
 	return nil
 }
 
@@ -97,9 +97,9 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 			return err
 		}
 		if token.Org == "" {
-			fmt.Fprintln(stdout, "personal")
+			_, _ = fmt.Fprintln(stdout, "personal")
 		} else {
-			fmt.Fprintln(stdout, token.Org)
+			_, _ = fmt.Fprintln(stdout, token.Org)
 		}
 		return nil
 	}
@@ -111,9 +111,9 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return err
 	}
 	if org == "" {
-		fmt.Fprintln(stdout, "switched to the personal context")
+		_, _ = fmt.Fprintln(stdout, "switched to the personal context")
 	} else {
-		fmt.Fprintf(stdout, "switched to %s\n", org)
+		_, _ = fmt.Fprintf(stdout, "switched to %s\n", org)
 	}
 	return nil
 }

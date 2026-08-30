@@ -5,6 +5,12 @@
 //
 // This package owns argument parsing and output. All behavior lives in
 // internal/audit, so an HTTP server can drive the same code path.
+//
+// Every write to stdout or stderr here discards its error explicitly. A failed
+// write to the terminal has no recovery and nowhere left to report itself: the
+// channel the report would travel on is the one that just failed. The discard
+// is written out at each call rather than configured away, so it stays a
+// decision a reader can see.
 package main
 
 import (
@@ -43,7 +49,7 @@ func main() {
 
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		if !errors.Is(err, errExitQuiet) {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 		os.Exit(1)
 	}
@@ -72,7 +78,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 			if name == "anthropic-managed" {
 				suffix = " (default)"
 			}
-			fmt.Fprintf(stdout, "%s%s\n", name, suffix)
+			_, _ = fmt.Fprintf(stdout, "%s%s\n", name, suffix)
 		}
 		return nil
 
@@ -117,7 +123,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return nil
 
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
 		usage(stderr)
 		return errExitQuiet
 	}
@@ -158,7 +164,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		rest = fs.Args()[1:]
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(stderr, "audit takes exactly one paper reference")
+		_, _ = fmt.Fprintln(stderr, "audit takes exactly one paper reference")
 		return errExitQuiet
 	}
 	paper := positional[0]
@@ -173,7 +179,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	}
 
 	hooks := managed.Hooks{Status: func(_ context.Context, status managed.Status) error {
-		fmt.Fprintf(stderr, "  %s\n", status.State)
+		_, _ = fmt.Fprintf(stderr, "  %s\n", status.State)
 		return nil
 	}}
 	opts := []audit.SessionOption{
@@ -232,7 +238,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			return nil
 		}
 		opts = append(opts, audit.WithSessionHooks(hooks))
-		fmt.Fprintf(stderr, "  publishing to %s\n", pub.repoFullName())
+		_, _ = fmt.Fprintf(stderr, "  publishing to %s\n", pub.repoFullName())
 	}
 
 	auditor := audit.NewSessionAuditor(controller, m, opts...)
@@ -242,7 +248,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	// to finish, and return. finish reattaches and finalizes when it is done.
 	if *detach {
 		if pub == nil {
-			fmt.Fprintln(stderr, "--detach needs --publish")
+			_, _ = fmt.Fprintln(stderr, "--detach needs --publish")
 			return errExitQuiet
 		}
 		ref, err := auditor.Start(ctx, paper)
@@ -253,9 +259,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "session:   %s\n", ref.ID)
-		fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", pub.repoFullName())
-		fmt.Fprintf(stdout, "finish:    replichai finish %s %q --session-ref %s%s\n",
+		_, _ = fmt.Fprintf(stdout, "session:   %s\n", ref.ID)
+		_, _ = fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", pub.repoFullName())
+		_, _ = fmt.Fprintf(stdout, "finish:    replichai finish %s %q --session-ref %s%s\n",
 			pub.repoFullName(), paper, encoded, inviteFlag(*invite))
 		return nil
 	}
@@ -267,10 +273,10 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		return err
 	}
 
-	fmt.Fprintf(stdout, "verdict:   %s\n", result.Grade())
-	fmt.Fprintf(stdout, "artifacts: %d -> %s\n", len(result.Artifacts), result.ArtifactDir)
+	_, _ = fmt.Fprintf(stdout, "verdict:   %s\n", result.Grade())
+	_, _ = fmt.Fprintf(stdout, "artifacts: %d -> %s\n", len(result.Artifacts), result.ArtifactDir)
 	reportInstrument(stdout, result.InstrumentPresent, result.InstrumentViolations)
-	fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
+	_, _ = fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
 
 	if !result.Passed() {
 		return errExitQuiet
@@ -301,7 +307,7 @@ func (p *publisher) done(ctx context.Context, stderr *os.File) {
 		return
 	}
 	if err := p.gh.RevokeToken(ctx, p.minted); err != nil {
-		fmt.Fprintf(stderr, "  could not revoke the push credential (it expires on its own): %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "  could not revoke the push credential (it expires on its own): %v\n", err)
 	}
 	p.minted = ""
 }
@@ -391,9 +397,9 @@ func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeo
 	owner, name, _ := strings.Cut(allocated.Repo, "/")
 	gh := github.New(allocated.Token)
 	if err := publish.RecordIdentity(ctx, gh, owner, name, id); err != nil {
-		fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
 	}
-	fmt.Fprintf(stderr, "  repository %s, credential expires %s\n",
+	_, _ = fmt.Fprintf(stderr, "  repository %s, credential expires %s\n",
 		allocated.Repo, allocated.Expires.Format(time.RFC3339))
 	return &publisher{
 		gh: gh, owner: owner, name: name, id: id, minted: allocated.Token, api: client,
@@ -413,7 +419,7 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 
 	gh := github.New(token)
 	reg := registry.New(registry.NewGitHubSource(gh, owner),
-		registry.WithWarner(func(m string) { fmt.Fprintf(stderr, "  %s\n", m) }))
+		registry.WithWarner(func(m string) { _, _ = fmt.Fprintf(stderr, "  %s\n", m) }))
 
 	// Tell the operator about any prior reproduction before a sibling is created.
 	priors, err := reg.Lookup(ctx, id)
@@ -421,13 +427,13 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		return nil, fmt.Errorf("check prior reproductions: %w", err)
 	}
 	if len(priors) > 0 {
-		fmt.Fprintf(stderr, "  ! %s reproduced before:\n", id)
+		_, _ = fmt.Fprintf(stderr, "  ! %s reproduced before:\n", id)
 		for _, p := range priors {
 			note := ""
 			if p.MethodDigest == methodDigest {
 				note = " — same method, re-running"
 			}
-			fmt.Fprintf(stderr, "      %s (%s · %s · %s)%s\n",
+			_, _ = fmt.Fprintf(stderr, "      %s (%s · %s · %s)%s\n",
 				p.Repo, p.Created.Format("2006-01-02"), shortDigest(p.MethodDigest), p.Verdict, note)
 		}
 	}
@@ -448,7 +454,7 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 	// Record the resolved identity into the repository so finish reads it from
 	// here rather than re-resolving over the (slow, rate-limited) paper source.
 	if err := publish.RecordIdentity(ctx, gh, owner, name, id); err != nil {
-		fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
 	}
 
 	return &publisher{
@@ -498,19 +504,19 @@ func pushWorkspace(ctx context.Context, pub *publisher, workspace, paperRef stri
 		// 044d's outcome, reached before the push rather than found as an
 		// empty repository afterwards. The finalize still runs and records
 		// that the run produced nothing.
-		fmt.Fprintln(stderr, "  ! the run committed nothing; the repository will record that")
+		_, _ = fmt.Fprintln(stderr, "  ! the run committed nothing; the repository will record that")
 		return nil
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "  ! %v\n", err)
-		fmt.Fprintf(stderr, "    the workspace is kept at %s\n", workspace)
+		_, _ = fmt.Fprintf(stderr, "  ! %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "    the workspace is kept at %s\n", workspace)
 		if encoded, encodeErr := encodeSessionRef(ref); encodeErr == nil && ref.ID != "" {
-			fmt.Fprintf(stderr, "    retry with:\n      replichai finish %s %q --runtime local --session-ref %s\n",
+			_, _ = fmt.Fprintf(stderr, "    retry with:\n      replichai finish %s %q --runtime local --session-ref %s\n",
 				pub.repoFullName(), paperRef, encoded)
 		}
 		return err
 	}
-	fmt.Fprintf(stdout, "pushed:    %d commit(s) to %s (%s)\n", pushed.Commits, pushed.Branch, pushed.Head[:min(7, len(pushed.Head))])
+	_, _ = fmt.Fprintf(stdout, "pushed:    %d commit(s) to %s (%s)\n", pushed.Commits, pushed.Branch, pushed.Head[:min(7, len(pushed.Head))])
 
 	outputs, err := publish.WorkspaceOutputs(filepath.Dir(workspace))
 	if err != nil || len(outputs) == 0 {
@@ -521,7 +527,7 @@ func pushWorkspace(ctx context.Context, pub *publisher, workspace, paperRef stri
 		return err
 	}
 	if len(report.Committed) > 0 {
-		fmt.Fprintf(stdout, "evidence:  %s\n", strings.Join(report.Committed, ", "))
+		_, _ = fmt.Fprintf(stdout, "evidence:  %s\n", strings.Join(report.Committed, ", "))
 	}
 	return nil
 }
@@ -563,32 +569,32 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 		return err
 	}
 
-	fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", repoFull)
-	fmt.Fprintf(stdout, "commit:    %s\n", rep.Head)
+	_, _ = fmt.Fprintf(stdout, "repo:      https://github.com/%s\n", repoFull)
+	_, _ = fmt.Fprintf(stdout, "commit:    %s\n", rep.Head)
 	if !rep.ManifestCommitted {
-		fmt.Fprintln(stdout, "manifest:  already current (no new commit)")
+		_, _ = fmt.Fprintln(stdout, "manifest:  already current (no new commit)")
 	}
 	if len(rep.Leaked) == 0 {
-		fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
+		_, _ = fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
 	} else {
-		fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked — repo kept private:\n", len(rep.Leaked))
+		_, _ = fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked — repo kept private:\n", len(rep.Leaked))
 		for _, path := range rep.Leaked {
-			fmt.Fprintf(stdout, "  - %s\n", path)
+			_, _ = fmt.Fprintf(stdout, "  - %s\n", path)
 		}
 	}
 	reportInstrument(stdout, present, iviol)
 
 	if rep.TranscriptEvents > 0 {
 		if rep.TranscriptCommitted {
-			fmt.Fprintf(stdout, "transcript: %d events across %d file(s) committed\n", rep.TranscriptEvents, rep.TranscriptFiles)
+			_, _ = fmt.Fprintf(stdout, "transcript: %d events across %d file(s) committed\n", rep.TranscriptEvents, rep.TranscriptFiles)
 		} else {
-			fmt.Fprintln(stdout, "transcript: already current (no new commit)")
+			_, _ = fmt.Fprintln(stdout, "transcript: already current (no new commit)")
 		}
 	}
 	if len(rep.TranscriptLeaks) > 0 {
-		fmt.Fprintf(stdout, "transcript: %d event(s) carry a secret — bars the public flip:\n", len(rep.TranscriptLeaks))
+		_, _ = fmt.Fprintf(stdout, "transcript: %d event(s) carry a secret — bars the public flip:\n", len(rep.TranscriptLeaks))
 		for _, l := range rep.TranscriptLeaks {
-			fmt.Fprintf(stdout, "  - event %d: %s\n", l.Index, l.Reason)
+			_, _ = fmt.Fprintf(stdout, "  - event %d: %s\n", l.Index, l.Reason)
 		}
 	}
 
@@ -596,7 +602,7 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 		if err := gh.Invite(ctx, owner, name, invite); err != nil {
 			return fmt.Errorf("invite %s: %w", invite, err)
 		}
-		fmt.Fprintf(stdout, "invited:   %s\n", invite)
+		_, _ = fmt.Fprintf(stdout, "invited:   %s\n", invite)
 	}
 	return nil
 }
@@ -626,13 +632,13 @@ func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string
 func reportInstrument(stdout *os.File, present bool, violations []instrument.Violation) {
 	switch {
 	case !present:
-		fmt.Fprintln(stdout, "instrument: none written (criterion 7 fails the run)")
+		_, _ = fmt.Fprintln(stdout, "instrument: none written (criterion 7 fails the run)")
 	case len(violations) == 0:
-		fmt.Fprintln(stdout, "instrument: valid")
+		_, _ = fmt.Fprintln(stdout, "instrument: valid")
 	default:
-		fmt.Fprintf(stdout, "instrument: %d schema violation(s):\n", len(violations))
+		_, _ = fmt.Fprintf(stdout, "instrument: %d schema violation(s):\n", len(violations))
 		for _, v := range violations {
-			fmt.Fprintf(stdout, "  - %s\n", v)
+			_, _ = fmt.Fprintf(stdout, "  - %s\n", v)
 		}
 	}
 }
@@ -668,12 +674,12 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		rest = fs.Args()[1:]
 	}
 	if len(positional) != 2 {
-		fmt.Fprintln(stderr, "finish takes <owner>/<repo> and a paper reference")
+		_, _ = fmt.Fprintln(stderr, "finish takes <owner>/<repo> and a paper reference")
 		return errExitQuiet
 	}
 	owner, name, ok := strings.Cut(positional[0], "/")
 	if !ok {
-		fmt.Fprintln(stderr, "the repository must be <owner>/<repo>")
+		_, _ = fmt.Fprintln(stderr, "the repository must be <owner>/<repo>")
 		return errExitQuiet
 	}
 	paperRef := positional[1]
@@ -730,7 +736,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		}
 		hooks := managed.Hooks{
 			Status: func(_ context.Context, status managed.Status) error {
-				fmt.Fprintf(stderr, "  %s\n", status.State)
+				_, _ = fmt.Fprintf(stderr, "  %s\n", status.State)
 				return nil
 			},
 			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
@@ -783,7 +789,7 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return errExitQuiet
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "resolve takes exactly one paper reference")
+		_, _ = fmt.Fprintln(stderr, "resolve takes exactly one paper reference")
 		return errExitQuiet
 	}
 
@@ -792,15 +798,15 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return err
 	}
 
-	fmt.Fprintf(stdout, "identity:  %s\n", id)
-	fmt.Fprintf(stdout, "scheme:    %s\n", id.Scheme)
-	fmt.Fprintf(stdout, "key:       %s\n", id.Key)
-	fmt.Fprintf(stdout, "slug:      %s\n", id.Slug)
+	_, _ = fmt.Fprintf(stdout, "identity:  %s\n", id)
+	_, _ = fmt.Fprintf(stdout, "scheme:    %s\n", id.Scheme)
+	_, _ = fmt.Fprintf(stdout, "key:       %s\n", id.Key)
+	_, _ = fmt.Fprintf(stdout, "slug:      %s\n", id.Slug)
 	if id.Title != "" {
-		fmt.Fprintf(stdout, "title:     %s\n", id.Title)
+		_, _ = fmt.Fprintf(stdout, "title:     %s\n", id.Title)
 	}
 	for _, src := range id.Sources {
-		fmt.Fprintf(stdout, "source:    %s\n", src)
+		_, _ = fmt.Fprintf(stdout, "source:    %s\n", src)
 	}
 	return nil
 }
@@ -829,7 +835,7 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 		rest = fs.Args()[1:]
 	}
 	if len(positional) != 2 {
-		fmt.Fprintln(stderr, "publish takes an artifact directory and a paper reference")
+		_, _ = fmt.Fprintln(stderr, "publish takes an artifact directory and a paper reference")
 		return errExitQuiet
 	}
 	dir, ref := positional[0], positional[1]
@@ -866,12 +872,12 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return err
 	}
 
-	fmt.Fprintf(stdout, "repo:        %s\n", plan.Manifest.Reproduction.Repo)
-	fmt.Fprintf(stdout, "verdict:     %s\n", plan.Manifest.Reproduction.Verdict)
-	fmt.Fprintf(stdout, "included:    %d files\n", len(plan.Include))
-	fmt.Fprintf(stdout, "quarantined: %d files\n", len(plan.Quarantine))
+	_, _ = fmt.Fprintf(stdout, "repo:        %s\n", plan.Manifest.Reproduction.Repo)
+	_, _ = fmt.Fprintf(stdout, "verdict:     %s\n", plan.Manifest.Reproduction.Verdict)
+	_, _ = fmt.Fprintf(stdout, "included:    %d files\n", len(plan.Include))
+	_, _ = fmt.Fprintf(stdout, "quarantined: %d files\n", len(plan.Quarantine))
 	for _, q := range plan.Quarantine {
-		fmt.Fprintf(stdout, "  - %s — %s\n", q.Path, q.Reason)
+		_, _ = fmt.Fprintf(stdout, "  - %s — %s\n", q.Path, q.Reason)
 	}
 
 	forge := publish.NewFSForge(*out, publish.DefaultOrg)
@@ -884,9 +890,9 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return err
 	}
 	if pub.Preview {
-		fmt.Fprintln(stdout, "preview only — pass -live to write the repository")
+		_, _ = fmt.Fprintln(stdout, "preview only — pass -live to write the repository")
 	} else {
-		fmt.Fprintf(stdout, "written:     %s\n", filepath.Join(*out, plan.RepoName))
+		_, _ = fmt.Fprintf(stdout, "written:     %s\n", filepath.Join(*out, plan.RepoName))
 	}
 	return nil
 }
@@ -961,7 +967,7 @@ func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, re
 	if err != nil {
 		return nil, true, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 		return nil, true, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
@@ -973,7 +979,7 @@ func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, re
 }
 
 func usage(w *os.File) {
-	fmt.Fprint(w, `replichai - audit the reproducibility of a research paper
+	_, _ = fmt.Fprint(w, `replichai - audit the reproducibility of a research paper
 
 usage:
   replichai audit <paper-ref> [flags]
@@ -1086,9 +1092,9 @@ func publisherFor(ctx context.Context, projectID, owner, paperRef, methodDigest,
 	}
 	pub, err := newPlatformPublisher(ctx, projectID, paperRef, timeout, stderr)
 	if errors.Is(err, cloud.ErrMintingUnavailable) {
-		fmt.Fprintln(stderr, "  ! this deployment cannot provision a repository "+
+		_, _ = fmt.Fprintln(stderr, "  ! this deployment cannot provision a repository "+
 			"(it needs REPLICHAI_GITHUB_APP_ID and REPLICHAI_GITHUB_APP_KEY)")
-		fmt.Fprintln(stderr, "    falling back to REPLICHAI_GITHUB_TOKEN on this machine")
+		_, _ = fmt.Fprintln(stderr, "    falling back to REPLICHAI_GITHUB_TOKEN on this machine")
 		return newPublisher(ctx, owner, paperRef, methodDigest, timeout, stderr)
 	}
 	return pub, err

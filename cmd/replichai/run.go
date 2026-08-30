@@ -55,7 +55,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		rest = fs.Args()[1:]
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(stderr, "run takes exactly one project file")
+		_, _ = fmt.Fprintln(stderr, "run takes exactly one project file")
 		return errExitQuiet
 	}
 
@@ -91,8 +91,8 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 			_ = os.WriteFile(reportPath, []byte(state.Report()), 0o644)
 		},
 	})
-	fmt.Fprintln(stdout, state.Report())
-	fmt.Fprintf(stderr, "\nstate:  %s\nreport: %s\n", statePath, reportPath)
+	_, _ = fmt.Fprintln(stdout, state.Report())
+	_, _ = fmt.Fprintf(stderr, "\nstate:  %s\nreport: %s\n", statePath, reportPath)
 	if errors.Is(err, batch.ErrIncomplete) {
 		return errExitQuiet
 	}

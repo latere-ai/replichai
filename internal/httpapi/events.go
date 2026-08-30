@@ -38,14 +38,22 @@ func (rt *Router) jobEvents(w http.ResponseWriter, r *http.Request) {
 	// Event ids continue from Last-Event-ID so a reconnect resumes the sequence.
 	eventID := lastEventID(r)
 
-	send := func(j job.Job) {
+	// send reports whether the client is still there. A write error means the
+	// connection is gone; the stream ends then rather than on the next tick, so
+	// a vanished viewer stops costing a database read per interval.
+	send := func(j job.Job) bool {
 		eventID++
-		fmt.Fprintf(w, "id: %d\nevent: status\ndata: %s\n\n", eventID, mustJSON(j))
+		if _, err := fmt.Fprintf(w, "id: %d\nevent: status\ndata: %s\n\n", eventID, mustJSON(j)); err != nil {
+			return false
+		}
 		flusher.Flush()
+		return true
 	}
 
 	// Snapshot first: the current state, whatever phase the run is already in.
-	send(j)
+	if !send(j) {
+		return
+	}
 	if j.Phase.Terminal() {
 		return
 	}
@@ -63,7 +71,9 @@ func (rt *Router) jobEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if next.UpdatedAt.After(lastUpdate) {
-				send(next)
+				if !send(next) {
+					return
+				}
 				lastUpdate = next.UpdatedAt
 			}
 			if next.Phase.Terminal() {

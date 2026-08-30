@@ -279,7 +279,7 @@ func (c *Client) GetFileRaw(ctx context.Context, owner, name, path string) ([]by
 	if err != nil {
 		return nil, false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, false, nil
 	}
@@ -309,7 +309,9 @@ func (c *Client) FileUnchanged(ctx context.Context, owner, name, path string, co
 // downloading either.
 func gitBlobSHA(content []byte) string {
 	h := sha1.New() //nolint:gosec // G401: git defines the blob id as sha1; the digest only decides whether a commit would be a no-op, and is never stored or trusted as evidence.
-	fmt.Fprintf(h, "blob %d\x00", len(content))
+	// hash.Hash.Write never returns an error, so neither can this: the discard
+	// matches the unchecked h.Write on the next line.
+	_, _ = fmt.Fprintf(h, "blob %d\x00", len(content))
 	h.Write(content)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -393,7 +395,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if out != nil && len(payload) > 0 && resp.StatusCode/100 == 2 {
 		if err := json.Unmarshal(payload, out); err != nil {

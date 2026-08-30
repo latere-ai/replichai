@@ -22,7 +22,7 @@ import (
 // there has to be a way to reclaim the space that is not `rm -rf`.
 func runSessions(_ context.Context, args []string, stdout, stderr *os.File) error {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: replichai sessions ls | replichai sessions prune [--older-than 7d] [--dry-run]")
+		_, _ = fmt.Fprintln(stderr, "usage: replichai sessions ls | replichai sessions prune [--older-than 7d] [--dry-run]")
 		return errExitQuiet
 	}
 	fs := flag.NewFlagSet("sessions", flag.ContinueOnError)
@@ -41,11 +41,11 @@ func runSessions(_ context.Context, args []string, stdout, stderr *os.File) erro
 	switch args[0] {
 	case "ls":
 		for _, entry := range found {
-			fmt.Fprintf(stdout, "%s\t%s\t%s\n", entry.name,
+			_, _ = fmt.Fprintf(stdout, "%s\t%s\t%s\n", entry.name,
 				entry.modified.Format(time.RFC3339), sizeOf(entry.path))
 		}
 		if len(found) == 0 {
-			fmt.Fprintf(stderr, "no sessions under %s\n", *root)
+			_, _ = fmt.Fprintf(stderr, "no sessions under %s\n", *root)
 		}
 		return nil
 	case "prune":
@@ -56,21 +56,21 @@ func runSessions(_ context.Context, args []string, stdout, stderr *os.File) erro
 				continue
 			}
 			if *dryRun {
-				fmt.Fprintf(stdout, "would remove %s\n", entry.path)
+				_, _ = fmt.Fprintf(stdout, "would remove %s\n", entry.path)
 				removed++
 				continue
 			}
 			if err := os.RemoveAll(entry.path); err != nil {
-				fmt.Fprintf(stderr, "  ! %s: %v\n", entry.name, err)
+				_, _ = fmt.Fprintf(stderr, "  ! %s: %v\n", entry.name, err)
 				continue
 			}
-			fmt.Fprintf(stdout, "removed %s\n", entry.name)
+			_, _ = fmt.Fprintf(stdout, "removed %s\n", entry.name)
 			removed++
 		}
-		fmt.Fprintf(stderr, "%d of %d session(s) older than %s\n", removed, len(found), *olderThan)
+		_, _ = fmt.Fprintf(stderr, "%d of %d session(s) older than %s\n", removed, len(found), *olderThan)
 		return nil
 	default:
-		fmt.Fprintf(stderr, "unknown sessions command %q\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "unknown sessions command %q\n", args[0])
 		return errExitQuiet
 	}
 }
