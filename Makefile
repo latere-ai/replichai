@@ -40,6 +40,12 @@ spec-lint:
 test-hermetic:
 	@go tool lateregate hermetic
 
+# Declares that this repo's .golangci.yml is its own rather than generated,
+# and fails if the file it claims to keep has gone missing.
+.PHONY: lint-config
+lint-config:
+	@go tool lateregate golangci
+
 # Named cover-pg, not cover: the shared go-verify pipeline probes for a `cover`
 # target and runs it on a runner that has no database, where this measures the
 # wrong thing. Coverage here needs the scratch Postgres, so it stays local.
