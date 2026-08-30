@@ -205,4 +205,4 @@ go vet ./... && gofmt -l .
 
 ## License
 
-Proprietary. All rights reserved.
+[GNU Affero General Public License v3.0 or later](LICENSE).
