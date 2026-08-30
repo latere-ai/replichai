@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package legacy adapts the original provider resource graph to the managed
 // session contract while the Anthropic implementation is moved behind it.
 // Application packages must not import this package.

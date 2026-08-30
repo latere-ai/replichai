@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package builtin is the single composition boundary allowed to import
 // concrete managed-session adapters.
 package builtin

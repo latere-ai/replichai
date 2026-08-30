@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package spa embeds the built frontend and serves it: real files from the
 // build, and index.html for any unmatched path so the client-side router works.
 // The bundle is public — it holds no secrets, and every data call it makes goes

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the transcript stream's layout.
 //
 // The bug it guards: `.tx-stream` is a scrolling flex column, and a flex column

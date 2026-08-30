@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { expect, test } from 'bun:test'
 import { readMode, resolveTheme, THEME_MODES } from './theme'
 import { hueOf } from './App'

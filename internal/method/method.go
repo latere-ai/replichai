@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package method loads the audit method from disk.
 //
 // The method is data, not code: the worker's standing instructions, the rubric

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package instrument is the schema for instrument.json — the declared,
 // machine-readable half of what an audit's reports state in prose: the paper's
 // study protocol, the analysis entrypoint contract for src/, and a per-component

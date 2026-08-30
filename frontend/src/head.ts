@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { useEffect } from 'react'
 import type { I18n } from './i18n'
 import { pathOf, type View } from './routes'

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for the app's addresses (013).
 //
 // The bug it guards: navigation used to be one useState and the address bar never

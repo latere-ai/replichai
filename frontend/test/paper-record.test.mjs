@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for a paper's bibliography (037).
 //
 // A project used to show a title and the string somebody typed to name the

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // The API client. Every call is same-origin, so the session cookie (or the dev
 // bypass) rides along automatically.
 import type { Findings } from './findings'

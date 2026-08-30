@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package anthropic adapts the managed-agents backend currently in use.
 //
 // This is the only package that knows the backend's vocabulary, endpoints, or

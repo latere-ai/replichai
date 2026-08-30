@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package sandboxtest is the contract suite every sandbox driver is held to.
 // The runtime above the seam assumes four things of any driver: a stage that
 // outlives the process that launched it, an exit status recoverable after that

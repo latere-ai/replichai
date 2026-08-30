@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package sandbox is the boundary a local session's work runs inside: the
 // driver contract, the stage description a driver executes, and the typed
 // not-ready error a driver raises when the machine cannot run it (045a).

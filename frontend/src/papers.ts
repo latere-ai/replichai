@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { Job, PaperCitation, ProjectPaper } from './api'
 
 // What a project is made of, joined. A project holds papers (012) and a paper

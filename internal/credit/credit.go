@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package credit is the ledger: what money this platform holds, whose it is,
 // and what happened to it (011).
 //

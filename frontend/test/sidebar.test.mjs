@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // A browser regression test for folding the navigation rail.
 //
 // What it guards: the rail is a fixed 236px column of the shell's flex row, and

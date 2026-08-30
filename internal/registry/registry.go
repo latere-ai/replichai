@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package registry derives the set of published reproductions by reading their
 // manifests, so there is no second source of truth to drift from reality.
 //

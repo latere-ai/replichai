@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // When something last changed, in the words a reader scanning a list uses.
 //
 // A project row shows a relative time and keeps the exact one in its tooltip

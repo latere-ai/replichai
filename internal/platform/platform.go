@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package platform is the policy this deployment owns and an admin tunes at
 // runtime: the platform settings row.
 //

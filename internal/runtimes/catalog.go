@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package runtimes composes managed runtimes without package-global
 // registration or adapter-specific dependencies.
 package runtimes

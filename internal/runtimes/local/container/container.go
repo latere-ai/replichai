@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package container is the opt-in sandbox driver: an OCI container, Podman by
 // default and Docker supported, giving a toolchain pinned identically on every
 // machine (045c).

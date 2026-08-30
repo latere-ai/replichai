@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package webauth wires the access model (006c) to the HTTP layer: the gate
 // policy the httpapi seam mounts, and — later — the OIDC login middleware that
 // resolves an identity onto the request. It is the one place that imports both
