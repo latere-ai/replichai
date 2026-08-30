@@ -1,5 +1,6 @@
 ---
 title: "The runtime is not the model vendor"
+status: implemented
 ---
 
 # 041 — The runtime is not the model vendor

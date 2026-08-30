@@ -1,5 +1,6 @@
 ---
 title: "The solvency an operator can act on"
+status: designed
 ---
 
 # 025 — The solvency an operator can act on

@@ -1,5 +1,6 @@
 ---
 title: "Secret containment when the agent commits live"
+status: implemented
 ---
 
 # 009 — Secret containment when the agent commits live

@@ -1,5 +1,6 @@
 ---
 title: "Latere runs a session"
+status: designed
 ---
 
 # 041g — Latere runs a session
