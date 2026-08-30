@@ -13,7 +13,25 @@ COMPOSE ?= $(shell \
 # The whole test suite, offline against fakes and the in-process provider.
 .PHONY: test
 test:
+	go vet ./...
 	go test ./...
+
+# gofmt over the tree, through the shared checker.
+.PHONY: fmt-check
+fmt-check:
+	@go tool lateregate fmt-check
+
+# Fails on code a standard library call already covers. Overlaps the modernize
+# linter but carries fixers it does not.
+.PHONY: lint-modernize
+lint-modernize:
+	@go tool lateregate modernize
+
+# The suite with only the Go toolchain on PATH. A test that depends on what
+# happens to be installed passes locally and fails on a runner.
+.PHONY: test-hermetic
+test-hermetic:
+	@go tool lateregate hermetic
 
 # Statement coverage across the whole tree, with the Postgres contracts running
 # rather than skipping. This is the number to quote: `go test -cover ./...`

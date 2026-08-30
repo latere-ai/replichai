@@ -138,7 +138,7 @@ func ReadFile(path string) (File, error) {
 // misread as a list of odd-looking references.
 func parseList(body string) ([]Entry, bool) {
 	var entries []Entry
-	for _, raw := range strings.Split(body, "\n") {
+	for raw := range strings.SplitSeq(body, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -192,10 +192,10 @@ type EntryState struct {
 	Directory string             `json:"directory,omitempty"`
 	Repo      string             `json:"repo,omitempty"`
 	Grade     string             `json:"grade,omitempty"`
-	Model     managed.ModelRef   `json:"model,omitempty"`
-	Usage     managed.Usage      `json:"usage,omitempty"`
-	Started   time.Time          `json:"started_at,omitempty"`
-	Finished  time.Time          `json:"finished_at,omitempty"`
+	Model     managed.ModelRef   `json:"model"`
+	Usage     managed.Usage      `json:"usage"`
+	Started   time.Time          `json:"started_at"`
+	Finished  time.Time          `json:"finished_at"`
 	Error     string             `json:"error,omitempty"`
 	Ref       managed.SessionRef `json:"ref,omitzero"`
 }

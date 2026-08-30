@@ -10,17 +10,18 @@ permissions:
   contents: read
 
 jobs:
-  vet:
-    name: go vet
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.x"
-          cache: true
-      - run: go vet ./...
+  # The Go gates that stand on their own: the ubuntu/macos matrix, gofmt,
+  # go vet + go test, the hermetic run, and modernize. What stays below is
+  # what this pipeline cannot delegate -- a suite that needs a live Postgres,
+  # and a frontend that needs bun and a browser.
+  verify:
+    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1
+    with:
+      run_lint: false
 
+  # golangci-lint stays here rather than in go-verify: this repo runs about
+  # nineteen linters against go-verify's shared one, and the shared config
+  # cannot express its reasoned test-file exclusions yet.
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
@@ -37,6 +38,8 @@ jobs:
       - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
       - run: golangci-lint run --timeout 5m ./...
 
+  # Kept local: go-verify has no Postgres service, and without one every PG
+  # store contract skips. This is the run that exercises them.
   test:
     name: test (race) + postgres contracts
     runs-on: ubuntu-latest
@@ -65,17 +68,6 @@ jobs:
           go-version: "1.27.x"
           cache: true
       - run: go test -race -timeout 300s ./...
-
-  build:
-    name: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.x"
-          cache: true
-      - run: go build ./...
 
   frontend:
     name: frontend (bun)

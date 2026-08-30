@@ -69,7 +69,7 @@ func (push LocalPush) Verify(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	var paths []string
-	for _, line := range strings.Split(files, "\n") {
+	for line := range strings.SplitSeq(files, "\n") {
 		if trimmed := strings.TrimSpace(line); trimmed != "" {
 			paths = append(paths, trimmed)
 		}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -564,9 +565,7 @@ func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]s
 		// does not open. The sandbox still validates the index itself.
 		"PIP_TRUSTED_HOST": strings.Join(PackageIndexHosts(), " "),
 	}
-	for name, value := range env {
-		merged[name] = value
-	}
+	maps.Copy(merged, env)
 	return merged
 }
 
@@ -881,7 +880,7 @@ func (r *Runtime) recordPackages(session *Session) {
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		name, version, found := strings.Cut(strings.TrimSpace(line), "==")
 		if !found || name == "" {
 			continue

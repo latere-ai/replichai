@@ -1,0 +1,25 @@
+# The gate configuration for replichai.
+#
+# This repository calls the shared go-verify pipeline for the Go gates that
+# stand on their own, and keeps jobs of its own for the two that do not: the
+# race suite against a live Postgres, and the bun/Chrome frontend.
+
+hermetic:
+  # Nothing besides the toolchain. Verified: the suite passes with PATH
+  # stripped, because the Postgres contracts skip rather than shelling out
+  # when TEST_DATABASE_URL is unset.
+  allow: []
+
+modernize:
+  # Off for the reasons recorded in .golangci.yml.
+  disable: [newexpr, errorsastype]
+
+# No cover section, and no cover target. `make cover` needs a live Postgres
+# through docker compose, because without it every PG store contract skips and
+# internal/access alone loses about forty points -- a number the repo's own
+# Makefile calls meaningless. A coverage gate over the skipped shape would
+# measure the wrong thing, so that job stays in this repo's own pipeline.
+#
+# No spec section either. The 116 specs here use a prose "**Status:**" line
+# rather than YAML frontmatter, which spec-lint cannot read. Converting the
+# tree is a decision about conventions, not a migration step.
