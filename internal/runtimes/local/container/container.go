@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -412,7 +413,7 @@ func guestOf(spec sandbox.StageSpec, host string) string {
 
 func splitList(value string) map[string]bool {
 	out := make(map[string]bool)
-	for _, part := range strings.Split(value, ",") {
+	for part := range strings.SplitSeq(value, ",") {
 		part = strings.TrimSpace(part)
 		if part != "" {
 			out[part] = true
@@ -422,12 +423,7 @@ func splitList(value string) map[string]bool {
 }
 
 func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }
 
 func realRunner(ctx context.Context, argv []string, stdin io.Reader) ([]byte, error) {

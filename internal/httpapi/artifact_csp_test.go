@@ -69,7 +69,7 @@ func TestArtifactTextIsSandboxedToo(t *testing.T) {
 // cspHasToken reports whether a CSP header carries a bare token, matching whole
 // tokens so "sandbox" cannot be found inside a longer word.
 func cspHasToken(csp, token string) bool {
-	for _, directive := range strings.Split(csp, ";") {
+	for directive := range strings.SplitSeq(csp, ";") {
 		if slices.Contains(strings.Fields(directive), token) {
 			return true
 		}

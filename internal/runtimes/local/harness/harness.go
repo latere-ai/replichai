@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -324,7 +324,7 @@ func (r *Registry) Names() []Name {
 	for name := range r.byName {
 		names = append(names, name)
 	}
-	sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+	slices.Sort(names)
 	return names
 }
 
@@ -347,12 +347,7 @@ func (r *Registry) Lookup(raw string) (Harness, error) {
 
 // Speaks reports whether a harness can talk to a gateway's dialect.
 func Speaks(h Harness, dialect Dialect) bool {
-	for _, candidate := range h.Dialects() {
-		if candidate == dialect {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(h.Dialects(), dialect)
 }
 
 // RevisionHeader introduces a grader's feedback in a revision stage's task. It

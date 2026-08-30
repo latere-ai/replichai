@@ -191,7 +191,7 @@ func TestTheBackfillIsIdempotent(t *testing.T) {
 	}
 	s := NewPGStore(pool, nil, nil)
 	first, _ := s.TotalOutstanding(ctx)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := Migrate(ctx, pool); err != nil {
 			t.Fatalf("migrate again: %v", err)
 		}

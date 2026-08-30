@@ -444,11 +444,12 @@ func writeExcludes(workspace string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("git excludes: %w", err)
 	}
-	body := "# Written by replichai. A dependency tree installed into the\n" +
-		"# workspace is not part of the reproduction.\n"
+	var body strings.Builder
+	body.WriteString("# Written by replichai. A dependency tree installed into the\n" +
+		"# workspace is not part of the reproduction.\n")
 	for _, name := range vendoredDirs {
-		body += name + "/\n"
+		body.WriteString(name + "/\n")
 	}
-	body += "*.pyc\n.DS_Store\n"
-	return writeFileMode(filepath.Join(dir, "exclude"), []byte(body), 0o600)
+	body.WriteString("*.pyc\n.DS_Store\n")
+	return writeFileMode(filepath.Join(dir, "exclude"), []byte(body.String()), 0o600)
 }

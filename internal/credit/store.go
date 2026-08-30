@@ -67,7 +67,7 @@ type MemStore struct {
 // is not about permissions wants.
 func NewMemStore(auth Authority, members Members) *MemStore {
 	mem := ledger.NewMemStore()
-	return &MemStore{store: store{led: mem, auth: auth, members: members}, mem: mem}
+	return &MemStore{led: mem, auth: auth, members: members, mem: mem}
 }
 
 // PGStore is the Postgres ledger with this product's permission rules.
@@ -80,7 +80,7 @@ type PGStore struct {
 // NewPGStore builds a ledger over a pgx pool.
 func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members) *PGStore {
 	pg := pgledger.New(pool)
-	return &PGStore{store: store{led: pg, auth: auth, members: members}, pg: pg, dbpool: pool}
+	return &PGStore{led: pg, auth: auth, members: members, pg: pg, dbpool: pool}
 }
 
 // pool exposes the connection pool to this package's tests, which need to open

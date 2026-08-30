@@ -57,9 +57,9 @@ func (e *engine) run(_ context.Context, argv []string, _ io.Reader) ([]byte, err
 }
 
 func (e *engine) lastMatching(prefix string) []string {
-	for index := len(e.calls) - 1; index >= 0; index-- {
-		if strings.HasPrefix(strings.Join(e.calls[index][1:], " "), prefix) {
-			return e.calls[index]
+	for _, v := range slices.Backward(e.calls) {
+		if strings.HasPrefix(strings.Join(v[1:], " "), prefix) {
+			return v
 		}
 	}
 	return nil

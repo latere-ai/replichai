@@ -48,7 +48,7 @@ var vendoredDirs = map[string]bool{
 }
 
 func isVendored(p string) bool {
-	for _, segment := range strings.Split(p, "/") {
+	for segment := range strings.SplitSeq(p, "/") {
 		if vendoredDirs[segment] {
 			return true
 		}
