@@ -38,29 +38,142 @@ spec:
   exclude: [BACKLOG.md, README.md]
 
 golangci:
-  # This repository keeps its own .golangci.yml rather than the shared one, and
-  # this is the record of that decision rather than an omission.
-  #
-  # It runs about nineteen linters against the shared seven, and what it adds
-  # is not boilerplate: bodyclose and sqlclosecheck for a service with a
-  # database and HTTP clients, errorlint over wrapping, nilerr, gosec with
-  # G301/G306 excluded because a reproduction repository is meant to be read,
-  # a revive rule set, and a fifty-word British-English spelling list that
-  # argues why "artifact" alone stays American. It also exempts _test.go from
-  # six linters, with the reasoning written beside the rule.
-  #
-  # Rendering that from a shared template would either lose it or turn this
-  # file into a second golangci config. Revisit when the shared set is a
-  # superset of what is here.
-  own: >-
-    nineteen linters, gosec and revive rule sets, and a spelling policy that
-    a shared template cannot carry
+  extra:
+    linters:
+      enable:
+        - bodyclose        # an unclosed response body leaks a connection
+        - errorlint        # %w and errors.Is/As used correctly across wrapping
+        - copyloopvar
+        - durationcheck
+        - nilerr           # returning nil after a non-nil error
+        - rowserrcheck
+        - sqlclosecheck
+        - noctx            # HTTP requests without a context cannot be cancelled
+        - contextcheck
+        - errchkjson
+        - gosec
+        - revive
+        - misspell
+        - unconvert
+        - unparam
+        - wastedassign
+        - prealloc
+        - godot            # comments end in a period; they are prose here
+        - nolintlint       # every //nolint must be specific and explained
+      settings:
+        errcheck:
+          # Best-effort cleanup is deliberate and documented at each call site.
+          exclude-functions:
+            - (*os.File).Close
+            - (io.Closer).Close
+            # A failed write to stdout or stderr is not actionable: there is
+            # nowhere left to report it.
+            - fmt.Fprint
+            - fmt.Fprintf
+            - fmt.Fprintln
+        revive:
+          rules:
+            - name: exported
+              arguments: ["checkPrivateReceivers"]
+            - name: package-comments
+            - name: error-strings
+            - name: error-naming
+            - name: context-as-argument
+            - name: indent-error-flow
+            - name: var-naming
+            - name: unreachable-code
+        gosec:
+          excludes:
+            # A reproduction repository is meant to be read, committed, and
+            # browsed, so 0755 directories and 0644 files are correct here;
+            # G301/G306 assume a secrets-handling default that does not apply.
+            - G301
+            - G306
+        misspell:
+          # US spelling: "artifact" is the domain term used by the research
+          # community, the backend API, and this project's own documents. It is
+          # the only word we hold to US spelling, so the locale stays US and the
+          # British forms this project writes everywhere else are listed below.
+          locale: US
+          # Prose here is British English on purpose. These are spellings, not
+          # mistakes; `artefact` is deliberately absent so the one word that must
+          # stay American keeps being enforced.
+          ignore-rules:
+            - analyse
+            - analyses
+            - authorised
+            - authorises
+            - behaviour
+            - behavioural
+            - behaviours
+            - cancelled
+            - cancelling
+            - catalogue
+            - catalogues
+            - centre
+            - centred
+            - favour
+            - favours
+            - honour
+            - honoured
+            - honouring
+            - honours
+            - initialise
+            - initialised
+            - initialises
+            - labelled
+            - labelling
+            - licence
+            - licences
+            - marshalling
+            - materialise
+            - materialised
+            - materialises
+            - organisation
+            - organise
+            - organised
+            - organises
+            - recognisable
+            - recognise
+            - recognised
+            - recognises
+            - reorganises
+            - reorganising
+            - serialise
+            - serialised
+            - serialises
+            - summarise
+            - summarised
+            - summarises
+            - summarising
+            - synthesised
+            - synthesises
+            - travelled
+            - tunnelled
+            - unrecognised
+      exclusions:
+        rules:
+          # Tests exercise error paths deliberately and read fixture files by
+          # constructed path; neither is a finding there. They also marshal literals
+          # they wrote a line earlier, where a checked error is noise, and build
+          # small fixture slices where a preallocation says nothing.
+          - path: _test\.go
+            linters:
+              - gosec
+              - errcheck
+              - unparam
+              - noctx
+              - errchkjson
+              - prealloc
 
 license:
   spdx: AGPL-3.0-or-later
   holder: Latere AI
   # The frontend is part of the same work and carries the same terms.
-  extensions: ['.go', '.ts', '.tsx', '.mjs']
+  extensions: ['.go', '.ts', '.tsx', '.mjs', '.sh']
+  # The build and the compose entry point are part of the work too, and have
+  # no extension to match on.
+  names: [Makefile, Dockerfile]
   skip:
     # The built bundle, generated from frontend/src on every build.
     - dist

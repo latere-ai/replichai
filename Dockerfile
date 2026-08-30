@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Latere AI
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # Stage 1: build the frontend with bun into internal/spa/dist. Output is static
 # assets (arch-independent), so this runs on the native build platform.
 FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend
