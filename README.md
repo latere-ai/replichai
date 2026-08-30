@@ -194,7 +194,7 @@ Compare against `evals/case-01/expected.md`. The two cases are chosen to fail in
 
 ```bash
 make test        # the whole Go suite, offline against fakes
-make cover       # the number to quote — runs the Postgres contracts rather than skipping them
+make cover-pg    # the number to quote — runs the Postgres contracts rather than skipping them
 make e2e         # submit → run → done through the real server, no Docker
 make web-e2e     # the frontend's browser regressions, in headless Chrome
 make smoke       # the compose stack, end to end
