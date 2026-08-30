@@ -73,6 +73,18 @@ cover-pg:
 		go test -p 1 -coverprofile=coverage.out ./...
 	@go tool cover -func=coverage.out | tail -1
 
+# Guardrail: every outbound http.Client must set an otel-instrumented
+# Transport, otherwise the hop starts a new root trace. Keep the Transport
+# field on the same line as the literal so the grep can see it.
+.PHONY: lint-otel
+lint-otel:
+	@bad=$$(grep -rn '&http.Client{' --include='*.go' cmd internal | grep -v Transport | grep -v _test.go || true); \
+	if [ -n "$$bad" ]; then \
+		echo "bare &http.Client{} without an otel-instrumented Transport:" >&2; \
+		echo "$$bad" >&2; \
+		exit 1; \
+	fi
+
 # The linter, with the same version CI pins. It is `go run` rather than an
 # installed binary on purpose: golangci-lint embeds the Go toolchain it was
 # built with, and one built against an older Go refuses a `go 1.27` go.mod
