@@ -131,5 +131,5 @@ latere.ai/x/ci-gate v0.17.0 h1:s2reUGAQJQ16eYkHgLMjRC4ZmngX58s8XnEW70pPiFY=
 latere.ai/x/ci-gate v0.17.0/go.mod h1:Iw6RuLhPgpP+hRfVTb0UxnygMyZIi1U7E0/iM5fbAhA=
 latere.ai/x/pay v0.1.0 h1:1UaPnoTMpgqpuuIObElHmkvEDq231IH/HxKp+KrA1uA=
 latere.ai/x/pay v0.1.0/go.mod h1:CQGEbSh3UJUmHpXuDagqI0yuc8lo0Z9ydfcpq3KCiI4=
-latere.ai/x/pkg v0.41.0 h1:MeXiO6vxBLniOVxbQgWrGckFbZLg249ElYj1ifmcMS4=
-latere.ai/x/pkg v0.41.0/go.mod h1:xP+/sQTNm74Tv4eCSYyqqyXU7x9LhBDrJ9BrlMelo7w=
+latere.ai/x/pkg v0.44.0 h1:dI6hB7iB1bYQx5mYlrAmWIdqKhptLYfoXLToX2wvG9w=
+latere.ai/x/pkg v0.44.0/go.mod h1:alzUneBLzY7SmvQZV4Xk9SLyJu0ofEMFvIj/EgMaibE=
