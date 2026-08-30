@@ -38,6 +38,10 @@ jobs:
         with:
           context: .
           push: true
+          # The version the binary reports on every span, metric, and log
+          # record. Without it the image would call itself "dev" in production.
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

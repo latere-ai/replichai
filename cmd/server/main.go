@@ -17,7 +17,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,6 +33,7 @@ import (
 	paystripe "latere.ai/x/pay/stripe"
 	xemail "latere.ai/x/pkg/email"
 	"latere.ai/x/pkg/oidclogin"
+	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -61,9 +62,16 @@ const (
 	devEmail = "dev@local"
 )
 
+// version is the build's version string, stamped by the linker
+// (-X main.version=...) and attached to every span, metric, and log record. It
+// is empty under `go run` and under `go test`, where xotel.Version falls back to
+// the module's build info.
+var version string
+
 func main() {
 	if err := run(); err != nil {
-		log.Fatalf("server: %v", err)
+		slog.Error("server stopped", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -80,15 +88,38 @@ func run() error {
 	baseURL := strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
 	delay, _ := time.ParseDuration(*runnerDelay)
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Telemetry comes first, so every line below is already structured and
+	// correlated. The shared library reads the endpoint, headers, and TLS from
+	// the standard OTEL_* environment and is a noop when none is set, which is
+	// what makes a local run and a test identical to production here.
+	logger, shutdownTelemetry, err := xotel.Bootstrap(ctx, xotel.Config{
+		ServiceName: "replichai",
+		Version:     xotel.Version(version),
+	})
+	if err != nil {
+		// The logger is usable whatever happened; only the OTLP log bridge is
+		// in doubt, so this is reported rather than fatal.
+		logger.Warn("telemetry: the OTLP log exporter did not start; logs stay local", "error", err)
+	}
+	defer func() {
+		// A fresh context: ctx is cancelled by the time this runs, and a child
+		// of it would give the final flush no time at all.
+		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(flushCtx); err != nil {
+			logger.Error("telemetry: flush on shutdown", "error", err)
+		}
+	}()
+
 	if *dev {
 		if err := webauth.CheckDevBypass(*addr, envBool("DEV_INSECURE")); err != nil {
 			return err
 		}
-		log.Printf("WARNING: dev bypass enabled — every request is the synthetic principal %q; local use only", devEmail)
+		logger.Warn("dev bypass enabled: every request is the synthetic principal; local use only", "principal", devEmail)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	m, err := method.Load(*methodDir)
 	if err != nil {
@@ -134,7 +165,7 @@ func run() error {
 	}
 	controller := managed.NewController(runtimeRouter)
 	modelResolver := runtimes.ModelResolver{Runtime: selectedRuntime}
-	log.Printf("managed runtime: %s", selectedRuntime.Name())
+	logger.Info("managed runtime selected", "runtime", selectedRuntime.Name())
 
 	st, err := openStores(ctx, *dbURL)
 	if err != nil {
@@ -148,7 +179,7 @@ func run() error {
 		if err := accessStore.SeedGrant(ctx, email, access.TierAdmin); err != nil {
 			return err
 		}
-		log.Printf("seeded platform admin: %s", email)
+		logger.Info("seeded platform admin", "email", email)
 	}
 
 	// The forge (006i): with a token, reproductions are created under the org and
@@ -187,9 +218,9 @@ func run() error {
 	}
 	worker := job.NewWorker(jobStore, runner, job.WithBudget(spendBackstop(st)))
 	if resumed, failed, err := worker.Reconcile(ctx); err != nil {
-		log.Printf("reconcile on startup: %v", err)
+		logger.Error("reconcile on startup", "error", err)
 	} else if resumed > 0 || failed > 0 {
-		log.Printf("reconcile: rejoined %d live run(s), failed %d unrecoverable", resumed, failed)
+		logger.Info("reconcile", "rejoined", resumed, "failed_unrecoverable", failed)
 	}
 	go worker.Start(ctx, *workers)
 
@@ -206,10 +237,10 @@ func run() error {
 	if forgeClient != nil {
 		reproSource = registry.NewGitHubSource(forgeClient, forgeOwner)
 		repoPublisher = &forgePublisher{client: forgeClient, owner: forgeOwner}
-		log.Printf("reproductions: reading the %s org on GitHub", forgeOwner)
+		logger.Info("reproductions: reading the forge org on GitHub", "owner", forgeOwner)
 	} else {
 		reproSource = registry.NewFSSource(*reproDir)
-		log.Printf("reproductions: reading filesystem dir %q (set REPLICHAI_GITHUB_TOKEN to read the forge)", *reproDir) //nolint:gosec // G706: -repro-dir/REPRO_DIR is read once at boot, and %q escapes control characters, so no newline can forge a log line.
+		logger.Info("reproductions: reading a filesystem dir; set REPLICHAI_GITHUB_TOKEN to read the forge", "dir", *reproDir)
 	}
 
 	notifier, err := buildNotifier(baseURL)
@@ -274,7 +305,7 @@ func run() error {
 		_ = srv.Shutdown(shutCtx) //nolint:contextcheck // the fresh context is the point: ctx is already cancelled here, so a derived one would give the drain no time at all.
 	}()
 
-	log.Printf("listening on %s (base %s)", *addr, baseURL)
+	logger.Info("listening", "addr", *addr, "base_url", baseURL)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
@@ -315,7 +346,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 		// once at startup for the synthetic principal instead.
 		if members != nil {
 			if _, err := members.BindAll(ctx, access.Principal{Sub: devSub, Email: devEmail}); err != nil {
-				log.Printf("dev: binding memberships: %v", err)
+				slog.ErrorContext(ctx, "dev: binding memberships", "error", err)
 			}
 		}
 		// No OIDC locally: /login just returns to the app, already authenticated.
@@ -408,12 +439,12 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 	var userInfo webauth.UserInfoFunc
 	var endSession string
 	if eps, err := webauth.Discover(ctx, issuer); err != nil {
-		log.Printf("oidc discovery failed (%v); email comes from the ID token only and sign-out stays local", err)
+		slog.WarnContext(ctx, "oidc discovery failed; email comes from the ID token only and sign-out stays local", "error", err)
 	} else {
 		userInfo = webauth.HTTPUserInfo(eps.UserInfo)
 		endSession = eps.EndSession
 		if endSession == "" {
-			log.Printf("issuer advertises no end_session_endpoint; sign-out will not end the provider's session")
+			slog.WarnContext(ctx, "issuer advertises no end_session_endpoint; sign-out will not end the provider's session")
 		}
 	}
 	return webauth.NewLogin(auth, codec, acc, baseURL, secureCookies(baseURL), userInfo).EndSessionAt(endSession), nil
@@ -462,7 +493,7 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 func reportRateCoverage(ctx context.Context, resolver credit.ModelResolver, plat platform.Store) {
 	set, err := plat.Settings(ctx)
 	if err != nil {
-		log.Printf("rates: reading the platform card: %v", err)
+		slog.ErrorContext(ctx, "rates: reading the platform card", "error", err)
 		return
 	}
 	// A short deadline: this is a boot-time courtesy, and a backend that will
@@ -474,14 +505,15 @@ func reportRateCoverage(ctx context.Context, resolver credit.ModelResolver, plat
 	for _, c := range cov {
 		switch {
 		case c.Err != "":
-			log.Printf("rates: %s could not be resolved: %v", c.Preference, firstLine(c.Err))
+			slog.WarnContext(ctx, "rates: preference could not be resolved", "preference", c.Preference, "error", firstLine(c.Err))
 		case c.Named:
-			log.Printf("rates: %s → %s, priced at its own rates", c.Preference, c.Model)
+			slog.InfoContext(ctx, "rates: preference priced at its own rates", "preference", c.Preference, "model", c.Model)
 		default:
-			log.Printf("rates: %s → %s, which the card does NOT name — charged the dearest rates on it "+
-				"($%.2f/$%.2f per Mtok). Add it in Admin → Platform to bill it at its real price.",
-				c.Preference, c.Model,
-				float64(c.Rates.Input)/float64(credit.Dollar), float64(c.Rates.Output)/float64(credit.Dollar))
+			slog.WarnContext(ctx, "rates: the card does not name this model, so it is charged the dearest rates on the card; "+
+				"add it in Admin, Platform to bill it at its real price",
+				"preference", c.Preference, "model", c.Model,
+				"input_per_mtok", float64(c.Rates.Input)/float64(credit.Dollar),
+				"output_per_mtok", float64(c.Rates.Output)/float64(credit.Dollar))
 		}
 	}
 }
@@ -562,7 +594,7 @@ type stores struct {
 // last because it re-checks admin tier through the access store.
 func openStores(ctx context.Context, dbURL string) (stores, error) {
 	if dbURL == "" {
-		log.Printf("no DATABASE_URL: using in-memory stores (state is lost on restart)")
+		slog.WarnContext(ctx, "no DATABASE_URL: using in-memory stores, so state is lost on restart")
 		acc := access.NewMemStore()
 		plat := platform.NewMemStore(acc)
 		members := access.NewMemMembership()
@@ -605,7 +637,7 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 			return stores{}, fmt.Errorf("%s migrate: %w", m.name, err)
 		}
 	}
-	log.Printf("connected to Postgres and applied migrations")
+	slog.InfoContext(ctx, "connected to Postgres and applied migrations")
 	acc := access.NewPGAccess(pool)
 	plat := platform.NewPGStore(pool, acc)
 	members := access.NewPGMembership(pool)
@@ -663,7 +695,7 @@ func buildNotifier(baseURL string) (*notify.Notifier, error) {
 		return nil, fmt.Errorf("mail: %w", err)
 	}
 	if _, unconfigured := tx.(*xemail.LogSender); unconfigured {
-		log.Printf("mail: no transport configured; invitations will be logged, not sent")
+		slog.Warn("mail: no transport configured; invitations will be logged, not sent")
 	}
 	return notify.New(tx, baseURL), nil
 }
@@ -698,11 +730,11 @@ func newForgeClient(owner, pat string) (*github.Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("forge: authenticating as GitHub App %d on %s", id, owner)
+		slog.Info("forge: authenticating as a GitHub App", "app_id", id, "owner", owner)
 		return c, nil
 	}
 	if pat != "" {
-		log.Printf("forge: authenticating with a personal access token (set REPLICHAI_GITHUB_APP_ID/KEY to use the App)")
+		slog.Info("forge: authenticating with a personal access token; set REPLICHAI_GITHUB_APP_ID and REPLICHAI_GITHUB_APP_KEY to use the App")
 		return github.New(pat), nil
 	}
 	return nil, nil
@@ -755,11 +787,11 @@ func envBool(key string) bool {
 // read once from the environment, and it never reaches the settings row.
 func draftingModel(ctx context.Context, plat platform.Store, draftKey, agentKey string) httpapi.Drafter {
 	if strings.TrimSpace(draftKey) == "" && strings.TrimSpace(agentKey) == "" {
-		log.Print("drafting: no credential; project descriptions are typed")
+		slog.InfoContext(ctx, "drafting: no credential; project descriptions are typed")
 		return nil
 	}
 	if set, err := plat.Settings(ctx); err == nil && !set.Draft.Configured() {
-		log.Print("drafting: no model configured; project descriptions are typed")
+		slog.InfoContext(ctx, "drafting: no model configured; project descriptions are typed")
 	}
 	return &configuredDrafter{plat: plat, draftKey: draftKey, agentKey: agentKey}
 }
