@@ -47,7 +47,8 @@ func (m Method) Digest() string {
 		{"rubric", m.Rubric},
 		{"task-template", m.TaskTemplate},
 	} {
-		fmt.Fprintf(h, "%s:%d:", part.name, len(part.text))
+		// hash.Hash.Write never returns an error, so neither can this.
+		_, _ = fmt.Fprintf(h, "%s:%d:", part.name, len(part.text))
 		h.Write([]byte(part.text))
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))

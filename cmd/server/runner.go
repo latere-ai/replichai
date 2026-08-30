@@ -622,7 +622,7 @@ func newHTTPFetcher(timeout time.Duration) paper.Fetcher {
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("%s returned %d", url, resp.StatusCode)
 		}

@@ -89,16 +89,16 @@ func rateCard(ctx context.Context, dbURL string) (credit.Card, string, error) {
 // printRates writes the report for a person, and says plainly what an
 // inexact match means rather than leaving a reader to infer it.
 func printRates(w *os.File, source string, checks []credit.Coverage) {
-	fmt.Fprintf(w, "rate card: %s\n\n", source)
+	_, _ = fmt.Fprintf(w, "rate card: %s\n\n", source)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "PREFERENCE\tRESOLVES TO\tPRICED AS\tINPUT $/MTok\tOUTPUT $/MTok")
+	_, _ = fmt.Fprintln(tw, "PREFERENCE\tRESOLVES TO\tPRICED AS\tINPUT $/MTok\tOUTPUT $/MTok")
 	fallbacks := 0
 	for _, c := range checks {
 		if c.Err != "" {
 			// Backend errors run to many lines (a credentials failure lists
 			// every source it tried). One line keeps the table a table; -json
 			// carries the whole thing for somebody debugging it.
-			fmt.Fprintf(tw, "%s\t-\t-\t-\t%s\n", c.Preference, firstLine(c.Err))
+			_, _ = fmt.Fprintf(tw, "%s\t-\t-\t-\t%s\n", c.Preference, firstLine(c.Err))
 			continue
 		}
 		priced := c.Rates.Model
@@ -106,12 +106,12 @@ func printRates(w *os.File, source string, checks []credit.Coverage) {
 			priced = "DEAREST ON CARD"
 			fallbacks++
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 			c.Preference, c.Model, priced, dollars(c.Rates.Input), dollars(c.Rates.Output))
 	}
 	_ = tw.Flush()
 	if fallbacks > 0 {
-		fmt.Fprintf(w, "\n%d preference(s) resolve to a model the card does not name.\n"+
+		_, _ = fmt.Fprintf(w, "\n%d preference(s) resolve to a model the card does not name.\n"+
 			"Those sessions are charged the dearest rates on the card — never free, by design,\n"+
 			"but not that model's own price either. Add the id above to the card in\n"+
 			"Admin → Platform (or PUT /admin/settings) to bill it at its real rate.\n", fallbacks)

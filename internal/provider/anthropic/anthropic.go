@@ -418,7 +418,7 @@ func (p *Provider) FetchArtifact(ctx context.Context, h provider.RunHandle, a pr
 	if err != nil {
 		return nil, fmt.Errorf("download %s: %w", a.Path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", a.Path, err)

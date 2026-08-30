@@ -40,7 +40,7 @@ func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 	if err != nil {
 		return Endpoints{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return Endpoints{}, fmt.Errorf("discovery %s: status %d", url, resp.StatusCode)
 	}
@@ -74,7 +74,7 @@ func HTTPUserInfo(endpoint string) UserInfoFunc {
 		if err != nil {
 			return Profile{}, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return Profile{}, fmt.Errorf("userinfo: status %d", resp.StatusCode)
 		}

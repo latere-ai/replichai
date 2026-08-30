@@ -22,7 +22,7 @@ import (
 // under (045k).
 func runProject(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: replichai project create <title> | replichai project ls")
+		_, _ = fmt.Fprintln(stderr, "usage: replichai project create <title> | replichai project ls")
 		return errExitQuiet
 	}
 	client, err := apiClient()
@@ -33,14 +33,14 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 	case "create":
 		title := strings.TrimSpace(strings.Join(args[1:], " "))
 		if title == "" {
-			fmt.Fprintln(stderr, "project create takes a title")
+			_, _ = fmt.Fprintln(stderr, "project create takes a title")
 			return errExitQuiet
 		}
 		created, err := client.CreateProject(ctx, title)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "%s\t%s\n", created.ID, created.Title)
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", created.ID, created.Title)
 		return nil
 	case "ls":
 		projects, err := client.ListProjects(ctx)
@@ -48,11 +48,11 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 			return err
 		}
 		for _, p := range projects {
-			fmt.Fprintf(stdout, "%s\t%s\n", p.ID, p.Title)
+			_, _ = fmt.Fprintf(stdout, "%s\t%s\n", p.ID, p.Title)
 		}
 		return nil
 	default:
-		fmt.Fprintf(stderr, "unknown project command %q\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "unknown project command %q\n", args[0])
 		return errExitQuiet
 	}
 }
@@ -83,11 +83,11 @@ func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error 
 		rest = fs.Args()[1:]
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(stderr, "push takes one project file or batch state")
+		_, _ = fmt.Fprintln(stderr, "push takes one project file or batch state")
 		return errExitQuiet
 	}
 	if strings.TrimSpace(*projectID) == "" {
-		fmt.Fprintln(stderr, "push needs --project; `replichai project ls` lists them")
+		_, _ = fmt.Fprintln(stderr, "push needs --project; `replichai project ls` lists them")
 		return errExitQuiet
 	}
 	statePath := positional[0]
@@ -111,27 +111,27 @@ func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error 
 		}
 		record, err := recordOf(entry)
 		if err != nil {
-			fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
+			_, _ = fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
 			failed++
 			continue
 		}
 		// The paper is filed first: a session may only be filed against a
 		// paper the project holds, for the same reason it may only run one.
 		if err := client.AddPaper(ctx, *projectID, entry.Paper); err != nil {
-			fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
+			_, _ = fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
 			failed++
 			continue
 		}
 		id, err := client.ImportSession(ctx, *projectID, record)
 		if err != nil {
-			fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
+			_, _ = fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
 			failed++
 			continue
 		}
-		fmt.Fprintf(stdout, "%s\t%s\n", id, entry.Paper)
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", id, entry.Paper)
 		pushed++
 	}
-	fmt.Fprintf(stderr, "\npushed %d, skipped %d still running, %d failed\n", pushed, skipped, failed)
+	_, _ = fmt.Fprintf(stderr, "\npushed %d, skipped %d still running, %d failed\n", pushed, skipped, failed)
 	if failed > 0 {
 		return errExitQuiet
 	}
