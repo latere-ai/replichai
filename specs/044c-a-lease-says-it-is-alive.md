@@ -1,3 +1,8 @@
+---
+title: "A lease says the driver is alive, not that something changed"
+status: built
+---
+
 # 044c — A lease says the driver is alive, not that something changed
 
 **Status:** built.

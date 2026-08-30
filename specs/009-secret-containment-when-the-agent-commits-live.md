@@ -1,3 +1,7 @@
+---
+title: "Secret containment when the agent commits live"
+---
+
 # 009 — Secret containment when the agent commits live
 
 **Status:** commits 1–2 shipped and deployed; **commit 3 (mint + revoke + scrub) deferred** on a hard external constraint — see "The mount-token lifetime constraint" below. The visibility flip is wired (006f), so the structural containment that let this sit in the backlog is gone; the leak gate (commit 1) is the prerequisite of a safe publish and it is live. The App auth (commit 2) moves every *server-side* operation off the org PAT; the *mount* still carries the PAT, deliberately, until the constraint is resolved. The constraint is about a token the agent holds for a whole run; a local session has none, so [045l](045l-the-repository-comes-from-the-platform.md) **shipped commit 3 for the local path**, where the credential's whole life is one push: `MintRepoToken` and `RevokeToken` exist and the local publish uses them. The mount is unchanged.

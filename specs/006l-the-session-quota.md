@@ -1,3 +1,8 @@
+---
+title: "The session quota *(superseded by [011](011-what-a-session-costs.md))*"
+status: superseded
+---
+
 # 006l — The session quota *(superseded by [011](011-what-a-session-costs.md))*
 
 **Status:** superseded by [011](011-what-a-session-costs.md), which replaces the session counter with money. Nothing described below is in the build: the counter, `jobs.charged_to`, `projects.sponsored`, the `charge_to` picker and the `quota_exceeded` code are all removed, and what limits a run is now what it costs.

@@ -1,3 +1,7 @@
+---
+title: "Latere runs a session"
+---
+
 # 041g — Latere runs a session
 
 **Status:** designed, not built. **Production enablement is blocked on durable replay at the in-flight model/tool boundary** (below). The adapter and fake/local integration may be built after 041e, but it must not be offered as a hosted runtime until that prerequisite is demonstrated.

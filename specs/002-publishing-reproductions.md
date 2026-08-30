@@ -1,3 +1,8 @@
+---
+title: "Publishing reproductions"
+status: implemented
+---
+
 # 002 — Publishing reproductions
 
 **Status:** implemented (`2670d1a`)

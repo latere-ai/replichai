@@ -1,3 +1,8 @@
+---
+title: "A project can be thrown away"
+status: built
+---
+
 # 019 — A project can be thrown away
 
 **Status:** built. Every acceptance criterion holds. `projects.deleted_at` (migration 9, with a partial index per read), `Trash`/`Restore`/`ListTrashed` on the project store and `DeleteByProject` on the job store, all under the shared contract tests; `DELETE /projects/{id}`, `?purge=1`, `POST /projects/{id}/restore` and `GET /projects/trash` in `internal/httpapi`, with `trash_test.go` covering the guards, the cascade, the read rules and the route precedence. The frontend has the row action, the two dialogs, the `/trash` screen and the banner; `frontend/test/trash.test.mjs` drives the whole round trip in Chrome and was verified to fail with the change stashed. Go and the 10-file browser suite are green.

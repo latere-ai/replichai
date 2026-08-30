@@ -1,3 +1,8 @@
+---
+title: "Who signed off"
+status: built
+---
+
 # 006n — Who signed off
 
 **Status:** built. `internal/profile` owns the researcher profile (its own package, its own migration) behind `GET`/`PATCH /me/profile`; `project.SetPublic` takes a `SignOff` struct and writes the signer snapshot, with the signer's redacted email derived from the session rather than the body; the publish route validates the snapshot with the profile's own rules and requires a contact. The frontend has the settings form, the three-step publish wizard (prefilled from the profile), the signed-off card naming the signer, and a public zone that lists a project by its signer instead of an opaque OIDC subject. Attestation v2. Covered by the profile store contract (both implementations), the project store contract's snapshot round-trip, unit tests for redaction and validation, and handler tests for the profile API, the publish validation, the session-derived signer, the snapshot-not-a-view property, and a v1 sign-off reading back empty. Verified live against a running server (profile round-trip, `missing_contact`/`invalid_*`/`not_clear` ordering) and visually in a headless browser.

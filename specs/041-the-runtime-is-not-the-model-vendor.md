@@ -1,3 +1,7 @@
+---
+title: "The runtime is not the model vendor"
+---
+
 # 041 — The runtime is not the model vendor
 
 **Status:** normalization implemented; alternative adapters remain designed. Children 041a–041e refactor the existing Anthropic implementation without changing product behaviour. 041f and 041g remain unimplemented by design.

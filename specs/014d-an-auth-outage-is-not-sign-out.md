@@ -1,3 +1,8 @@
+---
+title: "An auth outage is not sign-out"
+status: built
+---
+
 # 014d — An auth outage is not sign-out
 
 **Status:** built.

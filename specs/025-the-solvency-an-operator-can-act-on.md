@@ -1,3 +1,7 @@
+---
+title: "The solvency an operator can act on"
+---
+
 # 025 — The solvency an operator can act on
 
 **Status:** designed, not built. A deferred follow-up to [022](022-money-comes-in-without-an-admin.md); not urgent at beta scale, recorded so the signal is right when volume grows. Open questions below to close before implementation.

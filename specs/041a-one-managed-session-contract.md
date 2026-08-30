@@ -1,3 +1,8 @@
+---
+title: "One managed-session contract"
+status: implemented
+---
+
 # 041a — One managed-session contract
 
 **Status:** implemented.

@@ -1,3 +1,8 @@
+---
+title: "A paper can move to another project"
+status: built
+---
+
 # 035 — A paper can move to another project
 
 **Status:** built. Every acceptance criterion holds. `project.Store.MovePaper` with the `SessionMover`/`PGSessionMover` seam (Postgres does it in one transaction; the in-memory store moves the sessions first and puts the paper back if they fail), `job.MovePaperSessions`/`MovePaperSessionsTx`, `POST /projects/{id}/papers/move` with the two-project authorisation, and the paper row's Move action with its dialog. Covered by `runMovePaperContract` against both stores, `runMoveSessionsContract` against both movers, `internal/httpapi/paper_move_test.go`, the extended `cmd/server` e2e, and `frontend/test/paper-move.test.mjs`. Go (including the Postgres contracts), the 130 unit tests and the 18-file browser suite are green.

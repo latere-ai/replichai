@@ -27,6 +27,13 @@ fmt-check:
 lint-modernize:
 	@go tool lateregate modernize
 
+# The spec tree, through the shared linter: frontmatter parses, every spec
+# carries a title and a status from the closed vocabulary, and the dependency
+# graph is acyclic.
+.PHONY: spec-lint
+spec-lint:
+	@go tool lateregate spec-lint
+
 # The suite with only the Go toolchain on PATH. A test that depends on what
 # happens to be installed passes locally and fails on a runner.
 .PHONY: test-hermetic

@@ -1,3 +1,8 @@
+---
+title: "One managed-session lifecycle"
+status: implemented
+---
+
 # 041b — One managed-session lifecycle
 
 **Status:** implemented.

@@ -1,3 +1,8 @@
+---
+title: "The freeze, server-side"
+status: built
+---
+
 # 022d — The freeze, server-side
 
 **Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Backend only; the frozen account's UI is [022f](022f-the-frozen-account-in-the-ui.md). Four commits: `9605f29` (the `access.FreezeOverrides` store — migration v4, mem + Postgres, the `OverrideActive`/`GrantOverride`/`ClearOverride` recorded state), `68ccb31` (`webauth.FreezeGate` refusing every mutating request from a negative wallet `402 account_frozen`, composed inside the auth middleware in `cmd/server`), `0bc9eef` (`frozen` on `GET /me`, and the admin freeze flag + `?filter=negative` + `POST/DELETE /admin/access/{email}/unfreeze`), `38166d6` (`notify.AccountFrozen`, sent once from the webhook reversal on the crossing into the red). Tests green on mem + real Postgres 16 across all four, including the gate refusing/allowing by method, the one-shot override surviving a further debit and retiring at solvency, the admin freeze-list + unfreeze, and the freeze email firing once on the crossing.

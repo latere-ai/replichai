@@ -1,3 +1,8 @@
+---
+title: "Money comes in without an admin"
+status: built
+---
+
 # 022 — Money comes in without an admin
 
 **Status:** built — all six leaves (022a–022f) shipped and tested (mem + real Postgres 16 for the backend; typecheck, production build, and 120 bun tests for the frontend). A person buys credits with a card, EU customers pay in euros via Stripe Adaptive Pricing, a signed webhook credits idempotently, refunds reverse the exact USD credited, and a negative wallet freezes the account view-only until it is topped back up. The Task Breakdown at the foot records each leaf. What stays out and is now the pressing follow-up: **EU VAT / invoicing** (a separate spec, Option A = Stripe Tax + Checkout invoicing, blocked on the operator's OSS registration and an accountant's classification), and **recovering a negative project pot** (a named deferred spec — this closes negative *wallets*, not overrun pots).

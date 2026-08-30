@@ -1,3 +1,8 @@
+---
+title: "The registry names the paper it reproduces"
+status: built
+---
+
 # 043 — The registry names the paper it reproduces
 
 **Status:** built. All eight criteria hold.

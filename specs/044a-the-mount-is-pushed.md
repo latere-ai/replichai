@@ -1,3 +1,8 @@
+---
+title: "The mount is pushed, not just committed"
+status: built
+---
+
 # 044a — The mount is pushed, not just committed
 
 **Status:** built.

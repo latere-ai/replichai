@@ -1,3 +1,8 @@
+---
+title: "A project can start empty"
+status: built
+---
+
 # 036 — A project can start empty
 
 **Status:** built. All five criteria hold. `internal/httpapi/empty_project_test.go` drives the three cases the rule now is — titled with no papers is a 201 that reads back empty, neither is a `missing_title` 400 that creates nothing, and a paper still names an untitled project — and `TestCreateProjectNeedsAPaper` was removed with a note pointing at them, because it asserted exactly the requirement this drops.

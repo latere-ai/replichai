@@ -1,3 +1,8 @@
+---
+title: "The sandbox is a seam"
+status: built
+---
+
 # 045a — The sandbox is a seam
 
 **Status:** built.

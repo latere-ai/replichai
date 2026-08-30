@@ -1,3 +1,8 @@
+---
+title: "Managed runs close truthfully"
+status: built
+---
+
 # 014a — Managed runs close truthfully
 
 **Status:** built.

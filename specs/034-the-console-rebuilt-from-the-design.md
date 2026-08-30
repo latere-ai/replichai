@@ -1,3 +1,8 @@
+---
+title: "The console, rebuilt from the design"
+status: built
+---
+
 # 034 — The console, rebuilt from the design
 
 **Status:** built. Every acceptance criterion holds; the whole browser suite passed at both viewports (17 files then; 21 today, the rest added by 040 and 043), and the wallet, settings, registry and trash screens were shot by hand to check what the shared primitives did to screens the design does not show.

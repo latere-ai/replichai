@@ -1,3 +1,8 @@
+---
+title: "The host sandbox"
+status: built
+---
+
 # 045b — The host sandbox
 
 **Status:** built.

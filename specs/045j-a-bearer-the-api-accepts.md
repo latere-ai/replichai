@@ -1,3 +1,8 @@
+---
+title: "A bearer the API accepts"
+status: built
+---
+
 # 045j — A bearer the API accepts
 
 **Status:** built.

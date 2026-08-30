@@ -1,3 +1,8 @@
+---
+title: "Publication requires evidence"
+status: built
+---
+
 # 014c — Publication requires evidence
 
 **Status:** built.

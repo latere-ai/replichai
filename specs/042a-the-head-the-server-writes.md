@@ -1,3 +1,8 @@
+---
+title: "The head the server writes, and the client keeps current"
+status: built
+---
+
 # 042a — The head the server writes, and the client keeps current
 
 **Status:** built. All ten criteria hold.

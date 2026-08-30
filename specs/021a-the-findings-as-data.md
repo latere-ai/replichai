@@ -1,3 +1,8 @@
+---
+title: "The findings as data"
+status: built
+---
+
 # 021a — The findings as data
 
 **Status:** built. Every acceptance criterion holds except the schema bump, which was deliberately not done. `internal/verdict` owns the schema, `Parse`, `Validate` and the filename, with 15 contract tests; `method/rubric.md` gained criterion 7 and `method/instructions.md` a step, a deliverable row, and the schema section; `publish.FinalizeLive` records the result on the manifest and in `UNVERIFIED.md`; `GET /jobs/{id}/verdict` serves it. The Go suite is green.

@@ -1,3 +1,7 @@
+---
+title: "EU VAT, and the invoice that comes with it"
+---
+
 # 027 — EU VAT, and the invoice that comes with it
 
 **Status:** designed, not built. **Blocked on the operator, not the code:** VAT registration (OSS), a Stripe Tax configuration, and one legal classification (below) are prerequisites an accountant confirms before this ships. The design is Option A — let Stripe compute the tax and emit the invoice; the platform owns registration, filing, and classification. Do not build until the prerequisites are answered.

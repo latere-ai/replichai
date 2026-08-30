@@ -1,3 +1,8 @@
+---
+title: "The project rail"
+status: built
+---
+
 # 021e — The project rail
 
 **Status:** built. The rail renders one `LATEST SESSION · INNER LOOP` card per paper with a graded session, `Publish…` sits on the project header, and `SPEND · LAST 30 DAYS` reads a server-computed windowed aggregate. `job.Store.SpendSince` is implemented in both stores with a contract test that was mutation-checked two ways — a store filtering on `created_at` and one summing zero each produce their own named failure.

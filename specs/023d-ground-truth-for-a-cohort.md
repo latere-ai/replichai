@@ -1,3 +1,8 @@
+---
+title: "Ground truth for a cohort"
+status: draft
+---
+
 # 023d — Ground truth for a cohort
 
 **Status:** draft. A child of [023](023-the-outer-loop-as-a-product.md).

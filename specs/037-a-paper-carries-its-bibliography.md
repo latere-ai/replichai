@@ -1,3 +1,8 @@
+---
+title: "A paper carries its bibliography"
+status: built
+---
+
 # 037 — A paper carries its bibliography
 
 **Status:** built. All nine criteria hold.

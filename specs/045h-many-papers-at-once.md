@@ -1,3 +1,8 @@
+---
+title: "Many papers at once"
+status: built
+---
+
 # 045h — Many papers at once
 
 **Status:** built.

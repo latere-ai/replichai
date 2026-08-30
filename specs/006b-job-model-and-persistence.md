@@ -1,3 +1,8 @@
+---
+title: "Job model and persistence"
+status: built
+---
+
 # 006b — Job model and persistence
 
 **Status:** built

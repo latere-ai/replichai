@@ -1,3 +1,8 @@
+---
+title: "The study protocol as an artifact"
+status: implemented
+---
+
 # 007a — The study protocol as an artifact
 
 **Status:** implemented

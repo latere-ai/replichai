@@ -1,3 +1,8 @@
+---
+title: "Watching a session run"
+status: built
+---
+
 # 021d — Watching a session run
 
 **Status:** built as a revision of this spec, not as it was written. **Most of what it specifies already existed and was not built here.**

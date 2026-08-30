@@ -1,3 +1,7 @@
+---
+title: "OpenAI Responses runs a session"
+---
+
 # 041f — OpenAI Responses runs a session
 
 **Status:** designed, not built. Implement only after 041a–041e are built and reviewed against the then-current OpenAI API; hosted shell/container features are evolving.

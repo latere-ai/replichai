@@ -1,3 +1,8 @@
+---
+title: "The app on a phone"
+status: built
+---
+
 # 030 — The app on a phone
 
 **Status:** built. Every acceptance criterion holds. `frontend/src/sidebar.ts` gains `useDrawer` beside the untouched `useSidebar`; `App.tsx` carries the scrim, the hamburger, the drawer's own close, and one `goto` that dismisses the drawer as it navigates; `styles.css` gains a single `@media (max-width: 760px)` section, "The phone". `frontend/test/mobile.test.mjs` sweeps all 15 signed-in screens in Chrome and was verified to fail with the phone block removed — 154px of content on every screen, three panes scrolling sideways, and controls ending at x=579, which is the defect as first measured. The browser suite is green (14 files) and the 124 unit tests still pass.

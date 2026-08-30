@@ -1,3 +1,8 @@
+---
+title: "The model is an endpoint, not a vendor"
+status: built
+---
+
 # 045e — The model is an endpoint, not a vendor
 
 **Status:** built.

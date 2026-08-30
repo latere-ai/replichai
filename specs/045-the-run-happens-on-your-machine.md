@@ -1,3 +1,8 @@
+---
+title: "The run happens on your machine"
+status: built
+---
+
 # 045 — The run happens on your machine
 
 **Status:** built (eleven children). Parent of [045a](045a-the-sandbox-is-a-seam.md), [045b](045b-the-host-sandbox.md), [045c](045c-the-container-sandbox.md), [045d](045d-the-harness-inside-the-sandbox.md), [045e](045e-the-model-is-an-endpoint.md), [045f](045f-the-grader-cannot-edit-what-it-grades.md), [045g](045g-the-host-pushes.md), [045h](045h-many-papers-at-once.md), [045i](045i-signing-in-from-the-terminal.md), [045j](045j-a-bearer-the-api-accepts.md), [045k](045k-a-local-session-reaches-the-cloud.md).

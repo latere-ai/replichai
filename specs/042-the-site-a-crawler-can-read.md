@@ -1,3 +1,8 @@
+---
+title: "The site a machine that is not a browser can read"
+status: built
+---
+
 # 042 — The site a machine that is not a browser can read
 
 **Status:** built. All three children shipped; the release smoke checks each in production.

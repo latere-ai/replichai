@@ -1,3 +1,8 @@
+---
+title: "The idempotent paid top-up"
+status: built
+---
+
 # 022a — The idempotent paid top-up
 
 **Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Migration **v3** (`external_ref` + the partial unique index, mirroring `credit_entries_one_charge`), `Entry.ExternalRef` threaded through the single insert and the statement scan, `ErrNoRef`, and `TopupPaid`/`RefundPaid`/`EntryByExternalRef` on the `Store` interface and both stores — idempotent via `insertPaidTx`'s `ON CONFLICT (external_ref) WHERE external_ref IS NOT NULL DO NOTHING` on Postgres and a ref scan under the lock in memory. `internal/payment` holds the `Provider` port, its `Event`/`CheckoutParams` shapes, `ErrUnconfigured`, and a `MemProvider` fake. The contract test gained `TestPGStoreAndMemStorePostPaidEntriesIdempotently` (credit once on a retried ref, negative-allowed refunds, independent dedupe, `EntryByExternalRef`), green against the in-memory store **and real Postgres 16**; the whole module builds, vets, and tests clean. Commits `e70666b` (ledger) and `605cc8b` (port).

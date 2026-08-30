@@ -1,3 +1,8 @@
+---
+title: "The experiment HTTP surface"
+status: draft
+---
+
 # 023b — The experiment HTTP surface
 
 **Status:** draft. A child of [023](023-the-outer-loop-as-a-product.md).

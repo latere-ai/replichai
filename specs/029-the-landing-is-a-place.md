@@ -1,3 +1,8 @@
+---
+title: "The landing is a place"
+status: built
+---
+
 # 029 — The landing is a place
 
 **Rebuilt by [033](033-the-landing-rebuilt-from-the-design.md) and redressed by [040](040-the-landing-in-light.md).** The guarantees below still hold and are still tested — the sticky header, the reduced-motion resting state, the registry link, the landing as its own module. The page around them does not: its structure was rebuilt from a design, its third figure became a concrete example verdict rather than an abstract triple, and its one-line closing strip is now the shared Latere footer.

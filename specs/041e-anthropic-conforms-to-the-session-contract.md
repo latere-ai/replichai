@@ -1,3 +1,8 @@
+---
+title: "Anthropic conforms to the session contract"
+status: implemented
+---
+
 # 041e — Anthropic conforms to the session contract
 
 **Status:** implemented through the managed compatibility adapter, with two deviations worth naming. The Anthropic adapter was never built at `internal/managed/anthropic`: the SDK stays in `internal/provider/anthropic`, behind `internal/managed/legacy.Runtime`, which `internal/runtimes/builtin` alone constructs. And the removal is half-done — the old resource contract (`WorkspaceSpec`, `WorkerSpec`, `RunHandle`, `EnsureWorkspace`, `EnsureWorker`, `StartRun`, `CloseRun`) still stands in `internal/provider`, still called directly by `internal/audit` and `cmd/server/runner.go`, so acceptance criteria 4 and 8 do not yet hold. The global registry and the blank imports are gone as specified.

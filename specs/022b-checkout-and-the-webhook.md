@@ -1,3 +1,8 @@
+---
+title: "Checkout and the webhook"
+status: built
+---
+
 # 022b — Checkout and the webhook
 
 **Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Backend only; the buying UI is [022e](022e-buying-credits.md). Three commits: `platform` gained `spread_bps`/`spread_fixed_micro`/`min_topup_micro` (migration v6, seeded + admin-editable, `Settings.Credited(gross)`); `internal/payment/stripe` implements the port over `stripe-go/v82` (USD-only checkout, `webhook.ConstructEventWithOptions` verifying the signature and tolerating API-version drift, unconfigured ⇒ refusing adapter); and `internal/httpapi` added `POST /me/credits/checkout` (gated), the open `POST /stripe/webhook`, the spread applied and snapshotted into session metadata at create, and the spread/floor quote on `GET /me/credits`. Wired in `cmd/server` via `stripe.New()`. Tests green on mem + real Postgres 16, including the checkout quote, the below-floor refusal, the `payments_unconfigured` path, and the webhook crediting once on a retried delivery / refusing a bad signature. Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY`.

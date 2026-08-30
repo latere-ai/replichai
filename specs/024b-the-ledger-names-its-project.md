@@ -1,3 +1,8 @@
+---
+title: "The ledger names its project"
+status: built
+---
+
 # 024b — The ledger names its project
 
 **Status:** built. A child of [024](024-settings-is-a-place.md).

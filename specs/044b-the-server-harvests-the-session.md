@@ -1,3 +1,8 @@
+---
+title: "The server harvests what the session produced"
+status: built
+---
+
 # 044b — The server harvests what the session produced
 
 **Status:** built.

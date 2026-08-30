@@ -1,3 +1,8 @@
+---
+title: "An empty repository says so"
+status: built
+---
+
 # 044d — An empty repository says so
 
 **Status:** built.

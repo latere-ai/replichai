@@ -1,3 +1,8 @@
+---
+title: "The registry opens"
+status: built
+---
+
 # 028 — The registry opens
 
 **Status:** built. Every acceptance criterion holds. Server: nine reads moved to `openHandle` (`internal/httpapi/handlers.go:76-94`), redaction keys on `stakeIn` — the predicate that already withheld the credit balance — and `SessionView` shadows a session's principal and cost with a pointer so an absent number and a zero stay different claims. `internal/httpapi/public_read_test.go` drives every criterion behind a gate that refuses everyone, against a session that genuinely cost something. Frontend: `isPublicView` decides which addresses render the shell signed out, `isMine` replaces three bare `===` comparisons that would have matched two absent principals, and `frontend/test/public-shell.test.mjs` drives the signed-out registry, project, session, and not-public screens in Chrome.

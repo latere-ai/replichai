@@ -1,3 +1,8 @@
+---
+title: "Capture and publish the reproduction transcript"
+status: implemented
+---
+
 # 005 — Capture and publish the reproduction transcript
 
 **Status:** implemented (`c33af42`). The Outcome's caveat that private-by-default plus the owner's review is "the real guard" no longer stands alone: [009](009-secret-containment-when-the-agent-commits-live.md) made a leaked secret bar the public flip outright, through `ReviewSecretInTranscript` and `RedistributionFrom`

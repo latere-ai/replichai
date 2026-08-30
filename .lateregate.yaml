@@ -19,7 +19,18 @@ modernize:
 # internal/access alone loses about forty points -- a number the repo's own
 # Makefile calls meaningless. A coverage gate over the skipped shape would
 # measure the wrong thing, so that job stays in this repo's own pipeline.
+
+# The spec tree carries YAML frontmatter, so spec-lint reads it.
 #
-# No spec section either. The 116 specs here use a prose "**Status:**" line
-# rather than YAML frontmatter, which spec-lint cannot read. Converting the
-# tree is a decision about conventions, not a migration step.
+# No index line. specs/README.md lists every spec, but its Status column is
+# prose on purpose -- "built (all six leaves)", "implemented; its Python half
+# deleted" -- and the table's own preamble says the column names which part is
+# missing. CheckIndex compares that cell to the enum verbatim, so 23 of 114
+# rows would fail on wording rather than on drift. README.md is therefore
+# excluded here instead: with no index configured, spec-lint would otherwise
+# try to parse the index itself as a spec.
+spec:
+  dir: specs
+  status: [draft, implemented, built, deferred, superseded]
+  require: [title, status]
+  exclude: [BACKLOG.md, README.md]

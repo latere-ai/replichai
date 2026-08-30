@@ -1,3 +1,8 @@
+---
+title: "A session remembers its runtime"
+status: implemented
+---
+
 # 041c — A session remembers its runtime
 
 **Status:** implemented with a compatibility storage envelope.

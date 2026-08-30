@@ -1,3 +1,8 @@
+---
+title: "Buying credits"
+status: built
+---
+
 # 022e — Buying credits
 
 **Status:** built. Leaf of [022](022-money-comes-in-without-an-admin.md). Frontend (`frontend/src`). `api.startCheckout` posts `{amount_micro}` and returns the hosted URL; `money.creditedMicro` computes the quote with the same arithmetic the server applies (unit-tested to match); `TopUpModal` reads the spread/floor from `/me/credits`, shows the live "$Y in credits for $X" quote, refuses below the floor, and redirects to the processor; `WalletScreen` at `/wallet` shows the statement, a Top up button, and polls `/me` five times over ~7.5s on a `?checkout=success` return so the credit appears on its own. Typecheck clean, 119 frontend tests pass (incl. the new `creditedMicro` and route cases).

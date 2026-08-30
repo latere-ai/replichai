@@ -1,3 +1,8 @@
+---
+title: "The reproduction registry"
+status: implemented
+---
+
 # 003 — The reproduction registry
 
 **Status:** implemented (`413a635`)

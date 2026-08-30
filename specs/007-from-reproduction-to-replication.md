@@ -1,3 +1,8 @@
+---
+title: "From reproduction to replication"
+status: draft
+---
+
 # 007 — From reproduction to replication
 
 **One decision below was reversed.** This spec scopes a project as the replication effort around *one paper*; [012](012-a-project-holds-papers.md) made a project hold many, and [015](015-a-verdict-belongs-to-a-session.md)/[023a](023a-experiments-persisted-and-dispatched.md) key an experiment to the session that produced its instrument rather than to the project. The two revisions this spec asked for did land — a job runs an audit *or* an experiment, and project membership sits beside the tiers — and the firewall holds: `internal/audit` never imports `internal/experiment`. The product half of 007b/007c is now the [023](023-the-outer-loop-as-a-product.md) chain.
