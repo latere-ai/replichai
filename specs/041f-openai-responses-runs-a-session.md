@@ -1,5 +1,6 @@
 ---
 title: "OpenAI Responses runs a session"
+status: designed
 ---
 
 # 041f — OpenAI Responses runs a session

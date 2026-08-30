@@ -31,6 +31,6 @@ modernize:
 # try to parse the index itself as a spec.
 spec:
   dir: specs
-  status: [draft, implemented, built, deferred, superseded]
+  status: [draft, designed, implemented, built, deferred, superseded]
   require: [title, status]
   exclude: [BACKLOG.md, README.md]

@@ -1,5 +1,6 @@
 ---
 title: "Taking a reproduction out"
+status: built
 ---
 
 # 006f — Taking a reproduction out

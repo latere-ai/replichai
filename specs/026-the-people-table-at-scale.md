@@ -1,5 +1,6 @@
 ---
 title: "The people table at scale"
+status: designed
 ---
 
 # 026 — The people table at scale
