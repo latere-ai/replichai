@@ -85,8 +85,11 @@ spec:
               value: mg.latere.ai
             - name: MAILGUN_REGION
               value: eu
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://otel-collector.observability.svc:4318
+            # No OTEL_EXPORTER_OTLP_ENDPOINT here on purpose. The Dash0 operator
+            # injects it, pointing at the node-local collector, and skips any
+            # container that already sets it, emitting only a Warning event. A
+            # value here would leave this service exporting to the retired
+            # collector while the namespace looked migrated.
           resources:
             requests:
               cpu: 20m
