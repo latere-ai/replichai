@@ -57,10 +57,7 @@ func Create(inst Instrument, source Source, dataset *Dataset, projectID string) 
 		datasetID = dataset.ID
 	}
 
-	id, err := NewID()
-	if err != nil {
-		return nil, err
-	}
+	id := NewID()
 	return &Experiment{
 		ID:        id,
 		ProjectID: projectID,

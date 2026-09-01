@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 )
 
 // This spec ships before Postgres (007b sits before 006b in the build
@@ -102,10 +101,10 @@ func Checksum(content []byte) string {
 
 // NewID mints a random identifier for an experiment or dataset. Creation logic
 // assigns it; the stores only persist what they are given.
-func NewID() (string, error) {
+func NewID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("mint id: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
+	// crypto/rand.Read never returns an error since Go 1.24: it fills the
+	// buffer or aborts the process.
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }

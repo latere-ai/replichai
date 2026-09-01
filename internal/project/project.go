@@ -19,7 +19,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"slices"
 	"time"
 
@@ -444,10 +443,10 @@ type SessionMover interface {
 }
 
 // newID mints a random project identifier.
-func newID() (string, error) {
+func newID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("mint project id: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
+	// crypto/rand.Read never returns an error since Go 1.24: it fills the
+	// buffer or aborts the process.
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }

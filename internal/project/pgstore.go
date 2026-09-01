@@ -87,10 +87,7 @@ func (s *PGStore) Create(ctx context.Context, owner, title string) (Project, err
 	if strings.TrimSpace(owner) == "" {
 		return Project{}, ErrNoOwner
 	}
-	id, err := newID()
-	if err != nil {
-		return Project{}, err
-	}
+	id := newID()
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO projects (id, owner, title, visibility, created_at)
 		VALUES ($1,$2,$3,$4,$5)

@@ -152,10 +152,7 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 		s.jobs[id] = existing
 		return existing.withCost(), nil
 	}
-	id, err := newID()
-	if err != nil {
-		return Job{}, err
-	}
+	id := newID()
 	imported := Job{
 		ID: id, Kind: KindAudit, Principal: in.Principal, ProjectID: in.Project, Ref: in.Ref,
 		PaperKey: in.PaperKey, Origin: OriginLocal, ExternalID: in.ExternalID,
@@ -191,10 +188,7 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
-	id, err := newID()
-	if err != nil {
-		return Job{}, err
-	}
+	id := newID()
 	now := s.clock()
 	j := Job{
 		ID: id, Kind: sub.Kind, Principal: sub.Principal, ProjectID: sub.Project, Ref: sub.Ref,

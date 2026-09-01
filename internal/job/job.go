@@ -297,10 +297,10 @@ func illegal(from, to Phase) error {
 }
 
 // newID mints a random job identifier.
-func newID() (string, error) {
+func newID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("mint job id: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
+	// crypto/rand.Read never returns an error since Go 1.24: it fills the
+	// buffer or aborts the process.
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
