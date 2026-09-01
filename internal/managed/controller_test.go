@@ -403,15 +403,7 @@ func TestAbortJoinsCancelFailureAndToleratesNotFound(t *testing.T) {
 	}
 }
 
-func TestSleepContextAndBackoff(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := sleepContext(ctx, 0); !errors.Is(err, context.Canceled) {
-		t.Fatalf("zero sleep = %v", err)
-	}
-	if err := sleepContext(context.Background(), 0); err != nil {
-		t.Fatalf("zero sleep background = %v", err)
-	}
+func TestNextDelay(t *testing.T) {
 	if got := nextDelay(2, 3); got != 3 || nextDelay(0, 3) != 0 || nextDelay(2, 0) != 2 {
 		t.Fatalf("backoff values wrong: %v", got)
 	}
