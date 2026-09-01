@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pkg/atomicfile"
+
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
@@ -41,11 +43,7 @@ func (s State) Save(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, append(body, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(temporary, path)
+	return atomicfile.Write(path, append(body, '\n'), 0o600)
 }
 
 // LoadState reads a project's progress back.
