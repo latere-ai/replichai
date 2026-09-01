@@ -50,10 +50,7 @@ func (s *MemStore) Create(_ context.Context, owner, title string) (Project, erro
 	if strings.TrimSpace(owner) == "" {
 		return Project{}, ErrNoOwner
 	}
-	id, err := newID()
-	if err != nil {
-		return Project{}, err
-	}
+	id := newID()
 	p := Project{ID: id, Owner: owner, Title: title, Visibility: VisibilityPrivate, CreatedAt: s.clock()}
 	s.mu.Lock()
 	defer s.mu.Unlock()

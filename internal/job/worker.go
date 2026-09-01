@@ -120,10 +120,7 @@ func defaultWorkerID() string {
 	if host, err := os.Hostname(); err == nil && host != "" {
 		return host
 	}
-	id, err := newID()
-	if err != nil {
-		return "worker"
-	}
+	id := newID()
 	return id
 }
 
