@@ -30,6 +30,8 @@ import (
 	"syscall"
 	"time"
 
+	"latere.ai/x/pkg/retry"
+
 	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/audit"
@@ -930,29 +932,25 @@ func collectArtifacts(dir string) ([]provider.Artifact, error) {
 // otherwise fail an audit's identity resolution.
 type httpFetcher struct{ timeout time.Duration }
 
-// fetchAttempts is how many times a fetch is tried before giving up.
-const fetchAttempts = 3
+// fetchPolicy is how a fetch is retried: three attempts, one then two seconds
+// apart, before giving up.
+var fetchPolicy = retry.Policy{MaxAttempts: 3, Base: time.Second, Max: 2 * time.Second, Jitter: -1}
 
 func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
-	var lastErr error
-	for attempt := range fetchAttempts {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(time.Duration(attempt) * time.Second): // linear backoff
-			}
+	var body []byte
+	err := retry.Do(ctx, fetchPolicy, func(ctx context.Context) error {
+		var retryable bool
+		var err error
+		body, retryable, err = h.fetchOnce(ctx, url)
+		if err != nil && !retryable {
+			return retry.Stop(err)
 		}
-		body, retryable, err := h.fetchOnce(ctx, url)
-		if err == nil {
-			return body, nil
-		}
-		lastErr = err
-		if !retryable {
-			return nil, err
-		}
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, lastErr
+	return body, nil
 }
 
 // httpClient is this package's outbound client. Its transport is instrumented,
