@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pkg/sanitize"
+
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -167,7 +169,8 @@ func capContent(s string) string {
 	if len(s) <= maxEventMDBytes {
 		return s
 	}
-	return s[:maxEventMDBytes] + fmt.Sprintf("\n…[%d bytes elided; see transcript.jsonl]", len(s)-maxEventMDBytes)
+	kept := sanitize.TruncateBytes(s, maxEventMDBytes)
+	return kept + fmt.Sprintf("\n…[%d bytes elided; see transcript.jsonl]", len(s)-len(kept))
 }
 
 // TranscriptLeak is one event whose content carries a redistribution risk.
