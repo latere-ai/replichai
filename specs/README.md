@@ -56,7 +56,7 @@ This has been run, which is the only reason to believe any of it. A session driv
 
 **Built:** [012](012-a-project-holds-papers.md) separates the two acts 006j fused. A paper becomes a row a project holds (`project_papers`, keyed by the `paper_key` a session already carries), not an argument to starting a run: create records papers and enqueues nothing, and a member starts a session per paper from the project screen. Creating a project stopped being spending — which is what used to refuse an empty wallet at the door, for the act of naming a container — so the credit check is asked once, on the Start button, with the project's pot on the same screen. `POST /papers` is retired; four routes under `/projects/{id}` replace it, and `fundNewProject`, `undoProject`, the 422, and the frontend's partial-success apparatus all go with the enqueue that needed them.
 
-**Built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person credit) instead of `curl` and a redeploy; [011](011-what-a-session-costs.md) spends against the numbers it stores — one check inside `Enqueue`, in the inserting transaction, settled in the transaction that ends the session; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has. [006l](006l-the-session-quota.md) was the first attempt at that meter and is superseded, kept for the argument 011 inherits.
+**Built — running the seed phase from inside the app:** [006k](006k-the-platform-admin-console.md) gives the admin a screen (grants, promotions, the platform policy row, per-person credit) instead of `curl` and a redeploy; [011](011-what-a-session-costs.md) spends against the numbers it stores — one check inside `Enqueue`, in the inserting transaction, settled in the transaction that ends the session; [006m](006m-the-signed-in-person.md) renders the name and avatar the IdP already has. [006l](.archive/006l-the-session-quota.md) was the first attempt at that meter and is superseded, kept for the argument 011 inherits.
 
 **Built:** [006n](006n-who-signed-off.md) gives the public sign-off a person — a researcher profile (name, institution, public contact, ORCID, Scholar) kept in settings, prefilled into a step-by-step publish wizard, and **snapshotted onto the project** so a later profile edit never rewrites a published attestation. The signer's own email is derived from the session and stored redacted; attestation v2.
 
@@ -187,7 +187,7 @@ Built, and every acceptance criterion it set itself holds.
 | 006i | [Server-side mount and publish](006i-server-side-mount-and-publish.md) | built | 006f, 006b |
 | 006j | [The New-project flow](006j-the-new-project-flow.md) | built | 006g, 006c |
 | 006k | [The platform admin console](006k-the-platform-admin-console.md) | built; its policy row reshaped by 011 | 006c, 006b |
-| 006l | [The session quota](006l-the-session-quota.md) | **superseded by 011** | 006k, 006b, 006g, 006c |
+| 006l | [The session quota](.archive/006l-the-session-quota.md) | **superseded by 011** | 006k, 006b, 006g, 006c |
 | 006m | [The signed-in person](006m-the-signed-in-person.md) | built | 006c |
 | 006n | [Who signed off](006n-who-signed-off.md) | built | 006f, 006g |
 | 006o | [Withdrawing a publication](006o-withdrawing-a-publication.md) | built | 006f, 006n |

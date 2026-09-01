@@ -33,9 +33,15 @@ modernize:
 # try to parse the index itself as a spec.
 spec:
   dir: specs
+  # `superseded` is the terminal status: the work moved to the spec that
+  # replaced it. `built` and `implemented` are shipped specs kept at the root,
+  # because this tree's table is the record and a reader needs them there.
   status: [draft, designed, implemented, built, deferred, superseded]
   require: [title, status]
   exclude: [BACKLOG.md, README.md]
+  archive:
+    dir: .archive
+    statuses: [superseded]
 
 golangci:
   extra:

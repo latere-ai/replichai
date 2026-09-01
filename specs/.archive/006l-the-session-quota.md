@@ -1,18 +1,18 @@
 ---
-title: "The session quota *(superseded by [011](011-what-a-session-costs.md))*"
+title: "The session quota *(superseded by [011](../011-what-a-session-costs.md))*"
 status: superseded
 ---
 
-# 006l — The session quota *(superseded by [011](011-what-a-session-costs.md))*
+# 006l — The session quota *(superseded by [011](../011-what-a-session-costs.md))*
 
-**Status:** superseded by [011](011-what-a-session-costs.md), which replaces the session counter with money. Nothing described below is in the build: the counter, `jobs.charged_to`, `projects.sponsored`, the `charge_to` picker and the `quota_exceeded` code are all removed, and what limits a run is now what it costs.
+**Status:** superseded by [011](../011-what-a-session-costs.md), which replaces the session counter with money. Nothing described below is in the build: the counter, `jobs.charged_to`, `projects.sponsored`, the `charge_to` picker and the `quota_exceeded` code are all removed, and what limits a run is now what it costs.
 
-It stays here, unarchived, because it is the record of *why* the counter was built the way it was — and 011 inherits most of that argument rather than overturning it. The check that lives inside `Enqueue` rather than in a handler, serialised in the writing transaction because a read-then-insert races; the refusal that is a 402 rather than a 500; the derived count rather than a stored one. 011 changes the unit and the payer, not those. What it does overturn is stated there and stated plainly: the payer moves from a person to the project, which deletes sponsorship outright, and "failed is refunded" dies because a run that burned real tokens has to be paid for.
+It stays in the archive because it is the record of *why* the counter was built the way it was — and 011 inherits most of that argument rather than overturning it. The check that lives inside `Enqueue` rather than in a handler, serialised in the writing transaction because a read-then-insert races; the refusal that is a 402 rather than a 500; the derived count rather than a stored one. 011 changes the unit and the payer, not those. What it does overturn is stated there and stated plainly: the payer moves from a person to the project, which deletes sponsorship outright, and "failed is refunded" dies because a run that burned real tokens has to be paid for.
 
 **Built beyond the original scope, and still standing:** submitting into a project was owner-only before this spec, which left sponsorship with no consumer. A project's collaborators may open sessions in it (`mayWorkInProject`); a stranger still cannot, and viewing a public project confers nothing. `GET /projects/{id}` reports `may_submit` so the client can hide the form it would be refused for. Sponsorship is gone; this outlived it, and 011 leans on it — the project pays, so anyone who may work in a project spends its credits.
 
-**Scope (as built, now superseded):** how many replication sessions an invited person may run, who pays for a session started in someone else's project, and where the remaining allowance is shown. One structural check inside `Enqueue`, in the transaction that inserts the row. A child of [006](006-web-application.md).
-**Depends on:** [006k](006k-the-platform-admin-console.md) (the allowance an admin sets), [006b](006b-job-model-and-persistence.md) (the job store and its enqueue guard), [006g](006g-projects-and-replication-sessions.md) (projects own sessions), [006c](006c-identity-and-access.md) (the tier, project membership).
+**Scope (as built, now superseded):** how many replication sessions an invited person may run, who pays for a session started in someone else's project, and where the remaining allowance is shown. One structural check inside `Enqueue`, in the transaction that inserts the row. A child of [006](../006-web-application.md).
+**Depends on:** [006k](../006k-the-platform-admin-console.md) (the allowance an admin sets), [006b](../006b-job-model-and-persistence.md) (the job store and its enqueue guard), [006g](../006g-projects-and-replication-sessions.md) (projects own sessions), [006c](../006c-identity-and-access.md) (the tier, project membership).
 
 ## Problem
 
