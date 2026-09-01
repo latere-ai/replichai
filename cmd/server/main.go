@@ -32,7 +32,7 @@ import (
 	// package with the same name would read as a shadowing accident.
 	paystripe "latere.ai/x/pay/stripe"
 	xemail "latere.ai/x/pkg/email"
-	"latere.ai/x/pkg/oidclogin"
+	"latere.ai/x/pkg/oidc"
 	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -428,12 +428,12 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 		return nil, err
 	}
 	issuer := envOr("AUTH_ISSUER", "https://auth.latere.ai")
-	auth, err := oidclogin.New(ctx, oidclogin.Config{
+	auth, err := oidc.NewProvider(ctx, oidc.ProviderConfig{
 		Issuer:       issuer,
 		ClientID:     os.Getenv("AUTH_CLIENT_ID"),
 		ClientSecret: os.Getenv("AUTH_CLIENT_SECRET"),
 		RedirectURL:  envOr("AUTH_REDIRECT_URL", baseURL+"/callback"),
-		Provider:     envOr("AUTH_PROVIDER", "latere"),
+		Kind:         envOr("AUTH_PROVIDER", "latere"),
 	})
 	if err != nil {
 		return nil, err

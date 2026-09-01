@@ -13,24 +13,24 @@ import (
 	"testing"
 
 	"golang.org/x/oauth2"
-	"latere.ai/x/pkg/oidclogin"
+	"latere.ai/x/pkg/oidc"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
 )
 
 type fakeOIDC struct {
-	identity               oidclogin.Identity
+	identity               oidc.Identity
 	exchangeErr, verifyErr error
 }
 
-func (fakeOIDC) AuthCodeURL(state, nonce, verifier string) string {
+func (fakeOIDC) AuthCodeURL(state, nonce, verifier string, _ ...oauth2.AuthCodeOption) string {
 	return "https://issuer.example/auth?state=" + state + "&nonce=" + nonce
 }
 func (f fakeOIDC) Exchange(context.Context, string, string) (*oauth2.Token, error) {
 	return &oauth2.Token{AccessToken: "at"}, f.exchangeErr
 }
-func (f fakeOIDC) VerifyIDToken(context.Context, *oauth2.Token, string) (oidclogin.Identity, error) {
+func (f fakeOIDC) VerifyIDToken(context.Context, *oauth2.Token, string) (oidc.Identity, error) {
 	return f.identity, f.verifyErr
 }
 
@@ -46,7 +46,7 @@ func newTestLogin(t *testing.T, client OIDCClient, acc access.Access) *Login {
 // AC1: only sub and the verified email survive the mapping; roles, name, org,
 // and everything else in the token are dropped.
 func TestSessionFromIdentityDropsClaims(t *testing.T) {
-	id := oidclogin.Identity{
+	id := oidc.Identity{
 		Subject: "user-1",
 		Email:   "u@example.com",
 		Name:    "Real Name",
@@ -83,7 +83,7 @@ func TestHandleLoginSetsFlowCookieAndRedirects(t *testing.T) {
 }
 
 func TestCallbackHappyPathSetsSession(t *testing.T) {
-	l := newTestLogin(t, fakeOIDC{identity: oidclogin.Identity{
+	l := newTestLogin(t, fakeOIDC{identity: oidc.Identity{
 		Subject: "u1", Email: "u@example.com", Raw: map[string]any{"email_verified": true},
 	}}, access.NewMemStore())
 
@@ -113,7 +113,7 @@ func TestCallbackHappyPathSetsSession(t *testing.T) {
 func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	// The ID token yields a sub but no email.
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "uuid-1", Raw: map[string]any{}}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "uuid-1", Raw: map[string]any{}}}
 	userInfo := func(_ context.Context, _ string) (Profile, error) {
 		return Profile{Email: "hi@changkun.de"}, nil
 	}
@@ -153,7 +153,7 @@ func TestCallbackBindsProjectMemberships(t *testing.T) {
 		t.Fatalf("precondition: the invitee holds nothing before signing in, got %v", ids)
 	}
 
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "invitee-sub", Email: "invitee@example.com"}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "invitee-sub", Email: "invitee@example.com"}}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, nil).
 		BindMemberships(members)
 	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
@@ -184,7 +184,7 @@ func TestCallbackBindsProjectMemberships(t *testing.T) {
 func TestCallbackAdmitsAnyoneWhoSignsIn(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	acc := access.NewMemStore()
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "newcomer", Email: "new@example.com"}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "newcomer", Email: "new@example.com"}}
 	l := NewLogin(client, codec, acc, "https://replichai.latere.ai", false, nil)
 
 	p := access.Principal{Sub: "newcomer", Email: "new@example.com"}
@@ -212,7 +212,7 @@ func TestCallbackDoesNotDemoteASeededAdmin(t *testing.T) {
 	if err := acc.SeedGrant(ctx, "boss@example.com", access.TierAdmin); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "boss", Email: "boss@example.com"}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "boss", Email: "boss@example.com"}}
 	l := NewLogin(client, codec, acc, "https://replichai.latere.ai", false, nil)
 
 	callback(t, l)
@@ -241,7 +241,7 @@ func TestCallbackDoesNotReadmitARevokedPrincipal(t *testing.T) {
 		t.Fatalf("revoke: %v", err)
 	}
 
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "banned-sub", Email: "banned@example.com"}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "banned-sub", Email: "banned@example.com"}}
 	l := NewLogin(client, codec, acc, "https://replichai.latere.ai", false, nil)
 	callback(t, l)
 
@@ -258,7 +258,7 @@ func TestCallbackDoesNotReadmitARevokedPrincipal(t *testing.T) {
 // session is still established and the next request retries the grant.
 func TestCallbackSurvivesAnAdmissionFailure(t *testing.T) {
 	codec, _ := NewCodec(testKey)
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "u1", Email: "u@example.com"}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "u1", Email: "u@example.com"}}
 	l := NewLogin(client, codec, failingAccess{Access: access.NewMemStore()}, "https://replichai.latere.ai", false, nil)
 
 	w := callback(t, l)
@@ -292,7 +292,7 @@ func callback(t *testing.T, l *Login) *httptest.ResponseRecorder {
 // sign-in itself.
 func TestCallbackSurvivesABindFailure(t *testing.T) {
 	codec, _ := NewCodec(testKey)
-	client := fakeOIDC{identity: oidclogin.Identity{Subject: "u1", Email: "u@example.com"}}
+	client := fakeOIDC{identity: oidc.Identity{Subject: "u1", Email: "u@example.com"}}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, nil).
 		BindMemberships(failingMembership{})
 	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
