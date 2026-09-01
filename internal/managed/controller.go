@@ -10,6 +10,8 @@ import (
 	"math"
 	"reflect"
 	"time"
+
+	"latere.ai/x/pkg/wait"
 )
 
 // RuntimeRouter chooses a runtime for a new specification or a durable ref.
@@ -160,7 +162,7 @@ func NewController(router RuntimeRouter, options ...ControllerOption) *Controlle
 	controller := &Controller{
 		router: router,
 		policy: DefaultWaitPolicy(),
-		clock:  controllerClock{now: time.Now, sleep: sleepContext},
+		clock:  controllerClock{now: time.Now, sleep: wait.Sleep},
 	}
 	for _, option := range options {
 		option(controller)
@@ -517,23 +519,4 @@ func nextDelay(current, maximum time.Duration) time.Duration {
 		return current
 	}
 	return time.Duration(math.Min(float64(current*2), float64(maximum)))
-}
-
-func sleepContext(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			return nil
-		}
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }

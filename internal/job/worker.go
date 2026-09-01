@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"latere.ai/x/pkg/wait"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -200,7 +202,7 @@ func withWorkerSleep(f func(context.Context, time.Duration) error) WorkerOption 
 // by a person looking at a stuck session, and "replichai-6c786cc9c6-c577z" tells
 // them which pod to pull logs from where a random id would not.
 func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
-	w := &Worker{store: store, runner: runner, poll: time.Second, sleep: sleepCtx,
+	w := &Worker{store: store, runner: runner, poll: time.Second, sleep: wait.Sleep,
 		sweepEvery: LeaseTTL, leaseTTL: LeaseTTL, id: defaultWorkerID(), running: map[string]context.CancelFunc{}}
 	for _, opt := range opts {
 		opt(w)
@@ -665,24 +667,4 @@ func (w *Worker) fail(id string, cause error) error {
 		return fmt.Errorf("record session %s failed: %w", id, err)
 	}
 	return nil
-}
-
-// sleepCtx waits for d, or returns early if ctx is canceled.
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			return nil
-		}
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
 }

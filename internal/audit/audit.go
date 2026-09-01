@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pkg/wait"
+
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -257,7 +259,7 @@ func New(p provider.Provider, m method.Method, opts ...Option) *Auditor {
 		pollInterval: DefaultPollInterval,
 		timeout:      DefaultTimeout,
 		pollFailures: DefaultPollFailures,
-		sleep:        sleepCtx,
+		sleep:        wait.Sleep,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -489,24 +491,4 @@ func safeJoin(root, rel string) (string, error) {
 		return "", fmt.Errorf("%w: %q", ErrUnsafePath, rel)
 	}
 	return target, nil
-}
-
-// sleepCtx waits for d, or returns early if ctx is canceled.
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			return nil
-		}
-	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }

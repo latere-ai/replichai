@@ -613,25 +613,6 @@ func TestWaitSurfacesAPollFailure(t *testing.T) {
 	}
 }
 
-func TestSleepCtxHonorsBothPathsAndCancellation(t *testing.T) {
-	ctx := context.Background()
-	if err := sleepCtx(ctx, 0); err != nil {
-		t.Errorf("a zero delay should return immediately: %v", err)
-	}
-	if err := sleepCtx(ctx, time.Millisecond); err != nil {
-		t.Errorf("a short delay should elapse cleanly: %v", err)
-	}
-
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := sleepCtx(canceled, 0); !errors.Is(err, context.Canceled) {
-		t.Errorf("zero delay ignored cancellation: %v", err)
-	}
-	if err := sleepCtx(canceled, time.Hour); !errors.Is(err, context.Canceled) {
-		t.Errorf("long delay ignored cancellation: %v", err)
-	}
-}
-
 func TestDefaultPackagesAreIndependentCopies(t *testing.T) {
 	// Callers must not be able to mutate the shared default.
 	first := DefaultPackages()
