@@ -7,10 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"slices"
 	"strings"
 	"time"
+
+	"latere.ai/x/pkg/relpath"
 
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -376,8 +377,8 @@ func safeRepoPath(p string) (string, bool) {
 	if s == "" || strings.HasPrefix(s, "/") {
 		return "", false
 	}
-	s = path.Clean(s)
-	if s == "." || s == ".." || strings.HasPrefix(s, "../") {
+	s, err := relpath.Clean(s)
+	if err != nil || s == "." {
 		return "", false
 	}
 	if s == ".git" || strings.HasPrefix(s, ".git/") {

@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"latere.ai/x/pkg/relpath"
 )
 
 // DefaultMaxLocatorBytes is the locator bound callers pass when they have no
@@ -205,8 +207,8 @@ func safeRelativePath(value string) error {
 	if value == "" || strings.Contains(value, "\\") || strings.HasPrefix(value, "/") {
 		return fmt.Errorf("must be a non-empty relative slash path")
 	}
-	clean := path.Clean(value)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || clean != value {
+	clean, err := relpath.Clean(value)
+	if err != nil || clean == "." || clean != value {
 		return fmt.Errorf("must be a clean contained path")
 	}
 	return nil

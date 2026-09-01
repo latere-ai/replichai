@@ -13,6 +13,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"latere.ai/x/pkg/relpath"
 )
 
 // FSStore persists rows as JSON files under a directory, so an experiment
@@ -201,8 +203,8 @@ func NewFSArtifactStore(dir string) (*FSArtifactStore, error) {
 // store must never write outside its root, and a caller that asked for one
 // deserves the error rather than a silently clamped path.
 func (a *FSArtifactStore) keyName(key string) (string, error) {
-	clean := path.Clean(filepath.ToSlash(key))
-	if path.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+	clean, err := relpath.Clean(filepath.ToSlash(key))
+	if err != nil || clean == "." {
 		return "", fmt.Errorf("artifact key escapes the store: %q", key)
 	}
 	return clean, nil
