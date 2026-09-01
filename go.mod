@@ -11,7 +11,7 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 	golang.org/x/oauth2 v0.36.0
 	latere.ai/x/pay v0.1.0
-	latere.ai/x/pkg v0.48.0
+	latere.ai/x/pkg v0.50.0
 )
 
 require (
