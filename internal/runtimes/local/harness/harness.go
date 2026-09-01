@@ -20,6 +20,8 @@ import (
 	"slices"
 	"strings"
 
+	"latere.ai/x/pkg/sanitize"
+
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
@@ -290,8 +292,9 @@ func Truncate(content string) string {
 	if len(content) <= MaxContentBytes {
 		return content
 	}
-	return content[:MaxContentBytes] +
-		fmt.Sprintf("\n…[%d bytes elided; the whole value is in this stage's raw log]", len(content)-MaxContentBytes)
+	kept := sanitize.TruncateBytes(content, MaxContentBytes)
+	return kept +
+		fmt.Sprintf("\n…[%d bytes elided; the whole value is in this stage's raw log]", len(content)-len(kept))
 }
 
 // Registry is the set of harnesses a build can drive, fixed at construction the

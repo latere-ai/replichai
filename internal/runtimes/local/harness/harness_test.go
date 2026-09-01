@@ -6,6 +6,7 @@ package harness
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -50,6 +51,19 @@ func TestTruncateMarksAndPointsAtTheRawLog(t *testing.T) {
 	got := Truncate(long)
 	if len(got) <= MaxContentBytes || !strings.Contains(got, "elided") || !strings.Contains(got, "raw log") {
 		t.Fatalf("truncation lost its marker: %q", got[len(got)-120:])
+	}
+}
+
+// A cut that lands inside a multi-byte rune must move back to the rune
+// boundary: the truncated content is persisted and re-sent to a model.
+func TestTruncateNeverSplitsARune(t *testing.T) {
+	long := strings.Repeat("語", MaxContentBytes/3+1) // 3 bytes each, so the cap falls mid-rune
+	got := Truncate(long)
+	if !utf8.ValidString(got) {
+		t.Fatal("truncation produced invalid UTF-8")
+	}
+	if !strings.HasPrefix(got, strings.Repeat("語", MaxContentBytes/3)) {
+		t.Fatal("truncation dropped more than the partial rune")
 	}
 }
 

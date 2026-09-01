@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -130,5 +131,18 @@ func TestTranscriptLeaksCleanTranscript(t *testing.T) {
 	}
 	if leaks := TranscriptLeaks(events); len(leaks) != 0 {
 		t.Errorf("a clean transcript should not be flagged, got %+v", leaks)
+	}
+}
+
+// A cap that lands inside a multi-byte rune must move back to the rune
+// boundary: the capped content is published as evidence.
+func TestCapContentNeverSplitsARune(t *testing.T) {
+	long := strings.Repeat("語", maxEventMDBytes/3+1) // 3 bytes each, so the cap falls mid-rune
+	got := capContent(long)
+	if !utf8.ValidString(got) {
+		t.Fatal("capContent produced invalid UTF-8")
+	}
+	if !strings.HasPrefix(got, strings.Repeat("語", maxEventMDBytes/3)) || !strings.Contains(got, "elided") {
+		t.Fatalf("capContent lost content or its marker: %q", got[len(got)-60:])
 	}
 }
