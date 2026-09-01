@@ -10,7 +10,7 @@ status: built
 **What [011](011-what-a-session-costs.md) changed, and what it did not.** Everything structural here stands: one pinned policy row, fail-closed to a compiled-in constant, admin-only and re-checked in the store; every route enumerated and guarded; one screen with two cards. What changed is what the row *holds* and what a top-up *is*. The row's `default_session_quota` became a start reserve, an overdraft floor and a rate card, all in micro-USD; the email-keyed `quota_topups` table is gone, replaced by a wallet balance in the ledger, which records who granted it and when — the audit trail a table of integers never had. The routes below are read with that substitution. The `Store` interface shrank with the table: `SetTopup`, `Topups` and `Allowance` are gone, leaving `Settings` and `SetSettings`, so acceptance criteria 5 and 6 are answered by 011's ledger tests rather than met here. The row has kept growing since — [022b](022b-checkout-and-the-webhook.md)'s purchase spread and [039](039-a-description-can-be-drafted.md)'s draft model sit beside the reserve, the floor and the rate card, and `MountAdmin` enumerates their routes alongside the six below.
 **Scope:** the admin's own screen. A `platform_settings` row this deployment owns, per-person grants, and the frontend Admin tab that drives them together with the grant endpoints [006c](006c-identity-and-access.md) already built. It adds no authority model: admin tier is 006c's, and every route here is the same `RequireTier(admin)` shape. A child of [006](006-web-application.md).
 **Depends on:** [006c](006c-identity-and-access.md) (the tier, the grant endpoints, the store-level `requireAdmin` re-check), [006b](006b-job-model-and-persistence.md) (Postgres and the per-package migration idiom).
-**Consumed by:** [011](011-what-a-session-costs.md), which enforces the numbers this spec stores (and [006l](006l-the-session-quota.md), which did before it).
+**Consumed by:** [011](011-what-a-session-costs.md), which enforces the numbers this spec stores (and [006l](.archive/006l-the-session-quota.md), which did before it).
 
 ## Problem
 
@@ -99,7 +99,7 @@ type Store interface {
 
 ## Out of scope
 
-- **Enforcing the number.** Holding a session against a balance, settling it, and displaying what is left are [011](011-what-a-session-costs.md) (and were [006l](006l-the-session-quota.md) before it). This spec stores the policy; that one spends against it.
+- **Enforcing the number.** Holding a session against a balance, settling it, and displaying what is left are [011](011-what-a-session-costs.md) (and were [006l](.archive/006l-the-session-quota.md) before it). This spec stores the policy; that one spends against it.
 - **The used/limit column in the grant table.** It needs 006l's counter, and landed with it: the column is composed here from the settings row and the top-up rather than read through `platform.Allowance`, because resolving an unbound grant by email would *bind* it — a read must never write.
 - **Retiring `ADMIN_EMAILS`.** The bootstrap stays: an empty database must still yield a first admin without a console to admit them. (`SEED_EMAILS` sat beside it and was removed by [006q](006q-sign-in-is-open-budget-is-not.md), which granted what it pre-granted.)
 - **An audit log of admin actions.** `updated_by`/`granted_by` record the last writer, not a history. A real log is its own spec.

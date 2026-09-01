@@ -9,7 +9,7 @@ status: built
 
 **Half superseded by [011](011-what-a-session-costs.md).** The open sign-in stands entirely — it is the whole point of this spec and 011 does not touch it. What 011 replaces is the *thing* that limits: a session counter becomes a credit balance, so `DefaultSessionQuota` and the zero it was set to are gone, along with the migration that lowered it and the tests that pinned it. The sentences below that name the counter are read as history; the sentences about who may sign in are read as current. Where the two are entangled, this file says which is which inline.
 **Scope:** anyone may sign in and look around; nobody may spend without budget. The admission decision moves off the grant table and onto the quota, and the grant table becomes a registry of who has signed in rather than a list of who may. A rework of [006c](006c-identity-and-access.md)'s gate.
-**Depends on:** [006c](006c-identity-and-access.md) (the fail-closed gate and the grant store), [006l](006l-the-session-quota.md) (the number that did the limiting, itself superseded by [011](011-what-a-session-costs.md)), [006k](006k-the-platform-admin-console.md) (where an admin sets it).
+**Depends on:** [006c](006c-identity-and-access.md) (the fail-closed gate and the grant store), [006l](.archive/006l-the-session-quota.md) (the number that did the limiting, itself superseded by [011](011-what-a-session-costs.md)), [006k](006k-the-platform-admin-console.md) (where an admin sets it).
 
 ## Problem
 
