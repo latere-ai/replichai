@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
-	"latere.ai/x/pkg/oidclogin"
+	"latere.ai/x/pkg/oidc"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
@@ -25,13 +25,13 @@ import (
 // sessionTTL is how long a signed-in session lasts before a re-login.
 const sessionTTL = 12 * time.Hour
 
-// OIDCClient is the slice of oidclogin.Authenticator the login uses. Behind an
+// OIDCClient is the slice of oidc.Provider the login uses. Behind an
 // interface so the callback flow tests offline against a fake; the real
-// *oidclogin.Authenticator satisfies it.
+// *oidc.Provider satisfies it.
 type OIDCClient interface {
-	AuthCodeURL(state, nonce, verifier string) string
+	AuthCodeURL(state, nonce, verifier string, extra ...oauth2.AuthCodeOption) string
 	Exchange(ctx context.Context, code, verifier string) (*oauth2.Token, error)
-	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidclogin.Identity, error)
+	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidc.Identity, error)
 }
 
 // Profile is what /userinfo yields: the email the gate binds a grant on, and
@@ -103,7 +103,7 @@ func (l *Login) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	fs := flowState{
 		State:    randToken(),
 		Nonce:    randToken(),
-		Verifier: oidclogin.GenerateVerifier(),
+		Verifier: oidc.GenerateVerifier(),
 		Next:     safeNext(r.URL.Query().Get("next")),
 	}
 	sealed, err := l.codec.Seal(fs)
@@ -328,7 +328,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 // sub and email. Roles and every other claim are dropped — no IdP-issued
 // authority may reach a grant decision (006c AC1). The display claims are added
 // afterwards, from /userinfo, and confer nothing.
-func sessionFromIdentity(id oidclogin.Identity) Session {
+func sessionFromIdentity(id oidc.Identity) Session {
 	return Session{Sub: id.Subject, Email: id.Email}
 }
 

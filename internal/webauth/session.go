@@ -45,7 +45,7 @@ const (
 )
 
 // Codec seals and opens small values into authenticated, encrypted cookie
-// strings with AES-256-GCM. Hand-rolled here on purpose: oidclogin owns the
+// strings with AES-256-GCM. Hand-rolled here on purpose: oidc owns the
 // token flow but not session storage, and pkg/oidc's codec is welded to its own
 // login Client, so this is the one place the session crypto lives — kept to this
 // file and covered by round-trip and tamper tests.
