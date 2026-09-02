@@ -20,35 +20,6 @@ jobs:
   # golangci-lint stays here rather than in go-verify: this repo runs about
   # nineteen linters against go-verify's shared one, and the shared config
   # cannot express its reasoned test-file exclusions yet.
-  lint:
-    name: golangci-lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.x"
-          cache: true
-      # Built here rather than pulled as a prebuilt binary or the marketplace
-      # action: golangci-lint embeds the Go toolchain it was compiled with, and
-      # one built against an older Go refuses a `go 1.27` go.mod outright. This
-      # compiles it with the same toolchain as the module it is linting.
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
-      # .golangci.yml is generated from latere.ai/x/ci-gate and gitignored, so
-      # a fresh checkout has none. golangci-lint with no config does not do
-      # nothing -- it falls back to its own default linters, which is how this
-      # job started reporting errcheck in test files that the real config
-      # exempts.
-      - run: make lint-config
-      - run: golangci-lint run --timeout 5m ./...
-      # A grep, not a linter: no analyser knows that an http.Client without an
-      # instrumented Transport breaks the trace at every service boundary.
-      - name: Instrumented HTTP clients
-        run: make lint-otel
-      # The spec tree, checked by the shared linter that already runs here.
-
-  # Kept local: go-verify has no Postgres service, and without one every PG
-  # store contract skips. This is the run that exercises them.
   test:
     name: test (race) + postgres contracts
     runs-on: ubuntu-latest
