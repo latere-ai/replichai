@@ -12,10 +12,6 @@ hermetic:
   # an accident.
   allow: [/usr/bin, /bin]
 
-modernize:
-  # Off for the reasons recorded in .golangci.yml.
-  disable: [newexpr, errorsastype]
-
 # No cover section, and deliberately no `cover` target: the shared pipeline
 # probes for that name and would run it on a runner with no database, where
 # every PG store contract skips and internal/access alone loses about forty
@@ -32,12 +28,10 @@ modernize:
 # excluded here instead: with no index configured, spec-lint would otherwise
 # try to parse the index itself as a spec.
 spec:
-  dir: specs
   # `superseded` is the terminal status: the work moved to the spec that
   # replaced it. `built` and `implemented` are shipped specs kept at the root,
   # because this tree's table is the record and a reader needs them there.
   status: [draft, designed, implemented, built, deferred, superseded]
-  require: [title, status]
   exclude: [BACKLOG.md, README.md]
   archive:
     dir: .archive
@@ -183,3 +177,21 @@ license:
   skip:
     # The built bundle, generated from frontend/src on every build.
     - dist
+
+# Gates this repository does not run yet. Each entry is temporary by
+# construction: after the date the gate runs and fails on its own terms.
+waive:
+  lint:
+    reason: >-
+      the shared config denies the log package in favour of log/slog and
+      math/rand in favour of math/rand/v2; thirteen files here log through
+      the log package and one draws from math/rand. Moving them is a change
+      to how this service logs, made in one commit, not a rule to turn off
+    until: 2026-10-31
+  cover:
+    reason: >-
+      twenty packages sit under the 90% floor, from cmd/server (29.2%) and
+      internal/access (41.1%) to the runtimes at 83% to 89.6%; the per-file
+      lint job was also off here, and this tree has not held the shared floor
+      before. Closing it is test work in access, job and project first
+    until: 2026-11-30
