@@ -98,7 +98,12 @@ func compressed(next http.Handler) http.Handler {
 		// the response is chunked instead.
 		w.Header().Del("Content-Length")
 
-		zw := gzipPool.Get().(*gzip.Writer)
+		zw, ok := gzipPool.Get().(*gzip.Writer)
+		if !ok {
+			// The pool's New only ever makes a *gzip.Writer, so this is a
+			// programming error, not a request to serve uncompressed.
+			panic("spa: gzip pool holds something that is not a *gzip.Writer")
+		}
 		defer gzipPool.Put(zw)
 		zw.Reset(w)
 		defer zw.Close() //nolint:errcheck
