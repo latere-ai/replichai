@@ -16,8 +16,7 @@ COMPOSE ?= $(shell \
 # The whole test suite, offline against fakes and the in-process provider.
 .PHONY: test
 test:
-	go vet ./...
-	go test ./...
+	@go tool lateregate test
 
 # fmt formats all Go sources in place.
 .PHONY: fmt
@@ -98,16 +97,9 @@ cover-pg:
 lint-otel:
 	@go tool lateregate otel-client
 
-# The linter, with the same version CI pins. It is `go run` rather than an
-# installed binary on purpose: golangci-lint embeds the Go toolchain it was
-# built with, and one built against an older Go refuses a `go 1.27` go.mod
-# outright rather than degrading, so it has to be compiled by this module's own
-# toolchain to run at all.
-GOLANGCI_VERSION ?= v2.13.1
-
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION) run ./...
+	@go tool lateregate lint
 
 # The pure-Go full-stack e2e: submit -> job runs -> done, no Docker, no network.
 .PHONY: e2e
@@ -167,3 +159,9 @@ db-contract:
 		$(COMPOSE) exec -T postgres createdb -U replichai $(TEST_DB)
 	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' \
 		go test -p 1 $(DB_CONTRACT_PKGS) -run TestPGStore -v
+
+# The whole shared bar. Every gate lives in lateregate, pinned as a tool in
+# go.mod; this target is a name for `go tool lateregate` and nothing else.
+# The plan: `go tool lateregate list`. One gate: `go tool lateregate <gate>`.
+check:
+	@go tool lateregate
