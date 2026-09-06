@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
-	"latere.ai/x/pkg/oidc"
+	"latere.ai/x/pkg/authkit/oidc"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
@@ -31,7 +31,7 @@ const sessionTTL = 12 * time.Hour
 type OIDCClient interface {
 	AuthCodeURL(state, nonce, verifier string, extra ...oauth2.AuthCodeOption) string
 	Exchange(ctx context.Context, code, verifier string) (*oauth2.Token, error)
-	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidc.Identity, error)
+	VerifyIDToken(ctx context.Context, tok *oauth2.Token, nonce string) (oidc.User, error)
 }
 
 // Profile is what /userinfo yields: the email the gate binds a grant on, and
@@ -328,8 +328,8 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 // sub and email. Roles and every other claim are dropped — no IdP-issued
 // authority may reach a grant decision (006c AC1). The display claims are added
 // afterwards, from /userinfo, and confer nothing.
-func sessionFromIdentity(id oidc.Identity) Session {
-	return Session{Sub: id.Subject, Email: id.Email}
+func sessionFromIdentity(id oidc.User) Session {
+	return Session{Sub: id.Sub, Email: id.Email}
 }
 
 // safePicture keeps an avatar URL only when it is an absolute https URL. A

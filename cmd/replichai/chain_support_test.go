@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"latere.ai/x/pkg/jwtauth"
+	"latere.ai/x/pkg/authkit/jwt"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/audit"
@@ -74,11 +74,11 @@ func startApp(t *testing.T, provisioner httpapi.RepoProvisioner) (app, auth *htt
 // terminal presents a credential the app's bearer path accepts.
 type actorTokens struct{}
 
-func (actorTokens) Validate(raw string) (*jwtauth.Claims, error) {
+func (actorTokens) Validate(raw string) (*jwt.Claims, error) {
 	if raw != "actor."+chainSub {
-		return nil, jwtauth.ErrInvalidSignature
+		return nil, jwt.ErrInvalidSignature
 	}
-	return &jwtauth.Claims{Sub: chainSub, Email: chainEmail}, nil
+	return &jwt.Claims{Sub: chainSub, Email: chainEmail}, nil
 }
 
 // signIn writes the credential `replichai login` would have written.

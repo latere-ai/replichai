@@ -31,8 +31,8 @@ import (
 	// Aliased: "email" is a loop variable in the seeding code below, and a
 	// package with the same name would read as a shadowing accident.
 	paystripe "latere.ai/x/pay/stripe"
+	"latere.ai/x/pkg/authkit/oidc"
 	xemail "latere.ai/x/pkg/email"
-	"latere.ai/x/pkg/oidc"
 	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/access"

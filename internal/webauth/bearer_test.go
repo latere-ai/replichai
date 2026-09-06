@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"latere.ai/x/pkg/jwtauth"
+	"latere.ai/x/pkg/authkit/jwt"
 
 	"github.com/latere-ai/replichai/internal/httpapi"
 )
@@ -17,18 +17,18 @@ import (
 // validator answers from a table, so the middleware is testable without a
 // signing key or a JWKS endpoint.
 type validator struct {
-	claims map[string]*jwtauth.Claims
+	claims map[string]*jwt.Claims
 	err    map[string]error
 }
 
-func (v validator) Validate(raw string) (*jwtauth.Claims, error) {
+func (v validator) Validate(raw string) (*jwt.Claims, error) {
 	if err, ok := v.err[raw]; ok {
 		return nil, err
 	}
 	if claims, ok := v.claims[raw]; ok {
 		return claims, nil
 	}
-	return nil, jwtauth.ErrInvalidSignature
+	return nil, jwt.ErrInvalidSignature
 }
 
 // seen records the identity a handler received, which is the whole question:
@@ -53,7 +53,7 @@ func bearerRequest(token string) *http.Request {
 // principal. Nothing downstream should behave differently for one person on a
 // laptop and the same person in a terminal.
 func TestBothCredentialsProduceOnePrincipal(t *testing.T) {
-	v := validator{claims: map[string]*jwtauth.Claims{
+	v := validator{claims: map[string]*jwt.Claims{
 		"good": {Sub: "user-1", Email: "changkun@latere.ai"},
 	}}
 	fromBearer, code := seen(t, Bearer(v), bearerRequest("good"))
@@ -86,7 +86,7 @@ func TestNoBearerPassesThrough(t *testing.T) {
 // attacker-supplied header could downgrade a session, or a stale cookie could
 // rescue a revoked token.
 func TestABearerNeverFallsThroughToTheCookie(t *testing.T) {
-	v := validator{err: map[string]error{"bad": jwtauth.ErrInvalidSignature}}
+	v := validator{err: map[string]error{"bad": jwt.ErrInvalidSignature}}
 	request := bearerRequest("bad")
 	request.AddCookie(&http.Cookie{Name: "session", Value: "a-valid-looking-session"})
 	identity, code := seen(t, Bearer(v), request)
@@ -99,7 +99,7 @@ func TestABearerNeverFallsThroughToTheCookie(t *testing.T) {
 
 	// A valid bearer removes the cookie, so the cookie is not consulted by
 	// anything downstream either.
-	good := validator{claims: map[string]*jwtauth.Claims{"good": {Sub: "user-1"}}}
+	good := validator{claims: map[string]*jwt.Claims{"good": {Sub: "user-1"}}}
 	request = bearerRequest("good")
 	request.AddCookie(&http.Cookie{Name: "session", Value: "another-session"})
 	recorder := httptest.NewRecorder()
@@ -116,11 +116,11 @@ func TestABearerNeverFallsThroughToTheCookie(t *testing.T) {
 // them produces a principal.
 func TestEveryBadCredentialIsRefused(t *testing.T) {
 	v := validator{err: map[string]error{
-		"expired":   jwtauth.ErrTokenExpired,
-		"audience":  jwtauth.ErrInvalidAudience,
-		"issuer":    jwtauth.ErrInvalidIssuer,
-		"signature": jwtauth.ErrInvalidSignature,
-		"malformed": jwtauth.ErrMalformedToken,
+		"expired":   jwt.ErrTokenExpired,
+		"audience":  jwt.ErrInvalidAudience,
+		"issuer":    jwt.ErrInvalidIssuer,
+		"signature": jwt.ErrInvalidSignature,
+		"malformed": jwt.ErrMalformedToken,
 	}}
 	for token, want := range map[string]string{
 		"expired": "token_expired", "audience": "wrong_audience", "issuer": "wrong_issuer",
@@ -139,7 +139,7 @@ func TestEveryBadCredentialIsRefused(t *testing.T) {
 	}
 	// A token whose subject is empty is not a principal, however valid it
 	// otherwise is.
-	empty := validator{claims: map[string]*jwtauth.Claims{"anon": {Email: "someone@example.com"}}}
+	empty := validator{claims: map[string]*jwt.Claims{"anon": {Email: "someone@example.com"}}}
 	if _, code := seen(t, Bearer(empty), bearerRequest("anon")); code != http.StatusUnauthorized {
 		t.Fatalf("a subjectless token = %d", code)
 	}
@@ -165,10 +165,10 @@ func TestTheRealValidatorPinsIssuerAndAudience(t *testing.T) {
 	if built == nil {
 		t.Fatal("no validator was built")
 	}
-	// It is a jwtauth.Validator, so it satisfies the seam the middleware
+	// It is a jwt.Validator, so it satisfies the seam the middleware
 	// takes and nothing here reimplements verification.
 	var _ TokenValidator = built
-	if _, err := built.Validate("not-a-token"); err == nil || !errors.Is(err, jwtauth.ErrMalformedToken) {
+	if _, err := built.Validate("not-a-token"); err == nil || !errors.Is(err, jwt.ErrMalformedToken) {
 		t.Fatalf("Validate = %v", err)
 	}
 }
