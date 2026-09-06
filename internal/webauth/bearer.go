@@ -8,24 +8,24 @@ import (
 	"net/http"
 	"strings"
 
-	"latere.ai/x/pkg/jwtauth"
+	"latere.ai/x/pkg/authkit/jwt"
 
 	"github.com/latere-ai/replichai/internal/httpapi"
 )
 
 // TokenValidator verifies a bearer credential and reports who presented it.
 // It is an interface so the middleware is testable without a signing key or a
-// JWKS endpoint; jwtauth.Validator satisfies it.
+// JWKS endpoint; jwt.Validator satisfies it.
 type TokenValidator interface {
-	Validate(raw string) (*jwtauth.Claims, error)
+	Validate(raw string) (*jwt.Claims, error)
 }
 
 // NewValidator builds the real validator: RS256 against the issuer's JWKS,
 // with the issuer and the audience pinned. An audience that is not this
 // deployment is refused even where the token is validly signed by the same
 // issuer, which is why the CLI mints an audience-scoped actor token.
-func NewValidator(issuer, jwksURL string, audiences []string) *jwtauth.Validator {
-	return jwtauth.New(jwtauth.Config{JWKSURL: jwksURL, Issuer: issuer, Audiences: audiences})
+func NewValidator(issuer, jwksURL string, audiences []string) *jwt.Validator {
+	return jwt.New(jwt.Config{JWKSURL: jwksURL, Issuer: issuer, Audiences: audiences})
 }
 
 // Bearer authenticates a request presenting an Authorization: Bearer
@@ -71,7 +71,7 @@ func Bearer(validator TokenValidator) func(http.Handler) http.Handler {
 // identityFromClaims is the one mapping from a verified credential to a
 // principal. The cookie path fills the same fields from the same claim names,
 // so the two sources cannot disagree about what identifies a person.
-func identityFromClaims(claims *jwtauth.Claims) httpapi.Identity {
+func identityFromClaims(claims *jwt.Claims) httpapi.Identity {
 	return httpapi.Identity{Sub: claims.Sub, Email: claims.Email}
 }
 
@@ -94,13 +94,13 @@ func bearerToken(r *http.Request) (string, bool) {
 // vocabulary the gate already uses.
 func reasonFor(err error) string {
 	switch {
-	case errors.Is(err, jwtauth.ErrTokenExpired):
+	case errors.Is(err, jwt.ErrTokenExpired):
 		return "token_expired"
-	case errors.Is(err, jwtauth.ErrInvalidAudience):
+	case errors.Is(err, jwt.ErrInvalidAudience):
 		return "wrong_audience"
-	case errors.Is(err, jwtauth.ErrInvalidIssuer):
+	case errors.Is(err, jwt.ErrInvalidIssuer):
 		return "wrong_issuer"
-	case errors.Is(err, jwtauth.ErrInvalidSignature), errors.Is(err, jwtauth.ErrUnsupportedAlg):
+	case errors.Is(err, jwt.ErrInvalidSignature), errors.Is(err, jwt.ErrUnsupportedAlg):
 		return "bad_signature"
 	default:
 		return "not_authenticated"

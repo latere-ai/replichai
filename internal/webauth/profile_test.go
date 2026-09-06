@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"latere.ai/x/pkg/oidc"
+	"latere.ai/x/pkg/authkit/oidc"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
@@ -18,7 +18,7 @@ import (
 
 // callbackSession drives one callback with the given userinfo and returns the
 // session it sealed.
-func callbackSession(t *testing.T, id oidc.Identity, ui UserInfoFunc) Session {
+func callbackSession(t *testing.T, id oidc.User, ui UserInfoFunc) Session {
 	t.Helper()
 	codec, _ := NewCodec(testKey)
 	l := NewLogin(fakeOIDC{identity: id}, codec, access.NewMemStore(), "https://replichai.latere.ai", false, ui)
@@ -42,7 +42,7 @@ func callbackSession(t *testing.T, id oidc.Identity, ui UserInfoFunc) Session {
 // AC1: the callback keeps name and picture, preferring name over
 // preferred_username, and still signs in when /userinfo carries neither.
 func TestCallbackKeepsDisplayClaims(t *testing.T) {
-	id := oidc.Identity{Subject: "uuid-1", Raw: map[string]any{}}
+	id := oidc.User{Sub: "uuid-1", Raw: map[string]any{}}
 
 	t.Run("name and picture", func(t *testing.T) {
 		s := callbackSession(t, id, func(context.Context, string) (Profile, error) {
@@ -66,7 +66,7 @@ func TestCallbackKeepsDisplayClaims(t *testing.T) {
 	})
 
 	t.Run("userinfo failure costs the name, never the sign-in", func(t *testing.T) {
-		withEmail := oidc.Identity{Subject: "uuid-1", Email: "hi@changkun.de", Raw: map[string]any{}}
+		withEmail := oidc.User{Sub: "uuid-1", Email: "hi@changkun.de", Raw: map[string]any{}}
 		s := callbackSession(t, withEmail, func(context.Context, string) (Profile, error) {
 			return Profile{}, context.DeadlineExceeded
 		})

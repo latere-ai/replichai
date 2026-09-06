@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
-	"latere.ai/x/pkg/oidc"
+	"latere.ai/x/pkg/authkit/oidc"
 )
 
 // DefaultAuthURL is the identity provider the CLI signs in against.
