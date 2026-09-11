@@ -17,10 +17,10 @@ import (
 // no state leaks from one case into the next.
 type Factory func() managed.Runtime
 
-// Run is the black-box suite every managed runtime adapter has to pass: the
-// ungraded and graded lifecycles, that cancelling keeps the evidence readable,
-// and that a ref naming another runtime is refused by Poll, Events,
-// ListArtifacts, Cancel and Release.
+// Run is the black-box suite every managed runtime adapter must pass. It
+// checks the ungraded and graded lifecycles, that cancelling keeps the
+// evidence readable, and that a ref naming another runtime is refused by Poll,
+// Events, ListArtifacts, Cancel and Release.
 func Run(t *testing.T, factory Factory) {
 	t.Helper()
 	t.Run("ungraded lifecycle", func(t *testing.T) {
@@ -89,12 +89,13 @@ func Run(t *testing.T, factory Factory) {
 	})
 }
 
-// RunFailingEvaluation holds a runtime to the shared terminal state for a
-// graded session the evaluator rejects: StateFailed with ReasonEvaluationFailed
-// and a verdict that did not pass, never StateDone. The three runtimes
-// disagreed on this — local reported StateDone — and the job store maps state
-// one to one, so the same outcome landed as done on one runtime and failed on
-// the rest. The factory must build a runtime whose evaluation fails.
+// RunFailingEvaluation checks that a runtime reports the shared terminal state
+// for a graded session the evaluator rejects: StateFailed with
+// ReasonEvaluationFailed and a verdict that did not pass, never StateDone. The
+// three runtimes used to disagree on this, with local reporting StateDone, and
+// the job store maps state one to one, so the same outcome was recorded as
+// done on one runtime and failed on the others. The factory must build a
+// runtime whose evaluation fails.
 func RunFailingEvaluation(t *testing.T, factory Factory) {
 	t.Helper()
 	runtime := factory()
