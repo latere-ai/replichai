@@ -486,6 +486,41 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 	}, nil
 }
 
+// reattachPublisher returns to a repository an earlier attempt created, so a
+// resumed paper publishes into it rather than into a sibling. The identity is
+// read from where the first attempt recorded it and resolved again only where
+// it did not. A repository that is gone is an error rather than a fresh
+// allocation: the operator asked for a retry into this one, and a second
+// repository nobody asked for is the very thing --resume exists to prevent.
+func reattachPublisher(ctx context.Context, repo, paperRef string, timeout time.Duration) (*publisher, error) {
+	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("--publish needs REPLICHAI_GITHUB_TOKEN set to return to %s", repo)
+	}
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("the recorded repository %q is not <owner>/<repo>", repo)
+	}
+	gh := github.New(token)
+	found, err := gh.GetRepo(ctx, owner, name)
+	if err != nil {
+		return nil, fmt.Errorf("return to %s: %w", repo, err)
+	}
+	id, err := readRecordedIdentity(ctx, gh, owner, name)
+	if err != nil {
+		return nil, err
+	}
+	if id.Key == "" {
+		if id, err = paper.Resolve(ctx, paperRef, paper.WithFetcher(httpFetcher{timeout: timeout})); err != nil {
+			return nil, err
+		}
+	}
+	return &publisher{
+		gh: gh, owner: owner, name: name, id: id,
+		mount: provider.RepoMount{URL: found.HTMLURL, Token: token, MountPath: audit.DefaultMountPath},
+	}, nil
+}
+
 // readRecordedIdentity returns the identity the publisher recorded in the repo,
 // or a zero identity when none is present (an older or hand-created repository),
 // so the caller falls back to re-resolving.

@@ -114,19 +114,68 @@ type projectRunner struct {
 	maxRevisions int
 	stdout       *os.File
 	stderr       *os.File
+	// repositories is where a paper's repository comes from. Nil means
+	// GitHub, over the credential this machine holds; a test substitutes a
+	// source that talks to nothing.
+	repositories repositorySource
 
 	mu         sync.Mutex
 	publishers map[string]*publisher
 }
 
-// Prepare allocates the repository name and creates the repository. The batch
-// serialises it, because allocation reads what already exists: two concurrent
-// papers whose slugs collide would otherwise decide the same name.
-func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved) error {
+// repositorySource hands Prepare the repository for one paper. The two calls
+// are the two things a batch can ask for: a repository for a paper's first
+// attempt, and the repository an earlier attempt already created.
+type repositorySource interface {
+	// Allocate names and creates the repository for a first attempt.
+	Allocate(ctx context.Context, paperRef string) (*publisher, error)
+	// Reattach returns to the repository an earlier attempt created, named
+	// as <owner>/<repo>.
+	Reattach(ctx context.Context, repo, paperRef string) (*publisher, error)
+}
+
+// githubRepositories is the production source: names are allocated through
+// the registry in the owner's organisation and the repositories are created
+// there, over REPLICHAI_GITHUB_TOKEN.
+type githubRepositories struct {
+	owner        string
+	methodDigest string
+	timeout      time.Duration
+	stderr       *os.File
+}
+
+func (g githubRepositories) Allocate(ctx context.Context, paperRef string) (*publisher, error) {
+	return newPublisher(ctx, g.owner, paperRef, g.methodDigest, g.timeout, g.stderr)
+}
+
+func (g githubRepositories) Reattach(ctx context.Context, repo, paperRef string) (*publisher, error) {
+	return reattachPublisher(ctx, repo, paperRef, g.timeout)
+}
+
+// Prepare claims the repository for one paper. A first attempt allocates a
+// name and creates it; a retry returns to the repository its first attempt
+// created, which is what --resume promises — a second repository for the same
+// paper would be a sibling nobody asked for. The batch serialises it, because
+// allocation reads what already exists: two concurrent papers whose slugs
+// collide would otherwise decide the same name.
+func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved, prior batch.EntryState) error {
 	if !r.publish {
 		return nil
 	}
-	pub, err := newPublisher(ctx, r.owner, entry.Reference(), r.method.Digest(), r.timeout, r.stderr)
+	source := r.repositories
+	if source == nil {
+		source = githubRepositories{owner: r.owner, methodDigest: r.method.Digest(), timeout: r.timeout, stderr: r.stderr}
+	}
+	var (
+		pub *publisher
+		err error
+	)
+	if prior.Repo != "" {
+		_, _ = fmt.Fprintf(r.stderr, "  returning to %s\n", prior.Repo)
+		pub, err = source.Reattach(ctx, prior.Repo, entry.Reference())
+	} else {
+		pub, err = source.Allocate(ctx, entry.Reference())
+	}
 	if err != nil {
 		return err
 	}

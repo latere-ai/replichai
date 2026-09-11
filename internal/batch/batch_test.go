@@ -31,11 +31,13 @@ type runner struct {
 	fail              map[string]error
 	hold              chan struct{}
 	repoless          bool
+	// priors is what Prepare was told an earlier attempt recorded, by paper.
+	priors map[string]EntryState
 }
 
-func newRunner() *runner { return &runner{fail: map[string]error{}} }
+func newRunner() *runner { return &runner{fail: map[string]error{}, priors: map[string]EntryState{}} }
 
-func (r *runner) Prepare(_ context.Context, entry Resolved) error {
+func (r *runner) Prepare(_ context.Context, entry Resolved, prior EntryState) error {
 	current := r.prepareOverlap.Add(1)
 	for {
 		peak := r.maxPrepareOverlap.Load()
@@ -47,6 +49,7 @@ func (r *runner) Prepare(_ context.Context, entry Resolved) error {
 	r.prepareOverlap.Add(-1)
 	r.mu.Lock()
 	r.prepared = append(r.prepared, entry.Reference())
+	r.priors[entry.Reference()] = prior
 	r.mu.Unlock()
 	if err, ok := r.fail["prepare:"+entry.Reference()]; ok {
 		return err
@@ -262,6 +265,75 @@ func TestResumeSkipsWhatFinished(t *testing.T) {
 	}
 	if resumed.Summarise().Done != 3 {
 		t.Fatalf("after resuming: %+v", resumed.Summarise())
+	}
+}
+
+// A retried paper is handed what its first attempt recorded, so the runner can
+// return to the repository that attempt created instead of allocating a
+// second one for the same paper — which is what --resume promises.
+func TestAResumedPaperIsHandedItsFirstAttempt(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "batch.json")
+	file := File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}}}
+	first := State{Version: stateVersion, Entries: []EntryState{
+		{Paper: "10.1/a", Phase: Done, Repo: "open-hai/a-1111"},
+		{Paper: "10.1/b", Phase: Failed, Repo: "open-hai/b-2222", Session: "s-first", Error: "interrupted"},
+	}}
+	if err := first.Save(statePath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	r := newRunner()
+	if _, err := Run(context.Background(), file, r, Options{Parallel: 1, StatePath: statePath, Resume: true}); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	prior, ok := r.priors["10.1/b"]
+	if !ok {
+		t.Fatalf("the failed paper was not prepared: %v", r.prepared)
+	}
+	if prior.Repo != "open-hai/b-2222" || prior.Session != "s-first" {
+		t.Fatalf("Prepare was handed %+v; want the first attempt's repository and session", prior)
+	}
+	// A first attempt is handed nothing, so a runner can tell the two apart.
+	fresh := newRunner()
+	if _, err := Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/c"}}}, fresh,
+		Options{Parallel: 1, StatePath: filepath.Join(t.TempDir(), "batch.json")}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := fresh.priors["10.1/c"]; got.Repo != "" || got.Session != "" {
+		t.Fatalf("a first attempt was handed a prior record: %+v", got)
+	}
+}
+
+// A retry that fails before it reaches its repository must not erase the
+// repository from the state: the next retry has to find it there.
+func TestAnEarlyFailureKeepsTheRepositoryOnRecord(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "batch.json")
+	first := State{Version: stateVersion, Entries: []EntryState{
+		{Paper: "10.1/a", Phase: Failed, Repo: "open-hai/a-1111", Session: "s-first", Directory: "runs/a"},
+	}}
+	if err := first.Save(statePath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	r := newRunner()
+	r.fail["prepare:10.1/a"] = errors.New("the forge is unreachable")
+	state, err := Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, r,
+		Options{Parallel: 1, StatePath: statePath, Resume: true})
+	if !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("Run = %v", err)
+	}
+	entry := state.Entries[0]
+	if entry.Phase != Failed || entry.Repo != "open-hai/a-1111" || entry.Session != "s-first" || entry.Directory != "runs/a" {
+		t.Fatalf("an early failure erased the first attempt's record: %+v", entry)
+	}
+	// A later attempt that does reach a session replaces the old one.
+	second := newRunner()
+	state, err = Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, second,
+		Options{Parallel: 1, StatePath: statePath, Resume: true})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if state.Entries[0].Session != "s-10.1/a" {
+		t.Fatalf("a successful retry did not record its own session: %+v", state.Entries[0])
 	}
 }
 

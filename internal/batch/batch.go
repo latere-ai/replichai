@@ -203,6 +203,29 @@ type EntryState struct {
 	Ref       managed.SessionRef `json:"ref,omitzero"`
 }
 
+// absorb records what one attempt reported. Where the attempt names nothing
+// — it failed before it reached a session, or before it reached its
+// repository — the entry keeps what an earlier attempt recorded, so a retry
+// that fails early cannot erase the repository the next retry must return to.
+func (e *EntryState) absorb(outcome Outcome) {
+	e.Grade, e.Model, e.Usage = outcome.Grade, outcome.Model, outcome.Usage
+	if outcome.Session != "" {
+		e.Session = outcome.Session
+	}
+	if outcome.Directory != "" {
+		e.Directory = outcome.Directory
+	}
+	if outcome.PaperKey != "" {
+		e.PaperKey = outcome.PaperKey
+	}
+	if outcome.Repo != "" {
+		e.Repo = outcome.Repo
+	}
+	if outcome.Ref.ID != "" {
+		e.Ref = outcome.Ref
+	}
+}
+
 // Wall is how long the entry took, or zero where it has not finished.
 func (e EntryState) Wall() time.Duration {
 	if e.Started.IsZero() || e.Finished.IsZero() {
@@ -232,8 +255,11 @@ type Outcome struct {
 // readers decide the same name.
 type Runner interface {
 	// Prepare claims whatever must be claimed exactly once — a repository
-	// name, a repository — before the work starts.
-	Prepare(ctx context.Context, entry Resolved) error
+	// name, a repository — before the work starts. prior is what an earlier
+	// attempt at the same paper recorded, or the zero value for a first
+	// attempt: a resumed paper is expected to return to the repository the
+	// first attempt created rather than claim a second one.
+	Prepare(ctx context.Context, entry Resolved, prior EntryState) error
 	// Execute runs the audit and publishes it.
 	Execute(ctx context.Context, entry Resolved) (Outcome, error)
 }
@@ -344,6 +370,9 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			defer func() { <-slots }()
 
 			mu.Lock()
+			// What an earlier attempt recorded travels with the entry into
+			// the runner, so a retry can return to its repository.
+			prior := state.Entries[index]
 			state.Entries[index].Phase = Running
 			state.Entries[index].Started = options.Clock()
 			save()
@@ -353,7 +382,7 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			// followed by a decision, so two concurrent papers whose
 			// slugs collide would decide the same one.
 			prepare.Lock()
-			err := runner.Prepare(ctx, entry)
+			err := runner.Prepare(ctx, entry, prior)
 			prepare.Unlock()
 
 			var outcome Outcome
@@ -364,10 +393,7 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			mu.Lock()
 			record := &state.Entries[index]
 			record.Finished = options.Clock()
-			record.Session, record.Directory = outcome.Session, outcome.Directory
-			record.PaperKey = outcome.PaperKey
-			record.Repo, record.Grade = outcome.Repo, outcome.Grade
-			record.Model, record.Usage, record.Ref = outcome.Model, outcome.Usage, outcome.Ref
+			record.absorb(outcome)
 			if err != nil {
 				record.Phase, record.Error = Failed, err.Error()
 				anyFails = true

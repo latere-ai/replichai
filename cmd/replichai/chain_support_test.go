@@ -105,7 +105,7 @@ type scriptedRunner struct {
 	pushed string
 }
 
-func (*scriptedRunner) Prepare(context.Context, batch.Resolved) error { return nil }
+func (*scriptedRunner) Prepare(context.Context, batch.Resolved, batch.EntryState) error { return nil }
 
 func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (batch.Outcome, error) {
 	registry, err := harness.NewRegistry(harness.NewClaudeCode())
@@ -231,6 +231,9 @@ func fakeForge(t *testing.T) *httptest.Server {
 			write(w, http.StatusOK, []map[string]string{{"sha": "deadbeef"}})
 		case strings.Contains(path, "/git/trees/") && r.Method == http.MethodGet:
 			write(w, http.StatusOK, map[string]any{"tree": []any{}, "truncated": false})
+		case strings.Contains(path, "/contents/") && r.Method == http.MethodPut:
+			committed = append(committed, strings.SplitN(path, "/contents/", 2)[1])
+			write(w, http.StatusCreated, map[string]any{"content": map[string]string{"sha": "manifest"}})
 		case strings.Contains(path, "/contents/"):
 			http.NotFound(w, r) // nothing is already committed
 		case strings.HasSuffix(path, "/git/blobs"):
