@@ -396,7 +396,8 @@ type Router struct {
 // caller does not choose.
 const defaultSSEInterval = time.Second
 
-// NewRouter builds a fully wired router. A nil gate is fail-closed (DenyAll).
+// NewRouter builds a fully wired router. A nil gate is replaced by DenyAll, which
+// is fail-closed.
 func NewRouter(d Deps) *Router {
 	gate := d.Gate
 	if gate == nil {
@@ -560,8 +561,8 @@ func writeBlockedError(w http.ResponseWriter, status int, code string, blockers 
 	writeJSON(w, status, map[string]any{"error": code, "blockers": blockers})
 }
 
-// WriteError writes a machine-readable error code, for middleware (006c's tier
-// guard) that refuses a request before the handler runs.
+// WriteError writes a machine-readable error code, for middleware such as 006c's
+// tier guard that refuses a request before the handler runs.
 func WriteError(w http.ResponseWriter, status int, code string) {
 	writeError(w, status, code)
 }

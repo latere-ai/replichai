@@ -1512,8 +1512,8 @@ func nonEmpty(in []string) []string {
 const SpendWindowDays = 30
 
 // ProjectView is a project in a list, carrying a session summary so the list
-// shows status (how many sessions, how many running, the newest phase) at a
-// glance without a per-project read on the client.
+// shows the status of each project, meaning how many sessions it has, how many
+// are running, and the newest phase, without a per-project read on the client.
 type ProjectView struct {
 	project.Project
 	SessionCount int `json:"session_count"`
@@ -3055,7 +3055,7 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 	// this origin, against whoever opened the link, and nosniff cannot help
 	// because image/svg+xml is the declared type rather than a guessed one.
 	// These bytes are an agent's commit in a repository, so they are as
-	// untrusted as the markdown the client already sanitises. The sandbox
+	// untrusted as the markdown the client already cleans. The sandbox
 	// directive addresses this: with no allow-scripts the document cannot
 	// execute, and with no allow-same-origin it is placed in an opaque origin
 	// with no access to this one. default-src 'none' stops it fetching anything
