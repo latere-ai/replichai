@@ -241,7 +241,7 @@ func TestStopKillsAStageThatIgnoresSIGTERM(t *testing.T) {
 	spec := sandbox.StageSpec{
 		Name: "worker-0", Workdir: dir,
 		// The stage ignores SIGTERM and keeps appending to the marker, so a
-		// Stop that only signalled and returned would leave it running.
+		// Stop that only sent the signal and returned would leave it running.
 		Argv:    []string{"/bin/sh", "-c", `trap "" TERM; while :; do echo tick >> "$MARK"; sleep 0.05; done`},
 		Env:     map[string]string{"MARK": marker},
 		Network: sandbox.Network{Mode: sandbox.NetworkNone},
