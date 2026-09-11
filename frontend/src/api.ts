@@ -340,9 +340,18 @@ async function refusal(r: Response): Promise<ApiError> {
   return new ApiError(r.status, code, blockers)
 }
 
+// json reads a successful response's body. A 2xx that does not parse — the dev
+// server's own HTML for a path it does not proxy, a gateway page in front of
+// the API — is the server's fault, and is reported as one: with its status and
+// a code, not as the SyntaxError r.json() throws, which nothing downstream knew
+// and every screen filed under "you appear to be offline".
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) throw await refusal(r)
-  return r.json() as Promise<T>
+  try {
+    return (await r.json()) as T
+  } catch {
+    throw new ApiError(r.status, 'malformed_response')
+  }
 }
 
 // ok resolves for a 2xx response with no body (204), rejecting with the status.
