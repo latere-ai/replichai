@@ -2008,7 +2008,7 @@ function PlatformPolicy({
           </label>
           <p className="policy-hint">{t('startReserveHint')}</p>
         </div>
-        <NumberField id="start-reserve" value={reserve} onChange={setReserve} min={0} ariaLabel={t('startReserve')} />
+        <NumberField i18n={i18n} id="start-reserve" value={reserve} onChange={setReserve} min={0} ariaLabel={t('startReserve')} />
       </div>
       <div className="policy-row">
         <div className="policy-copy">
@@ -2017,7 +2017,7 @@ function PlatformPolicy({
           </label>
           <p className="policy-hint">{t('overdraftHint')}</p>
         </div>
-        <NumberField id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
+        <NumberField i18n={i18n} id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
       </div>
       {/* Which model writes a project's description (039). Three fields and no
           key: the credential is the deployment's, read from its environment,
@@ -2259,6 +2259,7 @@ function PeopleCard({
       </div>
       {topping && (
         <PromptDialog
+          i18n={i18n}
           title={t('topup')}
           body={t('topupPrompt', { email: topping.email })}
           initial="10"
@@ -3535,7 +3536,7 @@ function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
       </div>
       {choice === 'other' && (
         <div className="field-row" style={{ marginTop: 10 }}>
-          <NumberField value={custom} onChange={setCustom} min={0} ariaLabel={t('topUpAmount')} autoFocus />
+          <NumberField i18n={i18n} value={custom} onChange={setCustom} min={0} ariaLabel={t('topUpAmount')} autoFocus />
           <span className="muted small">{t('topUpMinHint', { min: formatUSD(min) })}</span>
         </div>
       )}
@@ -3771,7 +3772,7 @@ function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp }: { i1
       {/* The amount on its own line, then the two actions side by side, so a
           narrow card does not wrap "Take back" onto a lonely second row. */}
       <div className="stack" style={{ gap: 8 }}>
-        <NumberField value={amount} onChange={setAmount} min={0} ariaLabel={t('creditsAmount')} />
+        <NumberField i18n={i18n} value={amount} onChange={setAmount} min={0} ariaLabel={t('creditsAmount')} />
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" style={{ flex: 1 }} disabled={!valid || busy} onClick={() => move(false)}>
             <Ico name="plus" size={13} w={2.2} /> {t('creditsAllocate')}

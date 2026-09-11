@@ -572,6 +572,9 @@ const en = {
     errOffline: 'You appear to be offline. Check your connection and try again.',
     rename: 'Rename',
     renameFailed: 'Couldn’t rename this project. Try again in a moment.',
+    // The two steppers on every number field, as a screen reader says them.
+    stepDown: 'Decrease',
+    stepUp: 'Increase',
     save: 'Save',
     cancel: 'Cancel',
     // project detail

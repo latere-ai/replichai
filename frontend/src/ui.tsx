@@ -312,6 +312,7 @@ export function Segmented<T extends string>({
 // input draws OS spinners that no stylesheet can reach, and its scroll-wheel
 // behaviour changes a value nobody meant to touch.
 export function NumberField({
+  i18n,
   value,
   onChange,
   min = 0,
@@ -321,6 +322,7 @@ export function NumberField({
   ariaLabel,
   autoFocus,
 }: {
+  i18n: I18n
   value: string
   onChange: (next: string) => void
   min?: number
@@ -330,6 +332,7 @@ export function NumberField({
   ariaLabel?: string
   autoFocus?: boolean
 }) {
+  const { t } = i18n
   // Every field this draws holds money, and money has cents. It used to strip
   // the decimal point, so a project could only ever be allocated whole dollars
   // and a $16.82 balance could not be moved back in one go.
@@ -337,7 +340,7 @@ export function NumberField({
   const step = (by: number) => onChange(stepDollars(value, by, min, max))
   return (
     <div className="numf" style={{ width }}>
-      <button type="button" className="numf-step" aria-label="−" onClick={() => step(-1)} disabled={Number.isFinite(n) && n <= min}>
+      <button type="button" className="numf-step" aria-label={t('stepDown')} onClick={() => step(-1)} disabled={Number.isFinite(n) && n <= min}>
         <Ico name="minus" size={12} w={2.2} />
       </button>
       <input
@@ -363,7 +366,7 @@ export function NumberField({
           }
         }}
       />
-      <button type="button" className="numf-step" aria-label="+" onClick={() => step(1)} disabled={max !== undefined && Number.isInteger(n) && n >= max}>
+      <button type="button" className="numf-step" aria-label={t('stepUp')} onClick={() => step(1)} disabled={max !== undefined && Number.isInteger(n) && n >= max}>
         <Ico name="plus" size={12} w={2.2} />
       </button>
     </div>
@@ -448,6 +451,7 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
 // a chrome-owned box that ignores the theme, cannot be styled, and blocks the
 // whole tab while it is up.
 export function PromptDialog({
+  i18n,
   title,
   body,
   initial,
@@ -457,6 +461,7 @@ export function PromptDialog({
   onConfirm,
   parse,
 }: {
+  i18n: I18n
   title: string
   body: string
   initial: string
@@ -494,7 +499,7 @@ export function PromptDialog({
         {body}
       </p>
       {/* window.prompt let you type at once; the field takes focus so this does too. */}
-      <NumberField value={draft} onChange={setDraft} ariaLabel={title} width={132} autoFocus />
+      <NumberField i18n={i18n} value={draft} onChange={setDraft} ariaLabel={title} width={132} autoFocus />
     </Modal>
   )
 }
