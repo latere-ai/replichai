@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,19 +89,33 @@ type Session struct {
 	id  string
 }
 
+// ErrSessionExists reports a session id that already has a directory. It is
+// surfaced rather than absorbed, because creating into an existing directory
+// would re-initialise another session's workspace as if it were new.
+var ErrSessionExists = errors.New("session already exists")
+
 // CreateSession makes a fresh session directory under root, 0700, and the
 // subdirectories a run needs. The workspace is initialised as a git repository
 // with a committer already configured, so a run cannot stall on git refusing
 // an empty user.email — and with no remote, because the host pushes (045g).
 // The git that does it runs with the same allowlisted environment a stage
 // gets, read through lookup, so a credential in the operator's shell reaches
-// neither.
+// neither. An id whose directory already exists is refused with
+// ErrSessionExists.
 func CreateSession(root, id string, lookup LookupEnv) (*Session, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, errors.New("a session needs an id")
 	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, fmt.Errorf("create session root: %w", err)
+	}
 	dir := filepath.Join(root, id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	// Mkdir, not MkdirAll: the one is a claim on a fresh name, the other
+	// would silently adopt whatever is already there.
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("%w: %s", ErrSessionExists, id)
+		}
 		return nil, fmt.Errorf("create session directory: %w", err)
 	}
 	// 0o700, not 0o600: it is a directory, and a directory without the
