@@ -25,7 +25,7 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return err
 	}
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: replichai project create <title> | replichai project ls")
+		_, _ = fmt.Fprintln(stderr, "usage: replichai project create <title> | ls | sessions <project-id> | rm-session <session-id>...")
 		return errExitQuiet
 	}
 	client, err := apiClient()
@@ -104,17 +104,17 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 // resumable and idempotent rather than transactional.
 func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("push", stderr)
-	projectID := fs.String("project", "", "the project to file the sessions under")
+	projectID := fs.String("project", "", "the project to add the sessions to")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(positional) != 1 {
-		_, _ = fmt.Fprintln(stderr, "push takes one project file or batch state")
+		_, _ = fmt.Fprintln(stderr, "push takes one project file or batch.json")
 		return errExitQuiet
 	}
 	if strings.TrimSpace(*projectID) == "" {
-		_, _ = fmt.Fprintln(stderr, "push needs --project; `replichai project ls` lists them")
+		_, _ = fmt.Fprintln(stderr, "push needs --project; `replichai project ls` lists the projects")
 		return errExitQuiet
 	}
 	statePath := positional[0]

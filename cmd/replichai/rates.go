@@ -37,8 +37,8 @@ import (
 func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("rates", stderr)
 	runtimeFlagValue := runtimeFlag(fs, defaultCLIRuntime)
-	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "read the live rate card from this database instead of the compiled-in seed")
-	asJSON := fs.Bool("json", false, "emit machine-readable output")
+	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "read the rate card from this database instead of the compiled-in seed")
+	asJSON := fs.Bool("json", false, "print the report as JSON")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
 		return err
@@ -115,9 +115,9 @@ func printRates(w *os.File, source string, checks []credit.Coverage) {
 	_ = tw.Flush()
 	if fallbacks > 0 {
 		_, _ = fmt.Fprintf(w, "\n%d preference(s) resolve to a model the card does not name.\n"+
-			"Those sessions are charged the dearest rates on the card — never free, by design,\n"+
-			"but not that model's own price either. Add the id above to the card in\n"+
-			"Admin → Platform (or PUT /admin/settings) to bill it at its real rate.\n", fallbacks)
+			"Sessions on those models are charged the dearest rates on the card, not the model's own price.\n"+
+			"Add the model id above to the card in Admin → Platform (or PUT /admin/settings)\n"+
+			"to bill it at its own rate.\n", fallbacks)
 	}
 }
 

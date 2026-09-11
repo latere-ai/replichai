@@ -32,19 +32,19 @@ type command struct {
 func commands() []command {
 	return []command{
 		{"audit", "<paper-ref> [flags]", "audit one paper and write its reproduction", runAudit},
-		{"run", "<project-file> [flags]", "audit every paper in a project, in parallel, with a report", runRun},
+		{"run", "<project-file> [flags]", "audit every paper in a project file in parallel and write a report", runRun},
 		{"resolve", "<paper-ref> [flags]", "show the identity and slug a reference resolves to", runResolve},
 		{"publish", "<artifact-dir> <paper-ref> [flags]", "publish an audit's artifacts to a filesystem forge", runPublish},
-		{"finish", "<owner>/<repo> <paper-ref> [flags]", "reattach to a detached audit and finalize its repository", runFinish},
+		{"finish", "<owner>/<repo> <paper-ref> [flags]", "reattach to a detached audit and finish publishing its repository", runFinish},
 		{"login", "[flags]", "sign in at auth.latere.ai with a device code", runLogin},
-		{"whoami", "", "show who is signed in, and in which context", runWhoami},
+		{"whoami", "", "show who is signed in and the current context", runWhoami},
 		{"logout", "", "remove the stored credential", runLogout},
 		{"org", "[<org-uuid> | --personal]", "show or switch the organisation context", runOrg},
-		{"sessions", "ls | prune [flags]", "list or remove the session directories local runs leave", runSessions},
+		{"sessions", "ls | prune [flags]", "list or remove the session directories left by local runs", runSessions},
 		{"project", "create <title> | ls | sessions <id> | rm-session <id>...", "manage projects in the app", runProject},
-		{"push", "<project-file> --project <id>", "file a local run's sessions under a project in the app", runPush},
+		{"push", "<project-file> --project <id>", "add a local run's sessions to a project in the app", runPush},
 		{"providers", "", "list the installed runtimes", runProviders},
-		{"rates", "[flags]", "check the rate card against the models a runtime resolves", runRates},
+		{"rates", "[flags]", "check that the rate card names the models a runtime resolves to", runRates},
 	}
 }
 
@@ -97,7 +97,7 @@ func usage(w *os.File) {
 		}
 		_, _ = fmt.Fprintf(tw, "  %s\t%s\n", line, c.summary)
 	}
-	_, _ = fmt.Fprintf(tw, "  replichai help\tthis text\n")
+	_, _ = fmt.Fprintf(tw, "  replichai help\tshow this text\n")
 	_ = tw.Flush()
 	_, _ = fmt.Fprint(w, `
 a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL.

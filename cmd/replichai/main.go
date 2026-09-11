@@ -64,14 +64,14 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		out          = fs.String("out", "runs", "directory for artifacts")
 		runtimeName  = runtimeFlag(fs, defaultCLIRuntime)
 		methodDir    = fs.String("method", "", "path to a method directory")
-		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
-		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long a run may take")
-		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "revision budget")
-		doPublish    = fs.Bool("publish", false, "mount a GitHub repo and publish the reproduction to it")
+		interval     = fs.Duration("interval", audit.DefaultPollInterval, "time between status checks")
+		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "maximum time for the run")
+		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions")
+		doPublish    = fs.Bool("publish", false, "create a GitHub repository and publish the reproduction to it")
 		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
-		projectID    = fs.String("project", "", "with --publish, the project the platform provisions the repository under")
-		detach       = fs.Bool("detach", false, "with --publish, start the run and return; finish it later")
+		projectID    = fs.String("project", "", "with --publish: the project the platform creates the repository under")
+		detach       = fs.Bool("detach", false, "with --publish: start the run and exit; complete it later with finish")
 		model        = fs.String("model", audit.DefaultModelPreference, "model to run on: a tier (best, balanced, fast) or provider/id")
 		local        localOptions
 	)
@@ -370,11 +370,11 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		return nil, fmt.Errorf("check prior reproductions: %w", err)
 	}
 	if len(priors) > 0 {
-		_, _ = fmt.Fprintf(stderr, "  ! %s reproduced before:\n", id)
+		_, _ = fmt.Fprintf(stderr, "  ! %s has been reproduced before:\n", id)
 		for _, p := range priors {
 			note := ""
 			if p.MethodDigest == methodDigest {
-				note = " — same method, re-running"
+				note = ", same method as this run"
 			}
 			_, _ = fmt.Fprintf(stderr, "      %s (%s · %s · %s)%s\n",
 				p.Repo, p.Created.Format("2006-01-02"), shortDigest(p.MethodDigest), p.Verdict, note)
@@ -568,7 +568,7 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 	if len(rep.Leaked) == 0 {
 		_, _ = fmt.Fprintln(stdout, "committed: clean (only worker-written files)")
 	} else {
-		_, _ = fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked — repo kept private:\n", len(rep.Leaked))
+		_, _ = fmt.Fprintf(stdout, "committed: %d third-party path(s) leaked; the repository stays private:\n", len(rep.Leaked))
 		for _, path := range rep.Leaked {
 			_, _ = fmt.Fprintf(stdout, "  - %s\n", path)
 		}
@@ -583,7 +583,7 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 		}
 	}
 	if len(rep.TranscriptLeaks) > 0 {
-		_, _ = fmt.Fprintf(stdout, "transcript: %d event(s) carry a secret — bars the public flip:\n", len(rep.TranscriptLeaks))
+		_, _ = fmt.Fprintf(stdout, "transcript: %d event(s) contain a secret, so the repository cannot be made public:\n", len(rep.TranscriptLeaks))
 		for _, l := range rep.TranscriptLeaks {
 			_, _ = fmt.Fprintf(stdout, "  - event %d: %s\n", l.Index, l.Reason)
 		}
@@ -642,13 +642,13 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	fs := flagSet("finish", stderr)
 	var (
 		session     = fs.String("session", "", "legacy session id to reattach to")
-		sessionRef  = fs.String("session-ref", "", "complete session reference printed by audit --detach")
+		sessionRef  = fs.String("session-ref", "", "session reference printed by audit --detach")
 		runtimeName = runtimeFlag(fs, defaultCLIRuntime)
-		methodDir   = fs.String("method", "", "the method directory the audit used")
+		methodDir   = fs.String("method", "", "path to the method directory the audit used")
 		invite      = fs.String("invite", "", "GitHub login to invite as a collaborator")
-		verdictFlag = fs.String("verdict", "", "override the recorded verdict when no session is polled")
-		interval    = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
-		timeout     = fs.Duration("timeout", audit.DefaultTimeout, "how long to wait for the session")
+		verdictFlag = fs.String("verdict", "", "verdict to record when no session is given")
+		interval    = fs.Duration("interval", audit.DefaultPollInterval, "time between status checks")
+		timeout     = fs.Duration("timeout", audit.DefaultTimeout, "maximum time to wait for the session")
 		local       localOptions
 	)
 	local.bind(fs)
@@ -792,7 +792,7 @@ func envOr(key, fallback string) string {
 
 func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("resolve", stderr)
-	timeout := fs.Duration("timeout", 30*time.Second, "network timeout for a single fetch")
+	timeout := fs.Duration("timeout", 30*time.Second, "network timeout for one fetch")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
 		return err
@@ -823,9 +823,9 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("publish", stderr)
 	var (
-		out       = fs.String("out", "published", "filesystem forge root")
+		out       = fs.String("out", "published", "root directory of the filesystem forge")
 		live      = fs.Bool("live", false, "write the repository instead of previewing")
-		verdict   = fs.String("verdict", "passed", "the run's grade recorded in the manifest")
+		verdict   = fs.String("verdict", "passed", "verdict to record in the manifest")
 		methodDir = fs.String("method", "", "path to a method directory")
 		timeout   = fs.Duration("timeout", 30*time.Second, "network timeout for identity resolution")
 	)
@@ -876,7 +876,7 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 	_, _ = fmt.Fprintf(stdout, "included:    %d files\n", len(plan.Include))
 	_, _ = fmt.Fprintf(stdout, "quarantined: %d files\n", len(plan.Quarantine))
 	for _, q := range plan.Quarantine {
-		_, _ = fmt.Fprintf(stdout, "  - %s — %s\n", q.Path, q.Reason)
+		_, _ = fmt.Fprintf(stdout, "  - %s: %s\n", q.Path, q.Reason)
 	}
 
 	forge := publish.NewFSForge(*out, publish.DefaultOrg)
@@ -889,7 +889,7 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 		return err
 	}
 	if pub.Preview {
-		_, _ = fmt.Fprintln(stdout, "preview only — pass -live to write the repository")
+		_, _ = fmt.Fprintln(stdout, "preview only; pass -live to write the repository")
 	} else {
 		_, _ = fmt.Fprintf(stdout, "written:     %s\n", filepath.Join(*out, plan.RepoName))
 	}
