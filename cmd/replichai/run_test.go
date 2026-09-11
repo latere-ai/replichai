@@ -1,0 +1,110 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package main
+
+import (
+	"context"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/batch"
+	"github.com/latere-ai/replichai/internal/github"
+	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/provider"
+)
+
+// fakeRepositories stands in for GitHub under the project runner: it records
+// what Prepare asked for and answers with publishers over the in-process
+// forge, so the whole of `run --publish` is driven without a network.
+type fakeRepositories struct {
+	forge      *httptest.Server
+	allocated  []string
+	reattached []string
+}
+
+func (f *fakeRepositories) Allocate(_ context.Context, paperRef string) (*publisher, error) {
+	f.allocated = append(f.allocated, paperRef)
+	return f.publisher("open-hai", "fresh-"+slugify(paperRef)), nil
+}
+
+func (f *fakeRepositories) Reattach(_ context.Context, repo, _ string) (*publisher, error) {
+	f.reattached = append(f.reattached, repo)
+	owner, name, _ := strings.Cut(repo, "/")
+	return f.publisher(owner, name), nil
+}
+
+func (f *fakeRepositories) publisher(owner, name string) *publisher {
+	return &publisher{
+		gh: github.New("t", github.WithBaseURL(f.forge.URL)), owner: owner, name: name,
+		id:    paper.Identity{Key: "10.1145/3654777.3676417", Scheme: paper.SchemeDOI, Slug: "a-paper"},
+		mount: provider.RepoMount{URL: "https://github.com/" + owner + "/" + name, Token: "t", MountPath: audit.DefaultMountPath},
+	}
+}
+
+// testProjectRunner is `replichai run --publish` as runRun would build it,
+// over the memory runtime and a repository source that talks to nothing.
+func testProjectRunner(t *testing.T, repos repositorySource) *projectRunner {
+	t.Helper()
+	m, err := method.Load(writeMethod(t))
+	if err != nil {
+		t.Fatalf("method: %v", err)
+	}
+	return &projectRunner{
+		method: m, runtimeName: "memory", out: t.TempDir(),
+		owner: "open-hai", publish: true, timeout: time.Minute, maxRevisions: 1,
+		stdout: newTemp(t), stderr: newTemp(t),
+		publishers: make(map[string]*publisher), repositories: repos,
+	}
+}
+
+// docs/local-runs.md: "Resume skips what finished and retries what failed,
+// into the repository the first attempt created." Until this test existed the
+// runner allocated a fresh repository on every retry, and the state file's
+// repository was overwritten with the new one — so every --resume of a
+// publishing project left a sibling repository per attempt.
+func TestAResumedPaperReturnsToItsRepository(t *testing.T) {
+	const ref = "10.1145/3654777.3676417"
+	repos := &fakeRepositories{forge: fakeForge(t)}
+	runner := testProjectRunner(t, repos)
+	statePath := filepath.Join(t.TempDir(), "batch.json")
+	file := batch.File{Papers: []batch.Entry{{Paper: ref}}}
+
+	// The first attempt allocates.
+	state, err := batch.Run(t.Context(), file, runner, batch.Options{Parallel: 1, StatePath: statePath, Publishing: true})
+	if err != nil {
+		t.Fatalf("first attempt: %v: %s", err, state.Entries[0].Error)
+	}
+	if len(repos.allocated) != 1 || len(repos.reattached) != 0 {
+		t.Fatalf("first attempt allocated %v, reattached %v", repos.allocated, repos.reattached)
+	}
+	first := state.Entries[0].Repo
+	if first == "" {
+		t.Fatalf("the first attempt recorded no repository: %+v", state.Entries[0])
+	}
+
+	// It is then interrupted, which the state records as a failure with the
+	// repository still on it, and the operator resumes.
+	state.Entries[0].Phase, state.Entries[0].Error = batch.Failed, "interrupted"
+	if err := state.Save(statePath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	resumed, err := batch.Run(t.Context(), file, runner, batch.Options{Parallel: 1, StatePath: statePath, Resume: true, Publishing: true})
+	if err != nil {
+		t.Fatalf("resume: %v: %s", err, resumed.Entries[0].Error)
+	}
+	if len(repos.allocated) != 1 {
+		t.Fatalf("the retry allocated a second repository: %v", repos.allocated)
+	}
+	if len(repos.reattached) != 1 || repos.reattached[0] != first {
+		t.Fatalf("the retry reattached to %v, want %s", repos.reattached, first)
+	}
+	if got := resumed.Entries[0]; got.Repo != first || got.Phase != batch.Done {
+		t.Fatalf("after resuming: %+v, want %s and done", got, first)
+	}
+}
