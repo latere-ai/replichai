@@ -5,6 +5,7 @@ package runtimes
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -153,11 +154,7 @@ func (r boundRouter) ForRef(ref managed.SessionRef) (managed.Runtime, error) {
 
 func sortedNames(names []managed.RuntimeName) []managed.RuntimeName {
 	sorted := append([]managed.RuntimeName(nil), names...)
-	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && sorted[j] < sorted[j-1]; j-- {
-			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
-		}
-	}
+	slices.Sort(sorted)
 	return sorted
 }
 
