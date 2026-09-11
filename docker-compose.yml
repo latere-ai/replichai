@@ -41,10 +41,9 @@ services:
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       # Card payments (022b). Substituted from .env; unset selects a refusing
       # adapter, so a clone without Stripe keys still boots and runs unmetered.
-      # The publishable key is unused by the backend (hosted Checkout redirects,
-      # so the browser never talks to Stripe directly) — carried for parity.
+      # There is no publishable key: hosted Checkout redirects, so the browser
+      # never talks to Stripe directly, and nothing in the server reads one.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       DEV: "true"
       # The container binds all interfaces (:8080), so the loopback-only dev
