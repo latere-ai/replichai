@@ -24,7 +24,8 @@ type RuntimeRouter interface {
 // field is optional. An error from Started, Checkpoint, or Status is treated
 // as a caller failure: the controller cancels the session, retains whatever
 // evidence exists, releases, and returns the hook error joined with any
-// cleanup errors. A Retain failure is deliberately different; see below.
+// cleanup errors. A Retain failure is deliberately handled differently; see
+// the Retain field.
 type Hooks struct {
 	// Started runs immediately after the runtime accepted the session and
 	// before the first poll, so a successful remote start can never become
@@ -182,12 +183,12 @@ func (c *Controller) Capabilities(ctx context.Context, spec SessionSpec) (Capabi
 }
 
 // Start validates and creates a durable session, invoking Started before it
-// returns. It exists for the CLI's explicit detached workflow; ordinary callers
-// use Execute so retention and release cannot be forgotten.
+// returns. It exists for the CLI's explicit detached workflow. Ordinary callers
+// use Execute, so that retention and release cannot be forgotten.
 func (c *Controller) Start(ctx context.Context, spec SessionSpec, hooks Hooks) (SessionRef, error) {
-	// The runtime start resolves is discarded here — the detached workflow
-	// re-attaches by reference on the next call; only Execute keeps it, to poll
-	// in the same process.
+	// The runtime that start resolves is discarded here. The detached workflow
+	// reattaches by reference on the next call. Only Execute keeps the
+	// runtime, to poll in the same process.
 	_, ref, err := c.start(ctx, spec, hooks)
 	if err != nil {
 		return ref, err
@@ -498,10 +499,10 @@ func retryDelay(err error, fallback time.Duration) time.Duration {
 	return fallback
 }
 
-// previousOrFailure names the terminal status for a session the runtime never
-// reported a valid observation for. A session that simply stopped answering is
-// a timeout, not a fault the runtime owned up to, and operators chase the two
-// in different places.
+// previousOrFailure returns the terminal status for a session the runtime
+// never reported a valid observation for. A session that stopped responding
+// is a timeout, not a fault the runtime reported, and operators investigate
+// the two in different places.
 func previousOrFailure(previous Status, ref SessionRef, timedOut bool) Status {
 	if previous.State.Valid() {
 		return previous

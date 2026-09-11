@@ -11,10 +11,11 @@ import (
 	"time"
 )
 
-// RuntimeName identifies one managed runtime adapter — the thing that executes
-// a session, which is not the same as the vendor that bills for the model it
-// uses. Every durable reference carries one, so the name must be canonical for
-// a persisted session to route back to the adapter that started it.
+// RuntimeName identifies one managed runtime adapter, which is the component
+// that executes a session. It is not the same as the vendor that bills for the
+// model the session uses. Every durable reference carries one, so the name
+// must be canonical for a persisted session to route back to the adapter that
+// started it.
 type RuntimeName string
 
 // CanonicalRuntimeName folds operator-supplied text into the single spelling a
@@ -97,9 +98,9 @@ type SandboxSpec struct {
 }
 
 // AttachmentResource is one file placed into the sandbox outside any mounted
-// repository — an input dataset the session must read but must not commit.
-// SHA256 is verified against Content during validation, so a corrupted or
-// substituted payload fails the specification instead of the run.
+// repository, such as an input dataset the session must read but must not
+// commit. SHA256 is verified against Content during validation, so a corrupted
+// or substituted payload fails the specification instead of the run.
 type AttachmentResource struct {
 	Path      string `json:"path"`
 	MediaType string `json:"media_type,omitempty"`
@@ -197,11 +198,11 @@ func (v Verdict) Passed() bool { return v.Grade == GradePassed }
 type Meter string
 
 // Usage is the cumulative, provider-neutral cost of a session so far. The six
-// token buckets are mutually exclusive so each is priced exactly once; Extra
-// holds billable non-token meters, and Details holds non-billable decomposition
-// such as reasoning tokens already counted in Output, which pricing never
-// iterates. Anything the runtime did not report is zero, never an estimate
-// dressed up as provider data.
+// token buckets are mutually exclusive so that each is priced exactly once.
+// Extra holds billable non-token meters, and Details holds a non-billable
+// breakdown, such as reasoning tokens already counted in Output, which pricing
+// never iterates. Anything the runtime did not report is zero; it is never an
+// estimate presented as provider data.
 type Usage struct {
 	Model        ModelRef         `json:"model"`
 	InputFresh   int64            `json:"input_fresh"`
@@ -250,11 +251,11 @@ func (u *Usage) Add(other Usage) {
 	}
 }
 
-// MonotonicFrom reports whether u is a legal successor to previous: no token
+// MonotonicFrom reports whether u is a valid successor to previous: no token
 // bucket and no extra meter may decrease. Usage is defined as the session
 // total, so a decrease means the runtime sent a per-call delta or reset its
 // counters, and the controller treats that as a contract violation rather than
-// quietly absorbing it.
+// accepting it.
 func (u Usage) MonotonicFrom(previous Usage) bool {
 	if u.InputFresh < previous.InputFresh || u.InputCached < previous.InputCached ||
 		u.CacheWrite < previous.CacheWrite || u.CacheWrite5m < previous.CacheWrite5m ||

@@ -18,7 +18,7 @@ var (
 	ErrInvalidSpec = errors.New("invalid managed session specification")
 	// ErrUnsupported reports a well-formed specification asking for something
 	// this runtime cannot do. It is a refusal made before anything remote is
-	// created, never a licence to run with the unsupported part dropped.
+	// created; the session never runs with the unsupported part dropped.
 	ErrUnsupported = errors.New("managed session capability unsupported")
 	// ErrRuntimeMismatch reports a reference handed to an adapter that did not
 	// start the session. Routing on RuntimeName is what stops one adapter from
@@ -30,9 +30,9 @@ var (
 	// where it already has a terminal observation to fall back on.
 	ErrNotFound = errors.New("managed session not found")
 	// ErrContract reports an adapter breaking a guarantee this package makes
-	// about observations — a regressed state, a shrinking usage total, a verdict
-	// on an ungraded session. Nothing the runtime reports afterwards can be
-	// trusted, so the observation is never absorbed quietly.
+	// about observations, such as a regressed state, a decreased usage total,
+	// or a verdict on an ungraded session. Nothing the runtime reports
+	// afterwards can be trusted, so the observation is never accepted.
 	ErrContract = errors.New("managed runtime contract violation")
 )
 
@@ -65,8 +65,8 @@ func (e *UnsupportedError) Error() string {
 func (e *UnsupportedError) Unwrap() error { return ErrUnsupported }
 
 // RuntimeMismatchError reports a reference routed to the wrong adapter. It
-// carries both names because the interesting question is which pairing went
-// wrong, not merely that one did. It unwraps to ErrRuntimeMismatch.
+// carries both names because knowing which pairing went wrong is more useful
+// than knowing only that one did. It unwraps to ErrRuntimeMismatch.
 type RuntimeMismatchError struct {
 	Expected RuntimeName
 	Actual   RuntimeName
@@ -113,7 +113,7 @@ func (e *TemporaryError) RetryAfter() time.Duration {
 }
 
 // IsTemporary reports whether anything in err's chain claims to be retryable.
-// The test is structural — any error with a Temporary() bool method qualifies —
+// The test is structural: any error with a Temporary() bool method qualifies,
 // so a runtime need not adopt this package's error type to be retried.
 func IsTemporary(err error) bool {
 	var temporary interface{ Temporary() bool }
