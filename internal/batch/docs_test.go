@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-// The project file the guide shows is read out of the document rather than
-// copied here. An example that stops parsing is a document that lies, and the
-// only way to know is to run it.
+// docGuide is the guide whose example project file the test reads, rather
+// than a copy of it. An example that no longer parses makes the document
+// wrong, and the only way to detect that is to parse it.
 const docGuide = "../../docs/local-runs.md"
 
 func TestTheDocumentedProjectFileWorks(t *testing.T) {
@@ -49,7 +49,7 @@ func TestTheDocumentedProjectFileWorks(t *testing.T) {
 	}
 }
 
-// yamlBlockAfter is the first fenced yaml block following a heading.
+// yamlBlockAfter returns the first fenced yaml block following heading.
 func yamlBlockAfter(t *testing.T, document, heading string) string {
 	t.Helper()
 	index := strings.Index(document, heading)

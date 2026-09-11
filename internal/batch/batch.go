@@ -5,10 +5,10 @@
 // cap, one isolated session each, resumable state, and a report at the end
 // (045h).
 //
-// A replication project is a list of papers, and running it has meant one
-// invocation and one terminal per paper. Nothing shared a report, nothing
-// survived a laptop sleeping, and a failure in the fourth was discovered by
-// scrolling back.
+// Before this package, running a project meant one invocation and one
+// terminal per paper. There was no shared report, no state survived a laptop
+// sleeping, and a failure in one paper was found by scrolling back through
+// output.
 package batch
 
 import (
@@ -42,8 +42,8 @@ type Entry struct {
 }
 
 // UnmarshalYAML accepts either spelling of one paper: a bare reference, which
-// is what a list of papers reads like, or a mapping carrying overrides. A file
-// that mixes the two is the normal case — most papers need no overrides.
+// is how a list of papers reads, or a mapping carrying overrides. A file that
+// mixes the two is the normal case, since most papers need no overrides.
 func (e *Entry) UnmarshalYAML(node *yaml.Node) error {
 	var reference string
 	if err := node.Decode(&reference); err == nil {
@@ -91,9 +91,9 @@ type Resolved struct {
 	Index int
 }
 
-// Entries applies the file's defaults to every paper. A paper naming nothing
-// is an error rather than a silently skipped line: a project of twenty papers
-// that quietly runs nineteen is worse than one that refuses.
+// Entries applies the file's defaults to every paper. An entry that names no
+// paper is an error rather than a skipped line: a project of twenty papers
+// that runs nineteen without notice is worse than one that refuses to run.
 func (f File) Entries() ([]Resolved, error) {
 	resolved := make([]Resolved, 0, len(f.Papers))
 	for index, entry := range f.Papers {
@@ -137,8 +137,8 @@ func ReadFile(path string) (File, error) {
 }
 
 // parseList reads the plain form: one reference per line, # for comments. It
-// reports false where the content is structured, so a YAML project is never
-// misread as a list of odd-looking references.
+// reports false where the content is structured, so a YAML project is not
+// misread as a list of references.
 func parseList(body string) ([]Entry, bool) {
 	var entries []Entry
 	for raw := range strings.SplitSeq(body, "\n") {
@@ -169,7 +169,7 @@ func looksStructured(line string) bool {
 	return found && !strings.Contains(key, "/") && !strings.Contains(key, " ")
 }
 
-// Phase is where one entry has got to.
+// Phase is the progress of one entry.
 type Phase string
 
 // The phases an entry moves through. A batch is resumed by skipping the
@@ -203,10 +203,10 @@ type EntryState struct {
 	Ref       managed.SessionRef `json:"ref,omitzero"`
 }
 
-// absorb records what one attempt reported. Where the attempt names nothing
-// — it failed before it reached a session, or before it reached its
-// repository — the entry keeps what an earlier attempt recorded, so a retry
-// that fails early cannot erase the repository the next retry must return to.
+// absorb records what one attempt reported. Where the attempt reports no
+// value, because it failed before it reached a session or its repository, the
+// entry keeps what an earlier attempt recorded, so a retry that fails early
+// cannot erase the repository the next retry must return to.
 func (e *EntryState) absorb(outcome Outcome) {
 	e.Grade, e.Model, e.Usage = outcome.Grade, outcome.Model, outcome.Usage
 	if outcome.Session != "" {
@@ -249,16 +249,16 @@ type Outcome struct {
 	Ref       managed.SessionRef
 }
 
-// Runner runs one paper. Prepare is serialised by the batch and Execute is
-// not, which is the whole of the concurrency contract: allocating a
-// repository name is a read followed by a decision, and two concurrent
-// readers decide the same name.
+// Runner runs one paper. The batch serialises Prepare and does not serialise
+// Execute; that is the whole concurrency contract. Allocating a repository
+// name is a read followed by a decision, and two concurrent readers would
+// decide the same name.
 type Runner interface {
-	// Prepare claims whatever must be claimed exactly once — a repository
-	// name, a repository — before the work starts. prior is what an earlier
-	// attempt at the same paper recorded, or the zero value for a first
-	// attempt: a resumed paper is expected to return to the repository the
-	// first attempt created rather than claim a second one.
+	// Prepare claims whatever must be claimed exactly once before the work
+	// starts, such as a repository name or a repository. prior is what an
+	// earlier attempt at the same paper recorded, or the zero value for a
+	// first attempt. A resumed paper is expected to return to the repository
+	// the first attempt created rather than claim a second one.
 	Prepare(ctx context.Context, entry Resolved, prior EntryState) error
 	// Execute runs the audit and publishes it.
 	Execute(ctx context.Context, entry Resolved) (Outcome, error)
@@ -266,10 +266,10 @@ type Runner interface {
 
 // Options configure one run of a batch.
 type Options struct {
-	// Parallel is how many papers run at once. Zero or less takes the
-	// default: half the machine's cores, capped at four, because a session
-	// is mostly waiting on a model and a little on a compiler, and a pool
-	// wider than that thrashes the disk more than it shortens the batch.
+	// Parallel is how many papers run at once. Zero or less selects the
+	// default: half the machine's cores, capped at four. A session mostly
+	// waits on a model and a little on a compiler, and a wider pool costs
+	// more in disk contention than it saves in batch time.
 	Parallel int
 	// StatePath is where the resumable state is written.
 	StatePath string
@@ -277,17 +277,17 @@ type Options struct {
 	Resume bool
 	// Clock is the time source.
 	Clock func() time.Time
-	// Publishing says the project publishes each reproduction, so a report
-	// can tell a run that produced no repository from one that was never
-	// asked for one.
+	// Publishing reports that the project publishes each reproduction, so a
+	// report can distinguish a run that produced no repository from one that
+	// was never asked for one.
 	Publishing bool
 	// Progress is called after every state change, so a caller can print
-	// and a test can watch.
+	// progress and a test can observe it.
 	Progress func(State)
 }
 
-// DefaultParallel is how many papers run at once when nobody said: half the
-// cores, capped at four, and never less than one.
+// DefaultParallel returns how many papers run at once when Options.Parallel
+// is not set: half the cores, capped at four, and at least one.
 func DefaultParallel() int {
 	half := runtime.NumCPU() / 2
 	if half > 4 {
@@ -300,7 +300,7 @@ func DefaultParallel() int {
 }
 
 // ErrIncomplete reports that at least one paper failed. The batch itself
-// completed: one paper failing never fails the rest, and the exit code is what
+// completed: one paper failing does not fail the rest, and the exit code
 // carries the difference to CI.
 var ErrIncomplete = errors.New("one or more papers failed")
 
@@ -370,17 +370,17 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			defer func() { <-slots }()
 
 			mu.Lock()
-			// What an earlier attempt recorded travels with the entry into
-			// the runner, so a retry can return to its repository.
+			// What an earlier attempt recorded is passed to the runner with
+			// the entry, so a retry can return to its repository.
 			prior := state.Entries[index]
 			state.Entries[index].Phase = Running
 			state.Entries[index].Started = options.Clock()
 			save()
 			mu.Unlock()
 
-			// Serialised: allocating a name is a read of what exists
-			// followed by a decision, so two concurrent papers whose
-			// slugs collide would decide the same one.
+			// Prepare is serialised: allocating a name is a read of what
+			// exists followed by a decision, so two concurrent papers whose
+			// slugs collide would decide the same name.
 			prepare.Lock()
 			err := runner.Prepare(ctx, entry, prior)
 			prepare.Unlock()
@@ -407,8 +407,9 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 	wg.Wait()
 
 	mu.Lock()
-	// An interrupted batch keeps whatever ran; nothing is lost to a Ctrl-C,
-	// and the entries still pending are pending rather than failed.
+	// An interrupted batch keeps whatever ran. Nothing is lost to an
+	// interrupt, and the entries still pending are recorded as pending rather
+	// than failed.
 	state.FinishedAt = options.Clock()
 	save()
 	final := state.clone()

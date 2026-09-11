@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// Two savers racing on one state path must each leave a complete file
-// behind: a fixed temporary name would let one rename the other's half-written
-// bytes into place.
+// TestSaveSurvivesConcurrentWriters checks that concurrent writers of one
+// state path each leave a complete file. A fixed temporary name would let one
+// writer rename the other's half-written bytes into place.
 func TestSaveSurvivesConcurrentWriters(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "state.json")
 	const writers = 8
