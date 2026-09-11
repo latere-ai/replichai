@@ -234,3 +234,27 @@ func grepTree(t *testing.T, dir, want string) []string {
 	}
 	return found
 }
+
+// A local run's remote has to be empty when the host pushes. The workspace is
+// a fresh repository with no remote (045g), so its history descends from
+// nothing: a commit already on the remote — an identity file written there
+// before the run, say — makes every push a non-fast-forward, and the whole
+// reproduction is refused after the agent has already done the work.
+//
+// This is the constraint the ordering in cmd/replichai rests on: whatever the
+// system writes into the repository through the forge API, it writes after
+// this push and never before it.
+func TestAPushNeedsARemoteTheWorkspaceDescendsFrom(t *testing.T) {
+	remote := bareRemote(t)
+	seed := workspace(t, map[string]string{".replichai/paper.json": `{"key":"doi:10/x"}`})
+	git(t, seed, "push", "file://"+remote, "HEAD:refs/heads/main")
+
+	dir := workspace(t, map[string]string{"README.md": "# reproduction"})
+	_, err := LocalPush{Workspace: dir, RemoteURL: "file://" + remote}.Run(context.Background())
+	if err == nil {
+		t.Fatal("a push onto an unrelated history was accepted; it cannot be")
+	}
+	if !strings.Contains(err.Error(), "rejected") && !strings.Contains(err.Error(), "fetch first") {
+		t.Fatalf("the refusal does not say the remote had other work: %v", err)
+	}
+}

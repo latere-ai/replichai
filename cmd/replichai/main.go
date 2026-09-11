@@ -213,6 +213,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		}
 		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
 		if mounts {
+			// The agent is about to clone this repository, so what the
+			// repository says about the paper has to be true before it does.
+			pub.recordIdentity(ctx, stderr)
 			opts = append(opts, audit.WithSessionMount(audit.SessionMount{
 				URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
 			}))
@@ -227,6 +230,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 				if err := pushWorkspace(ctx, pub, capabilities.OutputDir, paper, evidence.Status.Ref, stdout, stderr); err != nil {
 					return err
 				}
+				// The remote's history now descends from the workspace, so a
+				// commit made here is a commit on top of the reproduction.
+				pub.recordIdentity(ctx, stderr)
 			}
 			grade := provider.GradeUnknown
 			if evidence.Status.Verdict != nil {
@@ -318,6 +324,25 @@ func (p *publisher) done(ctx context.Context, stderr *os.File) {
 
 func (p *publisher) repoFullName() string { return p.owner + "/" + p.name }
 
+// recordIdentity writes the resolved identity into the repository, so finish
+// reads it from there rather than re-resolving over the paper source.
+//
+// When it happens is a correctness question, not a preference. A mounted run
+// clones the repository, so its history descends from whatever is recorded
+// before the clone and this has to run first. A local run commits into a fresh
+// repository that has no remote at all (045g), so a commit made here before
+// the push gives the remote a history the workspace knows nothing about, and
+// the push is refused as a non-fast-forward — which is every local --publish
+// run, after the agent's work is already done. So the caller says when.
+//
+// A failure is reported and not fatal: finish re-resolves when the file is
+// absent, and losing a lookup shortcut is not worth losing a publication.
+func (p *publisher) recordIdentity(ctx context.Context, stderr *os.File) {
+	if err := publish.RecordIdentity(ctx, p.gh, p.owner, p.name, p.id); err != nil {
+		_, _ = fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
+	}
+}
+
 func encodeSessionRef(ref managed.SessionRef) (string, error) {
 	raw, err := json.Marshal(ref)
 	if err != nil {
@@ -400,9 +425,6 @@ func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeo
 	}
 	owner, name, _ := strings.Cut(allocated.Repo, "/")
 	gh := github.New(allocated.Token)
-	if err := publish.RecordIdentity(ctx, gh, owner, name, id); err != nil {
-		_, _ = fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
-	}
 	_, _ = fmt.Fprintf(stderr, "  repository %s, credential expires %s\n",
 		allocated.Repo, allocated.Expires.Format(time.RFC3339))
 	return &publisher{
@@ -453,12 +475,6 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 	}
 	if err != nil {
 		return nil, fmt.Errorf("prepare repository: %w", err)
-	}
-
-	// Record the resolved identity into the repository so finish reads it from
-	// here rather than re-resolving over the (slow, rate-limited) paper source.
-	if err := publish.RecordIdentity(ctx, gh, owner, name, id); err != nil {
-		_, _ = fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
 	}
 
 	return &publisher{
