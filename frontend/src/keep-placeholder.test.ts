@@ -10,8 +10,8 @@ import { body, keepPlaceholder, PLACEHOLDER, restorePlaceholder } from '../scrip
 // The build empties internal/spa/dist and has to put PLACEHOLDER back, or a
 // clean checkout has nothing for go:embed to match and `go build` fails for
 // everyone who pulls. The restore used to be a step after `vite build` in
-// package.json, so a build that failed while writing — after the directory was
-// emptied — skipped it. It is a plugin hook now, one Vite calls in its own
+// package.json, so a build that failed while writing, after the directory was
+// emptied, skipped it. It is a plugin hook now, one Vite calls in its own
 // finally, and this pins both halves: the restore writes the committed file
 // byte for byte, and the plugin runs it at closeBundle, for builds only.
 

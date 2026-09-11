@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // A session's lifecycle phase as the screens show it: its tone, its glyph, its
-// badge class and its label — one reading wherever a phase appears, whether a
-// row badge, a timeline dot or a scrubber band. The list of phases itself is
+// badge class and its label, so a phase reads the same wherever it appears,
+// whether a row badge, a timeline dot or a scrubber band. The list of phases itself is
 // transcript.ts's PHASE_ORDER.
 
 import { type I18n } from './i18n'
@@ -16,7 +16,7 @@ import { terminal } from './session-stop'
 export const phaseClass = (p: string) => (terminal(p) ? p : 'running')
 
 // phaseTone maps a session phase onto the semantic ramp, so a phase is the same
-// colour wherever it appears — a row badge, a timeline dot, a pill.
+// colour wherever it appears: a row badge, a timeline dot, a pill.
 export function phaseTone(phase: string): Tone {
   if (phase === 'done') return 'ok'
   if (phase === 'failed') return 'err'

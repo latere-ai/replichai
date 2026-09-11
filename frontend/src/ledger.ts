@@ -10,9 +10,9 @@ import { type LedgerEntry } from './api'
 import { type I18n } from './i18n'
 
 // ledgerKindLabel names an entry in the reader's terms. A wallet only ever sees
-// three of the seven kinds — holds, releases and charges happen to a project's
-// pot, never to a person — so the rest fall through to a neutral label rather
-// than leaking vocabulary nobody here needs.
+// three of the seven kinds, because holds, releases and charges happen to a
+// project's pot, never to a person, so the rest fall through to a neutral label
+// rather than leaking vocabulary nobody here needs.
 export function ledgerKindLabel(t: I18n['t'], kind: LedgerEntry['kind']): string {
   if (kind === 'topup') return t('ledgerTopup')
   if (kind === 'allocate') return t('ledgerAllocate')
@@ -21,7 +21,7 @@ export function ledgerKindLabel(t: I18n['t'], kind: LedgerEntry['kind']): string
 }
 
 // ledgerLabel names one statement row (024b). An allocate or reclaim that
-// carries a project snapshot names it — a link while the project still exists, a
+// carries a project snapshot names it: a link while the project still exists, a
 // plain name once it is purged. Every other kind, and a pre-024b move that never
 // captured a project, falls back to the neutral kind label so an old statement
 // still reads.
@@ -35,8 +35,8 @@ export function ledgerLabel(t: I18n['t'], e: LedgerEntry): { kind: 'plain'; text
     }
   }
   // A card payment names its source, not "an admin": the actor distinguishes a
-  // purchase (stripe:…) from an admin grant, and a refund (stripe:refund:…) from
-  // a manual correction (022b/022c).
+  // purchase, whose actor starts with stripe:, from an admin grant, and a
+  // refund, stripe:refund:, from a manual correction (022b/022c).
   const byCard = e.actor.startsWith('stripe:')
   if (e.kind === 'topup') return { kind: 'plain', text: byCard ? t('ledgerCardTopup') : t('ledgerTopup') }
   if (e.kind === 'adjust' && byCard) return { kind: 'plain', text: t('ledgerRefund') }

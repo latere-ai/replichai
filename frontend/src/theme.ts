@@ -4,8 +4,8 @@
 import { useEffect, useState } from 'react'
 
 // The appearance the operator chose. "auto" defers to the operating system;
-// the other two pin it. The choice is what persists — never the resolved
-// value — so a machine that switches at sunset follows along.
+// the other two pin it. The choice is what persists, never the resolved
+// value, so a machine that switches at sunset follows along.
 export type ThemeMode = 'auto' | 'light' | 'dark'
 
 // The value actually stamped on <html>. Every dark rule hangs off
@@ -17,8 +17,8 @@ export const THEME_MODES: ThemeMode[] = ['auto', 'light', 'dark']
 const KEY = 'theme'
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 
-// readMode accepts what localStorage held. Anything unrecognised — and the
-// absent value of a first visit — reads as "auto"; the two legacy values this
+// readMode accepts what localStorage held. Anything unrecognised, including the
+// absent value of a first visit, reads as "auto". The two legacy values this
 // app used to store are already valid modes, so a returning operator keeps the
 // appearance they picked.
 export function readMode(raw: string | null): ThemeMode {

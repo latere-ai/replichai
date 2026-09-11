@@ -41,7 +41,7 @@ test('a paper nobody has run keeps its row', () => {
 })
 
 // A paper with no runs can be removed (012) and a job's paper_key is a string,
-// not a reference — so a run can outlive the row it started from. Dropping it
+// not a reference, so a run can outlive the row it started from. Dropping it
 // would lose a session the project paid for.
 test('a session whose paper the project no longer holds is listed, not dropped', () => {
   const g = groupByPaper([A], [job('s1', A.key, 'done', 'open-hai/a'), job('s9', 'arxiv:9999.9', 'failed')])
@@ -59,11 +59,11 @@ test('sessions keep the order they were given, newest first', () => {
   expect(g.papers[0].sessions.map((s) => s.id)).toEqual(['new', 'old'])
 })
 
-// The defect this module exists for. repo_name is set as the publishing phase
-// *opens*, and publishing → failed is a legal transition, so a run that fell
-// over mid-publish carries a repository name. Testing the repository alone —
-// which is what the project's artifacts and verdict tabs did — presented that
-// run as the project's result, ahead of an older session that finished.
+// The defect this module fixes. repo_name is set when the publishing phase
+// opens, and publishing to failed is a legal transition, so a run that failed
+// mid-publish carries a repository name. Testing the repository alone, as the
+// project's artifacts and verdict tabs did, presented that run as the project's
+// result, ahead of an older session that finished.
 test('a session that failed while publishing is not a result', () => {
   expect(isGradeable(job('half', A.key, 'failed', 'open-hai/half'))).toBe(false)
 })

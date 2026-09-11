@@ -7,7 +7,7 @@ import { hueOf } from './account'
 
 // The mode is what persists; the resolved theme is what the stylesheet reads.
 // Every dark rule hangs off [data-theme='dark'], so "auto" must never reach the
-// DOM — resolving it here is the whole reason this function exists.
+// DOM; this function resolves it.
 test('auto follows the system preference', () => {
   expect(resolveTheme('auto', true)).toBe('dark')
   expect(resolveTheme('auto', false)).toBe('light')

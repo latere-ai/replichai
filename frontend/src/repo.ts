@@ -7,8 +7,8 @@
 // repoSuffix is the part of a reproduction's repository name that identifies
 // this run: the registry gives every reproduction of one paper the same slug
 // and a short random suffix, so the suffix is the only part that differs
-// between five runs of the same paper. A name with no suffix — an owner and a
-// bare slug — is shown whole rather than sliced into something misleading.
+// between five runs of the same paper. A name with no suffix, an owner and a
+// bare slug, is shown whole rather than sliced into something misleading.
 export function repoSuffix(repo: string): string {
   const name = repo.slice(repo.lastIndexOf('/') + 1)
   const cut = name.lastIndexOf('-')
@@ -17,8 +17,8 @@ export function repoSuffix(repo: string): string {
 }
 
 // runLabel says what one session ran on, for a row listed under the paper it
-// reproduced. The model id is the whole answer — `claude-opus-5` against
-// `gpt-6-astra` is the comparison a repeat study is for — and a session whose
+// reproduced. The model id is the answer, because comparing `claude-opus-5`
+// against `gpt-6-astra` is what a repeat study is for, and a session whose
 // worker reported no model yet falls back to the reference, which is what the
 // row said before anything was known about the run.
 export function runLabel(j: { ref: string; status?: { Model?: string } }): string {

@@ -57,8 +57,8 @@ describe('elapsed', () => {
     expect(elapsed(t, start, at(60 * 60_000))).toBe('1h 0m')
   })
 
-  // An age would have rounded this to "1 hour ago" — the wrong question,
-  // answered imprecisely, on a row that is still spending.
+  // An age would have rounded this to "1 hour ago", which answers the wrong
+  // question imprecisely on a row that is still spending.
   it('does not round away the minutes relativeTime drops', () => {
     const start = '2026-08-08T10:00:00Z'
     expect(elapsed(t, start, Date.parse(start) + 89 * 60_000)).toBe('1h 29m')
@@ -72,8 +72,8 @@ describe('elapsed', () => {
 })
 
 // duration is the one formatter behind elapsed, the transcript's offsetOf and
-// the timeline's phase lengths. Each of those pins its own output (above, and
-// in transcript.test.ts); this checks the seam they share, at every scale and
+// the timeline's phase lengths. Each of those pins its own output, above and
+// in transcript.test.ts; this checks the shared function, at every scale and
 // in both modes.
 describe('duration', () => {
   it('counts seconds under a minute, whether or not seconds were asked for', () => {

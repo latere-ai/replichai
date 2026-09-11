@@ -5,11 +5,10 @@
 // the panes ask of it.
 //
 // The types mirror `internal/verdict` field for field. The server validates
-// before serving, so anything that reaches here has already been refused if an
-// outer-loop claim carried an outcome or a decision omitted its sensitivity —
-// which is why nothing below re-checks those rules. What it does instead is
-// answer questions the schema deliberately does not encode: which claims are
-// still open, and how a rate should be read.
+// before serving and refuses a verdict in which an outer-loop claim carries an
+// outcome or a decision omits its sensitivity, so nothing below re-checks those
+// rules. It answers the questions the schema deliberately does not encode:
+// which claims are still open, and how a rate should be read.
 
 export type Loop = 'inner' | 'outer'
 export type ClaimOutcome = 'verified' | 'partial' | 'blocked' | 'not_scored'
@@ -54,9 +53,9 @@ export const inner = (f: Findings): Claim[] => (f.boundary ?? []).filter((c) => 
 
 // unresolved is what did not cleanly reproduce: an inner-loop claim that is
 // blocked, only partly verified, or verified while still disagreeing with the
-// paper. That last case is the one a table of outcomes hides — a run can verify
-// a claim and still have found a number the paper got wrong — so a mismatch
-// counts as unresolved whatever the outcome beside it says.
+// paper. A table of outcomes hides that last case, because a run can verify a
+// claim and still have found a number the paper got wrong, so a mismatch counts
+// as unresolved whatever the outcome beside it says.
 //
 // Outer rows are never included. They were never scored, so there is nothing
 // about them to resolve, and listing them under a heading about what failed
@@ -79,7 +78,7 @@ export const rate = (c: Components | undefined): number | null => {
 export const scoreOf = (f: Findings, c: Criterion): Score | undefined =>
   (f.scorecard ?? []).find((s) => s.criterion === c)
 
-// The five, in the order a reader reads them — the same order the schema lists.
+// The five, in the order the schema lists them.
 export const CRITERIA: Criterion[] = ['code', 'data', 'license', 'preregistration', 'supplement']
 
 // tones map a value to the semantic token that carries it. They live here, next
@@ -91,7 +90,7 @@ export const outcomeTone = (o: ClaimOutcome): string =>
 export const verdictTone = (v: FindingsVerdict): string =>
   v === 'reproducible' ? 'var(--ok)' : v === 'partial' ? 'var(--warn)' : 'var(--err)'
 
-// A dead link and nothing published are different findings — the first is one
-// an author can still fix — so they never share a tone.
+// A dead link and nothing published are different findings, and only the first
+// is one an author can still fix, so they never share a tone.
 export const releaseTone = (r: ReleaseResult): string =>
   r === 'found' ? 'var(--ok)' : r === 'partial' ? 'var(--warn)' : r === 'dead' ? 'var(--err)' : 'var(--fg-3)'

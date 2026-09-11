@@ -5,10 +5,10 @@ import { expect, test } from 'bun:test'
 import { ApiError, getMe, makeProjectPublic } from './api'
 import { refusal } from './errors'
 
-// The client used to read one field off a refusal — `error` — and drop the rest
-// of the body. A publish refusal now carries the sessions standing in the way,
-// and none of the screen's work on them means anything if they are thrown away
-// here. So the parse is asserted at the seam, through a real call.
+// The client used to read only the `error` field off a refusal and drop the
+// rest of the body. A publish refusal now carries the blocking sessions, and the
+// screen cannot show them if they are dropped here, so the parse is asserted at
+// the client boundary through a real call.
 test('a refusal keeps the blockers the server sent', async () => {
   const real = globalThis.fetch
   globalThis.fetch = (async () =>
@@ -30,8 +30,8 @@ test('a refusal keeps the blockers the server sent', async () => {
   }
 })
 
-// A refusal with no blockers at all — an unpublishable body, a bare status — is
-// an empty list, never undefined: the screen maps over it.
+// A refusal with no blockers, such as an unparseable body or a bare status,
+// yields an empty list, never undefined, because the screen maps over it.
 test('a refusal with nothing named is an empty list', async () => {
   const real = globalThis.fetch
   globalThis.fetch = (async () => new Response('not json', { status: 500 })) as unknown as typeof fetch
@@ -45,12 +45,12 @@ test('a refusal with nothing named is an empty list', async () => {
   }
 })
 
-// A 2xx whose body is not JSON — the dev server's own HTML for a path it does
-// not proxy, a gateway page from in front of the API — used to reach r.json()
-// and reject with a SyntaxError. Nothing downstream knew that error, so every
-// screen filed it under "you appear to be offline", which is the one thing it
-// is not: the network answered. It is a fault of the server's, reported with
-// its status and a code, so the mappers can say "we broke" instead.
+// A 2xx whose body is not JSON, such as the dev server's own HTML for a path it
+// does not proxy or a gateway page in front of the API, used to reach r.json()
+// and reject with a SyntaxError. Nothing downstream recognised that error, so
+// every screen reported it as "you appear to be offline", which is wrong: the
+// network answered. It is now reported as a server fault, with its status and a
+// code, so the mappers can name it as one.
 test('a 2xx that is not JSON is a server fault, not a lost connection', async () => {
   const real = globalThis.fetch
   globalThis.fetch = (async () =>
@@ -68,8 +68,7 @@ test('a 2xx that is not JSON is a server fault, not a lost connection', async ()
   }
 })
 
-// The classification the fix exists for: a fetch that never got an answer is
-// still offline, and only that is.
+// Only a fetch that never got an answer is classified as offline.
 test('a fetch that never got an answer is offline', () => {
   expect(refusal(new TypeError('Failed to fetch')).offline).toBe(true)
 })

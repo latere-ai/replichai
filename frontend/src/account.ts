@@ -1,27 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Who the reader is, and how they are drawn: the tier and ownership checks the
-// screens gate on, and the avatar's fallbacks — initials and a stable hue — for
-// an account with no picture to show. Pure functions, so the tests read them
-// without a browser.
+// The reader's identity and how it is drawn: the tier and ownership checks the
+// screens gate on, and the avatar fallbacks, initials and a stable hue, for an
+// account with no picture. Pure functions, so the tests run without a browser.
 
 import { type Me } from './api'
 
-// isAdmin decides whether the Platform group renders. It decides nothing else:
-// every admin route is refused server-side by the tier guard and again by the
-// store, so hiding the tab is a courtesy, not the guard.
+// isAdmin decides whether the Platform group renders, and nothing else: every
+// admin route is refused server-side by the tier guard and again by the store,
+// so hiding the tab is a convenience, not the access control.
 export function isAdmin(me: Me): boolean {
   return me.tier === 'admin'
 }
 
 // isMine reports whether a project's owning principal is this reader's.
 //
-// Both sides are optional and both are absent at once on the screen this exists
-// for: signed out, `me.principal` is undefined and the server withholds `owner`
-// from a reader with no stake in the project (028) — so a bare `===` would make
-// every registry row the reader's own, and every public project look editable.
-// Two unknowns are not a match.
+// Both sides are optional, and both are absent on the registry screen: signed
+// out, `me.principal` is undefined and the server withholds `owner` from a
+// reader with no stake in the project (028). A bare `===` would then report
+// every registry row as the reader's own and make every public project look
+// editable, so two undefined values do not match.
 export function isMine(me: Me, owner?: string): boolean {
   return !!me.principal && !!owner && owner === me.principal
 }
@@ -31,9 +30,9 @@ export function initials(email?: string) {
   return email.slice(0, 2).toUpperCase()
 }
 
-// hueOf turns an address into a stable hue. It is only decoration, but a stable
-// one: the same person is the same colour in every list they appear in, which
-// is what makes a members table scannable.
+// hueOf turns an address into a stable hue. It is decoration, but the same
+// person gets the same colour in every list, which makes a members table
+// easier to scan.
 export function hueOf(email?: string): number {
   if (!email) return 240
   let h = 0
@@ -42,9 +41,10 @@ export function hueOf(email?: string): number {
 }
 
 // showsPicture decides between the IdP's picture and the initials fallback. It
-// is the whole rule of 006m AC4, kept pure so it is testable: no picture, a
-// picture that is not absolute https (the server already filters those, and the
-// client does not trust that it did), or one that failed to load, all fall back.
+// implements 006m AC4 as a pure function so it is testable. No picture, a
+// picture that is not an absolute https URL, or one that failed to load all
+// fall back. The server already filters non-https pictures; the client checks
+// again rather than trusting that it did.
 export function showsPicture(picture: string | undefined, broken: boolean): boolean {
   return !broken && !!picture && picture.startsWith('https://')
 }

@@ -10,14 +10,15 @@
 export const terminal = (phase: string) => phase === 'done' || phase === 'failed'
 
 // stopPending reports whether a stop is in flight: the viewer asked to stop, and
-// the session has not settled yet. It stays true after the request returns —
+// the session has not settled yet. It stays true after the request returns,
 // which is the case the button used to get wrong, snapping back to a live "Stop"
 // on a session still shown as running.
 export const stopPending = (phase: string, requested: boolean) => requested && !terminal(phase)
 
 // freshest picks which snapshot of a session a row should show when the list
 // hands it a new one. A list read taken before the session settled is stale: it
-// would walk a stopped session back to running and offer Stop again. Same
-// session, settled here, unsettled there — keep the settled one.
+// would walk a stopped session back to running and offer Stop again. When the
+// same session is settled in one snapshot and unsettled in the other, the
+// settled one is kept.
 export const freshest = <T extends { id: string; phase: string }>(shown: T, incoming: T): T =>
   shown.id === incoming.id && terminal(shown.phase) && !terminal(incoming.phase) ? shown : incoming

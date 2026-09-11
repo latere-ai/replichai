@@ -4,29 +4,28 @@
 // The hero scene (033): the mark as a field of particles, lit, in fog, over a
 // receding floor.
 //
-// It is the same argument as `brand.tsx`'s drawn mark and the same geometry —
-// an inner orbit continuous all the way round, an outer orbit with six
-// permanent voids baked into its buffer — so the identity and the claim stay
-// one thing at any scale. The voids belong to the geometry rather than to a
-// shader trick, which is why the outer loop visibly never closes however long
-// it is watched.
+// It has the same meaning and geometry as the drawn mark in `brand.tsx`: an
+// inner orbit continuous all the way round, and an outer orbit with six
+// permanent voids baked into its buffer, so the identity reads the same at any
+// scale. The voids are in the geometry rather than a shader effect, so the
+// outer loop never closes however long it is watched.
 //
 // three is imported dynamically and nowhere else in the app, so Vite splits it
 // into a chunk the first paint never pays for. Everything here is best-effort:
-// no WebGL, no chunk, or a throw on any line leaves the caller with an empty
-// slab and a page that reads exactly as designed.
+// with no WebGL, no chunk, or a throw on any line, the caller keeps an empty
+// slab and the page reads as designed.
 
 // The scene has two states, because the slab does (040). What changes between
-// them is not a colour list — it is the *arithmetic*.
+// them is the blending arithmetic, not only the colour list.
 //
-// In the dark the mark is light added to a void: every layer blends additively,
-// each particle's brightness lives in its colour channels, and where particles
-// crowd, the sum climbs towards white. On paper that operation has no meaning —
-// adding light to a pale ground saturates on the first layer and the mark
-// vanishes. So the light state inks instead: normal blending, the hue held
-// constant, and the brightness moved into an alpha channel. Crowding then
-// converges on full ink exactly as crowding converged on white, so density
-// still reads as density and the figure means what it meant.
+// In the dark state the mark is light added to a black ground: every layer
+// blends additively, each particle's brightness is in its colour channels, and
+// where particles crowd the sum climbs towards white. On a pale ground that
+// does not work, because adding light saturates on the first layer and the
+// mark vanishes. So the light state inks instead: normal blending, the hue held
+// constant, and the brightness moved into the alpha channel. Crowding then
+// converges on full ink as it converged on white, so density still reads as
+// density.
 //
 // Everything the two disagree about is in one Palette. The geometry below reads
 // it and never branches on the theme itself.
@@ -39,8 +38,9 @@ type Palette = {
   additive: boolean
   /**
    * Turns a layer's brightness into alpha in the inked state. The brightness
-   * values overshoot 1 on purpose — they were written to saturate an additive
-   * sum — so this scales them into a range where a faint particle stays faint.
+   * values overshoot 1 on purpose, because they were written to saturate an
+   * additive sum, so this scales them into a range where a faint particle stays
+   * faint.
    */
   gain: number
   /** Multiplies every layer's material opacity. */
@@ -93,7 +93,7 @@ const DARK: Palette = {
 }
 
 // Paper. The hue ladder inverts with the ground: in the dark the hottest layer
-// is the palest (the runner, near white), and on paper the hottest layer is the
+// is the palest, the runner, near white; on paper the hottest layer is the
 // deepest, because that is what stands out against the page.
 const LIGHT: Palette = {
   ground: 0xeceae5,
@@ -131,8 +131,8 @@ const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|warp|software|basic render/i
 // The debug extension is the only way to see through the masked string a browser
 // reports by default; where it is unavailable the masked value is still worth
 // testing, because SwiftShader names itself there too. Unknown is treated as
-// hardware — a real GPU misread as software would cost the scene for nothing,
-// and that is the worse of the two mistakes.
+// hardware, because a real GPU misread as software would drop the scene for
+// nothing, which is the worse of the two mistakes.
 function isSoftwareRenderer(renderer: import('three').WebGLRenderer): boolean {
   try {
     const gl = renderer.getContext()
@@ -147,10 +147,10 @@ function isSoftwareRenderer(renderer: import('three').WebGLRenderer): boolean {
 }
 
 // mount builds the scene inside `el` and starts it. `reduce` renders exactly one
-// frame and never schedules another — the resting state of this figure is the
-// figure, not a first frame of it. `stage` is the element pointer movement is
-// measured against, which is the whole slab rather than the canvas, so the
-// parallax follows the cursor over the copy as well.
+// frame and never schedules another, so the still image is the complete figure
+// rather than a first frame of an animation. `stage` is the element pointer
+// movement is measured against, which is the whole slab rather than the canvas,
+// so the parallax follows the cursor over the copy as well.
 export async function mountHeroScene(
   el: HTMLElement,
   stage: HTMLElement | null,
@@ -173,12 +173,11 @@ export async function mountHeroScene(
   }
 
   // A context is not the same as a GPU. Where hardware acceleration is absent
-  // the browser hands back a *software* rasteriser — SwiftShader, llvmpipe — and
-  // it will honour every draw call by rasterising 25,000 additively-blended
-  // particles on the CPU, every frame, forever. That does not degrade the page;
-  // it takes it over. The main thread stops yielding, the rest of the document
-  // loads at a crawl, and the reader gets a janky first screen where a still one
-  // would have been better.
+  // the browser hands back a software rasteriser such as SwiftShader or
+  // llvmpipe, which honours every draw call by rasterising 25,000 additively
+  // blended particles on the CPU, every frame. The main thread stops yielding,
+  // the rest of the document loads slowly, and the reader gets a stuttering
+  // first screen where a still one would have been better.
   //
   // So a software renderer is treated as no renderer at all: the same outcome as
   // a missing context, which the slab is already designed to stand up to.
@@ -208,8 +207,8 @@ export async function mountHeroScene(
   camera.position.set(0.4, 1.05, 13.2)
   camera.lookAt(0, 0.1, 0)
 
-  // Floor: a plane plus a grid, both eaten by fog, so the object sits in a place
-  // rather than on a colour.
+  // Floor: a plane plus a grid, both faded by fog, so the object appears to sit
+  // in a space rather than on a flat colour.
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(300, 300),
     new THREE.MeshStandardMaterial({ color: pal.floor, roughness: 0.62, metalness: 0.28 }),
@@ -236,7 +235,7 @@ export async function mountHeroScene(
   // One radial-falloff texture does both jobs: it turns every point from a hard
   // square into a soft grain, and it is the core's glow. A three-stop ramp would
   // hold near-solid alpha across the middle, and additive blending then clips
-  // that plateau to pure white — so the plateau's boundary shows up as a hard
+  // that plateau to pure white, so the plateau's boundary shows up as a hard
   // circle. Falling off from the very first pixel means nothing ever plateaus.
   const glowTex = (() => {
     const c = document.createElement('canvas')
@@ -267,9 +266,9 @@ export async function mountHeroScene(
 
   // Every layer writes its per-particle brightness through here. Additively it
   // goes into the colour, so the sum climbs; inked it goes into alpha, so the
-  // hue holds and the coverage climbs. The colour attribute is RGBA either way
-  // — three reads a four-wide colour attribute as vertex alpha — which keeps
-  // one buffer layout and one code path for both.
+  // hue holds and the coverage climbs. The colour attribute is RGBA either way,
+  // because three reads a four-wide colour attribute as vertex alpha, which
+  // keeps one buffer layout and one code path for both.
   const paint = (col: Float32Array, i: number, c: import('three').Color, b: number) => {
     const k = i * 4
     if (pal.additive) {
@@ -399,7 +398,7 @@ export async function mountHeroScene(
   rig.add(rays)
 
   // The core: the thing the orbits are about, and the scene's own light. Several
-  // wide faint camera-facing sprites rather than one bright one — each stays well
+  // wide faint camera-facing sprites rather than one bright one: each stays well
   // under the clipping point, so the core reads as bright without any radius at
   // which the additive sum saturates and draws itself an edge. Inked, the same
   // stack reads as a bloom of shadow: each layer lerps the ground a little
@@ -490,8 +489,8 @@ export async function mountHeroScene(
     // renderer.dispose() frees the context's own resources and nothing that was
     // uploaded through it. This used to run once, at unmount, where the leak
     // died with the page. 040 put an appearance switch in the footer of the
-    // same page, and the palette is baked into every buffer — so the scene is
-    // now rebuilt on demand, and a leak per rebuild is a leak per click.
+    // same page, and the palette is baked into every buffer, so the scene is
+    // now rebuilt on demand and a leak per rebuild would be a leak per click.
     scene.traverse((o) => {
       const m = o as unknown as { geometry?: { dispose(): void }; material?: { dispose(): void } | { dispose(): void }[] }
       m.geometry?.dispose()

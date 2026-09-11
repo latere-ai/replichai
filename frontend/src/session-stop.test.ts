@@ -14,7 +14,7 @@ test('a session nobody asked to stop offers a live Stop', () => {
 
 // The bug: the cancel request returns as soon as the worker has been signalled,
 // while the session is still running. The control has to stay pending across
-// that gap — otherwise it re-arms and a second click sends a second cancel.
+// that gap; otherwise it re-arms and a second click sends a second cancel.
 test('a stop stays pending after the request returns, while the session still runs', () => {
   for (const phase of ['submitted', 'resolving', 'running', 'publishing']) {
     expect(stopPending(phase, true)).toBe(true)

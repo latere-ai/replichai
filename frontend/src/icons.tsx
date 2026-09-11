@@ -152,7 +152,8 @@ const ICONS = {
 export type IconName = keyof typeof ICONS
 
 // Ico draws one icon. `w` tunes the stroke so a 12px glyph does not look
-// spindly next to a 20px one; `fill` is for the few solid marks (a status dot).
+// spindly next to a 20px one; `fill` is for the few solid marks, such as a
+// status dot.
 export function Ico({ name, size = 14, w = 1.7, className, style }: { name: IconName; size?: number; w?: number; className?: string; style?: React.CSSProperties }) {
   return (
     <svg

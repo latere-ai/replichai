@@ -2,24 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The identity: one drawn mark and one wordmark, used wherever the product
-// names itself. It lives apart from `icons.tsx` on purpose — an icon inherits
+// names itself. It is kept apart from `icons.tsx` because an icon inherits
 // `currentColor` so the same glyph can sit in a brand button and a muted row,
 // while the mark owns its colour and must look the same in every context.
 //
-// Nothing here depends on a font at all. The mark it replaced was the character
-// `r` set in `--font-serif: 'Instrument Serif'`, which the app did not ship, so
-// the identity had always rendered in Georgia without anyone deciding that.
-// 040 self-hosts the face — the shared footer sets Latere's logotype in it — and
-// that changes nothing here on purpose: a wordmark that waits on a download is
-// a wordmark that can be missing, whether or not the download is in the repo.
+// Nothing here depends on a font. The mark it replaced was the character `r`
+// set in `--font-serif: 'Instrument Serif'`, which the app did not ship, so the
+// identity had always rendered in Georgia without anyone deciding that. 040
+// self-hosts the face, and the shared footer sets Latere's logotype in it, but
+// this file still uses no font: a wordmark that waits on a download can be
+// missing, whether or not the download is in the repo.
 
-// Mark draws the boundary the product defends: the inner loop — the algorithm,
-// model, or analysis pipeline — is mechanically re-runnable, so it is a closed
-// ring; the outer loop is the study with human participants, which replichai
+// Mark draws the boundary the product defends. The inner loop, the algorithm,
+// model or analysis pipeline, is mechanically re-runnable, so it is a closed
+// ring. The outer loop is the study with human participants, which replichai
 // never simulates, so it is drawn open. The dashes are sized against the outer
-// circumference (2π × 9.25 ≈ 58.1) to land six even segments, so the ring never
-// shows a short one where it closes. Six and not more: the mark sits beside
-// spinners in this app, and a ring of many small dashes is a spinner.
+// circumference of 2π × 9.25 ≈ 58.1 to give six even segments, so the ring
+// never shows a short one where it closes. There are six and not more because
+// the mark sits beside spinners in this app, and a ring of many small dashes
+// looks like a spinner.
 export function Mark({ size = 24, className }: { size?: number; className?: string }) {
   return (
     <svg
@@ -37,11 +38,11 @@ export function Mark({ size = 24, className }: { size?: number; className?: stri
   )
 }
 
-// Wordmark sets the name as one word with a hairline gap at its own seam:
-// `Replic` (replication) and `HAI` (human–AI, the lineage the `open-hai` forge
-// account already carries). The seam is spacing, not colour — the stylesheet
-// spends the brand hue on what the operator can act on, and a two-tone wordmark
-// would spend it on decoration instead.
+// Wordmark sets the name as one word with a hairline gap at its seam between
+// `Replic`, for replication, and `HAI`, for human-AI, the lineage the
+// `open-hai` forge account already carries. The seam is spacing, not colour:
+// the stylesheet reserves the brand hue for what the operator can act on, and a
+// two-tone wordmark would spend it on decoration.
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={className ? `wordmark ${className}` : 'wordmark'}>
@@ -51,11 +52,11 @@ export function Wordmark({ className }: { className?: string }) {
 }
 
 // LatereMark is the identity of the provider behind the sign-in button, not
-// replichai's own — the credential comes from latere, and the button that asks
+// replichai's own. The credential comes from latere, and the button that asks
 // for it should look like the place it is going. The paths are the canonical
-// mark from `latere-ui`'s `LatereLogoMark.vue`, unchanged; only the container
-// differs, because that one is sized into a square and letterboxes itself while
-// this one sits inline in a line of text and is sized by its height.
+// mark from `latere-ui`'s `LatereLogoMark.vue`, unchanged. Only the container
+// differs: that one is sized into a square and letterboxes itself, while this
+// one sits inline in a line of text and is sized by its height.
 //
 // It fills with `currentColor`, so it is white inside the brand button and ink
 // anywhere else, and it needs no second asset for dark mode.

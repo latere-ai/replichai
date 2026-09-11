@@ -10,8 +10,8 @@ import type { I18n, TKey } from './i18n'
 // The control set. Nothing here delegates to a browser-drawn widget: no native
 // checkbox, radio, select, number stepper, disclosure triangle, tooltip, or
 // prompt(). Each one is rebuilt so it carries the app's own tokens and reads
-// the same on every platform — and each one keeps the role, state, and keyboard
-// behaviour the native element would have given us for free.
+// the same on every platform, and each one keeps the role, state, and keyboard
+// behaviour the native element would have provided.
 
 /* ── Type ── */
 
@@ -20,24 +20,24 @@ import type { I18n, TKey } from './i18n'
 // CSS picks a break by width alone: the last space that fits. `text-wrap:
 // balance` only re-picks it to equalise line lengths, which is why the landing's
 // boundary band read "One loop closes. One never / will." at every viewport from
-// a phone to a 2560px display — the algorithm had no idea a sentence had ended
-// two words earlier. Where a heading comes apart is a fact about the language,
+// a phone to a 2560px display, because the algorithm does not know a sentence
+// ended two words earlier. Where a heading comes apart is a fact about the language,
 // so it is written into the string as `|`, and each segment between seams is
 // rendered unbreakable. A translator moves the seam with the clause, which is
 // the half no stylesheet can follow.
 //
-// The space joining two segments sits *outside* both spans, because that is the
+// The space joining two segments sits outside both spans, because that is the
 // only place the line is allowed to break. A string with no seam renders as
 // itself, so every heading can be passed through this whether or not its copy
 // has anything to say about breaking yet.
 //
 // It takes the key, not the text, because the seam is only legible to this
 // component: `t()` hands every other consumer the sentence with the seams
-// removed. A heading that forgets to come through here still reads correctly —
-// it just breaks wherever it likes, which is where this all started.
+// removed. A heading that forgets to come through here still reads correctly;
+// it breaks wherever the width dictates, which is the original problem.
 //
 // It reads the string with no `vars`, so a heading with a {placeholder} in it
-// must not carry seams — the placeholder would render as itself. None do.
+// must not carry seams, because the placeholder would render as itself. None do.
 export function Seams({ i18n, k }: { i18n: I18n; k: TKey }) {
   const parts = i18n.raw(k).split('|')
   if (parts.length === 1) return <>{parts[0]}</>
@@ -90,8 +90,8 @@ export function Toggle({ on, onChange, disabled, children }: { on: boolean; onCh
 /* ── RowButton ── */
 
 // RowButton is a list row that opens something: a project, a file, a session.
-// It is a div rather than a <button> because a row holds buttons of its own —
-// Stop, Remove — and a button may not contain a button; the role, the tab stop
+// It is a div rather than a <button> because a row holds buttons of its own,
+// such as Stop and Remove, and a button may not contain a button; the role, the tab stop
 // and the key handling make it one to the keyboard and to a screen reader all
 // the same. Every clickable row goes through here, so none of them is a div a
 // keyboard cannot reach, which five of them were.
@@ -267,8 +267,8 @@ export function Select<T extends string>({
 
 /* ── Segmented ── */
 
-// Segmented is the small exclusive picker used for icon-sized choices — the
-// appearance switcher, a two-way list filter.
+// Segmented is the small exclusive picker used for icon-sized choices, such as
+// the appearance switcher or a two-way list filter.
 export function Segmented<T extends string>({
   value,
   options,
@@ -308,7 +308,7 @@ export function Segmented<T extends string>({
 
 /* ── Number field ── */
 
-// NumberField is a plain text box with its own steppers — the native number
+// NumberField is a plain text box with its own steppers. The native number
 // input draws OS spinners that no stylesheet can reach, and its scroll-wheel
 // behaviour changes a value nobody meant to touch.
 export function NumberField({
@@ -351,8 +351,8 @@ export function NumberField({
         inputMode="decimal"
         value={value}
         // Digits and one decimal point, at most two places. Shaping the value as
-        // it is typed rather than validating it afterwards is what lets "12." —
-        // not a number, and the keystroke before 12.50 — survive long enough to
+        // it is typed rather than validating it afterwards lets "12.", which is
+        // not a number but is the keystroke before 12.50, survive long enough to
         // become one.
         onChange={(e) => onChange(typedDollars(e.target.value))}
         onKeyDown={(e) => {
@@ -388,7 +388,7 @@ const focusable = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(
 export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title: string; eyebrow?: ReactNode; icon?: IconName; onClose: () => void; children: ReactNode; foot?: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   // In on open, back to the opener on close. A field that took focus itself
-  // (autoFocus) keeps it.
+  // through autoFocus keeps it.
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const el = box.current
@@ -401,7 +401,7 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
       const el = box.current
       if (e.key !== 'Tab' || !el) return
       // Tab wraps within the dialog: past the last control to the first, and
-      // Shift+Tab from the first — or from the dialog itself — to the last.
+      // Shift+Tab from the first, or from the dialog itself, to the last.
       const f = focusable(el)
       const at = document.activeElement
       const outside = !el.contains(at) || at === el
@@ -426,7 +426,7 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
   }, [onClose])
   // Portalled to <body>. A fixed backdrop is contained by any promoted
   // ancestor, and both screens that open a dialog run a fade-up animation whose
-  // filled transform promotes them — which confined the backdrop to the content
+  // filled transform promotes them, which confined the backdrop to the content
   // column, left the rail live behind a "modal", and centred the dialog on the
   // wrong box.
   return createPortal(
@@ -471,7 +471,7 @@ export function PromptDialog({
   onConfirm: (value: number) => void
   // parse reads the field into the number the caller wants. It exists because
   // what somebody types and what the caller stores are not always the same
-  // unit — dollars typed, micro-USD stored. Null means "not a number yet", and
+  // unit: dollars typed, micro-USD stored. Null means "not a number yet", and
   // the confirm button stays disabled. Defaults to a non-negative integer.
   parse?: (text: string) => number | null
 }) {
@@ -531,7 +531,7 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 // bubble would leave the viewport.
 //
 // 'right' is for a trigger in a vertical stack. Above and below are both a
-// neighbour's row there — the folded navigation rail is the case — so the bubble
+// neighbour's row there, as in the folded navigation rail, so the bubble
 // goes out to the side instead, where nothing is stacked.
 type TipSide = 'top' | 'bottom' | 'right'
 
@@ -554,13 +554,13 @@ export function Tip({ text, children, side = 'bottom' }: { text?: string; childr
 //
 // The bubble used to be a `::after` on the trigger. Absolute positioning is
 // contained by the nearest clipping ancestor, and every card in the app rounds
-// its corners with `overflow: hidden` — so a tip on any control inside a card
+// its corners with `overflow: hidden`, so a tip on any control inside a card
 // was sliced off at the card's edge. One fixed bubble outside every card is the
 // only placement no container can cut.
 //
 // It listens on the document rather than per trigger: `data-tip` stays a plain
-// attribute, so a tip can sit on an element that cannot take a wrapper — a
-// radio inside a radiogroup — and no call site owns hover state.
+// attribute, so a tip can sit on an element that cannot take a wrapper, such as
+// a radio inside a radiogroup, and no call site owns hover state.
 export function TipHost() {
   const [tip, setTip] = useState<{ text: string; side: TipSide; rect: DOMRect } | null>(null)
   // Placement is a second pass: it needs the bubble's own size, which only
@@ -597,8 +597,8 @@ export function TipHost() {
       const el = (e.target as Element | null)?.closest?.('[data-tip]')
       el ? show(el) : hide()
     }
-    // A trigger that is clicked often disappears — a row is removed, a dialog
-    // opens over it — and the bubble would outlive it.
+    // A trigger that is clicked often disappears, because a row is removed or a
+    // dialog opens over it, and the bubble would outlive it.
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && hide()
     document.addEventListener('pointerover', move)
     document.addEventListener('focusin', move)
@@ -631,7 +631,7 @@ export function TipHost() {
     // The preferred side, unless it has no room and the other one does.
     const fits = (top: number) => top >= M && top + b.height <= window.innerHeight - M
     // Beside the trigger rather than under it: level with its middle, clear of
-    // its right edge. Nothing flips here — the vertical stack this is for has a
+    // its right edge. Nothing flips here, because the vertical stack this is for has a
     // neighbour above and below, and the clamp below keeps it on screen.
     const beside = tip.side === 'right'
     const top = beside
@@ -645,8 +645,8 @@ export function TipHost() {
           : above
     const left = beside ? tip.rect.right + M : tip.rect.left + tip.rect.width / 2 - b.width / 2
     setAt({
-      // Pulled back inside for a trigger near the viewport's edge — the header's
-      // wallet pill sits there, and a centred bubble would hang off the screen.
+      // Pulled back inside for a trigger near the viewport's edge, where the
+      // header's wallet pill sits, and a centred bubble would hang off the screen.
       left: Math.min(Math.max(M, left), Math.max(M, window.innerWidth - b.width - M)),
       top: Math.min(Math.max(M, top), Math.max(M, window.innerHeight - b.height - M)),
     })
@@ -654,8 +654,8 @@ export function TipHost() {
 
   if (!tip) return null
   // Hidden from the accessibility tree: the trigger carries its own label, and a
-  // second reading of it is noise. It cannot be hovered either — a bubble that
-  // takes the pointer would dismiss itself.
+  // second reading of it is noise. It cannot be hovered either, because a bubble
+  // that takes the pointer would dismiss itself.
   return createPortal(
     <div
       ref={bubble}
