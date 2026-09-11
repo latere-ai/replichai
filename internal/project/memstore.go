@@ -22,15 +22,15 @@ type MemStore struct {
 	order    []string // creation order, so ListByOwner is newest-first in reverse
 	papers   map[string][]Paper
 	clock    func() time.Time
-	// sessions carries a moved paper's runs across (035). Nil means MovePaper
-	// refuses rather than stranding them.
+	// sessions moves the runs of a paper that is being moved (035). Nil means
+	// MovePaper refuses rather than stranding them.
 	sessions SessionMover
 }
 
 // MemOption configures a MemStore.
 type MemOption func(*MemStore)
 
-// WithSessions wires the store that holds a paper's sessions, so a move takes
+// WithSessions sets the store that holds a paper's sessions, so a move takes
 // them with it (035). Without it MovePaper returns ErrNoSessionMover.
 func WithSessions(m SessionMover) MemOption {
 	return func(s *MemStore) { s.sessions = m }
@@ -302,9 +302,9 @@ func (s *MemStore) ListPapers(_ context.Context, projectID string) ([]Paper, err
 	return s.papersOf(projectID), nil
 }
 
-// PapersByProjects returns the papers of every named project that exists. An id
-// nothing is filed under is left out rather than refused: this is a list's read,
-// and one project deleted between two calls must not take the list with it.
+// PapersByProjects returns the papers of every named project that exists. An
+// id with no papers is left out rather than refused: this is a list's read, and
+// one project deleted between two calls must not fail the whole list.
 func (s *MemStore) PapersByProjects(_ context.Context, ids []string) (map[string][]Paper, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -325,9 +325,9 @@ func (s *MemStore) papersOf(projectID string) []Paper {
 	// A copy: the caller must not be able to edit the store through the slice.
 	out := make([]Paper, len(s.papers[projectID]))
 	copy(out, s.papers[projectID])
-	// Sorted rather than left in insertion order, which they agreed on until a
-	// paper could arrive from another project (035) carrying an AddedAt older
-	// than everything already here. Postgres orders the same way.
+	// Sorted rather than left in insertion order. The two agreed until a paper
+	// could arrive from another project (035) carrying an AddedAt older than
+	// everything already here. Postgres orders the same way.
 	slices.SortStableFunc(out, func(a, b Paper) int {
 		if c := a.AddedAt.Compare(b.AddedAt); c != 0 {
 			return c
@@ -386,16 +386,16 @@ func (s *MemStore) RemovePaper(_ context.Context, projectID, key string) error {
 	return nil
 }
 
-// MovePaper refiles a paper under another project and takes its sessions with
-// it. The paper moves first and is put back if the sessions do not follow, so
-// a failure ends where it started.
+// MovePaper moves a paper to another project and takes its sessions with it.
+// The paper moves first and is put back if the sessions do not follow, so a
+// failure leaves the state as it started.
 //
 // It is not atomic and cannot be: this store has no transaction, and the lock
 // is released while the session mover runs. A concurrent reader in that window
 // would see the paper in its new project with its runs still in the old one.
-// That window is unobservable in what this store is for — tests and a
-// no-database run — and Postgres, which is what production uses, does the whole
-// move in one transaction.
+// That window is unobservable in the uses this store has, tests and a
+// no-database run, and Postgres, which production uses, does the whole move in
+// one transaction.
 func (s *MemStore) MovePaper(ctx context.Context, fromID, toID, key string) error {
 	if s.sessions == nil {
 		return ErrNoSessionMover
@@ -418,8 +418,8 @@ func (s *MemStore) MovePaper(ctx context.Context, fromID, toID, key string) erro
 }
 
 // detachPaper moves one paper row between two projects under the held lock. It
-// is where every refusal a move can make is decided, so the reverse used to
-// undo a failed move takes the same path as the move itself.
+// decides every refusal a move can make, so the reverse move used to undo a
+// failed move takes the same path as the move itself.
 func (s *MemStore) detachPaper(fromID, toID, key string) error {
 	if _, ok := s.projects[fromID]; !ok {
 		return ErrNotFound
