@@ -13,15 +13,15 @@ status: built
 
 ## Problem
 
-`SessionArtifacts` (`frontend/src/App.tsx:1737`) browses the reproduction repository — what the *agent* produced. The first question an auditor asks is the other one: what did the authors release, and where did the run look? `SOURCES.md` answers it in the repository, in prose, one click away on GitHub and invisible in the app. So the pane presents the reproduction as if it were the only artifact in the story, and a paper whose dataset link 404s looks identical to one that released everything.
+`SessionArtifacts` (`frontend/src/App.tsx:1737`) browses the reproduction repository, which is what the *agent* produced. The first question an auditor asks is the other one: what did the authors release, and where did the run look? `SOURCES.md` answers it in the repository, in prose, one click away on GitHub and invisible in the app. So the pane presents the reproduction as if it were the only artifact involved, and a paper whose dataset link 404s looks identical to one that released everything.
 
 ## Decisions
 
-**Two sections, authors first.** `WHAT THE AUTHORS RELEASED` sits above `REPRODUCTION REPOSITORY`. The order is the argument: the reproduction exists because of what was and was not released, and reading the repository first inverts that.
+**Two sections, authors first.** `WHAT THE AUTHORS RELEASED` sits above `REPRODUCTION REPOSITORY`. The order carries the argument: the reproduction exists because of what was and was not released, and reading the repository first inverts that.
 
-**A result is a fact about a search, not a judgement.** Each row is where it looked, what was there, and one of `FOUND · PARTIAL · NONE · DEAD`. `NONE` and `DEAD` are different findings — nothing published versus something published that no longer resolves — and the pane never collapses them, because the second is the one an author can still fix.
+**A result is a fact about a search, not a judgement.** Each row is where it looked, what was there, and one of `FOUND · PARTIAL · NONE · DEAD`. `NONE` and `DEAD` are different findings (nothing published versus something published that no longer resolves), and the pane never collapses them, because the second is the one an author can still fix.
 
-**The scorecard sits beside it, not inside it.** Code, data, license, preregistration, and supplement are the five the rubric scores; they render as a compact list with the fetched URL when found and the places searched when not. A criterion marked not-found with no places searched cannot occur — 021a's validator refuses the file.
+**The scorecard sits beside it, not inside it.** Code, data, license, preregistration, and supplement are the five the rubric scores; they render as a compact list with the fetched URL when found and the places searched when not. A criterion marked not-found with no places searched cannot occur, because 021a's validator refuses the file.
 
 **The file browser is untouched.** It works, 015 put it at the right address, and this spec adds above it rather than rewriting it.
 

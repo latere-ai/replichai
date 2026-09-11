@@ -7,9 +7,9 @@ status: built
 
 **Status:** built. Every acceptance criterion holds except the schema bump, which was deliberately not done. `internal/verdict` owns the schema, `Parse`, `Validate` and the filename, with 15 contract tests; `method/rubric.md` gained criterion 7 and `method/instructions.md` a step, a deliverable row, and the schema section; `publish.FinalizeLive` records the result on the manifest and in `UNVERIFIED.md`; `GET /jobs/{id}/verdict` serves it. The Go suite is green.
 
-Three things came out of the build. **The manifest schema stayed at 1**: the `findings` block is additive and optional, no reader gates on the number, and 002 pins the shape — bumping it would have rewritten every published manifest on its next finalize to signal a change no reader could act on. **The `UNVERIFIED.md` note has to converge**, which the first version did not: a re-finalize appended a second identical section and `TestFinalizeLiveIdempotentManifest` caught it, so the writer now replaces its own previous section and writes nothing when the text is already identical. And **the filename lives in `internal/verdict`, not `internal/publish`** — `httpapi` may not import the engine (`TestNoEngineImports`), and `publish` transitively does, so the constant moved to the schema package where a reader that knows the shape can also learn the name.
+Three things came out of the build. **The manifest schema stayed at 1**: the `findings` block is additive and optional, no reader gates on the number, and 002 pins the shape. Bumping it would have rewritten every published manifest on its next finalize to signal a change no reader could act on. **The `UNVERIFIED.md` note has to converge**, which the first version did not: a re-finalize appended a second identical section and `TestFinalizeLiveIdempotentManifest` caught it, so the writer now replaces its own previous section and writes nothing when the text is already identical. **The filename lives in `internal/verdict`, not `internal/publish`**: `httpapi` may not import the engine (`TestNoEngineImports`), and `publish` transitively does, so the constant moved to the schema package, where a reader that knows the shape can also learn the name.
 
-**Scope:** `verdict.json` — the reproduction's findings as a validated artifact. A new `internal/verdict` package (schema, parse, validate), a new `method/rubric.md` criterion asking the agent for it, verification at finalize that records rather than blocks, and `GET /jobs/{id}/verdict` so the panes can read it. No frontend.
+**Scope:** `verdict.json`, the reproduction's findings as a validated artifact. A new `internal/verdict` package (schema, parse, validate), a new `method/rubric.md` criterion asking the agent for it, verification at finalize that records rather than blocks, and `GET /jobs/{id}/verdict` so the panes can read it. No frontend.
 
 **Depends on:** [021](021-what-the-run-actually-found.md), [007a](007a-the-study-protocol-as-an-artifact.md) (the package this mirrors), [002](002-publishing-a-reproduction.md) (the manifest and finalize), [006i](006i-server-side-mount-and-publish.md) (`publish.FinalizeLive`, the one finalize both paths share).
 
@@ -19,7 +19,7 @@ See [021](021-what-the-run-actually-found.md). The rubric already demands the bo
 
 ## Decisions
 
-**One file, four lists, at the repository root.** `verdict.json` sits beside `replication.json` and `instrument.json` — the agent writes the first two, the system writes the manifest. It holds the summary the reader sees first, the per-claim boundary, the decisions, the scorecard, and what the authors released.
+**One file, four lists, at the repository root.** `verdict.json` sits beside `replication.json` and `instrument.json`. The agent writes `verdict.json` and `instrument.json`; the system writes the manifest. The file holds the summary the reader sees first, the per-claim boundary, the decisions, the scorecard, and what the authors released.
 
 ```go
 type Verdict struct {
@@ -35,7 +35,7 @@ type Verdict struct {
 }
 ```
 
-**A claim carries its outcome, its citation, and — when the numbers disagree — the disagreement.**
+**A claim carries its outcome, its citation, and, when the numbers disagree, the disagreement.**
 
 ```go
 type Claim struct {
@@ -55,7 +55,7 @@ type Mismatch struct {
 }
 ```
 
-`Mismatch` is the thing the prose could never surface: a claim can be *verified* and still disagree with the paper (89.6% against a reported 91.4%), and a paper can contain a plain error — a transposed number, a figure that contradicts its own caption. Recording the disagreement separately from the outcome is what stops "verified" from meaning "the paper was right" and "blocked" from being the only place a reader learns something went wrong.
+`Mismatch` is what the prose could never surface: a claim can be *verified* and still disagree with the paper (89.6% against a reported 91.4%), and a paper can contain a plain error, such as a transposed number or a figure that contradicts its own caption. Recording the disagreement separately from the outcome is what stops "verified" from meaning "the paper was right" and "blocked" from being the only place a reader learns something went wrong.
 
 **An outer-loop claim is `not_scored`, and the validator enforces it.** `loop: "outer"` with any outcome other than `not_scored` is invalid. This is the product's one hard rule expressed as a schema constraint: the system never scores the study with human participants, so a file that claims it did is refused rather than rendered.
 
@@ -70,7 +70,7 @@ type Decision struct {
 }
 ```
 
-**The scorecard and the search log are the same act, recorded twice.** `Score` answers rubric 4 — one row per criterion, either a URL that was fetched or an explicit "none found" listing where it looked. `Release` is the reader-facing version of `SOURCES.md`: each place searched, what was there, and the result.
+**The scorecard and the search log are the same act, recorded twice.** `Score` answers rubric 4: one row per criterion, either a URL that was fetched or an explicit "none found" listing where it looked. `Release` is the reader-facing version of `SOURCES.md`: each place searched, what was there, and the result.
 
 ```go
 type Score struct {
@@ -88,11 +88,11 @@ type Release struct {
 }
 ```
 
-**Validation is a list of specific failures, not a boolean.** `Validate` returns `[]Problem{Field, Message}` like `instrument.Validate` does, so the finalize record can say *which* claim was missing a citation rather than "invalid".
+**Validation is a list of specific failures, not a boolean.** `Validate` returns `[]Problem{Field, Message}` as `instrument.Validate` does, so the finalize record can say *which* claim was missing a citation rather than "invalid".
 
 **A missing or invalid file is recorded, never fatal.** `publish.FinalizeLive` reads `verdict.json` from the committed tree; on absence or a validation failure it writes the reason into the manifest (`findings: {present: false, problems: [...]}`) and appends a line to `UNVERIFIED.md`. The run still publishes, the grade is still the system's, and the reader is told the findings could not be read rather than shown an empty table.
 
-**The API serves it under the session, whole.** `GET /jobs/{id}/verdict` returns the parsed file, or `404` with a reason when there is none — read through the same `viewableSession` gate every other session read uses. It is not folded into `/jobs/{id}/reproduction`: that route is the manifest, the manifest is the system's word, and mixing the agent's claims into it would blur exactly the line 021 exists to keep.
+**The API serves it under the session, whole.** `GET /jobs/{id}/verdict` returns the parsed file, or `404` with a reason when there is none, read through the same `viewableSession` gate every other session read uses. It is not folded into `/jobs/{id}/reproduction`: that route is the manifest, the manifest is the system's attestation, and mixing the agent's claims into it would blur the line 021 exists to keep.
 
 ## Acceptance criteria
 
