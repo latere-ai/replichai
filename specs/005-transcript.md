@@ -11,11 +11,11 @@ status: implemented
 
 ## Problem
 
-A published reproduction today carries the work (the agent's code and commit history) and a verdict (`replication.json`). It is missing the middle term: the **evidence** of how the reproduction was actually produced — the tool calls, the reasoning, the dead ends, the grading. For a *reproducibility* auditor that is the most valuable artifact of all, and the README already promises it: "records every decision the paper left unwritten." The transcript is that promise made concrete and checkable.
+A published reproduction today carries the work (the agent's code and commit history) and a verdict (`replication.json`). It is missing the middle term: the **evidence** of how the reproduction was produced, meaning the tool calls, the reasoning, the dead ends, and the grading. For a *reproducibility* auditor that is the most valuable artifact, and the README already promises it: "records every decision the paper left unwritten." The transcript is that promise made concrete and checkable.
 
 ## The trust model this fits
 
-A reproduction is a **claim / evidence / verdict** triad, and who authors each layer is a deliberate boundary — the subject of an audit never authors its own grade:
+A reproduction is a **claim / evidence / verdict** triad, and who authors each layer is a deliberate boundary: the subject of an audit never authors its own grade.
 
 | Layer | Author | Artifact |
 |---|---|---|
@@ -23,21 +23,21 @@ A reproduction is a **claim / evidence / verdict** triad, and who authors each l
 | **Evidence** | the backend's event log, fetched by the system | **the transcript (this spec)** |
 | **Verdict** | the system, outside the sandbox | `replication.json` |
 
-The transcript belongs to the same system-authored layer as the manifest: it comes from the backend's own event log, not the agent's say-so, so the agent cannot rewrite its own record. That is what makes it evidence rather than another claim.
+The transcript belongs to the same system-authored layer as the manifest: it comes from the backend's own event log, not from the agent, so the agent cannot rewrite its own record. That is what makes it evidence rather than another claim.
 
 ## Decisions
 
-**Fetched from the backend, not written by the agent.** The transcript is read from the session's event stream (`Sessions.Events.ListAutoPaging` — confirmed present; events include agent messages, thinking, tool use and results, user inputs, and the outcome-evaluation spans). The provider seam gains a neutral `Transcript` method so the contract stays backend-agnostic and the anthropic adapter maps its events down. A mini-004-style contract addition.
+**Fetched from the backend, not written by the agent.** The transcript is read from the session's event stream (`Sessions.Events.ListAutoPaging`, confirmed present; events include agent messages, thinking, tool use and results, user inputs, and the outcome-evaluation spans). The provider seam gains a neutral `Transcript` method so the contract stays backend-agnostic and the anthropic adapter maps its events down. This is a small contract addition in the style of 004.
 
 **Captured before the session is released.** The adapter archives a session on `CloseRun`, so the transcript must be fetched before teardown, or by `finish` while the session is still readable. `audit.Result` (or the finalize step) carries it.
 
-**Committed by the system in the finalize step.** The same `finish`/finalize moment that commits `replication.json` also commits the transcript — same author (the org token, outside the sandbox), same trust posture. Two files: `transcript.jsonl` (the canonical, greppable event stream) and a rendered `TRANSCRIPT.md` (a human-readable narrative).
+**Committed by the system in the finalize step.** The same `finish`/finalize moment that commits `replication.json` also commits the transcript: same author (the org token, outside the sandbox), same trust posture. Two files: `transcript.jsonl` (the canonical, greppable event stream) and a rendered `TRANSCRIPT.md` (a human-readable narrative).
 
 **Neutral event model, with a raw escape hatch.** A portable `Event{Role, Kind, Content, Time}` for cross-backend fidelity, with the raw event JSON preserved in `transcript.jsonl` so nothing is lost.
 
-**The content gate applies — this is 002's gate at the content level.** A transcript embeds third-party content inline: the paper's text pulled into context, tool outputs, possibly gated data. So before it can make a repository eligible for the public flip, its content must pass a redistribution check — the same reason a committed dataset bars going public. A transcript that carries gated content keeps the repository private. This extends the verifier ([006f](006f-taking-a-reproduction-out.md)) from file paths to inline content.
+**The content gate applies; this is 002's gate at the content level.** A transcript embeds third-party content inline: the paper's text pulled into context, tool outputs, possibly gated data. So before it can make a repository eligible for the public flip, its content must pass a redistribution check, for the same reason a committed dataset bars going public. A transcript that carries gated content keeps the repository private. This extends the verifier ([006f](006f-taking-a-reproduction-out.md)) from file paths to inline content.
 
-**Publishing raw agent thinking is deliberate but bounded.** The reasoning trail is the point — it shows *how* decisions were made. It is verbose and full of dead ends; that is acceptable for evidence. It is never made public without passing the content gate.
+**Publishing raw agent thinking is deliberate but bounded.** The reasoning trail is the point: it shows *how* decisions were made. It is verbose and full of dead ends; that is acceptable for evidence. It is never made public without passing the content gate.
 
 ## Interface (sketch)
 
@@ -67,23 +67,23 @@ The anthropic adapter implements `Transcript`; `finish` fetches it, runs `Transc
 1. The provider seam gains a neutral `Transcript`; the anthropic adapter maps `Sessions.Events` to `[]Event`, tested against a canned event stream with no network.
 2. The transcript is captured before the session is released.
 3. `finish` commits `transcript.jsonl` and `TRANSCRIPT.md` in the same, system-authored moment as `replication.json`, and the commit is idempotent (no redundant commit on re-run, like the manifest).
-4. `TranscriptLeaks` flags inline third-party content, and a transcript that leaks bars the repository from the public flip — asserted directly.
+4. `TranscriptLeaks` flags inline third-party content, and a transcript that leaks bars the repository from the public flip, asserted directly.
 5. A reproduction with a transcript reads as claim + evidence + verdict: the repository contains the agent's history, the transcript, and the manifest, each from its proper author.
 
 ## Out of scope
 
-Diffing two reproductions' transcripts; a web viewer for the transcript (that is 006e). Redacting *within* a transcript to make an otherwise-gated one publishable — a leak bars the public flip; it is not laundered.
+Diffing two reproductions' transcripts; a web viewer for the transcript (that is 006e). Redacting *within* a transcript to make an otherwise-gated one publishable: a leak bars the public flip, and the transcript is not edited to get around that.
 
 ## Outcome
 
-Implemented across three commits (`f22fd2a` the provider seam, `5723402` the render + gate, `c33af42` the finalize wiring), tested offline.
+Implemented across three commits (`f22fd2a` the provider seam, `5723402` the render and gate, `c33af42` the finalize wiring), tested offline.
 
-- **`provider.Event` + `Transcript`** on the contract. The anthropic adapter reads `Sessions.Events.ListAutoPaging` and translates each event *generically* from its raw JSON — a namespaced type becomes a neutral role+kind, best-effort text is pulled from content blocks, the original is preserved in `Raw` — so the many event shapes needed no per-variant mapping and nothing is lost. The memory adapter returns a settable `Events` slice.
+- **`provider.Event` and `Transcript`** on the contract. The anthropic adapter reads `Sessions.Events.ListAutoPaging` and translates each event *generically* from its raw JSON: a namespaced type becomes a neutral role and kind, best-effort text is pulled from content blocks, and the original is preserved in `Raw`. So the many event shapes needed no per-variant mapping and nothing is lost. The memory adapter returns a settable `Events` slice.
 - **`RenderTranscriptFiles`** produces `transcript.jsonl` (the lossless canonical stream) and `TRANSCRIPT.md` (a narrative). **`TranscriptLeaks`** flags events carrying a high-signal secret.
 - **Finalize commits the transcript**, in the same system-authored moment as the manifest, idempotently. Both publish paths (`audit --publish` and `finish`) fetch it best-effort and commit it.
-- **Chunked and interlinked, committed atomically.** A full run's transcript is many megabytes as one file — unreadable, and past the Contents API's inline and timeout limits. So `RenderTranscriptFiles` produces a navigable set — `TRANSCRIPT.md` an index linking `transcript/NNN.md` chunks (40 events each, prev/index/next links, per-event content capped), with `transcript.jsonl` the canonical machine stream — and `github.CommitFiles` writes the whole set in one atomic Git Data API commit (blob → tree → commit → ref), with no per-file size limit and no commit spam. Each event renders as a `<details>` block so the agent's own markdown cannot collide with the transcript's structure.
+- **Chunked and interlinked, committed atomically.** A full run's transcript is many megabytes as one file, which is unreadable and exceeds the Contents API's inline and timeout limits. So `RenderTranscriptFiles` produces a navigable set: `TRANSCRIPT.md` is an index linking `transcript/NNN.md` chunks (40 events each, prev/index/next links, per-event content capped), with `transcript.jsonl` as the canonical machine stream. `github.CommitFiles` writes the whole set in one atomic Git Data API commit (blob → tree → commit → ref), with no per-file size limit and no commit spam. Each event renders as a `<details>` block so the agent's own markdown cannot collide with the transcript's structure.
 
-Two honest limitations folded back from implementation:
+Two limitations folded back from implementation:
 
-- **`TranscriptLeaks` is a secret backstop, not exhaustive third-party detection.** Detecting an embedded dataset or a paper's bulk text in freeform reasoning is not reliable structurally, and flagging *any* paper text would bar nearly every transcript from going public — self-defeating. So the content gate flags only what is concretely detectable (secrets); private-by-default plus the owner's review before going public is the real guard. The spec's AC4 is met at that scope.
-- **AC2 ("captured before release") holds cleanly on the detach→finish path** (the session is never archived, so the events are fully readable when `finish` fetches them). On the blocking `audit --publish` path the fetch happens after the run's deferred release, so it is best-effort; the detached flow is the one to use when the transcript matters.
+- **`TranscriptLeaks` is a secret backstop, not exhaustive third-party detection.** Detecting an embedded dataset or a paper's bulk text in freeform reasoning is not reliable structurally, and flagging *any* paper text would bar nearly every transcript from going public, which would defeat the purpose. So the content gate flags only what is concretely detectable (secrets); private-by-default plus the owner's review before going public is the real guard. The spec's AC4 is met at that scope.
+- **AC2 ("captured before release") holds on the detach→finish path** (the session is never archived, so the events are fully readable when `finish` fetches them). On the blocking `audit --publish` path the fetch happens after the run's deferred release, so it is best-effort; the detached flow is the one to use when the transcript matters.

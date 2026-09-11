@@ -5,14 +5,14 @@ status: implemented
 
 # 004 — Port the core to Go
 
-**Status:** implemented (`7a5a23f`), and since outlived by `6b6fd90`, which deleted `reference/python/`. The layout block, the whole Conformance section, and acceptance criterion 5 oblige this port to agree with a Python implementation that no longer exists — read them as the history of how the port was checked, not as a standing obligation. Three smaller drifts: the contract has gained `Transcript` ([005](005-transcript.md)), the amendment's `DefaultName` const is gone, and the default is now chosen a layer up, where the runtime catalog names `anthropic-managed` over a provider still called `anthropic` ([041c](041c-a-session-remembers-its-runtime.md))
+**Status:** implemented (`7a5a23f`), and since partly overtaken by `6b6fd90`, which deleted `reference/python/`. The layout block, the whole Conformance section, and acceptance criterion 5 oblige this port to agree with a Python implementation that no longer exists; read them as the history of how the port was checked, not as a standing obligation. Three smaller drifts: the contract has gained `Transcript` ([005](005-transcript.md)), the amendment's `DefaultName` const is gone, and the default is now chosen a layer up, where the runtime catalog names `anthropic-managed` over a provider still called `anthropic` ([041c](041c-a-session-remembers-its-runtime.md))
 **Scope:** moving the orchestrator, provider contract, and CLI from Python to Go, before specs 001–003 are built.
 
 ## Why now
 
-Specs 001–003 are unbuilt. Porting the existing ~400 statements once is cheap; building them in Python and porting them afterwards is paying twice. Go is also the better fit for where this is going: real concurrency for parallel audits, a single static binary to deploy, no interpreter or virtualenv on a server.
+Specs 001–003 are unbuilt. Porting the existing ~400 statements once is cheap; building them in Python and porting them afterwards would cost twice. Go is also the better fit for where the project is going: real concurrency for parallel audits, a single static binary to deploy, no interpreter or virtualenv on a server.
 
-The valuable part of what exists is language-neutral already — `method/`, `evals/`, and the nine-method provider contract. Only the plumbing moves.
+The valuable part of what exists is already language-neutral: `method/`, `evals/`, and the nine-method provider contract. Only the plumbing moves.
 
 ## Decisions
 
@@ -34,7 +34,7 @@ reference/python/             the Python implementation
 
 **Service-shaped from the start, without building the service.** Every call that can block takes a `context.Context` as its first parameter and honours cancellation. The audit core returns values and errors; it never prints, never reads flags, never calls `os.Exit`. An HTTP handler must be able to wrap it with no changes to it. Auth, persistence, and multi-tenancy are explicitly not in this spec.
 
-**One dependency: the backend's official SDK.** The Python deliberately had zero runtime dependencies, and the port drops that rule for the adapter alone. The SDK brings typed payloads, retry on rate limits and server errors, and correct protocol headers -- all of which the hand-rolled client had to carry itself and got subtly wrong (see the union-discriminator and resting-state bugs below). The cost is that the vendor's name now appears in `go.mod`, which is more visible than a single adapter file; that is recorded in `docs/architecture.md` rather than hidden. Everything above the seam stays standard library.
+**One dependency: the backend's official SDK.** The Python deliberately had zero runtime dependencies, and the port drops that rule for the adapter alone. The SDK brings typed payloads, retry on rate limits and server errors, and correct protocol headers, all of which the hand-rolled client had to carry itself and got subtly wrong (see the union-discriminator and resting-state bugs below). The cost is that the vendor's name now appears in `go.mod`, which is more visible than a single adapter file; that is recorded in `docs/architecture.md` rather than hidden. Everything above the seam stays standard library.
 
 **The contract maps one-to-one.** Same nine operations, Go naming, `context` and `error` added:
 
@@ -52,7 +52,7 @@ reference/python/             the Python implementation
 
 **Behaviour that must survive the port.** These are properties, not implementation details, and each already has a Python test that must have a Go counterpart:
 
-1. An artifact path resolving outside the destination directory is refused — sandbox output is untrusted.
+1. An artifact path resolving outside the destination directory is refused; sandbox output is untrusted.
 2. Compiled residue is never collected.
 3. Silence from the grader never reads as success.
 4. A run that has not started is not reported as finished (the race fixed in `fb128f7`).
@@ -64,9 +64,9 @@ reference/python/             the Python implementation
 
 `method/` and `evals/` are shared. The two implementations conform when, given the same method and the same eval case, they produce the same verdict. That is the acceptance test for the port, and it is why the Python stays.
 
-**Conform on verdict, not on rate — verified.** A live audit of case-01 through the Go path returned `passed` with the empty repository correctly uncredited, matching the Python reference's `satisfied`. The reproducibility *rate* differed (Python 40% over 5 components, Go 79% over 7): the agent re-decomposed the inner loop, because the current rubric fixes the *form* of the denominator ("a stated denominator") but not its *contents*. Both implementations send byte-identical method text, so this is a rubric property, not a port defect. The conformance check compares verdict; comparing rate would test the rubric's looseness, not the port. The method's response is not to freeze the denominator but to demote the scalar: the rubric now grades a per-component reproduction table and treats any overall rate as a derived, decomposition-dependent summary that is never compared across papers or runs (see `docs/procedure.md` §7). Conformance therefore compares the verdict and the component-level conclusions, never the rate.
+**Conform on verdict, not on rate. Verified.** A live audit of case-01 through the Go path returned `passed` with the empty repository correctly uncredited, matching the Python reference's `satisfied`. The reproducibility *rate* differed (Python 40% over 5 components, Go 79% over 7): the agent re-decomposed the inner loop, because the current rubric fixes the *form* of the denominator ("a stated denominator") but not its *contents*. Both implementations send byte-identical method text, so this is a rubric property, not a port defect. The conformance check compares verdict; comparing rate would test the rubric's looseness, not the port. The method's response is not to freeze the denominator but to demote the scalar: the rubric now grades a per-component reproduction table and treats any overall rate as a derived, decomposition-dependent summary that is never compared across papers or runs (see `docs/procedure.md` §7). Conformance therefore compares the verdict and the component-level conclusions, never the rate.
 
-Cheaper checks that run in CI without a backend: both implementations must reject the same hostile artifact paths, produce the same rendered task text for a given paper, and map the same backend states onto the same neutral states — driven by a shared table of cases in `testdata/`.
+Cheaper checks that run in CI without a backend: both implementations must reject the same hostile artifact paths, produce the same rendered task text for a given paper, and map the same backend states onto the same neutral states, driven by a shared table of cases in `testdata/`.
 
 ## Acceptance criteria
 
@@ -84,6 +84,6 @@ The HTTP server, auth, persistence, queues, and specs 001–003. This spec ends 
 
 ## Amendment: the concrete provider names its backend
 
-The original port registered the backend under the neutral name `hosted`. That over-applied the neutrality rule: the *interface* must stay vendor-neutral, but the *adapter* is precisely the place a backend may be named, so hiding the backend behind `hosted` bought nothing and made the provider listing less honest than the dependency manifest already is.
+The original port registered the backend under the neutral name `hosted`. That over-applied the neutrality rule: the *interface* must stay vendor-neutral, but the *adapter* is precisely the place a backend may be named, so hiding the backend behind `hosted` gained nothing and made the provider listing less accurate than the dependency manifest already was.
 
-The provider is now registered and reported as `anthropic`, and the adapter package was renamed to match (`internal/provider/anthropic`). An earlier revision policed vendor-neutrality with a repository-walking test and kept the package neutrally named `hosted`, with the seam's default routed through a registration call so `provider.go` held no backend name; all of that was dropped once naming the backend openly made it ceremony fighting the design. The default is now a plain `const DefaultName = "anthropic"`. The adapter stays the sole owner of the SDK and the backend's vocabulary — for isolation, so a port is one package, not concealment.
+The provider is now registered and reported as `anthropic`, and the adapter package was renamed to match (`internal/provider/anthropic`). An earlier revision policed vendor-neutrality with a repository-walking test and kept the package neutrally named `hosted`, with the seam's default routed through a registration call so `provider.go` held no backend name; all of that was dropped once naming the backend openly made it ceremony that worked against the design. The default is now a plain `const DefaultName = "anthropic"`. The adapter stays the sole owner of the SDK and the backend's vocabulary, for isolation (a port is one package), not for concealment.
