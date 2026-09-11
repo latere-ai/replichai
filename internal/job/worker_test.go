@@ -208,8 +208,8 @@ func TestWorkerFailurePhases(t *testing.T) {
 
 // TestReconcileFailsUnrecoverable checks that a job left mid-run with no live
 // backend session to rejoin, because its run id was never observed, cannot be
-// synchronised and is failed by reconcile. A fresh submitted job is left
-// claimable.
+// matched to a backend run and is failed by reconcile. A fresh submitted job is
+// left claimable.
 func TestReconcileFailsUnrecoverable(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()

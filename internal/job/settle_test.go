@@ -242,8 +242,8 @@ func TestPGStoreSettleContract(t *testing.T) {
 // The phase machine, not the ledger, is what makes this hold: Cancel's UPDATE
 // carries `WHERE phase NOT IN ('done','failed')`, so exactly one of the racing
 // writers reaches settlement and the rest read back the terminal row. The
-// ledger's own exactly-once guard is a second line of defence behind that, and
-// is asserted where it applies, by settling the same session twice directly,
+// ledger's own exactly-once guard is a second safeguard behind that, and is
+// asserted where it applies, by settling the same session twice directly,
 // in internal/credit's store contract. Removing that guard does not fail this
 // test, so this test does not claim to cover it.
 func TestPGStoreConcurrentCancelsSettleOnce(t *testing.T) {

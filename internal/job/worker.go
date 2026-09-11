@@ -400,8 +400,8 @@ func (w *Worker) drivingIDs() []string {
 // and finalizing is idempotent, so re-running it is cheaper and more accurate
 // than failing a reproduction that succeeded. A job with no run to rejoin,
 // because it never reached the backend or its id was never recorded, cannot be
-// synchronised and is failed. It returns how many were resumed and how many
-// failed.
+// reconciled with the backend and is failed. It returns how many were resumed
+// and how many failed.
 func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error) {
 	return w.reconcile(ctx, true)
 }
