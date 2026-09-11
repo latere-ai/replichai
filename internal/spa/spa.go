@@ -3,13 +3,13 @@
 
 // Package spa embeds the built frontend and serves it: real files from the
 // build, and index.html for any unmatched path so the client-side router works.
-// The bundle is public — it holds no secrets, and every data call it makes goes
+// The bundle is public: it holds no secrets, and every data call it makes goes
 // through the gated API.
 //
-// The real build (frontend/ via bun) is written into dist/ and is gitignored; a
-// committed PLACEHOLDER keeps the embed non-empty so `go build`/`go test` work
-// without a frontend build. When index.html is absent (no build), the handler
-// serves a small notice instead of failing.
+// The real build, produced from frontend/ by bun, is written into dist/ and is
+// gitignored. A committed PLACEHOLDER keeps the embed non-empty so `go build`
+// and `go test` work without a frontend build. When index.html is absent, the
+// handler serves a small notice instead of failing.
 package spa
 
 import (
@@ -51,62 +51,64 @@ func Handler() (http.Handler, error) {
 	return compressed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		if p != "" && exists(dist, p) {
-			// Hashed filenames, so the bytes at a given name never change: the
-			// only correct cache lifetime is a long one, and without it every
-			// visit re-downloads the whole bundle.
+			// Asset filenames are hashed, so the bytes at a given name never
+			// change. A long cache lifetime is therefore correct, and without
+			// it every visit re-downloads the whole bundle.
 			if strings.HasPrefix(p, "assets/") {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			}
-			// Fonts are named by what they are rather than by their bytes, so
-			// "immutable" would be a promise this server cannot keep — swapping
-			// a face would leave the old one pinned in every reader's cache. A
-			// long finite lifetime gets the same effect and expires.
+			// Fonts are named by face rather than by content hash, so
+			// "immutable" would be wrong: swapping a face would leave the old
+			// one pinned in every reader's cache. A long finite lifetime gets
+			// most of the benefit and still expires.
 			if strings.HasPrefix(p, "fonts/") {
 				w.Header().Set("Cache-Control", "public, max-age=2592000")
 			}
 			files.ServeHTTP(w, r)
 			return
 		}
-		// index.html names the hashed assets, so it must never be the stale one.
+		// index.html names the hashed assets, so it must never be served stale.
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		seo.WriteShell(w, r, index)
 	})), nil
 }
 
-// gzipPool reuses writers: the bundle is compressed on every uncached load, and
-// a fresh gzip.Writer per request is a megabyte of allocation each time.
+// gzipPool reuses writers. The bundle is compressed on every uncached load, and
+// a fresh gzip.Writer per request would allocate about a megabyte each time.
 var gzipPool = sync.Pool{New: func() any { return gzip.NewWriter(io.Discard) }}
 
 // compressed gzips text responses for clients that accept it.
 //
-// The bundle is ~350 KB of JavaScript and ~33 KB of CSS, and it was going out
-// uncompressed: nothing in front of this server compresses, and net/http does
-// not do it on its own. Over a slow link that is the difference between a page
-// that loads and a page somebody gives up on. Roughly 3.5x here.
+// The bundle is about 350 KB of JavaScript and 33 KB of CSS. Nothing in front
+// of this server compresses, and net/http does not compress on its own, so
+// without this the bundle went out uncompressed. Over a slow link that decides
+// whether the page loads before the reader gives up. gzip reduces it roughly
+// 3.5x.
 func compressed(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || packed(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Vary is not optional: a cache that stores the gzipped body under a key
-		// shared with a client that cannot read it serves that client garbage.
+		// Vary is required. Without it a cache could store the gzipped body
+		// under a key shared with a client that cannot decode gzip, and serve
+		// that client unreadable bytes.
 		w.Header().Set("Vary", "Accept-Encoding")
 		w.Header().Set("Content-Encoding", "gzip")
-		// The length is the uncompressed one and would be a lie on the wire;
-		// the response is chunked instead.
+		// Any Content-Length set upstream is the uncompressed length and would
+		// be wrong on the wire. It is removed and the response is chunked.
 		w.Header().Del("Content-Length")
-		// A ranged request cannot be honoured on a body compressed on the way
-		// out: the file server would set a Content-Length for the slice of the
-		// uncompressed file over a gzipped body. Ignoring the range is what HTTP
-		// allows a server to do, and the whole asset is what is served.
+		// A range request cannot be honoured on a body compressed on the way
+		// out: the file server would set a Content-Length for a slice of the
+		// uncompressed file over a gzipped body. HTTP allows a server to
+		// ignore the range, so the whole asset is served.
 		r.Header.Del("Range")
 
 		zw, ok := gzipPool.Get().(*gzip.Writer)
 		if !ok {
-			// The pool's New only ever makes a *gzip.Writer, so this is a
-			// programming error, not a request to serve uncompressed.
+			// The pool's New only ever makes a *gzip.Writer, so any other type
+			// is a programming error, not a reason to serve uncompressed.
 			panic("spa: gzip pool holds something that is not a *gzip.Writer")
 		}
 		defer gzipPool.Put(zw)
@@ -116,10 +118,10 @@ func compressed(next http.Handler) http.Handler {
 	})
 }
 
-// Formats that arrive compressed. Running them through gzip spends CPU on
-// every uncached load to make the payload very slightly larger — woff2 is
-// Brotli inside the container, and PNG is DEFLATE — and it costs the response
-// its Content-Length, so the browser loses the progress it would have shown.
+// packedExt lists formats that are already compressed. Running them through
+// gzip spends CPU on every uncached load to make the payload slightly larger,
+// since woff2 is Brotli inside its container and PNG is DEFLATE, and it costs
+// the response its Content-Length, so the browser loses its download progress.
 var packedExt = []string{".woff2", ".woff", ".png", ".jpg", ".webp", ".gz", ".ico"}
 
 func packed(path string) bool {

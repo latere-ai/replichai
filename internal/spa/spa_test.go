@@ -19,10 +19,10 @@ func TestHandlerServesIndexFallback(t *testing.T) {
 		t.Fatalf("Handler: %v", err)
 	}
 	// A deep link that is not a real asset falls back to index.html, so the
-	// client-side router can resolve it. Which addresses those are is 042c's
-	// list: /jobs/abc and /dashboard were app paths when this test was written
-	// and are not addresses this app has, so they now carry the shell with a
-	// 404 rather than answering 200 with the dashboard.
+	// client-side router can resolve it. 042c defines which addresses qualify.
+	// /jobs/abc and /dashboard were app paths when this test was written and
+	// no longer are, so they now carry the shell with a 404 rather than
+	// answering 200 with the dashboard.
 	for _, path := range []string{"/", "/registry", "/p/abc", "/p/abc/s/xyz", "/u/ada"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
@@ -38,9 +38,9 @@ func TestHandlerServesIndexFallback(t *testing.T) {
 	}
 }
 
-// AC1: an address this app does not have says so, and still carries the app —
-// the status is the truth for a crawler, the body is a page a person who
-// mistyped can navigate from.
+// AC1: an address this app does not have answers 404 and still carries the
+// app. The status is for a crawler; the body is a page a reader who mistyped
+// can navigate from.
 func TestAnAddressThatDoesNotExistIs404(t *testing.T) {
 	h, err := Handler()
 	if err != nil {
@@ -61,8 +61,9 @@ func TestAnAddressThatDoesNotExistIs404(t *testing.T) {
 	}
 }
 
-// AC5: the screens a signed-out reader renders nothing at are marked, whatever
-// robots.txt says — that file governs fetching, this governs indexing.
+// AC5: the screens at which a signed-out reader renders nothing are marked
+// noindex regardless of robots.txt. That file governs fetching; the header
+// governs indexing.
 func TestTheOperatorScreensAreNotIndexed(t *testing.T) {
 	h, err := Handler()
 	if err != nil {
@@ -82,10 +83,10 @@ func TestTheOperatorScreensAreNotIndexed(t *testing.T) {
 
 // TestEmbedSurvivesCleanCheckout guards the committed placeholder. The real
 // build output under dist/ is gitignored, so on a clean checkout the only
-// thing `//go:embed all:dist` can match is the placeholder. Without it the
-// pattern matches nothing and the package does not compile at all, which
-// takes down vet, build, and test together and reads as an unrelated
-// breakage. This fails first, and says why.
+// file `//go:embed all:dist` can match is the placeholder. Without it the
+// pattern matches nothing and the package does not compile, which breaks vet,
+// build and test together and looks like an unrelated failure. This test
+// fails first and names the cause.
 func TestEmbedSurvivesCleanCheckout(t *testing.T) {
 	entries, err := fs.ReadDir(embedded, "dist")
 	if err != nil {
@@ -125,10 +126,10 @@ func TestHandlerFallsBackWhenNotBuilt(t *testing.T) {
 	}
 }
 
-// The bundle went out uncompressed: nothing in front of this server compresses,
-// and net/http does not do it on its own, so every visit shipped ~350 KB of
-// JavaScript raw. On a slow link that is the difference between a page that
-// loads and one somebody gives up on.
+// Before compression was added, every visit shipped about 350 KB of raw
+// JavaScript: nothing in front of this server compresses, and net/http does
+// not compress on its own. On a slow link that decides whether the page loads
+// before the reader gives up.
 func TestAssetsAreCompressedForClientsThatAcceptIt(t *testing.T) {
 	h, err := Handler()
 	if err != nil {
@@ -148,7 +149,7 @@ func TestAssetsAreCompressedForClientsThatAcceptIt(t *testing.T) {
 	if got := w.Header().Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
 		t.Errorf("Vary = %q, want it to include Accept-Encoding", got)
 	}
-	// The body really is gzip, and really does decode back to the page.
+	// The body is valid gzip and decodes back to the page.
 	zr, err := gzip.NewReader(w.Body)
 	if err != nil {
 		t.Fatalf("body is not gzip: %v", err)
@@ -160,7 +161,7 @@ func TestAssetsAreCompressedForClientsThatAcceptIt(t *testing.T) {
 	if !strings.Contains(string(body), "<") {
 		t.Errorf("decompressed body does not look like html: %q", body)
 	}
-	// A Content-Length describing the uncompressed size would be a lie.
+	// A Content-Length describing the uncompressed size would be wrong.
 	if w.Header().Get("Content-Length") != "" {
 		t.Error("Content-Length survived compression; it describes the wrong bytes")
 	}
@@ -184,7 +185,7 @@ func TestClientWithoutGzipGetsPlainBytes(t *testing.T) {
 }
 
 // index.html names the hashed assets, so caching it would pin a reader to an
-// old build; the hashed assets themselves never change and are cached hard.
+// old build. The hashed assets themselves never change and are cached long.
 func TestCachingDistinguishesTheShellFromItsAssets(t *testing.T) {
 	h, err := Handler()
 	if err != nil {
@@ -197,11 +198,11 @@ func TestCachingDistinguishesTheShellFromItsAssets(t *testing.T) {
 	}
 }
 
-// Some assets arrive compressed, and gzipping them again is pure loss: CPU on
-// every uncached load, a payload that comes out slightly larger, and no
-// Content-Length, so the browser cannot show progress. 040 added two woff2
-// faces to the served set and made that visible; the PNGs had been paying it
-// since the card images landed.
+// Some assets are already compressed, and gzipping them again only costs: CPU
+// on every uncached load, a slightly larger payload, and no Content-Length, so
+// the browser cannot show progress. 040 added two woff2 faces to the served
+// set and made the cost visible; the PNGs had carried it since the card images
+// were added.
 func TestHandlerDoesNotRecompressPackedAssets(t *testing.T) {
 	if _, err := fs.ReadFile(embedded, "dist/index.html"); err != nil {
 		t.Skip("no frontend build in this tree")
@@ -210,7 +211,8 @@ func TestHandlerDoesNotRecompressPackedAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	// Ask for every asset the way a browser does, and check what came back.
+	// Request each asset with the header a browser sends and check the
+	// encoding of the response.
 	for _, tc := range []struct {
 		path string
 		gzip bool
@@ -237,9 +239,9 @@ func TestHandlerDoesNotRecompressPackedAssets(t *testing.T) {
 	}
 }
 
-// The faces the shared footer's logotype is set in have to reach the browser
-// from this binary: the stylesheet names Instrument Serif, and without these
-// the Latere logotype renders in whatever serif the reader happens to have.
+// The faces the shared footer's logotype is set in must be served from this
+// binary. The stylesheet names Instrument Serif, and without these files the
+// Latere logotype renders in whatever serif the reader has installed.
 func TestHandlerServesTheFonts(t *testing.T) {
 	if _, err := fs.ReadFile(embedded, "dist/index.html"); err != nil {
 		t.Skip("no frontend build in this tree")
