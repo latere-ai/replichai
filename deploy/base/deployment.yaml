@@ -26,11 +26,22 @@ spec:
       labels:
         app: replichai
     spec:
+      # The image already runs as a numeric non-root user; the cluster is told
+      # to refuse it if that ever changes, and the process gets no route to
+      # more privilege than it started with.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       imagePullSecrets:
         - name: ghcr-secret
       containers:
         - name: replichai
           image: ghcr.io/latere-ai/replichai:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           ports:
             - containerPort: 8080
           # replichai-config is created from the deployment's .env and holds
