@@ -92,7 +92,10 @@ type Session struct {
 // subdirectories a run needs. The workspace is initialised as a git repository
 // with a committer already configured, so a run cannot stall on git refusing
 // an empty user.email — and with no remote, because the host pushes (045g).
-func CreateSession(root, id string, environ []string) (*Session, error) {
+// The git that does it runs with the same allowlisted environment a stage
+// gets, read through lookup, so a credential in the operator's shell reaches
+// neither.
+func CreateSession(root, id string, lookup LookupEnv) (*Session, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, errors.New("a session needs an id")
 	}
@@ -115,7 +118,7 @@ func CreateSession(root, id string, environ []string) (*Session, error) {
 			return nil, fmt.Errorf("create %s: %w", child, err)
 		}
 	}
-	if err := initRepository(session.Workspace(), environ); err != nil {
+	if err := initRepository(session.Workspace(), sandbox.HostEnvironment(lookup)); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -404,7 +407,8 @@ func (s *Session) readJSON(name string, into any) error {
 // initRepository makes the workspace a git repository with an identity already
 // set and no remote. The identity is here so a run cannot stall on git
 // refusing to commit; the absence of a remote is the whole containment
-// argument of 045g.
+// argument of 045g. environ is the allowlisted host environment, never the
+// process's own.
 func initRepository(workspace string, environ []string) error {
 	steps := [][]string{
 		{"init", "--initial-branch=main"},

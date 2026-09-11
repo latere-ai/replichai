@@ -65,12 +65,12 @@ type LocalConfig struct {
 	// Home is the operator's home directory, denied wholesale by the host
 	// sandbox and searched for the harness's own configuration.
 	Home string
-	// Lookup reads the environment for gateway credentials. It is required:
-	// this package is inside the seam, and configuration arrives from the
-	// composition root rather than being read here.
+	// Lookup reads the environment for gateway credentials, and is the one
+	// channel through which a stage inherits anything of it — only what
+	// sandbox.HostEnvironment admits. It is required: this package is inside
+	// the seam, and configuration arrives from the composition root rather
+	// than being read here.
 	Lookup local.LookupEnv
-	// Environ is the base environment a stage and git inherit.
-	Environ []string
 }
 
 // Config is what a composition root hands this package to compose the
@@ -120,7 +120,7 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 		return nil, err
 	}
 	return local.New(local.Config{
-		Sandbox: driver, Harness: agent, Catalog: catalog, Environ: config.Environ,
+		Sandbox: driver, Harness: agent, Catalog: catalog, Lookup: config.Lookup,
 		Root: config.Root, Retention: local.Retention(config.Retention),
 		Machine: harness.Machine{
 			Platform: string(sandbox.CurrentPlatform()), Home: config.Home,
@@ -144,7 +144,7 @@ func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness
 		})
 	case sandbox.Host, "":
 		return host.New(host.Config{
-			Home: config.Home, HarnessBinary: agent.Binary(), Environ: config.Environ,
+			Home: config.Home, HarnessBinary: agent.Binary(), Lookup: config.Lookup,
 			ConfigDirs: harnessConfigDirs(config.Home, agent.Name()),
 		}), nil
 	default:

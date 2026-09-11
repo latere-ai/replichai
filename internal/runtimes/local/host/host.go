@@ -36,9 +36,13 @@ type Config struct {
 	ConfigDirs []string
 	// Look resolves an executable, defaulting to exec.LookPath.
 	Look func(string) (string, error)
-	// Environ is the base environment a stage inherits — PATH above all.
-	// It arrives from the composition root rather than being read here.
-	Environ []string
+	// Lookup reads one variable of the process environment, os.LookupEnv at
+	// the composition root. A stage inherits only what
+	// sandbox.HostEnvironment admits through it — PATH above all — and
+	// there is no way to hand this driver the whole environment: a
+	// credential exported in the operator's shell must not reach an agent
+	// running with its permission prompts bypassed.
+	Lookup func(string) (string, bool)
 }
 
 // Sandbox is the srt driver.
@@ -134,7 +138,8 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	// with an empty log — which is the unexplained failure this driver exists
 	// to not produce. srt is itself a script whose shebang resolves node, so
 	// even an absolute command is not enough.
-	if !hasPath(s.config.Environ) {
+	base := sandbox.HostEnvironment(s.config.Lookup)
+	if !hasPath(base) {
 		return sandbox.StageHandle{}, fmt.Errorf(
 			"%w: the host sandbox was composed with no environment, so a stage would have no PATH",
 			sandbox.ErrNotReady)
@@ -178,7 +183,7 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	// quoted by shellJoin, so nothing in a task or a model id is interpreted.
 	launcher := exec.Command("/bin/sh", "-c", script) //nolint:gosec,noctx // a quoted argv, and the stage outlives this process by design
 	launcher.Dir = spec.Workdir
-	launcher.Env = s.environment(spec)
+	launcher.Env = s.environment(base, spec)
 	log, err := os.OpenFile(spec.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return sandbox.StageHandle{}, fmt.Errorf("open stage log: %w", err)
@@ -256,16 +261,17 @@ func (s *Sandbox) profile(spec sandbox.StageSpec) Profile {
 	return profile
 }
 
-// environment is what the stage runs with. Credentials named in EnvFile are
-// passed through the environment of the launcher rather than on a command
-// line, so they never appear in the process table.
-func (s *Sandbox) environment(spec sandbox.StageSpec) []string {
-	base := append([]string(nil), s.config.Environ...)
-	base = append(base, "HOME="+s.config.Home, "TERM=dumb")
+// environment is what the stage runs with: the allowlisted base, the home and
+// terminal this driver sets, and the stage's own variables. Credentials named
+// in EnvFile are passed through the environment of the launcher rather than on
+// a command line, so they never appear in the process table.
+func (s *Sandbox) environment(base []string, spec sandbox.StageSpec) []string {
+	environment := append([]string(nil), base...)
+	environment = append(environment, "HOME="+s.config.Home, "TERM=dumb")
 	for name, value := range spec.Env {
-		base = append(base, name+"="+value)
+		environment = append(environment, name+"="+value)
 	}
-	return base
+	return environment
 }
 
 // Observe reports whether the stage is alive. A stage is finished when its

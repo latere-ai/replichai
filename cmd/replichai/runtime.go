@@ -82,7 +82,7 @@ func (options localOptions) config() builtin.LocalConfig {
 		Sandbox: sandbox.DriverName(options.sandbox), Harness: options.harness,
 		Engine: options.engine, Image: options.image, ModelsFile: options.models,
 		Root: options.root, Retention: options.retention,
-		Home: home, Lookup: os.LookupEnv, Environ: os.Environ(),
+		Home: home, Lookup: os.LookupEnv,
 	}
 }
 

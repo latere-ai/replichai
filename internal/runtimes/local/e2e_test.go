@@ -42,7 +42,7 @@ func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	t.Helper()
 	home, _ := os.UserHomeDir()
 	driver := host.New(host.Config{
-		Home: home, HarnessBinary: binary, Environ: os.Environ(),
+		Home: home, HarnessBinary: binary, Lookup: os.LookupEnv,
 		ConfigDirs: []string{
 			filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json"),
 			filepath.Join(home, ".codex"),
@@ -74,7 +74,7 @@ func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	t.Logf("session root: %s", root)
 	runtime, err := local.New(local.Config{
 		Sandbox: driver, Harness: agent, Catalog: catalog,
-		Root: root, Environ: os.Environ(),
+		Root: root, Lookup: os.LookupEnv,
 		Machine: harness.Machine{
 			Platform: goruntime.GOOS, Home: home, TempDir: "/tmp", UID: os.Getuid(),
 		},
