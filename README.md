@@ -162,12 +162,13 @@ internal/project/    projects, the papers they hold, and the sessions run agains
 internal/access/     who may sign in, who may operate, at what tier
 internal/webauth/    OIDC login, the session cookie, the gate policy, the admin routes
 internal/platform/   the policy row an admin tunes at runtime
-internal/credit/     the ledger — wallets, project pots, holds and charges, in micro-USD
-internal/payment/    the card-processor seam, and its Stripe adapter
+internal/credit/     the ledger — wallets, project pots, holds and charges, in micro-USD;
+                     the Stripe webhook posts its credit here
 internal/profile/    the researcher identity a public sign-off is published under
 internal/notify/     what the platform says to somebody who is not looking at it
 internal/draft/      one short model call, for drafting a project description
-internal/httpapi/    the HTTP surface: submit, stream, read, publish, pay
+internal/httpapi/    the HTTP surface: submit, stream, read, publish, pay (payments.go
+                     holds the Stripe checkout and webhook routes)
 internal/seo/        the head the server writes, the sitemap, and the addresses Go knows
 internal/spa/        embeds and serves the built frontend
 frontend/            the researcher UI — bun + React + Vite
