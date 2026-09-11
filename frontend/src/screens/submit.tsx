@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The New-project form (012, 036): a title, the papers it is about — each
-// looked up before it is submitted — and the collaborators to invite. Creating
+// The New-project form (012, 036): a title, the papers it is about, each
+// looked up before it is submitted, and the collaborators to invite. Creating
 // a project spends nothing, so the form knows nothing about credits.
 
 import { useState } from 'react'
@@ -14,7 +14,7 @@ import { Ico } from '../icons'
 import { Seams, Tip } from '../ui'
 
 // A paper row in the New-project form: the link, and its looked-up preview
-// (title) or error, filled by the Look-up button.
+// title or error, filled by the Look-up button.
 type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
 
 // Creating a project spends nothing (012), so this screen needs to know
@@ -31,7 +31,7 @@ export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (
   const addRow = () => setRows((rs) => [...rs, { url: '' }])
   const removeRow = (i: number) => setRows((rs) => (rs.length > 1 ? rs.filter((_, k) => k !== i) : rs))
 
-  // Look one row's link up and show the title it found (or why it could not).
+  // Look one row's link up and show the title it found, or why it could not.
   const resolveRow = async (i: number) => {
     const url = rows[i].url.trim()
     if (!url) return
@@ -48,8 +48,8 @@ export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (
 
   const submit = async () => {
     const papers = rows.map((r) => r.url.trim()).filter(Boolean)
-    // A project may start empty (036) — it records papers and runs nothing — but
-    // it may not start nameless, because the title falls back to the first
+    // A project may start empty (036), since it records papers and runs nothing,
+    // but it may not start nameless, because the title falls back to the first
     // paper's reference and with no paper there is no fallback.
     if (papers.length === 0 && !title.trim()) {
       setErr(t('nameOrPaper'))
@@ -64,10 +64,10 @@ export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (
       const outcome = createOutcome(t, status, data)
       setRows((rs) => rs.map((r) => (outcome.rows.has(r.url.trim()) ? { ...r, error: outcome.rows.get(r.url.trim()) } : r)))
       setErr(outcome.banner)
-      // The project exists either way — it records papers and runs nothing, so
+      // The project exists either way. It records papers and runs nothing, so
       // there is no partial state to explain and nothing to keep the person here
-      // for. A reference we did not recognise is reported on its row and can be
-      // added again from inside the project.
+      // for. A reference the server did not recognise is reported on its row and
+      // can be added again from inside the project.
       if (outcome.ok) {
         invalidateProjects()
         onSubmitted(data.project_id!)

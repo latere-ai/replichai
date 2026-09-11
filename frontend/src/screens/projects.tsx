@@ -3,7 +3,7 @@
 
 // The lists of projects: the reader's own dashboard (018, 034) with its filter
 // and its trash dialog, the trash itself (019) with the restore and the purge,
-// and the public registry (028) — with the cells and badges every row shares.
+// and the public registry (028), plus the cells and badges every row shares.
 
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -44,14 +44,13 @@ function projectMatches(p: ProjectView, q: string, f: ProjectFilter, ownerLabel:
 
 // The projects list: one list of everything the reader may work in, owned or
 // shared, with the owner named on the row rather than as a tab (018). Which of
-// the two a project was never a fact the reader chose, and splitting on it meant
-// finding work started with remembering who had created it.
+// the two a project was is not a fact the reader chose, and splitting on it
+// meant finding work started with remembering who had created it.
 //
 // 034 moved the owner and the date out of the column grid and into the title's
-// meta line. That is not a demotion of what they say — the owner still links to
-// their profile, the age still carries its exact moment — it is what frees the
-// width for the column that was missing: what this project has actually handed
-// over.
+// meta line. The owner still links to their profile and the age still carries
+// its exact moment; the move frees the width for the column that was missing,
+// which is what this project has handed over.
 export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
   // The shared list: the rail reads the same one, so the count up there and the
@@ -176,8 +175,8 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
             <div className="project-head" aria-hidden="true">
               <span className="eyebrow">{t('colPaper')}</span>
               {/* Named so the phone can fold it away first: what a project has
-                  handed over is context, and what a row *is* — its title and its
-                  phase — is not (030). */}
+                  handed over is context, while its title and its phase identify
+                  the row and are not (030). */}
               <span className="eyebrow row-published">{t('colPublished')}</span>
               <span className="eyebrow">{t('colStatus')}</span>
               <span className="eyebrow row-visibility">{t('colVisibility')}</span>
@@ -203,9 +202,9 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
                     </div>
                   )}
                   {/* Owner, count, and age on one line under the title. They are
-                      the same facts the columns carried and they still behave the
-                      same way — the owner links, the age holds its exact moment —
-                      they simply no longer each cost a column. */}
+                      the same facts the columns carried and behave the same way:
+                      the owner links and the age holds its exact moment. They no
+                      longer each cost a column. */}
                   <div className="row-meta">
                     <OwnerCell i18n={i18n} me={me} p={p} />
                     <span className="row-meta-dot" aria-hidden="true" />
@@ -236,19 +235,20 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
                   )}
                 </div>
                 {/* Each badge gets its own cell rather than sizing the column
-                    itself. A badge is as wide as its word — "1 RUNNING" against
-                    "DONE" — and letting that width set the column is what pushed
-                    every cell to its left out of line, row by row. */}
+                    itself. A badge is as wide as its word, for example "1
+                    RUNNING" against "DONE", and letting that width set the
+                    column pushed every cell to its left out of line, row by
+                    row. */}
                 <span className="row-cell">
                   <StatusBadge i18n={i18n} p={p} />
                 </span>
                 <span className="row-cell row-visibility">
                   <VisibilityBadge i18n={i18n} visibility={p.visibility} icon />
                 </span>
-                {/* An anchor, not a fetch: the browser's own download is what
-                    should handle a body this size. The condition is the server's
-                    own — a project whose sessions all failed before publishing
-                    has sessions and nothing to hand over, and the download is a
+                {/* An anchor, not a fetch: the browser's own download should
+                    handle a body this size. The condition is the server's own.
+                    A project whose sessions all failed before publishing has
+                    sessions and nothing to hand over, and the download is a
                     top-level navigation, so reaching its refusal would replace
                     the app with a JSON body (020). */}
                 {(p.published_sessions ?? 0) > 0 ? (
@@ -308,12 +308,12 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
 }
 
 // The confirmation before a project leaves the list. It is the app's own dialog,
-// not window.confirm: a chrome-owned box ignores the theme, cannot say the one
-// thing worth saying here, and blocks the tab while it is up.
+// not window.confirm: a browser-owned box ignores the theme, cannot carry the
+// message below, and blocks the tab while it is up.
 //
-// The one thing worth saying is that this is reversible — and, for a published
-// project, that it is not only a removal: the publication ends, and the
-// retraction goes on the record.
+// The message is that this is reversible and, for a published project, that it
+// is not only a removal: the publication ends, and the retraction goes on the
+// record.
 function TrashDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView; onClose: () => void; onDone: () => void }) {
   const { t } = i18n
   const [busy, setBusy] = useState(false)
@@ -354,8 +354,8 @@ function TrashDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
 }
 
 // The trash: what an owner threw away, and the two things they can do about it.
-// It is a screen rather than an undo toast because the decision it holds — the
-// permanent one — is not a decision to make inside a five-second window.
+// It is a screen rather than an undo toast because the permanent delete is not
+// a decision to make inside a five-second window.
 export function TrashScreen({ i18n, me }: { i18n: I18n; me: Me }) {
   const { t } = i18n
   const [list, setList] = useState<ProjectView[] | null>(null)
@@ -437,10 +437,10 @@ export function TrashScreen({ i18n, me }: { i18n: I18n; me: Me }) {
   )
 }
 
-// The permanent delete's confirmation. What it spends its words on is what does
-// *not* go: the repositories close rather than being destroyed, because a
-// reproduction the agent wrote is evidence and this product does not destroy
-// evidence on a click.
+// The permanent delete's confirmation. It states what is not removed: the
+// repositories close rather than being destroyed, because a reproduction the
+// agent wrote is evidence and this product does not destroy evidence on a
+// click.
 function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView; onClose: () => void; onDone: () => void }) {
   const { t } = i18n
   const [busy, setBusy] = useState(false)
@@ -480,16 +480,16 @@ function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
   )
 }
 
-// The Owner column. Your own projects say "You" — the common case, and one
-// nobody should have to read a name to recognise. Somebody else's is their
-// profile name, linking to their public page when they have one. A name the
-// server could not resolve is a dash: the opaque subject it would otherwise fall
-// back to named nobody either.
+// The Owner column. The reader's own projects say "You", which is the common
+// case and one nobody should have to read a name to recognise. Somebody else's
+// shows their profile name, linking to their public page when they have one. A
+// name the server could not resolve is a dash: the opaque subject it would
+// otherwise fall back to names nobody either.
 function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
   const { t } = i18n
-  // Both sides can be absent — a reader with no stake is not sent the owning
-  // principal, and a signed-out reader has none of their own (028) — and two
-  // absences are not the same person.
+  // Both sides can be absent: a reader with no stake is not sent the owning
+  // principal, and a signed-out reader has none of their own (028). Two
+  // absences must not compare as the same person.
   const mine = isMine(me, p.owner)
   const label = mine ? t('ownerYou') : p.owner_name || t('ownerUnknown')
   return (
@@ -516,13 +516,13 @@ function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
   )
 }
 
-// RowCitation is a list row's half of what a landing card says: the first
+// RowCitation is a list row's version of what a landing card says: the first
 // paper's citation, and how many others the project holds. Both lists of
-// projects render it — the registry and the owner's own dashboard — because a
+// projects render it, the registry and the owner's own dashboard, because a
 // row is scanned for which paper it is about before anything else about it.
 //
 // It renders nothing when no source could fill the record in. On the registry
-// that is the end of it; on the dashboard the invitation to complete a record
+// that is the end of it. On the dashboard the invitation to complete a record
 // lives on the project screen, addressed to the owner who can act on it, rather
 // than in a list row that would repeat it once per project.
 function RowCitation({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
@@ -595,7 +595,7 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
 }
 
 // StatusBadge shows a project's session status at a glance: how many are
-// running (pulsing), else the newest session's terminal phase.
+// running, drawn pulsing, else the newest session's terminal phase.
 function StatusBadge({ i18n, p }: { i18n: I18n; p: ProjectView }) {
   const { t } = i18n
   if (p.running > 0)

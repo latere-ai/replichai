@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Settings (024a): one screen with a sub-tab per real path — Account is what
+// Settings (024a): one screen with a sub-tab per real path. Account is what
 // you are on the platform, Profile is what you publish as. The profile fields
 // themselves are shared with the publish wizard and live in shared.tsx.
 
@@ -60,9 +60,9 @@ export function SettingsScreen({
   )
 }
 
-// AccountCard is identity, access, appearance, and the way out — what you are on
-// the platform, kept apart from what you publish as (Profile) and what you have
-// to spend (Credits).
+// AccountCard is identity, access, appearance, and sign-out: what you are on
+// the platform, kept apart from what you publish as on the Profile tab and what
+// you have to spend on the Credits tab.
 function AccountCard({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme> }) {
   const { t } = i18n
   return (
@@ -97,7 +97,7 @@ function AccountCard({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnTyp
   )
 }
 
-// CreditsCard is the wallet balance and its statement — the one place a person
+// CreditsCard is the wallet balance and its statement: the one place a person
 // reads their own number and can see where it came from. 024b makes each move
 // name its project; the statement itself is unchanged here.
 // ProfileCard edits the researcher identity a sign-off is published under
@@ -155,9 +155,10 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
       </div>
       <ProfileFields i18n={i18n} p={p} set={set} />
 
-      {/* The page is a decision, not a field. What turning it on publishes is
-          not new — every one of these fields already appears on any sign-off —
-          it is the aggregation, and that is its owner's call to make. */}
+      {/* The public page is a decision, not a field. Turning it on publishes
+          nothing new, since every one of these fields already appears on any
+          sign-off; it publishes the aggregation, and that is its owner's call
+          to make. */}
       <div className="stack" style={{ gap: 8 }}>
         <Toggle on={!!p.public} onChange={setPublic}>
           {t('profilePublicLabel')}
