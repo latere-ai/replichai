@@ -44,7 +44,8 @@ func TestJobCostUsesPersistedModelProvider(t *testing.T) {
 	if got := j.cost(); got != 9 {
 		t.Fatalf("OpenAI cost = %d, want 9", got)
 	}
-	// Historical rows had no provider and are Anthropic, never current-default.
+	// Historical rows had no provider and are priced as Anthropic, never as the
+	// current default.
 	j.Status.ModelProvider = ""
 	if got := j.cost(); got != 3 {
 		t.Fatalf("legacy cost = %d, want 3", got)

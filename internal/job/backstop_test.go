@@ -35,20 +35,21 @@ func projectFloor(s Store, ledger credit.Store, floor int64) Budget {
 	}
 }
 
-// The floor is a property of the *project*, not of the session that happened to
-// observe. Accrued spend does not reach the ledger until a session settles, so a
-// watchdog subtracting only the observing session's own cost would let each of N
-// concurrent runs stay above the floor while together they sailed far past it.
+// TestTheFloorIsProjectWideNotPerSession checks that the floor is a property
+// of the project, not of the session that happened to observe. Accrued spend
+// does not reach the ledger until a session settles, so a check subtracting
+// only the observing session's own cost would let each of N concurrent runs
+// stay above the floor while together they exceeded it by far.
 //
-// Confirmed to fail against a per-session projection: with a floor of $10 and
-// three sessions at $8 each, a per-session check clears every one of them.
+// The test fails against a per-session projection: with a floor of $10 and
+// three sessions at $8 each, a per-session check passes every one of them.
 func TestTheFloorIsProjectWideNotPerSession(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
 	s := NewMemStore(WithCredits(ledger, fixedReserve(testReserve)), WithRates(fixedCard(testCard)))
 	fund(t, ledger, "p", 6*credit.Dollar)
 
-	// Three sessions, each having burned $8 — individually under a $10 floor
+	// Three sessions, each having spent $8: individually under a $10 floor
 	// against a $6 balance, jointly $18 over it.
 	burn := provider.RunStatus{
 		Model: "cheap",
@@ -69,7 +70,7 @@ func TestTheFloorIsProjectWideNotPerSession(t *testing.T) {
 	const floor = 10 * credit.Dollar
 	budget := projectFloor(s, ledger, floor)
 
-	// The project-wide projection sees all of it and stops the session in hand.
+	// The project-wide projection sees all of it and stops the observed session.
 	first, _ := s.Get(ctx, ids[0])
 	stop, _, err := budget(ctx, first)
 	if err != nil {
@@ -87,8 +88,9 @@ func TestTheFloorIsProjectWideNotPerSession(t *testing.T) {
 	}
 }
 
-// A session the backstop stops records that it did not complete, and nothing
-// about why. The reason is the number, and the number is what must not leak.
+// TestAStoppedSessionRecordsOnlyThatItFailed checks that a session the
+// backstop stops records that it did not complete and nothing about why. The
+// reason names the limit, and the limit must not leak.
 func TestAStoppedSessionRecordsOnlyThatItFailed(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
@@ -121,7 +123,7 @@ func TestAStoppedSessionRecordsOnlyThatItFailed(t *testing.T) {
 	if got.Err == CancelCause {
 		t.Error("a stopped run reads as a deliberate cancel; the owner did not stop it")
 	}
-	// And it settled: the tokens it burned are charged, its reserve is back.
+	// It settled: the tokens it used are charged and its reserve is released.
 	bal, _ := ledger.Balance(ctx, credit.Pot("p"))
 	avail, _ := ledger.Available(ctx, credit.Pot("p"))
 	if bal != avail {
@@ -132,9 +134,10 @@ func TestAStoppedSessionRecordsOnlyThatItFailed(t *testing.T) {
 	}
 }
 
-// A backstop that cannot read its inputs does not stop anything. A run killed
-// because the database hiccuped would turn a transient fault into destroyed
-// work, which is worse than the overspend it was guarding against.
+// TestABrokenBackstopStopsNothing checks that a backstop that cannot read its
+// inputs does not stop anything. A run stopped because of a transient database
+// fault would turn that fault into lost work, which is worse than the
+// overspend it was guarding against.
 func TestABrokenBackstopStopsNothing(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)

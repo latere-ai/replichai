@@ -24,8 +24,8 @@ type fakeRunner struct {
 	calls       []string
 	failAt      string
 	repo        string
-	resolveRepo string // when set, Resolve stamps it onto the job (the 006i handoff)
-	publishRepo string // the RepoName Publish observed — proves the handoff survived
+	resolveRepo string // when set, Resolve sets it on the job (the 006i handoff)
+	publishRepo string // the RepoName Publish observed, showing the handoff survived
 	publishErr  error
 	observed    provider.RunStatus
 	closed      []string // run ids Close was called with
@@ -116,8 +116,9 @@ func drained(t *testing.T, w *Worker) {
 	}
 }
 
-// AC7: both kinds walk the same phases through the same transition function;
-// only the callee differs. No second state machine.
+// TestBothKindsWalkTheSameLifecycle checks AC7: both kinds move through the
+// same phases via the same transition function, and only the callee differs.
+// There is no second state machine.
 func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 	for _, k := range []Kind{KindAudit, KindExperiment} {
 		t.Run(string(k), func(t *testing.T) {
@@ -147,12 +148,13 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 	}
 }
 
-// 006i: a RepoName set in Resolve is persisted at the transition into running
-// (apply copies it) and is therefore present by the time Publish runs — the
-// handoff the server's create-repo-in-resolve / finalize-in-publish depends on.
+// TestRepoNameFromResolveReachesPublish checks 006i: a RepoName set in Resolve
+// is persisted at the transition into running, because apply copies it, and is
+// therefore present by the time Publish runs. The server depends on this
+// handoff to create the repository in resolve and finalize it in publish.
 func TestRepoNameFromResolveReachesPublish(t *testing.T) {
 	s := NewMemStore()
-	r := &fakeRunner{resolveRepo: "open-hai/created-in-resolve"} // repo stays "" so Publish won't clobber
+	r := &fakeRunner{resolveRepo: "open-hai/created-in-resolve"} // repo stays "" so Publish does not overwrite it
 	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p"})
 
 	drained(t, NewWorker(s, r))
@@ -168,9 +170,10 @@ func TestRepoNameFromResolveReachesPublish(t *testing.T) {
 	}
 }
 
-// AC5: the latest run status is recorded on the job as the run observes it, and
-// is readable afterwards — the store-level half of "a late reader sees where it
-// is" (the SSE snapshot is 006a).
+// TestProgressIsObservedOntoTheJob checks AC5: the latest run status is
+// recorded on the job as the run observes it, and is readable afterwards. This
+// is the store-level half of letting a late reader see where the run is; the
+// SSE snapshot is 006a.
 func TestProgressIsObservedOntoTheJob(t *testing.T) {
 	s := NewMemStore()
 	r := &fakeRunner{observed: provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 42}}}
@@ -203,9 +206,10 @@ func TestWorkerFailurePhases(t *testing.T) {
 	}
 }
 
-// A job left mid-run with no live backend session to rejoin (its run id was
-// never observed) cannot be synced, so reconcile fails it. A fresh submitted job
-// is left claimable.
+// TestReconcileFailsUnrecoverable checks that a job left mid-run with no live
+// backend session to rejoin, because its run id was never observed, cannot be
+// synchronised and is failed by reconcile. A fresh submitted job is left
+// claimable.
 func TestReconcileFailsUnrecoverable(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -227,11 +231,12 @@ func TestReconcileFailsUnrecoverable(t *testing.T) {
 	}
 }
 
-// Exactly one process may drive a run. A deploy overlaps a pod coming up with
-// one still working, and both reconcile: without a lease each rejoined the same
-// backend session, and the two drivers collided — one closed the session the
-// other was still using, and the failure it recorded overwrote the success the
-// other had just published.
+// TestReconcileLeavesARunAnotherWorkerIsDriving checks that exactly one process
+// may drive a run. A deploy overlaps a pod coming up with one still working, and
+// both reconcile. Without a lease each rejoined the same backend session and
+// the two drivers collided: one closed the session the other was still using,
+// and the failure it recorded overwrote the success the other had just
+// published.
 func TestReconcileLeavesARunAnotherWorkerIsDriving(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -260,10 +265,11 @@ func TestReconcileLeavesARunAnotherWorkerIsDriving(t *testing.T) {
 	}
 }
 
-// Reconciling only at startup was enough while every replica took every
-// stranded run. Now that a lease stops the incoming pod taking one the outgoing
-// pod still holds, something has to look again once that lease goes cold —
-// otherwise a deploy mid-run leaves the session sitting in `running` until the
+// TestThePoolSweepsForStrandedRuns checks that the pool looks again for
+// stranded runs. Reconciling only at startup was enough while every replica
+// took every stranded run. Now that a lease stops the incoming pod taking one
+// the outgoing pod still holds, something has to look again once that lease
+// expires; otherwise a deploy mid-run leaves the session in running until the
 // next deploy.
 func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	s := NewMemStore()
@@ -274,7 +280,7 @@ func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_stranded_01"})
 
 	r := &fakeRunner{}
-	// A zero lease makes the departed pod's hold cold immediately, which is the
+	// A zero lease expires the departed pod's hold immediately, which is the
 	// state a sweep finds it in five minutes later in the deployment.
 	w := NewWorker(s, r, WithWorkerID("pod-here"), WithPoll(time.Millisecond),
 		withSweepEvery(time.Millisecond), withLeaseTTL(0))
@@ -288,11 +294,12 @@ func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	}
 }
 
-// Resolving is quiet: the paper fetch and the repository creation report no
-// status, so a slow one lets its lease go cold while it is working. A sweep runs
-// beside a live pool and cannot tell that from a dead driver, so it must leave
-// what it cannot positively rejoin alone — the startup pass, where nothing is
-// mid-anything, is the only place a session is judged unrecoverable.
+// TestASweepDoesNotFailASessionItCannotRejoin checks that a sweep leaves alone
+// what it cannot positively rejoin. Resolving is quiet: the paper fetch and the
+// repository creation report no status, so a slow one lets its lease expire
+// while it is working. A sweep runs beside a live pool and cannot distinguish
+// that from a dead driver. The startup pass, when nothing is in progress, is
+// the only place a session is judged unrecoverable.
 func TestASweepDoesNotFailASessionItCannotRejoin(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -308,16 +315,17 @@ func TestASweepDoesNotFailASessionItCannotRejoin(t *testing.T) {
 	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseResolving {
 		t.Errorf("phase = %s, want resolving — a sweep failed a session that was working", got.Phase)
 	}
-	// It did not take the lease either: a row it will not drive is not its to hold.
+	// It did not take the lease either: it must not hold a row it will not drive.
 	if won, _ := s.Adopt(ctx, j.ID, "pod-a", time.Minute); !won {
 		t.Error("the sweep took the lease on a row it left alone")
 	}
 }
 
-// The claim leases too, so a session another pod took seconds ago is not read as
-// stranded. Nothing has been observed onto it yet — no run id — which is exactly
-// the shape reconciliation fails as unrecoverable, and failing it would kill a
-// session that is resolving perfectly well on the pod that claimed it.
+// TestReconcileLeavesAFreshlyClaimedSessionAlone checks that the claim leases
+// too, so a session another pod took seconds ago is not read as stranded.
+// Nothing has been observed onto it yet, so it has no run id, which is exactly
+// the shape reconciliation fails as unrecoverable, and failing it would stop a
+// session that is resolving correctly on the pod that claimed it.
 func TestReconcileLeavesAFreshlyClaimedSessionAlone(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -354,9 +362,10 @@ func waitForCall(t *testing.T, r *fakeRunner, call string) {
 	}
 }
 
-// A run whose backend session id was observed is REJOINED on restart, not
-// failed: reconcile resumes it and drives it to done, reflecting the live
-// session rather than guessing it failed while it kept running.
+// TestReconcileRejoinsLiveRun checks that a run whose backend session id was
+// observed is rejoined on restart, not failed: reconcile resumes it and drives
+// it to done, reflecting the live session rather than assuming it failed while
+// it kept running.
 func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -397,9 +406,10 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 	}
 }
 
-// A restart that lands after the run settled but before finalizing finished
-// must re-publish, not fail: the session succeeded, publishing is idempotent,
-// and failing the row would strand a reproduction that is already committed.
+// TestReconcileRepublishesAnInterruptedPublish checks that a restart after the
+// run settled but before finalizing finished re-publishes rather than fails:
+// the session succeeded, publishing is idempotent, and failing the row would
+// strand a reproduction that is already committed.
 func TestReconcileRepublishesAnInterruptedPublish(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -426,11 +436,12 @@ func TestReconcileRepublishesAnInterruptedPublish(t *testing.T) {
 	}
 }
 
-// A shutdown is not a failed session. When the pool context is cancelled — every
-// deploy and node drain — the run's error must NOT write the terminal failed
-// phase, because failed is unreachable from Reconcile: the row would be stuck
-// dead while the backend session kept working. Leaving it in its phase is what
-// lets the next boot rejoin it.
+// TestShutdownLeavesTheJobForReconcile checks that a shutdown is not a failed
+// session. When the pool context is cancelled, which happens on every deploy
+// and node drain, the run's error must not write the terminal failed phase,
+// because Reconcile cannot recover a failed row: it would be stuck while the
+// backend session kept working. Leaving it in its phase lets the next boot
+// rejoin it.
 func TestShutdownLeavesTheJobForReconcile(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -451,8 +462,9 @@ func TestShutdownLeavesTheJobForReconcile(t *testing.T) {
 	}
 }
 
-// A person cancelling their session is the other path: only that job's context
-// is cancelled, not the pool's, so the row still ends terminal.
+// TestCancelStillFailsTheJob checks the other path, a person cancelling their
+// session: only that job's context is cancelled, not the pool's, so the row
+// still ends terminal.
 func TestCancelStillFailsTheJob(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -484,8 +496,9 @@ func waitForPhase(t *testing.T, s Store, id string, phase Phase) {
 	}
 }
 
-// Cancelling an orphaned running session (one no worker is driving) still closes
-// it on the backend, via its persisted run id.
+// TestCancelClosesAnOrphanRun checks that cancelling an orphaned running
+// session, one no worker is driving, still closes it on the backend via its
+// persisted run id.
 func TestCancelClosesAnOrphanRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -505,8 +518,9 @@ func TestCancelClosesAnOrphanRun(t *testing.T) {
 	}
 }
 
-// A backend stop failure must not be turned into a terminal local cancellation:
-// that would make the still-running remote session impossible to stop by retry.
+// TestCancelKeepsTheJobRetryableWhenBackendCloseFails checks that a backend
+// stop failure is not turned into a terminal local cancellation, which would
+// make the still-running remote session impossible to stop by retry.
 func TestCancelKeepsTheJobRetryableWhenBackendCloseFails(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -523,7 +537,8 @@ func TestCancelKeepsTheJobRetryableWhenBackendCloseFails(t *testing.T) {
 	}
 }
 
-// The pool loop processes enqueued jobs and stops on cancellation.
+// TestStartProcessesThePool checks that the pool loop processes enqueued jobs
+// and stops on cancellation.
 func TestStartProcessesThePool(t *testing.T) {
 	s := NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -711,11 +726,12 @@ func equal(a, b []string) bool {
 	return true
 }
 
-// A run that is thinking says nothing, and silence is not death. This is the
-// incident of 044: one pod claimed a session at 07:39 and drove it correctly;
-// five quiet minutes later the pod beside it logged "sweep adopted 1 stranded
-// run(s)" and took a live session, and the two drivers' finalizes raced until
-// the loser recorded a failure over the winner's published success.
+// TestAQuietRunKeepsItsLease checks that a run whose model is thinking reports
+// nothing and still keeps its lease. This is the incident of 044: one pod
+// claimed a session at 07:39 and drove it correctly; five quiet minutes later
+// the pod beside it logged "sweep adopted 1 stranded run(s)" and took a live
+// session, and the two drivers' finalizes raced until the loser recorded a
+// failure over the winner's published success.
 func TestAQuietRunKeepsItsLease(t *testing.T) {
 	s := NewMemStore()
 	ctx := t.Context()
@@ -744,9 +760,10 @@ func TestAQuietRunKeepsItsLease(t *testing.T) {
 	}
 }
 
-// The heartbeat makes a wrongful adoption rare; yielding makes one harmless. A
-// driver that finds its lease held elsewhere stops its own run rather than
-// driving on to a second finalize of the same backend session.
+// TestADriverYieldsASessionItHasLost checks that a driver that finds its lease
+// held elsewhere stops its own run rather than driving on to a second finalize
+// of the same backend session. The heartbeat makes a wrongful adoption rare;
+// yielding makes one harmless.
 func TestADriverYieldsASessionItHasLost(t *testing.T) {
 	s := NewMemStore()
 	ctx := t.Context()
@@ -765,7 +782,7 @@ func TestADriverYieldsASessionItHasLost(t *testing.T) {
 	go driver.Start(ctx, 1)
 	<-held
 
-	// Another replica takes the row — however it managed to, this driver no
+	// Another replica takes the row. However that happened, this driver no
 	// longer owns it.
 	if won, err := s.Adopt(ctx, j.ID, "pod-b", 0); err != nil || !won {
 		t.Fatalf("Adopt = %v/%v, want pod-b to win", won, err)
@@ -777,10 +794,11 @@ func TestADriverYieldsASessionItHasLost(t *testing.T) {
 	}
 }
 
-// A run that simply finished reports the same lost lease a stolen one does —
-// the row went terminal between its own last transition and the driver
-// deregistering, which is every successful run. It must not be announced as a
-// yield: the one time that line matters is during an incident.
+// TestAFinishedRunIsNotAnnouncedAsAYield checks that a run that finished is
+// not logged as a yield. It reports the same lost lease a taken one does,
+// because the row went terminal between its last transition and the driver
+// deregistering, which happens on every successful run. The yield log line
+// matters only during an incident.
 func TestAFinishedRunIsNotAnnouncedAsAYield(t *testing.T) {
 	var buf bytes.Buffer
 	previous := slog.Default()

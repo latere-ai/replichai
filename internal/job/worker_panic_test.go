@@ -33,10 +33,11 @@ func (p *panickingRunner) Publish(ctx context.Context, j *Job) error {
 	return p.fakeRunner.Publish(ctx, j)
 }
 
-// A panic inside the runner is one job's failure, recorded on its row with
-// the cause, and the worker goes on to the next job. It is not the process's
-// failure: before this the same panic took the server down, and a row left in
-// an active phase made the next boot panic again.
+// TestARunnerPanicFailsTheJobNotTheProcess checks that a panic inside the
+// runner is one job's failure, recorded on its row with the cause, and that
+// the worker goes on to the next job. Before this fix the same panic took the
+// server down, and a row left in an active phase made the next boot panic
+// again.
 func TestARunnerPanicFailsTheJobNotTheProcess(t *testing.T) {
 	for _, at := range []string{"execute", "publish"} {
 		t.Run(at, func(t *testing.T) {
@@ -59,9 +60,9 @@ func TestARunnerPanicFailsTheJobNotTheProcess(t *testing.T) {
 	}
 }
 
-// The reconciler rejoins stranded rows on goroutines of its own; a panic
-// there is contained the same way, so a restart with one bad row does not
-// crash-loop.
+// TestAPanicWhileReconcilingIsContained checks that a panic in one of the
+// reconciler's rejoin goroutines is contained the same way, so a restart with
+// one bad row does not crash-loop.
 func TestAPanicWhileReconcilingIsContained(t *testing.T) {
 	store := NewMemStore()
 	j, _ := store.Enqueue(context.Background(), Submission{Principal: "p", Project: "proj", Ref: "paper"})

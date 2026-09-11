@@ -14,7 +14,7 @@ import (
 )
 
 // refusingReserve fails the test if it is called, so a path that must never
-// reach the ledger is proved not to rather than asserted about.
+// reach the ledger is shown not to, rather than assumed.
 func refusingReserve(t *testing.T) credit.Reserve {
 	return func(context.Context) (int64, error) {
 		t.Fatal("an imported session reached the credit reserve")
@@ -33,9 +33,9 @@ func imported(project string) Import {
 	}
 }
 
-// The import has no path to the reserve at all. The credit seam here fails the
-// test if it is touched, so this is a proof rather than an assertion about a
-// branch somebody could add later.
+// TestImportNeverReachesTheLedger checks that the import has no path to the
+// reserve. The credit reserve here fails the test if it is called, so the test
+// covers any branch added later as well.
 func TestImportNeverReachesTheLedger(t *testing.T) {
 	store := NewMemStore(WithCredits(nil, refusingReserve(t)))
 	job, err := store.ImportLocal(context.Background(), imported("p-1"))
@@ -58,8 +58,9 @@ func TestImportNeverReachesTheLedger(t *testing.T) {
 	}
 }
 
-// Only a record may be imported. A run still going is not one, and a
-// non-terminal row would be a job no worker owns and no lease heartbeats.
+// TestOnlyATerminalSessionMayBeImported checks that only a finished session
+// may be imported. A run still in progress is not a record, and a non-terminal
+// row would be a job that no worker owns and no lease heartbeats.
 func TestOnlyATerminalSessionMayBeImported(t *testing.T) {
 	store := NewMemStore()
 	for _, phase := range []Phase{PhaseSubmitted, PhaseResolving, PhaseRunning, PhasePublishing} {
@@ -77,8 +78,8 @@ func TestOnlyATerminalSessionMayBeImported(t *testing.T) {
 			t.Errorf("importing a %s session = %v", phase, err)
 		}
 	}
-	// A session with no runtime or no id cannot be made idempotent, so it
-	// is refused rather than stored as an un-rewritable duplicate.
+	// A session with no runtime or no id cannot be made idempotent, so it is
+	// refused rather than stored as a duplicate that no re-push can update.
 	for _, in := range []Import{
 		func() Import { i := imported("p-1"); i.Runtime = ""; return i }(),
 		func() Import { i := imported("p-1"); i.ExternalID = ""; return i }(),
@@ -90,8 +91,8 @@ func TestOnlyATerminalSessionMayBeImported(t *testing.T) {
 	}
 }
 
-// Re-pushing the same session updates its row. An interrupted upload is
-// resumed by running it again, which is what an operator will do anyway.
+// TestReimportingUpdatesOneRow checks that re-pushing the same session updates
+// its row, so an interrupted upload is resumed by running it again.
 func TestReimportingUpdatesOneRow(t *testing.T) {
 	store := NewMemStore()
 	first, err := store.ImportLocal(context.Background(), imported("p-1"))
@@ -127,8 +128,9 @@ func TestReimportingUpdatesOneRow(t *testing.T) {
 	}
 }
 
-// The rail asks what a project has been costing, and this deployment charged
-// nothing for a local session.
+// TestSpendExcludesALocalSession checks that a local session is left out of
+// the spend figure: the rail shows what a project cost, and this deployment
+// charged nothing for a local session.
 func TestSpendExcludesALocalSession(t *testing.T) {
 	store := NewMemStore()
 	if _, err := store.ImportLocal(context.Background(), imported("p-1")); err != nil {
@@ -143,8 +145,8 @@ func TestSpendExcludesALocalSession(t *testing.T) {
 	}
 }
 
-// An unknown origin is refused on the wire rather than arriving as an empty
-// string that reads as platform.
+// TestAnUnknownOriginIsRefused checks that an unknown origin is rejected when
+// decoded rather than arriving as an empty string that is read as platform.
 func TestAnUnknownOriginIsRefused(t *testing.T) {
 	var origin Origin
 	if err := origin.UnmarshalJSON([]byte(`"local"`)); err != nil || origin != OriginLocal {
@@ -153,8 +155,8 @@ func TestAnUnknownOriginIsRefused(t *testing.T) {
 	if err := origin.UnmarshalJSON([]byte(`"somewhere-else"`)); err == nil {
 		t.Fatal("an unknown origin was accepted")
 	}
-	// The empty value is what every row written before the column existed
-	// carries, and it means platform.
+	// Every row written before the column existed carries the empty value,
+	// which means platform.
 	var empty Origin
 	if !empty.OrDefault().Metered() || empty.OrDefault() != OriginPlatform {
 		t.Fatalf("the empty origin = %q", empty.OrDefault())

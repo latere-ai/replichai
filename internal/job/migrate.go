@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// migrations are the schema, versioned and applied in order at startup, so
-// `docker compose up` is the whole install. Each is idempotent at the version
-// gate: a migration whose version is already recorded is skipped.
+// migrations is the schema, versioned and applied in order at startup, so
+// `docker compose up` is the whole install. Each migration is idempotent at the
+// version check: one whose version is already recorded is skipped.
 var migrations = []struct {
 	version int
 	sql     string
@@ -33,27 +33,30 @@ CREATE TABLE jobs (
 	updated_at  TIMESTAMPTZ NOT NULL,
 	phase_at    JSONB NOT NULL DEFAULT '{}'
 );
--- The claim query hits this partial index: only submitted rows are claimable.
+-- The claim query reads this partial index: only submitted rows are claimable.
 CREATE INDEX jobs_claimable ON jobs (created_at) WHERE phase = 'submitted';
 `},
 	{2, `
 -- A session records the offline paper identity it targets (006g), so the guard
--- can key on it. Empty for an experiment or an unkeyable ref, and then unguarded.
+-- can key on it. It is empty for an experiment or a ref that cannot be keyed,
+-- and such a session is not guarded.
 ALTER TABLE jobs ADD COLUMN paper_key TEXT NOT NULL DEFAULT '';
--- The double-trigger guard, structural: at most one non-terminal session per
--- paper — in a project (so two people cannot double-run a shared project) and
--- per principal (so one person cannot double-run the same paper across their
--- own projects). Terminal and unkeyed rows are excluded, so a re-run after the
--- prior finished, and every experiment, are free.
+-- The double-trigger guard, enforced by the schema: at most one non-terminal
+-- session per paper in a project, so two people cannot run a shared project
+-- twice at once, and per principal, so one person cannot run the same paper
+-- twice across their own projects. Terminal and unkeyed rows are excluded, so
+-- a re-run after the previous session finished, and every experiment, are
+-- allowed.
 CREATE UNIQUE INDEX jobs_active_paper_project ON jobs (project_id, paper_key)
 	WHERE phase NOT IN ('done','failed') AND paper_key <> '';
 CREATE UNIQUE INDEX jobs_active_paper_principal ON jobs (principal, paper_key)
 	WHERE phase NOT IN ('done','failed') AND paper_key <> '';
 `},
 	{3, `
--- Whose session quota a run spends (006l). Backfilled to the submitter: before
--- sponsorship, every session was paid for by whoever opened it. NOT NULL,
--- because a null here would silently drop that row from its payer's count.
+-- The principal whose session quota a run spends (006l). Backfilled to the
+-- submitter, because before sponsorship every session was paid for by whoever
+-- opened it. NOT NULL, because a null here would silently drop that row from
+-- its payer's count.
 ALTER TABLE jobs ADD COLUMN charged_to TEXT NOT NULL DEFAULT '';
 UPDATE jobs SET charged_to = principal WHERE charged_to = '';
 -- The quota counts rows per payer by phase; this is the index it reads.
@@ -61,48 +64,50 @@ CREATE INDEX jobs_charged_to_phase ON jobs (charged_to, phase);
 `},
 	{4, `
 -- 011 charges a session to the project it belongs to, out of the project's own
--- credits. Who pays is therefore project_id, and a second column recording a
--- payer is a second answer to a question that now has one — the shape 006l
--- needed only because a quota was keyed on a person.
+-- credits. The payer is therefore project_id, and a separate payer column
+-- could disagree with it. 006l needed the column only because a quota was
+-- keyed on a person.
 DROP INDEX IF EXISTS jobs_charged_to_phase;
 ALTER TABLE jobs DROP COLUMN charged_to;
 `},
 	{5, `
 -- The price list a session was admitted under (011), snapshotted at enqueue.
 -- Settlement prices from this rather than from the admin's current card, so an
--- edit mid-run cannot make the ceiling a run was watched against and the amount
+-- edit mid-run cannot make the ceiling a run was checked against and the amount
 -- it is finally charged come from different numbers.
 ALTER TABLE jobs ADD COLUMN rate_card JSONB NOT NULL DEFAULT '{}'::jsonb;
 `},
 	{6, `
--- The model tier whoever started this session chose (031). Empty means nobody
--- chose, and the engine's default applies — which is why existing rows are left
--- empty rather than backfilled to 'best': a backfill would put a choice on the
--- record that no one made, and the record is the product.
+-- The model tier chosen by whoever started this session (031). Empty means
+-- nobody chose and the engine's default applies. Existing rows are left empty
+-- rather than backfilled to 'best', because a backfill would record a choice
+-- that no one made.
 ALTER TABLE jobs ADD COLUMN tier TEXT NOT NULL DEFAULT '';
 `},
 	{7, `
--- A session the owner threw away (032). Soft, like projects.deleted_at: the row
--- is what ledger_entries.grp points at, and deleting a session must not
--- delete the record of what it cost.
+-- When the owner deleted the session (032). The delete is soft, like
+-- projects.deleted_at: ledger_entries.grp points at the row, and deleting a
+-- session must not delete the record of what it cost.
 ALTER TABLE jobs ADD COLUMN deleted_at TIMESTAMPTZ;
 -- Every read that hides deleted sessions is scoped by project or by principal
--- and now carries "AND deleted_at IS NULL"; these are the indexes those scans
--- read. Partial on the live rows, because the deleted ones are never selected.
+-- and carries "AND deleted_at IS NULL"; these are the indexes those scans
+-- read. They are partial over the live rows, because deleted rows are never
+-- selected.
 CREATE INDEX jobs_live_by_project ON jobs (project_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX jobs_live_by_principal ON jobs (principal, created_at DESC) WHERE deleted_at IS NULL;
 `},
 	{8, `
--- Which process is driving this session, and when it last said so. The queue
--- claims a submitted row, but nothing claimed a row already in flight: every
--- replica reconciles at startup, so a deploy mid-run had two pods rejoin the
--- same backend session, poll it, close it and publish it. One finished and went
--- to record done; the other's close hit the session the first had archived,
--- failed the row, and the winner's write was refused as an illegal transition.
+-- The process driving this session, and when it last reported that it was
+-- alive. The queue claims a submitted row, but nothing claimed a row already in
+-- flight: every replica reconciles at startup, so a deploy mid-run had two pods
+-- rejoin the same backend session, poll it, close it and publish it. One
+-- finished and recorded done; the other's close found the session the first
+-- had archived, failed the row, and the first pod's write was refused as an
+-- illegal transition.
 --
--- The lease is what makes driving exclusive. It expires (rather than being
--- held forever) so a run whose driver died is adoptable by a later boot instead
--- of stranded; a live driver keeps it fresh on every observation.
+-- The lease makes driving exclusive. It expires rather than being held forever,
+-- so a run whose driver died can be adopted by a later boot instead of being
+-- stranded. A live driver refreshes it on every observation.
 ALTER TABLE jobs ADD COLUMN adopted_by TEXT NOT NULL DEFAULT '';
 ALTER TABLE jobs ADD COLUMN adopted_at TIMESTAMPTZ;
 `},
@@ -113,9 +118,9 @@ ALTER TABLE jobs ADD COLUMN adopted_at TIMESTAMPTZ;
 -- backfills every existing row correctly, because every existing row is one
 -- this deployment ran.
 ALTER TABLE jobs ADD COLUMN origin TEXT NOT NULL DEFAULT 'platform';
--- The runtime's own session id for an imported session. With the runtime it is
--- what makes a re-push update the same row rather than create a second, so an
--- interrupted upload is resumed by running it again.
+-- The runtime's own session id for an imported session. Together with the
+-- runtime it makes a re-push update the same row rather than create a second
+-- one, so an interrupted upload is resumed by running it again.
 ALTER TABLE jobs ADD COLUMN external_id TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, external_id)
 	WHERE external_id <> '';
@@ -124,8 +129,8 @@ CREATE INDEX jobs_origin ON jobs (origin);
 	{10, `
 -- An imported session is idempotent on who pushed it as well as on the
 -- runtime's session id. Keyed on the id alone, a member of one project could
--- re-push another person's session id and re-home their record; keyed on the
--- principal too, one operator's re-push finds only their own row and two
+-- re-push another person's session id and move their record; keyed on the
+-- principal too, one operator's re-push finds only their own row, and two
 -- operators' runtimes cannot collide.
 DROP INDEX IF EXISTS jobs_imported_session;
 CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, principal, external_id)
@@ -136,11 +141,12 @@ CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, principal, external_i
 // Migrate applies every migration not yet recorded, each in its own
 // transaction, and records the version. It is safe to run on every startup.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	// Under the same lock the versions are applied under. IF NOT EXISTS is
-	// not atomic against a concurrent creator: two sessions both find the
-	// table absent, both run the DDL, and the loser dies on a duplicate key
-	// in pg_type — which is the crash this lock exists to prevent, one
-	// statement before the lock was taken.
+	// The table is created under the same lock the versions are applied
+	// under. IF NOT EXISTS is not atomic against a concurrent creator: two
+	// sessions both find the table absent, both run the DDL, and the loser
+	// fails on a duplicate key in pg_type. That is the crash this lock exists
+	// to prevent, and without the lock here it would happen one statement
+	// before the lock was taken.
 	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
 			return err
@@ -162,15 +168,16 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
+// migrationLock is this migrator's advisory lock id. A rolling deploy runs the
 // old and new pods at once (maxSurge), so two processes migrate the same
-// database concurrently: both find a version missing, both run its DDL, and the
-// loser dies on "column already exists". It self-heals on restart, and it
-// crash-loops a pod on every schema change until it does.
+// database concurrently: both find a version missing, both run its DDL, and
+// the loser fails on "column already exists". Without the lock the failure
+// resolves itself on restart, but it crash-loops a pod on every schema change
+// until then.
 //
 // The lock is taken inside the migration transaction and released with it, so
-// the second process waits, then reads the version the first just recorded and
-// skips. Each namespace has its own id, so the five migrators only ever
+// the second process waits, then reads the version the first recorded and
+// skips it. Each namespace has its own id, so the five migrators only ever
 // serialise against another copy of themselves.
 const migrationLock = 1
 

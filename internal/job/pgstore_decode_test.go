@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// scanValues is the pgx.Row seam scanJob consumes. It lets corruption at the
-// database boundary be reproduced without requiring a live Postgres process.
+// scanValues is a pgx.Row that scanJob reads from. It lets corruption at the
+// database boundary be reproduced without a live Postgres process.
 type scanValues struct{ values []any }
 
 func (r scanValues) Scan(dest ...any) error {

@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-// AC3 is the invariant the whole state machine exists to hold: a failure is
-// reachable from every active phase, done is not, and no illegal jump is ever
-// accepted. Written first, because a transition function that cannot refuse is a
-// mutable column, not a state machine.
+// TestTransitionsAreConstrained checks AC3, the invariant the state machine
+// exists to hold: a failure is reachable from every active phase, done is not,
+// and no illegal jump is accepted. A transition function that cannot refuse is
+// a mutable column, not a state machine.
 func TestTransitionsAreConstrained(t *testing.T) {
 	// Failure from every active phase; nothing from a terminal one.
 	for _, p := range []Phase{PhaseSubmitted, PhaseResolving, PhaseRunning, PhasePublishing} {
@@ -142,10 +142,11 @@ func TestStoreCopiesOnBoundary(t *testing.T) {
 	}
 }
 
-// AC4 (contract): concurrent claims hand out disjoint jobs and never the same
-// one twice. Run against the in-memory store now; the Postgres store runs the
-// same contract with SELECT … FOR UPDATE SKIP LOCKED (that is where the real
-// assertion lands, since a lock-guarded map gives disjointness trivially).
+// TestConcurrentClaimsAreDisjoint checks AC4: concurrent claims return disjoint
+// jobs and never the same one twice. It runs against the in-memory store; the
+// Postgres store runs the same contract with SELECT ... FOR UPDATE SKIP LOCKED,
+// which is where the assertion matters, because a lock-guarded map gives
+// disjointness trivially.
 func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()

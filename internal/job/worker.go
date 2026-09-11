@@ -19,61 +19,62 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// Runner performs a job's actual work, phase by phase. The worker owns the
-// lifecycle — claiming, advancing, recording progress and errors — and the
-// Runner owns what happens inside each phase. The composition root supplies one
-// that dispatches on Job.Kind to audit.Auditor or experiment.Runner, so this
-// package imports neither the engine nor a provider adapter.
+// Runner performs a job's work, phase by phase. The worker owns the lifecycle:
+// claiming, advancing, and recording progress and errors. The Runner owns what
+// happens inside each phase. The composition root supplies one that dispatches
+// on Job.Kind to audit.Auditor or experiment.Runner, so this package imports
+// neither the engine nor a provider adapter.
 //
-// Each method receives the job by pointer and may set fields on it (the resolved
-// reference, the repository name, the latest status); the worker persists those
-// with the phase transition that follows.
+// Each method receives the job by pointer and may set fields on it, such as the
+// resolved reference, the repository name, and the latest status. The worker
+// persists those with the phase transition that follows.
 type Runner interface {
 	// Resolve runs the resolving phase: paper.Resolve for an audit, or pinning an
 	// instrument for an experiment.
 	Resolve(ctx context.Context, j *Job) error
 	// Execute runs the audit or experiment, reporting progress through observe.
 	Execute(ctx context.Context, j *Job, observe func(provider.RunStatus)) error
-	// Resume reconnects to a run already in flight (by the id observed onto the
-	// job) and drives it to completion — how a restart rejoins a live backend
-	// session instead of guessing it failed.
+	// Resume reconnects to a run already in flight, by the id observed onto the
+	// job, and drives it to completion. A restart uses it to rejoin a live
+	// backend session instead of assuming it failed.
 	Resume(ctx context.Context, j *Job, observe func(provider.RunStatus)) error
-	// Publish runs the publishing phase — 006f for an audit, a no-op for an
+	// Publish runs the publishing phase: 006f for an audit, and a no-op for an
 	// experiment, which has nothing to publish.
 	Publish(ctx context.Context, j *Job) error
-	// Close releases a run on the backend by its id (the managed-agents session),
-	// so a run left in flight by a restart is stopped rather than orphaned. Safe
-	// to call more than once and on an unknown id.
+	// Close releases a run on the backend by its managed session reference, so
+	// a run left in flight by a restart is stopped rather than orphaned. It is
+	// safe to call more than once and on an unknown id.
 	Close(ctx context.Context, ref managed.SessionRef) error
 }
 
-// Budget answers whether a session must be stopped for spend (011). It is
+// Budget reports whether a session must be stopped for spend (011). It is
 // injected because the answer depends on policy and on the ledger, neither of
-// which this package imports; nil means no backstop, which is what an offline
-// unmetered run wants.
+// which this package imports. A nil Budget means no backstop, which is correct
+// for an offline unmetered run.
 //
-// The string it returns is for the **log and the admin console only**. It names
-// the number that fired, and that number is not published: an overdraft
-// somebody can read is an allowance they plan around. What reaches the session
-// owner is GenericFailure.
+// The string it returns is for the log and the admin console only. It names
+// the limit that fired, and that limit is not published, because an overdraft
+// limit members can read becomes an allowance they plan around. The session
+// owner sees GenericFailure.
 type Budget func(ctx context.Context, j Job) (stop bool, why string, err error)
 
-// GenericFailure is what a session records when the real cause must not reach
-// its owner. It is true — the session did not complete — and it withholds the
-// reason rather than inventing one. The reason is logged, and an admin can read
-// it; a project's own members cannot, because it would tell them exactly how
-// far past their balance a run is allowed to go.
+// GenericFailure is the error a session records when the real cause must not
+// reach its owner. It is accurate, because the session did not complete, and
+// it withholds the reason rather than inventing one. The reason is logged and
+// an admin can read it. A project's own members cannot, because it would tell
+// them exactly how far past their balance a run is allowed to go.
 const GenericFailure = "the session could not be completed"
 
-// LeaseTTL is how long a job stays leased to a driver that has stopped saying
-// it is alive. A live driver heartbeats every job it is driving at a third of
-// this, whether or not anything changed, so this bounds how long a *dead* driver
-// keeps a run to itself — not how long a run may take, and not how long a run
-// may stay quiet.
+// LeaseTTL is how long a job stays leased to a driver that has stopped
+// reporting that it is alive. A live driver heartbeats every job it is driving
+// at a third of this interval, whether or not anything changed, so LeaseTTL
+// bounds how long a dead driver keeps a run. It does not bound how long a run
+// may take or how long a run may stay quiet.
 const LeaseTTL = 5 * time.Minute
 
-// Worker drives claimed jobs through the phases. A small pool of these is the
-// whole queue: no external broker, durability from the row.
+// Worker drives claimed jobs through the phases. A small pool of workers is
+// the whole queue: there is no external broker, and durability comes from the
+// row.
 type Worker struct {
 	store  Store
 	runner Runner
@@ -81,19 +82,19 @@ type Worker struct {
 	sleep  func(context.Context, time.Duration) error
 	budget Budget
 	// sweepEvery is how often the pool looks again for stranded runs, and
-	// leaseTTL is how long a quiet driver keeps one. The sweep runs at the lease,
-	// so it never finds a lease it would have to wait long on.
+	// leaseTTL is how long a quiet driver keeps one. The sweep interval equals
+	// the lease, so a sweep never finds a lease it would have to wait long on.
 	sweepEvery time.Duration
 	leaseTTL   time.Duration
 	// id names this process in the lease it takes on every job it drives. The
-	// deployment runs more than one replica, so "the worker" is not one process
-	// and a job has to record which one has it.
+	// deployment runs more than one replica, so a job has to record which
+	// process holds it.
 	id string
 
-	// running maps a session being driven here to the cancel func for its run
-	// context, so Cancel can interrupt the agent mid-run (and stop the spend),
-	// not just after the next phase boundary. It covers the sessions *this*
-	// process drives; the lease is what keeps another replica off them.
+	// running maps each session being driven here to the cancel func for its
+	// run context, so Cancel can interrupt the agent mid-run and stop the spend,
+	// rather than waiting for the next phase boundary. It covers the sessions
+	// this process drives; the lease keeps other replicas off them.
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
 }
@@ -106,17 +107,17 @@ type WorkerOption func(*Worker)
 func WithPoll(d time.Duration) WorkerOption { return func(w *Worker) { w.poll = d } }
 
 // WithBudget installs the spend backstop (011). Without it a run is never
-// stopped for money — which is right for an offline run and wrong for a
+// stopped for spend, which is correct for an offline run and wrong for a
 // deployment holding a real credential.
 func WithBudget(b Budget) WorkerOption { return func(w *Worker) { w.budget = b } }
 
 // WithWorkerID names this process in the leases it takes. Two workers in one
-// test process share a hostname, so a test about two replicas has to say which
-// is which.
+// test process share a hostname, so a test about two replicas has to name
+// them.
 func WithWorkerID(id string) WorkerOption { return func(w *Worker) { w.id = id } }
 
 // defaultWorkerID names this process by its host, falling back to a random id
-// when the host has no name to give.
+// when the hostname is unavailable.
 func defaultWorkerID() string {
 	if host, err := os.Hostname(); err == nil && host != "" {
 		return host
@@ -125,15 +126,16 @@ func defaultWorkerID() string {
 	return id
 }
 
-// watch is the backstop, run on every observation because that is the only
-// moment fresh usage exists. A session runs to completion in the ordinary case
-// — killing one mid-run turns spend into nothing — so this fires only for a
-// runaway, and its job is to bound the loss rather than to meter the session.
+// watch is the backstop. It runs on every observation because that is the only
+// moment fresh usage exists. In the ordinary case a session runs to completion,
+// because stopping one mid-run wastes what it has spent, so this fires only
+// for a runaway session, and its purpose is to bound the loss rather than to
+// meter the session.
 //
 // The order matters. The terminal write goes first, so the outcome is durable
-// even if the process dies immediately after; interrupting the run then stops
-// the agent, and the failure write that interruption provokes is refused by the
-// state machine and discarded — the same rule Cancel already relies on.
+// even if the process dies immediately after. Interrupting the run then stops
+// the agent, and the failure write that interruption provokes is refused by
+// the state machine and discarded, which is the same rule Cancel relies on.
 func (w *Worker) watch(pool context.Context, id string) {
 	if w.budget == nil {
 		return
@@ -150,8 +152,8 @@ func (w *Worker) watch(pool context.Context, id string) {
 	if !stop {
 		return
 	}
-	// Logged here and nowhere a member can read: the row records only that the
-	// session did not complete.
+	// The reason is logged here and nowhere a member can read: the row records
+	// only that the session did not complete.
 	slog.InfoContext(pool, "budget: stopping session", "session", j.ID, "project", j.ProjectID, "why", why)
 	if err := w.fail(id, errors.New(GenericFailure)); err != nil { //nolint:contextcheck // fail must use a fresh context on purpose: the terminal write goes in before interrupt cancels the run, and the pool context is dead on a shutdown
 		slog.WarnContext(pool, "budget: recording stopped session", "session", id, "error", err)
@@ -179,13 +181,14 @@ func (w *Worker) interrupt(id string) {
 	}
 }
 
-// withSweepEvery shortens the stranded-run sweep so a test can watch one happen.
+// withSweepEvery shortens the stranded-run sweep interval so a test can observe
+// a sweep.
 func withSweepEvery(d time.Duration) WorkerOption {
 	return func(w *Worker) { w.sweepEvery = d }
 }
 
-// withLeaseTTL shortens the lease, so a test can put a departed driver's hold in
-// the state a sweep finds it in minutes later.
+// withLeaseTTL shortens the lease, so a test can expire a departed driver's
+// lease without waiting minutes.
 func withLeaseTTL(d time.Duration) WorkerOption {
 	return func(w *Worker) { w.leaseTTL = d }
 }
@@ -196,9 +199,10 @@ func withWorkerSleep(f func(context.Context, time.Duration) error) WorkerOption 
 }
 
 // NewWorker builds a worker over a store and a runner. Its identity defaults to
-// the host it runs on, which in the deployment is the pod name: a lease is read
-// by a person looking at a stuck session, and "replichai-6c786cc9c6-c577z" tells
-// them which pod to pull logs from where a random id would not.
+// the hostname, which in the deployment is the pod name. A person investigating
+// a stuck session reads the lease, and a pod name such as
+// "replichai-6c786cc9c6-c577z" tells them which pod to pull logs from, where a
+// random id would not.
 func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
 	w := &Worker{store: store, runner: runner, poll: time.Second, sleep: wait.Sleep,
 		sweepEvery: LeaseTTL, leaseTTL: LeaseTTL, id: defaultWorkerID(), running: map[string]context.CancelFunc{}}
@@ -208,11 +212,11 @@ func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
 	return w
 }
 
-// Cancel stops a session: it interrupts the run if it is being driven here (so
-// the agent stops and its spend with it), and marks the session cancelled in the
-// store regardless — so a queued session, or one on no worker, still stops. The
-// store write wins; the interrupted run's own failure write is refused by the
-// state machine and discarded.
+// Cancel stops a session. It interrupts the run if it is being driven here, so
+// the agent stops and its spend with it, and marks the session cancelled in
+// the store regardless, so a queued session or one on no worker also stops.
+// The store write wins: the interrupted run's own failure write is refused by
+// the state machine and discarded.
 func (w *Worker) Cancel(ctx context.Context, id string) error {
 	j, err := w.store.Get(ctx, id)
 	if err != nil {
@@ -240,9 +244,8 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 	return nil
 }
 
-// Process claims one job and drives it to a terminal phase, reporting whether it
-// found work. It is the unit the pool loop repeats, and the unit tests drive
-// directly.
+// Process claims one job and drives it to a terminal phase, reporting whether
+// it found work. The pool loop repeats it, and tests call it directly.
 func (w *Worker) Process(ctx context.Context) (bool, error) {
 	j, ok, err := w.store.Claim(ctx, w.id)
 	if err != nil {
@@ -254,9 +257,9 @@ func (w *Worker) Process(ctx context.Context) (bool, error) {
 	return true, w.drive(ctx, j)
 }
 
-// Start runs a pool of workers until ctx is canceled. Each loops: process a job,
-// or wait and look again when the queue is empty. Alongside them it sweeps for
-// stranded runs.
+// Start runs a pool of workers until ctx is cancelled. Each worker loops,
+// processing a job or waiting and looking again when the queue is empty.
+// Alongside them it sweeps for stranded runs and heartbeats the leases.
 func (w *Worker) Start(ctx context.Context, workers int) {
 	if workers < 1 {
 		workers = 1
@@ -286,15 +289,15 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 }
 
 // sweep re-runs reconciliation for as long as the pool lives, so a run whose
-// driver died is picked up by whoever is still standing.
+// driver died is picked up by a replica that is still running.
 //
 // Reconciling only at startup was enough while every replica adopted every
 // stranded run: the pod that came up during a deploy took over the outgoing
-// pod's work — which is exactly the double-drive the lease now prevents. With
-// adoption exclusive, the incoming pod correctly declines a run the outgoing one
-// still holds, and if nothing looked again the run would sit in `running` until
-// the next deploy. This is that second look. The interval is the lease, so a
-// sweep never finds a lease it must wait on for long.
+// pod's work, which is exactly the double drive the lease now prevents. With
+// adoption exclusive, the incoming pod correctly declines a run the outgoing
+// one still holds, and without a later check the run would stay in running
+// until the next deploy. The sweep is that later check. The interval equals
+// the lease, so a sweep never finds a lease it must wait on for long.
 func (w *Worker) sweep(ctx context.Context) {
 	tick := time.NewTicker(w.sweepEvery)
 	defer tick.Stop()
@@ -314,22 +317,22 @@ func (w *Worker) sweep(ctx context.Context) {
 	}
 }
 
-// heartbeat keeps the lease fresh on every job this process is driving, and
+// heartbeat refreshes the lease on every job this process is driving, and
 // stops driving one it has lost.
 //
-// The lease was refreshed only by an observation, and the managed controller
-// emits one only when the observed status *changed*. A run that is thinking
-// reports nothing for minutes at a time, so a healthy driver looked exactly like
-// a dead one, and a replica beside it adopted a live session — two drivers on
-// one backend session, both finalizing it, the loser recording a failure over
-// the winner's published success (044c). A heartbeat separates *alive* from
-// *changed*, which is what the lease meant all along.
+// Previously the lease was refreshed only by an observation, and the managed
+// controller emits one only when the observed status changed. A run whose
+// model is thinking reports nothing for minutes at a time, so a healthy driver
+// looked exactly like a dead one, and another replica adopted a live session.
+// That put two drivers on one backend session, both finalizing it, with the
+// loser recording a failure over the winner's published success (044c). A
+// heartbeat separates being alive from having changed, which is what the lease
+// was meant to record.
 //
-// It runs here rather than in the controller on purpose: w.running already names
+// It runs here rather than in the controller because w.running already names
 // every job this process drives, so no hook has to be threaded through the
-// session contract, and every phase is covered — including the quiet resolve
-// that reconcile's own comment worries about and that no observation has ever
-// reached.
+// session contract, and every phase is covered, including the quiet resolve
+// phase that reconcile describes and that no observation ever reaches.
 func (w *Worker) heartbeat(ctx context.Context) {
 	every := w.leaseTTL / 3
 	if every <= 0 {
@@ -347,17 +350,17 @@ func (w *Worker) heartbeat(ctx context.Context) {
 	}
 }
 
-// beat refreshes one round of leases. A job this worker no longer holds is one
-// another replica has adopted, so this one yields it: interrupting its own run
-// is what keeps a wrongful adoption from becoming two drivers racing to publish.
-// A store error is left alone — the next tick is soon, and a transient database
-// blip must not cancel a healthy run.
+// beat refreshes one round of leases. A job this worker no longer holds has
+// been adopted by another replica, so this worker yields it by interrupting
+// its own run, which keeps a wrongful adoption from becoming two drivers racing
+// to publish. A store error is ignored: the next tick is soon, and a transient
+// database error must not cancel a healthy run.
 //
-// A row that went terminal reports the same held=false and means something
-// else entirely: a run that just finished, in the moment between its own final
-// transition and the driver deregistering. That is every successful run, so it
-// is passed over silently — logging it would put "yielding session X" in the log
-// after each success, and the one time that line matters is during an incident.
+// A row that went terminal also reports held=false, but for a different
+// reason: the run finished, and the heartbeat ran between its final transition
+// and the driver deregistering. That happens on every successful run, so it is
+// skipped silently. Logging it would write "yielding session X" after each
+// success, and the line matters only during an incident.
 func (w *Worker) beat(ctx context.Context) {
 	for _, id := range w.drivingIDs() {
 		held, err := w.store.Touch(ctx, id, w.id)
@@ -369,7 +372,7 @@ func (w *Worker) beat(ctx context.Context) {
 			continue
 		}
 		if j, err := w.store.Get(ctx, id); err == nil && j.Phase.Terminal() {
-			continue // finished under us; drive is already unwinding
+			continue // finished; drive is already unwinding
 		}
 		slog.InfoContext(ctx, "worker: yielding session; its lease is held elsewhere", "session", id)
 		w.interrupt(id)
@@ -389,31 +392,31 @@ func (w *Worker) drivingIDs() []string {
 }
 
 // Reconcile brings jobs left in flight by a restart back in line with the
-// backend, rather than guessing they failed. A run whose backend session id was
-// observed is *rejoined* — resumed and driven to completion, reflecting the
-// backend's real outcome — so a session still running on the backend keeps being
-// tracked instead of being marked failed while it burns on. One interrupted
-// mid-publish is re-published: the session already settled, and finalizing is
-// idempotent, so re-running it is cheaper and truer than failing a reproduction
-// that succeeded. A job with no run to rejoin (it never reached the backend, or
-// its id was never recorded) cannot be synced and is failed. It returns how many
-// were resumed and how many failed.
+// backend, rather than assuming they failed. A run whose backend session id was
+// observed is rejoined: it is resumed and driven to completion, reflecting the
+// backend's real outcome, so a session still running on the backend keeps
+// being tracked instead of being marked failed while it continues to spend.
+// A job interrupted mid-publish is re-published: the session already settled,
+// and finalizing is idempotent, so re-running it is cheaper and more accurate
+// than failing a reproduction that succeeded. A job with no run to rejoin,
+// because it never reached the backend or its id was never recorded, cannot be
+// synchronised and is failed. It returns how many were resumed and how many
+// failed.
 func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error) {
 	return w.reconcile(ctx, true)
 }
 
-// reconcile is Reconcile with one thing made explicit: whether a job with no run
-// to rejoin may be failed.
+// reconcile implements Reconcile with one parameter made explicit: whether a
+// job with no run to rejoin may be failed.
 //
-// It may at startup, where "nothing in this process is mid-anything" is true by
-// construction. It may not on a sweep, which runs beside a live pool: a session
+// It may at startup, when by construction nothing in this process is in
+// progress. It may not on a sweep, which runs beside a live pool: a session
 // this process is not driving may still be resolving on the other replica, and
-// resolving is quiet — the paper fetch and the repository creation report no
-// status, so a slow one lets its lease go cold while it is working perfectly
-// well. Failing it there would kill a healthy session, which is the failure the
-// lease exists to prevent, arriving by another door. A sweep therefore only ever
-// picks up what it can positively identify as rejoinable: a run with a backend
-// session id behind it.
+// resolving is quiet, because the paper fetch and the repository creation
+// report no status, so a slow one lets its lease expire while working
+// correctly. Failing it there would stop a healthy session, which is the
+// failure the lease exists to prevent. A sweep therefore only picks up what it
+// can positively identify as rejoinable: a run with a backend session id.
 func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed int, err error) {
 	active, err := w.store.Active(ctx)
 	if err != nil {
@@ -428,13 +431,13 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 		}
 		rejoinable := j.Status.RunID != "" && (j.Phase == PhaseRunning || j.Phase == PhasePublishing)
 		if !rejoinable && !strand {
-			continue // not this sweep's to judge — and not even its lease to take
+			continue // a sweep may neither fail this row nor take its lease
 		}
-		// Take the row before touching it. Every replica reconciles at startup,
+		// Lease the row before touching it. Every replica reconciles at startup,
 		// and a rolling deploy overlaps a starting pod with one still driving, so
-		// without this each of them rejoins the same backend session: two drivers
-		// poll it, close it and publish it, and the one that loses the race
-		// records a failure over the other's success.
+		// without the lease each of them rejoins the same backend session: two
+		// drivers poll it, close it and publish it, and the one that loses the
+		// race records a failure over the other's success.
 		mine, err := w.store.Adopt(ctx, j.ID, w.id, w.leaseTTL)
 		if err != nil {
 			return resumed, failed, fmt.Errorf("adopt session %s: %w", j.ID, err)
@@ -461,8 +464,9 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 	return resumed, failed, nil
 }
 
-// track registers a job as being driven here under a per-job context Cancel can
-// interrupt, and returns that context with the deregistration.
+// track registers a job as being driven here under a per-job context that
+// Cancel can interrupt, and returns that context and a function that
+// deregisters the job.
 func (w *Worker) track(pool context.Context, id string) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(pool)
 	w.mu.Lock()
@@ -478,10 +482,10 @@ func (w *Worker) track(pool context.Context, id string) (context.Context, func()
 
 // call runs one step of a Runner and turns a panic into an error. The runner is
 // the composition root's code driving a third-party engine, and a panic there
-// is one job's failure, not the process's: an unrecovered panic in a worker
+// is one job's failure, not the process's. An unrecovered panic in a worker
 // goroutine takes the whole server down, and if the job that caused it is
 // still in an active phase the next boot picks it up and panics again. Every
-// call into the runner goes through here, so no phase can be the exception.
+// call into the runner goes through here, so no phase is exempt.
 func (w *Worker) call(step string, fn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -492,8 +496,8 @@ func (w *Worker) call(step string, fn func() error) (err error) {
 }
 
 // spawn starts background work that must not be able to end the process. The
-// reconciler's rejoins run here: a panic in one is logged and the job it was
-// driving is failed, and the pool keeps serving.
+// reconciler's rejoins run here: a panic in one is logged, the job it was
+// driving is failed, and the pool keeps running.
 func (w *Worker) spawn(id string, fn func() error) {
 	go func() {
 		err := w.call("background drive", fn)
@@ -503,10 +507,10 @@ func (w *Worker) spawn(id string, fn func() error) {
 	}()
 }
 
-// drive walks one claimed job (already in resolving) through the phases under a
-// per-job context Cancel can interrupt. Any error moves it to failed with the
-// cause recorded, never to done — except a shutdown, which leaves the job where
-// it is for the next boot to reconcile.
+// drive moves one claimed job, already in resolving, through the phases under
+// a per-job context that Cancel can interrupt. Any error moves it to failed
+// with the cause recorded, never to done. The exception is a shutdown, which
+// leaves the job in its phase for the next boot to reconcile.
 func (w *Worker) drive(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
@@ -548,10 +552,10 @@ func (w *Worker) drive(pool context.Context, j Job) error {
 	return w.publish(pool, ctx, j)
 }
 
-// driveResume rejoins a run already in flight (in the running phase) and drives
-// it the rest of the way — resume, then publish, then done — under a per-job
-// context Cancel can interrupt, exactly like a fresh drive minus the phases
-// already passed.
+// driveResume rejoins a run already in flight, in the running phase, and
+// drives it to completion: resume, then publish, then done. It runs under a
+// per-job context that Cancel can interrupt, exactly like a fresh drive
+// without the phases already passed.
 func (w *Worker) driveResume(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
@@ -587,9 +591,10 @@ func (w *Worker) driveResume(pool context.Context, j Job) error {
 }
 
 // drivePublish re-runs the publishing phase for a job a restart interrupted
-// after its run had already settled. Finalizing is idempotent — an unchanged
-// manifest adds no commit — so re-running it costs a few reads and recovers a
-// reproduction that succeeded, where failing the row would have stranded it.
+// after its run had already settled. Finalizing is idempotent, because an
+// unchanged manifest adds no commit, so re-running it costs a few reads and
+// recovers a reproduction that succeeded, where failing the row would have
+// stranded it.
 func (w *Worker) drivePublish(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
@@ -618,8 +623,9 @@ func (w *Worker) publish(pool, ctx context.Context, j Job) error {
 }
 
 // complete records the terminal success after publishing. Publishing is
-// already complete and idempotent, so retry only the durable transition; if all
-// attempts fail, leave the row in publishing for restart reconciliation.
+// already complete and idempotent, so only the durable transition is retried.
+// If every attempt fails, the row stays in publishing for restart
+// reconciliation.
 func (w *Worker) complete(ctx context.Context, j Job) error {
 	var err error
 	for range 3 {
@@ -634,9 +640,9 @@ func (w *Worker) complete(ctx context.Context, j Job) error {
 }
 
 // apply copies the fields a Runner set on its local job onto the stored job at
-// the next transition. Status is deliberately not among them: it is owned by the
-// Observe path (progress is not a transition), and copying a stale local Status
-// here would clobber the latest observation.
+// the next transition. Status is deliberately not among them: the Observe path
+// owns it, because progress is not a transition, and copying a stale local
+// Status here would overwrite the latest observation.
 func apply(src Job) func(*Job) {
 	return func(dst *Job) {
 		dst.Ref = src.Ref
@@ -645,17 +651,17 @@ func apply(src Job) func(*Job) {
 	}
 }
 
-// stop ends the drive of one job: it fails the row, unless the pool itself is
+// stop ends the drive of one job. It fails the row unless the pool itself is
 // shutting down.
 //
 // A shutdown is not a failed session. The pool context is cancelled on SIGTERM,
-// which surfaces inside the run as an ordinary error; writing failed for it
-// would mark a live backend session dead on every deploy and node drain — and
-// because failed is terminal, Reconcile could never rescue it. Leaving the row
-// in its phase is what lets the next boot rejoin the session and reflect its
-// real outcome. A person cancelling a session takes the other path: only that
-// job's own context is cancelled, the pool's is not, so the row is still failed
-// here — and the store's cancel write, made first, wins the state machine.
+// which surfaces inside the run as an ordinary error. Writing failed for it
+// would mark a live backend session dead on every deploy and node drain, and
+// because failed is terminal, Reconcile could never recover it. Leaving the row
+// in its phase lets the next boot rejoin the session and record its real
+// outcome. A person cancelling a session takes the other path: only that job's
+// own context is cancelled, not the pool's, so the row is still failed here,
+// and the store's cancel write, made first, wins in the state machine.
 func (w *Worker) stop(pool context.Context, id string, cause error) error {
 	if pool.Err() != nil {
 		return nil //nolint:nilerr // a shutdown is not a failed session: leaving the row in phase is what lets the next boot rejoin it
@@ -668,9 +674,9 @@ func (w *Worker) stop(pool context.Context, id string, cause error) error {
 
 // fail records the cause and moves the job to failed, best-effort. It uses a
 // fresh context so it can still write the terminal state after the job's own
-// context was cancelled by a stop — otherwise a cancelled run would be left
+// context was cancelled by a stop; otherwise a cancelled run would be left
 // non-terminal. When the store already cancelled the job, this transition is
-// refused by the state machine and harmlessly discarded.
+// refused by the state machine and discarded.
 func (w *Worker) fail(id string, cause error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
