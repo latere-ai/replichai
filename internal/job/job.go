@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -111,7 +111,7 @@ func resolveCard(ctx context.Context, seam credit.CardSnapshot) (credit.Card, er
 	}
 	card, err := seam(ctx)
 	if err != nil {
-		log.Printf("rate card: %v; falling back to the compiled-in list", err)
+		slog.WarnContext(ctx, "rate card unreadable; falling back to the compiled-in list", "error", err)
 		return credit.DefaultCard(), nil
 	}
 	if len(card.Models) == 0 {

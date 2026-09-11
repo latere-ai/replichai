@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"log"
+	"log/slog"
 	"strings"
 )
 
@@ -147,5 +147,5 @@ func renderProjectInvitation(projectName, inviter, projectURL string) (subject, 
 // rather than an inline log line so every unsent notification reads the same
 // way in the log, whatever sent it.
 func LogFailure(kind, to string, err error) {
-	log.Printf("notify: %s to %s not sent: %v", kind, to, err)
+	slog.Warn("notify: message not sent", "kind", kind, "to", to, "error", err)
 }

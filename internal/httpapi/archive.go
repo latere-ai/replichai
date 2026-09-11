@@ -7,13 +7,14 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
-	"github.com/latere-ai/replichai/internal/project"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/project"
 
 	"github.com/latere-ai/replichai/internal/job"
 )
@@ -87,12 +88,12 @@ func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 		rt.archiveSession(r, zw, session, notes)
 	}
 	if err := writeEntry(zw, "MANIFEST.txt", []byte(notes.render()), time.Time{}); err != nil {
-		log.Printf("archive %s: manifest: %v", proj.ID, err)
+		slog.WarnContext(r.Context(), "archive: manifest not written", "project", proj.ID, "error", err)
 	}
 	if err := zw.Close(); err != nil {
 		// Nothing can be said to the client at this point — the body is already
 		// half-sent — so this is for us.
-		log.Printf("archive %s: closing the zip: %v", proj.ID, err)
+		slog.WarnContext(r.Context(), "archive: closing the zip", "project", proj.ID, "error", err)
 	}
 }
 

@@ -5,11 +5,12 @@ package main
 
 import (
 	"context"
-	"github.com/latere-ai/replichai/internal/fetch"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/fetch"
 
 	"go.opentelemetry.io/otel/trace"
 	xotel "latere.ai/x/pkg/otel"
