@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -258,6 +259,37 @@ func TestSwitchingOrganisationNeedsNoSecondLogin(t *testing.T) {
 	back, err := s.SwitchOrg(context.Background(), "")
 	if err != nil || back.Org != "" {
 		t.Fatalf("SwitchOrg(personal) = %+v, %v", back, err)
+	}
+}
+
+// The refresh body is a form, and a value carrying a reserved character
+// reaches the provider as one value. Built by concatenation, an organisation
+// id of "a&scope=admin" would have arrived as a second field.
+func TestTheSwitchFormEscapesItsValues(t *testing.T) {
+	p := &provider{approved: true, refreshNew: "refresh 2&x"}
+	s := session(t, p)
+	if _, err := s.Login(context.Background(), nil); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if _, err := s.SwitchOrg(context.Background(), "org 1&scope=admin"); err != nil {
+		t.Fatalf("SwitchOrg: %v", err)
+	}
+	form, err := url.ParseQuery(p.lastForm)
+	if err != nil {
+		t.Fatalf("the body is not a form: %q: %v", p.lastForm, err)
+	}
+	if got := form.Get("organization_id"); got != "org 1&scope=admin" {
+		t.Fatalf("organization_id = %q; the value was split by its own characters (form %q)", got, p.lastForm)
+	}
+	if form.Has("scope") {
+		t.Fatalf("a value's ampersand became a field: %q", p.lastForm)
+	}
+	// The refresh token the previous grant issued travels intact too.
+	if _, err := s.SwitchOrg(context.Background(), ""); err != nil {
+		t.Fatalf("SwitchOrg(personal): %v", err)
+	}
+	if form, _ = url.ParseQuery(p.lastForm); form.Get("refresh_token") != "refresh 2&x" {
+		t.Fatalf("refresh_token = %q, want the stored one intact", form.Get("refresh_token"))
 	}
 }
 

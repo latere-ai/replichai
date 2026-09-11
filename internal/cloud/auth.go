@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -270,11 +271,14 @@ func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
 }
 
 func (s *Session) refreshWithOrg(ctx context.Context, refresh, org string) (*oauth2.Token, error) {
-	form := "grant_type=refresh_token&refresh_token=" + refresh + "&client_id=" + ClientID
+	// The body is a form, so it is built as one: a refresh token or an
+	// organisation id carrying a reserved character must reach the provider
+	// as one value, not as extra fields.
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "client_id": {ClientID}}
 	if org != "" {
-		form += "&organization_id=" + org
+		form.Set("organization_id", org)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.AuthURL+"/token", strings.NewReader(form))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.AuthURL+"/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
