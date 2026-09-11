@@ -134,7 +134,7 @@ func (rt *Router) projectPage(r *http.Request) seo.Page {
 		Description: summarize(proj.Description, describes(proj.Title)),
 		Canonical:   url,
 		Type:        "article",
-		JSONLD:      reportLD(proj, papers, url, proj.Title),
+		JSONLD:      reportLD(rt.site, proj, papers, url, proj.Title),
 	})
 }
 
@@ -161,7 +161,7 @@ func (rt *Router) sessionPage(r *http.Request) seo.Page {
 		Description: summarize(proj.Description, "One reproduction session of "+name+" — what the agent did, what it committed, and the verdict that came out."),
 		Canonical:   url,
 		Type:        "article",
-		JSONLD:      reportLD(proj, []project.Paper{subject}, url, "Reproduction of "+name),
+		JSONLD:      reportLD(rt.site, proj, []project.Paper{subject}, url, "Reproduction of "+name),
 	})
 }
 
@@ -228,13 +228,13 @@ var latere = map[string]any{"@type": "Organization", "name": "Latere AI", "url":
 // bibliography is the paper's own record (037) — authors, venue, year — and the
 // identifier resolves to the work itself, so a machine reading this page can
 // join it to the literature rather than to a title string.
-func reportLD(p project.Project, papers []project.Paper, url, name string) map[string]any {
+func reportLD(site seo.Site, p project.Project, papers []project.Paper, url, name string) map[string]any {
 	ld := map[string]any{
 		"@context":  schemaOrg,
 		"@type":     "Report",
 		"name":      name,
 		"url":       url,
-		"publisher": map[string]any{"@type": "Organization", "name": seo.SiteName, "url": seo.NewSite("").Abs(seo.LandingPath)},
+		"publisher": map[string]any{"@type": "Organization", "name": seo.SiteName, "url": site.Abs(seo.LandingPath)},
 	}
 	if p.Description != "" {
 		ld["description"] = summarize(p.Description, "")

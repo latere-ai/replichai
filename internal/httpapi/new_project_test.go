@@ -230,9 +230,9 @@ func TestRenameProject(t *testing.T) {
 	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Title != "new name" {
 		t.Errorf("title after rename = %q, want %q", got.Title, "new name")
 	}
-	// A non-owner cannot rename.
-	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{"title":"hijack"}`, "someone-else"); w.Code != http.StatusForbidden {
-		t.Errorf("non-owner rename status = %d, want 403", w.Code)
+	// A stranger cannot rename, and is not told the project is there.
+	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{"title":"hijack"}`, "someone-else"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger rename status = %d, want 404", w.Code)
 	}
 }
 

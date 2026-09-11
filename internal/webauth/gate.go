@@ -31,7 +31,13 @@ func Gate(a access.Access) httpapi.Gate {
 			Sub:   id.Sub,
 			Email: id.Email,
 		})
-		if err != nil || !granted {
+		if err != nil {
+			// The store did not answer; that is an outage, not a refusal, and
+			// the gate reports it as one so the app does not tell a granted
+			// person they were never invited.
+			return false, httpapi.ReasonUnavailable
+		}
+		if !granted {
 			return false, "not_granted"
 		}
 		return true, ""

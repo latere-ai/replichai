@@ -466,12 +466,22 @@ func tooLarge(err error) bool {
 	return errors.As(err, &mbe)
 }
 
+// ReasonUnavailable is the reason a Gate gives when it could not decide: the
+// access store did not answer. The guard reports it as 503 rather than 403,
+// because a person who is granted must not be told they are not.
+const ReasonUnavailable = "access_unavailable"
+
 // guard is the gate middleware: it refuses a request the gate does not allow
-// with 403 and the gate's reason, before the handler runs.
+// with 403 and the gate's reason, before the handler runs. A gate that could
+// not decide answers 503.
 func (rt *Router) guard(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ok, reason := rt.gate.Allow(r); !ok {
-			writeError(w, http.StatusForbidden, reason)
+			status := http.StatusForbidden
+			if reason == ReasonUnavailable {
+				status = http.StatusServiceUnavailable
+			}
+			writeError(w, status, reason)
 			return
 		}
 		h(w, r)

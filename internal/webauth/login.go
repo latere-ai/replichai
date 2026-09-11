@@ -291,7 +291,15 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 			writeJSON(w, map[string]any{"authenticated": false})
 			return
 		}
-		tier, _, _ := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
+		tier, _, err := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
+		if err != nil {
+			// A store that cannot answer is not a person who was not invited.
+			// Say so, so the app shows an outage rather than the not-invited
+			// screen to somebody who is.
+			log.Printf("me: resolving %s: %v", id.Sub, err)
+			httpapi.WriteError(w, http.StatusServiceUnavailable, "access_unavailable")
+			return
+		}
 		body := map[string]any{
 			"authenticated": true,
 			"principal":     id.Sub,

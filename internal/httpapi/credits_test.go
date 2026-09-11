@@ -257,11 +257,13 @@ func TestStrangerCannotWorkInAProject(t *testing.T) {
 	w := httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("POST", "/projects/"+proj.ID+"/papers",
 		`{"url":"https://arxiv.org/abs/2301.03711"}`, stranger.Sub, stranger.Email))
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("stranger add paper = %d %s, want 403", w.Code, w.Body.String())
+	// A stranger is told nothing exists: whether the project is there is not
+	// theirs to learn from a status code.
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("stranger add paper = %d %s, want 404", w.Code, w.Body.String())
 	}
-	if w := start(rt, stranger, proj.ID, "arxiv:2301.03711"); w.Code != http.StatusForbidden {
-		t.Fatalf("stranger start = %d %s, want 403", w.Code, w.Body.String())
+	if w := start(rt, stranger, proj.ID, "arxiv:2301.03711"); w.Code != http.StatusNotFound {
+		t.Fatalf("stranger start = %d %s, want 404", w.Code, w.Body.String())
 	}
 }
 

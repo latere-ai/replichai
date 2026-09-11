@@ -89,8 +89,8 @@ func TestProvisioningIsAProjectWrite(t *testing.T) {
 
 	response := do(t, h, http.MethodPost, "/projects/"+id+"/repository",
 		`{"paper_key":"doi:10.1145/3654777.3676417"}`, "somebody-else")
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("provision by a non-member = %d, want 403: %s", response.Code, response.Body)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("provision by a non-member = %d, want 404 (a stranger learns nothing): %s", response.Code, response.Body)
 	}
 }
 
