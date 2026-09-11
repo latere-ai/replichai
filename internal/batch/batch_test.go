@@ -12,41 +12,67 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // runner is a scripted project runner: it records the order and the overlap of
 // what the batch asked it to do.
+//
+// Concurrency is observed, never timed. Entering and leaving Prepare and
+// Execute are counted; holdPrepare and holdExecute, when set, keep a call in
+// flight until the test closes them; and entered reports each Execute as it
+// begins. The test decides how wide every window is, so nothing here sleeps
+// and hopes the scheduler agreed.
 type runner struct {
-	mu         sync.Mutex
-	prepared   []string
-	executed   []string
-	overlap    atomic.Int32
-	maxOverlap atomic.Int32
-	// prepareOverlap counts how many Prepare calls ever ran at once.
-	prepareOverlap    atomic.Int32
-	maxPrepareOverlap atomic.Int32
-	fail              map[string]error
-	hold              chan struct{}
-	repoless          bool
+	mu       sync.Mutex
+	prepared []string
+	executed []string
+	// inExecute and maxExecute count the Execute calls in flight and the most
+	// there ever were; inPrepare and maxPrepare do the same for Prepare.
+	inExecute  atomic.Int32
+	maxExecute atomic.Int32
+	inPrepare  atomic.Int32
+	maxPrepare atomic.Int32
+	fail       map[string]error
+	// holdPrepare keeps every Prepare in flight until it is closed.
+	holdPrepare chan struct{}
+	// holdExecute keeps every Execute in flight until it is closed.
+	holdExecute chan struct{}
+	// preparing and entered receive each paper as its Prepare and its Execute
+	// begin. They are buffered for more papers than any test runs, so a
+	// runner never blocks on them.
+	preparing chan string
+	entered   chan string
+	repoless  bool
 	// priors is what Prepare was told an earlier attempt recorded, by paper.
 	priors map[string]EntryState
 }
 
-func newRunner() *runner { return &runner{fail: map[string]error{}, priors: map[string]EntryState{}} }
+func newRunner() *runner {
+	return &runner{
+		fail: map[string]error{}, priors: map[string]EntryState{},
+		preparing: make(chan string, 64), entered: make(chan string, 64),
+	}
+}
 
-func (r *runner) Prepare(_ context.Context, entry Resolved, prior EntryState) error {
-	current := r.prepareOverlap.Add(1)
+// peak raises high to current where current is a new maximum.
+func peak(high *atomic.Int32, current int32) {
 	for {
-		peak := r.maxPrepareOverlap.Load()
-		if current <= peak || r.maxPrepareOverlap.CompareAndSwap(peak, current) {
-			break
+		seen := high.Load()
+		if current <= seen || high.CompareAndSwap(seen, current) {
+			return
 		}
 	}
-	time.Sleep(time.Millisecond)
-	r.prepareOverlap.Add(-1)
+}
+
+func (r *runner) Prepare(_ context.Context, entry Resolved, prior EntryState) error {
+	peak(&r.maxPrepare, r.inPrepare.Add(1))
+	r.preparing <- entry.Reference()
+	if r.holdPrepare != nil {
+		<-r.holdPrepare
+	}
+	r.inPrepare.Add(-1)
 	r.mu.Lock()
 	r.prepared = append(r.prepared, entry.Reference())
 	r.priors[entry.Reference()] = prior
@@ -58,18 +84,12 @@ func (r *runner) Prepare(_ context.Context, entry Resolved, prior EntryState) er
 }
 
 func (r *runner) Execute(_ context.Context, entry Resolved) (Outcome, error) {
-	current := r.overlap.Add(1)
-	for {
-		peak := r.maxOverlap.Load()
-		if current <= peak || r.maxOverlap.CompareAndSwap(peak, current) {
-			break
-		}
+	peak(&r.maxExecute, r.inExecute.Add(1))
+	r.entered <- entry.Reference()
+	if r.holdExecute != nil {
+		<-r.holdExecute
 	}
-	if r.hold != nil {
-		<-r.hold
-	}
-	time.Sleep(2 * time.Millisecond)
-	r.overlap.Add(-1)
+	r.inExecute.Add(-1)
 	r.mu.Lock()
 	r.executed = append(r.executed, entry.Reference())
 	r.mu.Unlock()
@@ -150,22 +170,74 @@ papers:
 // The pool never exceeds its cap, and Prepare is serialised even when Execute
 // is not: allocating a repository name is a read followed by a decision, and
 // two concurrent readers decide the same one.
+//
+// The window is held open by the test rather than by a sleep: the first
+// Prepare is kept in flight until the batch has marked every slot's paper
+// running, so any second Prepare that was going to overlap has had the whole
+// of that time to do so; then every Execute is kept in flight until the pool
+// is observed full.
 func TestPreparationIsSerialisedAndExecutionIsCapped(t *testing.T) {
 	papers := make([]Entry, 8)
 	for index := range papers {
 		papers[index] = Entry{Paper: "10.1145/paper-" + string(rune('a'+index))}
 	}
 	r := newRunner()
-	state, err := Run(context.Background(), File{Papers: papers}, r, Options{
-		Parallel: 3, StatePath: filepath.Join(t.TempDir(), "batch.json"),
-	})
+	r.holdPrepare = make(chan struct{})
+	r.holdExecute = make(chan struct{})
+	running := make(chan int, 64)
+	done := make(chan struct{})
+	var (
+		state State
+		err   error
+	)
+	go func() {
+		defer close(done)
+		state, err = Run(context.Background(), File{Papers: papers}, r, Options{
+			Parallel: 3, StatePath: filepath.Join(t.TempDir(), "batch.json"),
+			Progress: func(s State) {
+				count := 0
+				for _, entry := range s.Entries {
+					if entry.Phase == Running {
+						count++
+					}
+				}
+				running <- count
+			},
+		})
+	}()
+
+	// One Prepare is inside and held; every other slot has claimed a paper
+	// and is heading for Prepare. Exactly one may be inside.
+	<-r.preparing
+	for count := 0; count < 3; count = <-running {
+	}
+	if got := r.inPrepare.Load(); got != 1 {
+		t.Fatalf("%d preparations in flight with three slots busy; want exactly one", got)
+	}
+	close(r.holdPrepare)
+
+	// The pool fills to its cap and no further.
+	for range 3 {
+		<-r.entered
+	}
+	if got := r.inExecute.Load(); got != 3 {
+		t.Fatalf("%d papers in flight with --parallel 3 and three entered", got)
+	}
+	select {
+	case extra := <-r.entered:
+		t.Fatalf("a fourth paper (%s) entered a pool of three", extra)
+	default:
+	}
+	close(r.holdExecute)
+	<-done
+
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if got := r.maxOverlap.Load(); got > 3 {
+	if got := r.maxExecute.Load(); got > 3 {
 		t.Fatalf("%d papers ran at once with --parallel 3", got)
 	}
-	if got := r.maxPrepareOverlap.Load(); got > 1 {
+	if got := r.maxPrepare.Load(); got > 1 {
 		t.Fatalf("%d preparations overlapped; a name would be allocated twice", got)
 	}
 	if len(r.executed) != 8 || state.Summarise().Done != 8 {
@@ -341,7 +413,7 @@ func TestAnEarlyFailureKeepsTheRepositoryOnRecord(t *testing.T) {
 // failed: nothing is lost to a Ctrl-C, and nothing is blamed on one.
 func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 	r := newRunner()
-	r.hold = make(chan struct{})
+	r.holdExecute = make(chan struct{})
 	statePath := filepath.Join(t.TempDir(), "batch.json")
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -351,14 +423,22 @@ func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 			Options{Parallel: 1, StatePath: statePath})
 		done <- state
 	}()
-	time.Sleep(20 * time.Millisecond)
+	// One paper is in flight and the other two are waiting for its slot when
+	// the interruption arrives.
+	<-r.entered
 	cancel()
-	close(r.hold)
+	close(r.holdExecute)
 
 	state := <-done
 	totals := state.Summarise()
 	if totals.Failed != 0 {
 		t.Fatalf("an interruption was recorded as failure: %+v", totals)
+	}
+	// The paper in flight finishes; what never started stays pending rather
+	// than being blamed. (A waiting paper may still win the freed slot
+	// against the cancelled context, so only the bounds are fixed.)
+	if totals.Done < 1 || totals.Done+totals.Pending != 3 {
+		t.Fatalf("after an interruption: %+v", totals)
 	}
 	if _, err := LoadState(statePath); err != nil {
 		t.Fatalf("the state was not written before exit: %v", err)
@@ -433,7 +513,7 @@ func TestTheDefaultPoolIsSized(t *testing.T) {
 	if state.Summarise().Done != 2 {
 		t.Fatalf("an unset --parallel ran %+v", state.Summarise())
 	}
-	if got := r.maxOverlap.Load(); got > int32(DefaultParallel()) {
+	if got := r.maxExecute.Load(); got > int32(DefaultParallel()) {
 		t.Fatalf("%d papers ran at once with the default of %d", got, DefaultParallel())
 	}
 }

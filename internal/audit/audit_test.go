@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -492,7 +493,16 @@ func TestRunReleasesTheRunEvenWhenCanceled(t *testing.T) {
 	// still cleans up after itself.
 	p := memory.New()
 	p.PollsBeforeDone = 99
-	a := New(p, testMethod, WithPollInterval(time.Hour))
+	// The wait between polls is where a cancellation lands, so the test's
+	// sleep reports when Run has reached it and then holds until cancelled,
+	// rather than the test sleeping and hoping Run got there first.
+	waiting := make(chan struct{})
+	var once sync.Once
+	a := New(p, testMethod, WithPollInterval(time.Hour), withSleep(func(ctx context.Context, _ time.Duration) error {
+		once.Do(func() { close(waiting) })
+		<-ctx.Done()
+		return ctx.Err()
+	}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -500,7 +510,7 @@ func TestRunReleasesTheRunEvenWhenCanceled(t *testing.T) {
 		defer close(done)
 		_, _ = a.Run(ctx, "paper", t.TempDir())
 	}()
-	time.Sleep(50 * time.Millisecond)
+	<-waiting
 	cancel()
 
 	select {
