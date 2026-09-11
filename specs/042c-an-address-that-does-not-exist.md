@@ -12,8 +12,8 @@ status: built
 **Depends on:** [042a](042a-the-head-the-server-writes.md), [013](013-the-address-bar-is-the-state.md).
 
 The drift guard found the first disagreement immediately: `/p/{id}/s` is an
-address the client *does* have — routes.ts resolves a session link cut short back
-to its project rather than to the dashboard — so the server's shape list had to
+address the client does have. routes.ts resolves a truncated session link back
+to its project rather than to the dashboard, so the server's shape list had to
 admit it. That is exactly the class of divergence the test exists for, and it
 surfaced before the code shipped rather than as a 404 on a truncated link
 somebody pasted.
@@ -25,21 +25,21 @@ $ curl -so /dev/null -w '%{http_code}\n' https://replichai.latere.ai/this-page-d
 200
 ```
 
-`viewOf` resolves anything it does not recognise to the dashboard, `useRouter` rewrites the address to `/`, and the server answered 200 with the full shell before either ran. That is an unbounded set of URLs returning success with identical content — the shape a search engine calls a soft 404 — and it is also a small lie to a person, who asked for a page and was silently given a different one.
+`viewOf` resolves anything it does not recognise to the dashboard, `useRouter` rewrites the address to `/`, and the server answered 200 with the full shell before either ran. That is an unbounded set of URLs returning success with identical content, which a search engine calls a soft 404. It also misleads a person, who asked for a page and was silently given a different one.
 
-Separately, the operator screens are indexable and empty: `/wallet` and `/console` render nothing for a signed-out reader, which is precisely the reader a crawler is.
+Separately, the operator screens are indexable and empty: `/wallet` and `/console` render nothing for a signed-out reader, which is exactly what a crawler is.
 
 ## Decisions
 
 **Go learns the route shapes.** A small table beside the SEO code: the fixed screens (`/`, `/registry`, `/trash`, `/new`, `/wallet`, `/settings`, `/settings/profile`, `/console`) and the four patterns already registered for injection. Anything else is not an address this app has.
 
-**The duplication is deliberate and guarded.** `routes.ts` stays the client's single mapping; Go holds a second copy for the same reason `index.html` holds a second copy of the theme resolution — nothing else can run this early in the request. A Go test reads `frontend/src/routes.ts`, extracts its screen paths, and fails when the two disagree, so the copy cannot drift quietly.
+**The duplication is deliberate and guarded.** `routes.ts` stays the client's single mapping; Go holds a second copy for the same reason `index.html` holds a second copy of the theme resolution: nothing else can run this early in the request. A Go test reads `frontend/src/routes.ts`, extracts its screen paths, and fails when the two disagree, so the copy cannot drift unnoticed.
 
-**A miss is 404 *with* the shell.** The status is the truth for a crawler; the body is the app, so a person who mistyped gets a page that can navigate. `X-Robots-Tag: noindex` goes with it.
+**A miss is 404 with the shell.** The status is what a crawler needs; the body is the app, so a person who mistyped gets a page that can navigate. `X-Robots-Tag: noindex` goes with it.
 
-**The client renders a real not-found screen.** `View` gains `{ name: 'notfound', path }`, carrying the path so `pathOf` stays total and the address is *not* corrected — a typo the app silently rewrites to `/` is how the soft 404 got in front of a person in the first place. The screen says what was not found and offers the way back.
+**The client renders a real not-found screen.** `View` gains `{ name: 'notfound', path }`, carrying the path so `pathOf` stays total and the address is not corrected. A typo the app silently rewrites to `/` is how the soft 404 reached a person in the first place. The screen says what was not found and offers a way back.
 
-**The operator screens are `noindex`, not `Disallow`-only.** robots.txt asks a crawler not to fetch them; the header is what governs one that already has the URL. Both, because they answer different questions.
+**The operator screens are `noindex`, not `Disallow`-only.** robots.txt asks a crawler not to fetch them; the header governs one that already has the URL. Both are needed, because they answer different questions.
 
 **A well-formed id that resolves to nothing stays 200.** `/p/{id}` for a private or unknown project is a route this app has, and its own member reaches it by signing in. 042a already gives it `noindex`, which is the part that matters here.
 

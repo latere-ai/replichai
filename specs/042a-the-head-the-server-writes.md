@@ -13,13 +13,13 @@ status: built
 
 Two things the design did not anticipate. The substitution had to move out of
 `internal/spa` and into `internal/seo` as `WriteShell`, because the router's own
-tests need to assert on a described document and a second copy of "replace the
+tests need to assert on a described document, and a second copy of "replace the
 region, set the header" in a test fake would have been a second implementation of
 the rule under test. And the privacy predicate turned out to be simpler than the
 API's, not a variant of it: `mayViewProject` admits an owner to their own private
 project, so keying on it would have left a private title one identity away from
-crawlable bytes — the injected head asks only whether the record is public, which
-is a question with no caller in it.
+crawlable bytes. The injected head asks only whether the record is public, a
+question that does not depend on the caller.
 
 The paper's bibliography (037) made the structured data worth having: authors,
 venue, year and a DOI that resolves, so a machine reading a project page can join
@@ -27,31 +27,31 @@ it to the literature rather than to a title string.
 
 ## Problem
 
-One head serves every screen (017's, unchanged since), and nothing updates it. The consequence a reader meets is a tab that says *does the paper actually reproduce?* on the wallet screen. The consequence the product meets is that a shared link to a published reproduction previews as the homepage in every client that unfurls links, because none of them run JavaScript.
+One head serves every screen (017's, unchanged since), and nothing updates it. For a reader, the tab says *does the paper actually reproduce?* on the wallet screen. For the product, a shared link to a published reproduction previews as the homepage in every client that unfurls links, because none of them run JavaScript.
 
 ## Decisions
 
 **A `seo.Page` is the whole vocabulary.** Title, description, canonical, card image, `og:type`, an optional JSON-LD document, and a `NoIndex` flag. Everything that writes a head writes one of these; `Page.Head()` renders the tags. Nothing else in the codebase knows the tag names.
 
-**The router computes it; the shell renders it.** `internal/httpapi` registers the public app paths — `/registry`, `/p/{id}`, `/p/{id}/{tab}`, `/p/{id}/s/{job}`, `/p/{id}/s/{job}/{tab}`, `/u/{handle}` — as SPA routes that first resolve a `seo.Page`, attach it to the request context, and then call the same SPA handler as before. `internal/spa` reads the context and substitutes; with no page in context it serves the default head, which is what every other path gets. The two packages share a type, not a callback.
+**The router computes it; the shell renders it.** `internal/httpapi` registers the public app paths (`/registry`, `/p/{id}`, `/p/{id}/{tab}`, `/p/{id}/s/{job}`, `/p/{id}/s/{job}/{tab}`, `/u/{handle}`) as SPA routes that first resolve a `seo.Page`, attach it to the request context, and then call the same SPA handler as before. `internal/spa` reads the context and substitutes; with no page in context it serves the default head, which is what every other path gets. The two packages share a type, not a callback.
 
-These paths cannot collide with the API: 013 chose `/registry` and `/p/…` precisely because `/public`, `/projects` and `/profiles` are the API's, and `routes.test.ts` already holds that rule.
+These paths cannot collide with the API: 013 chose `/registry` and `/p/…` because `/public`, `/projects` and `/profiles` belong to the API, and `routes.test.ts` already holds that rule.
 
-**Substitution replaces a region, never appends.** `index.html` marks its head with `<!--seo-->` … `<!--/seo-->`; the server replaces what is between them. Appending a second `<title>` does not reliably override the first, and the region keeps the inline theme script and the font preload — which must not move — outside it. The response carries exactly one `<title>`, asserted.
+**Substitution replaces a region, never appends.** `index.html` marks its head with `<!--seo-->` … `<!--/seo-->`; the server replaces what is between them. Appending a second `<title>` does not reliably override the first, and the region keeps the inline theme script and the font preload, which must not move, outside it. The response carries exactly one `<title>`, and a test asserts it.
 
-**Public means public, not permitted.** The page is built only when `Visibility == project.VisibilityPublic && !Trashed()`, or for a profile when `Public` is set. Not through `mayViewProject`, which admits an owner to their private project: an owner's browser does not need injected metadata, and keying on the caller would put the decision one identity away from a crawler. Anything else gets the default head plus `noindex`.
+**Public means public, not permitted.** The page is built only when `Visibility == project.VisibilityPublic && !Trashed()`, or for a profile when `Public` is set. It is not built through `mayViewProject`, which admits an owner to their private project: an owner's browser does not need injected metadata, and keying on the caller would put the decision one identity away from a crawler. Anything else gets the default head plus `noindex`.
 
-**The injected head never leaves the database.** A session's title comes from the project, its paper row and its job row — never from `ReproReader`, which is a forge call. A crawler must not be able to make this server hit GitHub once per URL.
+**The injected head never leaves the database.** A session's title comes from the project, its paper row and its job row, never from `ReproReader`, which is a forge call. A crawler must not be able to make this server call GitHub once per URL.
 
-**Tabs fold to the record.** Canonical for `/p/{id}/verdict` is `/p/{id}`; for `/p/{id}/s/{job}/artifacts` it is `/p/{id}/s/{job}`. `og:url` is the canonical, always.
+**Tabs fold to the record.** Canonical for `/p/{id}/verdict` is `/p/{id}`; for `/p/{id}/s/{job}/artifacts` it is `/p/{id}/s/{job}`. `og:url` is always the canonical.
 
-**The client keeps the tab honest.** A `useHead(view)` effect writes `document.title` and the canonical/description on every in-app navigation. It writes the same strings the server would, from data the screen has already fetched — a title the client does not have yet is simply not written, rather than written wrong.
+**The client keeps the tab current.** A `useHead(view)` effect writes `document.title` and the canonical/description on every in-app navigation. It writes the same strings the server would, from data the screen has already fetched. A title the client does not have yet is not written, rather than written wrong.
 
-**Absolute URLs, from `BASE_URL`.** Canonical and card URLs are absolute because a crawler resolves them against nothing. The base is the configured `BaseURL`, falling back to `https://replichai.latere.ai` when unset, so an offline run still renders a valid document.
+**Absolute URLs, from `BASE_URL`.** Canonical and card URLs are absolute because a crawler has nothing to resolve them against. The base is the configured `BaseURL`, falling back to `https://replichai.latere.ai` when unset, so an offline run still renders a valid document.
 
 **JSON-LD is what the record already says.** The landing carries `WebSite` + `Organization`. A public project carries `Report` with `about` a `ScholarlyArticle` (the paper's title, and its DOI as `sameAs` when the paper resolved to one). A public profile carries `ProfilePage` → `Person`, with `affiliation` and `sameAs` for ORCID and Scholar. Nothing is claimed that is not already rendered on the page.
 
-**Escaping is the renderer's job, once.** Titles and descriptions are researcher-supplied text. Attribute values are HTML-escaped and the JSON-LD is JSON-encoded inside a `<script type="application/ld+json">`; a title containing `</script>` or a quote is a test case, not a discovery.
+**Escaping is the renderer's job, once.** Titles and descriptions are researcher-supplied text. Attribute values are HTML-escaped and the JSON-LD is JSON-encoded inside a `<script type="application/ld+json">`; a title containing `</script>` or a quote is a test case.
 
 ## Criteria
 
@@ -68,4 +68,4 @@ These paths cannot collide with the API: 013 chose `/registry` and `/p/…` prec
 
 ## Not in scope
 
-`robots.txt`, the sitemap, and the 404 — 042b and 042c. Per-page card *images* (one `og.png` for the whole site stands).
+`robots.txt`, the sitemap, and the 404 are 042b and 042c. Per-page card images are not in scope; one `og.png` serves the whole site.
