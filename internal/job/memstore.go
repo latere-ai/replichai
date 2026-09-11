@@ -139,14 +139,18 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Idempotent on (runtime, external id): a re-push of the same session
-	// updates its row, which is what makes an interrupted upload resumable
-	// by running it again.
-	key := in.Runtime + "/" + in.ExternalID
+	// Idempotent on (principal, external id): an operator's re-push of the
+	// same session updates their own row, which is what makes an interrupted
+	// upload resumable by running it again — and finds nobody else's row. A
+	// re-push under a different project is refused rather than re-homing the
+	// record; the same rule the Postgres store's conflict clause holds.
 	for _, id := range s.order {
 		existing := s.jobs[id]
-		if existing.Origin.OrDefault() != OriginLocal || existing.Status.Runtime+"/"+existing.ExternalID != key {
+		if existing.Origin.OrDefault() != OriginLocal || existing.Principal != in.Principal || existing.ExternalID != in.ExternalID {
 			continue
+		}
+		if existing.ProjectID != in.Project {
+			return Job{}, ErrImportedElsewhere
 		}
 		applyImport(&existing, in, now)
 		s.jobs[id] = existing
@@ -183,7 +187,7 @@ func applyImport(j *Job, in Import, now time.Time) {
 }
 
 // Enqueue records a new submitted job, refusing a paper already running under
-// the double-trigger guard and a submit past the payer's quota.
+// the double-trigger guard and a submit the project's pot cannot reserve for.
 func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef

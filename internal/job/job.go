@@ -64,6 +64,10 @@ var (
 	ErrIllegalTransition = errors.New("illegal job phase transition")
 	// ErrEmptyRef reports enqueuing with no paper or experiment reference.
 	ErrEmptyRef = errors.New("job needs a paper or experiment reference")
+	// ErrImportedElsewhere refuses a re-push of a session record that already
+	// lives in another project. A record moves through the app, deliberately,
+	// never by pushing it again under a different project.
+	ErrImportedElsewhere = errors.New("this session record already belongs to another project")
 	// ErrActiveSession reports a submit refused because a non-terminal session for
 	// the same paper already exists — in the same project, or anywhere the same
 	// principal owns. It is the double-trigger guard, a 409, not a 500: a
