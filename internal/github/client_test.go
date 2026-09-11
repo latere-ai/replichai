@@ -40,8 +40,15 @@ func TestCreateRepoPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRepo: %v", err)
 	}
-	if got["private"] != true || got["auto_init"] != true {
-		t.Errorf("request body = %v, want private+auto_init", got)
+	if got["private"] != true {
+		t.Errorf("request body = %v, want a private repository", got)
+	}
+	// A repository the host will push a workspace into must be created with
+	// no commit. GitHub's auto_init writes one, and a workspace that was
+	// never cloned from anywhere cannot descend from it: every local
+	// --publish run was refused as a non-fast-forward after doing the work.
+	if got["auto_init"] != false {
+		t.Errorf("a new repository was created with a commit already in it: %v", got)
 	}
 	if repo.Owner != "open-hai" || repo.Name != "x-a3f9" || !repo.Private {
 		t.Errorf("repo = %+v", repo)

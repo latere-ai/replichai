@@ -127,6 +127,12 @@ func TestAWorkspaceWithNoCommitsSaysSo(t *testing.T) {
 // The credential never lands anywhere the session directory keeps: not in the
 // repository's configuration, not in the reflog, and not in a file left behind.
 func TestTheTokenLeavesNothingBehind(t *testing.T) {
+	// The helper is written under TMPDIR, so the assertion below has to look
+	// at a directory only this test writes to. Against the machine's own
+	// TMPDIR it read every replichai that ever ran here, and a push killed
+	// before its cleanup — the out-of-memory killer will do it — failed this
+	// test in a package that had nothing to do with it.
+	t.Setenv("TMPDIR", t.TempDir())
 	dir := workspace(t, map[string]string{"README.md": "# reproduction"})
 	remote := bareRemote(t)
 	push := LocalPush{Workspace: dir, RemoteURL: "file://" + remote, Token: "ghp-supersecret"}

@@ -76,10 +76,21 @@ func New(token string, opts ...Option) *Client {
 // name that already exists returns ErrRepoExists rather than failing, so a
 // republish is the caller's decision.
 func (c *Client) CreateRepo(ctx context.Context, owner, name string, private bool) (Repo, error) {
+	// auto_init is off, so the repository is created with no commit at all.
+	//
+	// A local run commits into a workspace that has no remote (045g) and the
+	// host pushes it afterwards, so a commit GitHub made at creation is a
+	// history that workspace cannot descend from: the push is refused as a
+	// non-fast-forward, after an hour of work, every time. An empty
+	// repository makes that push the first commit.
+	//
+	// A mounted run is unaffected: the identity is recorded through the
+	// contents API before the agent clones, and that call initialises an
+	// empty repository the same way GitHub's own checkbox would.
 	body := map[string]any{
 		"name":      name,
 		"private":   private,
-		"auto_init": true,
+		"auto_init": false,
 	}
 	var repo Repo
 	status, err := c.do(ctx, http.MethodPost, "/orgs/"+owner+"/repos", body, &repo)
