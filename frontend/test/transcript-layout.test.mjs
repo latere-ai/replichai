@@ -13,34 +13,11 @@
 // The assertion is geometry, not pixels: no event card may have more content
 // than it has room for. It needs a real layout engine, so it drives Chrome over
 // a Vite dev server with the API mocked. Run it with `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
+import { fail, settled, start } from './harness.mjs'
 
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5199
-const BASE = `http://localhost:${PORT}`
 // Well past the point where the stream overflows its box — a short transcript
 // fits, and a fitting transcript never shrinks.
 const EVENTS = 400
-
-// Naming a browser is a demand that it run: an unset PUPPETEER_EXECUTABLE_PATH
-// skips on a machine without Chrome, but a set one that does not exist fails, so
-// CI cannot quietly stop guarding the regression.
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
@@ -102,9 +79,9 @@ const project = {
 }
 
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin' }],
-  [/^\/me\/profile$/, {}],
-  [/^\/projects$/, [{ ...project, session_count: 1, running: 0, latest_phase: 'done' }]],
+  ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin' }],
+  ['/me/profile', {}],
+  ['/projects', [{ ...project, session_count: 1, running: 0, latest_phase: 'done' }]],
   [/^\/projects\/[^/]+$/, { project, sessions: [job], may_submit: true }],
   [/^\/projects\/[^/]+\/members$/, []],
   [/^\/jobs\/[^/]+$/, job],
@@ -114,39 +91,10 @@ const routes = [
   [/^\/(public|shared)$/, []],
 ]
 
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
-
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 60) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(hit[1]) })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  const page = await h.page({ routes })
+  await page.open('/')
   // Navigation is state, not a router: projects -> project -> session.
   const openRow = (sel) => page.evaluate((s) => document.querySelector(s)?.dispatchEvent(new MouseEvent('click', { bubbles: true })), sel)
   await page.waitForSelector('.row')
@@ -157,7 +105,7 @@ try {
   await openRow('.row:has(.phase-slot)')
   await page.waitForSelector('.event')
   // Let the entrance animation finish, so no card is measured mid-transform.
-  await new Promise((r) => setTimeout(r, 800))
+  await settled(page)
 
   const m = await page.evaluate(() => {
     const cards = [...document.querySelectorAll('.event')]
@@ -207,12 +155,18 @@ try {
     const stream = document.querySelector('.tx-stream')
     const bar = document.querySelector('.scrub-bar')
     const before = { top: stream.scrollTop, styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
+    // The scroll is smooth: wait for it to come to rest rather than for a guess
+    // at how long it takes, and give up on a drag that never scrolls.
+    const rested = new Promise((r) => {
+      stream.addEventListener('scrollend', () => r(true), { once: true })
+      setTimeout(() => r(false), 3000)
+    })
     const box = bar.getBoundingClientRect()
     const send = (type, x) =>
       bar.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x, clientY: box.top + box.height / 2 }))
     send('pointerdown', box.left + box.width * 0.5)
     send('pointermove', box.left + box.width * 0.8)
-    await new Promise((r) => setTimeout(r, 900)) // the scroll is smooth
+    await rested
     const after = { top: stream.scrollTop, styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
     return {
       moved: after.top - before.top,
@@ -234,30 +188,31 @@ try {
   // 006s AC5: search narrows the stream and the counts with it, and clearing it
   // restores the run. `web_fetch` is not in this fixture, so search for a string
   // that is: the tool call bodies.
-  const search = await page.evaluate(async () => {
-    const input = document.querySelector('.tx-search')
-    // React tracks the node's value, so assigning it directly is swallowed. Go
-    // through the native setter the way a real keystroke does.
-    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-    const type = async (v) => {
-      set.call(input, v)
+  // React tracks the node's value, so assigning it directly is swallowed. Go
+  // through the native setter the way a real keystroke does.
+  const search = (v) =>
+    page.evaluate((v) => {
+      const input = document.querySelector('.tx-search')
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, v)
       input.dispatchEvent(new Event('input', { bubbles: true }))
-      await new Promise((r) => setTimeout(r, 500)) // the query is deferred
-    }
-    await type('method/README.md')
-    const narrowed = {
-      cards: document.querySelectorAll('.event').length,
-      counts: [...document.querySelectorAll('button.kind-btn .n')].map((n) => +n.textContent),
-    }
-    await type('')
-    return { narrowed, restored: document.querySelectorAll('.event').length }
-  })
-  if (search.narrowed.cards === 0) fail('search for a string that is in the transcript matched nothing')
-  if (search.narrowed.cards >= EVENTS + 1) fail(`search did not narrow the stream: ${search.narrowed.cards} cards`)
+    }, v)
+  const cards = () => page.evaluate(() => document.querySelectorAll('.event').length)
+  await search('method/README.md')
+  // The query is deferred: wait for the stream to have answered it.
+  await page.waitForFunction((n) => document.querySelectorAll('.event').length !== n, { timeout: 5000 }, EVENTS + 1).catch(() => {})
+  const narrowed = await page.evaluate(() => ({
+    cards: document.querySelectorAll('.event').length,
+    counts: [...document.querySelectorAll('button.kind-btn .n')].map((n) => +n.textContent),
+  }))
+  await search('')
+  await page.waitForFunction((n) => document.querySelectorAll('.event').length === n, { timeout: 5000 }, EVENTS + 1).catch(() => {})
+  const restored = await cards()
+  if (narrowed.cards === 0) fail('search for a string that is in the transcript matched nothing')
+  if (narrowed.cards >= EVENTS + 1) fail(`search did not narrow the stream: ${narrowed.cards} cards`)
   // The rail must describe what the stream is showing, not the whole run.
-  const railTotal = search.narrowed.counts.reduce((a, b) => a + b, 0)
-  if (railTotal !== search.narrowed.cards) fail(`rail counts sum to ${railTotal} but ${search.narrowed.cards} cards are shown`)
-  if (search.restored !== EVENTS + 1) fail(`clearing the search left ${search.restored} cards, want ${EVENTS + 1}`)
+  const railTotal = narrowed.counts.reduce((a, b) => a + b, 0)
+  if (railTotal !== narrowed.cards) fail(`rail counts sum to ${railTotal} but ${narrowed.cards} cards are shown`)
+  if (restored !== EVENTS + 1) fail(`clearing the search left ${restored} cards, want ${EVENTS + 1}`)
 
   // The topbar is a single row — 56px since 034 — and the app is a full-height
   // shell: nothing
@@ -270,7 +225,8 @@ try {
   const widths = [1680, 1440, 1280, 1100, 1000, 900, 820]
   for (const width of widths) {
     await page.setViewport({ width, height: 900 })
-    await new Promise((r) => setTimeout(r, 300))
+    await page.waitForFunction((w) => window.innerWidth === w, {}, width)
+    await settled(page)
     const bar = await page.evaluate(() => {
       const de = document.documentElement
       const line = 24 // 13px text in a 20px line box; anything taller is a second line
@@ -292,16 +248,13 @@ try {
   }
   await page.setViewport({ width: 1440, height: 900 })
 
-  if (!process.exitCode) {
-    console.log(`ok: no sideways scroll and a one-line topbar from ${widths[0]}px down to ${widths[widths.length - 1]}px`)
-    console.log(
-      `ok: ${m.n} cards, none clipped or overlapping; scrub moved ${Math.round(scrub.moved)}px restyling 0 cards; ` +
-        `search narrowed ${EVENTS + 1}→${search.narrowed.cards} and restored; every kind labelled`,
-    )
-  }
+  h.ok(`no sideways scroll and a one-line topbar from ${widths[0]}px down to ${widths[widths.length - 1]}px`)
+  h.ok(
+    `${m.n} cards, none clipped or overlapping; scrub moved ${Math.round(scrub.moved)}px restyling 0 cards; ` +
+      `search narrowed ${EVENTS + 1}→${narrowed.cards} and restored; every kind labelled`,
+  )
 } catch (e) {
-  fail(e.message)
+  fail(e)
 } finally {
-  await browser?.close()
-  vite.kill()
+  await h.close()
 }
