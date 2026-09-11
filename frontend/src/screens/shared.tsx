@@ -22,6 +22,60 @@ import { hueOf, initials, showsPicture } from '../account'
 // it is an opaque OIDC subject and names nobody.
 export const signerOf = (p: Project & { owner_name?: string }) => p.signed_off_name || p.owner_name || '—'
 
+// SignerRows is how to reach the person behind a name — contact, ORCID and
+// Scholar, each present only when set — in the one markup a researcher's page
+// and a sign-off card both use, so the two cannot drift. A sign-off card leads
+// with the signer's address as well; a researcher's page has no such row. The
+// Scholar link text is the host, not the label again — a row reading
+// "Scholar · Scholar" tells a reader nothing.
+export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I18n; signer?: string; contact?: string; orcid?: string; scholar?: string }) {
+  const { t } = i18n
+  const rows: { label: string; node: React.ReactNode }[] = []
+  if (signer) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{signer}</span> })
+  if (contact)
+    rows.push({ label: t('signedOffContact'), node: (
+        <a className="link" href={`mailto:${contact}`}>
+          {contact}
+        </a>
+      ) })
+  if (orcid)
+    rows.push({
+      label: t('signedOffOrcid'),
+      node: (
+        <a className="link" href={`https://orcid.org/${orcid}`} target="_blank" rel="noreferrer noopener">
+          {orcid}
+        </a>
+      ),
+    })
+  if (scholar) {
+    let host = scholar
+    try {
+      host = new URL(scholar).hostname
+    } catch {
+      /* keep the raw value if it will not parse */
+    }
+    rows.push({
+      label: t('signedOffScholar'),
+      node: (
+        <a className="link" href={scholar} target="_blank" rel="noreferrer noopener">
+          {host}
+        </a>
+      ),
+    })
+  }
+  if (rows.length === 0) return null
+  return (
+    <div className="usage-rows">
+      {rows.map((r) => (
+        <div key={r.label} className="usage-line">
+          {r.label}
+          <span className="v">{r.node}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // How each appearance is drawn. THEME_MODES fixes which ones exist and in what
 // order; this fixes what they look like, so adding a fourth is a type error here
 // until somebody answers it. Keeping the list in one place is the point: it used
