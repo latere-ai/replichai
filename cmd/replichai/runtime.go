@@ -18,8 +18,9 @@ import (
 
 const defaultCLIRuntime = "anthropic-managed"
 
-// runtimeEnv is the variable README.md promises selects the runtime, with
-// --runtime overriding it per command. The server reads the same name.
+// runtimeEnv is the environment variable that selects the runtime, as
+// README.md documents. --runtime overrides it per command. The server reads
+// the same variable.
 const runtimeEnv = "REPLICHAI_RUNTIME"
 
 // runtimeFlag registers -runtime on a subcommand's flag set. The flag defaults
@@ -32,17 +33,17 @@ func runtimeFlag(fs *flag.FlagSet, fallback string) *string {
 		"runtime to use (default $"+runtimeEnv+", then \""+fallback+"\")")
 }
 
-// resolveRuntime is the one rule every subcommand shares: the flag, then
-// REPLICHAI_RUNTIME, then the subcommand's own default. It is pure so a test
-// can drive each step; the CLI hands it os.Getenv.
+// resolveRuntime applies the rule every subcommand shares: the flag, then
+// REPLICHAI_RUNTIME, then the subcommand's own default. It is a pure function
+// so a test can drive each step; the CLI passes os.Getenv.
 func resolveRuntime(flagValue string, getenv func(string) string, fallback string) string {
 	return firstNonEmpty(flagValue, getenv(runtimeEnv), fallback)
 }
 
-// localOptions are the choices the local runtime takes, none of which belong
-// in its name: the sandbox mechanism, the harness, and where sessions live.
-// They are flags with environment defaults, so a batch file and a terminal
-// reach the same runtime the same way.
+// localOptions holds the settings of the local runtime that are not part of
+// its name: the sandbox mechanism, the harness, and where sessions live. They
+// are flags with environment defaults, so a batch file and a terminal reach
+// the same runtime the same way.
 type localOptions struct {
 	sandbox   string
 	harness   string
@@ -54,7 +55,7 @@ type localOptions struct {
 }
 
 // bind registers the local runtime's flags on a flag set. Every one of them
-// has an environment default, so an operator sets a machine's habits once.
+// has an environment default, so an operator configures a machine once.
 func (options *localOptions) bind(fs *flag.FlagSet) {
 	fs.StringVar(&options.sandbox, "sandbox", envOr("REPLICHAI_SANDBOX", string(sandbox.Host)),
 		"with --runtime local: host (srt) or container (podman, docker)")
@@ -72,10 +73,10 @@ func (options *localOptions) bind(fs *flag.FlagSet) {
 		"with --runtime local: what happens to a session directory after release: keep, on-failure or discard")
 }
 
-// config is where the process environment is read and handed down as values.
-// Nothing inside the runtime seam reads it: a second, unscoped source of
-// configuration in there is how a credential meant for one runtime reaches
-// another, whatever the variable is called.
+// config reads the process environment and passes it down as values. Nothing
+// inside the runtime layer reads the environment itself, because a second,
+// unscoped source of configuration there would let a credential meant for one
+// runtime reach another, whatever the variable is called.
 func (options localOptions) config() builtin.LocalConfig {
 	home, _ := os.UserHomeDir()
 	return builtin.LocalConfig{
@@ -86,9 +87,9 @@ func (options localOptions) config() builtin.LocalConfig {
 	}
 }
 
-// defaultModelsFile is where an operator's model catalogue lives. A missing
-// file is not an error: it yields the harness's own login, so a first run on a
-// signed-in machine needs no configuration at all.
+// defaultModelsFile is the path of an operator's model catalogue. A missing
+// file is not an error: the harness's own login is used instead, so a first
+// run on a signed-in machine needs no configuration.
 func defaultModelsFile() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -97,9 +98,10 @@ func defaultModelsFile() string {
 	return filepath.Join(home, ".config", "replichai", "models.yaml")
 }
 
-// defaultSessionRoot is where session directories are made. It is under the
-// operator's home rather than a temporary directory, because the workspace is
-// the reproduction and an operating system that cleans /tmp would take it.
+// defaultSessionRoot is the directory session directories are created in. It
+// is under the operator's home rather than a temporary directory, because the
+// workspace is the reproduction and an operating system that cleans /tmp would
+// delete it.
 func defaultSessionRoot() string {
 	home, err := os.UserHomeDir()
 	if err != nil {

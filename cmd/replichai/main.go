@@ -3,14 +3,13 @@
 
 // Command replichai audits the reproducibility of research papers.
 //
-// This package owns argument parsing and output. All behavior lives in
+// This package owns argument parsing and output. All behaviour lives in
 // internal/audit, so an HTTP server can drive the same code path.
 //
 // Every write to stdout or stderr here discards its error explicitly. A failed
-// write to the terminal has no recovery and nowhere left to report itself: the
-// channel the report would travel on is the one that just failed. The discard
-// is written out at each call rather than configured away, so it stays a
-// decision a reader can see.
+// write to the terminal cannot be recovered from or reported, because the
+// terminal is the only place a report could go. The discard is written at each
+// call rather than hidden in a helper, so a reader can see the decision.
 package main
 
 import (
@@ -106,13 +105,13 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		audit.WithSessionHooks(hooks),
 	}
 
-	// When publishing, the repository is created up front either way. Whether
-	// it is also mounted depends on the runtime: one that can take a writable
-	// repository has the agent commit and push into it as it runs (006f); one
-	// that cannot is given a local repository with no remote, and the host
-	// pushes what was committed once the session has ended (045g). The
-	// capability decides, not the runtime's name, so a future runtime that can
-	// mount is handled by this same branch.
+	// When publishing, the repository is created up front in both cases.
+	// Whether it is also mounted depends on the runtime. A runtime that can
+	// take a writable repository has the agent commit and push into it as it
+	// runs (006f). One that cannot is given a local repository with no remote,
+	// and the host pushes what was committed once the session has ended (045g).
+	// The choice follows the reported capability rather than the runtime's
+	// name, so a future runtime that can mount takes the same branch.
 	var pub *publisher
 	if *doPublish {
 		pub, err = publisherFor(ctx, *projectID, *owner, paper, m.Digest(), *invite, *timeout, stderr)
@@ -126,8 +125,8 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		}
 		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
 		if mounts {
-			// The agent is about to clone this repository, so what the
-			// repository says about the paper has to be true before it does.
+			// The agent is about to clone this repository, so the identity
+			// must be recorded in it before the clone.
 			pub.recordIdentity(ctx, stderr)
 			opts = append(opts, audit.WithSessionMount(audit.SessionMount{
 				URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
@@ -136,9 +135,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			opts = append(opts, audit.WithLocalWorkspace())
 		}
 		hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
-			// Capture, then verify, then push, then finalize — and only
-			// then release. The workspace holds the only copy of the work
-			// until the push has taken it.
+			// The order is capture, verify, push, finalize, and only then
+			// release. The workspace holds the only copy of the work until
+			// the push has taken it.
 			if !mounts {
 				workspace, err := workspaceOf(runtime, evidence.Status.Ref)
 				if err != nil {
@@ -159,8 +158,8 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 				providerEventsFromManaged(evidence.Events), *invite, stdout); err != nil {
 				return err
 			}
-			// The work the credential was minted for is done. It expires within
-			// the hour anyway; expiry is not a completion signal and this is.
+			// The work the credential was minted for is done, so it is revoked
+			// now rather than left to expire within the hour.
 			pub.done(ctx, stderr)
 			return nil
 		}
@@ -170,9 +169,10 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 
 	auditor := audit.NewSessionAuditor(controller, m, opts...)
 
-	// Detached: the agent commits to the mounted repo on its own, so there is
-	// no reason to hold the process open for the whole run. Start it, print how
-	// to finish, and return. finish reattaches and finalizes when it is done.
+	// In detached mode the agent commits to the mounted repository on its
+	// own, so the process need not stay open for the whole run. The session
+	// is started, the finish command is printed, and the function returns.
+	// The finish subcommand reattaches and finalizes later.
 	if *detach {
 		if pub == nil {
 			_, _ = fmt.Fprintln(stderr, "--detach needs --publish")
@@ -219,16 +219,16 @@ type publisher struct {
 	name  string
 	id    paper.Identity
 	mount provider.RepoMount
-	// minted is the platform-issued credential, where the platform issued one
-	// (045l). It is revoked when the work it was minted for is done: the token
-	// expires within the hour regardless, but expiry is not a completion
-	// signal, and the holder revokes what it holds.
+	// minted is the platform-issued credential, when the platform issued one
+	// (045l). It is revoked when the work it was minted for is done. The token
+	// would expire within the hour regardless, but revoking it marks completion
+	// explicitly rather than relying on expiry.
 	minted string
 	api    *cloud.Client
 }
 
-// done ends the platform-issued credential. A terminal killed before this runs
-// leaves a token that expires on its own, which is the bound the design accepts.
+// done revokes the platform-issued credential. If the process is killed before
+// this runs, the token is left to expire on its own, which the design accepts.
 func (p *publisher) done(ctx context.Context, stderr *os.File) {
 	if p.minted == "" {
 		return
@@ -241,19 +241,19 @@ func (p *publisher) done(ctx context.Context, stderr *os.File) {
 
 func (p *publisher) repoFullName() string { return p.owner + "/" + p.name }
 
-// recordIdentity writes the resolved identity into the repository, so finish
-// reads it from there rather than re-resolving over the paper source.
+// recordIdentity writes the resolved identity into the repository, so that
+// finish reads it from there rather than resolving the paper source again.
 //
-// When it happens is a correctness question, not a preference. A mounted run
-// clones the repository, so its history descends from whatever is recorded
-// before the clone and this has to run first. A local run commits into a fresh
-// repository that has no remote at all (045g), so a commit made here before
-// the push gives the remote a history the workspace knows nothing about, and
-// the push is refused as a non-fast-forward — which is every local --publish
-// run, after the agent's work is already done. So the caller says when.
+// The timing matters for correctness. A mounted run clones the repository, so
+// its history descends from whatever is recorded before the clone, and this
+// must run first. A local run commits into a fresh repository with no remote
+// (045g), so a commit made here before the push gives the remote a history the
+// workspace does not have, and the push is refused as a non-fast-forward. That
+// would fail every local --publish run after the agent's work is done. The
+// caller therefore decides when to call this.
 //
-// A failure is reported and not fatal: finish re-resolves when the file is
-// absent, and losing a lookup shortcut is not worth losing a publication.
+// A failure is reported and is not fatal: finish resolves the paper again when
+// the file is absent, and a lost lookup shortcut must not lose a publication.
 func (p *publisher) recordIdentity(ctx context.Context, stderr *os.File) {
 	if err := publish.RecordIdentity(ctx, p.gh, p.owner, p.name, p.id); err != nil {
 		_, _ = fmt.Fprintf(stderr, "  could not record identity (finish will re-resolve): %v\n", err)
@@ -303,13 +303,14 @@ func providerEventsFromManaged(events []managed.Event) []provider.Event {
 }
 
 // newPlatformPublisher asks the platform for the repository and the credential
-// to push it (045l). It is the path that leaves no organisation credential on
-// this machine: the token it returns can write to one repository, expires
-// within the hour, and is revoked when the push is done.
+// to push to it (045l). This path leaves no organisation credential on this
+// machine: the token it returns can write to one repository, expires within
+// the hour, and is revoked when the push is done.
 //
-// A deployment that cannot mint says so, and the caller falls back to the
-// credential this machine holds — with the reason printed, because a security
-// property that quietly stops holding is worse than one never claimed.
+// A deployment that cannot mint reports so, and the caller falls back to the
+// credential this machine holds. The reason is printed, because a security
+// property that silently stops holding is worse than one that was never
+// claimed.
 func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeout time.Duration, stderr *os.File) (*publisher, error) {
 	client, err := apiClient()
 	if err != nil {
@@ -319,16 +320,16 @@ func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeo
 	if err != nil {
 		return nil, err
 	}
-	// A session may only run against a paper the project holds, so filing it is
-	// part of asking for its repository — the same order push keeps, and
-	// filing is idempotent for the same reason.
+	// A session may only run against a paper the project holds, so the paper
+	// is filed before its repository is requested. push keeps the same order,
+	// and filing is idempotent for the same reason.
 	if err := client.AddPaper(ctx, projectID, paperRef); err != nil {
 		return nil, err
 	}
-	// The key is derived offline, the way the app derives it when it files the
-	// paper. paper.Resolve degrades to an unqualified key when the paper source
-	// is unreachable, and a lookup key that depends on the network being up is
-	// a lookup that fails on a train.
+	// The key is derived offline, the same way the app derives it when it
+	// files the paper. paper.Resolve falls back to an unqualified key when the
+	// paper source is unreachable, so a lookup key derived from it would depend
+	// on the network being up.
 	key, err := paper.Key(paperRef)
 	if err != nil {
 		return nil, err
@@ -364,7 +365,7 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 	reg := registry.New(registry.NewGitHubSource(gh, owner),
 		registry.WithWarner(func(m string) { _, _ = fmt.Fprintf(stderr, "  %s\n", m) }))
 
-	// Tell the operator about any prior reproduction before a sibling is created.
+	// Report any prior reproduction to the operator before a sibling is created.
 	priors, err := reg.Lookup(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("check prior reproductions: %w", err)
@@ -405,10 +406,11 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 
 // reattachPublisher returns to a repository an earlier attempt created, so a
 // resumed paper publishes into it rather than into a sibling. The identity is
-// read from where the first attempt recorded it and resolved again only where
-// it did not. A repository that is gone is an error rather than a fresh
-// allocation: the operator asked for a retry into this one, and a second
-// repository nobody asked for is the very thing --resume exists to prevent.
+// read from the repository where the first attempt recorded it, and resolved
+// again only when it was not recorded. A repository that no longer exists is
+// an error rather than a fresh allocation: the operator asked for a retry into
+// this one, and --resume exists to prevent a second repository for the same
+// paper.
 func reattachPublisher(ctx context.Context, repo, paperRef string, timeout time.Duration) (*publisher, error) {
 	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	if token == "" {
@@ -438,9 +440,9 @@ func reattachPublisher(ctx context.Context, repo, paperRef string, timeout time.
 	}, nil
 }
 
-// readRecordedIdentity returns the identity the publisher recorded in the repo,
-// or a zero identity when none is present (an older or hand-created repository),
-// so the caller falls back to re-resolving.
+// readRecordedIdentity returns the identity the publisher recorded in the
+// repository. It returns a zero identity when none is present, as in an older
+// or hand-created repository, so the caller falls back to resolving again.
 func readRecordedIdentity(ctx context.Context, gh *github.Client, owner, name string) (paper.Identity, error) {
 	id, _, err := publish.RecordedIdentity(ctx, gh, owner, name)
 	return id, err
@@ -462,10 +464,10 @@ type workspaceReader interface {
 
 // workspaceOf asks the runtime where the referenced session worked. The
 // reference names the session and the session names its directory, so the
-// push reads from the session that ran — never from a directory named before
-// the run, which under a pool of concurrent sessions could be another's.
-// Only a runtime with a directory to name can answer; a hosted one has none,
-// and its work leaves through the mount instead.
+// push reads from the session that ran, never from a directory named before
+// the run, which under a pool of concurrent sessions could belong to another
+// session. Only a runtime with a local directory can answer; a hosted one has
+// none, and its work leaves through the mount instead.
 func workspaceOf(rt managed.Runtime, ref managed.SessionRef) (string, error) {
 	located, ok := rt.(workspaceReader)
 	if !ok {
@@ -474,25 +476,25 @@ func workspaceOf(rt managed.Runtime, ref managed.SessionRef) (string, error) {
 	return located.Workspace(ref)
 }
 
-// pushWorkspace publishes what the agent committed into a local repository it
-// never had a remote for. The system's own outputs — the environment record
-// and the judge's verdict — are committed after it, so the agent's history
-// stays the agent's and the system's evidence is visibly the system's.
+// pushWorkspace publishes what the agent committed into a local repository
+// that had no remote. The system's own outputs, the environment record and
+// the judge's verdict, are committed after the push, so the agent's history
+// and the system's evidence stay distinguishable.
 func pushWorkspace(ctx context.Context, pub *publisher, workspace, paperRef string, ref managed.SessionRef, stdout, stderr *os.File) error {
 	push := publish.LocalPush{Workspace: workspace, RemoteURL: pub.mount.URL, Token: pub.mount.Token}
 	pushed, err := push.Run(ctx)
 	if errors.Is(err, publish.ErrNothingCommitted) {
-		// 044d's outcome, reached before the push rather than found as an
-		// empty repository afterwards. The finalize still runs and records
-		// that the run produced nothing.
+		// This is the outcome 044d describes, detected before the push
+		// rather than found as an empty repository afterwards. The finalize
+		// still runs and records that the run produced nothing.
 		_, _ = fmt.Fprintln(stderr, "  ! the run committed nothing; the repository will record that")
 		return nil
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "  ! %v\n", err)
 		if errors.Is(err, publish.ErrNoWorkspace) {
-			// There is nothing kept to retry from, and saying otherwise
-			// would send the operator to a directory that is not there.
+			// No workspace was kept, so there is nothing to retry from and
+			// no retry command is printed.
 			return err
 		}
 		_, _ = fmt.Fprintf(stderr, "    the workspace is kept at %s\n", workspace)
@@ -538,23 +540,24 @@ func finishLocalPush(ctx context.Context, runtime managed.Runtime, gh *github.Cl
 }
 
 // finalizePublication verifies the committed tree, writes replication.json,
-// commits the transcript, and invites the collaborator — the system-authored
-// attestation (verdict + evidence) beside the agent's work. It reads the
-// repository from GitHub, so it works whether the run finished in-process or is
-// picked up afterwards by finish.
+// commits the transcript, and invites the collaborator. Together these place
+// the system-authored attestation, the verdict and its evidence, beside the
+// agent's work. It reads the repository from GitHub, so it works whether the
+// run finished in-process or is picked up afterwards by finish.
 func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
 	repoFull := owner + "/" + name
 
-	// The instrument check is a CLI-only report (007a), read from the committed
-	// tree — a report, not a gate, so it stays outside the shared finalize.
+	// The instrument check is a CLI-only report (007a) read from the committed
+	// tree. It does not gate the publish, so it stays outside the shared
+	// finalize.
 	present, iviol, err := verifyInstrument(ctx, gh, owner, name)
 	if err != nil {
 		return err
 	}
 
-	// The finalize itself — verify the tree, write the manifest, commit the
-	// transcript — is the shared path the server also drives, so the two cannot
-	// drift. The CLI only reports what it produced.
+	// The finalize itself, which verifies the tree, writes the manifest, and
+	// commits the transcript, is the shared path the server also drives, so
+	// the two cannot drift. The CLI only reports what it produced.
 	rep, err := publish.FinalizeLive(ctx, gh, owner, name, id, methodDigest, verdict, events, time.Now)
 	if err != nil {
 		return err
@@ -600,8 +603,9 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 
 // verifyInstrument reads instrument.json from the committed tree and checks it
 // against the 007a schema, mirroring the auditor's finalize-time report for the
-// live mount path. Absence is not an error — criterion 7 fails it in the run's
-// grade-and-revise loop; this only reports what reached the repository.
+// live mount path. A missing file is not an error: criterion 7 fails it in the
+// run's grade-and-revise loop, and this only reports what reached the
+// repository.
 func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string) (present bool, violations []instrument.Violation, err error) {
 	raw, ok, err := gh.GetFileContent(ctx, owner, name, audit.InstrumentFile)
 	if err != nil {
@@ -618,8 +622,8 @@ func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string
 }
 
 // reportInstrument prints the finalize-time instrument check as one status line,
-// with any schema violations beneath it. It is a report, not a gate — a bad
-// instrument does not block a publish; criterion 7 handles it in the run.
+// with any schema violations beneath it. It does not gate the publish: a bad
+// instrument does not block it, because criterion 7 handles it in the run.
 func reportInstrument(stdout *os.File, present bool, violations []instrument.Violation) {
 	switch {
 	case !present:
@@ -672,8 +676,8 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 			return fmt.Errorf("invalid --verdict %q: %w", *verdictFlag, err)
 		}
 	}
-	// What was typed is checked before anything is fetched: a malformed
-	// reference is refused here, not after a round trip to the forge.
+	// The arguments are checked before anything is fetched, so a malformed
+	// reference is refused here rather than after a round trip to the forge.
 	if *sessionRef != "" && *session != "" {
 		return errors.New("set only one of --session-ref or legacy --session")
 	}
@@ -691,8 +695,9 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	}
 	gh := githubClient(token)
 
-	// Prefer the identity the publisher recorded in the repository; only fall
-	// back to re-resolving (which hits the paper source) when it is absent.
+	// The identity the publisher recorded in the repository is preferred. Only
+	// when it is absent is the paper resolved again, which reads the paper
+	// source.
 	id, err := readRecordedIdentity(ctx, gh, owner, name)
 	if err != nil {
 		return err
@@ -728,9 +733,10 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 			},
 			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
 				// A session that was never mounted has committed into a
-				// directory nobody has pushed. Finalizing without pushing
-				// would verify an empty repository and record 044d's
-				// outcome over a run that produced a reproduction.
+				// directory that has not been pushed. Finalizing without
+				// pushing would verify an empty repository and record the
+				// outcome 044d describes for a run that produced a
+				// reproduction.
 				if err := finishLocalPush(ctx, runtime, gh, owner, name, evidence.Status.Ref, stdout, stderr); err != nil {
 					return err
 				}
@@ -765,8 +771,8 @@ func inviteFlag(login string) string {
 }
 
 // githubClient builds the forge client over token. REPLICHAI_GITHUB_API_URL
-// points it at another API root — a GitHub Enterprise host, or a test's local
-// server — and is unset for github.com.
+// points it at another API root, such as a GitHub Enterprise host or a test's
+// local server, and is unset for github.com.
 func githubClient(token string) *github.Client {
 	if base := os.Getenv("REPLICHAI_GITHUB_API_URL"); base != "" {
 		return github.New(token, github.WithBaseURL(base))
@@ -920,12 +926,12 @@ func collectArtifacts(dir string) ([]provider.Artifact, error) {
 	return arts, nil
 }
 
-// httpFetcher is the resolver's network seam at the CLI edge: the shared
-// guarded fetcher, with retries on top. The internal/paper package stays
-// network-free and testable; the transport lives in internal/fetch, where the
-// address, redirect and size rules are decided once for every caller. Retry
-// matters because arXiv's metadata API is slow and rate-limited, and a single
-// timeout there would otherwise fail an audit's identity resolution.
+// httpFetcher is the paper.Fetcher the CLI supplies: the shared guarded fetcher
+// from internal/fetch, with retries on top. The internal/paper package stays
+// free of network code and testable, and the transport lives in internal/fetch,
+// where the address, redirect and size rules are decided once for every caller.
+// Retries matter because arXiv's metadata API is slow and rate-limited, and a
+// single timeout there would otherwise fail an audit's identity resolution.
 type httpFetcher struct {
 	timeout time.Duration
 	// private admits loopback and private addresses. Tests reaching an
@@ -960,8 +966,8 @@ func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 
 // slugify names a local scratch directory for one paper reference.
 //
-// Deliberately simple: this is not a published repository name. Repository
-// naming is a separate concern with its own identity rules.
+// It is deliberately simple, because this is not a published repository name.
+// Repository naming is a separate concern with its own identity rules.
 func slugify(reference string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(reference)) {
@@ -986,21 +992,22 @@ func slugify(reference string) string {
 	return slug
 }
 
-// publisherFor chooses where the repository comes from (045l). Naming a project
-// asks the platform, which leaves no organisation credential on this machine.
-// Naming none keeps the credential this machine already holds.
+// publisherFor chooses where the repository comes from (045l). When a project
+// is named, the platform is asked, which leaves no organisation credential on
+// this machine. When none is named, the credential this machine already holds
+// is used.
 //
-// A deployment that cannot mint is not a failure: the terminal says which
-// setting is missing and uses its own credential where it has one, because a
-// run that refuses over a deployment setting helps nobody.
+// A deployment that cannot mint is not a failure: the CLI prints which setting
+// is missing and uses its own credential where it has one, because refusing
+// the run over a deployment setting would not help the operator.
 func publisherFor(ctx context.Context, projectID, owner, paperRef, methodDigest, invite string,
 	timeout time.Duration, stderr *os.File) (*publisher, error) {
 	if projectID == "" {
 		return newPublisher(ctx, owner, paperRef, methodDigest, timeout, stderr)
 	}
 	// A minted credential carries contents:write and nothing else, and adding a
-	// collaborator is an administration call. Refusing here beats discovering
-	// it after the reproduction has been pushed.
+	// collaborator is an administration call. Refusing here is better than
+	// discovering it after the reproduction has been pushed.
 	if invite != "" {
 		return nil, errors.New("--invite needs a credential that can administer the repository; " +
 			"use --publish without --project, or add the collaborator in the app")

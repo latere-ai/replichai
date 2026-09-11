@@ -38,9 +38,10 @@ import (
 
 const chainSub, chainEmail = "operator-sub", "operator@example.test"
 
-// startApp is the deployment the terminal talks to: the real router, the real
-// gate, and the real bearer middleware over a validator that accepts the actor
-// token the auth stub below mints. It returns the app and the auth service.
+// startApp starts the deployment the terminal talks to: the real router, the
+// real gate, and the real bearer middleware over a validator that accepts the
+// actor token the auth stub below mints. It returns the app and the auth
+// service.
 func startApp(t *testing.T, provisioner httpapi.RepoProvisioner) (app, auth *httptest.Server) {
 	t.Helper()
 	ctx := t.Context()
@@ -70,9 +71,10 @@ func startApp(t *testing.T, provisioner httpapi.RepoProvisioner) (app, auth *htt
 	return app, auth
 }
 
-// actorTokens accepts the audience-scoped token the auth service minted. The
-// signature is the auth service's business; what this test pins is that the
-// terminal presents a credential the app's bearer path accepts.
+// actorTokens accepts the audience-scoped token the auth service minted.
+// Verifying the signature belongs to the auth service and is out of scope
+// here; this test asserts that the terminal presents a credential the app's
+// bearer path accepts.
 type actorTokens struct{}
 
 func (actorTokens) Validate(raw string) (*jwt.Claims, error) {
@@ -95,9 +97,9 @@ func signIn(t *testing.T, home string) {
 	}
 }
 
-// scriptedRunner is what `replichai run` does to one paper, over a sandbox
+// scriptedRunner runs one paper the way `replichai run` does, over a sandbox
 // driver that runs no process. The audit, the runtime and the batch are the
-// product's; only the driver is scripted.
+// product's own; only the driver is scripted.
 type scriptedRunner struct {
 	t      *testing.T
 	root   string
@@ -138,10 +140,11 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 	if err != nil {
 		return batch.Outcome{}, err
 	}
-	// The order the product keeps: the workspace holds the only copy of the
-	// work until the push has taken it, so the push is a retain hook and not
-	// something done after the session is released. The workspace is the one
-	// the session that ran names — read by reference, as the product reads it.
+	// This is the order the product keeps: the workspace holds the only copy
+	// of the work until the push has taken it, so the push is a retain hook
+	// rather than something done after the session is released. The workspace
+	// is the one the session that ran names, read by reference as the product
+	// reads it.
 	hooks := managed.Hooks{Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
 		out, errOut := newTemp(r.t), newTemp(r.t)
 		workspace, err := workspaceOf(runtime, evidence.Status.Ref)
@@ -175,8 +178,8 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 	}, nil
 }
 
-// bareRepo is a git remote on this disk. LocalPush pushes to it exactly as it
-// would to GitHub: the same command, a different URL.
+// bareRepo creates a git remote on this disk. LocalPush pushes to it exactly
+// as it would to GitHub, with the same command over a different URL.
 func bareRepo(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "remote.git")
@@ -248,7 +251,7 @@ func fakeForgeWith(t *testing.T, files map[string][]byte) *httptest.Server {
 			committed = append(committed, strings.SplitN(path, "/contents/", 2)[1])
 			write(w, http.StatusCreated, map[string]any{"content": map[string]string{"sha": "manifest"}})
 		case strings.Contains(path, "/contents/"):
-			http.NotFound(w, r) // nothing is already committed
+			http.NotFound(w, r) // Nothing is committed yet.
 		case strings.HasSuffix(path, "/git/blobs"):
 			write(w, http.StatusCreated, map[string]string{"sha": "blob"})
 		case strings.Contains(path, "/git/ref/heads/"):
@@ -290,9 +293,9 @@ func write(w http.ResponseWriter, status int, body any) {
 }
 
 // bareRepoProvisioner is the platform's half of 045l with the forge replaced by
-// a bare repository on this disk: it allocates a name, hands back a credential
-// with an end, and records what it issued so the test can assert the terminal
-// pushed with that credential and gave it back afterwards.
+// a bare repository on this disk: it allocates a name, returns a credential
+// with an expiry, and records what it issued so the test can assert that the
+// terminal pushed with that credential and revoked it afterwards.
 type bareRepoProvisioner struct {
 	remote  string
 	issued  string

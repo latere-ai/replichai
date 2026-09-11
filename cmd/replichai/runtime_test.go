@@ -8,9 +8,11 @@ import (
 	"testing"
 )
 
-// README.md: "REPLICHAI_RUNTIME selects the managed execution runtime, and
-// --runtime overrides it per command." Only the server read the variable; the
-// CLI hard-coded its default and the promise was false for every subcommand.
+// TestTheRuntimeResolvesInOneOrder checks the resolution order README.md
+// documents: "REPLICHAI_RUNTIME selects the managed execution runtime, and
+// --runtime overrides it per command." Before this rule existed, only the
+// server read the variable; the CLI hard-coded its default, so the documented
+// behaviour was false for every subcommand.
 func TestTheRuntimeResolvesInOneOrder(t *testing.T) {
 	env := func(value string) func(string) string {
 		return func(key string) string {
@@ -38,8 +40,9 @@ func TestTheRuntimeResolvesInOneOrder(t *testing.T) {
 	}
 }
 
-// The variable reaches every subcommand that takes a runtime, through the
-// same function, so none of them can hard-code a default again.
+// TestTheRuntimeVariableReachesEverySubcommand checks that the variable reaches
+// every subcommand that takes a runtime through the same function, so none of
+// them can hard-code a default again.
 func TestTheRuntimeVariableReachesEverySubcommand(t *testing.T) {
 	t.Setenv(runtimeEnv, "memory")
 
@@ -62,7 +65,7 @@ func TestTheRuntimeVariableReachesEverySubcommand(t *testing.T) {
 		t.Fatalf("providers does not mark the environment's runtime as the default:\n%s", stdout)
 	}
 
-	// The flag still wins per command.
+	// The flag still takes precedence per command.
 	_, _, err = capture(t, "audit", "paper", "--runtime", "nope", "--method", writeMethod(t))
 	if err == nil || !strings.Contains(err.Error(), "is unavailable") {
 		t.Fatalf("--runtime did not override the environment: %v", err)

@@ -15,9 +15,10 @@ import (
 	"github.com/latere-ai/replichai/internal/credit"
 )
 
-// A backend offering a model the card cannot price on its own terms — the case
-// this command exists to catch. A *dated snapshot* of a named model is not that
-// case (the card prices it as the model it is); a genuinely unfamiliar id is.
+// TestRatesReportsAPreferenceTheCardDoesNotName covers a backend that offers a
+// model the card cannot price at its own rate, which is the case this command
+// exists to catch. A dated snapshot of a named model is not that case, because
+// the card prices it as the model it is; an id the card does not know is.
 func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
@@ -38,8 +39,8 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	}
 
 	// "best" resolved to an id the card does not carry, so it is billed at the
-	// dearest rates — never free, which is the design, but not opus's own price
-	// either. That is the whole finding.
+	// dearest rates. By design it is never free, but it is not billed at opus's
+	// own price either. That is the finding the command reports.
 	best := byPref["best"]
 	if best.Model != "claude-opus-6-preview" {
 		t.Fatalf("best resolved to %q", best.Model)
@@ -48,8 +49,8 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 		t.Error("best reported an exact match against a card that does not name that id")
 	}
 
-	// The two the card does name are exact, so a reader can tell the one
-	// finding apart from the noise.
+	// The two preferences the card does name are exact matches, so a reader can
+	// tell the one finding apart from the rest.
 	for _, pref := range []credit.Preference{credit.PrefBalanced, credit.PrefFast} {
 		if c := byPref[pref]; !c.Named {
 			t.Errorf("%s resolved to %q and was reported inexact against a card that names it", pref, c.Model)
@@ -57,8 +58,10 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	}
 }
 
-// When every preference resolves to a model the card names, the command says so
-// with nothing to act on — the case an operator wants to see before a release.
+// TestRatesReportsACardThatCoversTheBackend checks that when every preference
+// resolves to a model the card names, the command reports exact matches and
+// nothing to act on. This is the result an operator wants to see before a
+// release.
 func TestRatesReportsACardThatCoversTheBackend(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")

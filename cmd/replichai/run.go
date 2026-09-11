@@ -75,10 +75,10 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	state, err := batch.Run(ctx, file, runner, batch.Options{
 		Parallel: *parallel, StatePath: statePath, Resume: *resume, Publishing: *doPublish,
 		Progress: func(state batch.State) {
-			// The report is rewritten after every change, the same way the
-			// state is, so a reader never sees half of one; and a write
-			// that fails is said, because a report that silently stops
-			// updating reads as a batch that stopped.
+			// The report is rewritten atomically after every change, as the
+			// state is, so a reader never sees a partial file. A failed
+			// write is reported, because a report that silently stops
+			// updating looks like a batch that stopped.
 			if err := atomicfile.Write(reportPath, []byte(state.Report()), 0o644); err != nil {
 				_, _ = fmt.Fprintf(stderr, "  ! could not write %s: %v\n", reportPath, err)
 			}
@@ -92,19 +92,19 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	return err
 }
 
-// resolvePublish settles the publish block's two settings by one rule, in the
-// order a person expects: what they typed, then their environment, then the
-// project file, then the built-in default. The flags default to empty so an
-// unset flag can be told from one typed to the environment's value; while the
-// -owner flag defaulted to the environment or DefaultOrg, it was never empty
-// and the project file's owner could never apply.
+// resolvePublish resolves the publish block's two settings by one rule: the
+// flag, then the environment, then the project file, then the built-in
+// default. The flags default to empty so an unset flag can be told apart from
+// one set to the environment's value. While the -owner flag defaulted to the
+// environment or DefaultOrg, it was never empty and the project file's owner
+// could never apply.
 func resolvePublish(ownerFlag, inviteFlag string, getenv func(string) string, file batch.PublishConfig) (owner, invite string) {
 	owner = firstNonEmpty(ownerFlag, getenv("REPLICHAI_GITHUB_OWNER"), file.Owner, publish.DefaultOrg)
 	invite = firstNonEmpty(inviteFlag, file.Invite)
 	return owner, invite
 }
 
-// firstNonEmpty is the resolution rule itself: the first value anybody set.
+// firstNonEmpty returns the first value that is not empty after trimming.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -130,17 +130,17 @@ type projectRunner struct {
 	stdout       *os.File
 	stderr       *os.File
 	// repositories is where a paper's repository comes from. Nil means
-	// GitHub, over the credential this machine holds; a test substitutes a
-	// source that talks to nothing.
+	// GitHub, over the credential this machine holds. A test substitutes a
+	// source that makes no network calls.
 	repositories repositorySource
 
 	mu         sync.Mutex
 	publishers map[string]*publisher
 }
 
-// repositorySource hands Prepare the repository for one paper. The two calls
-// are the two things a batch can ask for: a repository for a paper's first
-// attempt, and the repository an earlier attempt already created.
+// repositorySource supplies Prepare with the repository for one paper. A batch
+// asks for one of two things: a repository for a paper's first attempt, or the
+// repository an earlier attempt already created.
 type repositorySource interface {
 	// Allocate names and creates the repository for a first attempt.
 	Allocate(ctx context.Context, paperRef string) (*publisher, error)
@@ -168,11 +168,11 @@ func (g githubRepositories) Reattach(ctx context.Context, repo, paperRef string)
 }
 
 // Prepare claims the repository for one paper. A first attempt allocates a
-// name and creates it; a retry returns to the repository its first attempt
-// created, which is what --resume promises — a second repository for the same
-// paper would be a sibling nobody asked for. The batch serialises it, because
-// allocation reads what already exists: two concurrent papers whose slugs
-// collide would otherwise decide the same name.
+// name and creates the repository. A retry returns to the repository its
+// first attempt created, which is what --resume promises; a second repository
+// for the same paper would be an unwanted sibling. The batch serialises
+// Prepare, because allocation reads what already exists, and two concurrent
+// papers whose slugs collide would otherwise choose the same name.
 func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved, prior batch.EntryState) error {
 	if !r.publish {
 		return nil
@@ -238,8 +238,8 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		}
 		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
 		if mounts {
-			// The agent is about to clone this repository, so what the
-			// repository says about the paper has to be true before it does.
+			// The agent is about to clone this repository, so the identity
+			// must be recorded in it before the clone.
 			pub.recordIdentity(ctx, r.stderr)
 			opts = append(opts, audit.WithSessionMount(audit.SessionMount{
 				URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,

@@ -18,7 +18,7 @@ import (
 // Retention defaults to keeping them, because the workspace is the
 // reproduction and deleting it on success would destroy the only copy of
 // anything the push has not taken. That default makes them accumulate, so
-// there has to be a way to reclaim the space that is not `rm -rf`.
+// this command exists to reclaim the space without a manual `rm -rf`.
 func runSessions(_ context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("sessions", stderr)
 	root := fs.String("session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()), "directory where session directories are created")
@@ -84,9 +84,9 @@ type sessionDir struct {
 	modified time.Time
 }
 
-// sessionDirs lists what is under the session root, newest first. A root that
-// does not exist is no sessions rather than an error: a machine that has never
-// run one locally is not broken.
+// sessionDirs lists the directories under the session root, newest first. A
+// root that does not exist yields no sessions rather than an error, because a
+// machine that has never run a session locally is not misconfigured.
 func sessionDirs(root string) ([]sessionDir, error) {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -110,8 +110,8 @@ func sessionDirs(root string) ([]sessionDir, error) {
 	return found, nil
 }
 
-// sizeOf is what a session is holding, rendered for a person deciding whether
-// to reclaim it. An unreadable directory reports nothing rather than failing a
+// sizeOf returns the total size of a session directory in a human-readable
+// form. An unreadable entry contributes nothing rather than failing the
 // listing.
 func sizeOf(path string) string {
 	var total int64

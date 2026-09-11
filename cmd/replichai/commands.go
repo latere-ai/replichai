@@ -12,12 +12,12 @@ import (
 	"text/tabwriter"
 )
 
-// command is one subcommand: what it is called, how its arguments are typed,
-// what it does in a line, and the function that runs it. Dispatch and the
-// usage text are both derived from the one list, so help cannot name a
-// subcommand dispatch does not know, or omit one it does. A subcommand's
-// flags are printed by its own flag set (`replichai <command> -h`), so they
-// cannot drift from their definitions either.
+// command is one subcommand: its name, the synopsis of its arguments, a
+// one-line summary, and the function that runs it. Dispatch and the usage
+// text are both derived from the one list, so help cannot name a subcommand
+// dispatch does not know, or omit one it does. A subcommand's flags are
+// printed by its own flag set via `replichai <command> -h`, so they cannot
+// drift from their definitions either.
 type command struct {
 	name     string
 	synopsis string
@@ -106,8 +106,8 @@ a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL.
 }
 
 // flagSet is a subcommand's flag set. Its -h prints the subcommand's usage
-// line from the registry followed by the flags it actually defines, so what
-// help says a command takes is what the command takes.
+// line from the registry followed by the flags it defines, so the help text
+// matches what the command accepts.
 func flagSet(name string, stderr *os.File) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -125,11 +125,12 @@ func flagSet(name string, stderr *os.File) *flag.FlagSet {
 	return fs
 }
 
-// parseFlags parses args against fs and returns the positionals, wherever
-// they appeared: flag stops at the first non-flag argument, and `replichai
-// audit <paper> --runtime memory` is the natural way to type it. -h prints
-// the subcommand's help and is errHelp, not a failure; a malformed flag has
-// already been reported by the flag set and is errExitQuiet.
+// parseFlags parses args against fs and returns the positional arguments
+// wherever they appeared. The flag package stops at the first non-flag
+// argument, and `replichai audit <paper> --runtime memory` is the natural way
+// to type a command. -h prints the subcommand's help and returns errHelp,
+// which is not a failure. A malformed flag has already been reported by the
+// flag set and returns errExitQuiet.
 func parseFlags(fs *flag.FlagSet, args []string) ([]string, error) {
 	var positional []string
 	for rest := args; ; {
@@ -147,8 +148,8 @@ func parseFlags(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
-// noPositionals refuses arguments a subcommand does not take, rather than
-// ignoring them: `replichai whoami foo` is a typo, not a request.
+// noPositionals refuses arguments a subcommand does not take rather than
+// ignoring them, because `replichai whoami foo` is most likely a typo.
 func noPositionals(name string, positional []string, stderr *os.File) error {
 	if len(positional) == 0 {
 		return nil
@@ -168,8 +169,8 @@ func runProviders(_ context.Context, args []string, stdout, stderr *os.File) err
 	if err := noPositionals("providers", positional, stderr); err != nil {
 		return err
 	}
-	// The listing is of everything installed, so it is built from the
-	// compiled-in default; the marker follows what the environment selects.
+	// The listing covers everything installed, so it is built from the
+	// compiled-in default. The marker follows what the environment selects.
 	selected := resolveRuntime("", os.Getenv, defaultCLIRuntime)
 	catalog, _, err := runtimeCatalog(defaultCLIRuntime, localOptions{})
 	if err != nil {
