@@ -18,33 +18,7 @@
 //   - the statement has no scroll region of its own
 //   - a policy setting reads beside its control, and drops under it when narrow
 //   - nothing overflows sideways at either width
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5216
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { check, fail, settled, start } from './harness.mjs'
 
 // The title that broke the old cap: a real paper name on a statement line.
 const LONG = 'Short-Form Videos Degrade Our Capacity to Retain Intentions: Effect of Context Switching On Prospective Memory'
@@ -61,43 +35,29 @@ const rates = {
 }
 const settings = { start_reserve: 20_000_000, overdraft_cap: 200_000_000, rates, draft: { provider: 'anthropic', model: 'claude-haiku-4-5' } }
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const routes = [
+  ['/me', { authenticated: true, principal: 'p', email: 'a@x', tier: 'admin', credits: { wallet: 55_000_000, start_reserve: 20_000_000 } }],
+  ['/me/profile', {}],
+  ['/me/credits', { balance: 55_000_000, entries, spread_bps: 300, spread_fixed_micro: 300_000, min_topup_micro: 5_000_000 }],
+  ['/admin/access', [{ email: 'a@x', tier: 'admin', bound: true, wallet: 55_000_000 }]],
+  ['/admin/settings', settings],
+  ['/admin/solvency', { outstanding_micro: 51_800_000 }],
+  [/^\/(projects|public|shared|trash)$/, []],
+]
+
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
+  const page = await h.page({ viewport: { width: 1600, height: 1000 }, routes })
 
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      const json = (b) => req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(b) })
-      if (u.pathname === '/me') return json({ authenticated: true, principal: 'p', email: 'a@x', tier: 'admin', credits: { wallet: 55_000_000, start_reserve: 20_000_000 } })
-      if (u.pathname === '/me/profile') return json({})
-      if (u.pathname === '/me/credits') return json({ balance: 55_000_000, entries, spread_bps: 300, spread_fixed_micro: 300_000, min_topup_micro: 5_000_000 })
-      if (u.pathname === '/admin/access') return json([{ email: 'a@x', tier: 'admin', bound: true, wallet: 55_000_000 }])
-      if (u.pathname === '/admin/settings') return json(settings)
-      if (u.pathname === '/admin/solvency') return json({ outstanding_micro: 51_800_000 })
-      if (/^\/(projects|public|shared|trash)$/.test(u.pathname)) return json([])
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
+  // open shows `path` at `width` with everything it fetches on screen — the
+  // measure is of the loaded page — and lets the entrance animation land: a
+  // card mid-fade is mid-transform, and measures where it is rather than where
+  // it ends up.
   const open = async (path, sel, width) => {
     await page.setViewport({ width, height: 1000 })
-    await page.goto(BASE + path, { waitUntil: 'networkidle0' })
+    await page.open(path, { waitUntil: 'networkidle0' })
     await page.waitForSelector(sel, { timeout: 15000 })
-    await new Promise((r) => setTimeout(r, 400))
+    await settled(page)
   }
 
   /* ── The wallet, wide ── */
@@ -138,16 +98,16 @@ try {
     }
   })
 
-  if (Math.abs(wallet.left - wallet.right) > 2) fail(`the wallet column has ${wallet.left}px to its left and ${wallet.right}px to its right; it is meant to be centred`)
-  if (wallet.width < 800) fail(`the wallet column is ${wallet.width}px wide in a 1600px window; the cap is back`)
-  if (wallet.nested) fail('the statement scrolls inside the page, which already scrolls')
-  if (wallet.rows.length !== 4) fail(`the statement shows ${wallet.rows.length} lines, want 4`)
+  check(Math.abs(wallet.left - wallet.right) <= 2, `the wallet column has ${wallet.left}px to its left and ${wallet.right}px to its right; it is meant to be centred`)
+  check(wallet.width >= 800, `the wallet column is ${wallet.width}px wide in a 1600px window; the cap is back`)
+  check(!wallet.nested, 'the statement scrolls inside the page, which already scrolls')
+  check(wallet.rows.length === 4, `the statement shows ${wallet.rows.length} lines, want 4`)
   for (const r of wallet.rows) {
-    if (r.lines > 1) fail(`"${r.text}" wraps over ${r.lines} lines at 1600px; the column is wide enough for one`)
-    if (!r.inOrder) fail(`"${r.text}" does not read as what / when / how much across three columns`)
+    check(r.lines <= 1, `"${r.text}" wraps over ${r.lines} lines at 1600px; the column is wide enough for one`)
+    check(r.inOrder, `"${r.text}" does not read as what / when / how much across three columns`)
   }
   const edges = new Set(wallet.rows.map((r) => r.rightEdge))
-  if (edges.size > 1) fail(`the amounts end at ${[...edges].join(', ')}; they are one column and must line up`)
+  check(edges.size <= 1, `the amounts end at ${[...edges].join(', ')}; they are one column and must line up`)
 
   /* ── The admin console, wide: an explanation beside its control ── */
 
@@ -189,13 +149,13 @@ try {
     }
   })
 
-  if (Math.abs(policy.left - policy.right) > 2) fail(`the admin column has ${policy.left}px to its left and ${policy.right}px to its right; it is meant to be centred`)
-  if (policy.rows.length < 3) fail(`the policy shows ${policy.rows.length} settings, want at least the reserve, the floor and the drafting model`)
-  if (!policy.rows.some((r) => r.hint)) fail('no policy setting carries its explanation; the copy was dropped rather than moved')
+  check(Math.abs(policy.left - policy.right) <= 2, `the admin column has ${policy.left}px to its left and ${policy.right}px to its right; it is meant to be centred`)
+  check(policy.rows.length >= 3, `the policy shows ${policy.rows.length} settings, want at least the reserve, the floor and the drafting model`)
+  check(policy.rows.some((r) => r.hint), 'no policy setting carries its explanation; the copy was dropped rather than moved')
   for (const r of policy.rows) {
-    if (!r.beside) fail(`"${r.name}" stacks its control under its explanation at 1600px, which is what made the console several screens deep`)
+    check(r.beside, `"${r.name}" stacks its control under its explanation at 1600px, which is what made the console several screens deep`)
   }
-  if (await spills()) fail('something on the admin console is drawn past the edge of the panel')
+  check(!(await spills()), 'something on the admin console is drawn past the edge of the panel')
 
   /* ── Narrow: the control drops under the words rather than squeezing them ── */
 
@@ -212,17 +172,15 @@ try {
     }
   })
 
-  if (!narrow.stacked) fail('at 780px a policy control still sits beside its explanation, squeezing both')
-  if (await spills()) fail('at 780px something on the admin console is drawn past the edge of the panel')
-  if (narrow.scrollsSideways) fail('at 780px the admin console scrolls sideways')
+  check(narrow.stacked, 'at 780px a policy control still sits beside its explanation, squeezing both')
+  check(!(await spills()), 'at 780px something on the admin console is drawn past the edge of the panel')
+  check(!narrow.scrollsSideways, 'at 780px the admin console scrolls sideways')
 
-  if (!process.exitCode)
-    console.log(
-      `ok: the wallet centres a ${wallet.width}px column with ${wallet.left}px either side, its statement lines run ${wallet.rows.map((r) => r.lines).join('/')} line each, and the console's policy reads beside its controls until 780px`,
-    )
-} catch (err) {
-  fail(err.message)
+  h.ok(
+    `the wallet centres a ${wallet.width}px column with ${wallet.left}px either side, its statement lines run ${wallet.rows.map((r) => r.lines).join('/')} line each, and the console's policy reads beside its controls until 780px`,
+  )
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
