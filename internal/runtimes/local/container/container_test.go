@@ -16,9 +16,9 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// engine is a scripted engine: it records every command and answers from a
-// table, so the driver's argv and its refusals are testable with no engine
-// installed.
+// engine is a scripted engine. It records every command and answers from a
+// table, so that the driver's argv and its refusals can be tested with no
+// engine installed.
 type engine struct {
 	calls   [][]string
 	answers map[string]string
@@ -46,7 +46,8 @@ func (e *engine) run(_ context.Context, argv []string, _ io.Reader) ([]byte, err
 			return nil, err
 		}
 	}
-	// Longest prefix wins, so "run --rm" is not answered by "run".
+	// The longest matching prefix wins, so "run --rm" is not answered by
+	// "run".
 	best, answer := "", ""
 	for key, scripted := range e.answers {
 		if strings.HasPrefix(command, key) && len(key) > len(best) {
@@ -93,8 +94,9 @@ func build(t *testing.T, config Config, e *engine) *Sandbox {
 	return driver
 }
 
-// The three ordinary failures produce three different sentences, and each
-// names the host-sandbox alternative.
+// TestTheThreeEngineFailuresAreDistinguished checks that the three common
+// failures produce three different messages, each naming the host sandbox as
+// the alternative.
 func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	t.Run("not installed", func(t *testing.T) {
 		e := newEngine()
@@ -164,8 +166,9 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	})
 }
 
-// A named engine that cannot run is an error, not a quiet fallback to the
-// other one: an operator who named an engine gets that engine or a message.
+// TestANamedEngineDoesNotFallBack checks that a named engine that cannot run
+// is an error rather than a silent fallback to the other engine. An operator
+// who named an engine gets that engine or an error message.
 func TestANamedEngineDoesNotFallBack(t *testing.T) {
 	e := newEngine()
 	_, err := New(context.Background(), Config{
@@ -174,15 +177,16 @@ func TestANamedEngineDoesNotFallBack(t *testing.T) {
 	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "docker") {
 		t.Fatalf("New = %v", err)
 	}
-	// With no engine named, the two are tried in order.
+	// When no engine is named, the two are tried in order.
 	driver := build(t, Config{}, newEngine())
 	if driver.Engine() != Podman {
 		t.Fatalf("engine = %q", driver.Engine())
 	}
 }
 
-// Capabilities come from the image's own label, and an image that declares
-// nothing fails construction rather than defaulting to a guess.
+// TestCapabilitiesComeFromTheImage checks that capabilities come from the
+// image's label, and that an image which declares nothing fails construction
+// rather than being given a default.
 func TestCapabilitiesComeFromTheImage(t *testing.T) {
 	driver := build(t, Config{}, newEngine())
 	capabilities := driver.Capabilities()
@@ -194,9 +198,10 @@ func TestCapabilitiesComeFromTheImage(t *testing.T) {
 	if driver.Toolchain() != "python 3.13.2" {
 		t.Errorf("toolchain = %q", driver.Toolchain())
 	}
-	// The allowlist mode is refused: neither engine filters egress by
-	// domain, and declaring a mode this driver cannot enforce would be a
-	// lie a specification is validated against.
+	// The allowlist mode is not declared. Neither engine filters egress by
+	// domain, and declaring a mode this driver cannot enforce would make the
+	// capability declaration, which specifications are validated against,
+	// incorrect.
 	if capabilities.NetworkModes[sandbox.NetworkAllowlist] {
 		t.Error("the container driver claims to enforce a domain allowlist")
 	}
@@ -228,8 +233,9 @@ func stage() sandbox.StageSpec {
 	}
 }
 
-// A credential never reaches the command line, the evidence directory is never
-// mounted, and ownership is mapped so the operator can push what was produced.
+// TestLaunchArgvKeepsCredentialsAndEvidenceOut checks that a credential never
+// reaches the command line, that the evidence directory is never mounted, and
+// that ownership is mapped so the operator can push what was produced.
 func TestLaunchArgvKeepsCredentialsAndEvidenceOut(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{}, e)
@@ -266,7 +272,8 @@ func TestLaunchArgvKeepsCredentialsAndEvidenceOut(t *testing.T) {
 	}
 }
 
-// Docker maps ownership by uid instead, because it has no keep-id.
+// TestDockerMapsOwnershipByUID checks that Docker maps ownership by uid,
+// because it has no keep-id option.
 func TestDockerMapsOwnershipByUID(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{Engine: Docker, Look: found("docker")}, e)
@@ -279,7 +286,8 @@ func TestDockerMapsOwnershipByUID(t *testing.T) {
 	}
 }
 
-// A judge's read-only workspace reaches the engine as a read-only mount.
+// TestTheJudgesWorkspaceIsMountedReadOnly checks that a judge's read-only
+// workspace reaches the engine as a read-only mount.
 func TestTheJudgesWorkspaceIsMountedReadOnly(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{}, e)
@@ -302,8 +310,9 @@ func TestTheJudgesWorkspaceIsMountedReadOnly(t *testing.T) {
 	}
 }
 
-// A container the engine no longer holds is gone, not finished: reporting an
-// unknowable exit as success is the defect 044 recorded.
+// TestALostContainerIsGoneNotFinished checks that a container the engine no
+// longer holds is reported as gone, not finished. Reporting an unknown exit as
+// success is the defect recorded in 044.
 func TestALostContainerIsGoneNotFinished(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{}, e)
@@ -327,7 +336,8 @@ func TestALostContainerIsGoneNotFinished(t *testing.T) {
 	}
 }
 
-// Output reads from an offset, so a poll appends rather than re-reading.
+// TestOutputReadsFromAnOffset checks that Output reads from an offset, so
+// that a poll appends rather than re-reading the whole log.
 func TestOutputReadsFromAnOffset(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{}, e)
@@ -348,8 +358,8 @@ func TestOutputReadsFromAnOffset(t *testing.T) {
 	}
 }
 
-// Windows is refused, naming WSL2 rather than the other driver, which is
-// equally unavailable there.
+// TestWindowsIsRefused checks that Windows is refused with a message naming
+// WSL2 rather than the other driver, which is equally unavailable there.
 func TestWindowsIsRefused(t *testing.T) {
 	_, err := New(context.Background(), Config{Platform: sandbox.Windows, Look: found("podman"), Run: newEngine().run})
 	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "WSL2") {
@@ -357,8 +367,9 @@ func TestWindowsIsRefused(t *testing.T) {
 	}
 }
 
-// Stopping and discarding are idempotent, and neither touches the session
-// directory: that belongs to the runtime, and the push may not have happened.
+// TestStopAndDiscardAreIdempotent checks that stopping and discarding are
+// idempotent, and that neither touches the session directory, which belongs
+// to the runtime and may not have been pushed yet.
 func TestStopAndDiscardAreIdempotent(t *testing.T) {
 	e := newEngine()
 	e.answers["stop"] = ""
@@ -376,8 +387,8 @@ func TestStopAndDiscardAreIdempotent(t *testing.T) {
 			t.Fatalf("Discard: %v", err)
 		}
 	}
-	// Even an engine that refuses both leaves the driver reporting success:
-	// the controller cancels without knowing the state, and a container that
+	// Even when the engine fails both commands, the driver reports success.
+	// The controller cancels without knowing the state, and a container that
 	// is already gone is the outcome it wanted.
 	e.fail["stop"] = errors.New("no such container")
 	e.fail["rm"] = errors.New("no such container")
@@ -397,8 +408,9 @@ func TestStopAndDiscardAreIdempotent(t *testing.T) {
 	}
 }
 
-// The harness version is read from the image, so a run records what the image
-// holds rather than what the operator's machine happens to have.
+// TestVersionIsReadFromTheImage checks that the harness version is read from
+// the image, so that a run records what the image holds rather than what is
+// installed on the operator's machine.
 func TestVersionIsReadFromTheImage(t *testing.T) {
 	e := newEngine()
 	e.answers["run --rm"] = "2.1.4 (Claude Code)\n"
@@ -416,8 +428,9 @@ func TestVersionIsReadFromTheImage(t *testing.T) {
 	}
 }
 
-// A stage with no command is refused, and a machine whose engine stopped
-// between construction and a launch is refused with its own instructions.
+// TestLaunchRefusesAnEmptyStageAndAStoppedEngine checks that a stage with no
+// command is refused, and that a machine whose engine stopped between
+// construction and launch is refused with instructions.
 func TestLaunchRefusesAnEmptyStageAndAStoppedEngine(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{}, e)
@@ -432,9 +445,10 @@ func TestLaunchRefusesAnEmptyStageAndAStoppedEngine(t *testing.T) {
 	}
 }
 
-// A stage naming a credential it does not carry is refused rather than started
-// without it: a run that fails forty seconds in for want of a key is worse
-// than one that never starts.
+// TestAStageMissingItsCredentialIsRefused checks that a stage naming a
+// credential it does not carry is refused rather than started without it. A
+// run that fails after it has started for lack of a key is worse than one
+// that never starts.
 func TestAStageMissingItsCredentialIsRefused(t *testing.T) {
 	e := newEngine()
 	driver := build(t, Config{}, e)
@@ -443,7 +457,7 @@ func TestAStageMissingItsCredentialIsRefused(t *testing.T) {
 	if _, err := driver.Launch(context.Background(), spec); err == nil {
 		t.Fatal("a stage naming a credential it does not carry was launched")
 	}
-	// A closed network reaches the engine as one.
+	// A closed network reaches the engine as a closed network.
 	spec = stage()
 	spec.Network = sandbox.Network{Mode: sandbox.NetworkNone}
 	if _, err := driver.Launch(context.Background(), spec); err != nil {
