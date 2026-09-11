@@ -66,9 +66,13 @@ export function runSpan(events: Event[], phaseAt: Record<string, string> | undef
 // phase that ate 99% of the session is 99% of the bar, which is the whole point.
 export type Band = { phase: string; left: number; width: number }
 
-// PHASE_ORDER is the lifecycle spine, duplicated from the timeline strip so this
-// module stays free of component imports.
-const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed']
+// PHASE_ORDER is the lifecycle spine — the one list, which the timeline strip
+// and the phase labels read from here so this module stays free of component
+// imports. phase_at only ever carries phases the session actually entered, so a
+// missing phase is simply skipped: nothing drawn from this list fabricates a
+// step.
+export const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed'] as const
+export type Phase = (typeof PHASE_ORDER)[number]
 
 // phaseBands lays the session's phases across a span. A phase that started after
 // the span ends, or one with no recorded start, is simply absent — the bar never
