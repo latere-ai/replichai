@@ -4,7 +4,6 @@
 // The API client. Every call is same-origin, so the session cookie (or the dev
 // bypass) rides along automatically.
 import type { Findings } from './findings'
-import { terminal } from './session-stop'
 
 // Credits is what this person has to spend (011), in micro-USD. The wallet is
 // theirs; it is never spent by a session directly, because a run draws on the
@@ -777,20 +776,3 @@ export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(s),
   }).then(json<PlatformSettings>)
-
-// watchJob streams a job's progress over SSE, calling onJob on each update, and
-// closes the stream once the job reaches a terminal phase. It returns a cancel
-// function.
-export function watchJob(id: string, onJob: (j: Job) => void): () => void {
-  const es = new EventSource(`/jobs/${id}/events`)
-  es.addEventListener('status', (e) => {
-    try {
-      const j = JSON.parse((e as MessageEvent).data) as Job
-      onJob(j)
-      if (terminal(j.phase)) es.close()
-    } catch {
-      /* ignore a malformed frame */
-    }
-  })
-  return () => es.close()
-}

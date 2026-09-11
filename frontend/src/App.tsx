@@ -78,7 +78,6 @@ import {
   type ModelTier,
   type PaperCitation,
   type ProjectPaper,
-  watchJob,
   type ResolvedPaper,
   type Event,
   type GrantView,
@@ -147,6 +146,7 @@ import { THEME_MODES, useTheme, type ThemeMode } from './theme'
 import { absoluteTime, elapsed, relativeTime } from './when'
 import { useDrawer, useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
+import { useJobStream } from './job-stream'
 
 // signerOf names the person who published a project. The signer's recorded name
 // is used whenever the sign-off carries one (006n); a v1 sign-off has none and
@@ -4600,10 +4600,10 @@ function SessionRow({
   // stream's — arrives through the same guard, so none of them can walk a
   // settled session back to running.
   const show = useCallback((next: Job) => setJob((shown) => freshest(shown, next)), [])
-  useEffect(() => {
-    show(job)
-    if (!terminal(job.phase)) return watchJob(job.id, show)
-  }, [job, show])
+  useEffect(() => show(job), [job, show])
+  // The stream is keyed on the session and on whether it is still running — not
+  // on the snapshot the list handed over, which a refresh replaces every time.
+  useJobStream(job.id, !terminal(j.phase), show)
   useEffect(() => setStopAsked(false), [job.id])
   // The clock the elapsed reading is drawn against. A running row re-renders on
   // its own once a second; a settled one holds no interval, so a list of
@@ -5559,11 +5559,9 @@ function SessionScreen({
   // It watches only what there is to watch: the live stream is an operator route
   // and stays gated (028), so for a reader with no account it is a connection
   // that is refused and reopened for as long as the page is up — and a session
-  // that has finished has nothing left to send either.
-  useEffect(() => {
-    if (!signedIn || !job || terminal(job.phase)) return
-    return watchJob(jobId, setJob)
-  }, [signedIn, jobId, job])
+  // that has finished has nothing left to send either. Whether to watch is a
+  // boolean, so the snapshot the stream delivers cannot reopen the stream.
+  useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob)
   useEffect(() => {
     if (job?.ref) onLoaded(job.ref)
   }, [job?.ref, onLoaded])
