@@ -866,6 +866,261 @@ func TestANotReadyDriverRefusesWithInstructions(t *testing.T) {
 	}
 }
 
+// Cancel mid-flight stops the running stage, records the session failed and
+// cancelled, keeps its evidence readable, and is idempotent: a second Cancel,
+// and a Cancel of a session that already finished, both do nothing.
+func TestCancelStopsTheRunningStageAndIsIdempotent(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{PollsBeforeExit: 10})
+	ref := start(t, runtime, spec(true))
+	running, err := runtime.Poll(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if running.State.Terminal() {
+		t.Fatalf("the session finished before it could be cancelled: %+v", running)
+	}
+
+	if err := runtime.Cancel(context.Background(), running.Ref); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	status, err := runtime.Poll(context.Background(), running.Ref)
+	if err != nil {
+		t.Fatalf("Poll after cancel: %v", err)
+	}
+	if status.State != managed.StateFailed || status.TerminalReason != managed.ReasonCancelled {
+		t.Fatalf("a cancelled session did not end cancelled: %+v", status)
+	}
+	// The evidence stays readable — Cancel leaves the directory intact.
+	if _, err := runtime.Events(context.Background(), status.Ref); err != nil {
+		t.Fatalf("Events after cancel: %v", err)
+	}
+	// The current stage was told to stop.
+	if got := len(driver.Stages()); got == 0 {
+		t.Fatal("no stage was ever launched")
+	}
+	// Cancelling again, and cancelling a session already terminal, are both
+	// no-ops rather than errors.
+	if err := runtime.Cancel(context.Background(), status.Ref); err != nil {
+		t.Fatalf("repeated Cancel: %v", err)
+	}
+}
+
+// A stage the driver has lost — Observe reports it Gone — is recorded exiting
+// −1 and fails the session, rather than reading as a success on an unknowable
+// exit. The bootstrap's handle is rewritten to one the driver never issued, so
+// the next observation finds it gone.
+func TestAStageTheDriverLostExitsMinusOneAndFails(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 10})
+	ref := start(t, runtime, spec(false))
+
+	session, err := local.OpenSession(sessionDir(t, ref))
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	locator, err := session.ReadLocator()
+	if err != nil {
+		t.Fatalf("ReadLocator: %v", err)
+	}
+	last := len(locator.Stages) - 1
+	locator.Stages[last].Handle.ID = "fake:404" // a handle the driver never issued
+	if err := session.WriteLocator(locator); err != nil {
+		t.Fatalf("WriteLocator: %v", err)
+	}
+
+	status, err := runtime.Poll(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if status.State != managed.StateFailed {
+		t.Fatalf("a lost stage did not fail the session: %+v", status)
+	}
+	after, err := session.ReadLocator()
+	if err != nil {
+		t.Fatalf("ReadLocator: %v", err)
+	}
+	if after.Stages[last].Exit == nil || *after.Stages[last].Exit != -1 {
+		t.Fatalf("a lost stage's exit was not recorded as -1: %+v", after.Stages[last].Exit)
+	}
+}
+
+// A stage's partial final line — written but not yet terminated by a newline —
+// is held back rather than decoded as a torn record, and picked up once it is
+// complete. The bootstrap's log is rewritten under the driver to present the
+// partial line, then completed.
+func TestPollHoldsBackAPartialFinalLineUntilItIsComplete(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 10})
+	ref := start(t, runtime, spec(false))
+	session, err := local.OpenSession(sessionDir(t, ref))
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	logPath := session.RawLog("bootstrap-0")
+
+	// A complete line, then a partial one with no trailing newline.
+	if err := os.WriteFile(logPath, []byte("first line\nsecond line still being written"), 0o600); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	first, err := runtime.Poll(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	events := transcript(t, runtime, first.Ref)
+	if !containsContent(events, "first line") {
+		t.Fatalf("the complete line was not decoded: %v", events)
+	}
+	if containsContent(events, "second line") {
+		t.Fatalf("the partial line was decoded before it was complete: %v", events)
+	}
+
+	// Complete the held-back line.
+	if err := os.WriteFile(logPath, []byte("first line\nsecond line still being written, now finished\n"), 0o600); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	second, err := runtime.Poll(context.Background(), first.Ref)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if !containsContent(transcript(t, runtime, second.Ref), "now finished") {
+		t.Fatal("the completed line was never decoded")
+	}
+}
+
+// Under the on-failure policy Release keeps a failed session's directory and
+// discards a successful one's: a run whose publication or grading failed stays
+// on disk to be looked at, and a clean success does not accumulate.
+func TestRetainOnFailureKeepsAFailureAndDiscardsASuccess(t *testing.T) {
+	newRuntime := func(t *testing.T, script localtest.Script) *local.Runtime {
+		t.Helper()
+		registry, _ := harness.NewRegistry(harness.NewClaudeCode())
+		catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, noCredentials)
+		runtime, err := local.New(local.Config{
+			Sandbox: localtest.New(script), Harness: harness.NewClaudeCode(), Catalog: catalog,
+			Root: t.TempDir(), Retention: local.RetainOnFailure, Lookup: os.LookupEnv,
+		})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		return runtime
+	}
+
+	// A success is discarded.
+	success := newRuntime(t, localtest.Script{})
+	done := runToTerminal(t, success, start(t, success, spec(false)))
+	if done.State != managed.StateDone {
+		t.Fatalf("the passing session did not finish done: %+v", done)
+	}
+	doneDir := sessionDir(t, done.Ref)
+	if err := success.Release(context.Background(), done.Ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if _, err := os.Stat(doneDir); !os.IsNotExist(err) {
+		t.Fatalf("the succeeded session's directory survived on-failure retention: %v", err)
+	}
+
+	// A failure is kept.
+	failure := newRuntime(t, localtest.Script{WorkerExit: 7})
+	failed := runToTerminal(t, failure, start(t, failure, spec(false)))
+	if failed.State != managed.StateFailed {
+		t.Fatalf("the failing session did not fail: %+v", failed)
+	}
+	failedDir := sessionDir(t, failed.Ref)
+	if err := failure.Release(context.Background(), failed.Ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(failedDir, "workspace")); err != nil {
+		t.Fatalf("the failed session's directory was discarded under on-failure retention: %v", err)
+	}
+}
+
+// The Codex harness is driven through the whole runtime at least once, not only
+// Claude Code: it speaks a different stream and carries its role and login
+// differently, so a run that never exercised it would leave that half of the
+// seam unchecked here.
+func TestTheCodexHarnessRunsThroughTheRuntime(t *testing.T) {
+	driver := localtest.New(localtest.Script{PollsBeforeExit: 1})
+	registry, err := harness.NewRegistry(harness.NewClaudeCode(), harness.NewCodex())
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	catalog, err := local.NewCatalog(local.CatalogFile{
+		Gateways: map[string]local.GatewayConfig{
+			"login": {Dialect: string(harness.DialectOpenAIResponses), Auth: string(harness.AuthHarness)},
+		},
+		Models: []local.ModelConfig{{
+			Provider: "vendor", ID: "gpt-5-codex", Gateway: "login",
+			Harness: string(harness.Codex), Preferences: []string{"best"},
+		}},
+	}, registry, noCredentials)
+	if err != nil {
+		t.Fatalf("NewCatalog: %v", err)
+	}
+	runtime, err := local.New(local.Config{
+		Sandbox: driver, Harness: harness.NewCodex(), Catalog: catalog,
+		Root: t.TempDir(), Lookup: os.LookupEnv,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := runtime.Capabilities(context.Background()); err != nil {
+		t.Fatalf("Capabilities: %v", err)
+	}
+	ref, err := runtime.Start(context.Background(), spec(true))
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	status := runToTerminal(t, runtime, ref)
+	if !status.State.Terminal() {
+		t.Fatalf("the Codex session never became terminal: %+v", status)
+	}
+	worker := stageNamed(t, driver, "worker")
+	if !strings.Contains(strings.Join(worker.Argv, " "), "codex") {
+		t.Fatalf("the worker did not run the Codex harness: %v", worker.Argv)
+	}
+}
+
+// A judge round that writes no verdict at all is retried and, where a round
+// still produces none, the session fails to be graded rather than finishing
+// undecided.
+func TestASilentJudgeRoundIsRetriedThenFails(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{SilentRounds: map[int]bool{0: true, 1: true}})
+	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	if status.State != managed.StateFailed || status.Verdict != nil {
+		t.Fatalf("a silent grading did not fail undecided: %+v", status)
+	}
+	if !strings.Contains(status.Error, "grading failed") {
+		t.Errorf("error = %q", status.Error)
+	}
+	judges := 0
+	for _, stage := range driver.Stages() {
+		if strings.HasPrefix(stage.Name, "judge") {
+			judges++
+		}
+	}
+	if judges != 2 {
+		t.Fatalf("a silent judge round was retried %d times, want one retry", judges-1)
+	}
+}
+
+// transcript reads a session's events, failing the test on any error.
+func transcript(t *testing.T, runtime *local.Runtime, ref managed.SessionRef) []managed.Event {
+	t.Helper()
+	events, err := runtime.Events(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	return events
+}
+
+// containsContent reports whether any event's content holds the substring.
+func containsContent(events []managed.Event, substring string) bool {
+	for _, event := range events {
+		if strings.Contains(event.Content, substring) {
+			return true
+		}
+	}
+	return false
+}
+
 // stageNamed is the first stage of one role. Tests ask by role rather than by
 // index, so inserting a stage into the sequence does not rewrite them.
 func stageNamed(t *testing.T, driver *localtest.Sandbox, role string) sandbox.StageSpec {
