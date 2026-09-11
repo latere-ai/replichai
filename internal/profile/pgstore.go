@@ -54,8 +54,8 @@ func nullableHandle(handle string) *string {
 	return &handle
 }
 
-// Get returns a principal's profile, or the zero profile if they have none —
-// never a not-found error, so first use renders like any other.
+// Get returns a principal's profile, or the zero profile if they have none.
+// It never returns a not-found error, so first use renders like any other.
 func (s *PGStore) Get(ctx context.Context, principal string) (Profile, error) {
 	p, err := scanProfile(s.pool.QueryRow(ctx, `SELECT `+profileColumns+` FROM profiles WHERE principal = $1`, principal))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -93,9 +93,9 @@ func (s *PGStore) Save(ctx context.Context, p Profile) (Profile, error) {
 		nullableHandle(p.Handle), p.Public)
 	saved, err := scanProfile(row)
 	if err != nil && isUniqueViolation(err) {
-		// The unique index is the authority on who holds a handle, not a
-		// read-then-write in this function: two people claiming one name in the
-		// same instant must not both succeed.
+		// The unique index decides who holds a handle, not a read-then-write
+		// in this function. Two people claiming one name at the same instant
+		// must not both succeed.
 		return Profile{}, ErrHandleTaken
 	}
 	return saved, err
@@ -108,7 +108,7 @@ func isUniqueViolation(err error) bool {
 }
 
 // ByHandle resolves a public profile by handle. A private profile and an
-// unknown handle are one error on purpose.
+// unknown handle return the same error deliberately.
 func (s *PGStore) ByHandle(ctx context.Context, handle string) (Profile, error) {
 	handle = strings.ToLower(strings.TrimSpace(handle))
 	if handle == "" {

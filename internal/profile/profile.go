@@ -1,21 +1,23 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package profile is who a principal says they are: the researcher identity a
-// public sign-off is published under — display name, institution, the contact
-// address the public may write to, and the scholarly identifiers that make an
-// attestation read as an endorsement rather than a username (006n).
+// Package profile stores a principal's self-asserted researcher identity: the
+// identity a public sign-off is published under. It holds the display name,
+// the institution, the contact address the public may write to, and the
+// scholarly identifiers that let an attestation be read as an endorsement
+// rather than a username (006n).
 //
-// It is deliberately not part of internal/access. A grant is an authorisation
-// record and stores no display data; this is display data and grants nothing.
-// Nothing here is verified: the platform does not check that someone works where
-// they say they work, exactly as a preprint server does not. What it does
-// guarantee is the binding — a profile is always written against the calling
-// principal, never one named in a request body.
+// The package is deliberately separate from internal/access. A grant is an
+// authorisation record and stores no display data; a profile is display data
+// and grants nothing. Nothing in a profile is verified. The platform does not
+// check that someone works where they say they work, just as a preprint
+// server does not. What the package does guarantee is the binding: a profile
+// is always written against the calling principal, never against one named in
+// a request body.
 //
-// A profile is only ever a *default*. What a published sign-off reports is the
-// snapshot copied onto the project when it was signed (006n), so editing a
-// profile never rewrites an attestation that is already public.
+// A profile is only a default. A published sign-off reports the snapshot
+// copied onto the project when it was signed (006n), so editing a profile
+// never rewrites an attestation that is already public.
 package profile
 
 import (
@@ -49,15 +51,15 @@ var (
 	// returned by the store, which is the only place that can know.
 	ErrHandleTaken = errors.New("that handle is already taken")
 	// ErrNotFound reports a public profile that does not exist, is private, or
-	// has no handle — deliberately one error for all three, so the public
+	// has no handle. One error covers all three deliberately, so the public
 	// endpoint cannot be used to enumerate handles.
 	ErrNotFound = errors.New("no such public profile")
 )
 
 // Profile is one principal's self-asserted researcher identity. Every field is
-// optional at rest — the publish wizard, not the store, is where a contact
-// becomes required (006n), because that requirement belongs to the act of
-// publishing rather than to having a profile.
+// optional in the store. The publish wizard, not the store, requires a
+// contact (006n), because that requirement belongs to publishing rather than
+// to having a profile.
 type Profile struct {
 	Principal   string    `json:"-"` // the owning principal; never read from a body
 	DisplayName string    `json:"display_name,omitempty"`
@@ -67,18 +69,18 @@ type Profile struct {
 	Scholar     string    `json:"scholar_url,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitzero"`
 
-	// Handle is this researcher's public name — the /u/{handle} their published
-	// sign-offs link to (006r). Unique across the platform, chosen and editable
-	// by its owner, and empty until they pick one.
+	// Handle is this researcher's public name, the /u/{handle} path their
+	// published sign-offs link to (006r). It is unique across the platform,
+	// chosen and editable by its owner, and empty until they pick one.
 	//
-	// It exists because a profile is keyed by an OIDC subject, which cannot go
-	// in a URL: it is unreadable, and it is the identity provider's internal
-	// identifier. A handle is the one identifier somebody can put in a CV.
+	// A handle is needed because a profile is keyed by an OIDC subject, which
+	// cannot go in a URL: it is unreadable, and it is the identity provider's
+	// internal identifier. A handle is an identifier somebody can put in a CV.
 	Handle string `json:"handle,omitempty"`
-	// Public is whether this profile has a page at all. False by default: what
-	// becomes visible when it is turned on is not new information — every field
-	// is already published on any sign-off — it is the *aggregation*, and that
-	// is a decision its owner makes rather than one the platform makes for them.
+	// Public reports whether this profile has a page. It is false by default.
+	// Turning it on reveals no new information, since every field is already
+	// published on any sign-off; it reveals the aggregation, and that is a
+	// decision for the owner rather than the platform.
 	Public bool `json:"public"`
 }
 
@@ -92,26 +94,27 @@ type Store interface {
 	// first, so an invalid identifier never reaches the table, and returns
 	// ErrHandleTaken when the handle belongs to somebody else.
 	Save(ctx context.Context, p Profile) (Profile, error)
-	// ByHandle resolves a *public* profile by its handle, for the page anyone
+	// ByHandle resolves a public profile by its handle, for the page anyone
 	// may read (006r). It returns ErrNotFound for an unknown handle and for a
-	// private one alike: distinguishing them would turn this into a way to
-	// enumerate who holds which handle.
+	// private one alike, because distinguishing them would allow enumerating
+	// who holds which handle.
 	ByHandle(ctx context.Context, handle string) (Profile, error)
-	// PrincipalHandle returns the public handle of a principal, if they have one
-	// and their profile is public. It is how a sign-off links to its signer
-	// without snapshotting a handle onto the project — the link resolves through
-	// the profile as it is now, which is what makes it a live link rather than a
-	// second, staler copy of the same person (006n).
+	// PrincipalHandle returns the public handle of a principal, if they have
+	// one and their profile is public. A sign-off uses it to link to its signer
+	// without storing a handle on the project. The link resolves through the
+	// profile as it is now, so it stays current rather than becoming a second,
+	// stale copy (006n).
 	PrincipalHandle(ctx context.Context, principal string) (string, bool, error)
 }
 
-// handlePattern is what may appear in a public URL: lowercase, digits, and
-// hyphens, long enough to be a name and short enough to be one line.
+// handlePattern matches what may appear in a public URL: lowercase letters,
+// digits and hyphens, between 3 and 39 characters, so a handle is long enough
+// to be a name and short enough to fit on one line.
 var handlePattern = regexp.MustCompile(`^[a-z0-9-]{3,39}$`)
 
-// reservedHandles are the app's own first path segments. A profile at /u/ can
-// never shadow a route today, but the list is kept because these are also the
-// names most likely to be squatted by somebody impersonating the platform.
+// reservedHandles lists the app's own first path segments. A profile at /u/
+// cannot shadow a route today, but the list is kept because these are also
+// the names most likely to be taken by somebody impersonating the platform.
 var reservedHandles = map[string]bool{
 	"admin": true, "api": true, "public": true, "settings": true, "projects": true,
 	"u": true, "me": true, "login": true, "logout": true, "callback": true,
@@ -124,9 +127,10 @@ var reservedHandles = map[string]bool{
 // checksum digit or X.
 var orcidPattern = regexp.MustCompile(`^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$`)
 
-// scholarHostPattern anchors the whole host, so a lookalike that merely *starts*
-// with the real one (`scholar.google.com.evil.test`) is refused. The optional
-// second group admits the country forms (`scholar.google.co.uk`).
+// scholarHostPattern anchors the whole host, so a lookalike that only starts
+// with the real one, such as scholar.google.com.evil.test, is refused. The
+// optional second group admits the country forms, such as
+// scholar.google.co.uk.
 var scholarHostPattern = regexp.MustCompile(`^scholar\.google(\.[a-z]{2,3}){1,2}$`)
 
 // Normalize trims every field and canonicalises what has a canonical form, so a
@@ -142,8 +146,9 @@ func (p Profile) Normalize() Profile {
 }
 
 // Validate reports the first field that is present and malformed. An absent
-// optional field is valid — a missing identifier is better on a public record
-// than a broken one, and this is what keeps the second true.
+// optional field is valid. A missing identifier is better on a public record
+// than a broken one, and refusing malformed values keeps broken ones off the
+// record.
 func (p Profile) Validate() error {
 	if p.Contact != "" {
 		if err := ValidateContact(p.Contact); err != nil {
@@ -166,8 +171,9 @@ func (p Profile) Validate() error {
 	return nil
 }
 
-// ValidateHandle reports whether a handle may appear in a public URL. Shape
-// first, then the reserved list, so the more specific message wins.
+// ValidateHandle reports whether a handle may appear in a public URL. It
+// checks the shape first and the reserved list second, so the more specific
+// message wins.
 func ValidateHandle(handle string) error {
 	if !handlePattern.MatchString(handle) {
 		return ErrInvalidHandle
@@ -178,12 +184,12 @@ func ValidateHandle(handle string) error {
 	return nil
 }
 
-// PublicProfile is what a stranger sees at /u/{handle}: the self-asserted
-// identity, and the public work signed under it.
+// PublicProfile is what a visitor sees at /u/{handle}: the self-asserted
+// identity and the public work signed under it.
 //
-// The contact is rendered in full, exactly as a sign-off card renders it — it
-// was published for inquiries. The account email never appears: that is what
-// the redacted signer email on an attestation is for, and it stays there, where
+// The contact is rendered in full, as a sign-off card renders it, because it
+// was published for inquiries. The account email never appears. The redacted
+// signer email on an attestation covers that need, and it stays there, where
 // it identifies a signature rather than naming a person.
 type PublicProfile struct {
 	Handle      string         `json:"handle"`
@@ -202,10 +208,10 @@ type PublicSigned struct {
 	SignedOffAt *time.Time `json:"signed_off_at,omitempty"`
 }
 
-// ValidateContact reports whether an address is a single, plain email — the
-// address a stranger will be handed on a public page. A display-name form
-// ("Ada <ada@x.org>") is refused: rendered into a mailto: it is a footgun, and
-// the name belongs in the name field.
+// ValidateContact reports whether an address is a single plain email, the
+// address a visitor is given on a public page. A display-name form such as
+// "Ada <ada@x.org>" is refused: it renders badly into a mailto: link, and the
+// name belongs in the name field.
 func ValidateContact(contact string) error {
 	addr, err := mail.ParseAddress(contact)
 	if err != nil || addr.Name != "" || addr.Address != strings.ToLower(strings.TrimSpace(contact)) {
@@ -228,10 +234,10 @@ func ValidateScholar(raw string) error {
 	return nil
 }
 
-// RedactEmail masks the local part of an address for publication: the first and
-// last characters survive, the middle becomes stars, the domain is kept. It is
-// how a signer is identified on a public card without their working address
-// being put on the wire.
+// RedactEmail masks the local part of an address for publication: the first
+// and last characters are kept, the middle becomes stars, and the domain is
+// kept. A signer is identified on a public card this way without their
+// working address being published.
 //
 // A one- or two-character local part is masked whole rather than left readable.
 // A string that is not an address is returned empty, so a malformed value can

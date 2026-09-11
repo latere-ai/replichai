@@ -44,8 +44,8 @@ func (s *MemStore) Save(_ context.Context, p Profile) (Profile, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// A handle is unique across the platform. Changing your own frees the old
-	// one; taking somebody else's is refused.
+	// A handle is unique across the platform. Changing one's own handle frees
+	// the old one; taking somebody else's is refused.
 	if p.Handle != "" {
 		for principal, other := range s.profiles {
 			if other.Handle == p.Handle && principal != p.Principal {

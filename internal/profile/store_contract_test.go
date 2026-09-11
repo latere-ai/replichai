@@ -14,14 +14,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// runStoreContract asserts the invariants every profile Store must hold, so the
-// in-memory and Postgres implementations cannot diverge. The store is empty.
+// runStoreContract checks the invariants every profile Store must hold, so the
+// in-memory and Postgres implementations cannot diverge. It expects an empty
+// store.
 func runStoreContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	// A principal who has never saved one gets the zero profile, not an error —
-	// the settings screen and the publish wizard render on first use.
+	// A principal who has never saved a profile gets the zero profile, not an
+	// error, so the settings screen and the publish wizard render on first use.
 	got, err := s.Get(ctx, "sub-1")
 	if err != nil {
 		t.Fatalf("Get before any save: %v", err)
@@ -30,7 +31,8 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Fatalf("empty profile = %+v", got)
 	}
 
-	// A save with no principal is refused: a profile is always somebody's.
+	// A save with no principal is refused. A profile always belongs to a
+	// principal.
 	if _, err := s.Save(ctx, Profile{Principal: "  ", DisplayName: "Ada"}); !errors.Is(err, ErrNoPrincipal) {
 		t.Fatalf("blank principal: want ErrNoPrincipal, got %v", err)
 	}
@@ -93,14 +95,15 @@ func runStoreContract(t *testing.T, s Store) {
 	runHandleContract(t, s)
 }
 
-// runHandleContract is the public-profile half (006r): a handle is unique, a
-// page exists only when its owner says so, and neither can be read around.
+// runHandleContract checks the public-profile half (006r): a handle is
+// unique, a page exists only when its owner enables it, and neither rule can
+// be bypassed by a read.
 func runHandleContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	// A handle is not a page. Claiming one leaves the profile private, and a
-	// private profile has nothing to read.
+	// Claiming a handle does not create a page. The profile stays private,
+	// and a private profile cannot be read.
 	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada", Handle: "ada"}); err != nil {
 		t.Fatalf("claim a handle: %v", err)
 	}
@@ -111,8 +114,7 @@ func runHandleContract(t *testing.T, s Store) {
 		t.Errorf("a private profile reported a public handle: %v/%v", ok, err)
 	}
 
-	// Turning it public is what makes the page — and the link a sign-off can
-	// make to it.
+	// Setting Public creates the page and the link a sign-off can make to it.
 	saved, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada", Contact: "ada@example.org", Handle: "ada", Public: true})
 	if err != nil {
 		t.Fatalf("publish a profile: %v", err)
@@ -124,7 +126,7 @@ func runHandleContract(t *testing.T, s Store) {
 	if err != nil || got.Principal != "ada-sub" {
 		t.Fatalf("ByHandle = %+v, %v", got, err)
 	}
-	// Case and whitespace do not make a second person.
+	// Case and surrounding whitespace do not distinguish handles.
 	if got, err := s.ByHandle(ctx, "  ADA "); err != nil || got.Principal != "ada-sub" {
 		t.Errorf("ByHandle is case- or space-sensitive: %+v, %v", got, err)
 	}
@@ -136,11 +138,11 @@ func runHandleContract(t *testing.T, s Store) {
 	if _, err := s.Save(ctx, Profile{Principal: "other-sub", Handle: "ada"}); !errors.Is(err, ErrHandleTaken) {
 		t.Errorf("a second principal took a claimed handle: %v", err)
 	}
-	// Saving your own again is not a collision with yourself.
+	// Re-saving one's own handle is not a collision.
 	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada L.", Handle: "ada", Public: true}); err != nil {
 		t.Errorf("re-saving your own handle: %v", err)
 	}
-	// Changing yours frees the old one.
+	// Changing a handle frees the old one.
 	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", Handle: "ada-l", Public: true}); err != nil {
 		t.Fatalf("change a handle: %v", err)
 	}
@@ -151,8 +153,8 @@ func runHandleContract(t *testing.T, s Store) {
 		t.Errorf("the freed handle could not be claimed: %v", err)
 	}
 
-	// Going private takes the page down and the link with it. The profile
-	// itself, and the handle, survive — this is reversible.
+	// Going private removes the page and the link. The profile and the handle
+	// are kept, so the change is reversible.
 	if _, err := s.Save(ctx, Profile{Principal: "ada-sub", DisplayName: "Ada", Handle: "ada-l"}); err != nil {
 		t.Fatalf("go private: %v", err)
 	}
@@ -174,7 +176,7 @@ func runHandleContract(t *testing.T, s Store) {
 		}
 	}
 
-	// An unknown handle, and an empty one, are the same not-found.
+	// An unknown handle and an empty one both return ErrNotFound.
 	for _, handle := range []string{"nobody", "", "   "} {
 		if _, err := s.ByHandle(ctx, handle); !errors.Is(err, ErrNotFound) {
 			t.Errorf("ByHandle(%q) = %v, want not-found", handle, err)
@@ -208,8 +210,8 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewPGStore(pool))
 }
 
-// profileTestDB is the dedicated database the profile PG tests run in, so
-// `go test ./...` running every package against one server stays hermetic.
+// profileTestDB is the dedicated database the profile Postgres tests run in,
+// so the packages `go test ./...` runs against one server do not share tables.
 const profileTestDB = "replichai_profile_test"
 
 // testPool creates a clean profile test database, migrated, and returns a pool.
