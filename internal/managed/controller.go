@@ -185,11 +185,13 @@ func (c *Controller) Capabilities(ctx context.Context, spec SessionSpec) (Capabi
 // returns. It exists for the CLI's explicit detached workflow; ordinary callers
 // use Execute so retention and release cannot be forgotten.
 func (c *Controller) Start(ctx context.Context, spec SessionSpec, hooks Hooks) (SessionRef, error) {
-	runtime, ref, err := c.start(ctx, spec, hooks)
+	// The runtime start resolves is discarded here — the detached workflow
+	// re-attaches by reference on the next call; only Execute keeps it, to poll
+	// in the same process.
+	_, ref, err := c.start(ctx, spec, hooks)
 	if err != nil {
 		return ref, err
 	}
-	_ = runtime
 	return ref, nil
 }
 

@@ -402,7 +402,7 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 		return r.launch(ctx, session, locator, spec, model, gateway, harness.StageJudge, task)
 	case harness.StageJudge:
 		round := currentRound(*locator)
-		file, verdict, err := ReadVerdict(session.Grade(), round)
+		verdict, err := ReadVerdict(session.Grade(), round)
 		if err != nil {
 			// One retry: a judge can fail to produce a parsable verdict
 			// once. A session that still cannot be graded ends failed with
@@ -433,7 +433,6 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 		// two runtimes end it StateFailed, and the job store maps state one to
 		// one, so ending it StateDone here landed the same outcome as done on
 		// local and failed everywhere else.
-		_ = file
 		r.finish(status, managed.StateFailed, managed.ReasonEvaluationFailed, "")
 		return nil
 	default:
