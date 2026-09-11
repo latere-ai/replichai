@@ -18,6 +18,13 @@ in lateregate, pinned as a tool in `go.mod`, and it runs golangci-lint itself
 through `go run` at a pinned version — so beyond the Go toolchain there is
 nothing to install.
 
+`make lint-dead` is the one gate outside lateregate: `go tool deadcode -test
+./...`. It fails on a function nothing reaches. The `-test` flag counts the
+test binaries as roots, so a seam that only the suite exercises — a fake, a
+fixture helper, a constructor a test wires — is reachable and passes; what
+fails is code no main, no test and no exported path can arrive at. Delete it
+rather than annotate it.
+
 Install the hooks once per clone:
 
 ```bash
