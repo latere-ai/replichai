@@ -13,9 +13,9 @@ import (
 	"github.com/latere-ai/replichai/internal/oteltest"
 )
 
-// A session and an API client are the two ways the terminal reaches the
-// platform. Both took http.DefaultClient, which traces nothing, so a run
-// started from somebody's machine arrived at the deployment as an orphan.
+// A session and an API client are the two ways the CLI reaches the platform.
+// Both once used http.DefaultClient, which traces nothing, so a run started
+// from a user's machine arrived at the deployment with no parent trace.
 func TestCloudConstructorsInstrumentTheirClient(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -38,8 +38,9 @@ func TestCloudConstructorsInstrumentTheirClient(t *testing.T) {
 			if err != nil {
 				t.Fatalf("calling the peer: %v", err)
 			}
-			// The client span ends with the response body: the instrumented
-			// transport wraps it so the span covers the whole exchange.
+			// The client span ends when the response body is closed. The
+			// instrumented transport wraps the body so the span covers the
+			// whole exchange.
 			_, _ = io.Copy(io.Discard, resp.Body)
 			if err := resp.Body.Close(); err != nil {
 				t.Fatalf("closing the body: %v", err)

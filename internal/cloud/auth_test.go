@@ -19,7 +19,7 @@ import (
 )
 
 // jwt builds an unsigned token whose payload the CLI reads to print who is
-// signed in. The CLI is not a resource server; the API verifies for real.
+// signed in. The CLI is not a resource server; the API verifies the token.
 func jwt(subject, email string) string {
 	payload, _ := json.Marshal(map[string]string{"sub": subject, "email": email})
 	return "x." + base64.RawURLEncoding.EncodeToString(payload) + ".y"
@@ -122,8 +122,8 @@ func TestLoginWritesAPrivateCredential(t *testing.T) {
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("credential file mode = %o", perm)
 	}
-	// It is replichai's own file, not the latere CLI's: two programs
-	// sharing one would share a refresh that can narrow scopes.
+	// The file is replichai's own, not the latere CLI's. Two programs
+	// sharing one file would share a refresh that can narrow scopes.
 	if strings.Contains(s.Store.Path(), "/latere/") {
 		t.Fatalf("the credential landed in another CLI's directory: %s", s.Store.Path())
 	}
@@ -162,8 +162,8 @@ func TestAnOutageIsNotASignOut(t *testing.T) {
 	}
 }
 
-// A credential the provider rejects outright is cleared, and the message says
-// what to do.
+// A credential the provider rejects with invalid_grant is cleared, and the
+// error says what to do.
 func TestARejectedCredentialIsCleared(t *testing.T) {
 	p := &provider{approved: true, refreshErr: "invalid_grant"}
 	s := session(t, p)
@@ -183,9 +183,9 @@ func TestARejectedCredentialIsCleared(t *testing.T) {
 	}
 }
 
-// A refresh response that omits a new refresh token keeps the old one. This is
-// ordinary OAuth behaviour and a common way a working client signs itself out
-// after a day.
+// A refresh response that omits a new refresh token keeps the old one.
+// Omitting it is ordinary OAuth behaviour, and dropping the old one is a
+// common cause of a working client signing itself out after a day.
 func TestARefreshWithoutANewTokenKeepsTheOldOne(t *testing.T) {
 	p := &provider{approved: true}
 	s := session(t, p)
@@ -206,8 +206,8 @@ func TestARefreshWithoutANewTokenKeepsTheOldOne(t *testing.T) {
 }
 
 // The API is reached with a short-lived actor token where auth mints one, and
-// with the stored credential where it does not — and the fallback is reported
-// rather than silent.
+// with the stored credential where it does not. The fallback is reported in
+// the second return value.
 func TestTheBearerPrefersAnActorToken(t *testing.T) {
 	p := &provider{approved: true}
 	s := session(t, p)
@@ -262,9 +262,10 @@ func TestSwitchingOrganisationNeedsNoSecondLogin(t *testing.T) {
 	}
 }
 
-// The refresh body is a form, and a value carrying a reserved character
-// reaches the provider as one value. Built by concatenation, an organisation
-// id of "a&scope=admin" would have arrived as a second field.
+// The refresh body is a form, and a value containing a reserved character
+// reaches the provider as one value. If the body were built by
+// concatenation, an organisation id of "a&scope=admin" would arrive as a
+// second field.
 func TestTheSwitchFormEscapesItsValues(t *testing.T) {
 	p := &provider{approved: true, refreshNew: "refresh 2&x"}
 	s := session(t, p)
@@ -284,7 +285,7 @@ func TestTheSwitchFormEscapesItsValues(t *testing.T) {
 	if form.Has("scope") {
 		t.Fatalf("a value's ampersand became a field: %q", p.lastForm)
 	}
-	// The refresh token the previous grant issued travels intact too.
+	// The refresh token the previous grant issued is also sent intact.
 	if _, err := s.SwitchOrg(context.Background(), ""); err != nil {
 		t.Fatalf("SwitchOrg(personal): %v", err)
 	}
@@ -310,8 +311,8 @@ func TestLogoutIsIdempotent(t *testing.T) {
 	}
 }
 
-// The requested scopes are identity only: what a person may do is decided by
-// the deployment's own table, never read out of a token.
+// The requested scopes are identity only. What a person may do is decided by
+// the deployment's own access table, never read out of a token.
 func TestScopesAreIdentityOnly(t *testing.T) {
 	for _, scope := range Scopes {
 		if strings.Contains(scope, ":") {
@@ -323,22 +324,22 @@ func TestScopesAreIdentityOnly(t *testing.T) {
 	}
 }
 
-// A store with no credential answers "not signed in" rather than an I/O
-// error: that is the fact a caller acts on.
+// A store with no credential returns ErrSignedOut rather than an I/O error,
+// because not being signed in is the condition a caller acts on.
 func TestAnEmptyStoreIsSignedOut(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	if _, err := store.Load(); !errors.Is(err, ErrSignedOut) {
 		t.Fatalf("Load = %v", err)
 	}
-	// A file holding no access token is the same thing.
+	// A file holding no access token is treated the same way.
 	if err := store.Save(Token{Issuer: "https://auth.example"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	if _, err := store.Load(); !errors.Is(err, ErrSignedOut) {
 		t.Fatalf("a credential-less file = %v", err)
 	}
-	// So is a credential with no refresh token that has expired: there is
-	// nothing left to refresh with.
+	// So is an expired credential with no refresh token, because there is
+	// nothing to refresh with.
 	if err := store.Save(Token{AccessToken: "a", Expiry: time.Now().Add(-time.Hour)}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -348,8 +349,8 @@ func TestAnEmptyStoreIsSignedOut(t *testing.T) {
 	}
 }
 
-// A credential still in date is used as it stands, with no call to the
-// provider at all — so an ordinary command works with the network down.
+// A credential that has not expired is used as stored, with no call to the
+// provider, so an ordinary command works with the network down.
 func TestAValidCredentialNeedsNoNetwork(t *testing.T) {
 	p := &provider{approved: true}
 	s := session(t, p)
@@ -368,7 +369,7 @@ func TestAValidCredentialNeedsNoNetwork(t *testing.T) {
 }
 
 // Expiry has a minute of margin, so a call does not start with a credential
-// that dies in flight.
+// that expires while the call is in flight.
 func TestExpiryHasMargin(t *testing.T) {
 	now := time.Now()
 	if (Token{Expiry: now.Add(2 * time.Minute)}).Expired(now) {
@@ -377,8 +378,8 @@ func TestExpiryHasMargin(t *testing.T) {
 	if !(Token{Expiry: now.Add(30 * time.Second)}).Expired(now) {
 		t.Error("a credential dying in thirty seconds was called usable")
 	}
-	// A credential with no stated expiry is not expired: the provider did
-	// not say, and guessing would sign a person out for nothing.
+	// A credential with no stated expiry is not expired. The provider gave
+	// no expiry, and guessing one would sign a person out without cause.
 	if (Token{}).Expired(now) {
 		t.Error("a credential with no expiry was called expired")
 	}
