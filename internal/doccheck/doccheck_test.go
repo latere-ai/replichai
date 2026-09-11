@@ -1,0 +1,412 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package doccheck
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// readElsewhere names the variables example.env documents that no non-test
+// code reads through os.Getenv, os.LookupEnv, or a helper over them, each with
+// the reason it is read another way. Everything else example.env names has to
+// be read by the code, or the line is stale.
+var readElsewhere = map[string]string{
+	"ANTHROPIC_API_KEY":  "read through the runtimes.LookupEnv seam, so a test can hand it a fixed map",
+	"ANTHROPIC_BASE_URL": "read through the runtimes.LookupEnv seam",
+	"TEST_DATABASE_URL":  "read only by the Postgres store contracts, which are tests",
+	"REPLICHAI_E2E":      "read only by the opt-in end-to-end tests",
+}
+
+// TestEveryEnvironmentVariableIsInExampleEnv holds example.env to the code in
+// both directions: a name the code reads is documented, and a name documented
+// is read.
+func TestEveryEnvironmentVariableIsInExampleEnv(t *testing.T) {
+	root := repoRoot(t)
+	read := environmentReads(t, root)
+	if len(read) == 0 {
+		t.Fatal("no environment read found under cmd/ and internal/; the collector is broken, not the code")
+	}
+	documented := exampleEnvNames(t, root)
+
+	missing := make([]string, 0, len(read))
+	for name := range read {
+		if !documented[name] {
+			missing = append(missing, name)
+		}
+	}
+	slices.Sort(missing)
+	for _, name := range missing {
+		t.Errorf("%s is read at %s but example.env does not name it; add a line (commented out is fine) saying what it is for", name, read[name])
+	}
+
+	stale := make([]string, 0, len(documented))
+	for name := range documented {
+		if _, ok := read[name]; ok {
+			continue
+		}
+		if _, ok := readElsewhere[name]; ok {
+			continue
+		}
+		stale = append(stale, name)
+	}
+	slices.Sort(stale)
+	for _, name := range stale {
+		t.Errorf("example.env names %s, which no non-test code under cmd/ or internal/ reads through os.Getenv, os.LookupEnv, or a helper over them; remove the line if the variable is gone, or list it in readElsewhere with the reason it is read another way", name)
+	}
+}
+
+// TestEverySubcommandIsDocumented takes the CLI's subcommands from the switch
+// that dispatches them and asserts each is named as a command in README.md
+// and docs/architecture.md.
+func TestEverySubcommandIsDocumented(t *testing.T) {
+	root := repoRoot(t)
+	names := subcommands(t, filepath.Join(root, "cmd", "replichai", "main.go"))
+	for _, doc := range []string{"README.md", filepath.Join("docs", "architecture.md")} {
+		text, err := os.ReadFile(filepath.Join(root, doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mentioned := commandSpans(string(text))
+		for _, name := range names {
+			if !mentioned[name] {
+				t.Errorf("%s does not name the %q subcommand in a code span (`%s` or `replichai %s ...`), and cmd/replichai/main.go dispatches it", doc, name, name, name)
+			}
+		}
+	}
+}
+
+// repoRoot is two directories above this package, and has to hold go.mod.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("repository root not found at %s: %v", root, err)
+	}
+	return root
+}
+
+// sourceFiles lists every non-test Go file under cmd/ and internal/.
+func sourceFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	for _, dir := range []string{"cmd", "internal"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if d.Name() == "testdata" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(files) == 0 {
+		t.Fatal("no Go source found under cmd/ and internal/")
+	}
+	return files
+}
+
+// reader is a function that hands one of its parameters to os.Getenv,
+// os.LookupEnv, or another reader in its package: a string literal at that
+// position names a variable as surely as the os call itself would. envOr and
+// envBool in the composition roots are the ones today; the set is discovered,
+// not listed, so a new helper is covered the day it is written.
+type reader struct{ pkg, name string }
+
+// environmentReads returns every environment variable named by a string
+// literal at a read site, with the position of one such site. A read site
+// whose name is not a literal fails the test: it is exactly the read this
+// guard would otherwise not see.
+func environmentReads(t *testing.T, root string) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	files := map[string]*ast.File{}
+	for _, path := range sourceFiles(t, root) {
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		files[path] = f
+	}
+
+	// Readers, to a fixed point: a helper may forward its parameter to a
+	// helper rather than to the os call.
+	readers := map[reader]int{}
+	for changed := true; changed; {
+		changed = false
+		for path, f := range files {
+			pkg := filepath.Dir(path)
+			for _, decl := range f.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil || fn.Body == nil {
+					continue
+				}
+				key := reader{pkg, fn.Name.Name}
+				if _, known := readers[key]; known {
+					continue
+				}
+				if idx := forwardedParam(fn, pkg, readers); idx >= 0 {
+					readers[key] = idx
+					changed = true
+				}
+			}
+		}
+	}
+
+	reads := map[string]string{}
+	for path, f := range files {
+		pkg := filepath.Dir(path)
+		for _, decl := range f.Decls {
+			// Inside a reader, its own parameters are legitimate dynamic
+			// names: that is the forwarding the reader exists for.
+			var forwarding []string
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
+				if _, isReader := readers[reader{pkg, fn.Name.Name}]; isReader {
+					forwarding = paramNames(fn.Type)
+				}
+			}
+			ast.Inspect(decl, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				idx := readIndex(call, pkg, readers)
+				if idx < 0 || idx >= len(call.Args) {
+					return true
+				}
+				arg := call.Args[idx]
+				if lit, ok := arg.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					name, err := strconv.Unquote(lit.Value)
+					if err != nil {
+						t.Fatalf("%s: %v", fset.Position(lit.Pos()), err)
+					}
+					if _, seen := reads[name]; !seen {
+						reads[name] = fset.Position(lit.Pos()).String()
+					}
+					return true
+				}
+				if id, ok := arg.(*ast.Ident); ok && slices.Contains(forwarding, id.Name) {
+					return true
+				}
+				t.Errorf("%s: environment read with a name this test cannot see; name the variable with a string literal, or read it through a helper that forwards its parameter", fset.Position(arg.Pos()))
+				return true
+			})
+		}
+	}
+	return reads
+}
+
+// readIndex reports which argument of call names an environment variable, or
+// -1 when call is not a read: 0 for os.Getenv and os.LookupEnv, and a reader's
+// recorded parameter position for a reader in the same package.
+func readIndex(call *ast.CallExpr, pkg string, readers map[reader]int) int {
+	switch fn := call.Fun.(type) {
+	case *ast.SelectorExpr:
+		if x, ok := fn.X.(*ast.Ident); ok && x.Name == "os" && (fn.Sel.Name == "Getenv" || fn.Sel.Name == "LookupEnv") {
+			return 0
+		}
+	case *ast.Ident:
+		if idx, ok := readers[reader{pkg, fn.Name}]; ok {
+			return idx
+		}
+	}
+	return -1
+}
+
+// forwardedParam reports which of fn's parameters reaches a read site inside
+// its body, or -1 when none does.
+func forwardedParam(fn *ast.FuncDecl, pkg string, readers map[reader]int) int {
+	params := paramNames(fn.Type)
+	found := -1
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if found >= 0 {
+			return false
+		}
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		idx := readIndex(call, pkg, readers)
+		if idx < 0 || idx >= len(call.Args) {
+			return true
+		}
+		if id, ok := call.Args[idx].(*ast.Ident); ok {
+			found = slices.Index(params, id.Name)
+		}
+		return true
+	})
+	return found
+}
+
+// paramNames flattens a signature's parameters in declaration order, so
+// `key, fallback string` yields both names at their positions.
+func paramNames(ft *ast.FuncType) []string {
+	var names []string
+	if ft.Params == nil {
+		return names
+	}
+	for _, field := range ft.Params.List {
+		if len(field.Names) == 0 {
+			names = append(names, "")
+			continue
+		}
+		for _, id := range field.Names {
+			names = append(names, id.Name)
+		}
+	}
+	return names
+}
+
+// envLine is a variable in example.env: NAME=..., set or commented out.
+var envLine = regexp.MustCompile(`^\s*#?\s*([A-Z][A-Z0-9_]*)=`)
+
+// exampleEnvNames returns every variable example.env names, whether the line
+// is set or commented out — a commented line is documentation too.
+func exampleEnvNames(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	text, err := os.ReadFile(filepath.Join(root, "example.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for line := range strings.SplitSeq(string(text), "\n") {
+		if m := envLine.FindStringSubmatch(line); m != nil {
+			names[m[1]] = true
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("example.env names no variable; the parser is broken, not the file")
+	}
+	return names
+}
+
+// subcommands returns the names the CLI dispatches on: the string cases of
+// the `switch args[0]` in func run of main.go. The flag spellings of help
+// (-h, --help) are not subcommands and are reported, not counted. A dispatch
+// that cannot be found is a failure with a reason, never an empty pass.
+func subcommands(t *testing.T, mainGo string) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, mainGo, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", mainGo, err)
+	}
+	var dispatch *ast.SwitchStmt
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "run" || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if dispatch != nil {
+				return false
+			}
+			sw, ok := n.(*ast.SwitchStmt)
+			if !ok {
+				return true
+			}
+			if idx, ok := sw.Tag.(*ast.IndexExpr); ok {
+				x, xok := idx.X.(*ast.Ident)
+				i, iok := idx.Index.(*ast.BasicLit)
+				if xok && iok && x.Name == "args" && i.Value == "0" {
+					dispatch = sw
+				}
+			}
+			return true
+		})
+	}
+	if dispatch == nil {
+		t.Fatalf("no `switch args[0]` in func run of %s: the CLI's dispatch has moved, so move this search with it rather than letting the docs drift", mainGo)
+	}
+	var names []string
+	for _, stmt := range dispatch.Body.List {
+		clause, ok := stmt.(*ast.CaseClause)
+		if !ok {
+			t.Fatalf("%s: a switch body holds something other than a case clause", fset.Position(stmt.Pos()))
+		}
+		for _, expr := range clause.List {
+			lit, ok := expr.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				t.Fatalf("%s: a dispatch case that is not a string literal; this test reads only literal subcommand names", fset.Position(expr.Pos()))
+			}
+			name, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasPrefix(name, "-") {
+				t.Logf("%q is a flag spelling of help, not a subcommand; not counted", name)
+				continue
+			}
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		t.Fatalf("the dispatch in %s names no subcommand", mainGo)
+	}
+	return names
+}
+
+// codeSpan is one backticked span inside a line of markdown.
+var codeSpan = regexp.MustCompile("`([^`]+)`")
+
+// commandSpans returns the words a document names as commands: the first word
+// of each code span, or the second where the first is `replichai`, and the
+// same for each line of a fenced block. So `replichai audit <paper>`, `audit`,
+// and `replichai sessions ls` name audit, audit, and sessions — and a mention
+// in running prose, where `run` is also an English word, does not count.
+//
+// It works a line at a time: a fence is a whole line, and an inline span never
+// crosses one. Matching spans across the whole document would pair the odd
+// backticks of a fence with the next span and read the prose between spans as
+// code from there on.
+func commandSpans(text string) map[string]bool {
+	found := map[string]bool{}
+	name := func(span string) {
+		fields := strings.Fields(span)
+		switch {
+		case len(fields) == 0:
+		case fields[0] == "replichai" && len(fields) > 1:
+			found[fields[1]] = true
+		default:
+			found[fields[0]] = true
+		}
+	}
+	fenced := false
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fenced = !fenced
+			continue
+		}
+		if fenced {
+			name(line)
+			continue
+		}
+		for _, m := range codeSpan.FindAllStringSubmatch(line, -1) {
+			name(m[1])
+		}
+	}
+	return found
+}
