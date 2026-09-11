@@ -5,6 +5,7 @@ package github
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -138,4 +139,17 @@ func truncate(text string, limit int) string {
 		return text
 	}
 	return text[:limit] + "…"
+}
+
+// isEmptyRepo reports GitHub's answer for a repository that holds no commit.
+// It says it two ways — 409 with "Git Repository is empty", and 404 where the
+// repository was created moments ago and the commits endpoint has nothing to
+// address — and callers that ask for a head want the same answer for both: no
+// commit, which is a state and not a failure (044d).
+func isEmptyRepo(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Status == http.StatusConflict || apiErr.Status == http.StatusNotFound
 }
