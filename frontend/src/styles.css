@@ -1128,9 +1128,20 @@ h1.screen-title {
 .paper-group > .row {
   border-top: none;
 }
+/* A run is denser than the paper it belongs to. A paper is read; its runs are
+   scanned as a column, and five of them at a paper's own height pushes the next
+   paper off the screen. Tighter rhythm, a narrower phase column — the pill sets
+   its own width — and less air between the cells, so what differs between the
+   runs sits closer together. */
 .row-nested {
   padding-left: 30px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  gap: 12px;
   background: var(--bg-sunken, transparent);
+}
+.row-nested .phase-slot {
+  min-width: 76px;
 }
 .row-nested::before {
   content: '';
