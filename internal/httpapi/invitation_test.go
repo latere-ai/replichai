@@ -12,12 +12,12 @@ import (
 	"testing"
 )
 
-// fakeNotifier records what the platform tried to tell somebody, and can fail
-// on demand.
+// fakeNotifier records the notifications the platform tried to send, and can
+// be made to fail.
 type fakeNotifier struct {
 	mu     sync.Mutex
 	sent   []sentInvitation
-	frozen []string // emails told their account is frozen (022d)
+	frozen []string // Addresses told their account is frozen (022d).
 	err    error
 	calls  int
 }
@@ -60,8 +60,9 @@ func (f *fakeNotifier) last() (sentInvitation, int) {
 	return f.sent[len(f.sent)-1], f.calls
 }
 
-// Inviting somebody reaches them. Before 006p the membership row was the whole
-// feature: the person named had no way to learn it existed.
+// TestInvitingAMemberSendsAnInvitation checks that inviting somebody sends
+// them an invitation. Before 006p the membership row was the whole feature,
+// and the person named had no way to learn that it existed.
 func TestInvitingAMemberSendsAnInvitation(t *testing.T) {
 	d := testDeps(allowAll)
 	notifier := &fakeNotifier{}
@@ -80,14 +81,15 @@ func TestInvitingAMemberSendsAnInvitation(t *testing.T) {
 	if got.to != "collab@x.com" || got.projectID != p.ID || got.projectName != "Reproducing Study 1" {
 		t.Errorf("invitation = %+v", got)
 	}
-	// The inviter is named from the session — a reader learns who added them,
-	// not an opaque subject.
+	// The inviter is named from the session, so the reader learns who added
+	// them rather than an opaque subject.
 	if got.inviter != "Ada Lovelace" {
 		t.Errorf("inviter = %q, want the session's display name", got.inviter)
 	}
 }
 
-// With no display name from the identity provider, the address stands in.
+// TestInvitationNamesTheInviterByAddressWhenNameless checks that when the
+// identity provider supplies no display name, the address is used instead.
 func TestInvitationNamesTheInviterByAddressWhenNameless(t *testing.T) {
 	d := testDeps(allowAll)
 	notifier := &fakeNotifier{}
@@ -103,8 +105,9 @@ func TestInvitationNamesTheInviterByAddressWhenNameless(t *testing.T) {
 	}
 }
 
-// A mail provider that is down must not read to the owner as a failure to
-// share their work: the membership is the durable thing.
+// TestAFailedInvitationStillAddsTheMember checks that a mail provider that is
+// down does not make sharing fail for the owner. The membership is what
+// persists.
 func TestAFailedInvitationStillAddsTheMember(t *testing.T) {
 	d := testDeps(allowAll)
 	notifier := &fakeNotifier{err: errors.New("provider is down")}
@@ -128,8 +131,9 @@ func TestAFailedInvitationStillAddsTheMember(t *testing.T) {
 	}
 }
 
-// Re-inviting somebody already on the project says nothing; re-inviting
-// somebody who was removed is a real invitation and gets one.
+// TestInvitationIsNotRepeatedForAnExistingMember checks that re-inviting an
+// existing member sends nothing, and that re-inviting somebody who was removed
+// is a new invitation and sends one.
 func TestInvitationIsNotRepeatedForAnExistingMember(t *testing.T) {
 	d := testDeps(allowAll)
 	notifier := &fakeNotifier{}
@@ -151,7 +155,8 @@ func TestInvitationIsNotRepeatedForAnExistingMember(t *testing.T) {
 	}
 }
 
-// A refused invite sends nothing: nobody was added.
+// TestNoInvitationWhenTheAddIsRefused checks that a refused invite sends
+// nothing, because nobody was added.
 func TestNoInvitationWhenTheAddIsRefused(t *testing.T) {
 	d := testDeps(allowAll)
 	notifier := &fakeNotifier{}
@@ -169,7 +174,8 @@ func TestNoInvitationWhenTheAddIsRefused(t *testing.T) {
 	}
 }
 
-// A deployment with no mail configured wires no notifier and still works.
+// TestAddingAMemberWorksWithNoNotifier checks that a deployment with no mail
+// configured, and so no notifier, still adds members.
 func TestAddingAMemberWorksWithNoNotifier(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -181,8 +187,9 @@ func TestAddingAMemberWorksWithNoNotifier(t *testing.T) {
 	}
 }
 
-// The address invited is the one told, normalised the way membership
-// normalises it — never a second address out of the body.
+// TestInvitationGoesToTheAddressInvited checks that the invitation goes to
+// the address invited, normalised the way membership normalises it, and never
+// to a second address from the body.
 func TestInvitationGoesToTheAddressInvited(t *testing.T) {
 	d := testDeps(allowAll)
 	notifier := &fakeNotifier{}

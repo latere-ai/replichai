@@ -15,8 +15,9 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// 019 AC1/AC2/AC5: a trashed project leaves every list it was in, is answered by
-// the trash screen, and comes back whole. Only its owner may put it there.
+// TestTrashAndRestore checks 019 AC1, AC2 and AC5: a trashed project leaves
+// every list it was in, is listed by the trash screen, and is restored whole.
+// Only its owner may trash it.
 func TestTrashAndRestore(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -35,7 +36,8 @@ func TestTrashAndRestore(t *testing.T) {
 	}
 
 	// Neither a collaborator nor a stranger may remove somebody else's project,
-	// and a stranger is not even told it exists.
+	// and a stranger is answered 404 so that the project's existence is not
+	// revealed.
 	if w := doAs(t, h, "DELETE", "/projects/"+p.ID, "", collab); w.Code != http.StatusForbidden {
 		t.Errorf("collaborator delete = %d, want 403", w.Code)
 	}
@@ -47,14 +49,14 @@ func TestTrashAndRestore(t *testing.T) {
 		t.Fatalf("delete = %d, want 204", w.Code)
 	}
 
-	// Gone from the owner's list and from the collaborator's.
+	// The project is gone from the owner's list and from the collaborator's.
 	if n := len(listOf(t, h, "/projects", owner)); n != 0 {
 		t.Errorf("the owner's list holds %d projects, want none", n)
 	}
 	if n := len(listOf(t, h, "/projects", collab)); n != 0 {
 		t.Errorf("the collaborator's list holds %d projects, want none — a trashed project is nobody's shared project", n)
 	}
-	// And in the trash, which is the owner's alone.
+	// It is in the trash, which only the owner sees.
 	trash := listOf(t, h, "/projects/trash", owner)
 	if len(trash) != 1 || trash[0].ID != p.ID {
 		t.Fatalf("trash = %+v, want the one project", trash)
@@ -77,10 +79,11 @@ func TestTrashAndRestore(t *testing.T) {
 	}
 }
 
-// The trash shows the deleted time, so it sorts on the deleted time. A project
-// created long ago and thrown away today belongs above one created recently and
-// thrown away last month — the ordinary list's modified-time sort would put them
-// the other way round, which is a column that does not order what it shows.
+// TestTrashIsSortedByWhenItWasDeleted checks that the trash, which shows the
+// deleted time, sorts on the deleted time. A project created long ago and
+// trashed today belongs above one created recently and trashed last month. The
+// ordinary list's modified-time sort would put them the other way round, so
+// the displayed column would not match the order.
 func TestTrashIsSortedByWhenItWasDeleted(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -89,8 +92,8 @@ func TestTrashIsSortedByWhenItWasDeleted(t *testing.T) {
 
 	old, _ := d.Projects.Create(ctx, me.Sub, "Old but just deleted")
 	recent, _ := d.Projects.Create(ctx, me.Sub, "New but deleted earlier")
-	// The newer project is worked in (so it has the later modified time) and
-	// thrown away first; the older one is thrown away last.
+	// The newer project is modified, so it has the later modified time, and is
+	// trashed first; the older one is trashed last.
 	if err := d.Projects.AddPaper(ctx, recent.ID, project.Paper{Key: "arxiv:1", Ref: "r", AddedBy: me.Sub}); err != nil {
 		t.Fatalf("add paper: %v", err)
 	}
@@ -110,9 +113,10 @@ func TestTrashIsSortedByWhenItWasDeleted(t *testing.T) {
 	}
 }
 
-// 019 AC6: a trashed project's address still resolves for its owner, read-only,
-// and 404s everybody else — including the sessions and transcripts underneath
-// it, which inherit the decision through mayViewProject.
+// TestTrashedProjectIsOwnerOnlyAndReadOnly checks 019 AC6: a trashed
+// project's address still resolves for its owner, read-only, and answers 404
+// to everybody else, including for the sessions and transcripts under it,
+// which inherit the decision through mayViewProject.
 func TestTrashedProjectIsOwnerOnlyAndReadOnly(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -133,8 +137,9 @@ func TestTrashedProjectIsOwnerOnlyAndReadOnly(t *testing.T) {
 		t.Fatalf("delete: %d", w.Code)
 	}
 
-	// The owner can still read it — 013's rule is that the address is the state,
-	// and a link that 404s the moment somebody tidies up lies about why.
+	// The owner can still read it. The rule from 013 is that the address is the
+	// state, and a link that answers 404 as soon as somebody tidies up would
+	// misreport why.
 	w := doAs(t, h, "GET", "/projects/"+p.ID, "", owner)
 	if w.Code != http.StatusOK {
 		t.Fatalf("the owner reads their trashed project = %d, want 200", w.Code)
@@ -155,7 +160,7 @@ func TestTrashedProjectIsOwnerOnlyAndReadOnly(t *testing.T) {
 		}
 	}
 
-	// Every write is refused, at the one gate they all pass.
+	// Every write is refused at the one check they all pass through.
 	writes := []struct{ method, path, body string }{
 		{"POST", "/projects/" + p.ID + "/papers", `{"url":"https://arxiv.org/abs/2301.03711"}`},
 		{"POST", "/projects/" + p.ID + "/sessions", `{"paper_key":"arxiv:2301.03711"}`},
@@ -172,9 +177,10 @@ func TestTrashedProjectIsOwnerOnlyAndReadOnly(t *testing.T) {
 	}
 }
 
-// 019 AC3/AC4: a running session blocks the removal, and a public project is
-// withdrawn on the way out — a publication that vanishes with no retraction is
-// what 006o exists to prevent.
+// TestTrashRefusesARunningSessionAndWithdrawsAPublication checks 019 AC3 and
+// AC4: a running session blocks the removal, and a public project is withdrawn
+// when it is trashed, because 006o exists to prevent a publication vanishing
+// with no retraction.
 func TestTrashRefusesARunningSessionAndWithdrawsAPublication(t *testing.T) {
 	pub := &fakeRepoPub{}
 	d := testDeps(allowAll)
@@ -195,8 +201,8 @@ func TestTrashRefusesARunningSessionAndWithdrawsAPublication(t *testing.T) {
 		t.Error("the refused delete trashed the project anyway")
 	}
 
-	// A published project: withdrawn, its repository closed, and the retraction
-	// recorded rather than skipped.
+	// A published project is withdrawn, its repository is closed, and the
+	// retraction is recorded rather than skipped.
 	published, _ := d.Projects.Create(ctx, owner.Sub, "Published")
 	_ = publishInto(t, d.Jobs, owner.Sub, published.ID, "r1")
 	publishable(t, d, owner.Sub, "ada")
@@ -224,14 +230,15 @@ func TestTrashRefusesARunningSessionAndWithdrawsAPublication(t *testing.T) {
 	}
 }
 
-// 019 AC7/AC8/AC9: a permanent delete is refused until the project is in the
-// trash and its pot is empty; when it goes, it takes its sessions and papers,
-// and leaves the repositories standing but closed.
+// TestPurgeGuardsAndCascade checks 019 AC7, AC8 and AC9: a permanent delete is
+// refused until the project is in the trash and its pot is empty; when it is
+// purged, its sessions and papers go with it, and the repositories remain but
+// are closed.
 func TestPurgeGuardsAndCascade(t *testing.T) {
 	pub := &fakeRepoPub{}
 	d := testDeps(allowAll)
-	// A ledger beside an unmetered job store: this test is about what a purge
-	// refuses to leave behind, not about the enqueue gate.
+	// The ledger sits beside an unmetered job store. This test covers what a
+	// purge refuses to leave behind, not the enqueue gate.
 	members, ok := d.Members.(credit.Members)
 	if !ok {
 		t.Fatalf("the test membership store %T cannot answer roles", d.Members)
@@ -251,7 +258,8 @@ func TestPurgeGuardsAndCascade(t *testing.T) {
 		t.Fatalf("add paper: %v", err)
 	}
 
-	// Not in the trash yet: a purge cannot skip the reversible step.
+	// The project is not in the trash yet, so the purge is refused. A purge
+	// cannot skip the reversible step.
 	got := doAs(t, h, "DELETE", "/projects/"+p.ID+"?purge=1", "", payer)
 	if got.Code != http.StatusConflict || errorCode(got.Body.Bytes()) != "not_trashed" {
 		t.Errorf("purge before trash = %d/%q, want 409/not_trashed", got.Code, errorCode(got.Body.Bytes()))
@@ -261,8 +269,8 @@ func TestPurgeGuardsAndCascade(t *testing.T) {
 		t.Fatalf("trash: %d", w.Code)
 	}
 
-	// Funded: the money has to be accounted for before the container holding it
-	// can be forgotten.
+	// The pot is funded, so the purge is refused. The credits have to be
+	// accounted for before the project holding them can be deleted.
 	topUp(t, ledger, payer, 10*credit.Dollar)
 	if err := ledger.Allocate(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, p.ID, p.Title, 5*credit.Dollar); err != nil {
 		t.Fatalf("allocate: %v", err)
@@ -282,7 +290,7 @@ func TestPurgeGuardsAndCascade(t *testing.T) {
 		t.Fatalf("purge = %d, want 204", w.Code)
 	}
 
-	// Gone from every store it was in.
+	// The project is gone from every store it was in.
 	if _, err := d.Projects.Get(ctx, p.ID); err == nil {
 		t.Error("the project row survived the purge")
 	}
@@ -292,16 +300,18 @@ func TestPurgeGuardsAndCascade(t *testing.T) {
 	if _, err := d.Jobs.Get(ctx, sess.ID); err == nil {
 		t.Error("the session row survived the purge")
 	}
-	// The repository is closed, not destroyed: a repository the agent authored is
-	// evidence, and what the purge ends is the app's claim on it.
+	// The repository is closed, not destroyed. A repository the agent authored
+	// is evidence, and the purge ends only the app's claim on it.
 	if len(pub.closed) == 0 {
 		t.Error("the forge repository was left open by the purge")
 	}
 }
 
-// The trash screen's path also looks like a project id, and Go's mux resolves it
-// by preferring the literal segment. Asserting it beats trusting it: a
-// regression here turns the trash into a 404 on a project that does not exist.
+// TestTrashPathBeatsTheProjectIdPattern checks that /projects/trash is routed
+// to the trash list. The path also matches the project id pattern, and Go's mux
+// resolves it by preferring the literal segment. The test asserts this rather
+// than trusting it, because a regression would turn the trash into a 404 for a
+// project that does not exist.
 func TestTrashPathBeatsTheProjectIdPattern(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()

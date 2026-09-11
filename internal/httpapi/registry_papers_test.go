@@ -14,15 +14,16 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// 043: a registry card says which paper it is a reproduction of. The reader it
-// says it to has no account — the landing page's strip and /registry are read by
-// strangers — so every assertion here drives GET /public with no principal at
-// all, behind a gate that refuses everyone. A test written as the owner would
-// pass while the landing page rendered a blank line.
+// These tests cover 043: a registry card names the paper it is a reproduction
+// of. The reader has no account, because the landing page's strip and
+// /registry are read by signed-out visitors, so every assertion here drives
+// GET /public with no principal, behind a gate that refuses everyone. A test
+// written as the owner would pass while the landing page rendered a blank
+// line.
 
-// withPapers files papers on a project, straight through the store: what is
-// being tested is the read, and adding a paper through the API is a gated write
-// that would need an identity this test deliberately does not have.
+// withPapers files papers on a project directly through the store. The read
+// is what is under test, and adding a paper through the API is a gated write
+// that would need an identity these tests deliberately do not have.
 func withPapers(t *testing.T, d Deps, projectID string, papers ...project.Paper) {
 	t.Helper()
 	for _, p := range papers {
@@ -59,21 +60,23 @@ func TestThePublicListNamesEachPaper(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("the signed-out registry carries %d papers, want both of them: %+v", len(got), got)
 	}
-	// Added order, so "the first paper" means the same thing on the card as it
-	// does on the project screen.
+	// Papers are in the order they were added, so the first paper is the same
+	// on the card as on the project screen.
 	if got[0].Title != "Point of no Undo" || got[1].Title != "PinchCatcher" {
 		t.Errorf("paper order = %q, %q", got[0].Title, got[1].Title)
 	}
 	if len(got[0].Authors) != 2 || got[0].Authors[0] != "Ada Lovelace" || got[0].Venue != "CHI '24" || got[0].Year != 2024 {
 		t.Errorf("the citation a stranger reads = %+v", got[0])
 	}
-	// A paper nobody could look up carries no citation, and says so by absence
-	// rather than by a placeholder the card would have to filter out again.
+	// A paper that could not be looked up carries no citation. The fields are
+	// absent rather than filled with a placeholder the card would have to
+	// filter out.
 	if len(got[1].Authors) != 0 || got[1].Venue != "" || got[1].Year != 0 {
 		t.Errorf("a paper with no record arrived carrying one: %+v", got[1])
 	}
-	// The wire is the trimmed citation, not the record. An abstract is
-	// paragraphs, and six cards must not ship six of them to print six lines.
+	// The response carries the trimmed citation, not the whole record. An
+	// abstract is several paragraphs, and six cards must not send six of them
+	// to print six lines.
 	if strings.Contains(string(body), "abstract") || strings.Contains(string(body), "We measure attention") {
 		t.Error("the public list ships a paper's abstract")
 	}
@@ -84,9 +87,10 @@ func TestThePublicListNamesEachPaper(t *testing.T) {
 	}
 }
 
-// The list reads every project's papers in one call. Without this the registry
-// opens one store round trip per row on the route the internet calls
-// unauthenticated, and nothing else in the response would look wrong.
+// TestThePublicListReadsPapersOnce checks that the list reads every project's
+// papers in one call. Without this the registry would make one store round
+// trip per row on the route that unauthenticated callers use, and nothing else
+// in the response would look wrong.
 func TestThePublicListReadsPapersOnce(t *testing.T) {
 	d := pricedDeps(allowAll)
 	h := NewRouter(d).Handler()

@@ -14,9 +14,9 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// The sitemap (042b). Every assertion is on the file a crawler parses, decoded
-// as XML rather than grepped, because "it contains this string" would pass on a
-// document no crawler can read.
+// These tests cover the sitemap (042b). Every assertion is on the file a
+// crawler parses, decoded as XML rather than searched as text, because a
+// substring check would pass on a document no crawler can read.
 
 func decodeSitemap(t *testing.T, body string) urlset {
 	t.Helper()
@@ -38,8 +38,9 @@ func locations(set urlset) map[string]string {
 	return out
 }
 
-// AC2, AC3: the file lists the public zone — the landing, the registry, each
-// published project, each published session under one, and each signer's page.
+// TestTheSitemapListsThePublicZone covers AC2 and AC3: the file lists the
+// public zone, which is the landing page, the registry, each published
+// project, each published session under one, and each signer's page.
 func TestTheSitemapListsThePublicZone(t *testing.T) {
 	d := seoDeps()
 	ctx := context.Background()
@@ -76,8 +77,8 @@ func TestTheSitemapListsThePublicZone(t *testing.T) {
 			t.Errorf("the sitemap does not list %s", want)
 		}
 	}
-	// A session with nothing published is an address whose own head says
-	// noindex; listing it would be the sitemap contradicting the page.
+	// A session with nothing published is a page whose own head says noindex.
+	// Listing it would make the sitemap contradict the page.
 	if _, ok := at["https://replichai.test/p/"+p.ID+"/s/"+pending.ID]; ok {
 		t.Error("the sitemap lists a session that has published nothing")
 	}
@@ -87,7 +88,8 @@ func TestTheSitemapListsThePublicZone(t *testing.T) {
 	}
 }
 
-// AC4: nothing private, trashed, unpublished or withdrawn is listed.
+// TestTheSitemapListsNothingPrivate covers AC4: nothing private, trashed,
+// unpublished or withdrawn is listed.
 func TestTheSitemapListsNothingPrivate(t *testing.T) {
 	d := seoDeps()
 	ctx := context.Background()
@@ -103,7 +105,8 @@ func TestTheSitemapListsNothingPrivate(t *testing.T) {
 	if err := d.Projects.Trash(ctx, trashed.ID); err != nil {
 		t.Fatalf("trash: %v", err)
 	}
-	// A signer whose page is not public: the sign-off stands, the link does not.
+	// A signer whose page is not public. The sign-off stands, but the page is
+	// not linked.
 	if _, err := d.Profiles.Save(ctx, profile.Profile{
 		Principal: "owner-sub", DisplayName: "Ada Lovelace", Handle: "ada", Public: false,
 	}); err != nil {
@@ -127,7 +130,8 @@ func TestTheSitemapListsNothingPrivate(t *testing.T) {
 	}
 }
 
-// AC5: a listed URL and the canonical of the page it names are one string.
+// TestAListedURLIsThatPagesCanonical covers AC5: a listed URL is identical to
+// the canonical URL of the page it names.
 func TestAListedURLIsThatPagesCanonical(t *testing.T) {
 	d := seoDeps()
 	describedProject(t, d)
@@ -149,8 +153,9 @@ func TestAListedURLIsThatPagesCanonical(t *testing.T) {
 	}
 }
 
-// AC7: a store that cannot answer produces an error, never an empty file. An
-// empty urlset says there is nothing to index, and a crawler believes it.
+// TestASitemapIsNeverEmptyByAccident covers AC7: a store that cannot answer
+// produces an error, never an empty file. An empty urlset says there is
+// nothing to index, and a crawler believes it.
 func TestASitemapIsNeverEmptyByAccident(t *testing.T) {
 	d := seoDeps()
 	d.Projects = failingProjects{Store: d.Projects.(project.Store), publicErr: context.DeadlineExceeded}

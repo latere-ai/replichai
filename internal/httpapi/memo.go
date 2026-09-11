@@ -10,11 +10,11 @@ import (
 )
 
 // memo holds one computed value for a bounded time. It exists for the two
-// answers the internet asks for without signing in — the public registry and
-// the sitemap — which are the same for every anonymous caller and cost
-// several queries per public project to build. Building them once per TTL,
-// and again the moment a publication changes, turns a crawler's every hit
-// from a table scan into a read of a slice.
+// responses served without signing in, the public registry and the sitemap,
+// which are the same for every anonymous caller and cost several queries per
+// public project to build. Building them once per TTL, and again as soon as a
+// publication changes, means a crawler's request reads a cached slice rather
+// than running a table scan.
 type memo[T any] struct {
 	mu    sync.Mutex
 	ttl   time.Duration
@@ -46,9 +46,9 @@ func (m *memo[T]) get(ctx context.Context, fill func(context.Context) (T, error)
 	return value, nil
 }
 
-// invalidate drops the held value, so the next call rebuilds it. A publication
-// changing calls this: what the internet is told must not lag what an owner
-// just did.
+// invalidate drops the held value, so the next call rebuilds it. It is called
+// when a publication changes, so the public response does not lag behind what
+// an owner just did.
 func (m *memo[T]) invalidate() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -56,6 +56,6 @@ func (m *memo[T]) invalidate() {
 }
 
 // publicTTL bounds how long the anonymous registry and the sitemap are held
-// between rebuilds when nothing invalidates them: a rename or a new session
-// shows up within this, a publication change shows up at once.
+// between rebuilds when nothing invalidates them. A rename or a new session
+// appears within this time; a publication change appears at once.
 const publicTTL = 30 * time.Second

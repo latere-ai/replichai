@@ -15,26 +15,26 @@ import (
 	"github.com/latere-ai/replichai/internal/seo"
 )
 
-// The list of what is worth reading (042b).
+// This file serves the sitemap (042b).
 //
 // Without it the public zone is discoverable only by following links from a
-// landing page that links to none of it. The content is a table — the projects
+// landing page that links to none of it. The content is tabular: the projects
 // somebody published, the sessions under them, and the researchers who signed
-// them off — so the file is generated from that table rather than written by
-// hand and left to go stale.
+// them off. The file is therefore generated from that data rather than written
+// by hand and left to go stale.
 //
-// Every URL comes from seo's own path helpers, so a listed address and the
-// canonical link on the page it names are the same string by construction.
+// Every URL comes from the seo package's path helpers, so a listed address and
+// the canonical link on the page it names are the same string by construction.
 
-// sitemapTTL is how long a crawler may reuse the file. The queries behind it are
-// the registry's own and are small, but a crawler asks often enough to make that
-// a hot read; an hour is short enough that a publication appears the
-// same day it happens.
+// sitemapTTL is how long a crawler may reuse the file. The queries behind it
+// are the registry's own and are small, but crawlers request the file often
+// enough to make it a hot read. An hour is short enough that a publication
+// appears the same day it happens.
 const sitemapTTL = "public, max-age=3600"
 
-// urlset is the sitemaps.org document, as a shape rather than a string. Building
-// XML by concatenation is how a researcher's handle with an ampersand in it ends
-// up producing a file no crawler will parse.
+// urlset is the sitemaps.org document as a struct rather than a string. XML
+// built by string concatenation would produce an unparseable file the first
+// time a researcher's handle contained an ampersand.
 type urlset struct {
 	XMLName xml.Name  `xml:"urlset"`
 	NS      string    `xml:"xmlns,attr"`
@@ -43,19 +43,20 @@ type urlset struct {
 
 type sitemap struct {
 	Loc string `xml:"loc"`
-	// LastMod is omitted when the app cannot substantiate one. A date that is
-	// merely "today" tells a crawler the page changed when it did not.
+	// LastMod is omitted when the app has no recorded modification time. A
+	// date that is simply the current day would tell a crawler the page
+	// changed when it did not.
 	LastMod string `xml:"lastmod,omitempty"`
 }
 
 const sitemapNS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 
-// sitemapXML lists the public zone: the landing, the registry, every published
-// project, every published session under one, and the page of every researcher
-// who signed one.
+// sitemapXML lists the public zone: the landing page, the registry, every
+// published project, every published session under one, and the page of every
+// researcher who signed one.
 //
-// A store failure answers 500 rather than an empty urlset — an empty one is a
-// statement that there is nothing to index, and a crawler will believe it.
+// A store failure answers 500 rather than an empty urlset, because an empty
+// urlset states that there is nothing to index, and a crawler would believe it.
 func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 	// The sitemap is the same for every caller and costs a query per public
 	// project and one per its sessions; it is built once per publicTTL, and
@@ -81,8 +82,8 @@ func (rt *Router) buildSitemap(ctx context.Context) ([]byte, error) {
 	for _, p := range projects {
 		ids = append(ids, p.ID)
 	}
-	// 018's modified time: the newest of the project, its papers and its
-	// sessions. A read failure costs the dates, not the file.
+	// The modified time 018 defines is the newest of the project, its papers
+	// and its sessions. A read failure omits the dates rather than the file.
 	modified, err := rt.projects.ModifiedAt(ctx, ids)
 	if err != nil {
 		slog.WarnContext(ctx, "sitemap: reading modified times", "error", err)
@@ -97,10 +98,10 @@ func (rt *Router) buildSitemap(ctx context.Context) ([]byte, error) {
 			LastMod: stamp(later(p.CreatedAt, modified[p.ID])),
 		})
 		urls = append(urls, rt.sessionURLs(ctx, p)...)
-		// The researchers worth listing are exactly those who signed public
-		// work, and signerHandle already returns nothing for a profile its owner
-		// has not made public — so there is no separate "list public profiles"
-		// read, and no way for this file to name a page that does not exist.
+		// The researchers listed are exactly those who signed public work, and
+		// signerHandle already returns nothing for a profile its owner has not
+		// made public. There is therefore no separate read of public profiles,
+		// and this file cannot name a page that does not exist.
 		if h := rt.signerHandle(ctx, p); h != "" && !handles[h] {
 			handles[h] = true
 			urls = append(urls, sitemap{Loc: rt.site.Abs(seo.ProfilePath(h))})
@@ -118,9 +119,9 @@ func (rt *Router) buildSitemap(ctx context.Context) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// sessionURLs lists the sessions under a public project that have something
-// published to read — the same predicate the session page describes itself on,
-// so the sitemap cannot offer an address whose head says noindex.
+// sessionURLs lists the sessions under a public project that have a published
+// repository. This is the same predicate the session page uses to describe
+// itself, so the sitemap cannot list an address whose head says noindex.
 func (rt *Router) sessionURLs(ctx context.Context, p project.Project) []sitemap {
 	sessions, err := rt.jobs.ListByProject(ctx, p.ID)
 	if err != nil {
@@ -140,8 +141,8 @@ func (rt *Router) sessionURLs(ctx context.Context, p project.Project) []sitemap 
 	return out
 }
 
-// stamp renders a time the way a sitemap wants it, and renders nothing for a
-// time the app never recorded.
+// stamp renders a time in the format a sitemap requires, and renders nothing
+// for a zero time.
 func stamp(t time.Time) string {
 	if t.IsZero() {
 		return ""

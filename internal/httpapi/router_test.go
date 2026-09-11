@@ -42,8 +42,8 @@ func testDeps(gate Gate) Deps {
 }
 
 // publishable gives a principal the public profile 006r requires before they
-// may sign a project public. Every publish test needs it, so it is one helper
-// rather than five copies of the same three lines.
+// may sign a project public. Every publish test needs it, so it is a shared
+// helper.
 func publishable(t *testing.T, d Deps, principal, handle string) {
 	t.Helper()
 	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
@@ -59,7 +59,7 @@ func publishable(t *testing.T, d Deps, principal, handle string) {
 
 type fakeRepro struct {
 	getErr, transcriptErr error
-	findings              []byte // verdict.json, when the test supplies one (021a)
+	findings              []byte // verdict.json, when the test supplies one (021a).
 }
 
 func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
@@ -70,7 +70,8 @@ func (f *fakeRepro) Get(_ context.Context, id string) (Reproduction, error) {
 	case "r1":
 		return Reproduction{ID: "r1", Repo: "open-hai/r1", Verdict: "passed", CanPublish: true}, nil
 	case "flagged":
-		// A reproduction whose tree flagged third-party data — barred from public.
+		// A reproduction whose tree flagged third-party data, so it may not be
+		// made public.
 		return Reproduction{ID: "flagged", Repo: "open-hai/flagged", CanPublish: false}, nil
 	default:
 		return Reproduction{}, ErrReproNotFound
@@ -98,7 +99,7 @@ func (f *fakeRepro) Artifact(_ context.Context, id, path string) ([]byte, error)
 }
 func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 	if f.transcriptErr != nil {
-		return nil, f.transcriptErr // a forge/transport failure — must become a 500, not a 404
+		return nil, f.transcriptErr // A forge or transport failure must become a 500, not a 404.
 	}
 	switch id {
 	case "r1":
@@ -109,7 +110,8 @@ func (f *fakeRepro) Transcript(_ context.Context, id string) ([]byte, error) {
 			`{"role":"user","kind":"tool_result","content":"file.txt"}` + "\n" +
 			`{"role":"system","kind":"model_request_end","usage":{"InputTokens":100,"OutputTokens":50,"CachedInputTokens":10}}` + "\n"), nil
 	case "bare":
-		// A transcript with no per-request usage anywhere — usage is unknowable.
+		// A transcript with no per-request usage anywhere, so usage cannot be
+		// derived.
 		return []byte(`{"role":"agent","kind":"message","content":"hi"}` + "\n"), nil
 	case "multi":
 		// Two charged requests either side of an uncharged event, so a per-event
@@ -146,7 +148,7 @@ type submitResult struct {
 }
 
 // createWithPaper opens a project holding one paper and returns the project id.
-// Since 012 this starts nothing — it is the first half of what POST /papers used
+// Since 012 this starts nothing; it is the first half of what POST /papers used
 // to do in one call.
 func createWithPaper(t *testing.T, h http.Handler, url, sub string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
@@ -158,7 +160,7 @@ func createWithPaper(t *testing.T, h http.Handler, url, sub string) (*httptest.R
 	return w, got.ProjectID
 }
 
-// startPaper runs a paper a project already holds — the second half.
+// startPaper runs a paper a project already holds. It is the second half.
 func startPaper(t *testing.T, h http.Handler, projectID, key, sub string) (*httptest.ResponseRecorder, submitResult) {
 	t.Helper()
 	w := do(t, h, "POST", "/projects/"+projectID+"/sessions", `{"paper_key":"`+key+`"}`, sub)
@@ -167,9 +169,9 @@ func startPaper(t *testing.T, h http.Handler, projectID, key, sub string) (*http
 	return w, got
 }
 
-// submit is the whole old flow in one call, for the many tests that only need a
-// running session and do not care which half produced it: create a project
-// holding the paper, then start it.
+// submit is the whole old flow in one call: create a project holding the
+// paper, then start it. Many tests only need a running session and do not
+// depend on which half produced it.
 func submit(t *testing.T, h http.Handler, url, sub string) (*httptest.ResponseRecorder, submitResult) {
 	t.Helper()
 	w, projectID := createWithPaper(t, h, url, sub)
@@ -185,9 +187,10 @@ func submit(t *testing.T, h http.Handler, url, sub string) (*httptest.ResponseRe
 	return w, got
 }
 
-// 012: creating a project records the papers it is about and starts nothing.
-// The session is a second, deliberate act — which is what lets somebody name a
-// project and write down its papers before they have the credits to run them.
+// TestCreateRecordsPapersAndStartsNothing covers 012: creating a project
+// records the papers it is about and starts nothing. Starting a session is a
+// separate second step, which lets somebody name a project and record its
+// papers before they have the credits to run them.
 func TestCreateRecordsPapersAndStartsNothing(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -205,7 +208,7 @@ func TestCreateRecordsPapersAndStartsNothing(t *testing.T) {
 	if len(sessions) != 0 {
 		t.Fatalf("create started %d sessions, want 0", len(sessions))
 	}
-	// But the paper is on the project, by its offline identity.
+	// The paper is on the project, under its offline identity.
 	papers, err := d.Projects.ListPapers(context.Background(), projectID)
 	if err != nil || len(papers) != 1 || papers[0].Key != "arxiv:2302.03714" {
 		t.Fatalf("papers = %+v, err %v", papers, err)
@@ -214,7 +217,7 @@ func TestCreateRecordsPapersAndStartsNothing(t *testing.T) {
 		t.Errorf("paper = %+v", papers[0])
 	}
 
-	// Starting it is the second act, and it is the one that makes a session.
+	// Starting the paper is the second step, and the one that creates a session.
 	sw, got := startPaper(t, h, projectID, "arxiv:2302.03714", "sub-1")
 	if sw.Code != http.StatusCreated || got.JobID == "" {
 		t.Fatalf("start: status %d, body %s", sw.Code, sw.Body)
@@ -227,14 +230,16 @@ func TestCreateRecordsPapersAndStartsNothing(t *testing.T) {
 		t.Errorf("session paper_key = %q, want arxiv:2302.03714", j.PaperKey)
 	}
 	// The session carries the ref the paper was recorded with, not one the
-	// caller re-typed — starting names a paper, it does not describe one.
+	// caller typed again. A start request names a paper by key and carries no
+	// reference of its own.
 	if j.Ref != "https://arxiv.org/abs/2302.03714" {
 		t.Errorf("session ref = %q", j.Ref)
 	}
 }
 
-// 012: a paper added to an existing project, then run. This is what the old
-// project-scoped submit did, split into the two acts it was doing at once.
+// TestAddPaperToOwnedProjectThenStart covers 012: a paper added to an
+// existing project, then run. This is what the old project-scoped submit did
+// in one call, split into its two steps.
 func TestAddPaperToOwnedProjectThenStart(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -247,7 +252,7 @@ func TestAddPaperToOwnedProjectThenStart(t *testing.T) {
 	if sessions, _ := d.Jobs.ListByProject(context.Background(), p.ID); len(sessions) != 0 {
 		t.Fatalf("adding a paper started %d sessions, want 0", len(sessions))
 	}
-	// The same paper twice is the same paper: a project is about it once.
+	// Adding the same paper twice is refused: a project holds each paper once.
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "sub-1"); w.Code != http.StatusConflict {
 		t.Errorf("duplicate paper: status %d, want 409", w.Code)
 	}
@@ -262,9 +267,10 @@ func TestAddPaperToOwnedProjectThenStart(t *testing.T) {
 	}
 }
 
-// AC4: the double-trigger guard now answers on the one route that starts a run,
-// so the refusal names the act that was refused. Nothing is created to undo,
-// because starting a session creates nothing but the session.
+// TestStartDoubleFireIsRefused covers AC4: the double-trigger guard answers on
+// the one route that starts a run, so the refusal names the act that was
+// refused. Nothing is created that would need undoing, because starting a
+// session creates nothing but the session.
 func TestStartDoubleFireIsRefused(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -277,8 +283,8 @@ func TestStartDoubleFireIsRefused(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("double-fire status = %d, want 409", w.Code)
 	}
-	// One project, one session: the refusal left nothing behind, and there was
-	// never a project created speculatively to have to delete.
+	// One project and one session: the refusal left nothing behind, and no
+	// project was created speculatively that would need deleting.
 	ps, _ := d.Projects.ListByOwner(context.Background(), "sub-1")
 	if len(ps) != 1 {
 		t.Errorf("owner has %d projects, want 1", len(ps))
@@ -288,8 +294,9 @@ func TestStartDoubleFireIsRefused(t *testing.T) {
 	}
 }
 
-// AC4: a session may only run a paper the project is about. Without that a
-// caller could spend a project's credits on anything they cared to name.
+// TestStartRefusesAPaperTheProjectDoesNotHold covers AC4: a session may only
+// run a paper the project holds. Otherwise a caller could spend a project's
+// credits on any paper they named.
 func TestStartRefusesAPaperTheProjectDoesNotHold(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -306,9 +313,10 @@ func TestStartRefusesAPaperTheProjectDoesNotHold(t *testing.T) {
 	}
 }
 
-// A paper key spans several path segments — "doi:10.1145/3544548.3581433" — so
-// it travels in a body or an encoded query, never a path. This is the case that
-// would silently 404 if anybody moved it into the URL.
+// TestAPaperKeyWithSlashesRoundTrips checks that a paper key spanning several
+// path segments, such as "doi:10.1145/3544548.3581433", round-trips. The key
+// travels in a body or an encoded query, never in a path. Moving it into the
+// URL would make this case 404 without any other error.
 func TestAPaperKeyWithSlashesRoundTrips(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -319,16 +327,17 @@ func TestAPaperKeyWithSlashesRoundTrips(t *testing.T) {
 	if w, got := startPaper(t, h, projectID, key, "sub-1"); w.Code != http.StatusCreated || got.JobID == "" {
 		t.Fatalf("start with a slashed key: status %d, body %s", w.Code, w.Body)
 	}
-	// And the same key through the delete route's query, which is the other
-	// place it has to survive being a URL.
+	// The same key goes through the delete route's query, which is the other
+	// place it is carried in a URL.
 	w := do(t, h, "DELETE", "/projects/"+projectID+"/papers?key="+url.QueryEscape(key), "", "sub-1")
 	if w.Code != http.StatusConflict {
 		t.Errorf("delete a started paper: status %d, want 409 (it has a session)", w.Code)
 	}
 }
 
-// AC7: a paper with no sessions can be dropped; one that has been run cannot.
-// The record of what was actually reproduced is not editable.
+// TestRemovePaperOnlyBeforeItHasRun covers AC7: a paper with no sessions can
+// be removed; one that has been run cannot. The record of what was reproduced
+// is not editable.
 func TestRemovePaperOnlyBeforeItHasRun(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -337,7 +346,7 @@ func TestRemovePaperOnlyBeforeItHasRun(t *testing.T) {
 		t.Fatalf("add second paper: %d", w.Code)
 	}
 
-	// Never run: it goes.
+	// A paper that was never run is removed.
 	if w := do(t, h, "DELETE", "/projects/"+projectID+"/papers?key=arxiv:2401.00001", "", "owner"); w.Code != http.StatusNoContent {
 		t.Fatalf("remove an unrun paper: status %d, body %s", w.Code, w.Body)
 	}
@@ -346,7 +355,7 @@ func TestRemovePaperOnlyBeforeItHasRun(t *testing.T) {
 		t.Fatalf("after remove: %d papers, want 1", len(papers))
 	}
 
-	// Run once: it stays, whatever became of the run.
+	// A paper that has been run once stays, whatever the outcome of the run.
 	if w, _ := startPaper(t, h, projectID, "arxiv:2302.03714", "owner"); w.Code != http.StatusCreated {
 		t.Fatalf("start: %d", w.Code)
 	}
@@ -358,8 +367,9 @@ func TestRemovePaperOnlyBeforeItHasRun(t *testing.T) {
 	}
 }
 
-// AC6: the papers list reports what has happened to each paper, so the project
-// screen can show a paper nobody has started beside one that failed.
+// TestListPapersReportsSessions covers AC6: the papers list reports what has
+// happened to each paper, so the project screen can show a paper nobody has
+// started beside one that failed.
 func TestListPapersReportsSessions(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -402,8 +412,9 @@ func TestPaperRouteValidation(t *testing.T) {
 	if w := do(t, h, "POST", "/projects/"+projectID+"/papers", `{"url":"just some words"}`, "sub"); w.Code != http.StatusBadRequest {
 		t.Errorf("garbage url: status %d, want 400", w.Code)
 	}
-	// A create naming nothing but garbage still opens the project and reports
-	// the reference — there is no enqueue left to fail, so nothing is undone.
+	// A create whose only paper is unresolvable still opens the project and
+	// reports the reference. There is no enqueue left to fail, so nothing is
+	// undone.
 	w := do(t, h, "POST", "/projects", `{"papers":["just some words"]}`, "sub")
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create with an unresolvable paper: status %d, body %s", w.Code, w.Body)
@@ -430,8 +441,9 @@ func TestPaperRouteValidation(t *testing.T) {
 	}
 }
 
-// AC1: GET /projects lists the caller's own projects with a session count, and
-// GET /projects/{id} returns a project with its sessions, refusing others'.
+// TestProjectListAndDetail covers AC1: GET /projects lists the caller's own
+// projects with a session count, and GET /projects/{id} returns a project with
+// its sessions and refuses other owners' projects.
 func TestProjectListAndDetail(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -439,7 +451,8 @@ func TestProjectListAndDetail(t *testing.T) {
 	// Two create-and-start flows for the same owner open two projects.
 	_, a := submit(t, h, "https://arxiv.org/abs/2302.03714", "me")
 	_, _ = submit(t, h, "https://doi.org/10.1145/3313831", "me")
-	// A stranger's project must never appear in my list or be readable by me.
+	// Another principal's project must not appear in the caller's list or be
+	// readable by the caller.
 	strangerP, _ := d.Projects.Create(context.Background(), "stranger", "Theirs")
 
 	w := do(t, h, "GET", "/projects", "", "me")
@@ -468,32 +481,35 @@ func TestProjectListAndDetail(t *testing.T) {
 		t.Errorf("detail = %+v", detail)
 	}
 
-	// Another owner's private project is not disclosed — hidden as 404, not a 403
-	// that would confirm it exists.
+	// Another owner's private project is not disclosed. It is hidden as a 404,
+	// not a 403 that would confirm it exists.
 	if w := do(t, h, "GET", "/projects/"+strangerP.ID, "", "me"); w.Code != http.StatusNotFound {
 		t.Errorf("stranger project detail: status %d, want 404", w.Code)
 	}
 }
 
 // signOff is a well-formed sign-off body: an attestation version and the signer
-// snapshot 006n requires (a contact; the rest optional). signOffNoRepo is the
-// same, opting the forge repository out of the flip.
+// snapshot 006n requires, of which only the contact is mandatory. signOffNoRepo
+// is the same body with the forge repository opted out of the flip.
 const (
 	signOff       = `{"attestation_version":"v2","signed_off_name":"Ada Lovelace","signed_off_institution":"LMU Munich","signed_off_contact":"ada@example.org"}`
 	signOffNoRepo = `{"attestation_version":"v2","signed_off_contact":"ada@example.org","flip_repo":false}`
 )
 
-// 006f AC6: the public flip is owner-only, needs a recorded sign-off, refuses a
-// non-clear project (409). (Its one-way rule is superseded by 006o.)
+// TestMakeProjectPublic covers 006f AC6: the public flip is owner-only, needs
+// a recorded sign-off, and refuses a project that is not clear with a 409. The
+// one-way rule in 006f is superseded by 006o.
 func TestMakeProjectPublic(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	// A project whose one session cleared the gate (fake repro r1, CanPublish).
+	// A project whose one session cleared the gate: the fake reproduction r1
+	// has CanPublish set.
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
 	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
 	publishable(t, d, "me", "ada")
 
-	// A stranger is told nothing exists, and nothing changes.
+	// A stranger is answered as if the project did not exist, and nothing
+	// changes.
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "stranger"); w.Code != http.StatusNotFound {
 		t.Fatalf("stranger flip: status %d, want 404", w.Code)
 	}
@@ -516,12 +532,13 @@ func TestMakeProjectPublic(t *testing.T) {
 	}
 }
 
-// 006f AC6: a project whose reproduction did not clear the gate is barred (409).
+// TestMakeProjectPublicRefusesNotClear covers 006f AC6: a project whose
+// reproduction did not clear the gate is refused with a 409.
 func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
-	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish == false
+	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish is false.
 
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusConflict {
 		t.Fatalf("not-clear flip: status %d, want 409", w.Code)
@@ -532,9 +549,9 @@ func TestMakeProjectPublicRefusesNotClear(t *testing.T) {
 }
 
 // refusedPublish posts a sign-off and reads back the refusal: its code and the
-// sessions it named. Every publish refusal below is asserted through this, so a
-// code that stops carrying its blockers fails a test rather than reaching a
-// reader as an unexplained "cannot publish".
+// sessions it named. Every publish refusal below is asserted through this, so
+// a code that stops carrying its blockers fails a test rather than reaching a
+// reader as an unexplained refusal.
 func refusedPublish(t *testing.T, h http.Handler, projectID string) (int, string, []PublishBlocker) {
 	t.Helper()
 	w := do(t, h, "POST", "/projects/"+projectID+"/public", signOff, "me")
@@ -548,25 +565,26 @@ func refusedPublish(t *testing.T, h http.Handler, projectID string) (int, string
 	return w.Code, got.Error, got.Blockers
 }
 
-// A refusal names every session in the way, not the first one. An owner who is
-// told "something is wrong" and fixes one blocker must not walk into the same
-// wall — so a project with two different blockers reports both, each with the
-// session to open and the reason it is blocked.
+// TestMakeProjectPublicNamesEveryBlocker checks that a refusal names every
+// session in the way, not only the first. An owner who fixes one blocker must
+// not be refused again for another that was not reported, so a project with
+// two different blockers reports both, each with the session to open and the
+// reason it is blocked.
 func TestMakeProjectPublicNamesEveryBlocker(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 	publishable(t, d, "me", "ada")
 	p, _ := d.Projects.Create(context.Background(), "me", "Owned")
-	clear := publishInto(t, d.Jobs, "me", p.ID, "r1")        // cleared: not a blocker
-	flagged := publishInto(t, d.Jobs, "me", p.ID, "flagged") // review not clear
-	unfinished := publishInto(t, d.Jobs, "me", p.ID, "gone") // repository, no manifest
+	clear := publishInto(t, d.Jobs, "me", p.ID, "r1")        // Cleared, so not a blocker.
+	flagged := publishInto(t, d.Jobs, "me", p.ID, "flagged") // The review is not clear.
+	unfinished := publishInto(t, d.Jobs, "me", p.ID, "gone") // A repository with no manifest.
 
 	status, code, blockers := refusedPublish(t, h, p.ID)
 	if status != http.StatusConflict {
 		t.Fatalf("status %d, want 409", status)
 	}
-	// The flagged tree outranks the unfinished run: one needs a decision, the
-	// other only needs time.
+	// The flagged tree takes precedence over the unfinished run: one needs a
+	// decision, the other only needs time.
 	if code != "not_clear" {
 		t.Errorf("code = %q, want not_clear", code)
 	}
@@ -591,9 +609,10 @@ func TestMakeProjectPublicNamesEveryBlocker(t *testing.T) {
 	}
 }
 
-// A run that never finalized is not a redistribution verdict. It has a
-// repository and no manifest, which used to be reported as a flagged tree —
-// sending the owner to look for third-party data that was never there.
+// TestMakeProjectPublicReportsUnfinishedSessions checks that a run that never
+// finalized is not reported as a redistribution verdict. It has a repository
+// and no manifest, which used to be reported as a flagged tree and sent the
+// owner to look for third-party data that was never there.
 func TestMakeProjectPublicReportsUnfinishedSessions(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -610,8 +629,9 @@ func TestMakeProjectPublicReportsUnfinishedSessions(t *testing.T) {
 	}
 }
 
-// A forge that will not answer is our failure and a temporary one. It must not
-// be reported as a reproduction that failed the redistribution check.
+// TestMakeProjectPublicReportsUnreadableManifest checks that a forge that does
+// not answer is reported as a temporary failure on this side, not as a
+// reproduction that failed the redistribution check.
 func TestMakeProjectPublicReportsUnreadableManifest(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Reproductions = &fakeRepro{getErr: errors.New("github timed out")}
@@ -629,9 +649,10 @@ func TestMakeProjectPublicReportsUnreadableManifest(t *testing.T) {
 	}
 }
 
-// A project that has never published anything has nothing to make public. It is
-// not blocked by a session — there is no session with a repository at all — so
-// it reports that and names nobody.
+// TestMakeProjectPublicReportsNothingPublished checks that a project that has
+// never published anything reports that it has nothing to make public. It is
+// not blocked by a session, since no session has a repository, so the refusal
+// names no session.
 func TestMakeProjectPublicReportsNothingPublished(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -652,7 +673,7 @@ func TestMakeProjectPublicReportsNothingPublished(t *testing.T) {
 // that a forge failure does not fail the request.
 type fakeRepoPub struct {
 	flipped []string
-	closed  []string // attempted, not confirmed: errOn is recorded here too
+	closed  []string // Attempted, not confirmed: errOn is recorded here too.
 	errOn   string
 }
 
@@ -669,8 +690,9 @@ func (f *fakeRepoPub) SetPrivate(_ context.Context, repo string) error {
 	return nil
 }
 
-// 006f: the owner may opt the forge repo out of the public flip — the project
-// still goes public in-app, but SetPublic is not called.
+// TestPublicFlipRepoOptOut covers 006f: the owner may opt the forge repository
+// out of the public flip. The project still goes public in the app, but
+// SetPublic is not called.
 func TestPublicFlipRepoOptOut(t *testing.T) {
 	pub := &fakeRepoPub{}
 	d := testDeps(allowAll)
@@ -679,7 +701,7 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 
 	publishable(t, d, "me", "ada")
 
-	// Default (flip_repo omitted): the repository is flipped.
+	// With flip_repo omitted, the default, the repository is flipped.
 	p1, _ := d.Projects.Create(context.Background(), "me", "One")
 	_ = publishInto(t, d.Jobs, "me", p1.ID, "r1")
 	if w := do(t, h, "POST", "/projects/"+p1.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
@@ -689,7 +711,8 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 		t.Fatalf("default should flip the repo, flipped=%v", pub.flipped)
 	}
 
-	// Opt-out (flip_repo:false): the project goes public but the repo is not flipped.
+	// With flip_repo false, the project goes public but the repository is not
+	// flipped.
 	p2, _ := d.Projects.Create(context.Background(), "me", "Two")
 	_ = publishInto(t, d.Jobs, "me", p2.ID, "r1")
 	if w := do(t, h, "POST", "/projects/"+p2.ID+"/public", signOffNoRepo, "me"); w.Code != http.StatusOK {
@@ -703,9 +726,9 @@ func TestPublicFlipRepoOptOut(t *testing.T) {
 	}
 }
 
-// 006o AC1/AC2/AC3: the owner withdraws a publication. The project leaves the
-// public zone and closes to strangers, the retraction is recorded, and the
-// sign-off it retracts survives untouched.
+// TestWithdrawProject covers 006o AC1, AC2 and AC3: the owner withdraws a
+// publication. The project leaves the public zone and closes to strangers,
+// the retraction is recorded, and the sign-off it retracts is left unchanged.
 func TestWithdrawProject(t *testing.T) {
 	pub := &fakeRepoPub{}
 	d := testDeps(allowAll)
@@ -717,8 +740,8 @@ func TestWithdrawProject(t *testing.T) {
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "me"); w.Code != http.StatusOK {
 		t.Fatalf("publish: status %d", w.Code)
 	}
-	// While public, a stranger can read the session under it — the surface the
-	// withdrawal has to close.
+	// While public, a stranger can read the session under it. These are the
+	// reads the withdrawal has to close.
 	sessionReads := []string{"/jobs/" + sess.ID, "/jobs/" + sess.ID + "/transcript", "/jobs/" + sess.ID + "/reproduction", "/jobs/" + sess.ID + "/artifacts"}
 	for _, path := range sessionReads {
 		if w := do(t, h, "GET", path, "", "someone-else"); w.Code != http.StatusOK {
@@ -749,12 +772,12 @@ func TestWithdrawProject(t *testing.T) {
 	if got.WithdrawnAt == nil || got.WithdrawnBy != "me" || got.WithdrawnReason != "an unreleased figure" {
 		t.Errorf("retraction not recorded: %+v", got)
 	}
-	// The retraction ends the publication; it does not un-say the attestation.
+	// The retraction ends the publication; it does not remove the attestation.
 	if got.SignedOffBy != "me" || got.AttestationVersion != "v2" || got.SignedOffAt == nil ||
 		got.SignedOffName != "Ada Lovelace" || got.SignedOffContact != "ada@example.org" {
 		t.Errorf("withdrawal erased the sign-off: %+v", got)
 	}
-	// The forge follows.
+	// The forge repository is closed as well.
 	if len(pub.closed) != 1 || pub.closed[0] != "r1" {
 		t.Errorf("the repository should be closed, closed=%v", pub.closed)
 	}
@@ -770,16 +793,16 @@ func TestWithdrawProject(t *testing.T) {
 	if w := do(t, h, "GET", "/projects/"+p.ID, "", "someone-else"); w.Code != http.StatusNotFound {
 		t.Errorf("stranger opening a withdrawn project: status %d, want 404", w.Code)
 	}
-	// And the artifacts close with it. Closing the project page while a transcript
-	// or an artifact stayed readable by URL would defeat the whole feature, so
-	// every session-scoped read is asserted, not just the project one.
+	// The artifacts close with it. Closing the project page while a transcript
+	// or an artifact stayed readable by URL would defeat the withdrawal, so
+	// every session-scoped read is asserted, not only the project read.
 	for _, path := range sessionReads {
 		if w := do(t, h, "GET", path, "", "someone-else"); w.Code != http.StatusNotFound {
 			t.Errorf("after withdrawal, %s: status %d, want 404", path, w.Code)
 		}
 	}
-	// The owner still reads everything — a withdrawal takes the work out of
-	// public view, it does not take it away from the person who did it.
+	// The owner still reads everything. A withdrawal takes the work out of
+	// public view; it does not remove the owner's access to it.
 	for _, path := range sessionReads {
 		if w := do(t, h, "GET", path, "", "me"); w.Code != http.StatusOK {
 			t.Errorf("after withdrawal, the owner's own %s: status %d, want 200", path, w.Code)
@@ -787,9 +810,10 @@ func TestWithdrawProject(t *testing.T) {
 	}
 }
 
-// 006o AC5: a withdrawn project can be published again — a fresh sign-off that
-// clears the retraction — and the manifest gate is re-run rather than carried
-// over, so a tree that stopped being clear stays private.
+// TestRepublishAfterWithdrawal covers 006o AC5: a withdrawn project can be
+// published again with a fresh sign-off that clears the retraction. The
+// manifest gate is re-run rather than carried over, so a tree that is no
+// longer clear stays private.
 func TestRepublishAfterWithdrawal(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -810,8 +834,8 @@ func TestRepublishAfterWithdrawal(t *testing.T) {
 		t.Errorf("republish left the retraction in place: %+v", got)
 	}
 
-	// A project whose tree never cleared is still barred after a withdrawal — the
-	// gate is re-run, not inherited.
+	// A project whose tree never cleared is still refused after a withdrawal:
+	// the gate is re-run, not inherited.
 	q, _ := d.Projects.Create(context.Background(), "me", "Flagged")
 	_ = publishInto(t, d.Jobs, "me", q.ID, "flagged")
 	_ = do(t, h, "POST", "/projects/"+q.ID+"/private", `{}`, "me")
@@ -820,10 +844,11 @@ func TestRepublishAfterWithdrawal(t *testing.T) {
 	}
 }
 
-// 006o AC6: the forge is best-effort. A repository GitHub refuses to close (a
-// fork network, an org policy) must not fail the withdrawal — the project is
-// already private in-app, and stranding the owner mid-withdrawal would be worse
-// than a repository left open.
+// TestWithdrawSurvivesForgeFailure covers 006o AC6: the forge is best-effort.
+// A repository GitHub refuses to close, for example because of a fork network
+// or an organisation policy, must not fail the withdrawal. The project is
+// already private in the app, and leaving the owner with a half-finished
+// withdrawal would be worse than a repository left open.
 func TestWithdrawSurvivesForgeFailure(t *testing.T) {
 	pub := &fakeRepoPub{errOn: "r1"}
 	d := testDeps(allowAll)
@@ -841,9 +866,10 @@ func TestWithdrawSurvivesForgeFailure(t *testing.T) {
 	}
 }
 
-// 006o: the reason is the owner's own record, not a published notice, so the
-// cap only has to keep a runaway body out of the column — it truncates rather
-// than refusing the withdrawal, which must never be blocked by its annotation.
+// TestWithdrawReasonIsCapped covers 006o: the reason is the owner's own record,
+// not a published notice, so the cap only has to keep an oversized body out of
+// the column. It truncates rather than refusing the withdrawal, which must
+// never be blocked by its annotation.
 func TestWithdrawReasonIsCapped(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -865,16 +891,17 @@ func TestWithdrawReasonIsCapped(t *testing.T) {
 	}
 }
 
-// 006o: the repository is closed even when the project's tree is no longer
-// clear — which is often exactly why it is being withdrawn. Sourcing the
-// repositories from clearedForPublish would leave that repository open.
+// TestWithdrawClosesRepoOfAnUnclearProject covers 006o: the repository is
+// closed even when the project's tree is no longer clear, which is often the
+// reason it is being withdrawn. Sourcing the repositories from
+// clearedForPublish would leave that repository open.
 func TestWithdrawClosesRepoOfAnUnclearProject(t *testing.T) {
 	pub := &fakeRepoPub{}
 	d := testDeps(allowAll)
 	d.RepoPublisher = pub
 	h := NewRouter(d).Handler()
 	p, _ := d.Projects.Create(context.Background(), "me", "Flagged")
-	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish == false
+	_ = publishInto(t, d.Jobs, "me", p.ID, "flagged") // CanPublish is false.
 
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/private", `{}`, "me"); w.Code != http.StatusOK {
 		t.Fatalf("withdrawal: status %d, want 200", w.Code)
@@ -884,8 +911,8 @@ func TestWithdrawClosesRepoOfAnUnclearProject(t *testing.T) {
 	}
 }
 
-// 006f AC8: a public project appears in the public zone to another signed-in
-// user and opens; a private one never does.
+// TestPublicZone covers 006f AC8: a public project appears in the public zone
+// to another signed-in user and opens; a private one never does.
 func TestPublicZone(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -902,23 +929,23 @@ func TestPublicZone(t *testing.T) {
 	if w.Code != http.StatusOK || len(zone) != 1 || zone[0].ID != pub.ID {
 		t.Fatalf("public zone = %+v (status %d); want only the public project", zone, w.Code)
 	}
-	// It names who published it by the name they chose (006r) and withholds the
-	// opaque subject behind that name (028) — a stranger reads the work, not the
-	// principal who owns it.
+	// The row names the publisher by the name they chose (006r) and withholds
+	// the opaque subject behind that name (028). A stranger reads the work, not
+	// the principal who owns it.
 	if zone[0].OwnerName != "Ada Lovelace" || zone[0].OwnerHandle != "ada" {
 		t.Errorf("public zone row does not name its publisher: %+v", zone[0])
 	}
 	if zone[0].Owner != "" {
 		t.Errorf("public zone row carries the owning principal %q", zone[0].Owner)
 	}
-	// A different user can open the public project…
+	// A different user can open the public project.
 	if w := do(t, h, "GET", "/projects/"+pub.ID, "", "someone-else"); w.Code != http.StatusOK {
 		t.Errorf("open public project: status %d, want 200", w.Code)
 	}
 }
 
-// doAs sends a request carrying a full identity (sub + email), which the member
-// routes need (the owner's email seeds the lead bridge).
+// doAs sends a request carrying a full identity, sub and email, which the
+// member routes need because the owner's email seeds the lead bridge.
 func doAs(t *testing.T, h http.Handler, method, path, body string, id Identity) *httptest.ResponseRecorder {
 	t.Helper()
 	var req *http.Request
@@ -934,9 +961,10 @@ func doAs(t *testing.T, h http.Handler, method, path, body string, id Identity) 
 	return w
 }
 
-// 006n AC1/AC2: the profile is the caller's own — read before it exists, saved
-// against the session's principal and never one named in the body, and refused
-// field by field when an identifier is malformed.
+// TestProfileAPI covers 006n AC1 and AC2: the profile is the caller's own. It
+// can be read before it exists, it is saved against the session's principal
+// and never one named in the body, and it is refused field by field when an
+// identifier is malformed.
 func TestProfileAPI(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -960,9 +988,10 @@ func TestProfileAPI(t *testing.T) {
 		t.Fatalf("saved profile = %+v", got)
 	}
 
-	// It is the caller's own profile: another principal sees their own, empty one.
-	// (A fresh value, since every field is omitempty: unmarshalling `{}` over a
-	// populated struct would leave the previous profile standing.)
+	// It is the caller's own profile: another principal sees their own, empty
+	// one. A fresh value is used because every field is omitempty, and
+	// unmarshalling `{}` over a populated struct would leave the previous
+	// profile in place.
 	got = profile.Profile{}
 	w = do(t, h, "GET", "/me/profile", "", "someone-else")
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
@@ -983,9 +1012,10 @@ func TestProfileAPI(t *testing.T) {
 	}
 }
 
-// 006n AC3/AC4: the flip requires a contact, validates the signer snapshot with
-// the profile's own rules, records what was signed, and derives the signer's
-// identity from the session — a body cannot name somebody else as the signer.
+// TestPublicFlipRecordsTheSigner covers 006n AC3 and AC4: the flip requires a
+// contact, validates the signer snapshot with the profile's own rules, records
+// what was signed, and derives the signer's identity from the session, so a
+// body cannot name somebody else as the signer.
 func TestPublicFlipRecordsTheSigner(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -994,8 +1024,8 @@ func TestPublicFlipRecordsTheSigner(t *testing.T) {
 	_ = publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
 	publishable(t, d, owner.Sub, "ada")
 
-	// No contact: refused. Publishing a result with no way to ask about it is
-	// what this requirement exists to stop.
+	// No contact is refused. The requirement exists to stop a result being
+	// published with no way to ask about it.
 	w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", `{"attestation_version":"v2"}`, owner)
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "missing_contact") {
 		t.Fatalf("flip with no contact: status %d body %s; want 400 missing_contact", w.Code, w.Body.String())
@@ -1016,8 +1046,8 @@ func TestPublicFlipRecordsTheSigner(t *testing.T) {
 		t.Fatalf("a refused flip made the project public: %+v", got)
 	}
 
-	// A good sign-off records the snapshot — and the signer's email is the
-	// session's, redacted, whatever the body tried to say.
+	// A valid sign-off records the snapshot, and the signer's email is the
+	// session's, redacted, whatever the body named.
 	good := `{"attestation_version":"v2","signed_off_name":"Ada Lovelace","signed_off_institution":"LMU Munich",
 		"signed_off_contact":"Inquiries@Example.ORG","signed_off_orcid":"0000-0002-1825-0097",
 		"signed_off_scholar":"https://scholar.google.com/citations?user=abc",
@@ -1039,9 +1069,10 @@ func TestPublicFlipRecordsTheSigner(t *testing.T) {
 	}
 }
 
-// 006n AC5: the sign-off is a snapshot, not a view. Editing the profile after
-// publishing must not change what the published project reports — the property
-// the whole design rests on.
+// TestProfileEditDoesNotRewriteAPublishedSignOff covers 006n AC5: the sign-off
+// is a snapshot, not a view. Editing the profile after publishing must not
+// change what the published project reports. The design depends on this
+// property.
 func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1058,7 +1089,7 @@ func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
 		t.Fatalf("flip: %d (%s)", w.Code, w.Body.String())
 	}
 
-	// A year later, a new job and a new address.
+	// Later, the owner has a new institution and a new address.
 	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada L.","institution":"Somewhere Else","contact_email":"ada@elsewhere.org"}`, owner); w.Code != http.StatusOK {
 		t.Fatalf("second save: %d", w.Code)
 	}
@@ -1068,8 +1099,9 @@ func TestProfileEditDoesNotRewriteAPublishedSignOff(t *testing.T) {
 	}
 }
 
-// 006n AC6: a project published before this spec (v1, no snapshot) reads back
-// with empty signer fields rather than failing — the read path must tolerate it.
+// TestV1SignOffHasNoSnapshot covers 006n AC6: a project published before this
+// spec, with a v1 sign-off and no snapshot, reads back with empty signer fields
+// rather than failing. The read path must tolerate it.
 func TestV1SignOffHasNoSnapshot(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1088,8 +1120,8 @@ func TestV1SignOffHasNoSnapshot(t *testing.T) {
 	}
 }
 
-// 006f AC7: the members API is owner-only — the owner invites and removes by
-// email; a non-owner is refused.
+// TestMembersAPI covers 006f AC7: the members API is owner-only. The owner
+// invites and removes by email; a non-owner is refused.
 func TestMembersAPI(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1114,7 +1146,7 @@ func TestMembersAPI(t *testing.T) {
 		t.Fatalf("members = %+v (status %d); want collab@x.com listed", members, w.Code)
 	}
 
-	// A stranger may neither list, add, nor remove — and is not told the
+	// A stranger may neither list, add, nor remove, and is not told the
 	// project exists.
 	stranger := Identity{Sub: "stranger", Email: "s@x.com"}
 	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/members", "", stranger); w.Code != http.StatusNotFound {
@@ -1136,9 +1168,10 @@ func TestMembersAPI(t *testing.T) {
 	}
 }
 
-// The systematic fix: a private project and every session under it are visible
-// only to the owner and invited collaborators; a stranger sees 404 everywhere,
-// and a collaborator finds the project in "shared with me".
+// TestProjectAndSessionReadsAreScoped checks that a private project and every
+// session under it are visible only to the owner and invited collaborators.
+// A stranger gets a 404 everywhere, and a collaborator finds the project in
+// their own project list.
 func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1148,13 +1181,13 @@ func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 
 	view := func(id Identity, path string) int { return doAs(t, h, "GET", path, "", id).Code }
 
-	// Owner: project + session + transcript all visible.
+	// The owner sees the project, the session and the transcript.
 	if view(owner, "/projects/"+p.ID) != http.StatusOK || view(owner, "/jobs/"+sess.ID) != http.StatusOK {
 		t.Fatal("owner must see their own project and session")
 	}
 
-	// Stranger: everything hidden as 404 — including the session-scoped reads
-	// that used to leak to any invited user.
+	// A stranger gets a 404 everywhere, including on the session-scoped reads
+	// that used to be readable by any invited user.
 	stranger := Identity{Sub: "stranger", Email: "s@x.com"}
 	for _, path := range []string{"/projects/" + p.ID, "/jobs/" + sess.ID, "/jobs/" + sess.ID + "/transcript", "/jobs/" + sess.ID + "/events"} {
 		if code := view(stranger, path); code != http.StatusNotFound {
@@ -1162,8 +1195,8 @@ func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 		}
 	}
 
-	// Collaborator: invited by the owner, then may view the private project and
-	// its sessions, and finds it in their own project list (018).
+	// A collaborator invited by the owner may view the private project and its
+	// sessions, and finds it in their own project list (018).
 	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"collab@x.com"}`, owner); w.Code != http.StatusNoContent {
 		t.Fatalf("invite: %d", w.Code)
 	}
@@ -1184,9 +1217,10 @@ func TestProjectAndSessionReadsAreScoped(t *testing.T) {
 	}
 }
 
-// 018: the merged list is one list — the caller's own projects and the ones they
-// were invited to, each named by its owner, newest-modified first — and it
-// counts a project's sessions the same way for both, whoever started them.
+// TestProjectListMergesOwnedAndShared covers 018: the list is one list of the
+// caller's own projects and the ones they were invited to, each named by its
+// owner, newest-modified first. It counts a project's sessions the same way
+// for both, whoever started them.
 func TestProjectListMergesOwnedAndShared(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1204,7 +1238,7 @@ func TestProjectListMergesOwnedAndShared(t *testing.T) {
 	if w := doAs(t, h, "POST", "/projects/"+theirs.ID+"/members", `{"email":"collab@x.com"}`, owner); w.Code != http.StatusNoContent {
 		t.Fatalf("invite: %d", w.Code)
 	}
-	// A membership counts once it is bound, which login is what does.
+	// A membership counts once it is bound, which login does.
 	if _, err := d.Members.(access.Membership).BindAll(ctx, access.Principal{Sub: collab.Sub, Email: collab.Email}); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
@@ -1272,8 +1306,8 @@ func (c storeCanceler) Cancel(ctx context.Context, id string) error {
 	return err
 }
 
-// 006g: only the owner may stop a running session; a stopped session ends
-// failed/cancelled.
+// TestCancelSession covers 006g: only the owner may stop a running session,
+// and a stopped session ends failed/cancelled.
 func TestCancelSession(t *testing.T) {
 	d := testDeps(allowAll)
 	jobs := d.Jobs.(*job.MemStore)
@@ -1281,10 +1315,10 @@ func TestCancelSession(t *testing.T) {
 	ctx := context.Background()
 	p, _ := d.Projects.Create(ctx, "me", "P")
 	j, _ := jobs.Enqueue(ctx, job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
-	_, _, _ = jobs.Claim(ctx, "test-worker") // -> resolving (non-terminal)
+	_, _, _ = jobs.Claim(ctx, "test-worker") // Now resolving, which is non-terminal.
 	h := NewRouter(d).Handler()
 
-	// A stranger cannot stop it, and is told nothing is there.
+	// A stranger cannot stop it, and is answered as if it did not exist.
 	if w := do(t, h, "POST", "/jobs/"+j.ID+"/cancel", "", "stranger"); w.Code != http.StatusNotFound {
 		t.Fatalf("stranger cancel: %d, want 404", w.Code)
 	}
@@ -1329,7 +1363,8 @@ func TestGetJob(t *testing.T) {
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "sub"); w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", w.Code)
 	}
-	// Another user cannot read a session in a private project — hidden as 404.
+	// Another user cannot read a session in a private project; it is hidden as
+	// a 404.
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "stranger"); w.Code != http.StatusNotFound {
 		t.Errorf("stranger job read: status %d, want 404", w.Code)
 	}
@@ -1375,8 +1410,9 @@ func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Us
 	return got
 }
 
-// 006h AC1-4: a session's transcript is served as parsed events plus usage, with
-// not_ready and not_found kept distinct. Recorded usage wins over derived.
+// TestSessionTranscript covers 006h AC1 to AC4: a session's transcript is
+// served as parsed events plus usage, with not_ready and not_found kept
+// distinct. Recorded usage takes precedence over derived usage.
 func TestSessionTranscript(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1403,12 +1439,13 @@ func TestSessionTranscript(t *testing.T) {
 	}
 }
 
-// 006h AC3: a backfilled session with no recorded usage derives it from the
-// transcript's per-request usage, so the feature is not blank on real data.
+// TestSessionTranscriptUsageDerived covers 006h AC3: a backfilled session with
+// no recorded usage derives it from the transcript's per-request usage, so
+// the figure is not blank on real data.
 func TestSessionTranscriptUsageDerived(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d, "me", "r1", nil) // no usage observed
+	j := publishedSession(t, d, "me", "r1", nil) // No usage observed.
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	var tr Transcript
@@ -1418,14 +1455,15 @@ func TestSessionTranscriptUsageDerived(t *testing.T) {
 	}
 }
 
-// 006s AC1-2: every event carries the usage the backend charged against it, an
-// event that was charged nothing carries none, and the per-event figures sum to
-// exactly the session total the same response reports — the two are derived in
-// one pass so they cannot drift apart.
+// TestSessionTranscriptPerEventUsage covers 006s AC1 and AC2: every event
+// carries the usage the backend charged against it, an event that was charged
+// nothing carries none, and the per-event figures sum to exactly the session
+// total the same response reports. The two are derived in one pass so they
+// cannot drift apart.
 func TestSessionTranscriptPerEventUsage(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d, "me", "multi", nil) // nothing recorded: the total is derived
+	j := publishedSession(t, d, "me", "multi", nil) // Nothing recorded, so the total is derived.
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	if w.Code != http.StatusOK {
@@ -1445,12 +1483,12 @@ func TestSessionTranscriptPerEventUsage(t *testing.T) {
 	if u := tr.Events[2].Usage; u == nil || u.InputTokens != 7 || u.OutputTokens != 3 || u.CachedInputTokens != 1 {
 		t.Errorf("event 2 usage = %+v, want 7/3/1", u)
 	}
-	// An uncharged event shows nothing, never a zero — an absent number is a fact
-	// about the run.
+	// An uncharged event carries no usage, never a zero. An absent number
+	// records that the event was not charged.
 	if tr.Events[1].Usage != nil {
 		t.Errorf("uncharged event carries usage %+v, want none", tr.Events[1].Usage)
 	}
-	// And the parts add up to the whole the same response reports.
+	// The per-event figures sum to the total the same response reports.
 	var sum int64
 	for _, e := range tr.Events {
 		if e.Usage != nil {
@@ -1465,9 +1503,9 @@ func TestSessionTranscriptPerEventUsage(t *testing.T) {
 	}
 }
 
-// 006s AC1: per-event usage is not a property of the committed path — an
-// in-flight session's live events carry it too, since both paths are built by
-// the same provider translation.
+// TestSessionTranscriptPerEventUsageLive covers 006s AC1: per-event usage is
+// not specific to the committed path. An in-flight session's live events
+// carry it too, since both paths are built by the same provider translation.
 func TestSessionTranscriptPerEventUsageLive(t *testing.T) {
 	d := testDeps(allowAll)
 	store := job.NewMemStore()
@@ -1493,15 +1531,17 @@ func TestSessionTranscriptPerEventUsageLive(t *testing.T) {
 	if u := tr.Events[1].Usage; u == nil || u.Total() != 6 {
 		t.Fatalf("live event usage = %+v, want total 6", u)
 	}
-	// Raw is still dropped on the way out — it is the bulk of a transcript.
+	// Raw is still dropped from the response, since it is the bulk of a
+	// transcript.
 	if len(tr.Events[1].Raw) != 0 {
 		t.Error("raw was not dropped from a live event")
 	}
 }
 
-// 006f: a published session serves its repository file tree, individual files,
-// and its manifest verdict — a forge pass-through, scoped like every session
-// read (a stranger sees 404).
+// TestSessionArtifactsAndReproduction covers 006f: a published session serves
+// its repository file tree, individual files, and its manifest verdict. These
+// are forge pass-throughs, scoped like every session read, so a stranger gets
+// a 404.
 func TestSessionArtifactsAndReproduction(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1533,8 +1573,9 @@ func TestSessionArtifactsAndReproduction(t *testing.T) {
 	if w.Code != http.StatusOK || repro.Verdict != "passed" {
 		t.Errorf("reproduction = %d %+v", w.Code, repro)
 	}
-	// A stranger cannot reach any of it — the artifacts stay behind the same
-	// project scope as everything else (the point of the in-app pass-through).
+	// A stranger cannot reach any of it. The artifacts stay behind the same
+	// project scope as everything else, which is the reason for the in-app
+	// pass-through.
 	for _, p := range []string{"/artifacts", "/artifact?path=README.md", "/reproduction"} {
 		if w := do(t, h, "GET", "/jobs/"+j.ID+p, "", "stranger"); w.Code != http.StatusNotFound {
 			t.Errorf("stranger %s = %d, want 404", p, w.Code)
@@ -1542,12 +1583,13 @@ func TestSessionArtifactsAndReproduction(t *testing.T) {
 	}
 }
 
-// A session whose usage is neither recorded nor in the transcript shows "not
-// recorded" (nil), never a fabricated zero.
+// TestSessionTranscriptUsageNotRecorded checks that a session whose usage is
+// neither recorded nor in the transcript reports nil usage, never a fabricated
+// zero.
 func TestSessionTranscriptUsageNotRecorded(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	j := publishedSession(t, d, "me", "bare", nil) // no usage anywhere
+	j := publishedSession(t, d, "me", "bare", nil) // No usage anywhere.
 
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/transcript", "", "me")
 	var tr Transcript
@@ -1557,11 +1599,12 @@ func TestSessionTranscriptUsageNotRecorded(t *testing.T) {
 	}
 }
 
-// A session that has not published a transcript is 409 not_ready, distinct from
-// a 404 for a session that does not exist — 006h AC4.
+// TestSessionTranscriptNotReadyVsMissing covers 006h AC4: a session that has
+// not published a transcript is a 409 not_ready, distinct from the 404 for a
+// session that does not exist.
 func TestSessionTranscriptNotReadyVsMissing(t *testing.T) {
 	d := testDeps(allowAll)
-	// A submitted session (in a real owned project) with no repository yet.
+	// A submitted session in an owned project, with no repository yet.
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	h := NewRouter(d).Handler()
@@ -1584,9 +1627,10 @@ func (f *fakeLive) Events(context.Context, provider.RunStatus) ([]provider.Event
 	return f.events, f.err
 }
 
-// 006h: a session still in flight (a run id observed, no repository yet) serves
-// the backend's LIVE event stream, flagged live so the client keeps polling —
-// not the 409 not_ready a session with no live run gets.
+// TestSessionTranscriptLive covers 006h: a session still in flight, with a run
+// id observed and no repository yet, serves the backend's live event stream,
+// flagged live so the client keeps polling, rather than the 409 not_ready a
+// session with no live run gets.
 func TestSessionTranscriptLive(t *testing.T) {
 	d := testDeps(allowAll)
 	store := job.NewMemStore()
@@ -1594,7 +1638,8 @@ func TestSessionTranscriptLive(t *testing.T) {
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "thinking"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
-	// Reach running with an observed backend run id — the in-flight state.
+	// Reach running with an observed backend run id, which is the in-flight
+	// state.
 	_, _, _ = store.Claim(context.Background(), "test-worker")
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, nil)
 	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
@@ -1616,21 +1661,24 @@ func TestSessionTranscriptLive(t *testing.T) {
 	}
 }
 
-// 006i regression: a still-running session whose repository was created up front
-// for the live mount (repo_name set) must STILL read the live stream — its
-// committed transcript does not exist yet, so reading the repo would 404. The
-// non-terminal phase wins over the presence of a repository.
+// TestSessionTranscriptLiveEvenWithRepo is a 006i regression test: a
+// still-running session whose repository was created up front for the live
+// mount, so repo_name is set, must still read the live stream. Its committed
+// transcript does not exist yet, so reading the repository would 404. The
+// non-terminal phase takes precedence over the presence of a repository.
 func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 	d := testDeps(allowAll)
 	store := job.NewMemStore()
 	d.Jobs = store
-	// The committed-repo reader would answer, wrongly, if we took that branch.
+	// The committed-repository reader would answer, wrongly, if that branch
+	// were taken.
 	d.Reproductions = &fakeRepro{}
 	d.Live = &fakeLive{events: []provider.Event{{Kind: "message", Content: "live-not-committed"}}}
 	p, _ := d.Projects.Create(context.Background(), "me", "t")
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:1"})
 	_, _, _ = store.Claim(context.Background(), "test-worker")
-	// Running, with a repo created in resolve AND a run id observed — the 006i state.
+	// Running, with a repository created in resolve and a run id observed,
+	// which is the 006i state.
 	_ = store.Advance(context.Background(), j.ID, job.PhaseRunning, func(jb *job.Job) { jb.RepoName = "open-hai/r1" })
 	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "sesn_live"})
 	h := NewRouter(d).Handler()
@@ -1646,8 +1694,9 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 	}
 }
 
-// GET /jobs lists only the caller's own jobs — the projects they submitted.
-// Another principal's jobs never appear, even through the same handler.
+// TestListMyJobs checks that GET /jobs lists only the caller's own jobs, the
+// ones they submitted. Another principal's jobs never appear, even through
+// the same handler.
 func TestListMyJobs(t *testing.T) {
 	d := testDeps(allowAll)
 	mine, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref-mine", Kind: job.KindAudit})
@@ -1665,16 +1714,17 @@ func TestListMyJobs(t *testing.T) {
 	if len(got) != 1 || got[0].ID != mine.ID {
 		t.Fatalf("listed %d jobs %+v, want only my job %s", len(got), got, mine.ID)
 	}
-	// A caller with jobs-of-others but none of their own gets an empty JSON array,
-	// never null.
+	// A caller with no jobs of their own, while other principals' jobs exist,
+	// gets an empty JSON array, never null.
 	w = do(t, h, "GET", "/jobs", "", "nobody")
 	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {
 		t.Errorf("empty list = %d %q, want 200 []", w.Code, w.Body.String())
 	}
 }
 
-// 006h AC5 / 003 read-error rule: a forge/transport failure on the session
-// transcript is a 500, never disguised as a 404 miss.
+// TestSessionTranscriptForgeFailureIs500 covers 006h AC5 and the 003
+// read-error rule: a forge or transport failure on the session transcript is
+// a 500, never disguised as a 404.
 func TestSessionTranscriptForgeFailureIs500(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Reproductions = &fakeRepro{transcriptErr: errors.New("forge timeout")}
@@ -1686,11 +1736,11 @@ func TestSessionTranscriptForgeFailureIs500(t *testing.T) {
 	}
 }
 
-// AC4: with the fail-closed gate, every gated route answers not_granted; the
-// health check outside the gate does not. The gated set is enumerated from the
-// router itself.
+// TestGateIsFailClosedAndEnumerable covers AC4: with the fail-closed gate,
+// every gated route answers not_granted, and the health check outside the
+// gate does not. The gated set is enumerated from the router itself.
 func TestGateIsFailClosedAndEnumerable(t *testing.T) {
-	rt := NewRouter(Deps{Jobs: job.NewMemStore(), Reproductions: &fakeRepro{}}) // nil gate -> DenyAll
+	rt := NewRouter(Deps{Jobs: job.NewMemStore(), Reproductions: &fakeRepro{}}) // A nil gate means DenyAll.
 	h := rt.Handler()
 
 	gated := rt.GatedRoutes()
@@ -1719,8 +1769,9 @@ func TestGateIsFailClosedAndEnumerable(t *testing.T) {
 	}
 }
 
-// AC5: no handler contains engine logic — the package imports neither
-// internal/method nor a provider adapter. Asserted on the dependency graph.
+// TestNoEngineImports covers AC5: no handler contains engine logic. The
+// package imports neither internal/method nor a provider adapter, which is
+// asserted on the dependency graph.
 func TestNoEngineImports(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", "github.com/latere-ai/replichai/internal/httpapi").Output()
 	if err != nil {
@@ -1739,18 +1790,20 @@ func TestNoEngineImports(t *testing.T) {
 	}
 }
 
-// Papers follow the project's visibility, like everything else under it: a
-// public project's papers are readable by anyone signed in, a private one's are
-// not, and a project the caller cannot see reads as missing rather than
-// forbidden — the same rule every other read path holds.
+// TestReadingPapersFollowsTheProjectsVisibility checks that papers follow the
+// project's visibility, like everything else under it. A public project's
+// papers are readable by anyone signed in, a private project's are not, and a
+// project the caller cannot see reads as missing rather than forbidden, which
+// is the rule every other read path follows.
 func TestReadingPapersFollowsTheProjectsVisibility(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 	_, projectID := createWithPaper(t, h, "https://arxiv.org/abs/2302.03714", "owner")
 
-	// Private: a stranger may not read it, and may not work in it either. It
-	// reads as missing rather than forbidden — since 028 the route is open, and a
-	// refusal would confirm to anybody walking ids that the project is there.
+	// While private, a stranger may not read it and may not work in it either.
+	// It reads as missing rather than forbidden: since 028 the route is open,
+	// and a 403 would confirm to anybody enumerating ids that the project
+	// exists.
 	if w := do(t, h, "GET", "/projects/"+projectID+"/papers", "", "stranger"); w.Code != http.StatusNotFound {
 		t.Errorf("stranger reads a private project's papers: status %d, want 404", w.Code)
 	}
@@ -1758,8 +1811,9 @@ func TestReadingPapersFollowsTheProjectsVisibility(t *testing.T) {
 		t.Errorf("papers of a missing project: status %d, want 404", w.Code)
 	}
 
-	// Public: readable by anyone signed in — but reading is not working, so a
-	// stranger still cannot add a paper or spend the project's credits.
+	// Once public, it is readable by anyone signed in, but reading is not
+	// working in the project, so a stranger still cannot add a paper or spend
+	// the project's credits.
 	if err := d.Projects.(project.Store).SetPublic(context.Background(), projectID,
 		project.SignOff{By: "owner", AttestationVersion: "v2"}); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -1775,7 +1829,7 @@ func TestReadingPapersFollowsTheProjectsVisibility(t *testing.T) {
 	}
 }
 
-// ── the findings route (021a) ────────────────────────────────────────────────
+// The findings route (021a).
 
 // validFindings is a verdict.json that passes the schema, so each case below
 // changes exactly one thing about it.
@@ -1830,8 +1884,9 @@ func TestSessionFindings(t *testing.T) {
 	}
 }
 
-// A run that never wrote the file is a 404 with a reason, not an empty object
-// that a pane would render as a paper with no boundary.
+// TestSessionFindingsAbsent checks that a run that never wrote the file is a
+// 404 with a reason, not an empty object that a pane would render as a paper
+// with no boundary.
 func TestSessionFindingsAbsent(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -1846,13 +1901,14 @@ func TestSessionFindingsAbsent(t *testing.T) {
 	}
 }
 
-// An invalid file is refused on read exactly as finalize refused it, and the
-// specific problems travel so the pane can say which rule it broke.
+// TestSessionFindingsInvalid checks that an invalid file is refused on read
+// exactly as finalize refused it, and that the specific problems are returned
+// so the pane can say which rule it broke.
 func TestSessionFindingsInvalid(t *testing.T) {
 	d := testDeps(allowAll)
 	var v verdict.Verdict
 	_ = json.Unmarshal(validFindings(t), &v)
-	v.Boundary[2].Outcome = verdict.Verified // an outer-loop claim, scored
+	v.Boundary[2].Outcome = verdict.Verified // An outer-loop claim that was scored.
 	raw, _ := json.Marshal(v)
 	d.Reproductions.(*fakeRepro).findings = raw
 	h := NewRouter(d).Handler()
@@ -1867,7 +1923,8 @@ func TestSessionFindingsInvalid(t *testing.T) {
 	}
 }
 
-// Prose in the file is a 404, not a 500 and not a panic.
+// TestSessionFindingsNotJSON checks that prose in the file is a 404, not a 500
+// and not a panic.
 func TestSessionFindingsNotJSON(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Reproductions.(*fakeRepro).findings = []byte("# Reproducibility\n")
@@ -1879,7 +1936,8 @@ func TestSessionFindingsNotJSON(t *testing.T) {
 	}
 }
 
-// A session that has not begun publishing has no repository to read from.
+// TestSessionFindingsNotReady checks that a session that has not begun
+// publishing has no repository to read from.
 func TestSessionFindingsNotReady(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()

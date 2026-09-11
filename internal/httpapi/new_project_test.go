@@ -11,8 +11,8 @@ import (
 	"testing"
 )
 
-// fakeResolver is a stand-in paper resolver: it returns a canned preview or a
-// canned error, so the resolve endpoint is tested with no network.
+// fakeResolver is a stand-in paper resolver. It returns a fixed preview or a
+// fixed error, so the resolve endpoint is tested without a network.
 type fakeResolver struct {
 	got ResolvedPaper
 	err error
@@ -22,8 +22,9 @@ func (f fakeResolver) Resolve(context.Context, string) (ResolvedPaper, error) {
 	return f.got, f.err
 }
 
-// AC5: resolve previews a reference; an unresolvable one is 400, an unreachable
-// source is 502 — kept distinct.
+// TestResolvePaperPreview covers AC5: resolve previews a reference. An
+// unresolvable reference answers 400 and an unreachable source answers 502,
+// and the two are kept distinct.
 func TestResolvePaperPreview(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = fakeResolver{got: ResolvedPaper{Key: "arxiv:2603.01795", Title: "A Real Paper", Scheme: "arxiv", Slug: "a-real-paper"}}
@@ -58,9 +59,10 @@ type createResult struct {
 	Members   []string      `json:"members"`
 }
 
-// AC1 (012): create with a title and several papers opens one project holding
-// both, and runs neither. 006j's version started a session per paper here; the
-// two acts are separate now, and this is the recording half.
+// TestCreateProjectRecordsEveryPaper covers AC1 (012): a create with a title
+// and several papers opens one project holding all of them and runs none. The
+// version in 006j started a session per paper here. The two acts are separate
+// now, and this test covers the recording half.
 func TestCreateProjectRecordsEveryPaper(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -88,10 +90,11 @@ func TestCreateProjectRecordsEveryPaper(t *testing.T) {
 	}
 }
 
-// AC3 (012): a reference that is not a DOI, arXiv ID, or URL is reported against
-// itself, and the project — with the papers that were fine — survives. There is
-// no all-failed case left to compensate for: nothing was spent, so a project
-// holding no valid papers is just an empty project.
+// TestCreateProjectReportsBadReferencesAndKeepsTheProject covers AC3 (012): a
+// reference that is not a DOI, arXiv ID, or URL is reported against itself,
+// and the project survives with the papers that were valid. There is no
+// all-failed case to compensate for. Nothing was spent, so a project holding
+// no valid papers is an empty project.
 func TestCreateProjectReportsBadReferencesAndKeepsTheProject(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -109,7 +112,8 @@ func TestCreateProjectReportsBadReferencesAndKeepsTheProject(t *testing.T) {
 		t.Errorf("project should survive a partial failure: %v", err)
 	}
 
-	// Every reference bad: still a project, still 201, no 422 and no undo.
+	// When every reference is bad, the project is still created and the status
+	// is still 201. There is no 422 and nothing to undo.
 	w = do(t, h, "POST", "/projects", `{"papers":["garbage","also bad"]}`, "me2")
 	if w.Code != http.StatusCreated {
 		t.Fatalf("all-bad status = %d, want 201; body %s", w.Code, w.Body)
@@ -120,14 +124,15 @@ func TestCreateProjectReportsBadReferencesAndKeepsTheProject(t *testing.T) {
 	}
 }
 
-// A create with no papers used to be a 400. It is a 201 since 036 — a create
-// records papers and starts nothing, so a paper is contents rather than what a
-// create is for. What replaces the rule lives in empty_project_test.go: the
-// refusal moved to a project with neither a title nor a paper, which cannot be
-// named at all.
+// A create with no papers used to answer 400. Since 036 it answers 201: a
+// create records papers and starts nothing, so a paper is content rather than
+// a requirement of the create. The replacement rule is tested in
+// empty_project_test.go: the refusal moved to a project with neither a title
+// nor a paper, which cannot be named at all.
 
-// AC8 (012): titles are the server's to write, and they land after the answer —
-// a create must not block on somebody else's web server.
+// TestCreateProjectResolvesPaperTitles covers AC8 (012): the server writes the
+// titles, and it writes them after the response is sent, because a create must
+// not block on an external web server.
 func TestCreateProjectResolvesPaperTitles(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = fakeResolver{got: ResolvedPaper{Key: "doi:10.1234/aaa", Title: "Point of no Undo"}}
@@ -145,14 +150,14 @@ func TestCreateProjectResolvesPaperTitles(t *testing.T) {
 	if len(papers) != 1 || papers[0].Title != "Point of no Undo" {
 		t.Errorf("stored papers = %+v", papers)
 	}
-	// A project nobody named takes the resolved title rather than keeping the
-	// raw reference it was created with.
+	// A project without a chosen title takes the resolved title rather than
+	// keeping the raw reference it was created with.
 	p, _ := d.Projects.Get(context.Background(), got.ProjectID)
 	if p.Title != "Point of no Undo" {
 		t.Errorf("project title = %q, want the resolved paper title", p.Title)
 	}
 
-	// A source that cannot be reached is not a failure: the paper is recorded
+	// A source that cannot be reached is not a failure. The paper is recorded
 	// without a title, and the create still succeeds.
 	d2 := testDeps(allowAll)
 	d2.Resolver = fakeResolver{err: errors.New("arxiv timeout")}
@@ -173,7 +178,8 @@ func TestCreateProjectResolvesPaperTitles(t *testing.T) {
 	}
 }
 
-// A project somebody named keeps its name, whatever the papers resolve to.
+// TestResolvedTitlesNeverClobberAChosenName checks that a project with a
+// chosen title keeps it, whatever the papers resolve to.
 func TestResolvedTitlesNeverClobberAChosenName(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = fakeResolver{got: ResolvedPaper{Title: "Point of no Undo"}}
@@ -190,7 +196,8 @@ func TestResolvedTitlesNeverClobberAChosenName(t *testing.T) {
 	}
 }
 
-// AC4: collaborator emails are seeded as members; the owner is the lead.
+// TestCreateProjectSeedsCollaborators covers AC4: collaborator emails are
+// seeded as members, and the owner is the lead.
 func TestCreateProjectSeedsCollaborators(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -217,7 +224,8 @@ func TestCreateProjectSeedsCollaborators(t *testing.T) {
 	}
 }
 
-// AC6: rename an owned project; a non-owner is refused.
+// TestRenameProject covers AC6: the owner may rename a project, and a
+// non-owner is refused.
 func TestRenameProject(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -230,14 +238,15 @@ func TestRenameProject(t *testing.T) {
 	if got, _ := d.Projects.Get(context.Background(), p.ID); got.Title != "new name" {
 		t.Errorf("title after rename = %q, want %q", got.Title, "new name")
 	}
-	// A stranger cannot rename, and is not told the project is there.
+	// A non-member cannot rename the project, and is not told that it exists.
 	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{"title":"hijack"}`, "someone-else"); w.Code != http.StatusNotFound {
 		t.Errorf("stranger rename status = %d, want 404", w.Code)
 	}
 }
 
-// The same reference twice in one create is the same paper named twice, not a
-// failure: the project is about it once, and says so without an error.
+// TestCreateProjectDedupesARepeatedReference checks that the same reference
+// twice in one create is treated as one paper named twice, not as a failure.
+// The project records it once and reports no error.
 func TestCreateProjectDedupesARepeatedReference(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()

@@ -13,35 +13,37 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 )
 
-// 006q AC6, in 011's terms: the wall is at spending, and only there.
+// TestNoCreditsStillLetsSomebodyUseTheApp covers 006q AC6, in the terms of
+// 011: only spending is refused without credits.
 //
-// Everyone arrives with no credits, so this is what the product *is* for a new
-// account until somebody tops it up. Asserted per route rather than in prose,
-// so a route added later cannot quietly join the wrong side of the line.
+// Every account starts with no credits, so this is what the product is for a
+// new account until somebody tops it up. The rule is asserted per route rather
+// than described in prose, so a route added later cannot end up on the wrong
+// side of it unnoticed.
 func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 	d := testDeps(allowAll)
-	// A store that refuses every enqueue for want of credits — what Enqueue
-	// does for a project that cannot commit the start reserve (011).
+	// A store that refuses every enqueue for lack of credits, which is what
+	// Enqueue does for a project that cannot commit the start reserve (011).
 	d.Jobs = brokeJobs{Store: d.Jobs.(job.Store)}
 	h := NewRouter(d).Handler()
 
 	newcomer := Identity{Sub: "newcomer", Email: "new@example.com"}
 
-	// Reads, and their own workspace.
+	// Reads, including their own project list and profile.
 	for _, path := range []string{"/projects", "/public", "/me/profile"} {
 		if w := doAs(t, h, "GET", path, "", newcomer); w.Code != http.StatusOK {
 			t.Errorf("GET %s = %d, want 200 with no budget", path, w.Code)
 		}
 	}
-	// Editing who they are.
+	// Editing their own profile.
 	if w := doAs(t, h, "PATCH", "/me/profile", `{"display_name":"Ada"}`, newcomer); w.Code != http.StatusOK {
 		t.Errorf("save profile = %d, want 200 with no budget", w.Code)
 	}
-	// Creating a project moved onto this side of the line with 012. It used to
-	// be spending — a project was opened *by submitting a paper*, so the create
-	// funded a pot and was refused 402 without one — which meant an account that
-	// had never been given credits could not so much as name what it intended to
-	// reproduce. Now it records papers and runs nothing, so it costs nothing.
+	// Creating a project became free with 012. It used to be spending: a
+	// project was opened by submitting a paper, so the create funded a budget
+	// and was refused with 402 without one, which meant an account that had
+	// never been given credits could not record what it intended to reproduce.
+	// Now a create records papers and runs nothing, so it costs nothing.
 	w := doAs(t, h, "POST", "/projects", `{"title":"Mine","papers":["https://arxiv.org/abs/2401.00003"]}`, newcomer)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create project = %d %s, want 201 with no budget", w.Code, w.Body)
@@ -50,14 +52,14 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 		ProjectID string `json:"project_id"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &planned)
-	// Adding another paper to it is free too: writing down what you mean to run
-	// is not running it.
+	// Adding another paper is free too. Recording what is to be run is not
+	// running it.
 	if w := doAs(t, h, "POST", "/projects/"+planned.ProjectID+"/papers", `{"url":"https://arxiv.org/abs/2401.00004"}`, newcomer); w.Code != http.StatusCreated {
 		t.Errorf("add a paper = %d, want 201 with no budget", w.Code)
 	}
 
-	// A project they already own — renaming it, inviting somebody, reading its
-	// members. None of it spends anything.
+	// Renaming a project they own, inviting somebody to it, and reading its
+	// members spend nothing.
 	owned, _ := d.Projects.Create(context.Background(), newcomer.Sub, "Mine")
 	proj := owned.ID
 
@@ -70,7 +72,7 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 	if w := doAs(t, h, "GET", "/projects/"+proj+"/members", "", newcomer); w.Code != http.StatusOK {
 		t.Errorf("list members = %d, want 200 with no budget", w.Code)
 	}
-	// Being invited into somebody else's, and seeing it.
+	// Being invited into another user's project, and reading it.
 	other := Identity{Sub: "other-sub", Email: "other@example.com"}
 	theirs, _ := d.Projects.Create(context.Background(), other.Sub, "Theirs")
 	if err := d.Members.SeedLead(context.Background(), theirs.ID, access.Principal{Sub: other.Sub, Email: other.Email}); err != nil {
@@ -88,16 +90,16 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 		t.Errorf("read a shared project = %d, want 200 with no budget", w.Code)
 	}
 
-	// And the one thing they cannot do: spend. It is asked once, on the act that
-	// actually starts a run, in a project whose pot is on screen to answer it.
+	// The one action refused is spending. Credits are checked once, on the
+	// action that starts a run, in a project whose budget is on screen.
 	if w := doAs(t, h, "POST", "/projects/"+planned.ProjectID+"/sessions",
 		`{"paper_key":"arxiv:2401.00003"}`, newcomer); w.Code != http.StatusPaymentRequired {
 		t.Errorf("start a session = %d, want 402 with no budget", w.Code)
 	}
-	// The projects they hold are the ones they made on purpose, plus the one they
-	// were invited into — one list now (018). A broke account no longer
-	// accumulates half-made projects by retrying, because a retry creates nothing
-	// to clean up.
+	// The projects they hold are the ones they created, plus the one they were
+	// invited into, in one list (018). An account without credits no longer
+	// accumulates partly created projects by retrying, because a retry creates
+	// nothing that needs cleaning up.
 	list := doAs(t, h, "GET", "/projects", "", newcomer)
 	if n := countProjects(t, list.Body.Bytes()); n != 3 {
 		t.Errorf("newcomer holds %d project(s), want the two they created and the one they were invited into", n)
@@ -114,8 +116,9 @@ func countProjects(t *testing.T, body []byte) int {
 	return len(list)
 }
 
-// brokeJobs is a job store whose projects can never afford a session: every
-// enqueue is refused, the way 011's gate inside Enqueue refuses one.
+// brokeJobs is a job store whose projects can never afford a session. Every
+// enqueue is refused, the way the credit check inside Enqueue refuses one
+// (011).
 type brokeJobs struct{ job.Store }
 
 func (brokeJobs) Enqueue(context.Context, job.Submission) (job.Job, error) {

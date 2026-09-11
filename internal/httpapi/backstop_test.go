@@ -20,15 +20,14 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// The overdraft floor is not published, and this is the test that keeps it that
-// way (011).
+// TestTheOverdraftFloorIsPublishedNowhere checks that the overdraft floor is
+// not published (011).
 //
-// A number a project's own members can read is an allowance they plan around,
-// which is precisely what a backstop must not become. Behavioural inference
-// from a run that dies at a repeatable balance is not worth engineering
-// against; the code paths that would hand somebody the number outright are, and
-// they are what this walks: every payload a member reads, and the client's
-// whole string catalogue.
+// A number a project's own members can read becomes an allowance they plan
+// around, which a backstop must not become. Inferring the number from a run
+// that dies at a repeatable balance is not worth engineering against. The code
+// paths that would return the number directly are, and this test covers them:
+// every payload a member reads, and the client's whole string catalogue.
 func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 	d := testDeps(allowAll)
 	ledger := credit.NewMemStore(nil, d.Members.(credit.Members))
@@ -54,8 +53,8 @@ func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &started)
 	started.ProjectID = projectID
 
-	// Give the project a floor of its own, so a leak would have something
-	// distinctive to leak.
+	// Give the project a floor of its own, so a leak would carry a distinctive
+	// value.
 	const secret = int64(4242424242)
 	if err := d.Projects.(project.Store).SetCreditCap(ctx, started.ProjectID, secret); err != nil {
 		t.Fatalf("set cap: %v", err)
@@ -78,8 +77,8 @@ func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 		}
 	}
 
-	// And the platform default is not on them either — it would be the number
-	// every project without an override runs against.
+	// The platform default is not in them either. It is the number every
+	// project without an override runs against.
 	def := strconv.FormatInt(platform.DefaultOverdraftCap, 10)
 	w = httptest.NewRecorder()
 	rt.Handler().ServeHTTP(w, asPrincipal("GET", "/projects/"+started.ProjectID, "", me.Sub, me.Email))
@@ -88,15 +87,16 @@ func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 	}
 }
 
-// The client learns the floor on exactly one screen — the admin's — and the
-// member-facing surfaces do not know it exists.
+// TestTheMemberFacingClientTypesNeverNameTheFloor checks that the client
+// learns the floor on exactly one screen, the admin console, and that the
+// member-facing types do not mention it.
 //
-// The blunt version of this test (ban the word anywhere in the client) was
-// wrong, and worth recording why: an admin *sets* this number, so the console
-// names it in a label, a hint and a request body. The invariant is not "the
-// string never appears", it is "nothing a project member reads carries it". So
-// the check is on the member-facing types — the two the app renders on a
-// project screen and in the header — rather than on the file.
+// An earlier version of this test banned the word anywhere in the client, and
+// was wrong. An admin sets this number, so the console names it in a label, a
+// hint and a request body. The invariant is not that the string never appears
+// but that nothing a project member reads carries it. The check is therefore
+// on the member-facing types, the two the app renders on a project screen and
+// in the header, rather than on the whole file.
 func TestTheMemberFacingClientTypesNeverNameTheFloor(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "frontend/src/api.ts"))
 	if err != nil {
@@ -111,8 +111,8 @@ func TestTheMemberFacingClientTypesNeverNameTheFloor(t *testing.T) {
 			}
 		}
 	}
-	// And the number itself is nowhere in the client at all: a default compiled
-	// into the UI would publish it whatever the types say.
+	// The number itself appears nowhere in the client. A default compiled into
+	// the UI would publish it whatever the types say.
 	for _, rel := range []string{"frontend/src/api.ts", "frontend/src/App.tsx", "frontend/src/i18n.ts"} {
 		body, err := os.ReadFile(filepath.Join(repoRoot(t), rel))
 		if err != nil {
@@ -125,7 +125,8 @@ func TestTheMemberFacingClientTypesNeverNameTheFloor(t *testing.T) {
 }
 
 // declarationOf returns the source of one exported type, from its name to the
-// blank line after it — enough to read its fields without parsing TypeScript.
+// blank line after it, which is enough to read its fields without parsing
+// TypeScript.
 func declarationOf(t *testing.T, src, name string) string {
 	t.Helper()
 	at := strings.Index(src, "export type "+name+" = ")
@@ -139,9 +140,10 @@ func declarationOf(t *testing.T, src, name string) string {
 	return src[at : at+end]
 }
 
-// A killed run tells its owner that it failed and not why. That is withholding
-// a reason rather than asserting a false one — and it is deliberate: the reason
-// is the number, and the number is what must not be readable.
+// TestAKilledRunRecordsNothingAboutMoney checks that a killed run tells its
+// owner that it failed and not why. The reason is withheld rather than
+// replaced with a false one, and deliberately so: the reason is the number,
+// and the number must not be readable.
 func TestAKilledRunRecordsNothingAboutMoney(t *testing.T) {
 	cause := job.GenericFailure
 	for _, word := range []string{"credit", "budget", "overdraft", "balance", "cap", "money", "spend"} {

@@ -14,8 +14,8 @@ import (
 	"github.com/latere-ai/replichai/internal/profile"
 )
 
-// getOpen drives a route with no identity at all — what a stranger who followed
-// a link from a paper gets.
+// getOpen requests a route with no identity, as a signed-out reader who
+// followed a link from a paper would.
 func getOpen(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	w := httptest.NewRecorder()
@@ -23,9 +23,10 @@ func getOpen(t *testing.T, h http.Handler, path string) *httptest.ResponseRecord
 	return w
 }
 
-// A public profile is readable by anyone, signed in or not — the same openness
-// the public zone has, for the person behind it. An attestation whose signer
-// cannot be looked up is worth less than one whose can.
+// TestPublicProfileIsReadableBySignedOutStrangers checks that a public profile
+// is readable by anyone, signed in or not, with the same openness as the public
+// zone. An attestation whose signer cannot be looked up is worth less than one
+// whose signer can.
 func TestPublicProfileIsReadableBySignedOutStrangers(t *testing.T) {
 	d := testDeps(allowAll)
 	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
@@ -47,8 +48,8 @@ func TestPublicProfileIsReadableBySignedOutStrangers(t *testing.T) {
 	if got.Contact != "ada@example.org" {
 		t.Errorf("contact = %q, want the published address", got.Contact)
 	}
-	// The account email never appears here. That is what the redacted signer
-	// email on an attestation is for, and it stays there.
+	// The account email never appears here. The redacted signer email on an
+	// attestation serves that purpose, and it is confined to the attestation.
 	if body := w.Body.String(); containsAccountEmail(body) {
 		t.Errorf("the page leaks an account address: %s", body)
 	}
@@ -70,9 +71,10 @@ func containsAccountEmail(body string) bool {
 	return false
 }
 
-// The page lists the public work signed under that name, and a withdrawn
-// project leaves it — the public zone is the one source of truth for what is
-// public, and the profile reads from it rather than keeping its own list.
+// TestPublicProfileListsSignedPublicProjects checks that the page lists the
+// public work signed under that name and that a withdrawn project is removed
+// from it. The public zone is the single source of truth for what is public,
+// and the profile reads from it rather than keeping its own list.
 func TestPublicProfileListsSignedPublicProjects(t *testing.T) {
 	d := testDeps(allowAll)
 	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
@@ -81,7 +83,7 @@ func TestPublicProfileListsSignedPublicProjects(t *testing.T) {
 	publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
 	h := NewRouter(d).Handler()
 
-	// Private: nothing on the page yet.
+	// While the project is private, the page lists nothing.
 	if got := publicProfileOf(t, h, "ada"); len(got.Projects) != 0 {
 		t.Fatalf("a private project is listed: %+v", got.Projects)
 	}
@@ -97,7 +99,8 @@ func TestPublicProfileListsSignedPublicProjects(t *testing.T) {
 		t.Error("a listed project carries no sign-off date")
 	}
 
-	// Withdrawing takes it off the page, because it takes it out of the zone.
+	// Withdrawing removes it from the page, because it removes it from the
+	// public zone.
 	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/private", `{"reason":"oops"}`, owner); w.Code != http.StatusOK {
 		t.Fatalf("withdraw: %d", w.Code)
 	}
@@ -106,7 +109,8 @@ func TestPublicProfileListsSignedPublicProjects(t *testing.T) {
 	}
 }
 
-// Somebody else's public project is not this person's work.
+// TestPublicProfileListsOnlyWhatThisPersonSigned checks that another user's
+// public project is not listed as this person's work.
 func TestPublicProfileListsOnlyWhatThisPersonSigned(t *testing.T) {
 	d := testDeps(allowAll)
 	ada := Identity{Sub: "ada-sub", Email: "ada@example.org"}
@@ -128,18 +132,18 @@ func TestPublicProfileListsOnlyWhatThisPersonSigned(t *testing.T) {
 	}
 }
 
-// An unknown handle, a private profile, and a profile with no handle are one
-// 404. Distinguishing them would turn the endpoint into a way to enumerate who
-// holds which name.
+// TestPublicProfileHidesPrivateAndUnknownAlike checks that an unknown handle,
+// a private profile, and a profile with no handle all answer the same 404.
+// Distinguishing them would let a caller enumerate who holds which name.
 func TestPublicProfileHidesPrivateAndUnknownAlike(t *testing.T) {
 	d := testDeps(allowAll)
-	// Has a handle, has not made a page of it.
+	// A profile with a handle that has not been made public.
 	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
 		Principal: "shy-sub", DisplayName: "Shy", Handle: "shy",
 	}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	// Public, but never chose a handle: unreachable by construction.
+	// A public profile with no handle, which cannot be reached by any path.
 	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
 		Principal: "nameless-sub", DisplayName: "Nameless", Public: true,
 	}); err != nil {
@@ -158,9 +162,9 @@ func TestPublicProfileHidesPrivateAndUnknownAlike(t *testing.T) {
 	}
 }
 
-// 006r: publishing puts a name on a result, and the name has to resolve to
-// something. Refused before anything is recorded, so a refusal leaves no
-// half-written sign-off behind.
+// TestPublishRequiresAPublicProfile covers 006r: publishing puts a name on a
+// result, and the name has to resolve to a page. The request is refused before
+// anything is recorded, so a refusal leaves no partial sign-off behind.
 func TestPublishRequiresAPublicProfile(t *testing.T) {
 	d := testDeps(allowAll)
 	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
@@ -181,7 +185,8 @@ func TestPublishRequiresAPublicProfile(t *testing.T) {
 		t.Fatalf("a refused publish recorded something: %+v", got)
 	}
 
-	// A handle with no page is not enough either — the link would not resolve.
+	// A handle without a public page is not enough either, because the link
+	// would not resolve.
 	if _, err := d.Profiles.Save(context.Background(), profile.Profile{
 		Principal: owner.Sub, DisplayName: "Ada", Contact: "ada@example.org", Handle: "ada",
 	}); err != nil {
@@ -191,16 +196,17 @@ func TestPublishRequiresAPublicProfile(t *testing.T) {
 		t.Errorf("publish with a private profile that has a handle = %d, want 409", w.Code)
 	}
 
-	// Turning it public unblocks it.
+	// Making the profile public allows the publish.
 	publishable(t, d, owner.Sub, "ada")
 	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
 		t.Errorf("publish with a public profile = %d (%s)", w.Code, w.Body.String())
 	}
 }
 
-// PATCH means patch. A settings form that saves a display name must not take
-// somebody's page down as a side effect — and with it every link a published
-// attestation makes to them.
+// TestSavingOneProfileFieldLeavesTheRestAlone checks that PATCH updates only
+// the fields sent. A settings form that saves a display name must not make the
+// page private as a side effect, which would break every link a published
+// attestation makes to it.
 func TestSavingOneProfileFieldLeavesTheRestAlone(t *testing.T) {
 	d := testDeps(allowAll)
 	owner := Identity{Sub: "owner-sub", Email: "ada@example.org"}
@@ -217,7 +223,7 @@ func TestSavingOneProfileFieldLeavesTheRestAlone(t *testing.T) {
 	if got.Institution != "LMU Munich" || got.DisplayName != "Ada Lovelace" {
 		t.Errorf("profile = %+v", got)
 	}
-	// And an explicit false really does take it down.
+	// An explicit false does make the page private.
 	if w := doAs(t, h, "PATCH", "/me/profile", `{"public":false}`, owner); w.Code != http.StatusOK {
 		t.Fatalf("unpublish: %d", w.Code)
 	}
@@ -226,9 +232,9 @@ func TestSavingOneProfileFieldLeavesTheRestAlone(t *testing.T) {
 	}
 }
 
-// A handle somebody else holds is a conflict; a malformed or reserved one is a
-// bad field. Each gets its own code so the settings form can point at the input
-// and say which kind of problem it is.
+// TestHandleErrorsAreDistinct checks that a handle another user holds is a
+// conflict and that a malformed or reserved one is a bad field. Each has its
+// own code so the settings form can point at the input and name the problem.
 func TestHandleErrorsAreDistinct(t *testing.T) {
 	d := testDeps(allowAll)
 	publishable(t, d, "someone-else", "ada")
@@ -250,7 +256,7 @@ func TestHandleErrorsAreDistinct(t *testing.T) {
 			t.Errorf("%s = %d %s, want %d %s", tt.body, w.Code, w.Body.String(), tt.status, tt.code)
 		}
 	}
-	// None of it was written.
+	// Nothing was written.
 	if got, _ := d.Profiles.Get(context.Background(), me.Sub); got.Handle != "" {
 		t.Errorf("a refused handle was written: %+v", got)
 	}

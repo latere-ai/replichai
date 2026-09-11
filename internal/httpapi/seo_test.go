@@ -16,14 +16,14 @@ import (
 	"github.com/latere-ai/replichai/internal/seo"
 )
 
-// The head the server writes (042a).
+// testShell is the shell whose head the server writes (042a).
 //
 // Every assertion below is on the bytes a crawler or a link unfurler receives,
 // because that reader never runs the script that would fix a head client-side.
-// The shell is the real one's shape — the markers, and something outside them
-// that substitution must not disturb — served through the same seo.WriteShell
-// the built frontend is served through, so these tests and production cannot be
-// two implementations of one rule.
+// The shell has the shape of the real one: the markers, and content outside
+// them that substitution must not disturb. It is served through the same
+// seo.WriteShell the built frontend is served through, so these tests and
+// production cannot be two implementations of one rule.
 const testShell = `<!doctype html><html lang="en"><head><meta charset="UTF-8" />` +
 	`<link rel="icon" href="/favicon.svg" />` +
 	`<!--seo-->` +
@@ -50,8 +50,8 @@ func seoDeps() Deps {
 }
 
 // describedProject seeds one published project holding one paper with a real
-// bibliography, and returns it. The paper is a DOI so the structured data has an
-// identifier to resolve.
+// bibliography, and returns it. The paper is a DOI so that the structured data
+// has an identifier to resolve.
 func describedProject(t *testing.T, d Deps) project.Project {
 	t.Helper()
 	ctx := context.Background()
@@ -88,8 +88,9 @@ func describedProject(t *testing.T, d Deps) project.Project {
 	return out
 }
 
-// session enqueues one run of a paper under a project, and takes it to
-// published when asked — the state a session page has evidence to describe.
+// session enqueues one run of a paper under a project and, when publish is
+// set, advances it to published, which is the state a session page has evidence
+// to describe.
 func session(t *testing.T, d Deps, projectID, paperKey string, publish bool) job.Job {
 	t.Helper()
 	ctx := context.Background()
@@ -115,7 +116,8 @@ func session(t *testing.T, d Deps, projectID, paperKey string, publish bool) job
 	return got
 }
 
-// AC1: a public project's address names that project.
+// TestAPublicProjectDescribesItself checks AC1: a public project's address
+// names that project.
 func TestAPublicProjectDescribesItself(t *testing.T) {
 	d := seoDeps()
 	p := describedProject(t, d)
@@ -150,9 +152,10 @@ func TestAPublicProjectDescribesItself(t *testing.T) {
 	}
 }
 
-// AC2: a private, trashed or unknown project reveals nothing and is not indexed.
-// The three cases answer identically on purpose — a head that told them apart
-// would report the existence of every private project to anybody walking ids.
+// TestAProjectNobodyPublishedIsNotDescribed checks AC2: a private, trashed or
+// unknown project reveals nothing and is not indexed. The three cases answer
+// identically on purpose, because a head that told them apart would report the
+// existence of every private project to anybody enumerating ids.
 func TestAProjectNobodyPublishedIsNotDescribed(t *testing.T) {
 	d := seoDeps()
 	ctx := context.Background()
@@ -191,7 +194,8 @@ func TestAProjectNobodyPublishedIsNotDescribed(t *testing.T) {
 	}
 }
 
-// AC3: a public profile names its researcher; a private one says nothing.
+// TestAProfileIsDescribedOnlyWhenPublic checks AC3: a public profile names
+// its researcher, and a private one reveals nothing.
 func TestAProfileIsDescribedOnlyWhenPublic(t *testing.T) {
 	d := seoDeps()
 	ctx := context.Background()
@@ -231,7 +235,8 @@ func TestAProfileIsDescribedOnlyWhenPublic(t *testing.T) {
 	}
 }
 
-// AC4: a published session under a public project names the paper it is a run of.
+// TestAPublishedSessionNamesItsPaper checks AC4: a published session under a
+// public project names the paper it is a run of.
 func TestAPublishedSessionNamesItsPaper(t *testing.T) {
 	d := seoDeps()
 	p := describedProject(t, d)
@@ -239,8 +244,8 @@ func TestAPublishedSessionNamesItsPaper(t *testing.T) {
 	h := NewRouter(d).Handler()
 
 	// A session that has not begun publishing has no published evidence, so it
-	// describes nothing yet.
-	// A different paper, because one paper may have only one session in flight.
+	// describes nothing yet. It runs a different paper, because one paper may
+	// have only one session in flight.
 	unpublished := session(t, d, p.ID, "arxiv:2401.00001", false)
 	if w := do(t, h, "GET", "/p/"+p.ID+"/s/"+unpublished.ID, "", ""); w.Header().Get("X-Robots-Tag") != "noindex" {
 		t.Error("an unpublished session was described")
@@ -257,8 +262,8 @@ func TestAPublishedSessionNamesItsPaper(t *testing.T) {
 			t.Errorf("the session page is missing %q", want)
 		}
 	}
-	// A session id that belongs to another project is not this address's
-	// session, whatever the address says.
+	// A session id that belongs to another project is not described under this
+	// project's address.
 	other, err := d.Projects.Create(ctx, "owner-sub", "Another project")
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -271,10 +276,11 @@ func TestAPublishedSessionNamesItsPaper(t *testing.T) {
 	}
 }
 
-// A session its owner threw away (032) leaves the public surface completely: it
-// is neither described nor listed. Both sides ask the job store, and both stores
-// hide a deleted row from Get and ListByProject — this pins that, because the
-// two predicates agreeing with each other is not the same as either being right.
+// TestADeletedSessionLeavesThePublicSurface checks that a session its owner
+// deleted (032) leaves the public surface completely: it is neither described
+// nor listed. Both paths ask the job store, and both stores hide a deleted row
+// from Get and ListByProject. This test pins that, because the two predicates
+// agreeing with each other does not show that either is right.
 func TestADeletedSessionLeavesThePublicSurface(t *testing.T) {
 	d := seoDeps()
 	p := describedProject(t, d)
@@ -300,7 +306,8 @@ func TestADeletedSessionLeavesThePublicSurface(t *testing.T) {
 	}
 }
 
-// AC5: one title, one canonical, and a tab folds to the record it is a view of.
+// TestOneTitleAndATabThatFoldsToItsRecord checks AC5: one title, one
+// canonical link, and a tab canonicalises to the record it is a view of.
 func TestOneTitleAndATabThatFoldsToItsRecord(t *testing.T) {
 	d := seoDeps()
 	p := describedProject(t, d)
@@ -321,9 +328,9 @@ func TestOneTitleAndATabThatFoldsToItsRecord(t *testing.T) {
 	}
 }
 
-// AC7: a title is researcher-supplied text, and reaches the client escaped —
-// in the meta tags and inside the JSON-LD, which is the one that could close
-// its own script element.
+// TestAHostileTitleIsEscaped checks AC7: a title is researcher-supplied text
+// and reaches the client escaped, both in the meta tags and inside the
+// JSON-LD, where an unescaped title could close its own script element.
 func TestAHostileTitleIsEscaped(t *testing.T) {
 	d := seoDeps()
 	ctx := context.Background()
@@ -347,9 +354,10 @@ func TestAHostileTitleIsEscaped(t *testing.T) {
 	}
 }
 
-// AC8: describing a page never leaves the database. A crawler walking the public
-// zone must not become one forge request per URL, so every page still renders
-// with a reader that fails every call.
+// TestDescribingAPageMakesNoForgeCall checks AC8: describing a page never
+// leaves the database. A crawler walking the public zone must not cause one
+// forge request per URL, so every page still renders with a reader that fails
+// every call.
 func TestDescribingAPageMakesNoForgeCall(t *testing.T) {
 	d := seoDeps()
 	d.Reproductions = &fakeRepro{getErr: ErrReproNotFound, transcriptErr: ErrReproNotFound}
@@ -365,8 +373,9 @@ func TestDescribingAPageMakesNoForgeCall(t *testing.T) {
 	}
 }
 
-// The landing and the registry describe the platform rather than one record, and
-// carry the structured data that names the site itself.
+// TestTheLandingAndRegistryDescribeTheSite checks that the landing and the
+// registry describe the platform rather than one record, and carry the
+// structured data that names the site itself.
 func TestTheLandingAndRegistryDescribeTheSite(t *testing.T) {
 	h := NewRouter(seoDeps()).Handler()
 
@@ -384,7 +393,8 @@ func TestTheLandingAndRegistryDescribeTheSite(t *testing.T) {
 	}
 }
 
-// A description longer than a card will carry is cut at a word, once.
+// TestALongDescriptionIsCutAtAWord checks that a description longer than a
+// card will carry is cut at a word boundary, once.
 func TestALongDescriptionIsCutAtAWord(t *testing.T) {
 	long := strings.Repeat("reproducibility ", 40)
 	got := summarize(long, "")
@@ -402,7 +412,8 @@ func TestALongDescriptionIsCutAtAWord(t *testing.T) {
 	}
 }
 
-// A paper's identity resolves to where the work lives, per scheme (001).
+// TestAPaperKeyResolvesToItsSource checks that a paper's identity resolves to
+// the source URL for its scheme (001).
 func TestAPaperKeyResolvesToItsSource(t *testing.T) {
 	for _, tc := range []struct{ key, ref, want string }{
 		{"doi:10.1145/1", "", "https://doi.org/10.1145/1"},

@@ -13,9 +13,9 @@ import (
 	"github.com/latere-ai/replichai/internal/paper"
 )
 
-// recordingResolver answers with a canned identity per reference and counts what
-// it was asked, so a test can assert both what was recorded and that the fill-in
-// did not ask twice for a paper that was already complete.
+// recordingResolver answers with a canned identity per reference and records
+// what it was asked, so a test can assert both what was recorded and that the
+// fill-in did not look up a paper that was already complete.
 type recordingResolver struct {
 	byRef map[string]ResolvedPaper
 	asked []string
@@ -58,8 +58,9 @@ func papersOf(t *testing.T, h http.Handler, projectID, sub string) []PaperView {
 	return out
 }
 
-// AC4: a paper added to a project carries the record its source declared, and it
-// reaches the client that reads the project.
+// TestAddedPaperCarriesItsRecord checks AC4: a paper added to a project
+// carries the record its source declared, and the record reaches the client
+// that reads the project.
 func TestAddedPaperCarriesItsRecord(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{
@@ -68,7 +69,7 @@ func TestAddedPaperCarriesItsRecord(t *testing.T) {
 	rt := NewRouter(d)
 	h := rt.Handler()
 	_, id := createWithPaper(t, h, theRef, "sub")
-	rt.WaitBackground() // the record is written after the response
+	rt.WaitBackground() // The record is written after the response.
 
 	papers := papersOf(t, h, id, "sub")
 	if len(papers) != 1 {
@@ -86,7 +87,8 @@ func TestAddedPaperCarriesItsRecord(t *testing.T) {
 	}
 }
 
-// AC5: a member corrects a field; a stranger cannot.
+// TestCorrectingAPaper checks AC5: a member may correct a field, and a
+// stranger may not.
 func TestCorrectingAPaper(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{
@@ -95,7 +97,7 @@ func TestCorrectingAPaper(t *testing.T) {
 	rt := NewRouter(d)
 	h := rt.Handler()
 	_, id := createWithPaper(t, h, theRef, "sub")
-	rt.WaitBackground() // the record is written after the response
+	rt.WaitBackground() // The record is written after the response.
 	key := papersOf(t, h, id, "sub")[0].Key
 
 	body := `{"title":"Corrected Title","authors":["Ada Lovelace","Grace Hopper"],"venue":"  CHI '24  "}`
@@ -113,7 +115,8 @@ func TestCorrectingAPaper(t *testing.T) {
 	if len(got.Record.Authors) != 2 {
 		t.Errorf("authors = %v", got.Record.Authors)
 	}
-	// Exactly the fields written are marked, so the rest stay open to enrichment.
+	// Exactly the fields written are marked as edited, so the rest remain open
+	// to enrichment.
 	if !got.WasEdited("title") || !got.WasEdited("venue") || got.WasEdited("year") {
 		t.Errorf("edited = %v", got.Edited)
 	}
@@ -129,14 +132,15 @@ func TestCorrectingAPaper(t *testing.T) {
 	}
 }
 
-// A correction is held to a shape: a bibliography is short, and a year is a year.
+// TestACorrectionIsBounded checks that a correction is validated: a
+// bibliography field has a maximum length, and a year must be a plausible year.
 func TestACorrectionIsBounded(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{theRef: {Key: "doi:x", Title: "T"}}}
 	rt := NewRouter(d)
 	h := rt.Handler()
 	_, id := createWithPaper(t, h, theRef, "sub")
-	rt.WaitBackground() // the record is written after the response
+	rt.WaitBackground() // The record is written after the response.
 	key := papersOf(t, h, id, "sub")[0].Key
 	long := `{"venue":"` + strings.Repeat("x", maxPaperField+1) + `"}`
 
@@ -158,18 +162,18 @@ func TestACorrectionIsBounded(t *testing.T) {
 	}
 }
 
-// AC6 and AC7: the fill-in completes what is incomplete, leaves corrections
-// alone, and does nothing the second time.
+// TestFillingInTheDetails checks AC6 and AC7: the fill-in completes what is
+// incomplete, leaves corrections alone, and does nothing the second time.
 func TestFillingInTheDetails(t *testing.T) {
 	res := &recordingResolver{byRef: map[string]ResolvedPaper{
-		// The source answers with a record; the project starts without one,
-		// because this project predates the bibliography.
+		// The source answers with a record. The project starts without one,
+		// because it predates the bibliography.
 		theRef: {Key: "doi:10.1145/3772318.3791265", Title: "A Real Paper", Scheme: "doi", Record: fullRecord()},
 	}}
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
-	// Created with no resolver, so the paper lands bare — the state every paper
-	// added before 037 is in.
+	// The project is created with no resolver, so the paper has no record,
+	// which is the state of every paper added before 037.
 	_, id := createWithPaper(t, h, theRef, "sub")
 	if got := papersOf(t, h, id, "sub")[0]; !got.NeedsDetails() {
 		t.Fatalf("the fixture is not a bare paper: %+v", got)
@@ -205,8 +209,8 @@ func TestFillingInTheDetails(t *testing.T) {
 		t.Errorf("the fill-in did not complete the record: %+v", got)
 	}
 
-	// Twice changes nothing, and does not ask the source again for a paper that
-	// is now complete.
+	// A second fill-in changes nothing and does not ask the source again for a
+	// paper that is now complete.
 	asked := len(res.asked)
 	w = do(t, h, "POST", "/projects/"+id+"/papers/refresh", "", "sub")
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
@@ -224,17 +228,18 @@ func TestFillingInTheDetails(t *testing.T) {
 	}
 }
 
-// A source that cannot answer today leaves the paper as it was, and the request
-// still succeeds: the button is best-effort, and a Crossref outage is not the
-// owner's error to see.
+// TestFillingInSurvivesAnUnreachableSource checks that a source that cannot
+// answer leaves the paper as it was and the request still succeeds. The fill-in
+// is best-effort, and a Crossref outage is not reported to the owner as an
+// error.
 func TestFillingInSurvivesAnUnreachableSource(t *testing.T) {
 	d := testDeps(allowAll)
 	rt := NewRouter(d)
 	h := rt.Handler()
 	_, id := createWithPaper(t, h, theRef, "sub")
-	rt.WaitBackground() // the record is written after the response
+	rt.WaitBackground() // The record is written after the response.
 
-	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{}} // answers nothing
+	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{}} // Answers nothing.
 	h = NewRouter(d).Handler()
 	w := do(t, h, "POST", "/projects/"+id+"/papers/refresh", "", "sub")
 	if w.Code != http.StatusOK {
@@ -245,8 +250,9 @@ func TestFillingInSurvivesAnUnreachableSource(t *testing.T) {
 	}
 }
 
-// AC8: the platform's own fill-in walks every project, including the ones nobody
-// has opened, and is safe to run again.
+// TestTheSweepWalksEveryProject checks AC8: the platform's own fill-in walks
+// every project, including the ones nobody has opened, and is safe to run
+// again.
 func TestTheSweepWalksEveryProject(t *testing.T) {
 	d := testDeps(allowAll)
 	rt := NewRouter(d)
@@ -276,7 +282,7 @@ func TestTheSweepWalksEveryProject(t *testing.T) {
 		}
 	}
 
-	// Again changes nothing, and asks nobody.
+	// A second sweep changes nothing and asks no source.
 	asked := len(res.asked)
 	if _, filled, err := rt.SweepPapers(context.Background()); err != nil || filled != 0 {
 		t.Errorf("a second sweep filled %d (err %v)", filled, err)
@@ -286,8 +292,8 @@ func TestTheSweepWalksEveryProject(t *testing.T) {
 	}
 }
 
-// A deployment with no resolver says so rather than reporting a sweep that
-// silently did nothing.
+// TestTheSweepNeedsAResolver checks that a deployment with no resolver returns
+// an error rather than reporting a sweep that did nothing.
 func TestTheSweepNeedsAResolver(t *testing.T) {
 	rt := NewRouter(testDeps(allowAll))
 	if _, _, err := rt.SweepPapers(context.Background()); err == nil {
@@ -295,8 +301,9 @@ func TestTheSweepNeedsAResolver(t *testing.T) {
 	}
 }
 
-// AC9: a paper moved to another project (035) arrives with its record and its
-// corrections intact — it moves as a row, and the record is on the row.
+// TestAMovedPaperKeepsItsRecord checks AC9: a paper moved to another project
+// (035) arrives with its record and its corrections intact, because it moves
+// as a row and the record is on the row.
 func TestAMovedPaperKeepsItsRecord(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Resolver = &recordingResolver{byRef: map[string]ResolvedPaper{
