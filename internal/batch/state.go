@@ -24,9 +24,9 @@ const stateVersion = 1
 type State struct {
 	Version int    `json:"version"`
 	Project string `json:"project,omitempty"`
-	// Publishing says the batch was asked to publish. Without it an
+	// Publishing records that the batch was asked to publish. Without it, an
 	// ordinary local run would be reported as having failed to publish
-	// something it was never asked to.
+	// something it was never asked to publish.
 	Publishing bool         `json:"publishing,omitempty"`
 	StartedAt  time.Time    `json:"started_at"`
 	FinishedAt time.Time    `json:"finished_at,omitzero"`
@@ -65,8 +65,8 @@ func LoadState(path string) (State, error) {
 // starting over.
 //
 // Only a finished paper is skipped. A failed one is retried, because retrying
-// what failed is the reason to resume at all — but it keeps its repository and
-// its session reference, so the retry publishes into the repository the first
+// what failed is the reason to resume. It keeps its repository and its
+// session reference, so the retry publishes into the repository the first
 // attempt created rather than allocating a second one for the same paper.
 func (s State) mergedWith(entries []Resolved, now time.Time) State {
 	merged := State{Version: stateVersion, Project: s.Project, StartedAt: now, Entries: make([]EntryState, len(entries))}
@@ -100,7 +100,7 @@ func (s State) clone() State {
 	return out
 }
 
-// Totals is the summary a person actually asks for at the end.
+// Totals is the summary reported at the end of a batch.
 type Totals struct {
 	Papers   int
 	Done     int
@@ -113,8 +113,9 @@ type Totals struct {
 	VendorUS int64
 }
 
-// Summarise folds the entries. The totals count what happened rather than what
-// succeeded, because a report that shows only successes reads as completeness.
+// Summarise totals the entries. The totals count every outcome rather than
+// only successes, because a report that shows only successes reads as if
+// everything completed.
 func (s State) Summarise() Totals {
 	totals := Totals{Papers: len(s.Entries)}
 	for _, entry := range s.Entries {
@@ -126,9 +127,9 @@ func (s State) Summarise() Totals {
 		default:
 			totals.Pending++
 		}
-		// Grade.String(), not a conversion: Grade is a uint8, and
-		// string(GradePassed) is the rune at that code point rather than
-		// the word "passed" — which counted every batch as zero passes.
+		// This uses Grade.String rather than a conversion. Grade is a uint8,
+		// and string(GradePassed) is the rune at that code point rather than
+		// the word "passed", which once counted every batch as zero passes.
 		if entry.Grade == managed.GradePassed.String() {
 			totals.Passed++
 		}
@@ -142,8 +143,8 @@ func (s State) Summarise() Totals {
 	return totals
 }
 
-// Report renders what the batch did, in the form a person reads. It names what
-// it could not do as prominently as what it did.
+// Report renders what the batch did as Markdown. It lists what it could not
+// do as prominently as what it did.
 func (s State) Report() string {
 	var b strings.Builder
 	totals := s.Summarise()
@@ -182,7 +183,7 @@ func (s State) Report() string {
 	}
 
 	// What did not happen is stated as plainly as what did. A summary that
-	// lists only successes reads as completeness.
+	// lists only successes reads as if everything completed.
 	if totals.Failed > 0 || totals.Pending > 0 || totals.Empty > 0 {
 		b.WriteString("\n## Not done\n\n")
 		for _, entry := range s.Entries {

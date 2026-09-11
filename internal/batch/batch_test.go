@@ -16,14 +16,14 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
-// runner is a scripted project runner: it records the order and the overlap of
-// what the batch asked it to do.
+// runner is a scripted project runner. It records the order and the overlap
+// of what the batch asked it to do.
 //
-// Concurrency is observed, never timed. Entering and leaving Prepare and
+// Concurrency is observed and never timed. Entering and leaving Prepare and
 // Execute are counted; holdPrepare and holdExecute, when set, keep a call in
 // flight until the test closes them; and entered reports each Execute as it
-// begins. The test decides how wide every window is, so nothing here sleeps
-// and hopes the scheduler agreed.
+// begins. The test controls every window, so nothing here sleeps and relies
+// on the scheduler.
 type runner struct {
 	mu       sync.Mutex
 	prepared []string
@@ -116,7 +116,8 @@ func project(t *testing.T, body, name string) string {
 	return path
 }
 
-// Both input forms are accepted, and per-paper overrides beat the file's
+// TestBothInputFormsAndTheOverrideOrder checks that both input forms are
+// accepted and that per-paper overrides take precedence over the file's
 // defaults.
 func TestBothInputFormsAndTheOverrideOrder(t *testing.T) {
 	list, err := ReadFile(project(t, "# a project\n\nhttps://arxiv.org/abs/2603.01795\n10.1145/3654777.3676417\n", "papers.txt"))
@@ -159,23 +160,23 @@ papers:
 		t.Errorf("the doi spelling was not read: %+v", entries[1])
 	}
 
-	// A paper naming nothing fails that project rather than being quietly
-	// skipped: nineteen of twenty papers running is worse than a refusal.
+	// An entry naming no paper fails the project rather than being skipped:
+	// nineteen of twenty papers running is worse than a refusal.
 	empty := File{Papers: []Entry{{Model: "best"}}}
 	if _, err := empty.Entries(); err == nil {
 		t.Fatal("an entry naming no paper was accepted")
 	}
 }
 
-// The pool never exceeds its cap, and Prepare is serialised even when Execute
-// is not: allocating a repository name is a read followed by a decision, and
-// two concurrent readers decide the same one.
+// TestPreparationIsSerialisedAndExecutionIsCapped checks that the pool never
+// exceeds its cap and that Prepare is serialised even though Execute is not.
+// Allocating a repository name is a read followed by a decision, and two
+// concurrent readers would decide the same name.
 //
-// The window is held open by the test rather than by a sleep: the first
-// Prepare is kept in flight until the batch has marked every slot's paper
-// running, so any second Prepare that was going to overlap has had the whole
-// of that time to do so; then every Execute is kept in flight until the pool
-// is observed full.
+// The test holds the window open rather than sleeping. The first Prepare is
+// kept in flight until the batch has marked every slot's paper running, so
+// any second Prepare that was going to overlap has had that whole time to do
+// so. Then every Execute is kept in flight until the pool is observed full.
 func TestPreparationIsSerialisedAndExecutionIsCapped(t *testing.T) {
 	papers := make([]Entry, 8)
 	for index := range papers {
@@ -207,7 +208,7 @@ func TestPreparationIsSerialisedAndExecutionIsCapped(t *testing.T) {
 	}()
 
 	// One Prepare is inside and held; every other slot has claimed a paper
-	// and is heading for Prepare. Exactly one may be inside.
+	// and is about to call Prepare. Exactly one may be inside.
 	<-r.preparing
 	for count := 0; count < 3; count = <-running {
 	}
@@ -245,8 +246,8 @@ func TestPreparationIsSerialisedAndExecutionIsCapped(t *testing.T) {
 	}
 }
 
-// One paper failing never fails the rest, and the batch still reports a
-// non-zero outcome so CI reads it.
+// TestOneFailureDoesNotStopTheProject checks that one paper failing does not
+// fail the rest, and that the batch still reports a non-zero outcome for CI.
 func TestOneFailureDoesNotStopTheProject(t *testing.T) {
 	r := newRunner()
 	r.fail["10.1/b"] = errors.New("the sandbox is not ready")
@@ -276,8 +277,9 @@ func TestOneFailureDoesNotStopTheProject(t *testing.T) {
 	}
 }
 
-// The state file is valid at every point, so a batch killed at any moment
-// leaves something its own resume path can read.
+// TestTheStateFileIsValidAtEveryPoint checks that the state file is valid
+// after every write, so a batch killed at any moment leaves a file its own
+// resume path can read.
 func TestTheStateFileIsValidAtEveryPoint(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "batch.json")
 	r := newRunner()
@@ -299,7 +301,8 @@ func TestTheStateFileIsValidAtEveryPoint(t *testing.T) {
 	}
 }
 
-// A resumed batch skips what finished and re-runs the rest.
+// TestResumeSkipsWhatFinished checks that a resumed batch skips what finished
+// and re-runs the rest.
 func TestResumeSkipsWhatFinished(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "batch.json")
 	file := File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}, {Paper: "10.1/c"}}}
@@ -309,7 +312,7 @@ func TestResumeSkipsWhatFinished(t *testing.T) {
 	if _, err := Run(context.Background(), file, first, Options{Parallel: 1, StatePath: statePath}); err == nil {
 		t.Fatal("the first pass should have reported a failure")
 	}
-	// Pretend the third never ran: a batch killed mid-flight leaves an
+	// Mark the third as still running: a batch killed in flight leaves an
 	// entry that is not terminal.
 	state, err := LoadState(statePath)
 	if err != nil {
@@ -340,9 +343,10 @@ func TestResumeSkipsWhatFinished(t *testing.T) {
 	}
 }
 
-// A retried paper is handed what its first attempt recorded, so the runner can
-// return to the repository that attempt created instead of allocating a
-// second one for the same paper — which is what --resume promises.
+// TestAResumedPaperIsHandedItsFirstAttempt checks that a retried paper is
+// passed what its first attempt recorded, so the runner can return to the
+// repository that attempt created instead of allocating a second one for the
+// same paper. That is what --resume promises.
 func TestAResumedPaperIsHandedItsFirstAttempt(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "batch.json")
 	file := File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}}}
@@ -376,8 +380,9 @@ func TestAResumedPaperIsHandedItsFirstAttempt(t *testing.T) {
 	}
 }
 
-// A retry that fails before it reaches its repository must not erase the
-// repository from the state: the next retry has to find it there.
+// TestAnEarlyFailureKeepsTheRepositoryOnRecord checks that a retry that fails
+// before it reaches its repository does not erase the repository from the
+// state, because the next retry has to find it there.
 func TestAnEarlyFailureKeepsTheRepositoryOnRecord(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "batch.json")
 	first := State{Version: stateVersion, Entries: []EntryState{
@@ -409,8 +414,9 @@ func TestAnEarlyFailureKeepsTheRepositoryOnRecord(t *testing.T) {
 	}
 }
 
-// An interrupted batch keeps what ran and leaves the rest pending rather than
-// failed: nothing is lost to a Ctrl-C, and nothing is blamed on one.
+// TestAnInterruptedBatchKeepsWhatRan checks that an interrupted batch keeps
+// what ran and leaves the rest pending rather than failed. Nothing is lost to
+// an interrupt, and no paper is recorded as failed because of one.
 func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 	r := newRunner()
 	r.holdExecute = make(chan struct{})
@@ -434,9 +440,9 @@ func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 	if totals.Failed != 0 {
 		t.Fatalf("an interruption was recorded as failure: %+v", totals)
 	}
-	// The paper in flight finishes; what never started stays pending rather
-	// than being blamed. (A waiting paper may still win the freed slot
-	// against the cancelled context, so only the bounds are fixed.)
+	// The paper in flight finishes, and what never started stays pending
+	// rather than failed. A waiting paper may still win the freed slot
+	// against the cancelled context, so only the bounds are fixed.
 	if totals.Done < 1 || totals.Done+totals.Pending != 3 {
 		t.Fatalf("after an interruption: %+v", totals)
 	}
@@ -445,8 +451,8 @@ func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 	}
 }
 
-// A project that was never asked to publish is not reported as having failed
-// to publish.
+// TestAnUnpublishedRunIsNotAnEmptyRepository checks that a project that was
+// never asked to publish is not reported as having failed to publish.
 func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
 	r := newRunner()
 	r.repoless = true
@@ -461,8 +467,8 @@ func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
 	if strings.Contains(state.Report(), "without publishing") {
 		t.Fatalf("the report blames a run for not publishing:\n%s", state.Report())
 	}
-	// Asked to publish and producing nothing is a different thing, and is
-	// reported.
+	// A project asked to publish that produces nothing is a different case,
+	// and is reported.
 	state, _ = Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, r,
 		Options{Parallel: 1, Publishing: true, StatePath: filepath.Join(t.TempDir(), "batch.json")})
 	if got := state.Summarise().Empty; got != 1 {
@@ -470,8 +476,9 @@ func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
 	}
 }
 
-// The report's totals equal the entries, and the vendor's cost is labelled as
-// the vendor's rather than as something replichai charged.
+// TestTheReportTotalsTheEntries checks that the report's totals equal the sum
+// of the entries, and that the vendor's cost is labelled as the vendor's
+// rather than as a replichai charge.
 func TestTheReportTotalsTheEntries(t *testing.T) {
 	r := newRunner()
 	state, err := Run(context.Background(), File{Project: "chi-2026", Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}}},
@@ -497,9 +504,9 @@ func TestTheReportTotalsTheEntries(t *testing.T) {
 	}
 }
 
-// The default pool is half the cores, capped, and never zero: an unset
-// --parallel must not mean one paper at a time on a sixteen-core machine, and
-// must not mean none at all.
+// TestTheDefaultPoolIsSized checks that the default pool is half the cores,
+// capped, and never zero. An unset --parallel must not mean one paper at a
+// time on a sixteen-core machine, and must not mean no papers at all.
 func TestTheDefaultPoolIsSized(t *testing.T) {
 	if got := DefaultParallel(); got < 1 || got > 4 {
 		t.Fatalf("DefaultParallel() = %d", got)
