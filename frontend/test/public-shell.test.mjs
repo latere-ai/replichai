@@ -13,28 +13,7 @@
 // frame renders, what is in the rail, and where the sign-in leads. It drives
 // Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5203
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
+import { fail, json, sleep, start } from './harness.mjs'
 
 const ago = (ms) => new Date(Date.now() - ms).toISOString()
 
@@ -91,69 +70,38 @@ const session = {
 }
 
 const routes = [
-  [/^\/public$/, 200, [published]],
-  [/^\/jobs\/job-1$/, 200, session],
-  [/^\/jobs\/job-1\/transcript$/, 200, { events: [], usage: null, live: false }],
-  [/^\/projects\/pub-1$/, 200, detail],
-  [/^\/projects\/pub-1\/papers$/, 200, []],
+  ['/public', [published]],
+  ['/jobs/job-1', session],
+  ['/jobs/job-1/transcript', { events: [], usage: null, live: false }],
+  ['/projects/pub-1', detail],
+  ['/projects/pub-1/papers', []],
   // Anything private reads as missing, which is the one answer the server gives
   // for private, withdrawn, and never-existed alike.
-  [/^\/projects\/private-1$/, 404, { error: 'not_found' }],
-  [/^\/projects\/private-1\/papers$/, 404, { error: 'not_found' }],
+  ['/projects/private-1', json({ error: 'not_found' }, 404)],
+  ['/projects/private-1/papers', json({ error: 'not_found' }, 404)],
 ]
 
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+const SIGNED_OUT = { authenticated: false }
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 
 // open serves the mocked API with `me` as the identity and returns a page at
 // `path`.
 const open = async (me, path) => {
-  const page = await browser.newPage()
-  const asked = []
-  page.asked = asked
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      asked.push(u.pathname)
-      if (u.pathname === '/me') return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) return req.respond({ status: hit[1], contentType: 'application/json', body: JSON.stringify(hit[2]) })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
+  const page = await h.page({ routes: [['/me', me], ...routes] })
   page.on('pageerror', (e) => fail(`page error: ${e.message}`))
-  await page.goto(BASE + path, { waitUntil: 'networkidle0' })
+  await page.open(path)
   return page
 }
 
-const SIGNED_OUT = { authenticated: false }
-
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-
   /* ── The registry, signed out ── */
 
   {
     const page = await open(SIGNED_OUT, '/registry')
     await page.waitForSelector('.shell')
+    // The frame is up before the rows it lists have arrived.
+    await page.waitForSelector('.screen .rows .row', { timeout: 5000 }).catch(() => {})
     const shell = await page.evaluate(() => ({
       landing: !!document.querySelector('.landing'),
       rows: document.querySelectorAll('.screen .rows .row').length,
@@ -209,9 +157,11 @@ try {
     await page.waitForSelector('.tx .detail-head')
     // The live stream is an operator route and stays gated. Opened here it would
     // be refused and reopened for as long as the page is up, so it must not be
-    // opened at all.
-    const streamed = page.asked.some((p) => p.endsWith('/events'))
-    if (streamed) fail(`a signed-out session screen opened the gated live stream: ${page.asked.join(' ')}`)
+    // opened at all. It would be opened once the session is on screen, so the
+    // measurement is a window after that in which nothing may be asked for.
+    await sleep(300)
+    const streamed = page.calls.some((c) => /\/events(\?|$)/.test(c))
+    if (streamed) fail(`a signed-out session screen opened the gated live stream: ${page.calls.join(' ')}`)
     await page.close()
   }
 
@@ -251,8 +201,9 @@ try {
     await page.close()
   }
 
-  if (!process.exitCode) console.log('ok: the registry and what is under it read signed out, in the app’s own frame')
+  h.ok('the registry and what is under it read signed out, in the app’s own frame')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
