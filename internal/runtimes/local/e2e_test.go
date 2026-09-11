@@ -19,12 +19,13 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/host"
 )
 
-// One real session, against the real thing: srt confining a real Claude Code,
-// bootstrap through worker through judge, on this machine.
+// One real session: srt confining a real Claude Code, from bootstrap through
+// worker to judge, on this machine.
 //
-// It uses the login the operator already has: no API key, nothing configured.
-// That is the case the host sandbox exists to serve, and the one most likely
-// to break silently, so it is the one that gets driven against the real thing.
+// It uses the login the operator already has, with no API key and nothing
+// configured. That is the case the host sandbox exists to serve and the one
+// most likely to break unnoticed, so it is the one driven against the real
+// harness.
 //
 // It is opt-in, because it launches a real, paid, minutes-long agent session:
 // it runs only with REPLICHAI_E2E=1 in the environment, and is skipped
@@ -36,9 +37,9 @@ func TestRealEndToEnd(t *testing.T) {
 }
 
 // The same session, driven by the other harness. Codex keeps its login in a
-// file rather than a keychain and speaks a different stream, so the two are
-// not one test with a parameter changed: they exercise different halves of
-// what the seam has to absorb.
+// file rather than a keychain and speaks a different stream format, so the two
+// tests exercise different parts of the seam rather than being one test with a
+// parameter changed.
 //
 // Opt-in on the same REPLICHAI_E2E=1 as TestRealEndToEnd, and paid the same
 // way. To run it:
@@ -75,8 +76,8 @@ func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A temporary directory the test framework cleans up, not a fixed /tmp
-	// path an os.RemoveAll would blow away whatever it found there.
+	// A temporary directory the test framework cleans up, rather than a
+	// fixed /tmp path where os.RemoveAll would remove whatever it found.
 	root := t.TempDir()
 	t.Logf("session root: %s", root)
 	runtime, err := local.New(local.Config{
