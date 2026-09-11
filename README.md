@@ -220,6 +220,7 @@ Compare against `evals/case-01/expected.md`. The two cases are chosen to fail in
 ```bash
 make check       # the whole bar, the one CI runs: format, vet, test, race, lint, vuln, licence, specs
 make lint        # one gate on its own: golangci-lint against the shared config
+make lint-dead   # code nothing reaches — not a main, not a test, not an exported path
 make test        # the whole Go suite, offline against fakes
 make cover-pg    # the number to quote — runs the Postgres contracts rather than skipping them
 make e2e         # submit → run → done through the real server, no Docker

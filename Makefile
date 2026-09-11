@@ -105,6 +105,15 @@ lint-otel:
 lint:
 	@go tool lateregate lint
 
+# lint-dead fails on code nothing reaches. -test counts the test binaries as
+# roots too, so a seam only the suite exercises — a fake, a fixture helper, a
+# constructor a test wires — is reachable and passes; what fails is a function
+# no main, no test and no exported path can arrive at. The tool is pinned in
+# go.mod like every other gate, so `go tool` finds it without an install.
+.PHONY: lint-dead
+lint-dead:
+	@go tool deadcode -test ./...
+
 # The pure-Go full-stack e2e: submit -> job runs -> done, no Docker, no network.
 .PHONY: e2e
 e2e:
