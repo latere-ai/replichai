@@ -14,8 +14,9 @@ import (
 )
 
 // AC1: the OpenAI-compatible implementation is exercised against a server
-// speaking that protocol. It is the one that makes "another model" a setting
-// rather than a code change, so it is the one worth a fake.
+// speaking that protocol. It is the implementation that makes switching to
+// another model a configuration change rather than a code change, so it is
+// the one tested against a fake server.
 func TestOpenAICompatibleModel(t *testing.T) {
 	var gotPath, gotAuth string
 	var gotBody map[string]any
@@ -49,14 +50,14 @@ func TestOpenAICompatibleModel(t *testing.T) {
 	if got.Model != "local-small" || m.Name() != "local-small" {
 		t.Errorf("model = %q", got.Model)
 	}
-	// Cached tokens are inside the prompt total in this protocol, so they are
-	// taken out before pricing: counted twice, a cached prompt would be charged
-	// at the input rate and the cache rate at once.
+	// This protocol reports cached tokens inside the prompt total, so they are
+	// subtracted before pricing. Otherwise a cached prompt would be charged at
+	// both the input rate and the cache rate.
 	if got.Usage.InputTokens != 500 || got.Usage.CachedInputTokens != 400 || got.Usage.OutputTokens != 80 {
 		t.Errorf("usage = %+v, want 500 fresh / 400 cached / 80 out", got.Usage)
 	}
-	// The system prompt travels as its own message, which is what the protocol
-	// expects and what a local runner will otherwise ignore.
+	// The system prompt is sent as its own message. That is what the protocol
+	// expects, and a local runner ignores a system prompt sent any other way.
 	msgs, _ := gotBody["messages"].([]any)
 	if len(msgs) != 2 {
 		t.Fatalf("messages = %v", gotBody["messages"])
@@ -67,8 +68,8 @@ func TestOpenAICompatibleModel(t *testing.T) {
 }
 
 // The Anthropic implementation speaks the Messages API, with the key in the
-// header that API expects — a mistake here would send the deployment's
-// credential in a header nobody reads and fail as "unauthorized".
+// header that API expects. A wrong header name would send the deployment's
+// credential in a header the API does not read and fail as "unauthorized".
 func TestAnthropicModel(t *testing.T) {
 	var gotPath, gotKey, gotVersion string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +92,7 @@ func TestAnthropicModel(t *testing.T) {
 	if gotPath != "/v1/messages" || gotKey != "sk-ant" || gotVersion == "" {
 		t.Errorf("request = %s key=%q version=%q", gotPath, gotKey, gotVersion)
 	}
-	// Only the text blocks are the answer; a thinking block is not prose.
+	// Only the text blocks form the answer; a thinking block is not text.
 	if got.Text != "A paragraph." {
 		t.Errorf("text = %q", got.Text)
 	}
@@ -100,8 +101,8 @@ func TestAnthropicModel(t *testing.T) {
 	}
 }
 
-// A model that answers with an error says what it said: an operator debugging a
-// misconfigured endpoint needs the endpoint's own words.
+// An error from the model quotes the endpoint's response body, because an
+// operator debugging a misconfigured endpoint needs the endpoint's own words.
 func TestAnErrorQuotesTheEndpoint(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -116,9 +117,9 @@ func TestAnErrorQuotesTheEndpoint(t *testing.T) {
 	}
 }
 
-// A deployment that has configured nothing, or has configured a model with no
-// key, says which of the two it is: one is a deployment that simply does not
-// draft, and the other is an operator's mistake.
+// A deployment with no model configured and a deployment with a model but no
+// key get different errors: the first does not draft, and the second is an
+// operator's mistake.
 func TestConfigurationRefusals(t *testing.T) {
 	if _, err := New(Config{}, "k", nil); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("no config = %v, want ErrNotConfigured", err)
@@ -134,7 +135,7 @@ func TestConfigurationRefusals(t *testing.T) {
 	}
 }
 
-// The prompt is the project and its papers, and nothing else — no PDF, no
+// The prompt holds the project and its papers, and nothing else: no PDF, no
 // transcript, no verdict.
 func TestDescriptionPrompt(t *testing.T) {
 	got := DescriptionPrompt("Trust in automation", []Paper{
@@ -156,8 +157,8 @@ func TestDescriptionPrompt(t *testing.T) {
 	}
 }
 
-// What the model is told a description is belongs to the platform: it forbids a
-// verdict, because no run has been read.
+// The system prompt belongs to the platform. It forbids a verdict, because
+// no run has been read.
 func TestTheSystemPromptForbidsAVerdict(t *testing.T) {
 	for _, want := range []string{"Never invent", "no run has been read", "Two or three sentences"} {
 		if !strings.Contains(DescriptionSystem, want) {
@@ -166,10 +167,10 @@ func TestTheSystemPromptForbidsAVerdict(t *testing.T) {
 	}
 }
 
-// Choosing Anthropic is a model id and nothing else: the deployment already
-// holds an Anthropic credential for the agent that runs its sessions, and the
-// endpoint is that vendor's own. Only pointing drafting at another vendor needs
-// an endpoint and a key of its own.
+// Choosing Anthropic needs only a model id: the deployment already holds an
+// Anthropic credential for the agent that runs its sessions, and the endpoint
+// defaults to that vendor's own. Only pointing drafting at another vendor
+// needs an endpoint and a key of its own.
 func TestAnthropicNeedsNothingButAModelID(t *testing.T) {
 	m, err := New(Config{Provider: "anthropic", Model: "claude-haiku-4-5"}, "the-agents-key", nil)
 	if err != nil {
@@ -178,13 +179,13 @@ func TestAnthropicNeedsNothingButAModelID(t *testing.T) {
 	if m.Name() != "claude-haiku-4-5" {
 		t.Errorf("model = %q", m.Name())
 	}
-	// The vendor's own endpoint, not one somebody had to type.
+	// The endpoint defaults to the vendor's own.
 	if got := m.(*anthropicModel).base; got != "https://api.anthropic.com" {
 		t.Errorf("base = %q, want the vendor's own", got)
 	}
-	// An OpenAI-compatible endpoint defaults too, so "just a model id" is the
-	// shape everywhere — but that is the case where a key has to be supplied,
-	// which New already refuses without.
+	// The OpenAI-compatible endpoint has a default too, so a model id alone
+	// is enough for both providers. That case does need a key, and New
+	// refuses without one.
 	o, err := New(Config{Provider: "openai", Model: "small-1"}, "sk-other", nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -194,9 +195,9 @@ func TestAnthropicNeedsNothingButAModelID(t *testing.T) {
 	}
 }
 
-// A model that answers with nothing is a refusal, not a blank paragraph — and
-// the refusal carries the usage, because the tokens were spent to produce the
-// nothing and the caller still has to bill for them.
+// A model that answers with nothing produces an error, not a blank paragraph.
+// The error is returned with the usage, because the tokens were spent and the
+// caller still has to bill for them.
 func TestAnEmptyAnswerIsRefusedWithItsUsage(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -226,9 +227,9 @@ func TestAnEmptyAnswerIsRefusedWithItsUsage(t *testing.T) {
 			if got.Text != "" {
 				t.Errorf("text = %q, want nothing", got.Text)
 			}
-			// The usage is the whole point of returning a Result beside the
-			// error: dropped here, the deployment pays for tokens nobody is
-			// charged for.
+			// The usage is why a Result is returned with the error. If it were
+			// dropped, the deployment would pay for tokens nobody is charged
+			// for.
 			if got.Usage.InputTokens != 500 || got.Usage.CachedInputTokens != 400 {
 				t.Errorf("usage = %+v, want 500 fresh / 400 cached", got.Usage)
 			}

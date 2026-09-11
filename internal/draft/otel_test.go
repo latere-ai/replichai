@@ -13,9 +13,9 @@ import (
 	"github.com/latere-ai/replichai/internal/oteltest"
 )
 
-// Drafting calls a model vendor on a request a person is waiting on, and it is
-// the slowest thing that route does. The default client New builds when a
-// caller passes none has to be instrumented, or that wait is invisible.
+// Drafting calls a model vendor while a person waits on the request, and the
+// call is the slowest step in that route. The default client New builds when
+// a caller passes none must be instrumented, or that wait is not traced.
 func TestDefaultModelClientIsInstrumented(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
