@@ -7,13 +7,13 @@ status: built
 
 **Status:** built.
 
-**Scope:** the server half of terminal access — a bearer credential path beside the existing cookie session, resolving to the same principal, gated by the same `internal/access` policy. One authentication seam, two credential sources. No new authorisation model and no new routes.
+**Scope:** the server half of terminal access: a bearer credential path beside the existing cookie session, resolving to the same principal, gated by the same `internal/access` policy. One authentication seam, two credential sources. No new authorisation model and no new routes.
 
 **Depends on:** [045i](045i-signing-in-from-the-terminal.md), [006a](006a-http-api-and-streaming.md), [006c](006c-identity-and-access.md), `latere.ai/x/pkg/jwtauth`.
 
 ## Problem
 
-Every authenticated route on `replichai.latere.ai` is reached with a session cookie. `internal/webauth` runs the OIDC login, sets a cookie holding the subject and the email, and mounts the gate the API is registered behind. The only `Authorization: Bearer` in the tree is `webauth/userinfo.go` calling *out* to the identity provider.
+Every authenticated route on `replichai.latere.ai` is reached with a session cookie. `internal/webauth` runs the OIDC login, sets a cookie holding the subject and the email, and mounts the gate the API is registered behind. The only `Authorization: Bearer` in the tree is `webauth/userinfo.go` calling out to the identity provider.
 
 So a CLI has no way in, and [045k](045k-a-local-session-reaches-the-cloud.md) has nothing to call. That is one missing credential path, not a missing authorisation model: who may do what is already decided by `internal/access` against a table, and that decision is independent of how the caller proved who they are.
 
@@ -29,9 +29,9 @@ flowchart LR
   G --> H["the same handlers"]
 ```
 
-The gate today takes a principal from the cookie. It changes to take a principal from a resolver, and there are two resolvers. Nothing downstream — no handler, no store, no policy — learns which one answered, because nothing downstream should behave differently for the same person on a laptop and the same person in a terminal.
+The gate today takes a principal from the cookie. It changes to take a principal from a resolver, and there are two resolvers. Nothing downstream (no handler, no store, no policy) learns which one answered, because nothing downstream should behave differently for the same person on a laptop and the same person in a terminal.
 
-**Precedence is fixed and total.** A request carrying `Authorization: Bearer` is authenticated by the bearer, full stop: the cookie is not consulted, and a failed bearer is a 401 rather than a fall-through to the cookie. A fall-through would let an attacker-supplied header downgrade a cookie session, or a stale cookie rescue a revoked token — two confusions that are cheap to prevent and unpleasant to debug.
+**Precedence is fixed and total.** A request carrying `Authorization: Bearer` is authenticated by the bearer only: the cookie is not consulted, and a failed bearer is a 401 rather than a fall-through to the cookie. A fall-through would let an attacker-supplied header downgrade a cookie session, or a stale cookie rescue a revoked token, two confusions that are cheap to prevent and hard to debug.
 
 **CSRF applies to the cookie path only.** Cross-site request forgery is an attack on ambient credentials; a bearer is not ambient. The CSRF check therefore runs where the cookie authenticated the request and is skipped where the bearer did, which is a consequence of the precedence rule and not a second decision.
 
@@ -51,7 +51,7 @@ The gate today takes a principal from the cookie. It changes to take a principal
 
 Issuer, audience and JWKS URL come from configuration; a deployment with none configured serves the cookie path and refuses every bearer, rather than accepting unverified tokens. Clock skew tolerance is explicit and small.
 
-A JWKS fetch that fails does not fail open. `jwtauth`'s cache serves the last known keys, and where there are none the request is refused — with the same reasoning as [014d](014d-an-auth-outage-is-not-sign-out.md) applied in the opposite direction: an outage must not sign a person out, and it must not sign anyone in either.
+A JWKS fetch that fails does not fail open. `jwtauth`'s cache serves the last known keys, and where there are none the request is refused. This is the same reasoning as [014d](014d-an-auth-outage-is-not-sign-out.md) applied in the opposite direction: an outage must not sign a person out, and it must not sign anyone in either.
 
 ## Acceptance criteria
 
@@ -74,19 +74,8 @@ A JWKS fetch that fails does not fail open. `jwtauth`'s cache serves the last kn
 
 ## Outcome
 
-Built as `internal/webauth/bearer.go`, mounted in `cmd/server` around the
-existing cookie middleware. One principal, two sources; precedence is total,
-and a request carrying a bearer has its cookie removed rather than consulted.
-A deployment with no issuer configured refuses every bearer rather than
-accepting an unverified one.
+Built as `internal/webauth/bearer.go`, mounted in `cmd/server` around the existing cookie middleware. One principal, two sources; precedence is total, and a request carrying a bearer has its cookie removed rather than consulted. A deployment with no issuer configured refuses every bearer rather than accepting an unverified one.
 
-**There was no CSRF check to skip.** This spec argued that CSRF applies to the
-cookie path only. The deployment's protection is `SameSite=Lax` on the session
-cookie, not a token, so nothing had to be conditioned: a bearer request carries
-no cookie and the cookie's own protection is untouched. The acceptance
-criterion asking for it both ways is met vacuously, which is worth saying
-rather than ticking.
+**There was no CSRF check to skip.** This spec argued that CSRF applies to the cookie path only. The deployment's protection is `SameSite=Lax` on the session cookie, not a token, so nothing had to be conditioned: a bearer request carries no cookie and the cookie's own protection is untouched. The acceptance criterion asking for it both ways is met vacuously, which is recorded here rather than marked as done without comment.
 
-**Validation is `jwtauth`'s.** Issuer, audience, expiry and the JWKS cache are
-the library's; this package contributes the precedence rule, the identity
-mapping and the refusal vocabulary.
+**Validation is `jwtauth`'s.** Issuer, audience, expiry and the JWKS cache are the library's; this package contributes the precedence rule, the identity mapping and the refusal vocabulary.

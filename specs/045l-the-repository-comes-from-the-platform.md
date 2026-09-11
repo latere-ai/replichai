@@ -15,9 +15,9 @@ status: built
 
 `replichai audit <paper> --publish --runtime local` needs `REPLICHAI_GITHUB_TOKEN` on the machine that runs it. That variable holds an organisation-scoped personal access token: it can create, read, write and delete every repository under `open-hai`, and it does not expire.
 
-So the local path asks each operator to keep the broadest credential in the system on a laptop, in a shell profile, for the length of their employment. The hosted path asks nobody for anything — the server holds the credential and the operator never sees it.
+So the local path asks each operator to keep the broadest credential in the system on a laptop, in a shell profile, for the length of their employment. The hosted path asks nobody for anything: the server holds the credential and the operator never sees it.
 
-The asymmetry is not a property of running locally. It is a property of who creates the repository. The server already creates one for every session it runs (`githubForge.Prepare`); it simply has no way to do that for a session it is not running.
+The asymmetry is not a property of running locally. It is a property of who creates the repository. The server already creates one for every session it runs (`githubForge.Prepare`); it has no way to do that for a session it is not running.
 
 ## Why this can ship now, when 009 could not
 
@@ -25,7 +25,7 @@ The asymmetry is not a property of running locally. It is a property of who crea
 
 > The mount sets its credential *once*, at session creation … A GitHub App installation token lives **at most one hour** and cannot be extended. Audits run close to and sometimes past that: the first real 006i run took 53 minutes.
 
-That constraint is about a token the *agent* holds for the *whole run*. The local path does not have one. [045g](045g-the-host-pushes.md) already moved the push out of the session:
+That constraint is about a token the agent holds for the whole run. The local path does not have one. [045g](045g-the-host-pushes.md) already moved the push out of the session:
 
 ```
   hosted:   mint ──┬──────────── 53 min of agent commits ─────────────┬── push
@@ -37,7 +37,7 @@ That constraint is about a token the *agent* holds for the *whole run*. The loca
                                                      └── seconds ──┘
 ```
 
-009 named two conditions that would unblock minting; the first was "audits are bounded well under an hour, so a run can never outlive its credential." The local path satisfies it — not by shortening audits, but because the credential's whole life is the push, and the push is a `git push` of one small repository.
+009 named two conditions that would unblock minting; the first was "audits are bounded well under an hour, so a run can never outlive its credential." The local path satisfies it, not by shortening audits, but because the credential's whole life is the push, and the push is a `git push` of one small repository.
 
 Let `T` be the token's life and `P` the push's duration. The hosted path needs `T > audit + push` and cannot guarantee it. The local path needs only `T > P`, where `P` is seconds and `T` is an hour.
 
@@ -45,7 +45,7 @@ Let `T` be the token's life and `P` the push's duration. The hosted path needs `
 
 **The server allocates the name and creates the repository, using the code the hosted path uses.** `githubForge.Prepare` calls `registry.AllocateName` then `CreateRepo`, and a second implementation would let a local session and a hosted session decide the same slug for the same paper. The route calls the same seam.
 
-**Provisioning is its own route, not a field on import.** The order inverts: today the CLI creates the repository, pushes, then imports a record naming it. With the server provisioning, the CLI must hold the credential *before* it has anything to import — a session that has not finished cannot be imported, and a session that has finished has nowhere to push. So:
+**Provisioning is its own route, not a field on import.** The order inverts: today the CLI creates the repository, pushes, then imports a record naming it. With the server provisioning, the CLI must hold the credential before it has anything to import: a session that has not finished cannot be imported, and a session that has finished has nowhere to push. So:
 
 ```
   POST /projects/{id}/repository     →  { repo, url, token, expires_at }
@@ -55,7 +55,7 @@ Let `T` be the token's life and `P` the push's duration. The hosted path needs `
 
 The route is on the project, not on a session: the repository is allocated from the paper's identity, and the session that fills it does not exist yet.
 
-**A deployment with no App refuses.** `newForgeClient` falls back to a PAT when `REPLICHAI_GITHUB_APP_ID`/`_KEY` are unset, and a PAT cannot mint a sub-token — GitHub offers no such thing. Handing the organisation PAT back over HTTP would be strictly worse than the variable it replaces, because it would put the same credential on the same laptop *and* in a response body. So the route answers `501 minting_unavailable`, and the CLI says which variable to set and falls back to `REPLICHAI_GITHUB_TOKEN` if it is present.
+**A deployment with no App refuses.** `newForgeClient` falls back to a PAT when `REPLICHAI_GITHUB_APP_ID`/`_KEY` are unset, and a PAT cannot mint a sub-token; GitHub offers no such thing. Handing the organisation PAT back over HTTP would be strictly worse than the variable it replaces, because it would put the same credential on the same laptop and in a response body. So the route answers `501 minting_unavailable`, and the CLI says which variable to set and falls back to `REPLICHAI_GITHUB_TOKEN` if it is present.
 
 **The CLI revokes the token when the push is done.** The token expires within the hour regardless, but expiry is not a completion signal and the push is over in seconds. The holder revokes what it holds: `DELETE /installation/token` is authenticated by the token itself, so revocation needs no further credential and cannot be used against anybody else's.
 
@@ -134,42 +134,16 @@ Revocation on a crash. A terminal killed between the mint and the revoke leaves 
 
 ## Outcome
 
-Built. `replichai audit <paper> --publish --project <id> --runtime local` runs a
-local session against a repository the platform allocated, pushes with a
-credential scoped to that repository, and revokes it when the finalize is done.
-`--publish` without `--project` keeps `REPLICHAI_GITHUB_TOKEN`, and a deployment
-with no App falls back to it with the missing settings named.
+Built. `replichai audit <paper> --publish --project <id> --runtime local` runs a local session against a repository the platform allocated, pushes with a credential scoped to that repository, and revokes it when the finalize is done. `--publish` without `--project` keeps `REPLICHAI_GITHUB_TOKEN`, and a deployment with no App falls back to it with the missing settings named.
 
 Four things diverged from the design above.
 
-**Filing the paper is part of asking for its repository.** The route refuses a
-paper the project does not hold, and a project created a moment ago holds none,
-so provisioning would have 404'd for every fresh project. The terminal files the
-paper first, using the idempotent `AddPaper` that `push` already uses. This was
-found by running the chain test, not by reading the design.
+**Filing the paper is part of asking for its repository.** The route refuses a paper the project does not hold, and a project created a moment ago holds none, so provisioning would have returned 404 for every fresh project. The terminal files the paper first, using the idempotent `AddPaper` that `push` already uses. This was found by running the chain test, not by reading the design.
 
-**The lookup key is derived offline, not from the resolved identity.**
-`paper.Resolve` answers `10.1145/…` where the paper source is unreachable and
-`doi:10.1145/…` where it is not, while the app always files under the offline
-`paper.Key`. Asking with the resolved key made the lookup depend on a paper
-source being up. The terminal now derives it the way the app does.
+**The lookup key is derived offline, not from the resolved identity.** `paper.Resolve` answers `10.1145/…` where the paper source is unreachable and `doi:10.1145/…` where it is not, while the app always files under the offline `paper.Key`. Asking with the resolved key made the lookup depend on a paper source being up. The terminal now derives it the way the app does.
 
-**`--invite` is refused on this path.** A minted credential carries
-`contents:write`; adding a collaborator is an `administration` call. Refusing
-before anything is created beats discovering it after the reproduction has been
-pushed. Inviting through the platform, which holds a credential that can, is not
-built.
+**`--invite` is refused on this path.** A minted credential carries `contents:write`; adding a collaborator is an `administration` call. Refusing before anything is created is better than discovering it after the reproduction has been pushed. Inviting through the platform, which holds a credential that can, is not built.
 
-**`CanMint` was added.** The composition root has to know whether the forge
-credential can mint before it wires the provisioner, and the only other way to
-find out would have been to mint a token nobody asked for.
+**`CanMint` was added.** The composition root has to know whether the forge credential can mint before it wires the provisioner, and the only other way to find out would have been to mint a token nobody asked for.
 
-**The real forge is unexercised.** Every test here runs against a fake: the
-route against a fake provisioner, the chain against a bare repository on disk,
-the mint against a fake GitHub App. What has not run is `forgeProvisioner`
-against a real installation — that `Prepare` and `MintRepoToken` compose, that
-GitHub grants `contents:write` on a repository created seconds earlier, and that
-a push authenticated by an installation token is accepted. The push half is the
-least uncertain of the three: `LocalPush.remoteWithUser` already defaults the
-user part to `x-access-token`, which is what an installation token needs. One
-`--publish --project` run against the real org would close all three.
+**The real forge is unexercised.** Every test here runs against a fake: the route against a fake provisioner, the chain against a bare repository on disk, the mint against a fake GitHub App. What has not run is `forgeProvisioner` against a real installation: that `Prepare` and `MintRepoToken` compose, that GitHub grants `contents:write` on a repository created seconds earlier, and that a push authenticated by an installation token is accepted. The push half is the least uncertain of the three: `LocalPush.remoteWithUser` already defaults the user part to `x-access-token`, which is what an installation token needs. One `--publish --project` run against the real org would close all three.

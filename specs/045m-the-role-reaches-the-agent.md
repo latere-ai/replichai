@@ -7,26 +7,26 @@ status: draft
 
 **Status:** draft. A child of [045](045-the-run-happens-on-your-machine.md).
 
-**Scope:** the harness contract's obligation to deliver the worker's standing instructions, the runtime's assertion that it did, and the record of what was delivered. One question: did the agent receive the method? What the method *says* is [`method/`](../method), data and not code; what the judge does with the result is [045f](045f-the-grader-cannot-edit-what-it-grades.md).
+**Scope:** the harness contract's obligation to deliver the worker's standing instructions, the runtime's assertion that it did, and the record of what was delivered. One question: did the agent receive the method? What the method says is [`method/`](../method), data and not code; what the judge does with the result is [045f](045f-the-grader-cannot-edit-what-it-grades.md).
 
 **Depends on:** [045d](045d-the-harness-inside-the-sandbox.md) (the seam this tightens), [045a](045a-the-sandbox-is-a-seam.md), [005](005-transcript.md) (what a run owes a reader).
 
 ## Problem
 
-The method is the product. `method/instructions.md` is the worker's durable role — the inner/outer boundary, the workspace protocol, the commit discipline — and every claim replichai makes rests on the agent having read it.
+The method is the product. `method/instructions.md` is the worker's durable role (the inner/outer boundary, the workspace protocol, the commit discipline), and every claim replichai makes rests on the agent having read it.
 
-Delivering it is currently each adapter's own business, decided privately and reported to nobody:
+Delivering it is currently each adapter's own responsibility, decided privately and reported to nobody:
 
 | Harness | Channel | Delivered when |
 |---|---|---|
 | Claude Code | `--append-system-prompt` | always |
 | Codex | `AGENTS.md` under `CODEX_HOME` | only when the session writes a configuration directory |
 
-Codex writes no configuration directory when the gateway is the operator's own login, because `CODEX_HOME` is then the operator's own and replichai will not write into it. That is the right call about a *configuration file* and the wrong call about a *role*, and the two left the adapter in one `return nil, nil`. Codex has no flag for a role, so on the documented common case — `claude login` / `codex login`, no API key, which is what [`docs/local-runs.md`](../docs/local-runs.md) tells a first-time operator to use — the agent received no standing instructions at all.
+Codex writes no configuration directory when the gateway is the operator's own login, because `CODEX_HOME` is then the operator's own and replichai will not write into it. That is the right call about a configuration file and the wrong call about a role, and the two were combined in the adapter in one `return nil, nil`. Codex has no flag for a role, so on the documented common case (`claude login` / `codex login`, no API key, which is what [`docs/local-runs.md`](../docs/local-runs.md) tells a first-time operator to use) the agent received no standing instructions at all.
 
-Three runs of the real method proved what that costs. Each spent about forty minutes and eleven million tokens, wrote a complete reproduction into a subdirectory the harvest does not publish, committed nothing, and left an empty repository. The rubric passed all three.
+Three runs of the real method showed what that costs. Each spent about forty minutes and eleven million tokens, wrote a complete reproduction into a subdirectory the harvest does not publish, committed nothing, and left an empty repository. The rubric passed all three.
 
-Nothing in the system noticed, and nothing could have: no component was responsible for the question. A missing role is invisible at every layer — argv looks ordinary, the stream decodes, the stage exits zero, the judge grades what it finds. The one place it shows up is the reproduction, by then an hour late.
+Nothing in the system noticed, and nothing could have: no component was responsible for the question. A missing role is invisible at every layer: argv looks ordinary, the stream decodes, the stage exits zero, the judge grades what it finds. The one place it shows up is the reproduction, by then an hour late.
 
 ## The obligation
 
@@ -58,7 +58,7 @@ $$
 \texttt{Role}(s, r).\mathit{Digest} = \mathrm{sha256}\big(r.\mathit{Instructions}\big) \quad\text{whenever } r.\mathit{Instructions} \neq \varepsilon
 $$
 
-A harness that returns a mismatch, an empty digest, or an error fails the stage at start — before the model is reached, before anything is billed, and with a message naming the harness and the auth mode rather than the symptom.
+A harness that returns a mismatch, an empty digest, or an error fails the stage at start: before the model is reached, before anything is billed, and with a message naming the harness and the auth mode rather than the symptom.
 
 ```mermaid
 flowchart LR
@@ -88,7 +88,7 @@ flowchart LR
 }
 ```
 
-Two digests, because they answer different questions. `digest` is what this stage received. `method_digest` is what the method was at the time, which the registry and the manifest already carry — a run where they disagree is a run whose role was rewritten between loading and delivery, which is worth seeing.
+Two digests, because they answer different questions. `digest` is what this stage received. `method_digest` is what the method was at the time, which the registry and the manifest already carry. A run where they disagree is a run whose role was rewritten between loading and delivery, which is worth seeing.
 
 ## Acceptance criteria
 
@@ -103,10 +103,10 @@ Two digests, because they answer different questions. `digest` is what this stag
 ## Not in scope
 
 - **What the instructions say.** The method is data and changing it needs no code ([`method/`](../method)).
-- **The judge passing a run that committed nothing.** That is a rubric question, and a real one — three sessions were graded `passed` with an empty workspace. It belongs with [045f](045f-the-grader-cannot-edit-what-it-grades.md) and [044d](044d-an-empty-repository-says-so.md), not here. This spec makes the cause visible; it does not make the grader stricter.
+- **The judge passing a run that committed nothing.** That is a rubric question, and a real one: three sessions were graded `passed` with an empty workspace. It belongs with [045f](045f-the-grader-cannot-edit-what-it-grades.md) and [044d](044d-an-empty-repository-says-so.md), not here. This spec makes the cause visible; it does not make the grader stricter.
 - **Delivering a role to a hosted runtime.** `anthropic-managed` passes instructions through the provider's own system-prompt channel and has no adapter layer to lose them in. The contract change is `local`'s.
 - **Verifying the agent obeyed the role.** Unreadable from here, and already what the rubric is for.
 
 ## Outcome
 
-Not built. The two defects that produced it are fixed — the instructions now travel with the codex prompt where no file carries them, and the harvest no longer dies on a symlink — but each fix is one adapter answering the question privately, which is the shape this spec exists to replace.
+Not built. The two defects that produced it are fixed (the instructions now travel with the codex prompt where no file carries them, and the harvest no longer fails on a symlink), but each fix is one adapter answering the question privately, which is the shape this spec exists to replace.
