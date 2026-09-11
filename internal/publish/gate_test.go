@@ -44,9 +44,10 @@ func TestOriginOfClassifiesStructurally(t *testing.T) {
 	}
 }
 
-// AC9: instrument.json survives a publish on both paths — classified
-// worker-written by the offline allowlist, and not flagged by the mount-path
-// verifier. A worker-written file the gate does not know is withheld silently.
+// TestInstrumentJSONSurvivesPublish checks AC9: instrument.json survives a
+// publish on both paths. The offline allowlist classifies it as worker-written,
+// and the mount-path verifier does not flag it. A worker-written file the gate
+// does not know is withheld without notice.
 func TestInstrumentJSONSurvivesPublish(t *testing.T) {
 	if got := originOf("instrument.json"); got != OriginWorker {
 		t.Errorf("originOf(instrument.json) = %v, want OriginWorker", got)
@@ -59,10 +60,11 @@ func TestInstrumentJSONSurvivesPublish(t *testing.T) {
 	}
 }
 
-// A synthetic pilot's artifacts are never worker-written reproduction files, so
-// the allowlist must withhold them from any publication into a reproduction
-// repository (007c AC14). They live in the deployment's artifact store and
-// never enter a mount, but the gate is the backstop if one ever appeared.
+// TestSyntheticArtifactsAreNotPublishable checks that a synthetic pilot's
+// artifacts are never classified as worker-written reproduction files, so the
+// allowlist withholds them from any publication into a reproduction repository
+// (007c AC14). They live in the deployment's artifact store and never enter a
+// mount, but the gate is the backstop if one ever did.
 func TestSyntheticArtifactsAreNotPublishable(t *testing.T) {
 	for _, p := range []string{"PILOT.md", "cohort.csv", "pilot/PILOT.md"} {
 		if originOf(p) == OriginWorker {

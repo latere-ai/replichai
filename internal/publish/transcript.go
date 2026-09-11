@@ -26,10 +26,10 @@ const (
 )
 
 // RenderTranscriptFiles renders a run's events into the files to publish:
-// transcript.jsonl (the canonical machine stream), TRANSCRIPT.md (a navigable
-// index), and transcript/NNN.md (interlinked chunks). Chunking keeps any single
-// file small enough to read and to commit — a full run's transcript can be many
-// megabytes as one file.
+// transcript.jsonl, the canonical machine-readable stream; TRANSCRIPT.md, a
+// navigable index; and transcript/NNN.md, the interlinked chunks. Chunking
+// keeps each file small enough to read and to commit, since a full run's
+// transcript can be many megabytes as one file.
 func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 	// The transcript is the one published artifact whose content the system
@@ -51,7 +51,7 @@ func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 
 	chunks := (len(events) + eventsPerChunk - 1) / eventsPerChunk
 	if chunks == 0 {
-		chunks = 1 // an empty transcript still gets an index and one (empty) part
+		chunks = 1 // an empty transcript still gets an index and one empty part
 	}
 	for c := range chunks {
 		start, end := c*eventsPerChunk, min((c+1)*eventsPerChunk, len(events))
@@ -115,9 +115,9 @@ func firstMessageSnippet(events []provider.Event) string {
 }
 
 // renderEventMD writes one event as a collapsible <details> block. Using a
-// <summary> for the boundary rather than a markdown heading is what keeps the
-// agent's own markdown — its headings, lists, code fences — from colliding with
-// the transcript's structure. Oversized content is capped so one giant tool
+// <summary> for the boundary rather than a markdown heading keeps the agent's
+// own markdown, such as headings, lists and code fences, from colliding with
+// the transcript's structure. Oversized content is capped so one large tool
 // output cannot bloat a chunk.
 func renderEventMD(m *bytes.Buffer, e provider.Event) {
 	stamp := ""
@@ -180,12 +180,12 @@ type TranscriptLeak struct {
 }
 
 // TranscriptLeaks flags events whose content carries a high-signal secret or
-// credential — the concrete, detectable leak risk in a transcript. It is a
-// backstop, not an exhaustive third-party-content check: detecting an embedded
-// dataset or a paper's copyrighted bulk text in freeform reasoning is not
-// reliable structurally, so a transcript stays private by default and going
-// public is a human decision layered on top of this. A non-empty result bars
-// the repository from the public flip.
+// credential, which is the concrete, detectable leak risk in a transcript. It
+// is a backstop and not an exhaustive third-party content check: detecting an
+// embedded dataset or a paper's copyrighted bulk text in freeform reasoning is
+// not reliable structurally, so a transcript stays private by default and
+// going public is a human decision made on top of this. A non-empty result
+// bars the repository from the public flip.
 func TranscriptLeaks(events []provider.Event) []TranscriptLeak {
 	var leaks []TranscriptLeak
 	for i, e := range events {

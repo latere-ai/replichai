@@ -68,10 +68,11 @@ func bareRemote(t *testing.T) string {
 	return dir
 }
 
-// An agent-authored repository is a real software project, and all of it
-// reaches the remote. Routing it through Classify — the allowlist over a
-// harvested output directory — would have stripped the licence, the
-// requirements file and the tests.
+// TestAnAgentAuthoredRepositoryPushesWhole checks that an agent-authored
+// repository, which is a real software project, reaches the remote in full.
+// Routing it through Classify, the allowlist over a harvested output
+// directory, would have stripped the licence, the requirements file and the
+// tests.
 func TestAnAgentAuthoredRepositoryPushesWhole(t *testing.T) {
 	dir := workspace(t, map[string]string{
 		"README.md":          "# reproduction",
@@ -100,8 +101,9 @@ func TestAnAgentAuthoredRepositoryPushesWhole(t *testing.T) {
 	}
 }
 
-// The gate still refuses third-party content, and refuses before anything
-// leaves the machine rather than verifying afterwards.
+// TestThirdPartyContentIsRefusedBeforeThePush checks that the gate refuses
+// third-party content before anything leaves the machine rather than verifying
+// afterwards.
 func TestThirdPartyContentIsRefusedBeforeThePush(t *testing.T) {
 	dir := workspace(t, map[string]string{
 		"README.md":       "# reproduction",
@@ -125,8 +127,9 @@ func TestThirdPartyContentIsRefusedBeforeThePush(t *testing.T) {
 	}
 }
 
-// A workspace with no commits is the 044d outcome, reached before a push
-// rather than discovered as an empty repository afterwards.
+// TestAWorkspaceWithNoCommitsSaysSo checks that a workspace with no commits
+// reports the 044d outcome before a push rather than being discovered as an
+// empty repository afterwards.
 func TestAWorkspaceWithNoCommitsSaysSo(t *testing.T) {
 	dir := workspace(t, nil)
 	_, err := LocalPush{Workspace: dir, RemoteURL: "file://" + bareRemote(t)}.Run(context.Background())
@@ -135,11 +138,13 @@ func TestAWorkspaceWithNoCommitsSaysSo(t *testing.T) {
 	}
 }
 
-// "Nothing committed" is a finding about the run, and the CLI records it as
-// the run's outcome. Every other reason HEAD cannot be read — the directory is
-// gone, it was never a repository, git itself is missing — is a failure of the
-// push, and reporting it as the run's outcome would record "produced nothing"
-// over a workspace that may hold the whole reproduction.
+// TestOnlyAnUnbornBranchIsNothingCommitted checks that only an unborn branch
+// reports ErrNothingCommitted. That error is a finding about the run, and the
+// CLI records it as the run's outcome. Every other reason HEAD cannot be read,
+// such as the directory being gone, never having been a repository, or git
+// being missing, is a failure of the push. Reporting it as the run's outcome
+// would record "produced nothing" over a workspace that may hold the whole
+// reproduction.
 func TestOnlyAnUnbornBranchIsNothingCommitted(t *testing.T) {
 	requireGit(t)
 	remote := "file://" + bareRemote(t)
@@ -181,9 +186,10 @@ func TestOnlyAnUnbornBranchIsNothingCommitted(t *testing.T) {
 	})
 }
 
-// The gate reads the tree that is about to be pushed, not the index. A file
-// staged but never committed does not travel, so it cannot block the push; a
-// file committed and then unstaged does travel, so it must.
+// TestVerifyReadsTheCommittedTreeNotTheIndex checks that the gate reads the
+// tree about to be pushed rather than the index. A file staged but never
+// committed does not travel, so it cannot block the push; a file committed and
+// then unstaged does travel, so it must.
 func TestVerifyReadsTheCommittedTreeNotTheIndex(t *testing.T) {
 	dir := workspace(t, map[string]string{"README.md": "# reproduction"})
 	remote := bareRemote(t)
@@ -216,14 +222,15 @@ func TestVerifyReadsTheCommittedTreeNotTheIndex(t *testing.T) {
 	}
 }
 
-// The credential never lands anywhere the session directory keeps: not in the
-// repository's configuration, not in the reflog, and not in a file left behind.
+// TestTheTokenLeavesNothingBehind checks that the credential is not written
+// anywhere the session directory keeps: not in the repository's configuration,
+// not in the reflog, and not in a file left behind.
 func TestTheTokenLeavesNothingBehind(t *testing.T) {
 	// The helper is written under TMPDIR, so the assertion below has to look
 	// at a directory only this test writes to. Against the machine's own
 	// TMPDIR it read every replichai that ever ran here, and a push killed
-	// before its cleanup — the out-of-memory killer will do it — failed this
-	// test in a package that had nothing to do with it.
+	// before its cleanup, for example by the out-of-memory killer, failed this
+	// test from a package that had nothing to do with it.
 	t.Setenv("TMPDIR", t.TempDir())
 	dir := workspace(t, map[string]string{"README.md": "# reproduction"})
 	remote := bareRemote(t)
@@ -240,14 +247,15 @@ func TestTheTokenLeavesNothingBehind(t *testing.T) {
 	if remotes := git(t, dir, "remote"); strings.TrimSpace(remotes) != "" {
 		t.Fatalf("the remote survived the push: %q", remotes)
 	}
-	// And the askpass helper it was written into is removed.
+	// The askpass helper it was written into is removed.
 	matches, _ := filepath.Glob(filepath.Join(os.TempDir(), "replichai-askpass-*"))
 	if len(matches) > 0 {
 		t.Errorf("askpass helpers left behind: %v", matches)
 	}
 }
 
-// The credential's user part may sit in the URL; the credential may not.
+// TestOnlyTheUserPartReachesTheURL checks that the credential's user part may
+// appear in the URL and the credential itself may not.
 func TestOnlyTheUserPartReachesTheURL(t *testing.T) {
 	push := LocalPush{RemoteURL: "https://github.com/open-hai/x", Token: "ghp-supersecret"}
 	url := push.remoteWithUser()
@@ -265,9 +273,10 @@ func TestOnlyTheUserPartReachesTheURL(t *testing.T) {
 	}
 }
 
-// The system's own outputs are collected from where the session wrote them,
-// so finalize commits the environment record and the judge's verdict beside
-// the agent's history rather than inside the agent's reach.
+// TestWorkspaceOutputsAreTheSystemsOwn checks that the system's own outputs
+// are collected from where the session wrote them, so finalize commits the
+// environment record and the judge's verdict beside the agent's history rather
+// than within the agent's reach.
 func TestWorkspaceOutputsAreTheSystemsOwn(t *testing.T) {
 	dir := t.TempDir()
 	for path, body := range map[string]string{
@@ -333,14 +342,15 @@ func grepTree(t *testing.T, dir, want string) []string {
 	return found
 }
 
-// A local run's remote has to be empty when the host pushes. The workspace is
-// a fresh repository with no remote (045g), so its history descends from
-// nothing: a commit already on the remote — an identity file written there
-// before the run, say — makes every push a non-fast-forward, and the whole
-// reproduction is refused after the agent has already done the work.
+// TestAPushNeedsARemoteTheWorkspaceDescendsFrom checks that a local run's
+// remote has to be empty when the host pushes. The workspace is a fresh
+// repository with no remote (045g), so its history descends from nothing. A
+// commit already on the remote, such as an identity file written there before
+// the run, makes every push a non-fast-forward, and the whole reproduction is
+// refused after the agent has already done the work.
 //
-// This is the constraint the ordering in cmd/replichai rests on: whatever the
-// system writes into the repository through the forge API, it writes after
+// This is the constraint the ordering in cmd/replichai depends on: whatever
+// the system writes into the repository through the forge API, it writes after
 // this push and never before it.
 func TestAPushNeedsARemoteTheWorkspaceDescendsFrom(t *testing.T) {
 	remote := bareRemote(t)

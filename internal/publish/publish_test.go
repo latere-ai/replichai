@@ -55,7 +55,8 @@ func repoPath(f *FSForge, name, rel string) string {
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
-// AC2: preview by default creates nothing.
+// TestPublishPreviewCreatesNothing checks AC2: a preview, which is the
+// default, creates nothing.
 func TestPublishPreviewCreatesNothing(t *testing.T) {
 	plan := planFrom(t, map[string]string{"README.md": "# r", "src/main.py": "x"})
 	forge := NewFSForge(t.TempDir(), DefaultOrg)
@@ -72,13 +73,14 @@ func TestPublishPreviewCreatesNothing(t *testing.T) {
 	}
 }
 
-// AC3 + the happy path: a live publish creates a private repo and pushes the
-// manifest, the worker files, and EXCLUDED.md — never the third-party file.
+// TestPublishLiveCreatesPrivateRepo checks AC3 and the success path: a live
+// publish creates a private repository and pushes the manifest, the worker
+// files, and EXCLUDED.md, and never the third-party file.
 func TestPublishLiveCreatesPrivateRepo(t *testing.T) {
 	plan := planFrom(t, map[string]string{
 		"README.md":          "# reproduction",
 		"src/main.py":        "print(1)",
-		"data/benchmark.csv": "gated,data,here", // third-party — quarantined
+		"data/benchmark.csv": "gated,data,here", // third-party, so quarantined
 	})
 	forge := NewFSForge(t.TempDir(), DefaultOrg)
 
@@ -121,8 +123,9 @@ func TestPublishLiveCreatesPrivateRepo(t *testing.T) {
 	}
 }
 
-// AC7 + AC8: republishing the same plan does not fork, and completes rather
-// than creating a second repository.
+// TestPublishIsIdempotentForTheSamePlan checks AC7 and AC8: republishing the
+// same plan does not fork, and completes rather than creating a second
+// repository.
 func TestPublishIsIdempotentForTheSamePlan(t *testing.T) {
 	plan := planFrom(t, map[string]string{"README.md": "# r", "src/main.py": "x"})
 	forge := NewFSForge(t.TempDir(), DefaultOrg)
@@ -153,8 +156,9 @@ func TestPublishIsIdempotentForTheSamePlan(t *testing.T) {
 	}
 }
 
-// The content sweep is the backstop: a secret under an innocent worker filename
-// aborts the publish before anything is created.
+// TestPublishAbortsOnSecretInContent checks that the content sweep is the
+// backstop: a secret under an innocent worker filename aborts the publish
+// before anything is created.
 func TestPublishAbortsOnSecretInContent(t *testing.T) {
 	plan := planFrom(t, map[string]string{
 		"README.md":   "# r",

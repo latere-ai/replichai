@@ -17,10 +17,11 @@ func outputs(paths ...string) map[string][]byte {
 	return files
 }
 
-// A run that pushed nothing but copied its work to the output directory is
-// recovered whole. This is the incident 044 records: the repository held only
-// the system's own identity file, and verdict.json existed only as a session
-// file the server used to throw away.
+// TestCommitOutputsRecoversARunThatNeverPushed checks that a run that pushed
+// nothing but copied its work to the output directory is recovered in full.
+// This is the incident 044 records: the repository held only the system's own
+// identity file, and verdict.json existed only as a session file the server
+// used to discard.
 func TestCommitOutputsRecoversARunThatNeverPushed(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", ".replichai/paper.json"})
 
@@ -47,8 +48,9 @@ func TestCommitOutputsRecoversARunThatNeverPushed(t *testing.T) {
 	}
 }
 
-// The redistribution boundary holds on the way in. A harvested file has never
-// passed the mount's gate, so it passes VerifyTree here or it is not committed.
+// TestCommitOutputsRefusesThirdPartyData checks that the redistribution
+// boundary holds on the way in. A harvested file has never passed the mount's
+// gate, so it either passes VerifyTree here or it is not committed.
 func TestCommitOutputsRefusesThirdPartyData(t *testing.T) {
 	forge := newFakeForge([]string{"README.md"})
 
@@ -70,8 +72,9 @@ func TestCommitOutputsRefusesThirdPartyData(t *testing.T) {
 	}
 }
 
-// A path that climbs out of the tree, names an absolute location, or reaches
-// into .git is refused rather than cleaned into something that looks harmless.
+// TestCommitOutputsRefusesUnsafePaths checks that a path that climbs out of
+// the tree, names an absolute location, or reaches into .git is refused rather
+// than cleaned into something that looks harmless.
 func TestCommitOutputsRefusesUnsafePaths(t *testing.T) {
 	forge := newFakeForge(nil)
 
@@ -88,8 +91,9 @@ func TestCommitOutputsRefusesUnsafePaths(t *testing.T) {
 	}
 }
 
-// What the agent pushed wins. A copy in the output directory may predate the
-// agent's last revision, so it never overwrites the committed tree.
+// TestCommitOutputsNeverOverwritesWhatTheAgentPushed checks that what the
+// agent pushed takes precedence. A copy in the output directory may predate
+// the agent's last revision, so it never overwrites the committed tree.
 func TestCommitOutputsNeverOverwritesWhatTheAgentPushed(t *testing.T) {
 	forge := newFakeForge([]string{"REPRODUCIBILITY.md", "verdict.json"})
 	forge.files["verdict.json"] = []byte("the revised verdict")
@@ -110,7 +114,8 @@ func TestCommitOutputsNeverOverwritesWhatTheAgentPushed(t *testing.T) {
 	}
 }
 
-// Nothing to harvest touches the repository at all — no head read, no commit.
+// TestCommitOutputsIsANoOpWithNothingToHarvest checks that an empty harvest
+// does not touch the repository: no head read and no commit.
 func TestCommitOutputsIsANoOpWithNothingToHarvest(t *testing.T) {
 	forge := newFakeForge([]string{"README.md"})
 

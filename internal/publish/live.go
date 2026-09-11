@@ -23,22 +23,22 @@ import (
 // rate-limited paper source. It matches the CLI's recorded location.
 const IdentityFile = ".replichai/paper.json"
 
-// FindingsFile is the agent-authored verdict.json (021a) and UnverifiedFile is
-// the agent's own record of what it could not confirm — the right place to say
-// that its findings could not be read, because that is exactly what that file
-// is for.
+// FindingsFile is the agent-authored verdict.json (021a). UnverifiedFile is
+// the agent's own record of what it could not confirm, which is the correct
+// place to record that its findings could not be read.
 const (
 	FindingsFile   = verdict.File
 	UnverifiedFile = "UNVERIFIED.md"
 )
 
-// LiveForge is the read+write seam for finalizing a live-mount reproduction: the
-// agent has already committed its own work into the mounted repository, and
-// finalize reads the committed tree and adds the system's manifest and
-// transcript beside it. github.Client satisfies it; a fake stands in for tests,
-// so this path needs no network. It is deliberately owner+name addressed (unlike
-// the org-fixed Forge of the snapshot path) because it acts on a repository that
-// already exists under a known owner.
+// LiveForge is the read and write interface for finalizing a live-mount
+// reproduction. The agent has already committed its own work into the mounted
+// repository, and finalize reads the committed tree and adds the system's
+// manifest and transcript beside it. github.Client satisfies it, and a fake
+// replaces it in tests, so this path needs no network. It is addressed by
+// owner and name, unlike the Forge of the snapshot path, which has a fixed
+// organisation, because it acts on a repository that already exists under a
+// known owner.
 type LiveForge interface {
 	// HeadCommit returns the repository's current head commit sha.
 	HeadCommit(ctx context.Context, owner, name string) (string, error)
@@ -46,22 +46,24 @@ type LiveForge interface {
 	TreePaths(ctx context.Context, owner, name, commit string) ([]string, error)
 	// GetFileContent reads one file; ok is false when it is absent.
 	GetFileContent(ctx context.Context, owner, name, path string) ([]byte, bool, error)
-	// PutFile writes (or overwrites) one file in a single commit.
+	// PutFile writes or overwrites one file in a single commit.
 	PutFile(ctx context.Context, owner, name, path, message string, content []byte) error
-	// CommitFiles writes a set of files in one atomic commit, reporting whether
-	// anything changed (a no-op when the content already matches).
+	// CommitFiles writes a set of files in one atomic commit and reports whether
+	// anything changed. It is a no-op when the content already matches.
 	CommitFiles(ctx context.Context, owner, name, message string, files map[string][]byte) (bool, error)
 }
 
-// FinalizeReport is what a finalize produced, so a caller (the CLI) can report
-// it without the finalize owning any output. Leaked is the third-party paths the
-// verifier found in the committed tree — non-empty bars the public flip.
+// FinalizeReport is what a finalize produced, so a caller such as the CLI can
+// report it without the finalize writing any output. Leaked lists the
+// third-party paths the verifier found in the committed tree; a non-empty list
+// bars the public flip.
 type FinalizeReport struct {
 	Head              string
 	Leaked            []string
 	ManifestCommitted bool
 	// Transcript* are set when events were supplied. TranscriptCommitted is false
-	// when the transcript was already current (a re-finalize adds no commit).
+	// when the transcript was already current, since a re-finalize adds no
+	// commit.
 	TranscriptCommitted bool
 	TranscriptFiles     int
 	TranscriptEvents    int
@@ -71,9 +73,9 @@ type FinalizeReport struct {
 	Findings        bool
 	FindingProblems []string
 	// Reproduction reports whether the committed tree holds anything the agent
-	// put there. False means the run committed nothing: a different and more
-	// serious fact than unreadable findings, and one the record used to state as
-	// the other (044d).
+	// put there. False means the run committed nothing, which is a different
+	// and more serious fact than unreadable findings, and one the record once
+	// reported as the other (044d).
 	Reproduction bool
 }
 
@@ -90,9 +92,10 @@ func RecordIdentity(ctx context.Context, forge LiveForge, owner, name string, id
 	return err
 }
 
-// RecordedIdentity returns the identity RecordIdentity wrote, with ok=false when
-// none is present (an older or hand-created repository) so the caller falls back
-// to re-resolving. An unreadable file is treated as absent, never an error.
+// RecordedIdentity returns the identity RecordIdentity wrote, with ok false
+// when none is present, as in an older or hand-created repository, so the
+// caller falls back to re-resolving. An unreadable file is treated as absent
+// rather than as an error.
 func RecordedIdentity(ctx context.Context, forge LiveForge, owner, name string) (id paper.Identity, ok bool, err error) {
 	raw, present, err := forge.GetFileContent(ctx, owner, name, IdentityFile)
 	if err != nil || !present {
@@ -104,11 +107,11 @@ func RecordedIdentity(ctx context.Context, forge LiveForge, owner, name string) 
 	return id, true, nil
 }
 
-// FinalizeLive finalizes a live-mount reproduction: it reads the committed tree,
-// writes replication.json (only when new or changed), and commits the transcript
-// beside it — the system-authored attestation over the agent's own work. It
-// touches no paper source and no clock beyond `now`, so both the CLI and the
-// server drive one finalize and cannot drift.
+// FinalizeLive finalizes a live-mount reproduction. It reads the committed
+// tree, writes replication.json when it is new or changed, and commits the
+// transcript beside it. These are the system-authored attestation over the
+// agent's own work. It reads no paper source and no clock other than now, so
+// the CLI and the server share one finalize and cannot drift.
 func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, now func() time.Time) (FinalizeReport, error) {
 	if now == nil {
 		now = time.Now
@@ -127,11 +130,12 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	}
 	rep.Leaked = VerifyTree(tree)
 
-	// The transcript is a published surface too (005): a secret in it bars the
-	// public flip. Scan before the manifest and fold the result into the
-	// redistribution classification, so the manifest records — with its own
-	// review reason — that a foreign credential in the evidence layer, not just a
-	// leaked file in the tree, keeps the reproduction private (009 commit 1).
+	// The transcript is also published (005), and a secret in it bars the
+	// public flip. It is scanned before the manifest is built and the result is
+	// folded into the redistribution classification, so the manifest records,
+	// under its own review reason, that a credential in the transcript keeps
+	// the reproduction private, and not only a leaked file in the tree (009
+	// commit 1).
 	rep.TranscriptLeaks = TranscriptLeaks(events)
 	redist := RedistributionFrom(len(rep.Leaked) == 0, len(rep.TranscriptLeaks) == 0)
 	var transcriptFiles map[string][]byte
@@ -142,17 +146,18 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 		}
 	}
 
-	// The agent's findings are read, validated, and recorded — never enforced.
-	// A run whose verdict.json is missing or malformed still publishes; what
-	// changes is that the manifest says so and UNVERIFIED.md gains the reason.
+	// The agent's findings are read, validated, and recorded, and never
+	// enforced. A run whose verdict.json is missing or malformed still
+	// publishes; the manifest records the fact and UNVERIFIED.md gains the
+	// reason.
 	findings, problems := readFindings(ctx, forge, owner, name)
 	rep.Findings = findings
 	rep.FindingProblems = problems
 
-	// Whether the run committed anything at all is a separate question from
-	// whether its findings are readable, and the same tree answers it. A run that
-	// pushed nothing used to be reported as one whose findings were merely not
-	// machine-readable — a sentence promising prose that is not there (044d).
+	// Whether the run committed anything is a separate question from whether
+	// its findings are readable, and the same tree answers it. A run that
+	// pushed nothing was once reported as one whose findings were not
+	// machine-readable, which promised prose that was not there (044d).
 	rep.Reproduction = holdsReproduction(tree)
 
 	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), redist)
@@ -163,7 +168,7 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	}
 	rep.ManifestCommitted = committed
 
-	// A flagged transcript is still committed intact — the reproduction stays
+	// A flagged transcript is still committed intact. The reproduction stays
 	// readable to the owner and collaborators; only the public flip is refused.
 	if len(events) > 0 {
 		changed, err := forge.CommitFiles(ctx, owner, name, "chore: reproduction transcript", transcriptFiles)
@@ -184,9 +189,10 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 }
 
 // readFindings reads verdict.json from the committed tree and validates it.
-// It reports whether usable findings are present, and if not, why — an absent
-// file, unparseable JSON, or the specific schema problems, each phrased so the
-// reason survives into the manifest and into UNVERIFIED.md unchanged.
+// It reports whether usable findings are present and, if not, why: an absent
+// file, unparseable JSON, or the specific schema problems. Each reason is
+// phrased so it can be copied into the manifest and into UNVERIFIED.md
+// unchanged.
 func readFindings(ctx context.Context, forge LiveForge, owner, name string) (bool, []string) {
 	raw, present, err := forge.GetFileContent(ctx, owner, name, FindingsFile)
 	if err != nil {
@@ -211,8 +217,8 @@ func readFindings(ctx context.Context, forge LiveForge, owner, name string) (boo
 
 // noteUnverified appends the reason the findings could not be read to the
 // agent's own UNVERIFIED.md, under a heading that names the system as the
-// author — the file is the agent's, and a system line inside it has to be
-// attributable or it reads as something the agent claimed.
+// author. The file is the agent's, and a system line inside it has to be
+// attributed or it reads as something the agent claimed.
 func noteUnverified(ctx context.Context, forge LiveForge, owner, name string, problems []string, reproduction bool) error {
 	existing, _, err := forge.GetFileContent(ctx, owner, name, UnverifiedFile)
 	if err != nil {
@@ -255,7 +261,7 @@ func noteUnverified(ctx context.Context, forge LiveForge, owner, name string, pr
 const findingsHeading = "## Findings not recorded as data (system)"
 
 // withoutFindingsNote drops a previously written system section, which runs to
-// the end of the file — it is always appended last.
+// the end of the file because it is always appended last.
 func withoutFindingsNote(s string) string {
 	if before, _, ok := strings.Cut(s, findingsHeading); ok {
 		return before
@@ -276,7 +282,7 @@ func commitManifestIfChanged(ctx context.Context, forge LiveForge, owner, name s
 	} else if ok {
 		var prev Manifest
 		if json.Unmarshal(existing, &prev) == nil && SameManifest(prev, m) {
-			return false, nil // unchanged — no commit
+			return false, nil // unchanged, so no commit
 		}
 	}
 	if err := forge.PutFile(ctx, owner, name, ManifestFile,
@@ -293,7 +299,7 @@ const outputsMessage = "chore: reproduction outputs"
 // OutputsReport is what a harvest did with each path it was handed, so the
 // caller can say what it recovered and what it would not carry.
 type OutputsReport struct {
-	// Committed is what landed, in path order.
+	// Committed is what was committed, in path order.
 	Committed []string
 	// Refused is what VerifyTree flagged, or what named an unsafe path. These
 	// are never committed: a harvested file has not passed the mount's
@@ -302,25 +308,27 @@ type OutputsReport struct {
 	Refused []string
 	// Skipped is what the committed tree already holds. A pushed file is the
 	// agent's considered work; a copy in the output directory may predate its
-	// last revision, so what the agent published wins.
+	// last revision, so the agent's pushed copy takes precedence.
 	Skipped []string
 }
 
 // Recovered reports whether the harvest put anything into the repository.
 func (r OutputsReport) Recovered() bool { return len(r.Committed) > 0 }
 
-// CommitOutputs commits what a session produced outside the mounted repository
-// — the files it wrote to the runtime's output directory — into the repository,
-// in one commit (044b).
+// CommitOutputs commits the files a session wrote to the runtime's output
+// directory, outside the mounted repository, into the repository in one commit
+// (044b).
 //
-// It exists because an agent may write its reproduction, copy it out, and never
-// push: the mount is the only surface that survives the sandbox, and a run that
-// committed locally and never pushed leaves a repository holding nothing. The
-// output directory is the second copy, and this is what reads it.
+// It exists because an agent may write its reproduction, copy it out, and
+// never push. The mount is the only surface that survives the sandbox, and a
+// run that committed locally and never pushed leaves a repository holding
+// nothing. The output directory is the second copy, and CommitOutputs reads
+// it.
 //
 // It never overwrites what the agent pushed, and it commits nothing VerifyTree
-// flags. Idempotent: re-running it over a repository that already holds these
-// files commits nothing, because every path is then already in the tree.
+// flags. It is idempotent: re-running it over a repository that already holds
+// these files commits nothing, because every path is then already in the
+// tree.
 func CommitOutputs(ctx context.Context, forge LiveForge, owner, name string, files map[string][]byte) (OutputsReport, error) {
 	var rep OutputsReport
 	if len(files) == 0 {
@@ -400,10 +408,9 @@ func systemAuthored(p string) bool {
 }
 
 // holdsReproduction reports whether a committed tree holds anything the run put
-// there. It is deliberately generous about what counts — one agent-authored path
-// is enough — because the question it answers is not "is this reproduction any
-// good" but "is there one at all", and only the second has an answer the system
-// can give.
+// there. One agent-authored path is enough, because the question it answers is
+// whether a reproduction exists and not whether it is good, and only the first
+// has an answer the system can give.
 func holdsReproduction(tree []string) bool {
 	for _, p := range tree {
 		if !systemAuthored(p) {

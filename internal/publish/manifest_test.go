@@ -13,7 +13,8 @@ import (
 )
 
 // TestManifestSerialisesToTheSpecShape asserts the manifest marshals to exactly
-// the JSON spec 002 documents (every field but the publish-stamped created).
+// the JSON shape 002 documents, for every field except created, which is set at
+// publish time.
 func TestManifestSerialisesToTheSpecShape(t *testing.T) {
 	m := Manifest{
 		Schema: SchemaVersion,
@@ -65,7 +66,8 @@ func TestManifestSerialisesToTheSpecShape(t *testing.T) {
 	}
 }
 
-// TestRateOmittedWhenNil proves a missing rate is absent, not a zero object.
+// TestRateOmittedWhenNil checks that a missing rate is omitted rather than
+// written as a zero object.
 func TestRateOmittedWhenNil(t *testing.T) {
 	raw, err := json.Marshal(Reproduction{Repo: "open-hai/x", Verdict: provider.GradePassed})
 	if err != nil {

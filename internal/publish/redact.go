@@ -10,20 +10,20 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// The redaction marker. It is deliberately visible: a reader of a transcript
-// should be able to see that something was removed, and where.
+// redacted is the redaction marker. It is visible by design: a reader of a
+// transcript should be able to see that something was removed, and where.
 const redacted = "[redacted credential]"
 
 // credentialPatterns are the credential shapes this sweep removes from
-// anything published. The list is what a run can plausibly put in front of
-// itself, not an attempt at completeness — a pattern table cannot prove a
-// transcript holds no secret, and this is the backstop rather than the control.
+// anything published. The list covers what a run can plausibly encounter and
+// is not an attempt at completeness. A pattern table cannot prove a transcript
+// holds no secret, and this is the backstop rather than the control.
 //
 // The control is that a stage is given only the credentials it needs. The
 // backstop exists because one of them is readable by design: the host sandbox
-// grants read on the harness's own configuration directory, which is what makes
-// an existing login usable, and an agent that reads its own credential file
-// puts the contents in a tool result — which becomes an event, which is
+// grants read access to the harness's own configuration directory, which is
+// what makes an existing login usable. An agent that reads its own credential
+// file puts the contents in a tool result, which becomes an event, which is
 // committed as evidence into a repository that may later be made public.
 var credentialPatterns = []*regexp.Regexp{
 	// Anthropic and OpenAI-style API keys.
@@ -48,8 +48,8 @@ var credentialPatterns = []*regexp.Regexp{
 // own files, which the redistribution gate refuses by name; the transcript is
 // the one published artifact whose content the system did not choose.
 //
-// It is lossy on purpose. A run that legitimately quotes a string shaped like a
-// key loses it, and that is the right trade against publishing an operator's
+// It is lossy by design. A run that legitimately quotes a string shaped like a
+// key loses it, and that is the correct trade against publishing an operator's
 // own credential in a repository they may make public.
 func RedactSecrets(value string) string {
 	if value == "" {
@@ -66,8 +66,8 @@ func RedactSecrets(value string) string {
 }
 
 // redactEvents returns the events with every credential-shaped string removed
-// from their content and their raw payload. The events themselves are copied:
-// the caller's slice is evidence it may still be holding.
+// from their content and their raw payload. The events are copied, because the
+// caller's slice is evidence it may still be holding.
 func redactEvents(events []provider.Event) ([]provider.Event, int) {
 	out := make([]provider.Event, len(events))
 	removed := 0

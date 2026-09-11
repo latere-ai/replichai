@@ -9,17 +9,18 @@ import (
 )
 
 // suffixLen is how many base-32 characters a repository suffix carries. Four
-// gives ~1M values; 003 handles the rare collision by regenerating.
+// gives about one million values; 003 handles the rare collision by
+// regenerating.
 const suffixLen = 4
 
-// suffixAlphabet is a 32-symbol lowercase set with the ambiguous letters
-// (i, l, o, u) left out. Exactly 32 symbols, so a byte maps to one with no
-// modulo bias (256 = 8 × 32).
+// suffixAlphabet is a 32-symbol lowercase set with the ambiguous letters i, l,
+// o and u left out. It has exactly 32 symbols, so a byte maps to one with no
+// modulo bias, since 256 is a multiple of 32.
 const suffixAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 
 // NewSuffix returns suffixLen lowercase base-32 characters from a cryptographic
-// source. 003 wraps this with a collision check against the registry;
-// standalone, one draw is enough.
+// source. 003 wraps this with a collision check against the registry; on its
+// own, one draw is enough.
 func NewSuffix() (string, error) { return NewSuffixN(suffixLen) }
 
 // NewSuffixN returns n lowercase base-32 characters. 003 widens from four to
