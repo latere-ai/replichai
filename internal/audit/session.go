@@ -72,9 +72,9 @@ type SessionAuditor struct {
 	unbounded    bool
 	mount        SessionMount
 	hooks        managed.Hooks
-	// workspaceIsARepository says the runtime hands the session a git
-	// repository it does not mount — the local path, where the host pushes
-	// what was committed once the session has ended.
+	// workspaceIsARepository reports that the runtime gives the session a git
+	// repository without mounting one. This is the local path, where the host
+	// pushes what was committed once the session has ended.
 	workspaceIsARepository bool
 }
 
@@ -102,25 +102,25 @@ func WithSessionTimeout(timeout time.Duration) SessionOption {
 	return func(a *SessionAuditor) { a.timeout, a.unbounded = timeout, false }
 }
 
-// WithoutSessionTimeout removes the wall-clock deadline: the run ends when the
-// managed session ends, and nothing else. The session is the source of truth
-// for whether the work succeeded, and a clock here is only a weaker second
-// opinion about it.
+// WithoutSessionTimeout removes the wall-clock deadline. The run then ends
+// only when the managed session ends. The session is the source of truth for
+// whether the work succeeded, and a deadline is only a weaker second signal.
 func WithoutSessionTimeout() SessionOption {
 	return func(a *SessionAuditor) { a.unbounded = true }
 }
 
-// WithLocalWorkspace says the session's output directory is a git repository
-// with no remote, which the host publishes after the run. It is what selects
-// the workspace protocol over the mount protocol, and the two are mutually
-// exclusive: a session either pushes from inside or is pushed from outside.
+// WithLocalWorkspace declares that the session's output directory is a git
+// repository with no remote, which the host publishes after the run. It
+// selects the workspace protocol instead of the mount protocol. The two are
+// mutually exclusive: a session either pushes from inside the sandbox or is
+// pushed from outside it.
 func WithLocalWorkspace() SessionOption {
 	return func(a *SessionAuditor) { a.workspaceIsARepository = true }
 }
 
 // WithSessionMount mounts a repository into the session so the worker commits
 // its reproduction directly, with the history published as part of the result.
-// It shapes the session at creation, so it reaches Start and Run only.
+// It applies when the session is created, so it affects Start and Run only.
 func WithSessionMount(mount SessionMount) SessionOption {
 	return func(a *SessionAuditor) { a.mount = mount }
 }
@@ -146,8 +146,8 @@ func NewSessionAuditor(controller *managed.Controller, m method.Method, options 
 }
 
 // Start creates the durable session for paper and returns its ref without
-// waiting. It is the detached path: no deadline applies and no evidence is
-// retained, so whoever Resumes the session collects the artifacts.
+// waiting. This is the detached path: no deadline applies and no evidence is
+// retained, so the caller that resumes the session collects the artifacts.
 func (a *SessionAuditor) Start(ctx context.Context, paper string) (managed.SessionRef, error) {
 	spec, ctx, err := a.spec(ctx, paper)
 	if err != nil {
@@ -218,8 +218,8 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 	case mount.Set():
 		instructions += mountProtocol(mount.MountPath)
 	case a.workspaceIsARepository:
-		// No mount, and the runtime's output directory is a git
-		// repository the host will publish afterwards (045g).
+		// There is no mount, and the runtime's output directory is a git
+		// repository that the host publishes afterwards (045g).
 		instructions += workspaceProtocol(outputDir)
 	}
 	spec := managed.SessionSpec{
@@ -247,13 +247,14 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 	return spec, ctx, spec.Validate()
 }
 
-// networkFor is the egress policy this runtime can actually enforce.
+// networkFor returns the egress policy the runtime can enforce.
 //
-// The hunt wants to go anywhere, and a runtime that can offer that is given
-// the open policy. One that cannot — a host sandbox is allow-only by
-// construction and refuses a wildcard — is given the declared bound instead of
-// a specification it would refuse outright. The alternative is a local audit
-// that cannot start, which is worse than a hunt whose limits are recorded.
+// The artifact search should reach any domain, and a runtime that offers open
+// egress is given the open policy. A runtime that cannot, such as a host
+// sandbox that accepts only an allowlist and refuses a wildcard, is given
+// ArtifactDomains instead of a specification it would refuse. The alternative
+// is a local audit that cannot start, which is worse than a search whose
+// limits are recorded.
 func networkFor(capabilities managed.Capabilities) managed.NetworkPolicy {
 	if capabilities.NetworkModes[managed.NetworkOpen] {
 		return managed.NetworkPolicy{Mode: managed.NetworkOpen}
