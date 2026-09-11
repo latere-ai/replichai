@@ -204,3 +204,49 @@ func TestCodexLoginProfile(t *testing.T) {
 		t.Error("a client that will not trust the sandbox's authority has no passthrough")
 	}
 }
+
+// A role the agent never receives is not a role. Codex reads one from AGENTS.md
+// under CODEX_HOME and has no flag for it, and a run on the operator's own
+// login leaves CODEX_HOME to the operator, so Files writes nothing there.
+// Three runs of the real method proved what that costs: with no standing
+// instructions the agent wrote its reproduction into a subdirectory, committed
+// nothing, and the graded work could not be published at all. So the
+// instructions travel with the task instead.
+func TestCodexCarriesItsRoleWhenNoFileCan(t *testing.T) {
+	request := Request{
+		Task:         "reproduce it",
+		Instructions: "Commit your progress as you finish each part.",
+		Paths:        Paths{Workspace: "/s/workspace", Home: "/s/home"},
+		Gateway:      Gateway{Name: "harness-login", Auth: AuthHarness},
+	}
+	files, err := NewCodex().Files(StageWorker, request)
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("the operator's own configuration directory was written to: %+v", files)
+	}
+	argv, err := NewCodex().Argv(StageWorker, request)
+	if err != nil {
+		t.Fatalf("Argv: %v", err)
+	}
+	prompt := argv[len(argv)-1]
+	if !strings.Contains(prompt, request.Instructions) {
+		t.Fatalf("the agent was started with no standing instructions: %q", prompt)
+	}
+	if !strings.Contains(prompt, request.Task) {
+		t.Fatalf("the task did not survive: %q", prompt)
+	}
+
+	// Where a file does carry them, it stays the only copy: the same role
+	// twice in one session is a prompt the operator did not write.
+	keyed := request
+	keyed.Gateway = Gateway{Name: "lux", BaseURL: "https://lux.latere.ai/v1", Dialect: DialectOpenAIResponses, Auth: AuthAPIKey, Key: "sk-x"}
+	argv, err = NewCodex().Argv(StageWorker, keyed)
+	if err != nil {
+		t.Fatalf("Argv: %v", err)
+	}
+	if prompt := argv[len(argv)-1]; prompt != keyed.Task {
+		t.Fatalf("the instructions were sent twice: %q", prompt)
+	}
+}
