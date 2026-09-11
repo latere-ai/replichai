@@ -59,7 +59,7 @@ The result is a **re-observation**, the first thing the platform produces that c
 **Two kinds of participant-facing copy, and only one of them is ours.** [006e](006e-frontend.md) commits every platform string to English and Chinese, and this page is seen by more people than any authenticated screen, so the split has to be explicit:
 
 - **Platform chrome** (the consent screen's framing, progress and error states, the withdrawal control, the completion screen): ours, and it ships in en and zh like the rest of 006e.
-- **Protocol-derived text** (instructions, stimuli, question and scale wording): the *paper's*, reproduced in the language the paper used, and never machine-translated. Translating a validated instrument's wording changes the instrument, which is the one thing a replication must not do silently. A protocol whose language a participant cannot read is a recruitment problem for the researcher, not a string for us to localise.
+- **Protocol-derived text** (instructions, stimuli, question and scale wording): the *paper's*, reproduced in the language the paper used, and never machine-translated. Translating a validated instrument's wording changes the instrument, which a replication must not do silently. A protocol whose language a participant cannot read is a recruitment problem for the researcher, not a string for us to localise.
 
 Consent text is the researcher's and follows their approval, so it is theirs to supply in whatever languages they need; the platform stores it versioned and renders it as given.
 
