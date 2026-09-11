@@ -631,6 +631,41 @@ type containerNamed struct{ *localtest.Sandbox }
 
 func (containerNamed) Name() sandbox.DriverName { return sandbox.Container }
 
+// reportingDriver is a scripted driver that also reports a pinned image and
+// toolchain, the way the container driver does, so the record's population of
+// those fields is testable without an engine.
+type reportingDriver struct{ *localtest.Sandbox }
+
+func (reportingDriver) Image() string     { return "ghcr.io/latere-ai/harness:pinned" }
+func (reportingDriver) Toolchain() string { return "python 3.13.2" }
+
+// The environment record carries what the driver pinned: its image and its
+// toolchain, read through the optional interfaces a driver satisfies rather
+// than by naming a concrete one. The host driver reports neither and leaves
+// both empty, which is why they are omitempty.
+func TestTheEnvironmentRecordCarriesTheDriversImageAndToolchain(t *testing.T) {
+	driver := reportingDriver{localtest.New(localtest.Script{})}
+	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
+	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, noCredentials)
+	runtime, err := local.New(local.Config{
+		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
+		Root: t.TempDir(), Lookup: os.LookupEnv,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ref := start(t, runtime, spec(false))
+	runToTerminal(t, runtime, ref)
+
+	record := readEnvironment(t, ref)
+	if record.Sandbox.Image != "ghcr.io/latere-ai/harness:pinned" {
+		t.Errorf("the record did not carry the image: %q", record.Sandbox.Image)
+	}
+	if record.Sandbox.Version != "python 3.13.2" {
+		t.Errorf("the record did not carry the toolchain: %q", record.Sandbox.Version)
+	}
+}
+
 // Release discards the driver's stages and keeps the directory, because the
 // workspace is the reproduction and the push may not have taken it yet.
 func TestReleaseKeepsTheWorkspaceByDefault(t *testing.T) {

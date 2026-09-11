@@ -125,6 +125,11 @@ func (s *Sandbox) Engine() Engine { return s.engine }
 // record so two runs on different machines can be compared.
 func (s *Sandbox) Toolchain() string { return s.toolchain }
 
+// Image is the reference the stage runs from, recorded in the environment
+// record: under this driver the image is the whole of what was pinned, and a
+// reader comparing two reproductions needs to know they ran the same one.
+func (s *Sandbox) Image() string { return s.config.Image }
+
 // selectEngine picks the engine and proves it works. A named engine that
 // cannot run is an error rather than a silent fallback to the other one.
 func (s *Sandbox) selectEngine(ctx context.Context) (Engine, error) {

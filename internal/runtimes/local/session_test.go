@@ -369,7 +369,7 @@ func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 		managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
 		harness.Gateway{Name: "lux", Auth: harness.AuthAPIKey, Key: "sk-secret"},
 		sandbox.NetworkOpen)
-	record.Toolchain = map[string]string{"python": "3.13.2"}
+	record.Sandbox.Version = "python 3.13.2"
 	if err := session.WriteEnvironment(record); err != nil {
 		t.Fatalf("WriteEnvironment: %v", err)
 	}
@@ -384,8 +384,8 @@ func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 	if err != nil || back.Harness.Auth != harness.AuthAPIKey || back.Host.OS == "" {
 		t.Fatalf("environment = %+v, %v", back, err)
 	}
-	if back.Toolchain["python"] != "3.13.2" {
-		t.Errorf("toolchain = %v", back.Toolchain)
+	if back.Sandbox.Version != "python 3.13.2" {
+		t.Errorf("sandbox version = %q", back.Sandbox.Version)
 	}
 }
 
