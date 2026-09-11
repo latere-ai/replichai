@@ -20,9 +20,9 @@ func TestRuntimeAdapterImportFirewall(t *testing.T) {
 		if walkErr != nil {
 			return walkErr
 		}
-		// A hidden directory is not the source tree: .git, an editor's state,
-		// or a worktree an agent checked out beside the code — a copy of the
-		// tree whose findings are not this tree's.
+		// Skip hidden directories: .git, editor state, or a worktree checked
+		// out beside the code. A worktree is a separate copy of the tree and
+		// its findings do not belong to this one.
 		if entry.IsDir() && path != root && strings.HasPrefix(entry.Name(), ".") {
 			return filepath.SkipDir
 		}
@@ -54,8 +54,8 @@ func TestRuntimeAdapterImportFirewall(t *testing.T) {
 
 // The environment is read at the composition edge, in cmd, and handed down as
 // values. A package inside the seam that reads it directly is a second,
-// unscoped source of configuration — which is how a credential or an API root
-// meant for one runtime reaches another, whatever the variable is called.
+// unscoped source of configuration, through which a credential or API root
+// meant for one runtime can reach another regardless of the variable's name.
 func TestRuntimeSeamNeverReadsTheEnvironment(t *testing.T) {
 	root := filepath.Clean("../..")
 	seam := []string{

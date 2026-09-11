@@ -29,9 +29,9 @@ func TestCatalogComposesAdaptersExplicitly(t *testing.T) {
 	if runtime, err := catalog.Build(context.Background(), string(AnthropicManaged)); err != nil || runtime.Name() != AnthropicManaged {
 		t.Fatalf("Build(%s) = %v, %v", AnthropicManaged, runtime, err)
 	}
-	// The runtime answers to its own name only. "anthropic" named the vendor,
-	// not the runtime, and an alias that conflates the two is how a second
-	// vendor's runtime ends up unnameable.
+	// The runtime answers only to its own name. "anthropic" named the vendor,
+	// not the runtime; an alias that conflates the two would leave a second
+	// runtime for the same vendor without a name.
 	if _, err := catalog.Build(context.Background(), "anthropic"); err == nil {
 		t.Fatal("the removed vendor alias still resolves")
 	}
@@ -39,8 +39,8 @@ func TestCatalogComposesAdaptersExplicitly(t *testing.T) {
 
 // The local runtime is composed from a sandbox driver, a harness and the
 // operator's model catalogue. A machine that cannot run the chosen sandbox is
-// refused here — at composition, before a paper is fetched — with the
-// instructions that would fix it.
+// refused at composition, before a paper is fetched, with instructions for
+// fixing it.
 func TestLocalIsComposedAndRefusesAnUnusableMachine(t *testing.T) {
 	catalog, err := Catalog(Config{Local: LocalConfig{
 		Sandbox: sandbox.Container, Engine: "docker", Root: t.TempDir(),
