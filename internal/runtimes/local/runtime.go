@@ -222,7 +222,11 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	if err = r.writeAttachments(session, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
-	if err = session.writeJSON(specFile, spec); err != nil {
+	// The spec persisted for Poll drops the attachment bytes: they are already
+	// materialised into the workspace above, and Poll needs the model, the
+	// task and the evaluation, not the base64. Kept whole, a large attachment
+	// is decoded from disk on every single poll for the life of the session.
+	if err = session.writeJSON(specFile, withoutAttachmentBytes(spec)); err != nil {
 		return managed.SessionRef{}, err
 	}
 	effective := r.network(spec, gateway)
@@ -1001,6 +1005,29 @@ func readSpec(session *Session) (managed.SessionSpec, error) {
 	var spec managed.SessionSpec
 	err := session.readJSON(specFile, &spec)
 	return spec, err
+}
+
+// withoutAttachmentBytes is the specification as it is persisted for Poll: the
+// same, but with each attachment's content dropped. The bytes have already been
+// written into the workspace, and nothing Poll does reads them back; keeping
+// them would decode the whole attachment from disk on every poll. The metadata
+// — path, media type, digest — stays, so the record of what was supplied is
+// intact.
+func withoutAttachmentBytes(spec managed.SessionSpec) managed.SessionSpec {
+	if len(spec.Resources) == 0 {
+		return spec
+	}
+	lean := spec
+	lean.Resources = make([]managed.Resource, len(spec.Resources))
+	for index, resource := range spec.Resources {
+		if resource.Kind == managed.ResourceAttachment && resource.Attachment != nil {
+			attachment := *resource.Attachment
+			attachment.Content = nil
+			resource.Attachment = &attachment
+		}
+		lean.Resources[index] = resource
+	}
+	return lean
 }
 
 // currentRound is which grading round the session is in, counted from zero:

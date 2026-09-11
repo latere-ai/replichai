@@ -4,7 +4,11 @@
 package local_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -225,6 +229,46 @@ func TestPollRefusesARunningSessionWithNoStages(t *testing.T) {
 	if _, err := runtime.Poll(context.Background(), ref); err == nil {
 		t.Fatal("Poll accepted a running session with no stages")
 	}
+}
+
+// An attachment is written into the workspace once, and its bytes are not kept
+// in the spec Poll re-reads from disk every time. Kept whole, a large
+// attachment was base64-decoded on every poll for the life of the session.
+func TestAttachmentBytesAreNotReReadOnEveryPoll(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{})
+	s := spec(false)
+	content := bytes.Repeat([]byte("A"), 8<<10)
+	sum := sha256.Sum256(content)
+	digest := hex.EncodeToString(sum[:])
+	s.Resources = []managed.Resource{{
+		Kind:       managed.ResourceAttachment,
+		Attachment: &managed.AttachmentResource{Path: "data/input.bin", Content: content, SHA256: digest},
+	}}
+	ref := start(t, runtime, s)
+	dir := sessionDir(t, ref)
+
+	// The attachment is materialised in the workspace with its bytes intact.
+	body, err := os.ReadFile(filepath.Join(dir, "workspace", "data", "input.bin"))
+	if err != nil {
+		t.Fatalf("the attachment was not written into the workspace: %v", err)
+	}
+	if !bytes.Equal(body, content) {
+		t.Fatalf("the attachment's bytes were altered: %d of %d", len(body), len(content))
+	}
+	// But the per-poll spec on disk does not carry them.
+	persisted, err := os.ReadFile(filepath.Join(dir, "session", "spec.json"))
+	if err != nil {
+		t.Fatalf("read persisted spec: %v", err)
+	}
+	if bytes.Contains(persisted, []byte(base64.StdEncoding.EncodeToString(content))) {
+		t.Fatal("the attachment bytes are re-read from the spec on every poll")
+	}
+	// The metadata is kept, so the record of what was supplied is intact.
+	if !bytes.Contains(persisted, []byte(digest)) || !bytes.Contains(persisted, []byte("data/input.bin")) {
+		t.Errorf("the attachment metadata was dropped along with its bytes:\n%s", persisted)
+	}
+	// And the session still runs to completion.
+	runToTerminal(t, runtime, ref)
 }
 
 // The output directory a caller reads before starting is the workspace the
