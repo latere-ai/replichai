@@ -48,24 +48,24 @@ func (r *Runtime) bootstrapArgv(spec managed.SessionSpec, session *Session) []st
 
 	pip, npm := split(spec.Sandbox.Packages)
 	if len(pip) > 0 {
-		fmt.Fprintf(&script, "python3 -m venv %s\n", shellQuote(session.Venv()))
+		fmt.Fprintf(&script, "python3 -m venv %s\n", sandbox.ShellQuote(session.Venv()))
 		trusted := make([]string, 0, len(PackageIndexHosts())*2)
 		for _, host := range PackageIndexHosts() {
 			trusted = append(trusted, "--trusted-host", host)
 		}
 		fmt.Fprintf(&script, "%s install --disable-pip-version-check --quiet %s %s\n",
-			shellQuote(session.Venv()+"/bin/pip"), shellJoin(trusted), shellJoin(pip))
+			sandbox.ShellQuote(session.Venv()+"/bin/pip"), sandbox.ShellJoin(trusted), sandbox.ShellJoin(pip))
 		fmt.Fprintf(&script, "%s freeze > %s\n",
-			shellQuote(session.Venv()+"/bin/pip"), shellQuote(session.Venv()+"/"+PackageManifest))
+			sandbox.ShellQuote(session.Venv()+"/bin/pip"), sandbox.ShellQuote(session.Venv()+"/"+PackageManifest))
 	}
 	if len(npm) > 0 {
 		fmt.Fprintf(&script, "cd %s && npm install --silent --no-fund --no-audit %s\n",
-			shellQuote(session.Venv()), shellJoin(npm))
+			sandbox.ShellQuote(session.Venv()), sandbox.ShellJoin(npm))
 	}
 	// A specification's own bootstrap entries are argv arrays, never shell
 	// fragments, so nothing in one is handed to a shell to interpret.
 	for _, argv := range spec.Sandbox.Bootstrap {
-		script.WriteString(shellJoin(argv) + "\n")
+		script.WriteString(sandbox.ShellJoin(argv) + "\n")
 	}
 	if script.Len() == len("set -eu\n") {
 		script.WriteString("true\n")
@@ -104,16 +104,4 @@ func split(packages []managed.Package) (pip, npm []string) {
 		}
 	}
 	return pip, npm
-}
-
-func shellJoin(argv []string) string {
-	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		parts = append(parts, shellQuote(arg))
-	}
-	return strings.Join(parts, " ")
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
