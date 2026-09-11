@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/managed/contracttest"
@@ -269,6 +270,37 @@ func TestAttachmentBytesAreNotReReadOnEveryPoll(t *testing.T) {
 	}
 	// And the session still runs to completion.
 	runToTerminal(t, runtime, ref)
+}
+
+// Every transcript event is stamped with the runtime's clock, not the wall
+// clock the decode happened on. The adapters stamped time.Now themselves,
+// though the runtime carries an injectable clock; a run on a fixed clock now
+// produces events all bearing that time.
+func TestEventsAreStampedWithTheRuntimeClock(t *testing.T) {
+	fixed := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	driver := localtest.New(localtest.Script{})
+	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
+	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, noCredentials)
+	runtime, err := local.New(local.Config{
+		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
+		Root: t.TempDir(), Lookup: os.LookupEnv, Clock: func() time.Time { return fixed },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	events, err := runtime.Events(context.Background(), status.Ref)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("no events to check")
+	}
+	for _, event := range events {
+		if !event.Time.Equal(fixed) {
+			t.Errorf("event %s stamped %v, want the runtime clock %v", event.ID, event.Time, fixed)
+		}
+	}
 }
 
 // The output directory a caller reads before starting is the workspace the
