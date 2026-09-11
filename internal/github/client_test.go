@@ -293,12 +293,34 @@ func TestHeadCommit(t *testing.T) {
 	}
 }
 
+// A repository with no commit is a state finalize has to be able to write
+// down, not an error that stops it. Repositories are created empty so the
+// host's push can be their first commit, so this is the shape of every run
+// that pushed nothing — the case 044d exists for. GitHub reports it three
+// ways, and all three answer the same.
 func TestHeadCommitEmptyRepo(t *testing.T) {
-	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[]`))
-	})
-	if _, err := c.HeadCommit(context.Background(), "open-hai", "x"); err == nil {
-		t.Error("a repo with no commits should error")
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"empty list", http.StatusOK, `[]`},
+		{"not found", http.StatusNotFound, `{"message":"Not Found"}`},
+		{"conflict", http.StatusConflict, `{"message":"Git Repository is empty."}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			sha, err := c.HeadCommit(context.Background(), "open-hai", "x")
+			if err != nil {
+				t.Fatalf("an empty repository is not a failure: %v", err)
+			}
+			if sha != "" {
+				t.Errorf("sha = %q, want empty", sha)
+			}
+		})
 	}
 }
 

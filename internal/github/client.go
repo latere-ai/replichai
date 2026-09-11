@@ -178,11 +178,23 @@ func (c *Client) HeadCommit(ctx context.Context, owner, name string) (string, er
 	if err != nil {
 		return "", err
 	}
+	// A repository with no commit answers an empty string, not an error: that
+	// is what the seam says, because a run that pushed nothing is a result the
+	// system has to record rather than a failure that stops it recording
+	// anything (044d). GitHub says it three ways depending on how the
+	// repository came to be empty — an empty list, 404, or 409 "Git Repository
+	// is empty" — and all three mean the same thing here. A repository that
+	// does not exist also answers 404; finalize is only ever called on one the
+	// system just created, and a name that resolves to nothing behaves the
+	// same as one holding nothing.
+	if status == http.StatusNotFound || status == http.StatusConflict {
+		return "", nil
+	}
 	if status != http.StatusOK {
 		return "", fmt.Errorf("head of %s/%s: unexpected status %d", owner, name, status)
 	}
 	if len(commits) == 0 {
-		return "", fmt.Errorf("%s/%s has no commits", owner, name)
+		return "", nil
 	}
 	return commits[0].SHA, nil
 }
