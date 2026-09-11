@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest'
-import { repoSuffix, runLabel } from './App'
+import { repoSuffix, runLabel } from './repo'
 
 // Five reproductions of one paper differ by four characters. A row that labels
 // the link "GitHub" renders all five identically, which is exactly the case a
