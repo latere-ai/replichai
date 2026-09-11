@@ -30,14 +30,24 @@ import (
 // composition root's, so it may import internal/audit and its method — the code
 // internal/job and internal/httpapi are forbidden to touch. It dispatches on
 // Kind; today it runs audits, the experiment path lands with 007b's server wiring.
+//
+// Every session, however old its row, goes through the managed controller: a
+// row that carries only a backend run id is addressed as a legacy reference,
+// which the anthropic-managed runtime knows how to poll, cancel, and read. There
+// is no second engine behind the first, so there is no path a nil one could
+// be reached on. Build one with newEngineRunner, which refuses to exist
+// without its dependencies.
 type engineRunner struct {
-	provider   provider.Provider
 	controller *managed.Controller
-	method     method.Method
-	fetch      paper.Fetcher
-	projects   project.Store
-	jobs       jobStatusReader
-	workDir    string
+	// sessions finds the runtime behind a session reference, for the one read
+	// the controller does not expose: a settled legacy row's transcript, at
+	// publish time.
+	sessions managed.RuntimeRouter
+	method   method.Method
+	fetch    paper.Fetcher
+	projects project.Store
+	jobs     jobStatusReader
+	workDir  string
 	// The forge (006i). When gh is nil (a local run with no token) the runner
 	// neither creates a repository nor publishes — the session's transcript stays
 	// readable live-only. owner is the org repositories are created under; token
@@ -56,6 +66,48 @@ type engineRunner struct {
 // phase transition, so the publishing phase reloads them from the store.
 type jobStatusReader interface {
 	Get(ctx context.Context, id string) (job.Job, error)
+}
+
+// engineDeps is what an engineRunner is built from. Every field but the forge
+// is required: the forge is the one thing a deployment may run without.
+type engineDeps struct {
+	controller *managed.Controller
+	sessions   managed.RuntimeRouter
+	method     method.Method
+	fetch      paper.Fetcher
+	projects   project.Store
+	jobs       jobStatusReader
+	workDir    string
+	gh         forge
+	owner      string
+	token      string
+	delay      time.Duration
+}
+
+// errEngineIncomplete is what newEngineRunner returns for a missing dependency.
+var errEngineIncomplete = errors.New("engine runner is missing a dependency")
+
+// newEngineRunner wires the runner and refuses a missing dependency at boot,
+// where it is a one-line startup error, rather than at the first job that
+// happens to take the path through it.
+func newEngineRunner(d engineDeps) (*engineRunner, error) {
+	switch {
+	case d.controller == nil:
+		return nil, fmt.Errorf("%w: controller", errEngineIncomplete)
+	case d.sessions == nil:
+		return nil, fmt.Errorf("%w: session runtimes", errEngineIncomplete)
+	case d.fetch == nil:
+		return nil, fmt.Errorf("%w: paper fetcher", errEngineIncomplete)
+	case d.jobs == nil:
+		return nil, fmt.Errorf("%w: job store", errEngineIncomplete)
+	case d.workDir == "":
+		return nil, fmt.Errorf("%w: work directory", errEngineIncomplete)
+	}
+	return &engineRunner{
+		controller: d.controller, sessions: d.sessions, method: d.method, fetch: d.fetch,
+		projects: d.projects, jobs: d.jobs, workDir: d.workDir,
+		gh: d.gh, owner: d.owner, token: d.token, delay: d.delay,
+	}, nil
 }
 
 // forge is the repository host the runner creates into and finalizes against
@@ -171,108 +223,57 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 	return nil
 }
 
-// auditOptions is how the server waits on every run, fresh or resumed: with the
-// job's observer, on the model tier the job carries, and without a wall-clock
-// deadline.
-//
-// The backend session is the source of truth for the outcome. A deadline is a
-// second, weaker opinion about it — one that reports a session still grading, or
-// one that settled a minute late, as a failure, while the agent's finished work
-// sits committed in the mounted repository. Only a failed session, an operator
-// cancelling it, or a backend that stops answering altogether ends the wait.
-//
-// The tier comes from the job because the job row is all the worker ever sees:
-// the submission is gone the moment Enqueue returns, and Execute may run in a
-// different process minutes later. Applying it here rather than at either call
-// site keeps one wiring for both paths, which cannot then disagree.
-//
-// On the resumed path it is inert, and deliberately passed anyway. Resume
-// rejoins a backend session that already exists, and a session's model was
-// fixed when it was created (the auditor resolves a model in Start, nowhere
-// else) — so there is nothing left to choose. Passing it costs nothing and
-// keeps the two paths one expression rather than two that must be kept in step.
-func auditOptions(j *job.Job, observe func(provider.RunStatus)) []audit.Option {
-	return []audit.Option{
-		audit.WithObserver(observe),
-		audit.WithoutTimeout(),
-		audit.WithModelPreference(j.Tier.OrDefault().String()),
-	}
-}
-
 // Execute runs the audit, reporting progress through observe. A fresh Auditor
 // per job carries that job's observer.
 func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
 	e.pause(ctx)
-	if e.controller != nil {
-		options := []audit.SessionOption{
-			audit.WithSessionHooks(e.managedHooks(j, observe)),
-			audit.WithoutSessionTimeout(),
-			audit.WithSessionModel(j.Tier.OrDefault().String()),
-		}
-		if e.gh != nil && j.RepoName != "" {
-			mount := e.mountFor(j)
-			options = append(options, audit.WithSessionMount(audit.SessionMount{
-				URL: mount.URL, Token: mount.Token, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly,
-			}))
-		}
-		_, err := audit.NewSessionAuditor(e.controller, e.method, options...).Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
-		return err
+	options := []audit.SessionOption{
+		audit.WithSessionHooks(e.managedHooks(j, observe)),
+		audit.WithoutSessionTimeout(),
+		audit.WithSessionModel(j.Tier.OrDefault().String()),
 	}
-	opts := auditOptions(j, observe)
-	// With the repository created in resolving, mount it so the agent commits its
-	// reproduction into it live (006i); the mount is also the redistribution
-	// boundary — only what lands in it is published.
+	// With the repository created in resolving, mount it so the agent commits
+	// its reproduction into it live (006i); the mount is also the
+	// redistribution boundary — only what lands in it is published.
 	if e.gh != nil && j.RepoName != "" {
-		opts = append(opts, audit.WithMount(e.mountFor(j)))
+		mount := e.mountFor(j)
+		options = append(options, audit.WithSessionMount(audit.SessionMount{
+			URL: mount.URL, Token: mount.Token, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly,
+		}))
 	}
-	auditor := audit.New(e.provider, e.method, opts...)
-	res, err := auditor.Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
-	if err != nil {
-		return err
-	}
-	observe(res.Status)
-	return nil
+	_, err := audit.NewSessionAuditor(e.controller, e.method, options...).Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
+	return err
 }
 
 // Resume rejoins the managed-agents session a restart left in flight (by the id
 // observed onto the job) and drives it to completion, so the job's state tracks
 // the real backend session rather than being guessed as failed.
 func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
-	if e.controller != nil {
-		ref, ok, err := j.ManagedSessionRef()
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return errors.New("running job has no managed session reference")
-		}
-		_, err = audit.NewSessionAuditor(e.controller, e.method,
-			audit.WithSessionHooks(e.managedHooks(j, observe)),
-			audit.WithoutSessionTimeout(),
-			audit.WithSessionModel(j.Tier.OrDefault().String()),
-		).Resume(ctx, ref, j.Ref, filepath.Join(e.workDir, j.ID))
-		return err
-	}
-	auditor := audit.New(e.provider, e.method, auditOptions(j, observe)...)
-	res, err := auditor.Resume(ctx, provider.RunHandle{ID: j.Status.RunID}, j.Ref, filepath.Join(e.workDir, j.ID))
+	ref, ok, err := j.ManagedSessionRef()
 	if err != nil {
 		return err
 	}
-	observe(res.Status)
-	return nil
+	if !ok {
+		return errors.New("running job has no managed session reference")
+	}
+	_, err = audit.NewSessionAuditor(e.controller, e.method,
+		audit.WithSessionHooks(e.managedHooks(j, observe)),
+		audit.WithoutSessionTimeout(),
+		audit.WithSessionModel(j.Tier.OrDefault().String()),
+	).Resume(ctx, ref, j.Ref, filepath.Join(e.workDir, j.ID))
+	return err
 }
 
-// Close releases a managed-agents run by its session id, so a run left in flight
-// by a restart is archived (stopped) rather than orphaned. Idempotent.
+// Close releases a managed-agents run by its session reference, so a run left
+// in flight by a restart is archived (stopped) rather than orphaned. A legacy
+// reference — a run id with no locator — is routed like any other: the runtime
+// it names knows how to address it. Idempotent.
 func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error {
 	if ref.ID == "" {
 		return nil
 	}
-	if e.controller != nil && len(ref.Locator) > 0 {
-		_, err := e.controller.Cancel(ctx, ref, managed.Hooks{})
-		return err
-	}
-	return e.provider.CloseRun(ctx, provider.RunHandle{ID: ref.ID})
+	_, err := e.controller.Cancel(ctx, ref, managed.Hooks{})
+	return err
 }
 
 type jobObserver interface {
@@ -409,13 +410,17 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 	if e.gh == nil || j.RepoName == "" {
 		return nil
 	}
-	if _, ok, err := j.ManagedSessionRef(); err != nil {
+	ref, ok, err := j.ManagedSessionRef()
+	if err != nil {
 		return err
-	} else if ok && len(j.Status.SessionRef) > 0 {
+	}
+	if ok && len(j.Status.SessionRef) > 0 {
 		// The controller's Retain hook committed transcript and manifest before
 		// release; this phase remains as the durable job-state transition.
 		return nil
 	}
+	// What remains is a legacy row: a run id observed before session references
+	// were persisted. Its repository still wants a manifest and a transcript.
 	owner, name := splitRepo(j.RepoName)
 
 	// The verdict and the backend run id were observed onto the job during the
@@ -452,11 +457,16 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 		return errors.New("publish requires a non-empty paper identity")
 	}
 
-	// Commit the transcript alongside the manifest. A momentary transcript
-	// failure must not block the manifest — publish it either way.
+	// Commit the transcript alongside the manifest, read through the runtime
+	// the reference names. A transient read failure is retried; a runtime this
+	// deployment no longer installs is not, since no retry will install it —
+	// the manifest is published with the transcript noted as unavailable.
 	var events []provider.Event
 	if runID != "" {
-		events, err = e.provider.Transcript(ctx, provider.RunHandle{ID: runID})
+		if !ok {
+			ref = managed.SessionRef{Runtime: job.LegacyRuntime, ID: runID, Revision: 1, LocatorVersion: 1}
+		}
+		events, err = e.legacyTranscript(ctx, ref)
 		if err != nil {
 			return job.RetryablePublish(fmt.Errorf("read transcript for run %s: %w", runID, err))
 		}
@@ -464,6 +474,23 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 
 	_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), verdict, events, time.Now)
 	return err
+}
+
+// legacyTranscript reads a settled legacy session's events through the runtime
+// its reference names. A reference no installed runtime answers to yields no
+// transcript and no error: there is nothing a retry could change.
+func (e *engineRunner) legacyTranscript(ctx context.Context, ref managed.SessionRef) ([]provider.Event, error) {
+	runtime, err := e.sessions.ForRef(ref)
+	if err != nil {
+		slog.WarnContext(ctx, "publish: no runtime answers to a legacy session; publishing without its transcript",
+			"runtime", ref.Runtime, "run", ref.ID, "error", err)
+		return nil, nil
+	}
+	events, err := runtime.Events(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return providerEvents(events), nil
 }
 
 // paperResolver previews a reference for the New-project screen (006j): it
