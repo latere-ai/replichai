@@ -2439,6 +2439,9 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(title)
   const [busy, setBusy] = useState(false)
+  // Why the last save did not land. A refused rename used to leave the input
+  // open and say nothing, which reads as a save that is still on its way.
+  const [err, setErr] = useState('')
 
   const save = async () => {
     const next = draft.trim()
@@ -2447,9 +2450,12 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
       return
     }
     setBusy(true)
+    setErr('')
     try {
       await onRename(next)
       setEditing(false)
+    } catch (e) {
+      setErr(generic(t, e, 'renameFailed'))
     } finally {
       setBusy(false)
     }
@@ -2465,7 +2471,7 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
         {title}
         {canEdit && (
           <Tip text={t('rename')}>
-            <button className="icon-btn" aria-label={t('rename')} onClick={() => { setDraft(title); setEditing(true) }}>
+            <button className="icon-btn" aria-label={t('rename')} onClick={() => { setDraft(title); setErr(''); setEditing(true) }}>
               <Ico name="pencil" size={13} />
             </button>
           </Tip>
@@ -2493,6 +2499,7 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
       <button className="btn ghost sm" disabled={busy} onClick={() => setEditing(false)}>
         {t('cancel')}
       </button>
+      {err && <span className="err small">{err}</span>}
     </div>
   )
 }
@@ -2627,6 +2634,9 @@ function ProjectScreen({
   // that makes it true.
   const isOwner = project != null && isMine(me, project.owner) && !project.deleted_at
   const [publishing, setPublishing] = useState(false)
+  // Why a restore did not land, shown in the banner that offered it. A refused
+  // restore used to leave the banner exactly as it was.
+  const [restoreErr, setRestoreErr] = useState('')
   // A publish refusal names the sessions in the way; this is the way to them.
   // Each opens where its own blocker is legible: a flagged manifest on the
   // verdict pane, which is where the redistribution review is shown, and a run
@@ -2718,12 +2728,18 @@ function ProjectScreen({
           <div className="banner warn" data-test="trashed-banner">
             <Ico name="trash" size={14} />
             <span style={{ flex: 1 }}>{t('trashedBanner')}</span>
+            {restoreErr && <span className="err small">{restoreErr}</span>}
             <button
               className="btn ghost small"
               data-test="restore"
               onClick={async () => {
-                await restoreProject(id)
-                refresh()
+                setRestoreErr('')
+                try {
+                  await restoreProject(id)
+                  refresh()
+                } catch (e) {
+                  setRestoreErr(generic(t, e, 'restoreFailed'))
+                }
               }}
             >
               <Ico name="repeat" size={13} /> {t('restore')}
@@ -4926,8 +4942,15 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
       setBusy(false)
     }
   }
+  // A refused removal used to be swallowed and the list re-read, so the person
+  // still on it looked, to the owner who clicked, like a removal that worked.
   const drop = async (target: string) => {
-    await removeMember(projectID, target).catch(() => {})
+    setErr('')
+    try {
+      await removeMember(projectID, target)
+    } catch (e) {
+      setErr(generic(t, e, 'removeMemberFailed'))
+    }
     refresh()
   }
   return (
