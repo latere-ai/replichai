@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +20,10 @@ import (
 // runProject creates and lists the containers a locally-run session is filed
 // under (045k).
 func runProject(ctx context.Context, args []string, stdout, stderr *os.File) error {
+	args, err := parseFlags(flagSet("project", stderr), args)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
 		_, _ = fmt.Fprintln(stderr, "usage: replichai project create <title> | replichai project ls")
 		return errExitQuiet
@@ -100,22 +103,11 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 // and running push again finishes the job. That is why the whole command is
 // resumable and idempotent rather than transactional.
 func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("push", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("push", stderr)
 	projectID := fs.String("project", "", "the project to file the sessions under")
-	// The documented form puts the flag after the file, and flag stops at the
-	// first argument that is not one. Parsing round the positionals is what
-	// audit and run already do, and it is what makes the usage line true.
-	var positional []string
-	for rest := args; ; {
-		if err := fs.Parse(rest); err != nil {
-			return errExitQuiet
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		rest = fs.Args()[1:]
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "push takes one project file or batch state")
