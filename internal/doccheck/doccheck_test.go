@@ -66,12 +66,12 @@ func TestEveryEnvironmentVariableIsInExampleEnv(t *testing.T) {
 	}
 }
 
-// TestEverySubcommandIsDocumented takes the CLI's subcommands from the switch
-// that dispatches them and asserts each is named as a command in README.md
-// and docs/architecture.md.
+// TestEverySubcommandIsDocumented takes the CLI's subcommands from the
+// registry that dispatch and help are generated from, and asserts each is
+// named as a command in README.md and docs/architecture.md.
 func TestEverySubcommandIsDocumented(t *testing.T) {
 	root := repoRoot(t)
-	names := subcommands(t, filepath.Join(root, "cmd", "replichai", "main.go"))
+	names := subcommands(t, filepath.Join(root, "cmd", "replichai", "commands.go"))
 	for _, doc := range []string{"README.md", filepath.Join("docs", "architecture.md")} {
 		text, err := os.ReadFile(filepath.Join(root, doc))
 		if err != nil {
@@ -80,7 +80,7 @@ func TestEverySubcommandIsDocumented(t *testing.T) {
 		mentioned := commandSpans(string(text))
 		for _, name := range names {
 			if !mentioned[name] {
-				t.Errorf("%s does not name the %q subcommand in a code span (`%s` or `replichai %s ...`), and cmd/replichai/main.go dispatches it", doc, name, name, name)
+				t.Errorf("%s does not name the %q subcommand in a code span (`%s` or `replichai %s ...`), and cmd/replichai/commands.go registers it", doc, name, name, name)
 			}
 		}
 	}
@@ -307,64 +307,62 @@ func exampleEnvNames(t *testing.T, root string) map[string]bool {
 // the `switch args[0]` in func run of main.go. The flag spellings of help
 // (-h, --help) are not subcommands and are reported, not counted. A dispatch
 // that cannot be found is a failure with a reason, never an empty pass.
-func subcommands(t *testing.T, mainGo string) []string {
+func subcommands(t *testing.T, commandsGo string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, mainGo, nil, 0)
+	f, err := parser.ParseFile(fset, commandsGo, nil, 0)
 	if err != nil {
-		t.Fatalf("parse %s: %v", mainGo, err)
+		t.Fatalf("parse %s: %v", commandsGo, err)
 	}
-	var dispatch *ast.SwitchStmt
+	// The registry is `func commands() []command` returning one composite
+	// literal whose elements are command literals; the first field of each is
+	// the name. Dispatch and help are both generated from it, so it is the
+	// one place a subcommand is born.
+	var registry *ast.CompositeLit
 	for _, decl := range f.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "run" || fn.Body == nil {
+		if !ok || fn.Name.Name != "commands" || fn.Body == nil {
 			continue
 		}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			if dispatch != nil {
+			if registry != nil {
 				return false
 			}
-			sw, ok := n.(*ast.SwitchStmt)
-			if !ok {
+			ret, ok := n.(*ast.ReturnStmt)
+			if !ok || len(ret.Results) != 1 {
 				return true
 			}
-			if idx, ok := sw.Tag.(*ast.IndexExpr); ok {
-				x, xok := idx.X.(*ast.Ident)
-				i, iok := idx.Index.(*ast.BasicLit)
-				if xok && iok && x.Name == "args" && i.Value == "0" {
-					dispatch = sw
-				}
+			if lit, ok := ret.Results[0].(*ast.CompositeLit); ok {
+				registry = lit
 			}
 			return true
 		})
 	}
-	if dispatch == nil {
-		t.Fatalf("no `switch args[0]` in func run of %s: the CLI's dispatch has moved, so move this search with it rather than letting the docs drift", mainGo)
+	if registry == nil {
+		t.Fatalf("no `func commands()` returning a composite literal in %s: the CLI's registry has moved, so move this search with it rather than letting the docs drift", commandsGo)
 	}
 	var names []string
-	for _, stmt := range dispatch.Body.List {
-		clause, ok := stmt.(*ast.CaseClause)
-		if !ok {
-			t.Fatalf("%s: a switch body holds something other than a case clause", fset.Position(stmt.Pos()))
+	for _, elt := range registry.Elts {
+		entry, ok := elt.(*ast.CompositeLit)
+		if !ok || len(entry.Elts) == 0 {
+			t.Fatalf("%s: a registry element that is not a command literal", fset.Position(elt.Pos()))
 		}
-		for _, expr := range clause.List {
-			lit, ok := expr.(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				t.Fatalf("%s: a dispatch case that is not a string literal; this test reads only literal subcommand names", fset.Position(expr.Pos()))
-			}
-			name, err := strconv.Unquote(lit.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.HasPrefix(name, "-") {
-				t.Logf("%q is a flag spelling of help, not a subcommand; not counted", name)
-				continue
-			}
-			names = append(names, name)
+		first := entry.Elts[0]
+		if kv, ok := first.(*ast.KeyValueExpr); ok {
+			first = kv.Value
 		}
+		lit, ok := first.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			t.Fatalf("%s: a command whose name is not a string literal; this test reads only literal subcommand names", fset.Position(first.Pos()))
+		}
+		name, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
 	}
 	if len(names) == 0 {
-		t.Fatalf("the dispatch in %s names no subcommand", mainGo)
+		t.Fatalf("the registry in %s names no subcommand", commandsGo)
 	}
 	return names
 }
