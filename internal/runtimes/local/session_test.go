@@ -6,6 +6,7 @@ package local
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,32 @@ func newSession(t *testing.T) *Session {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	return session
+}
+
+// A session id whose directory already exists is refused rather than adopted.
+// The id is four random bytes, so two sessions can collide, and MkdirAll would
+// have silently re-initialised the first session's workspace as if it were the
+// second's — losing the first's evidence to a run that thought it started
+// clean.
+func TestCreateSessionRefusesAnExistingID(t *testing.T) {
+	root := t.TempDir()
+	first, err := CreateSession(root, "collision", os.LookupEnv)
+	if err != nil {
+		t.Fatalf("first CreateSession: %v", err)
+	}
+	// Leave a mark in the first session's workspace, so a re-initialisation
+	// that adopted the directory would be detectable.
+	marker := filepath.Join(first.Workspace(), "evidence.txt")
+	if err := os.WriteFile(marker, []byte("the first session's work"), 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	if _, err := CreateSession(root, "collision", os.LookupEnv); !errors.Is(err, ErrSessionExists) {
+		t.Fatalf("a colliding id was not refused: %v", err)
+	}
+	// The first session's directory is untouched: nothing re-initialised it.
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the colliding create disturbed the first session: %v", err)
+	}
 }
 
 // The session directory is private, and the workspace is a git repository with
