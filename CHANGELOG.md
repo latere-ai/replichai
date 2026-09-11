@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.28.4 - 2026-09-11
+
 - **A session row says which run it is.** Under a paper, every row printed
   that paper's own reference — the same string on each, in the one view a
   repeat study produces. The row now carries the model the session ran on,
