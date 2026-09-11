@@ -37,8 +37,8 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long one paper may take")
 		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "revision budget per paper")
 		doPublish    = fs.Bool("publish", false, "publish each reproduction to its own repository")
-		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
-		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
+		ownerFlag    = fs.String("owner", "", "GitHub owner for --publish (default $REPLICHAI_GITHUB_OWNER, then the project file, then \""+publish.DefaultOrg+"\")")
+		inviteFlag   = fs.String("invite", "", "GitHub login to invite as a collaborator (default the project file's publish.invite)")
 		resume       = fs.Bool("resume", false, "skip the papers that already finished")
 		local        localOptions
 	)
@@ -63,13 +63,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if err != nil {
 		return err
 	}
-	// The project file's publish block is the default; a flag beats it.
-	if *owner == "" {
-		*owner = file.Publish.Owner
-	}
-	if *invite == "" {
-		*invite = file.Publish.Invite
-	}
+	owner, invite := resolvePublish(*ownerFlag, *inviteFlag, os.Getenv, file.Publish)
 	m, err := method.Load(*methodDir)
 	if err != nil {
 		return err
@@ -77,7 +71,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 
 	runner := &projectRunner{
 		method: m, options: local, runtimeName: *runtimeName, out: *out,
-		owner: *owner, invite: *invite, publish: *doPublish,
+		owner: owner, invite: invite, publish: *doPublish,
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
 		publishers: make(map[string]*publisher),
@@ -97,6 +91,28 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return errExitQuiet
 	}
 	return err
+}
+
+// resolvePublish settles the publish block's two settings by one rule, in the
+// order a person expects: what they typed, then their environment, then the
+// project file, then the built-in default. The flags default to empty so an
+// unset flag can be told from one typed to the environment's value; while the
+// -owner flag defaulted to the environment or DefaultOrg, it was never empty
+// and the project file's owner could never apply.
+func resolvePublish(ownerFlag, inviteFlag string, getenv func(string) string, file batch.PublishConfig) (owner, invite string) {
+	owner = firstNonEmpty(ownerFlag, getenv("REPLICHAI_GITHUB_OWNER"), file.Owner, publish.DefaultOrg)
+	invite = firstNonEmpty(inviteFlag, file.Invite)
+	return owner, invite
+}
+
+// firstNonEmpty is the resolution rule itself: the first value anybody set.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // projectRunner runs one paper of a project. It holds the publishers it

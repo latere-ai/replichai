@@ -17,6 +17,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/publish"
 )
 
 // fakeRepositories stands in for GitHub under the project runner: it records
@@ -60,6 +61,40 @@ func testProjectRunner(t *testing.T, repos repositorySource) *projectRunner {
 		owner: "open-hai", publish: true, timeout: time.Minute, maxRevisions: 1,
 		stdout: newTemp(t), stderr: newTemp(t),
 		publishers: make(map[string]*publisher), repositories: repos,
+	}
+}
+
+// The publish block is settled by one rule — flag, environment, project file,
+// default — and every step of it is reachable. The -owner flag used to default
+// to the environment or "open-hai", so it was never empty and the project
+// file's owner was dead configuration.
+func TestThePublishBlockResolvesInOneOrder(t *testing.T) {
+	env := func(vars map[string]string) func(string) string {
+		return func(key string) string { return vars[key] }
+	}
+	file := batch.PublishConfig{Owner: "from-file", Invite: "file-collaborator"}
+	cases := []struct {
+		name               string
+		ownerFlag, invite  string
+		env                map[string]string
+		file               batch.PublishConfig
+		wantOwner, wantInv string
+	}{
+		{"the flag beats everything", "from-flag", "flag-collaborator",
+			map[string]string{"REPLICHAI_GITHUB_OWNER": "from-env"}, file, "from-flag", "flag-collaborator"},
+		{"the environment beats the file", "", "",
+			map[string]string{"REPLICHAI_GITHUB_OWNER": "from-env"}, file, "from-env", "file-collaborator"},
+		{"the file beats the default", "", "", nil, file, "from-file", "file-collaborator"},
+		{"nothing set is the default and nobody invited", "", "", nil, batch.PublishConfig{}, publish.DefaultOrg, ""},
+		{"whitespace is unset", "  ", " ", map[string]string{"REPLICHAI_GITHUB_OWNER": " "}, file, "from-file", "file-collaborator"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			owner, invite := resolvePublish(tc.ownerFlag, tc.invite, env(tc.env), tc.file)
+			if owner != tc.wantOwner || invite != tc.wantInv {
+				t.Fatalf("resolvePublish = (%q, %q), want (%q, %q)", owner, invite, tc.wantOwner, tc.wantInv)
+			}
+		})
 	}
 }
 
