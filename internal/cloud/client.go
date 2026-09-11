@@ -110,6 +110,52 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	return out, nil
 }
 
+// ProjectSession is one session the app holds, as a terminal needs it: which paper it
+// ran, how it ended, where its reproduction is, and the id a delete names. The
+// app's own view of a session carries far more, and none of the rest is a
+// terminal's business.
+type ProjectSession struct {
+	ID       string `json:"id"`
+	Project  string `json:"project_id"`
+	Ref      string `json:"ref"`
+	PaperKey string `json:"paper_key"`
+	Phase    string `json:"phase"`
+	Origin   string `json:"origin"`
+	Repo     string `json:"repo_name"`
+}
+
+// ListSessions is every session this principal holds, narrowed to one project
+// when projectID is given. The narrowing is done here rather than asked of the
+// server, because /jobs answers with what the principal may see and a filter
+// the server does not offer is not one a client should invent a route for.
+func (c *Client) ListSessions(ctx context.Context, projectID string) ([]ProjectSession, error) {
+	var all []ProjectSession
+	if err := c.call(ctx, http.MethodGet, "/jobs", nil, &all); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(projectID) == "" {
+		return all, nil
+	}
+	kept := make([]ProjectSession, 0, len(all))
+	for _, s := range all {
+		if s.Project == projectID {
+			kept = append(kept, s)
+		}
+	}
+	return kept, nil
+}
+
+// DeleteSession throws one session away (032). The repository is closed, not
+// destroyed: what goes away is the project's claim on the run.
+//
+// Only the owner may, and only a session that has ended — the app refuses the
+// rest, and this does not second-guess it: a terminal that decides for itself
+// what the server would allow is a terminal that disagrees with it after the
+// next release.
+func (c *Client) DeleteSession(ctx context.Context, id string) error {
+	return c.call(ctx, http.MethodDelete, "/jobs/"+id, nil, nil)
+}
+
 // AddPaper files a paper under a project. A paper already there is not an
 // error: filing is idempotent, and a batch pushed twice must not fail on it.
 //

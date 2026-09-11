@@ -1013,6 +1013,7 @@ usage:
   replichai login | whoami | logout | org [<org-uuid>|--personal]
   replichai sessions ls | replichai sessions prune [--older-than 7d]
   replichai project create <title> | replichai project ls
+  replichai project sessions <project-id> | replichai project rm-session <id>...
   replichai push <project-file> --project <id>
   replichai providers
   replichai rates [flags]

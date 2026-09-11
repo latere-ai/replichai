@@ -181,3 +181,66 @@ func TestInvitingNeedsACredentialThatCanAdminister(t *testing.T) {
 		t.Fatalf("publisherFor with --invite = %v, want a refusal naming the flag", err)
 	}
 }
+
+// A session filed from a terminal can be listed and thrown away from one
+// (032). Until this existed the terminal could create sessions in the app and
+// never remove one: a run that failed in a way that produced several rows left
+// the operator clicking a trash icon per row, or asking somebody to.
+func TestSessionsAreListedAndThrownAwayFromTheTerminal(t *testing.T) {
+	remote := bareRepo(t)
+	app, auth := startApp(t, &bareRepoProvisioner{remote: remote, expires: time.Now().Add(time.Hour)})
+	home := t.TempDir()
+	signIn(t, home)
+	t.Setenv("HOME", home)
+	t.Setenv("REPLICHAI_API_URL", app.URL)
+	t.Setenv("REPLICHAI_AUTH_URL", auth.URL)
+
+	stdout, stderr, err := capture(t, "project", "create", "Papers from my laptop")
+	if err != nil {
+		t.Fatalf("project create: %v\n%s", err, stderr)
+	}
+	projectID, _, _ := strings.Cut(strings.TrimSpace(stdout), "\t")
+
+	api := cloud.NewClient(cloud.New(home, auth.URL), app.URL)
+	if err := api.AddPaper(t.Context(), projectID, "10.1145/3654777.3676417"); err != nil {
+		t.Fatalf("file the paper: %v", err)
+	}
+	id, err := api.ImportSession(t.Context(), projectID, cloud.ImportRecord{
+		PaperKey: "doi:10.1145/3654777.3676417", Ref: "10.1145/3654777.3676417",
+		Runtime: "local", SessionID: "abc123", Phase: "failed",
+		Model: cloud.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
+	})
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	stdout, stderr, err = capture(t, "project", "sessions", projectID)
+	if err != nil {
+		t.Fatalf("project sessions: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, id) || !strings.Contains(stdout, "failed") {
+		t.Fatalf("the session it just filed is not listed:\n%s", stdout)
+	}
+
+	if stdout, stderr, err = capture(t, "project", "rm-session", id); err != nil {
+		t.Fatalf("rm-session: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "deleted") {
+		t.Fatalf("rm-session said %q", stdout)
+	}
+	if stdout, _, err = capture(t, "project", "sessions", projectID); err != nil {
+		t.Fatalf("project sessions after delete: %v", err)
+	}
+	if strings.Contains(stdout, id) {
+		t.Fatalf("the deleted session is still listed:\n%s", stdout)
+	}
+
+	// A second delete is refused rather than quietly accepted, and the id it
+	// refuses is named: deleting several at once must say which one failed.
+	if _, stderr, err = capture(t, "project", "rm-session", id); err == nil {
+		t.Fatal("deleting an absent session was accepted")
+	}
+	if !strings.Contains(stderr, id) {
+		t.Fatalf("the refusal does not name the session: %q", stderr)
+	}
+}
