@@ -5,9 +5,10 @@ package credit
 
 import "testing"
 
-// The boundary that accepts a person's choice validates against this set, and
-// the adapter passes anything it does not recognise through as a literal model
-// id — so a preference the set does not hold must never read as valid.
+// TestValidClosesTheSet checks that Valid accepts only the offered set. The
+// boundary that accepts a person's choice validates against this set, and the
+// adapter passes anything it does not recognise through as a literal model id,
+// so a preference outside the set must never be valid.
 func TestValidClosesTheSet(t *testing.T) {
 	for _, p := range Preferences {
 		if !p.Valid() {
@@ -21,9 +22,10 @@ func TestValidClosesTheSet(t *testing.T) {
 	}
 }
 
-// Unset is a state, not a tier: a row written before the choice existed carries
-// it, and every reader has to resolve it the same way for that row to keep
-// running on what it always ran on.
+// TestOrDefaultResolvesUnsetToBest checks that unset is a state, not a tier: a
+// row written before the choice existed carries it, and every reader has to
+// resolve it the same way for that row to keep running on the model it always
+// ran on.
 func TestOrDefaultResolvesUnsetToBest(t *testing.T) {
 	if got := Preference("").OrDefault(); got != PrefBest {
 		t.Errorf("unset resolved to %q, want %q — a session that predates the choice changed model", got, PrefBest)

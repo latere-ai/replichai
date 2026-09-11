@@ -12,12 +12,13 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// Rates price one model's tokens, in micro-USD per million tokens — the unit
-// vendors quote, so an admin copying a price list types the number they read.
+// Rates price one model's tokens, in micro-USD per million tokens. That is the
+// unit vendors quote, so an admin copying a price list types the number they
+// read.
 //
 // The classes are separate because they are billed separately, and by a wide
 // margin: a cache read is a fraction of fresh input and a cache write is a
-// multiple of it. Collapsing them into one "input" rate would misprice a long
+// multiple of it. Collapsing them into one input rate would misprice a long
 // agent session by more than it costs.
 type Rates struct {
 	// Model is the model these rates are for, recorded so a snapshot taken at
@@ -34,25 +35,25 @@ type Rates struct {
 	CacheWrite1h int64       `json:"cache_write_1h"`
 	CacheWrite   int64       `json:"cache_write,omitempty"`
 	Extra        []MeterRate `json:"extra,omitempty"`
-	// Free is explicit; an all-zero row without it is still an invalid accident.
+	// Free is explicit; an all-zero row without it is treated as invalid.
 	Free bool `json:"free,omitempty"`
 }
 
-// MeterRate prices one non-token meter — a container second, a hosted tool
-// call — in the same micro-USD per million units the token rates use, so the
-// whole bill still comes out of one division.
+// MeterRate prices one non-token meter, such as a container second or a hosted
+// tool call, in the same micro-USD per million units the token rates use, so
+// the whole bill is still computed with one division.
 //
 // A meter the card holds no entry for is unpriced rather than free:
 // Rates.PriceManaged refuses usage that reports it, because a runtime billing
-// on a meter nobody put on the card is a card that is out of date, not a
-// session that costs nothing.
+// on a meter the card does not list means the card is out of date, not that
+// the session costs nothing.
 type MeterRate struct {
 	Meter managed.Meter `json:"meter"`
 	Rate  int64         `json:"rate"`
 }
 
-// UnmarshalJSON assigns historical model-only rows to Anthropic explicitly.
-// Empty never means whichever provider happens to be configured today.
+// UnmarshalJSON assigns historical model-only rows to Anthropic explicitly. An
+// empty provider never means the currently configured provider.
 func (r *Rates) UnmarshalJSON(data []byte) error {
 	type wire Rates
 	var decoded wire
@@ -69,25 +70,25 @@ func (r *Rates) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Price is what a run's usage costs under these rates, in micro-USD.
+// Price returns what a run's usage costs under these rates, in micro-USD.
 //
-// It is a pure function of (usage, rates) with no I/O, which is what lets it be
-// called inside the transaction that settles a session and inside the watchdog
-// that runs every poll. The rates come from a snapshot taken when the session
-// started (011), so an admin editing the card mid-run cannot make the ceiling a
-// run was measured against and the amount it is finally charged disagree.
+// It is a pure function of usage and rates with no I/O, so it can be called
+// inside the transaction that settles a session and inside the backstop that
+// runs on every poll. The rates come from a snapshot taken when the session
+// started (011), so an admin editing the card mid-run cannot make the ceiling
+// a run was measured against and the amount it is finally charged disagree.
 func (r Rates) Price(u provider.Usage) int64 {
 	// One division at the end rather than six: dividing per class would round
-	// each of them away and systematically under-charge.
+	// each class down and systematically undercharge.
 	perMillion := u.InputTokens*r.Input +
 		u.OutputTokens*r.Output +
 		u.CachedInputTokens*r.CacheRead +
 		u.CacheWrite5mTokens*r.CacheWrite5m +
 		u.CacheWrite1hTokens*r.CacheWrite1h +
 		// A cache write whose lifetime the backend did not report is charged at
-		// the dearer of the two, on the same fail-expensive rule an unknown
-		// model follows. Guessing cheap would make an unreported lifetime a
-		// discount nobody granted.
+		// the dearer of the two rates, following the same fail-expensive rule an
+		// unknown model follows. Assuming the cheaper rate would turn an
+		// unreported lifetime into an unintended discount.
 		u.CacheWriteTokens*r.genericCacheWriteRate()
 	return ceilDiv(perMillion, 1_000_000)
 }
@@ -134,9 +135,9 @@ func (r Rates) extraRate(meter managed.Meter) (int64, bool) {
 	return 0, false
 }
 
-// Zero reports rates that price everything at nothing — a card entry that would
-// make a session free. It is not a valid snapshot: the gate refuses to start a
-// session it cannot price.
+// Zero reports whether the rates price everything at nothing, which is a card
+// entry that would make a session free. Such an entry is not a valid snapshot:
+// the gate refuses to start a session it cannot price.
 func (r Rates) Zero() bool {
 	return !r.Free && r.Input == 0 && r.Output == 0 && r.CacheRead == 0 && r.CacheWrite5m == 0 && r.CacheWrite1h == 0 && r.CacheWrite == 0 && len(r.Extra) == 0
 }
@@ -149,37 +150,38 @@ func (r Rates) modelRef() managed.ModelRef {
 }
 
 // Card is the platform's price list: what each model costs. An admin edits it,
-// because a vendor's prices move and a constant compiled into the binary makes
-// every price change a redeploy and a silent mispricing until then.
+// because a vendor's prices change and a constant compiled into the binary
+// would make every price change a redeploy and a silent mispricing until then.
 type Card struct {
 	Models []Rates `json:"models"`
 }
 
 // For resolves the rates to charge a model at.
 //
-// An exact match wins. A **dated snapshot** of a model the card names is charged
-// at that model's rates: a backend listing `claude-haiku-4-5-20251001` is
-// offering Claude Haiku 4.5, and billing it as an unknown model would charge it
-// the dearest rates on the card — five times its real price, on the tier chosen
-// for being cheap. Anything else is charged at the dearest rates, class by
-// class: never at zero, which would make a vendor's new model id free compute,
-// and never by refusing to start, which would make it an outage. The
-// synthesised entry keeps the requested model's name, so a snapshot records
-// what was asked for and the amount records what it was charged as.
+// An exact match takes precedence. A dated snapshot of a model the card names
+// is charged at that model's rates: a backend listing
+// `claude-haiku-4-5-20251001` is offering Claude Haiku 4.5, and billing it as
+// an unknown model would charge it the dearest rates on the card, five times
+// its real price, on the tier chosen for being cheap. Any other model is
+// charged at the dearest rates, class by class: never at zero, which would make
+// a vendor's new model id free compute, and never by refusing to start, which
+// would make it an outage. The synthesised entry keeps the requested model's
+// name, so a snapshot records what was asked for and the amount records what
+// it was charged as.
 //
-// An empty card cannot price anything and is ErrNoRates. That is fail-closed on
-// purpose: tokens nobody can price are not free tokens.
+// An empty card cannot price anything and returns ErrNoRates. That is
+// deliberately fail-closed: tokens that cannot be priced are not free.
 func (c Card) For(model string) (Rates, error) {
 	return c.ForRef(managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(model)})
 }
 
-// ForRef is For over a provider-qualified model, and the form the pricing path
-// works in; For is the bare-id convenience that assumes Anthropic.
+// ForRef is For over a provider-qualified model, and is the form the pricing
+// path uses; For is the bare-id convenience that assumes Anthropic.
 //
-// The fail-expensive fallback draws only on entries sharing the model's provider
-// and billing variant, so one provider's prices can never stand in for
-// another's, and a card holding nothing comparable is ErrNoRates rather than a
-// dearest-of-everything guess.
+// The fail-expensive fallback uses only entries sharing the model's provider
+// and billing variant, so one provider's prices never stand in for another's,
+// and a card holding nothing comparable returns ErrNoRates rather than the
+// dearest rates of every entry.
 func (c Card) ForRef(model managed.ModelRef) (Rates, error) {
 	if hit, ok := c.PricedRef(model); ok {
 		return hit, nil
@@ -220,22 +222,22 @@ func (c Card) ForRef(model managed.ModelRef) (Rates, error) {
 	return dearest, nil
 }
 
-// Priced resolves a model to rates the card actually names for it — an exact
-// entry, or a dated snapshot of one — and reports whether it found any.
+// Priced resolves a model to rates the card names for it, either an exact
+// entry or a dated snapshot of one, and reports whether it found any.
 //
-// It is `For` without the fail-expensive fallback. That fallback exists so an
-// unrecognised *session* model is charged the dearest rates rather than nothing;
-// a caller who must refuse an unknown model instead of guessing at it high
-// (039's drafting, where the model is an operator's choice and might be a local
-// one costing pennies) asks this question rather than that one.
+// It is For without the fail-expensive fallback. That fallback exists so an
+// unrecognised session model is charged the dearest rates rather than nothing.
+// A caller that must refuse an unknown model instead of charging it high, such
+// as 039's drafting, where the model is an operator's choice and may be a
+// cheap local one, uses Priced instead.
 func (c Card) Priced(model string) (Rates, bool) {
 	return c.PricedRef(managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(model)})
 }
 
-// PricedRef is Priced over a provider-qualified model: the exact-or-dated-
+// PricedRef is Priced over a provider-qualified model: the exact or dated
 // snapshot lookup, with no fallback. A ref that does not name a model is not
-// priced, and an exact match is preferred over a snapshot however the entries
-// happen to be ordered.
+// priced, and an exact match is preferred over a snapshot regardless of entry
+// order.
 func (c Card) PricedRef(model managed.ModelRef) (Rates, bool) {
 	if !model.Valid() {
 		return Rates{}, false
@@ -267,11 +269,11 @@ func (c Card) PricedRef(model managed.ModelRef) (Rates, bool) {
 }
 
 // isSnapshotOf reports whether model is a dated snapshot of the card entry
-// named alias — `claude-haiku-4-5-20251001` of `claude-haiku-4-5`.
+// named alias, for example `claude-haiku-4-5-20251001` of `claude-haiku-4-5`.
 //
-// The suffix must be a date and nothing else. A bare prefix test would be
-// wrong in a way that costs money silently: a card naming `claude-opus-4` would
-// swallow `claude-opus-4-8`, a different model at a different price, and the
+// The suffix must be a date and nothing else. A plain prefix test would
+// misprice silently: a card naming `claude-opus-4` would match
+// `claude-opus-4-8`, a different model at a different price, and the
 // mispricing would look exactly like a correct match.
 func isSnapshotOf(alias, model string) bool {
 	if alias == "" || len(model) <= len(alias)+1 {
@@ -293,8 +295,9 @@ func isSnapshotOf(alias, model string) bool {
 }
 
 // ceilDiv divides rounding away from zero, so a fraction of a micro-USD is
-// charged rather than dropped. The bias is deliberate and it is one millionth
-// of a dollar per session; the opposite bias, repeated, is the platform paying.
+// charged rather than dropped. The bias is deliberate and amounts to one
+// millionth of a dollar per session; the opposite bias, repeated, would have
+// the platform pay the difference.
 func ceilDiv(n, d int64) int64 {
 	if n <= 0 {
 		return 0
@@ -302,21 +305,22 @@ func ceilDiv(n, d int64) int64 {
 	return (n + d - 1) / d
 }
 
-// DefaultCard is the price list this deployment is seeded with: the published
-// per-million-token rates for the models the engine's tier preference resolves
-// to ("best" → opus, "balanced" → sonnet, "fast" → haiku).
+// DefaultCard returns the price list this deployment is seeded with: the
+// published per-million-token rates for the models the engine's tier
+// preference resolves to ("best" is opus, "balanced" is sonnet, "fast" is
+// haiku).
 //
 // Cache rates are derived from the published multipliers rather than typed
 // separately, so a card row cannot say a cache read costs more than fresh
-// input: a read is a tenth of input, a 5-minute write is 1.25× it, and an
+// input: a read is a tenth of input, a 5-minute write is 1.25 times it, and an
 // hour's write is twice it.
 //
-// It is a *seed*, not the truth. Vendor prices move, and the platform_settings
-// row is what a session is actually priced from — an admin edits it in the
-// console and the change applies to sessions starting afterwards. A model the
+// It is a seed, not the authoritative list. Vendor prices change, and a session
+// is priced from the platform_settings row, which an admin edits in the
+// console; the change applies to sessions starting afterwards. A model the
 // card does not name is charged at the dearest rates it holds (Card.For), which
 // is why the list stops at the tiers this deployment runs: a model outside them
-// is most likely a new variant of the dearest one already here.
+// is most likely a new variant of the dearest one already listed.
 func DefaultCard() Card {
 	rates := func(model string, in, out int64) Rates {
 		return Rates{

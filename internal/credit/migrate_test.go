@@ -10,17 +10,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// legacySchema is the ledger exactly as it stood before it moved to
-// latere.ai/x/pay: migrations v1, v2 and v3 of the deleted
+// legacySchema is the ledger schema exactly as it was before the ledger moved
+// to latere.ai/x/pay: migrations v1, v2 and v3 of the deleted
 // internal/credit/migrate.go, concatenated.
 //
-// It is a verbatim copy, comments and all, taken from `git show` of the commit
-// that deleted it, and it is frozen. Do not tidy it. The backfill's whole job
-// is to read what production actually holds, so a test that reads a *tidier*
-// shape than production tests nothing: the first draft of this constant was
-// retyped from memory and silently dropped two indexes, which is exactly the
-// class of error that would let a broken migration pass here and fail on
-// deploy.
+// It is a verbatim copy, comments included, taken from `git show` of the commit
+// that deleted it, and it is frozen. Do not tidy it. The backfill's purpose is
+// to read what production holds, so a test that reads a tidier shape than
+// production tests nothing. The first draft of this constant was retyped from
+// memory and silently dropped two indexes, which is exactly the class of error
+// that would let a broken migration pass here and fail on deploy.
 const legacySchema = `
 CREATE TABLE credit_entries (
 	id         TEXT PRIMARY KEY,
@@ -64,8 +63,8 @@ CREATE UNIQUE INDEX credit_entries_external_ref ON credit_entries (external_ref)
 `
 
 // seedLegacy writes one row of every historical kind, so the mapping is
-// exercised across the whole vocabulary rather than the two kinds a happy path
-// touches.
+// exercised across the whole vocabulary rather than the two kinds a simple
+// path uses.
 const seedLegacy = `
 INSERT INTO credit_entries (id, holder, amount, kind, job_id, actor, created_at, project_id, project_name, external_ref) VALUES
  ('e1', 'user:a@x.test',  20000000, 'topup',    NULL,    'admin@x.test', now(), NULL, NULL, NULL),
@@ -81,13 +80,14 @@ INSERT INTO credit_entries (id, holder, amount, kind, job_id, actor, created_at,
  ('e11','user:a@x.test',    500000, 'reclaim',  NULL,    'a@x.test',     now(), 'p1', 'A study', NULL);
 `
 
-// The migration's whole job is that no balance changes. A ledger that loses a
-// row is not recoverable, so this asserts the fold rather than the row count.
+// TestTheBackfillPreservesEveryBalance checks the migration's requirement that
+// no balance changes. A ledger that loses a row is not recoverable, so this
+// asserts the sums rather than the row count.
 func TestTheBackfillPreservesEveryBalance(t *testing.T) {
 	pool := legacyPool(t)
 	ctx := context.Background()
 
-	// What the legacy ledger folds to, before anything moves.
+	// The legacy ledger's sums, before anything is copied.
 	var wantWallet, wantPot, wantTotal int64
 	q := `SELECT COALESCE(SUM(amount),0) FROM credit_entries WHERE holder=$1 AND kind NOT IN ('hold','release')`
 	if err := pool.QueryRow(ctx, q, "user:a@x.test").Scan(&wantWallet); err != nil {
@@ -115,7 +115,7 @@ func TestTheBackfillPreservesEveryBalance(t *testing.T) {
 	if got, _ := s.TotalOutstanding(ctx); got != wantTotal {
 		t.Errorf("outstanding = %d, want %d", got, wantTotal)
 	}
-	// And the reconciliation an operator runs agrees.
+	// The reconciliation an operator runs agrees.
 	legacy, carried, err := Reconcile(ctx, pool)
 	if err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -132,8 +132,9 @@ func TestTheBackfillPreservesEveryBalance(t *testing.T) {
 	}
 }
 
-// A statement rendered from the carried rows must read exactly as it did
-// before: the historical kinds are what the browser knows.
+// TestTheBackfillPreservesTheStatementVocabulary checks that a statement
+// rendered from the copied rows reads exactly as it did before: the browser
+// knows the historical kinds.
 func TestTheBackfillPreservesTheStatementVocabulary(t *testing.T) {
 	pool := legacyPool(t)
 	ctx := context.Background()
@@ -184,8 +185,9 @@ func TestTheBackfillPreservesTheStatementVocabulary(t *testing.T) {
 	}
 }
 
-// A rolling deploy runs the migration from two pods at once, and it runs again
-// on every restart. Neither may double the balances.
+// TestTheBackfillIsIdempotent checks that running the migration again does not
+// double the balances. A rolling deploy runs it from two pods at once, and it
+// runs again on every restart.
 func TestTheBackfillIsIdempotent(t *testing.T) {
 	pool := legacyPool(t)
 	ctx := context.Background()
@@ -205,8 +207,8 @@ func TestTheBackfillIsIdempotent(t *testing.T) {
 	}
 }
 
-// A fresh database has no legacy table, and the migration must not trip over
-// its absence.
+// TestMigrateOnAFreshDatabase checks that the migration succeeds when there is
+// no legacy table.
 func TestMigrateOnAFreshDatabase(t *testing.T) {
 	pool := legacyPool(t)
 	ctx := context.Background()

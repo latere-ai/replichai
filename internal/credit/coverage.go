@@ -10,68 +10,69 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
-// ModelResolver turns a model *preference* into the concrete model a backend
-// will actually run. Satisfied by provider.Provider, declared here as one
-// method so pricing does not depend on the whole provider surface.
+// ModelResolver turns a model preference into the concrete model a backend
+// will run. provider.Provider satisfies it. It is declared here as one method
+// so pricing does not depend on the whole provider interface.
 type ModelResolver interface {
 	ResolveModel(ctx context.Context, pref string) (string, error)
 }
 
-// QualifiedModelResolver is ModelResolver's provider-qualified form: it answers
-// with a ModelRef, so a card can tell two providers' identically-named models
-// apart instead of pricing whichever it happens to name first.
+// QualifiedModelResolver is ModelResolver's provider-qualified form: it returns
+// a ModelRef, so a card can distinguish two providers' identically named models
+// instead of pricing whichever it names first.
 //
 // It is optional. A resolver that does not implement it is read through
-// ModelResolver and its answer attributed to Anthropic, which is what a bare
+// ModelResolver and its result attributed to Anthropic, which is what a bare
 // model id meant before the managed contract existed.
 type QualifiedModelResolver interface {
 	ResolveModelRef(ctx context.Context, pref string) (managed.ModelRef, error)
 }
 
-// Preference is a model tier the engine asks for — the unit a session's cost is
-// chosen in. It is a named type over a closed set rather than a bare string
-// because it crosses a trust boundary: a person picks one before a run (031),
-// and the adapter passes anything it does not recognise straight through as a
-// literal model id, which a card cannot price at its real rate.
+// Preference is a model tier the engine asks for, and is the unit in which a
+// session's cost is chosen. It is a named type over a closed set rather than a
+// plain string because it crosses a trust boundary: a person picks one before
+// a run (031), and the adapter passes anything it does not recognise through
+// as a literal model id, which a card cannot price at its real rate.
 //
-// It is not called Tier: access.Tier already means what a principal may do, and
-// this package reads that type. Preference is also the word the engine has used
-// since 004 — modelPref, WithModelPreference, ResolveModel(ctx, pref).
+// It is not called Tier because access.Tier already means what a principal may
+// do, and this package reads that type. Preference is also the word the engine
+// has used since 004, in modelPref, WithModelPreference, and
+// ResolveModel(ctx, pref).
 type Preference string
 
 // The preferences the engine asks for. A backend maps each to one of its own
-// model families; what that costs is the card's business, not this list's.
+// model families; the card, not this list, determines what each costs.
 const (
 	PrefBest     Preference = "best"     // the most capable tier
 	PrefBalanced Preference = "balanced" // capability against cost
 	PrefFast     Preference = "fast"     // the cheapest and quickest
 )
 
-// DefaultPreference is what a session runs on when nobody chose. It is best
-// because that is what every session ran on before the choice existed, and a
-// default that silently moved existing work onto a cheaper model would be this
-// spec changing runs it was only meant to give a say over.
+// DefaultPreference is the tier a session runs on when none was chosen. It is
+// best because every session ran on best before the choice existed, and a
+// default that silently moved existing work onto a cheaper model would change
+// runs that 031 was only meant to make configurable.
 const DefaultPreference = PrefBest
 
 // Preferences are the model tiers the engine asks for. Pricing checks against
 // these rather than against a vendor's catalogue: what a session costs depends
-// on which id a *preference* resolves to, not on what the catalogue contains.
+// on which id a preference resolves to, not on what the catalogue contains.
 //
 // It is also the closed set the HTTP boundary validates a submitted choice
 // against, so the two cannot disagree about which tiers exist.
 var Preferences = []Preference{PrefBest, PrefBalanced, PrefFast}
 
 // Valid reports whether p is a preference the engine offers. The zero value is
-// not valid: "unset" is a distinct state from any tier, and only the caller
-// holding the field knows whether unset means take the default (a job that
-// predates the choice) or means the caller sent nothing at all.
+// not valid: unset is a distinct state from any tier, and only the caller
+// holding the field knows whether unset means the default applies, as for a
+// job that predates the choice, or that the caller sent nothing.
 func (p Preference) Valid() bool {
 	return slices.Contains(Preferences, p)
 }
 
 // OrDefault resolves an unset preference to the default, so every reader of a
-// stored choice answers "which model" the same way and a row written before the
-// choice existed needs no backfill to be readable.
+// stored choice resolves the model the same way and a row written before the
+// choice existed needs no backfill.
 func (p Preference) OrDefault() Preference {
 	if p == "" {
 		return DefaultPreference
@@ -79,19 +80,19 @@ func (p Preference) OrDefault() Preference {
 	return p
 }
 
-// String makes a Preference printable and, at the seams that still speak in
-// bare strings (the auditor's option, the adapter's resolver), explicit about
-// where the domain type is being projected out.
+// String returns the preference as a string. At the boundaries that still use
+// plain strings, the auditor's option and the adapter's resolver, it marks
+// where the domain type is converted.
 func (p Preference) String() string { return string(p) }
 
 // Coverage is one preference checked against the card: what it resolves to, how
 // that would be billed, and whether the card names it.
 //
-// Named is the finding. When it is false the session is still priced — Card.For
-// charges the dearest rates it holds, so a vendor's new model id is never free
-// compute — but at another model's price. That is a thing to know before the
-// first run, not an error: refusing to start because a card is a release behind
-// would turn a billing imprecision into an outage.
+// Named is the result. When it is false the session is still priced, because
+// Card.For charges the dearest rates it holds so a vendor's new model id is
+// never free compute, but at another model's price. That is worth knowing
+// before the first run, but it is not an error: refusing to start because a
+// card is a release behind would turn a billing imprecision into an outage.
 type Coverage struct {
 	Preference Preference       `json:"preference"`
 	Model      string           `json:"model,omitempty"`
@@ -103,16 +104,16 @@ type Coverage struct {
 
 // Covers reports how this card would price each preference the engine asks for.
 //
-// It drives the caller's own resolution rather than reading a catalogue,
-// because that resolution is what decides the price: the adapter matches a
-// preference against whatever the backend lists today, and a dated or suffixed
-// id misses an exact match on a card that names the bare alias.
+// It uses the caller's own resolver rather than reading a catalogue, because
+// that resolution decides the price: the adapter matches a preference against
+// whatever the backend lists today, and a dated or suffixed id misses an exact
+// match on a card that names the bare alias.
 func (c Card) Covers(ctx context.Context, r ModelResolver) []Coverage {
 	out := make([]Coverage, 0, len(Preferences))
 	for _, pref := range Preferences {
 		cov := Coverage{Preference: pref}
-		// Projected to a string at the seam: the resolver is the provider, and
-		// the provider does not import pricing.
+		// Converted to a string at the boundary: the resolver is the provider,
+		// and the provider does not import pricing.
 		modelRef, err := resolveModelRef(ctx, r, pref.String())
 		if err != nil {
 			cov.Err = err.Error()
@@ -154,8 +155,8 @@ func (c Card) namesRef(model managed.ModelRef) bool {
 	return false
 }
 
-// Unnamed returns the preferences whose resolved model the card does not carry
-// — the ones being billed at another model's price.
+// Unnamed returns the preferences whose resolved model the card does not name,
+// which are the ones billed at another model's price.
 func Unnamed(cov []Coverage) []Coverage {
 	var out []Coverage
 	for _, c := range cov {

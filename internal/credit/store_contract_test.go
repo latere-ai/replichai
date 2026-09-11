@@ -16,7 +16,7 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 )
 
-// people used across the contract.
+// The principals used across the contract.
 var (
 	admin  = access.Principal{Sub: "s-admin", Email: "Admin@Latere.ai"}
 	lead   = access.Principal{Sub: "s-lead", Email: "lead@latere.ai"}
@@ -24,7 +24,7 @@ var (
 	outlaw = access.Principal{Sub: "s-out", Email: "stranger@latere.ai"}
 )
 
-// fakeAuth answers tiers from a map, so the contract can drive an admin-only
+// fakeAuth returns tiers from a map, so the contract can drive an admin-only
 // write without an access store.
 type fakeAuth map[string]access.Tier
 
@@ -33,7 +33,7 @@ func (f fakeAuth) Resolve(_ context.Context, p access.Principal) (access.Tier, b
 	return t, ok, nil
 }
 
-// fakeMembers answers roles from a map keyed "project/sub".
+// fakeMembers returns roles from a map keyed "project/sub".
 type fakeMembers map[string]access.Role
 
 func (f fakeMembers) Role(_ context.Context, p access.Principal, project string) (access.Role, bool, error) {
@@ -92,7 +92,7 @@ func runStoreContract(t *testing.T, s Store) {
 	if err := s.Allocate(ctx, outlaw, "p1", "Project One", 1*Dollar); !errors.Is(err, ErrNotMember) {
 		t.Fatalf("stranger allocating: want ErrNotMember, got %v", err)
 	}
-	// Nor may a member spend money they do not have.
+	// A member may not spend money they do not have.
 	if err := s.Allocate(ctx, mate, "p1", "Project One", 1*Dollar); !errors.Is(err, ErrInsufficient) {
 		t.Fatalf("allocating an empty wallet: want ErrInsufficient, got %v", err)
 	}
@@ -108,8 +108,9 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// A collaborator may fund the pot but may not take from it: the pot is
-	// fungible and does not remember who put what in, so reclaiming is a lead's
-	// authority over the project's money rather than a refund of one's own.
+	// fungible and does not record who funded it, so reclaiming is a lead's
+	// authority over the project's money rather than a refund of the caller's
+	// own.
 	if err := s.Topup(ctx, admin, mate.Email, 2*Dollar); err != nil {
 		t.Fatalf("Topup mate: %v", err)
 	}
@@ -119,7 +120,7 @@ func runStoreContract(t *testing.T, s Store) {
 	if err := s.Reclaim(ctx, mate, "p1", "Project One", 1*Dollar); !errors.Is(err, ErrNotLead) {
 		t.Fatalf("collaborator reclaiming: want ErrNotLead, got %v", err)
 	}
-	// And a lead may reclaim what somebody else funded — the model as decided.
+	// A lead may reclaim what somebody else funded, as the model decides.
 	if err := s.Reclaim(ctx, lead, "p1", "Project One", 6*Dollar); err != nil {
 		t.Fatalf("Reclaim: %v", err)
 	}
@@ -160,7 +161,7 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Fatalf("statement sums to %d but the balance is 0 — the ledger disagrees with itself", sum)
 	}
 
-	// BalancesFor folds a batch of holders in one pass, and must agree with the
+	// BalancesFor sums a batch of holders in one pass, and must agree with the
 	// per-holder Balance it replaces on the admin table. lead holds $12, mate $0.
 	batch, err := s.BalancesFor(ctx, []Holder{Wallet(lead.Email), Wallet(mate.Email), Pot("p1")})
 	if err != nil {
@@ -177,10 +178,11 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Fatalf("BalancesFor(nil) = %v, %v; want empty, nil", empty, err)
 	}
 
-	// A clawed-back purchase drives a wallet below zero — the debt a refund after
-	// spend leaves (022c). NegativeWallets must surface exactly that wallet, name
-	// its email (not the holder key), and leave the solvent alone. A negative pot
-	// would be an overdraft, not a debt, so pots must never appear here.
+	// A reversed purchase drives a wallet below zero, which is the debt a refund
+	// after spend leaves (022c). NegativeWallets must return exactly that
+	// wallet, name its email rather than the holder key, and omit solvent
+	// wallets. A negative pot would be an overdraft, not a debt, so pots must
+	// never appear here.
 	if err := s.RefundPaid(ctx, "debtor@latere.ai", 5*Dollar, "re-contract", "stripe:refund:re-contract"); err != nil {
 		t.Fatalf("RefundPaid: %v", err)
 	}
@@ -233,7 +235,7 @@ func runStoreContract(t *testing.T, s Store) {
 	if drafts != 1 {
 		t.Errorf("statement holds %d draft entries, want 1", drafts)
 	}
-	// A reference is required, and a call that rounded to nothing is not a line.
+	// A reference is required, and a call that rounded to nothing adds no entry.
 	if err := s.Spend(ctx, spendPot, 100, "", "system"); !errors.Is(err, ErrNoRef) {
 		t.Errorf("Spend with no reference = %v, want ErrNoRef", err)
 	}
@@ -257,10 +259,11 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewPGStore(pool, auth, members))
 }
 
-// A hold is a commitment, not a spend: it does not move the balance, it moves
-// what may still be committed, and it is what stops a burst of submits each
-// being admitted against the same money. Both stores must agree, because the
-// enqueue gate reads Available and the settlement reads Balance.
+// TestPGStoreAndMemStoreAgreeOnHolds checks that a hold is a commitment, not a
+// spend: it does not move the balance, it moves what may still be committed,
+// and it stops a burst of submits from each being admitted against the same
+// money. Both stores must agree, because the enqueue gate reads Available and
+// the settlement reads Balance.
 func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -293,17 +296,17 @@ func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 			if n, _ := s.Balance(ctx, Pot("p1")); n != 10*Dollar {
 				t.Errorf("balance under a hold = %d, want %d — a hold is not a spend", n, 10*Dollar)
 			}
-			// But only seven may be committed to anything else.
+			// Only seven may be committed to anything else.
 			if n, _ := s.Available(ctx, Pot("p1")); n != 7*Dollar {
 				t.Errorf("available under a hold = %d, want %d", n, 7*Dollar)
 			}
-			// And the held money cannot be reclaimed out from under the session.
+			// The held money cannot be reclaimed from the session.
 			if err := s.Reclaim(ctx, lead, "p1", "Project One", 8*Dollar); !errors.Is(err, ErrInsufficient) {
 				t.Errorf("reclaiming into a hold: want ErrInsufficient, got %v", err)
 			}
 
-			// Settling: the hold comes back and the real cost is charged. The
-			// two balances agree again, which is what makes a hold temporary.
+			// Settling releases the hold and charges the real cost. The two
+			// balances agree again, which makes a hold temporary.
 			writeSettlement(t, s, Pot("p1"), "job-1", 3*Dollar, 2*Dollar)
 			bal, _ := s.Balance(ctx, Pot("p1"))
 			avail, _ := s.Available(ctx, Pot("p1"))
@@ -314,11 +317,12 @@ func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 	}
 }
 
-// A purchased top-up and a refund post against a wallet with no principal — the
-// webhook that will call them has none — and they are idempotent on their
-// external reference, because Stripe retries a delivery and a balance that is a
-// fold would otherwise double. Both stores must agree: the enqueue gate and the
-// account freeze both read a wallet a payment moved.
+// TestPGStoreAndMemStorePostPaidEntriesIdempotently checks that a purchased
+// top-up and a refund post against a wallet with no principal, because the
+// webhook that calls them has none, and that they are idempotent on their
+// external reference, because Stripe retries a delivery and a balance that is
+// a sum would otherwise double. Both stores must agree: the enqueue gate and
+// the account freeze both read a wallet a payment moved.
 func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -340,7 +344,7 @@ func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 			ctx := context.Background()
 			w := Wallet(lead.Email)
 
-			// Shape is refused the same way by both stores.
+			// Invalid input is refused the same way by both stores.
 			if err := s.TopupPaid(ctx, "  ", 5*Dollar, "pi_1", "stripe:pi_1"); !errors.Is(err, ErrNoEmail) {
 				t.Fatalf("blank email: want ErrNoEmail, got %v", err)
 			}
@@ -384,8 +388,8 @@ func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 				t.Fatalf("EntryByExternalRef(nope) reported found")
 			}
 
-			// A refund claws it back — a negative adjust on its own reference — and
-			// refunding twice is a no-op, so a retried dispute cannot over-claw.
+			// A refund reverses it with a negative adjust on its own reference, and
+			// refunding twice is a no-op, so a retried dispute cannot refund twice.
 			if err := s.RefundPaid(ctx, lead.Email, 18*Dollar, "re_1", "stripe:refund:re_1"); err != nil {
 				t.Fatalf("RefundPaid: %v", err)
 			}
@@ -396,9 +400,9 @@ func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 				t.Fatalf("after one refund = %d, want 0 (idempotent)", n)
 			}
 
-			// A second, independent purchase and an over-refund each dedupe on their
-			// own reference, so a wallet can be driven negative — the debt this leaf
-			// records and 022d freezes on.
+			// A second, independent purchase and an over-refund each deduplicate on
+			// their own reference, so a wallet can be driven negative. That is the
+			// debt this leaf records and 022d freezes on.
 			if err := s.TopupPaid(ctx, lead.Email, 5*Dollar, "pi_2", "stripe:pi_2"); err != nil {
 				t.Fatalf("second TopupPaid: %v", err)
 			}
@@ -409,9 +413,9 @@ func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 				t.Fatalf("wallet after over-refund = %d, want %d (negative allowed)", n, -2*Dollar)
 			}
 
-			// The solvency read is the fold over every holder; here only this
-			// wallet holds anything, and it holds what its balance says — a refund
-			// taking it negative counts against outstanding liability, correctly.
+			// The solvency read is the sum over every holder. Here only this wallet
+			// holds anything, and it holds what its balance says: a refund taking
+			// it negative correctly counts against outstanding liability.
 			if n, _ := s.TotalOutstanding(ctx); n != -2*Dollar {
 				t.Fatalf("TotalOutstanding = %d, want %d (the one wallet's balance)", n, -2*Dollar)
 			}
@@ -428,9 +432,10 @@ func TestWalletEmailInvertsWallet(t *testing.T) {
 	}
 }
 
-// hold and writeSettlement drive the real operations, whichever shape the
-// store exposes them in. They replace a helper that used to write entries past
-// the public API because the enqueue gate and settlement did not exist yet.
+// writeHold and writeSettlement drive the real operations, whichever form the
+// store exposes them in. They replace a helper that wrote entries directly,
+// bypassing the public API, from before the enqueue gate and settlement
+// existed.
 func writeHold(t *testing.T, s Store, h Holder, job string, amount int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -447,15 +452,15 @@ func writeHold(t *testing.T, s Store, h Holder, job string, amount int64) {
 }
 
 // writeSettlement settles a session, which releases whatever it still holds and
-// charges what it cost. held is no longer passed: the store works out what is
-// outstanding, which is the guarantee worth testing.
+// charges what it cost. held is ignored: the store determines what is
+// outstanding, which is the guarantee under test.
 func writeSettlement(t *testing.T, s Store, h Holder, job string, _, cost int64) {
 	t.Helper()
 	settle(t, s, h, job, cost)
 }
 
-// adjust posts a correction, which is the one write with no uniqueness
-// constraint so reconciliation stays possible after a session has settled.
+// adjust posts a correction, which is the only write with no uniqueness
+// constraint, so reconciliation stays possible after a session has settled.
 func adjust(t *testing.T, s Store, h Holder, amount int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -541,14 +546,15 @@ func swapDBName(t *testing.T, raw, name string) string {
 	return u.String()
 }
 
-// Settlement is exactly-once, and this is where that is actually tested.
+// TestPGStoreAndMemStoreSettleExactlyOnce checks that settlement is
+// exactly-once. This is where that guarantee is tested.
 //
 // The job store's phase machine already serialises terminal transitions, so a
-// double settle cannot be reached through it today — which means a test driving
+// double settle cannot be reached through it today, which means a test driving
 // cancels concurrently passes whether or not the ledger guards anything. The
 // guarantee has to be asserted here, by settling the same session twice
-// directly: a partial unique index on the charge is what makes the second call
-// a no-op rather than a second charge and a second release.
+// directly: a partial unique index on the charge makes the second call a no-op
+// rather than a second charge and a second release.
 func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -585,8 +591,8 @@ func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 				t.Fatalf("balance after settling = %d, want %d", after, 8*Dollar)
 			}
 
-			// The second settlement is a no-op, and says so rather than
-			// erroring: a retried terminal write is normal, not a fault.
+			// The second settlement is a no-op, and reports so rather than
+			// returning an error: a retried terminal write is normal, not a fault.
 			if ok := settle(t, s, Pot("p1"), "job-1", 2*Dollar); ok {
 				t.Error("the second settlement reported that it settled")
 			}
@@ -597,9 +603,9 @@ func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 				t.Errorf("available = %d, want %d — the hold was released twice", n, after)
 			}
 
-			// And a correction afterwards is still possible: reconciliation
-			// posts the difference as an adjustment, which carries no
-			// uniqueness constraint precisely so this stays open.
+			// A correction afterwards is still possible: reconciliation posts the
+			// difference as an adjustment, which carries no uniqueness constraint
+			// so that this remains possible.
 			adjust(t, s, Pot("p1"), 1*Dollar)
 			if n, _ := s.Balance(ctx, Pot("p1")); n != 7*Dollar {
 				t.Errorf("balance after an adjustment = %d, want %d", n, 7*Dollar)
@@ -608,7 +614,7 @@ func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 	}
 }
 
-// settle calls the store's settlement, whichever shape it takes.
+// settle calls the store's settlement, whichever form it takes.
 func settle(t *testing.T, s Store, h Holder, job string, cost int64) bool {
 	t.Helper()
 	ctx := context.Background()
