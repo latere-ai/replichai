@@ -4,7 +4,7 @@
 // A browser regression test for how often the list of projects is read, and by
 // whom.
 //
-// The bug it guards: three places read /projects for themselves — the rail for
+// The bug it guards: three places read /projects for themselves: the rail for
 // its count, on every change of screen; the projects screen for its rows; the
 // move-paper dialog for its targets. Opening the dashboard cost two reads, every
 // screen change one more, and the rail's count went stale the moment a project
@@ -55,8 +55,8 @@ try {
   await settled(page)
   check(reads() === 1, `a change of screen re-read /projects (${reads()} reads)`)
 
-  // Throwing a project away changes the list, so it is re-read once — and the
-  // rail, which nobody used to tell, follows.
+  // Throwing a project away changes the list, so it is re-read once, and the
+  // rail, which nothing used to notify, follows.
   await page.evaluate(() => {
     history.pushState(null, '', '/')
     dispatchEvent(new PopStateEvent('popstate'))

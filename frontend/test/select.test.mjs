@@ -6,9 +6,9 @@
 // The bug it guards: while the list is open, a scroll anywhere dismisses it, so
 // the list arms a one-shot capture listener on window. The effect's cleanup
 // removed the resize listener and not that one, so every open that ended any
-// other way — Escape, a pick, a click outside — left a listener behind, and a
+// other way, by Escape, a pick or a click outside, left a listener behind, and a
 // Select opened ten times had ten of them waiting on the next scroll, each
-// reaching into a component that may since have gone.
+// referencing a component that may since have unmounted.
 //
 // The measurement is the browser's own count of scroll listeners on window,
 // read through the DevTools protocol, before and after opening and closing the

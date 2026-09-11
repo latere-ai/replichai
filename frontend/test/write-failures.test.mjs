@@ -7,7 +7,7 @@
 // The bug it guards: each of the three awaited its request and did nothing with
 // a rejection. A refused rename left the input open with no word on why; a
 // refused restore left the trash banner exactly as it was; a refused removal was
-// swallowed, the list re-read, and the person still on it — which looks, to the
+// swallowed, the list re-read, and the person still on it, which looks, to the
 // owner who clicked, like a removal that worked. Every other write on the screen
 // names its refusal through the error copy in errors.ts; these three now do the
 // same. Run it with `bun run test:browser`.

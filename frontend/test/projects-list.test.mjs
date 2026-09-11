@@ -4,8 +4,8 @@
 // A browser regression test for the merged projects list (018, restyled by 034).
 //
 // What it guards: the screen used to split a reader's work in two by a fact they
-// did not choose — whether they created a project or were invited to it. The
-// merge is not one line: the segmented control has to be gone, both kinds of
+// did not choose, namely whether they created a project or were invited to it.
+// The merge is not one line: the segmented control has to be gone, both kinds of
 // project have to appear in one list, the Owner column has to say "You" for your
 // own and link somebody else's public page for theirs, the Last-modified column
 // has to render an age rather than a raw timestamp, the order has to follow that
@@ -14,7 +14,7 @@
 //
 // 034 moved the owner and the date off the column grid and onto the title's meta
 // line, and put a Published column and a filter row in the space that freed. What
-// each of those facts *says* is unchanged and is still asserted here; where it
+// each of those facts says is unchanged and is still asserted here; where it
 // sits is not. The three counters became two cards, and the numbers they show are
 // asserted against the same fixture the rows are.
 //
@@ -27,7 +27,7 @@ const ME = 'me-sub'
 const ago = (ms) => new Date(Date.now() - ms).toISOString()
 
 // One project the reader owns and one they were invited to, in the order the
-// server sends them: newest-modified first. Both come from /projects now — the
+// server sends them: newest-modified first. Both come from /projects now; the
 // point of the spec is that there is no second list to fetch.
 const projects = [
   {
@@ -60,7 +60,7 @@ const projects = [
     running: 0,
     latest_phase: 'failed',
     // A paper nobody could look up. Its row must carry no citation line at all
-    // rather than an empty one — the owner completes a record on the project
+    // rather than an empty one; the owner completes a record on the project
     // screen, not from a list row.
     papers: [{ title: 'Point of no Undo' }],
   },
@@ -100,9 +100,9 @@ try {
   if (rows.length !== 2) fail(`the list shows ${rows.length} rows, want both the owned and the shared project in one list`)
 
   // The split is gone, not hidden behind a default tab. 034 put a segmented
-  // control back on this screen, so the assertion is no longer "there is none" —
-  // it is that the one there is filters by *state*, which the reader picks, and
-  // never by ownership, which they did not.
+  // control back on this screen, so the assertion is no longer "there is none"
+  // but that the one there filters by state, which the reader picks, and never
+  // by ownership, which they did not.
   const segs = await page.evaluate(() =>
     [...document.querySelectorAll('.screen .segmented')].map((g) => [...g.querySelectorAll('.seg-btn')].map((b) => b.textContent.trim())),
   )
@@ -172,7 +172,7 @@ try {
   if (!/Nothing published/i.test(pub[1] || '')) fail(`the project that published nothing reads "${pub[1]}"`)
 
   // The download is a real link to the archive, so the browser saves it rather
-  // than the tab buffering a body that size — and a project that has produced
+  // than the tab buffering a body that size, and a project that has produced
   // nothing offers no download at all (020).
   const downloads = await page.evaluate(() =>
     [...document.querySelectorAll('[data-test="download-project"]')].map((a) => ({ tag: a.tagName, href: a.getAttribute('href') })),
@@ -183,17 +183,17 @@ try {
     if (!/^\/projects\/[^/]+\/archive$/.test(d.href)) fail(`the download points at ${d.href}, want the project's archive`)
   }
 
-  // The columns have to be columns. A flex row sizes every cell to its own
-  // content, so a "1 RUNNING" badge is wider than a "DONE" one and every cell to
-  // its left starts somewhere different — which is what a list of eight projects
-  // looked like. Geometry is the only way to see it: the text is identical
+  // The columns have to align. A flex row sizes every cell to its own content,
+  // so a "1 RUNNING" badge is wider than a "DONE" one and every cell to its
+  // left starts somewhere different, which is what a list of eight projects
+  // looked like. Only a geometry measurement detects it: the text is identical
   // whether or not it lines up.
   const cols = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('[data-test="project-rows"] .row')]
     const head = document.querySelector('[data-test="project-rows"] .project-head')
     const left = (el) => (el ? Math.round(el.getBoundingClientRect().left) : null)
-    // Owner and date are no longer cells — they ride the title's meta line — so
-    // the grid is title, published, status, visibility, and the first action.
+    // Owner and date are no longer cells; they sit on the title's meta line. The
+    // grid is title, published, status, visibility, and the first action.
     const cells = (row) => [
       left(row.querySelector('.row-main')),
       left(row.querySelector('[data-test="published-cell"]')),
@@ -234,9 +234,9 @@ try {
     })
   }
 
-  // The filter narrows the rendered rows and restores them, and asks the server
-  // for nothing to do it — a filter that refetched could disagree with the rows
-  // it is filtering.
+  // The filter narrows the rendered rows and restores them without asking the
+  // server; a filter that refetched could disagree with the rows it is
+  // filtering.
   const before = page.calls.length
   // Typed rather than assigned: a value written straight onto the node does not
   // fire the event React listens for, so the assertion would be about a DOM the
@@ -260,8 +260,8 @@ try {
   )
   if (filtered.length !== 1 || !/Placebo/.test(filtered[0] || '')) fail(`filtering by title left ${JSON.stringify(filtered)}`)
   if (page.calls.length !== before) fail(`filtering made ${page.calls.length - before} network calls; it narrows what is already loaded`)
-  // Filtering by the owner's name, not only the title — the owner is on the row,
-  // so it is a thing a reader would type.
+  // Filtering by the owner's name, not only the title: the owner is on the row,
+  // so a reader would type it.
   await typeFilter('Lovelace')
   const byOwner = await page.evaluate(() => document.querySelectorAll('[data-test="project-rows"] .row').length)
   if (byOwner !== 1) fail(`filtering by owner matched ${byOwner} rows, want the one Ada owns`)
@@ -269,11 +269,10 @@ try {
   const restored = await page.evaluate(() => document.querySelectorAll('[data-test="project-rows"] .row').length)
   if (restored !== 2) fail(`clearing the filter left ${restored} rows, want both back`)
 
-  // Narrow enough and the context column folds away; the row's identity does
-  // not. A column that squeezes the title out is worse than one that leaves.
-  // Owner is no longer a column at any width — it is on the meta line — so what
-  // is asserted here is that it is still *readable*, and that Published is the
-  // one that leaves.
+  // When narrow enough the context column is hidden; the row's identity is
+  // not. Hiding a column is better than squeezing the title out. Owner is no
+  // longer a column at any width, since it is on the meta line, so this asserts
+  // that it is still readable and that Published is the column that is hidden.
   await page.setViewport({ width: 640, height: 900 })
   await page.waitForFunction((w) => window.innerWidth === w, {}, 640)
   const narrow = await read()

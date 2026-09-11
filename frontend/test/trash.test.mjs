@@ -3,23 +3,23 @@
 
 // A browser regression test for the trash (019).
 //
-// What it guards: removing a project is two steps on purpose, and the whole
-// point is that neither of them is a native browser dialog. The row action has
-// to open the app's own modal, the modal has to say the thing that makes the
-// step safe (it is reversible) and the thing that makes it consequential (a
-// public project is withdrawn), confirming has to call DELETE and refresh the
-// list, the trash screen has to be reachable from the rail and list what was
-// removed, and Restore has to put it back.
+// What it guards: removing a project is two steps on purpose, and neither of
+// them is a native browser dialog. The row action has to open the app's own
+// modal; the modal has to say what makes the step safe, that it is reversible,
+// and what makes it consequential, that a public project is withdrawn;
+// confirming has to call DELETE and refresh the list; the trash screen has to be
+// reachable from the rail and list what was removed; and Restore has to put it
+// back.
 //
 // The permanent delete is here too, for the one assertion a unit test cannot
-// make: its dialog spends its words on what does *not* go — the repositories
-// close rather than being destroyed.
+// make: its dialog states what does not go, namely that the repositories close
+// rather than being destroyed.
 import { fail, noContent, start } from './harness.mjs'
 
 const ME = 'me-sub'
 const ago = (ms) => new Date(Date.now() - ms).toISOString()
 
-// The server's state, mutated by the calls the page makes — so the test drives
+// The server's state, mutated by the calls the page makes, so the test drives
 // the real trash → restore round trip rather than two static fixtures.
 const project = {
   id: 'mine-1',
@@ -106,11 +106,12 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('[data-test="project-rows"] .row').length === 1)
   if (!page.calls.includes(`DELETE /projects/${project.id}`)) fail(`the confirmation did not call DELETE; calls: ${page.calls.join(', ')}`)
 
-  // Trash and Settings are the rail's foot group — where work goes and personal
-  // chrome live, apart from the destinations where work is done (024a). The
-  // group is pinned to the bottom, Settings sits under Trash, and the pair is set
-  // apart from the destinations above. A count of clickable rows would pass on
-  // ones sitting directly under "Public registry", so this measures.
+  // Trash and Settings are the rail's foot group, which holds where work goes
+  // and personal chrome, apart from the destinations where work is done (024a).
+  // The group is pinned to the bottom, Settings sits under Trash, and the pair
+  // is set apart from the destinations above. A count of clickable rows would
+  // pass on rows sitting directly under "Public registry", so this measures
+  // positions.
   const railTrash = await page.evaluate(() => {
     const btns = [...document.querySelectorAll('.rail .nav-btn')]
     const trash = btns.find((b) => b.textContent.trim() === 'Trash')
@@ -169,8 +170,8 @@ try {
   if (detail.rename) fail('the rename control is still on a trashed project, and every write there is refused')
   if (detail.tabs.includes('Collaborators')) fail('the People tab is still offered on a trashed project')
 
-  // Restore puts it back where it was — from the banner, which is where a reader
-  // who followed a link is standing.
+  // Restore puts it back where it was, from the banner, which is where a reader
+  // who followed a link lands.
   await page.click('[data-test="trashed-banner"] [data-test="restore"]')
   await page.waitForFunction(() => !document.querySelector('[data-test="trashed-banner"]'))
   if (!page.calls.includes(`POST /projects/${project.id}/restore`)) fail('Restore did not call the restore endpoint')

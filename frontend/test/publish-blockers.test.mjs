@@ -3,11 +3,11 @@
 
 // A browser regression test for a refused publish (006f's gate, on screen).
 //
-// What it guards is that a refusal is actionable. The public flip used to answer
-// every unpublishable project with one sentence — "its reproduction did not pass
-// the redistribution check" — whatever the actual reason, and whichever session
+// It guards that a refusal is actionable. The public flip used to answer every
+// unpublishable project with one sentence, "its reproduction did not pass the
+// redistribution check", whatever the actual reason and whichever session
 // carried it. An owner read an accusation about content, went looking for
-// third-party data, and found none, because their run had simply never finished.
+// third-party data, and found none, because their run had never finished.
 //
 // So three things have to hold on screen: the refusal says which of the reasons
 // it was, it names every session in the way rather than the first, and each of
@@ -37,8 +37,8 @@ const sessionOf = (id) => ({
 })
 
 // What the server refuses with: the flagged tree is the headline, and both
-// sessions are named. This is the body the screen has to turn into somewhere to
-// go — 409 with `blockers`, exactly as internal/httpapi writes it.
+// sessions are named. This is the body the screen has to turn into a link to
+// each session: 409 with `blockers`, exactly as internal/httpapi writes it.
 const refusal = {
   error: 'not_clear',
   blockers: [

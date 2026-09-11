@@ -5,14 +5,14 @@
 //
 // The bug it guards: stopping is not instant. POST /jobs/{id}/cancel returns as
 // soon as the worker has been signalled, and the session it reads back can still
-// be running — the backend run has yet to come down. The row cleared its
+// be running because the backend run has yet to come down. The row cleared its
 // "stopping" flag the moment that response landed, so the button snapped back to
 // a live, red "Stop" over a session still badged RUNNING, and a second click
 // fired a second cancel.
 //
 // "The button says Stopping… while the request is in flight" passes against the
-// broken code too — that part always worked. The discriminating measurement is
-// taken *after* the response has landed: with the session still non-terminal,
+// broken code too; that part always worked. The discriminating measurement is
+// taken after the response has landed: with the session still non-terminal,
 // the button must still be disabled and still read Stopping…. Run it with
 // `bun run test:browser`.
 import { check, fail, json, settled, sleep, sse, start, waitUntil } from './harness.mjs'
@@ -72,7 +72,7 @@ try {
   }
 
   // An early mismatch means the mock or the row changed, and the measurement
-  // below would not be the reported bug — so those cases stop the run.
+  // below would not be the reported bug, so those cases stop the run.
   await (async () => {
     await page.open('/p/proj-1')
     await page.waitForSelector('.rows .row button.btn')
@@ -102,10 +102,10 @@ try {
     check(cancels === 1, `a click on the stopping button sent another cancel (${cancels} total)`)
   })()
 
-  // A stop that does not land — the worker could not close the backend run — is
-  // the other half: the session is still up, so the button has to come back
-  // rather than sit dead, and the reason has to be on screen. The row carries
-  // one error slot, and it still has to fit in the row.
+  // A stop that does not land, because the worker could not close the backend
+  // run, is the other half: the session is still up, so the button has to come
+  // back rather than stay disabled, and the reason has to be on screen. The row
+  // carries one error slot, and it still has to fit in the row.
   await (async () => {
     cancelStatus = 500
     cancels = 0
@@ -137,8 +137,8 @@ try {
     check(row.overflow <= 1, `the row overflows by ${row.overflow}px once the stop error is in it`)
     check(row.chevInside !== null && row.chevInside >= 0, `the stop error pushed the chevron out of the row (${row.chevInside}px)`)
 
-    // "It's still running" stops being true the moment it stops running — by a
-    // retry, by another window, or by the run ending on its own. The stream
+    // "It's still running" stops being true the moment it stops running, whether
+    // by a retry, by another window, or by the run ending on its own. The stream
     // settles the session here, and the message has to go with it.
     isSettled = true
     await page.waitForFunction(() => document.querySelector('.rows .row')?.textContent.includes('stopped'), { timeout: 6000 }).catch(() => {})

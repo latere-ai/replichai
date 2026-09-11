@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // A browser regression test for a researcher's public page when the address
-// moves from one handle to another without a reload — Back, Forward, a link.
+// moves from one handle to another without a reload, by Back, Forward or a link.
 //
 // The bugs it guards: the screen's "not found" flag was set on a 404 and never
 // cleared, so after /u/a had answered 404, /u/b showed "No such profile" over a

@@ -13,7 +13,7 @@
 //
 // What this test holds:
 //   - the column is centred, so the space that is left is even on both sides
-//   - it is wide enough to be worth centring (no more 560px of an 1800px panel)
+//   - it is wide enough to be worth centring, not 560px of an 1800px panel
 //   - a statement line keeps its three facts on one line, in three columns
 //   - the statement has no scroll region of its own
 //   - a policy setting reads beside its control, and drops under it when narrow
@@ -49,10 +49,10 @@ const h = await start()
 try {
   const page = await h.page({ viewport: { width: 1600, height: 1000 }, routes })
 
-  // open shows `path` at `width` with everything it fetches on screen — the
-  // measure is of the loaded page — and lets the entrance animation land: a
-  // card mid-fade is mid-transform, and measures where it is rather than where
-  // it ends up.
+  // open shows `path` at `width` with everything it fetches on screen, so the
+  // measurement is of the loaded page, and lets the entrance animation finish:
+  // a card mid-fade is mid-transform, and measures where it is rather than
+  // where it ends up.
   const open = async (path, sel, width) => {
     await page.setViewport({ width, height: 1000 })
     await page.open(path, { waitUntil: 'networkidle0' })
@@ -82,8 +82,8 @@ try {
       return {
         text: r.textContent.replace(/\s+/g, ' ').trim().slice(0, 30),
         // Against the date, which is always one line: a line-height that
-        // computes to `normal` parses to NaN, and NaN > 1 is false — the check
-        // would pass on every row without ever looking at one.
+        // computes to `normal` parses to NaN, and NaN > 1 is false, so the check
+        // would pass on every row without measuring one.
         lines: Math.round(label.height / when.height),
         inOrder: when.left >= label.right - 1 && amount.left >= when.right - 1,
         rightEdge: Math.round(amount.right),
@@ -112,7 +112,7 @@ try {
   /* ── The admin console, wide: an explanation beside its control ── */
 
   // Read once, in the page: nothing may be drawn past the panel's edge, unless
-  // it sits in a box that scrolls sideways on purpose — the price table is one,
+  // it sits in a box that scrolls sideways on purpose. The price table is one,
   // on any screen too narrow for its five columns.
   const spills = () =>
     page.evaluate(() => {

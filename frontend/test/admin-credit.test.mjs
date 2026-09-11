@@ -52,10 +52,10 @@ try {
   // The same completed action must refresh the header without a reload.
   await page.waitForFunction(() => document.querySelector('.quota-pill')?.textContent.trim() === '$30.00')
 
-  // The policy card saves the card, not the field its button happens to sit
-  // beside. One request writes both numbers, so a Save parked next to the
-  // overdraft floor told an admin editing the start reserve that their change
-  // was not covered. Position is the whole claim here, so it is asserted as
+  // The policy card's Save writes the whole card, not the field its button sits
+  // beside. One request writes both numbers, so a Save placed next to the
+  // overdraft floor suggested to an admin editing the start reserve that their
+  // change was not covered. Position is the claim here, so it is asserted as
   // geometry: below both fields, and the last control in the card.
   const policy = await page.evaluate(() => {
     const card = document.querySelector('[data-test="save-policy"]')?.closest('.card')
@@ -75,8 +75,8 @@ try {
   if (!policy) fail('the platform policy card has no save control')
   else {
     // Three since 039: the reserve, the floor, and which model drafts. The
-    // count is asserted at all so that "Save is below every field" below has
-    // something to be true *of* — a card that lost its fields would pass that
+    // count is asserted so that the "Save is below every field" check below has
+    // fields to compare against; a card that lost its fields would pass it
     // vacuously.
     if (policy.fields !== 3) fail(`the policy card shows ${policy.fields} fields, want the reserve, the floor and the drafting model`)
     if (policy.insideAField) fail('Save sits inside a field row, so it reads as that one field’s control')
@@ -85,7 +85,7 @@ try {
   }
 
   // And it writes both numbers: editing only the reserve must still send the
-  // floor, or the "save the card" claim is a lie about what the request does.
+  // floor, or the request does not match the "save the card" claim.
   await page.evaluate(() => {
     const input = document.querySelector('#start-reserve')
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set

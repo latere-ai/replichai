@@ -11,16 +11,15 @@
 //
 // None of that tripped the usual check. `.screen` is `overflow-y: auto`, which
 // computes `overflow-x` to `auto` as well, so the spill was contained in a pane
-// that scrolls sideways rather than in the document — `documentElement.
-// scrollWidth` read clean while nothing was legible. This test therefore asks
-// *both* questions: nothing past the right edge, and no pane quietly scrolling
-// sideways to hide it.
+// that scrolls sideways rather than in the document, and `documentElement.
+// scrollWidth` read clean while nothing was legible. This test therefore checks
+// both: nothing past the right edge, and no pane scrolling sideways to hide it.
 //
 // The drawer is the other half. Whether it is open is state, and whether the
-// rail is folded is a stored preference — `sidebar.ts` is explicit that a width
-// the operator chose is never overridden by one the window happened to be — so
-// the two are asserted apart: the drawer must not read or write `sidebar`, and
-// a stored fold must not survive into a drawer that has room for its labels.
+// rail is folded is a stored preference; `sidebar.ts` states that a width the
+// operator chose is never overridden by the window's width. The two are
+// asserted apart: the drawer must not read or write `sidebar`, and a stored
+// fold must not carry into a drawer that has room for its labels.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -35,7 +34,7 @@ const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
 const PROJECT = 'proj-1'
 // A second project, private and owned by the reader, so the head carries the
-// publish button — the sibling that took the title's width away from it.
+// publish button, the sibling that took the title's width away from it.
 const PRIVATE = 'proj-private'
 // 122 characters. A paper's name is the longest string this app puts in a
 // heading, and the head has to hold one without pushing the tabs off a phone.
@@ -93,8 +92,8 @@ const routes = [
         ...project,
         id,
         // The private one is the head's worst case: a long title, the publish
-        // button beside it, and a description under it (038) — which is the
-        // shape the height below is asserted against.
+        // button beside it, and a description under it (038). The height below
+        // is asserted against that shape.
         ...(id === PRIVATE ? { visibility: 'private', title: LONG_TITLE, description: DESCRIPTION } : {}),
       },
       sessions: [job],
@@ -177,11 +176,11 @@ const SCREENS = [
 const PUBLIC_SCREENS = SCREENS.filter(([, path]) => path === '/registry' || path.startsWith('/p/') || path.startsWith('/u/'))
 
 // spill reports what a phone cannot see: anything painted past the right edge,
-// and any pane hiding that fact behind its own sideways scroll.
+// and any pane hiding that behind its own sideways scroll.
 //
-// The closed drawer is excluded — it is off the left edge on purpose — and so
-// is anything inside a container this app *means* to scroll sideways. That
-// allow-list is named rather than derived, because `.screen` computes to
+// The closed drawer is excluded, because it is off the left edge on purpose,
+// and so is anything inside a container this app intends to scroll sideways.
+// That allow-list is named rather than derived, because `.screen` computes to
 // `overflow-x: auto` too and deriving it would excuse the whole bug.
 const spill = (page, vw) =>
   page.evaluate((w) => {
@@ -209,9 +208,9 @@ const spill = (page, vw) =>
     }
   }, vw)
 
-// drawerIs waits for the drawer to be open or shut, then for its slide to end —
-// a drawer mid-slide measures where it is — and gives up quietly: whether it
-// got there is the assertion that follows.
+// drawerIs waits for the drawer to be open or shut, then for its slide to end,
+// because a drawer mid-slide measures where it currently is. It gives up
+// quietly; whether it got there is the assertion that follows.
 const drawerIs = async (page, open) => {
   await page.waitForFunction((o) => document.querySelector('.rail').classList.contains('rail-open') === o, { timeout: 2000 }, open).catch(() => {})
   await settled(page)
@@ -220,9 +219,9 @@ const drawerIs = async (page, open) => {
 const h = await start()
 
 // open serves the mocked API to `me` and returns a page at `path`, with
-// everything the screen fetches on it — the measure is of the loaded screen.
-// `sidebar` seeds the stored fold, which the phone must ignore and the desktop
-// must obey.
+// everything the screen fetches on it, so the measurement is of the loaded
+// screen. `sidebar` seeds the stored fold, which the phone must ignore and the
+// desktop must obey.
 const open = async (path, { viewport = PHONE, sidebar, me = SIGNED_IN } = {}) => {
   const page = await h.page({ viewport, routes: [['/me', me], ...routes] })
   // The fold is always written, never left over: localStorage is shared by
@@ -242,11 +241,11 @@ const open = async (path, { viewport = PHONE, sidebar, me = SIGNED_IN } = {}) =>
 try {
   /* ── The rail leaves the flow, on every screen ── */
 
-  // sweep measures one reader at one width. The signed-out pass is not a
-  // formality: 028 gave the app a second shell — the rail's foot becomes a
-  // sign-in, and the topbar loses its controls — and a stranger opening a
-  // shared link on a phone is the likeliest mobile visit this app gets. The
-  // 264px drawer is a third width that foot has never been sized against.
+  // sweep measures one reader at one width. The signed-out pass matters: 028
+  // gave the app a second shell, in which the rail's foot becomes a sign-in and
+  // the topbar loses its controls, and a stranger opening a shared link on a
+  // phone is the likeliest mobile visit this app gets. The 264px drawer is a
+  // third width that foot has never been sized against.
   const sweep = async (screens, { viewport, me, who }) => {
     for (const [name, path] of screens) {
       const page = await open(path, { viewport, me })
@@ -337,7 +336,7 @@ try {
 
   // 028 replaced the rail's foot with a sign-in when there is nobody to name.
   // That foot was sized against a 236px column and a 56px folded rail; the
-  // drawer is a third width, and the way in must survive it.
+  // drawer is a third width, and the sign-in must still fit it.
   {
     const page = await open('/registry', { me: SIGNED_OUT })
     await page.waitForSelector('.screen')
@@ -363,7 +362,7 @@ try {
       check(read.left === 0, `signed out, the open drawer sits at x=${read.left}`)
       if (read.footBottom !== null && read.footBottom > read.h) fail(`the drawer's foot ends at ${read.footBottom}px, below the ${read.h}px screen — that is where the sign-in lives`)
       for (const c of read.wide) fail(`signed out, ${c} runs past the drawer's own right edge`)
-      // And the way in is reachable from it.
+      // And the sign-in is reachable from it.
       const href = await page.evaluate(() => document.querySelector('.rail-foot a[href^="/login"]')?.getAttribute('href') ?? null)
       check(href !== null, 'the signed-out drawer offers no way in')
     }
@@ -424,8 +423,9 @@ try {
   {
     const page = await open('/')
     await page.waitForSelector('.project-list .row')
-    // A paper title is what a row is. Squeezed into a 1fr track beside five
-    // fixed ones it had ~120px; on its own line it has the card.
+    // A paper title is the row's main content. Squeezed into a 1fr track beside
+    // five fixed ones it had about 120px; on its own line it has the card's
+    // width.
     const title = await page.evaluate(() => Math.round(document.querySelector('.project-list .row .row-main').getBoundingClientRect().width))
     check(title >= 280, `a project's title cell is ${title}px wide; the row is still trying to be a table`)
     await page.close()
@@ -436,8 +436,8 @@ try {
   // The title shared a flex row with the publish button, which cannot shrink,
   // so the title took what was left: an 80px column, `overflow-wrap: anywhere`
   // breaking a paper's name one syllable to the line, and a head 582px tall on
-  // an 844px phone — the tabs, which are how you reach anything else on the
-  // project, started at y=605.
+  // an 844px phone. The tabs, which are how the rest of the project is reached,
+  // started at y=605.
   {
     const page = await open(`/p/${PRIVATE}`)
     await page.waitForSelector('[data-test="publish-project"]')
@@ -462,8 +462,8 @@ try {
 
   // Every row sized its own tier, amount and controls, so a USER row and an
   // ADMIN row put them in different places and a phone broke the two controls
-  // across two more lines. What a row is about is comparable across rows or it
-  // is not a table.
+  // across two more lines. A table needs the same field in the same place on
+  // every row.
   {
     const page = await open('/console')
     await page.waitForSelector('.member-row')

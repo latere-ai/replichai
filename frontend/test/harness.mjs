@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The one place the browser suite finds Chrome, starts Vite, and mocks the API.
+// Where the browser suite finds Chrome, starts Vite, and mocks the API.
 //
 // Every test used to carry its own copy of all three: forty lines of discovery
 // and readiness polling, a hand-picked port that collided with another file's,
-// and a request handler that matched paths by hand. The copies drifted — one
+// and a request handler that matched paths by hand. The copies drifted. One
 // answered a stream with an empty body while the server always sends a snapshot
-// first, which is how a reconnect loop went unnoticed for as long as it did.
+// first, which is why a reconnect loop went unnoticed for as long as it did.
 //
 // A test now reads:
 //
@@ -17,12 +17,12 @@
 //   h.ok('what the test proved')
 //   await h.close()
 //
-// `routes` is a table, first match wins. Each entry is `[matcher, answer]` or
-// `[method, matcher, answer]`; the matcher is a path ('/me'), a path with its
-// method ('POST /jobs/j/cancel'), or a RegExp over the path. The answer is a
-// body (sent as JSON 200), a Reply built with json()/text()/noContent(), or a
-// function of the request — `({ params: [id], body, query }) => …` — returning
-// either, possibly late (delay()).
+// `routes` is a table; the first match wins. Each entry is `[matcher, answer]`
+// or `[method, matcher, answer]`. The matcher is a path such as '/me', a path
+// with its method such as 'POST /jobs/j/cancel', or a RegExp over the path. The
+// answer is a body, sent as JSON 200; a Reply built with json(), text() or
+// noContent(); or a function of the request, `({ params: [id], body, query }) =>
+// …`, returning either, possibly after delay().
 //
 // A stream at /jobs/{id}/events that no route names is answered the way the
 // server answers it: a snapshot of the job first, read through the table's own
@@ -71,8 +71,9 @@ export function check(cond, msg) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// waitUntil polls a condition on the node side — a request counter, a mock's
-// state — until it holds or the time is up. Its message says what it waited for.
+// waitUntil polls a condition on the node side, such as a request counter or a
+// mock's state, until it holds or the time is up. Its message says what it
+// waited for.
 export async function waitUntil(cond, { timeout = 5000, every = 25, what = 'condition' } = {}) {
   const until = Date.now() + timeout
   for (;;) {
@@ -85,8 +86,8 @@ export async function waitUntil(cond, { timeout = 5000, every = 25, what = 'cond
 
 // settled waits for every finite animation on the page to finish, then two
 // frames. A screen's entrance fade is the usual reason a measurement has to
-// wait; a pulse that never ends is not waited for, and a paused one — whose
-// `finished` never resolves — is given up on after a bound rather than hanging
+// wait. A pulse that never ends is not waited for, and a paused one, whose
+// `finished` never resolves, is given up on after a bound rather than hanging
 // the test.
 export async function settled(page, { timeout = 3000 } = {}) {
   await page.evaluate(
@@ -261,7 +262,7 @@ function freePort() {
 }
 
 // startVite serves the app on a free port, unless a runner already serves it
-// and says so in WEB_TEST_BASE — the whole suite then shares one server.
+// and says so in WEB_TEST_BASE, in which case the whole suite shares one server.
 export async function startVite() {
   if (process.env.WEB_TEST_BASE) return { base: process.env.WEB_TEST_BASE, stop() {} }
   const port = await freePort()
@@ -296,8 +297,7 @@ export async function start() {
     base: vite.base,
     browser,
     // page opens a tab against the mocked API. Everything about the mock is per
-    // page, so a test that wants a different server for its second act opens a
-    // second page.
+    // page, so a test that needs a different server later opens a second page.
     async page({ viewport = DESKTOP, ...mocking } = {}) {
       const page = await browser.newPage()
       await page.setViewport(viewport)
@@ -307,7 +307,7 @@ export async function start() {
       page.open = (path, opts) => page.goto(vite.base + path, { waitUntil: 'domcontentloaded', ...opts })
       return page
     },
-    // ok prints the one line a green run leaves, unless something failed first.
+    // ok prints the one line a passing run leaves, unless something failed first.
     ok(what) {
       if (!process.exitCode) console.log(`ok: ${what}`)
     },
