@@ -408,14 +408,62 @@ func (rt *Router) OpenRoutes() []Route { return append([]Route(nil), rt.open...)
 // route cannot be registered open by mistake.
 func (rt *Router) gatedHandle(method, pattern string, h http.HandlerFunc) {
 	rt.gated = append(rt.gated, Route{method, pattern})
-	rt.mux.HandleFunc(method+" "+pattern, rt.guard(h))
+	rt.mux.HandleFunc(method+" "+pattern, rt.guard(limitBody(method, pattern, h)))
 }
 
 // openHandle registers a route outside the gate (sign-in, /me, the not-invited
 // path), recorded so the two sets are comparable.
 func (rt *Router) openHandle(method, pattern string, h http.HandlerFunc) {
 	rt.open = append(rt.open, Route{method, pattern})
-	rt.mux.HandleFunc(method+" "+pattern, h)
+	rt.mux.HandleFunc(method+" "+pattern, limitBody(method, pattern, h))
+}
+
+// DefaultMaxBody bounds a request body on every route that does not name its
+// own limit. A megabyte is generous for any JSON this API accepts and small
+// enough that a burst of oversized posts cannot fill the process.
+const DefaultMaxBody int64 = 1 << 20
+
+// bodyLimits are the routes whose bodies are bounded by something other than
+// the default: the imported record carries a session's evidence; a repository
+// request names one paper key. A route absent here gets DefaultMaxBody, so
+// registering a route without thinking about its body still bounds it.
+var bodyLimits = map[string]int64{
+	"POST /projects/{id}/sessions/import": MaxImportBytes,
+	"POST /projects/{id}/repository":      MaxProvisionBytes,
+}
+
+// BodyLimit reports the bound a route's body is held to, for the test that
+// walks every route and the handler that wants to explain a refusal.
+func BodyLimit(method, pattern string) int64 {
+	if limit, ok := bodyLimits[method+" "+pattern]; ok {
+		return limit
+	}
+	return DefaultMaxBody
+}
+
+// limitBody bounds the body of every registered route. A declared length over
+// the limit is refused before the handler runs; a body that arrives longer
+// than declared, or chunked, is cut off by MaxBytesReader, which makes the
+// handler's read fail with an error tooLarge recognises.
+func limitBody(method, pattern string, h http.HandlerFunc) http.HandlerFunc {
+	limit := BodyLimit(method, pattern)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > limit {
+			writeError(w, http.StatusRequestEntityTooLarge, "request_too_large")
+			return
+		}
+		if r.Body != nil && r.Body != http.NoBody {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+		}
+		h(w, r)
+	}
+}
+
+// tooLarge reports whether a read failed because the body passed its bound,
+// so a handler answers 413 rather than a generic bad request.
+func tooLarge(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
 }
 
 // guard is the gate middleware: it refuses a request the gate does not allow
