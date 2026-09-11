@@ -6,6 +6,7 @@ package publish
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -34,7 +35,12 @@ func (f *fakeLiveForge) HeadCommit(context.Context, string, string) (string, err
 	return f.head, nil
 }
 
-func (f *fakeLiveForge) TreePaths(context.Context, string, string, string) ([]string, error) {
+// A real forge cannot list the tree of a commit that does not exist, and a
+// fake that answers one anyway hides the case this whole path is about.
+func (f *fakeLiveForge) TreePaths(_ context.Context, _, _, commit string) ([]string, error) {
+	if commit == "" {
+		return nil, errors.New("no commit to read a tree at")
+	}
 	return f.tree, nil
 }
 
@@ -463,5 +469,46 @@ func TestHoldsReproduction(t *testing.T) {
 		if got := holdsReproduction(tc.tree); got != tc.want {
 			t.Errorf("%s: holdsReproduction(%v) = %v, want %v", tc.name, tc.tree, got, tc.want)
 		}
+	}
+}
+
+// A repository with no commit at all is the run that pushed nothing, and
+// finalize's job is to say so. It used to ask for the head, get an error, and
+// return it — so the record 044d exists to write was the one case that could
+// not be written, and the terminal reported a 404 against a repository it had
+// just created.
+func TestFinalizeRecordsARepositoryWithNoCommit(t *testing.T) {
+	forge := newFakeForge(nil)
+	forge.head = ""
+	id := paper.Identity{Key: "doi:10.1145/1", Title: "A paper", Scheme: paper.SchemeDOI}
+
+	rep, err := FinalizeLive(t.Context(), forge, "open-hai", "a-paper-a3f9", id,
+		"sha256:method", provider.GradePassed, nil, func() time.Time { return time.Unix(0, 0).UTC() })
+	if err != nil {
+		t.Fatalf("an empty repository stopped the record being written: %v", err)
+	}
+	if rep.Head != "" {
+		t.Errorf("head = %q, want empty", rep.Head)
+	}
+	if rep.Reproduction {
+		t.Error("a repository with no commit holds no reproduction")
+	}
+	if len(rep.Leaked) != 0 {
+		t.Errorf("nothing was committed, so nothing can leak: %v", rep.Leaked)
+	}
+	if !rep.ManifestCommitted {
+		t.Error("the manifest that records the emptiness was not committed")
+	}
+	// And the manifest says it in the field a reader checks, not only in prose.
+	raw, ok := forge.files[ManifestFile]
+	if !ok {
+		t.Fatal("no manifest was written")
+	}
+	var m Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	if m.Findings == nil || m.Findings.Reproduction {
+		t.Errorf("the manifest claims a reproduction that was never pushed: %+v", m.Findings)
 	}
 }

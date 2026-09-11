@@ -40,7 +40,15 @@ const (
 // organisation, because it acts on a repository that already exists under a
 // known owner.
 type LiveForge interface {
-	// HeadCommit returns the repository's current head commit sha.
+	// HeadCommit returns the repository's current head commit sha, or an empty
+	// string when the repository holds no commit at all.
+	//
+	// Empty is a state, not a failure. A repository is created with no commit
+	// so the host's push can be its first (045g), and a run that pushed
+	// nothing leaves it that way — which is exactly the outcome 044d exists to
+	// record. An adapter that reported it as an error made finalize abort
+	// before it could write down what happened, so the one case the record was
+	// built for was the one it could not state.
 	HeadCommit(ctx context.Context, owner, name string) (string, error)
 	// TreePaths lists every path committed at a commit.
 	TreePaths(ctx context.Context, owner, name, commit string) ([]string, error)
@@ -124,9 +132,16 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 	}
 	rep.Head = head
 
-	tree, err := forge.TreePaths(ctx, owner, name, head)
-	if err != nil {
-		return rep, fmt.Errorf("read committed tree: %w", err)
+	// A repository with no commit has no tree to read, and asking for one is
+	// how this used to fail instead of recording 044d's outcome. Everything
+	// below reads an empty tree correctly: nothing leaked, no findings, no
+	// reproduction — which is the true account of a run that pushed nothing.
+	var tree []string
+	if head != "" {
+		tree, err = forge.TreePaths(ctx, owner, name, head)
+		if err != nil {
+			return rep, fmt.Errorf("read committed tree: %w", err)
+		}
 	}
 	rep.Leaked = VerifyTree(tree)
 
@@ -338,9 +353,15 @@ func CommitOutputs(ctx context.Context, forge LiveForge, owner, name string, fil
 	if err != nil {
 		return rep, fmt.Errorf("read head commit: %w", err)
 	}
-	tree, err := forge.TreePaths(ctx, owner, name, head)
-	if err != nil {
-		return rep, fmt.Errorf("read committed tree: %w", err)
+	// An empty repository is the case this recovery is most needed in: the
+	// agent's push is exactly what did not happen, so there is no tree to read
+	// and nothing of the agent's that these files could overwrite.
+	var tree []string
+	if head != "" {
+		tree, err = forge.TreePaths(ctx, owner, name, head)
+		if err != nil {
+			return rep, fmt.Errorf("read committed tree: %w", err)
+		}
 	}
 	present := make(map[string]bool, len(tree))
 	for _, p := range tree {
