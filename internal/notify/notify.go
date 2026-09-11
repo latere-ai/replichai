@@ -89,11 +89,11 @@ func (n *Notifier) walletURL() string {
 func renderAccountFrozen(walletURL string) (subject, htmlBody string) {
 	subject = "Your replichai account is on hold"
 	htmlBody = fmt.Sprintf(
-		`<p>A recent payment was refunded or charged back, so your replichai `+
-			`account balance is now negative and the account is in <strong>view-only</strong> mode: `+
-			`you can still see your projects and download your work, but you cannot start `+
+		`<p>A recent payment was refunded or charged back. Your replichai account `+
+			`balance is now negative and the account is in <strong>view-only</strong> mode. `+
+			`You can still see your projects and download your work, but you cannot start `+
 			`new sessions until the balance is settled.</p>`+
-			`<p>Topping up clears the hold automatically:</p>`+
+			`<p>Topping up lifts the hold automatically:</p>`+
 			`<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;`+
 			`text-decoration:none;border-radius:6px;font-weight:bold;">Top up your account</a></p>`+
 			`<p>If you think this is a mistake, reply to this email and we will look into it.</p>`,
@@ -129,15 +129,15 @@ func renderProjectInvitation(projectName, inviter, projectURL string) (subject, 
 	if who == "" {
 		who = "A colleague"
 	}
-	subject = fmt.Sprintf("You've been added to %s on replichai", name)
+	subject = fmt.Sprintf("You have been added to %s on replichai", name)
 	htmlBody = fmt.Sprintf(
 		`<p><strong>%s</strong> added you to <strong>%s</strong> on replichai.</p>`+
 			`<p>You can open it here:</p>`+
 			`<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;`+
 			`text-decoration:none;border-radius:6px;font-weight:bold;">Open the project</a></p>`+
-			`<p>You already have access — there is nothing to accept. A replication session `+
-			`spends the project's own budget, which its owner funds, so you need nothing of `+
-			`your own to take part.</p>`+
+			`<p>You already have access, so there is nothing to accept. Replication sessions `+
+			`are paid from the project's budget, which the project owner funds. You do not `+
+			`need to pay anything yourself.</p>`+
 			`<p>If you were not expecting this, you can ignore this email.</p>`,
 		html.EscapeString(who), html.EscapeString(name), html.EscapeString(projectURL),
 	)
