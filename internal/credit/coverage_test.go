@@ -139,3 +139,14 @@ func TestCoversReportsAResolutionFailureWithoutClaimingAFinding(t *testing.T) {
 		t.Errorf("Unnamed = %+v; a resolution failure is not a pricing finding", un)
 	}
 }
+
+// names is the by-id form of namesRef, kept for these tests alone.
+// entry for it, or an entry for the model it is a dated snapshot of — as
+// opposed to Card.For having fallen back to the dearest rates.
+//
+// It cannot compare names to find out. The fallback synthesises an entry
+// carrying the *requested* name, so a fallback and a real match are identical
+// by name, and a check comparing them would report every model as priced.
+func (c Card) names(model string) bool {
+	return c.namesRef(managed.ModelRef{Provider: "anthropic", ID: model})
+}

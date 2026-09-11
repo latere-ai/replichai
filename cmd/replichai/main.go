@@ -19,9 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,10 +29,9 @@ import (
 
 	"latere.ai/x/pkg/retry"
 
-	xotel "latere.ai/x/pkg/otel"
-
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/cloud"
+	"github.com/latere-ai/replichai/internal/fetch"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
@@ -905,24 +902,34 @@ func collectArtifacts(dir string) ([]provider.Artifact, error) {
 	return arts, nil
 }
 
-// httpFetcher is the resolver's network seam at the CLI edge: an HTTP GET that
-// retries transient failures. The internal/paper package stays network-free and
-// testable; the real transport lives here. Retry matters because arXiv's
-// metadata API is slow and rate-limited, and a single timeout there would
-// otherwise fail an audit's identity resolution.
-type httpFetcher struct{ timeout time.Duration }
+// httpFetcher is the resolver's network seam at the CLI edge: the shared
+// guarded fetcher, with retries on top. The internal/paper package stays
+// network-free and testable; the transport lives in internal/fetch, where the
+// address, redirect and size rules are decided once for every caller. Retry
+// matters because arXiv's metadata API is slow and rate-limited, and a single
+// timeout there would otherwise fail an audit's identity resolution.
+type httpFetcher struct {
+	timeout time.Duration
+	// private admits loopback and private addresses. Tests reaching an
+	// httptest server set it; nothing else does.
+	private bool
+}
 
 // fetchPolicy is how a fetch is retried: three attempts, one then two seconds
 // apart, before giving up.
 var fetchPolicy = retry.Policy{MaxAttempts: 3, Base: time.Second, Max: 2 * time.Second, Jitter: -1}
 
 func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
+	opts := []fetch.Option{fetch.WithTimeout(h.timeout)}
+	if h.private {
+		opts = append(opts, fetch.AllowPrivate())
+	}
+	client := fetch.New(opts...)
 	var body []byte
 	err := retry.Do(ctx, fetchPolicy, func(ctx context.Context) error {
-		var retryable bool
 		var err error
-		body, retryable, err = h.fetchOnce(ctx, url)
-		if err != nil && !retryable {
+		body, err = client.Fetch(ctx, url)
+		if err != nil && !fetch.Retryable(err) {
 			return retry.Stop(err)
 		}
 		return err
@@ -931,38 +938,6 @@ func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 		return nil, err
 	}
 	return body, nil
-}
-
-// httpClient is this package's outbound client. Its transport is instrumented,
-// so every request starts a client span and carries the W3C trace context to
-// the other side. http.DefaultClient is deliberately left alone: replacing its
-// transport would reach every package in the process, including ones that have
-// made no such decision.
-var httpClient = xotel.HTTPClient()
-
-// fetchOnce performs one GET. retryable is true for a timeout, a network error,
-// or a 429/5xx — the failures a retry can recover from.
-func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, retryable bool, err error) {
-	ctx, cancel := context.WithTimeout(ctx, h.timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	req.Header.Set("User-Agent", "replichai")
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, true, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-		return nil, true, fmt.Errorf("%s returned %s", url, resp.Status)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("%s returned %s", url, resp.Status)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	return b, false, err
 }
 
 // slugify names a local scratch directory for one paper reference.

@@ -330,44 +330,6 @@ func (s *store) Reclaim(ctx context.Context, by access.Principal, project, proje
 	return s.move(ctx, Pot(project), Wallet(by.Email), amount, reasonReclaim, by.Email, project, projectName)
 }
 
-// Fund moves credits from an email's wallet into a project's pot in the request
-// that creates that project.
-//
-// It is separate from Allocate because the authority behind it differs in kind:
-// the server has just created the project for this caller, in this transaction,
-// and re-deriving their membership from a row it would have to write first is
-// circular.
-func (s *store) Fund(ctx context.Context, email, project, projectName string, amount int64) error {
-	if err := checkMove(email, project, amount); err != nil {
-		return err
-	}
-	return s.move(ctx, Wallet(email), Pot(project), amount, reasonAllocate, email, project, projectName)
-}
-
-// Unwind returns everything a project's pot can still commit to an email's
-// wallet, as the system: the compensating move for a create that was refused
-// after its pot was funded.
-//
-// It moves the available balance, so credits held by a session that did start
-// are never pulled out from under it, and a pot with nothing free is a no-op
-// rather than an error, which is what makes it safe on every failure path.
-func (s *store) Unwind(ctx context.Context, project, email string) error {
-	if normalizeEmail(email) == "" {
-		return ErrNoEmail
-	}
-	if strings.TrimSpace(project) == "" {
-		return ErrNoProject
-	}
-	avail, err := s.led.Available(ctx, ledger.Holder(Pot(project)))
-	if err != nil {
-		return err
-	}
-	if avail <= 0 {
-		return nil
-	}
-	return s.move(ctx, Pot(project), Wallet(email), int64(avail), reasonReclaim, ActorSystem, project, "")
-}
-
 // move is the shared body of every transfer, so the two sides and their
 // snapshotted project labels are built one way.
 func (s *store) move(ctx context.Context, from, to Holder, amount int64, reason ledger.Reason, actor, projectID, projectName string) error {

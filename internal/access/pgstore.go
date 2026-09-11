@@ -287,33 +287,6 @@ func (s *PGAccess) GrantsFor(ctx context.Context, byAdmin Principal, emails []st
 	return scanGrants(rows)
 }
 
-// OverridesActiveFor reports which of a batch of emails carry an uncleared
-// override, in one query. A missing email is absent from the map.
-func (s *PGAccess) OverridesActiveFor(ctx context.Context, emails []string) (map[string]bool, error) {
-	out := make(map[string]bool, len(emails))
-	if len(emails) == 0 {
-		return out, nil
-	}
-	keys := make([]string, len(emails))
-	for i, e := range emails {
-		keys[i] = strings.ToLower(strings.TrimSpace(e))
-	}
-	rows, err := s.pool.Query(ctx,
-		`SELECT email FROM freeze_overrides WHERE email = ANY($1) AND cleared_at IS NULL`, keys)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var e string
-		if err := rows.Scan(&e); err != nil {
-			return nil, err
-		}
-		out[e] = true
-	}
-	return out, rows.Err()
-}
-
 // errTierRange reports a tier column holding a value no tier of this package
 // names. It is an error rather than a silent TierNone because the grants table
 // is the authorisation decision: a value nobody here could have written is

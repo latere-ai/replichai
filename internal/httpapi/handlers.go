@@ -59,12 +59,6 @@ func IdentityFrom(r *http.Request) (Identity, bool) {
 	return id, ok
 }
 
-// WithPrincipal carries a subject-only identity, for callers (the dev bypass,
-// tests) that have just a sub.
-func WithPrincipal(ctx context.Context, sub string) context.Context {
-	return WithIdentity(ctx, Identity{Sub: sub})
-}
-
 // principal reads the authenticated subject, empty when unauthenticated.
 func principal(r *http.Request) string {
 	id, _ := IdentityFrom(r)

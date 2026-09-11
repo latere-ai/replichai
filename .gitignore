@@ -22,3 +22,6 @@ coverage.out
 
 # Agent instructions live in AGENTS.md; CLAUDE.md is a local symlink to it.
 CLAUDE.md
+
+# Agent worktrees and local tool state.
+/.claude/
