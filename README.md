@@ -47,10 +47,31 @@ replichai rates                             # what a session costs, per model
 replichai providers
 ```
 
-`REPLICHAI_RUNTIME` selects the managed execution runtime, and `--runtime`
-overrides it per command. The choices are `memory`, `anthropic-managed`, and
-`local`. Each runtime reads only the variables named for it, so a future
-OpenAI runtime can never receive an Anthropic key accidentally.
+Every subcommand, one line each:
+
+| Command | What it does |
+|---|---|
+| `replichai audit <paper>` | one audit: resolve the paper, run the session, write the reproduction; `--publish` gives it a repository |
+| `replichai run <project-file>` | a whole project: many papers, one session each, in parallel and resumable |
+| `replichai resolve <paper>` | the identity and slug a reference gets, and nothing else |
+| `replichai publish <artifact-dir> <paper>` | the offline publish path: preview what a filesystem forge would write, write it with `--live` |
+| `replichai finish <owner>/<repo> <paper>` | reattach to a detached run and finalize it: verify, write the manifest, commit the transcript, invite |
+| `replichai providers` | the runtimes this build knows |
+| `replichai rates` | what a session costs per model, from the compiled-in rate card or a live one (`--database-url`) |
+| `replichai login` / `whoami` / `logout` | sign in to the app from the terminal by device code, see who you are, forget it |
+| `replichai org [<org-uuid>\|--personal]` | show or switch the organisation projects are filed under |
+| `replichai sessions ls` / `replichai sessions prune` | the session directories on this machine, and reclaiming their space |
+| `replichai project create <title>` / `replichai project ls` | the projects in the app that locally run sessions are filed under |
+| `replichai project sessions <id>` / `replichai project rm-session <id>...` | a project's sessions, and deleting one |
+| `replichai push <project-file> --project <id>` | file the sessions this machine ran under a project in the app |
+| `replichai help` | this list, with every flag |
+
+`--runtime` picks the runtime for one command, `REPLICHAI_RUNTIME` picks it for
+every command in a shell, and with neither `audit` uses `anthropic-managed` and
+`run` uses `local`. The flag beats the variable and the variable beats the
+default. The choices are `memory`, `anthropic-managed`, and `local`. Each
+runtime reads only the variables named for it, so a future OpenAI runtime can
+never receive an Anthropic key accidentally.
 
 The audit writes a reproduction repository into `runs/<paper>/`:
 
