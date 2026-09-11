@@ -7,7 +7,7 @@ status: built
 
 **Status:** built.
 
-**Scope:** the second `Sandbox` driver — an OCI container, Podman by default and Docker supported, giving a toolchain pinned identically on every machine. The engine driver, the readiness preflight and the message it prints, the harness image, file ownership under rootless mappings, and what it does and does not declare. Opt-in with `--sandbox container`.
+**Scope:** the second `Sandbox` driver: an OCI container, Podman by default and Docker supported, giving a toolchain pinned identically on every machine. The engine driver, the readiness preflight and the message it prints, the harness image, file ownership under rootless mappings, and what it does and does not declare. Opt-in with `--sandbox container`.
 
 **Depends on:** [045a](045a-the-sandbox-is-a-seam.md), [045b](045b-the-host-sandbox.md) (the default it is an alternative to).
 
@@ -16,14 +16,14 @@ status: built
 The host sandbox runs against whatever the machine has. That is right for a first run and wrong for three cases:
 
 - **CI.** The golden set is re-run to detect method regressions. A regression and a Python minor bump must not look the same.
-- **Cross-operator comparison.** Two people reproducing one paper and disagreeing is only informative if the ground was the same.
-- **A machine you would rather not trust the agent on.** Domain-filtered egress and a denied `$HOME` are a real boundary, and a kernel namespace is a stronger one.
+- **Cross-operator comparison.** Two people reproducing one paper and disagreeing is only informative if the environment was the same.
+- **A machine on which the agent should not be trusted.** Domain-filtered egress and a denied `$HOME` are a real boundary, and a kernel namespace is a stronger one.
 
 None of those is the common case, which is why this is the second driver and not the first.
 
 ## The engine
 
-Reached through four operations — run detached, inspect, remove, and a log stream — shelled out through `latere.ai/x/pkg/cmdexec` rather than a client library, so Podman and Docker are a table and not a dependency.
+Reached through four operations (run detached, inspect, remove, and a log stream), shelled out through `latere.ai/x/pkg/cmdexec` rather than a client library, so Podman and Docker are a table and not a dependency.
 
 Selection order:
 
@@ -33,7 +33,7 @@ Selection order:
 
 ## The preflight
 
-Three ordinary failures, three sentences. Probed at construction, so a bad environment is reported before a paper is resolved or a repository created, and again at `Launch`, because a machine can be stopped between the two.
+Three ordinary failures, three messages. Probed at construction, so a bad environment is reported before a paper is resolved or a repository created, and again at `Launch`, because a machine can be stopped between the two.
 
 ```mermaid
 flowchart TB
@@ -96,7 +96,7 @@ org.replichai.harnesses = claude-code@2.1.4,codex@0.48.0
 org.replichai.python = 3.13.2
 ```
 
-`Capabilities.PackageManagers` comes from that label, so a custom image with a different toolchain declares its own and a specification naming a manager the image lacks is refused rather than failing mid-run.
+`Capabilities.PackageManagers` comes from that label, so a custom image with a different toolchain declares its own, and a specification naming a manager the image lacks is refused rather than failing mid-run.
 
 ## File ownership
 
@@ -105,7 +105,7 @@ A rootless container writing `/workspace` as root leaves a directory the operato
 - **Podman rootless:** `--userns=keep-id`, mapping the container user onto the invoking host uid.
 - **Docker:** `--user <uid>:<gid>` from the caller, with the image's home directory writable by that uid.
 
-After each stage the runtime asserts every file under `workspace/` is owned by the caller and fails with a specific error if not. A repository assembled from files the operator cannot read fails later and somewhere else, which is worse.
+After each stage the runtime asserts every file under `workspace/` is owned by the caller and fails with a specific error if not. A repository assembled from files the operator cannot read fails later and elsewhere, which is worse.
 
 ## What it declares
 
@@ -114,13 +114,13 @@ PackageManagers   from the image label (pip, npm, apt)
 NetworkModes      none: true, open: true, allowlist: false
 ```
 
-`allowlist: false` is the one place this driver is weaker than the default. Neither engine enforces domain filtering natively; doing it properly needs an egress proxy the container is forced through, which is exactly what `srt` already provides on the host and is a spec of its own here. Declaring the capability and not enforcing it would be a lie a specification is validated against, so `ValidateCapabilities` refuses an allowlist specification under this driver, naming the field and the other driver. The audit's `NetworkOpen` path is unaffected.
+`allowlist: false` is the one place this driver is weaker than the default. Neither engine enforces domain filtering natively; doing it properly needs an egress proxy the container is forced through, which is exactly what `srt` already provides on the host and is a spec of its own here. Declaring the capability and not enforcing it would be a false claim that a specification is validated against, so `ValidateCapabilities` refuses an allowlist specification under this driver, naming the field and the other driver. The audit's `NetworkOpen` path is unaffected.
 
 ## Evidence, and the environment record
 
-The stage's raw output is the container's stdout, read with `logs --since` and pinned with `--log-driver=json-file --log-opt max-size=0` so retention does not depend on the host default. A container's log is written by the engine, outside the container's filesystem, so the [045a](045a-the-sandbox-is-a-seam.md) rule — the stage cannot reach its own transcript — holds by the same argument as the deny rule does on the host.
+The stage's raw output is the container's stdout, read with `logs --since` and pinned with `--log-driver=json-file --log-opt max-size=0` so retention does not depend on the host default. A container's log is written by the engine, outside the container's filesystem, so the [045a](045a-the-sandbox-is-a-seam.md) rule that the stage cannot reach its own transcript holds by the same argument as the deny rule does on the host.
 
-`environment.json` is written under this driver too, with `sandbox.driver = container`, the image digest, and the toolchain read from the image rather than the host. Its `packages` list is what the reproduction actually resolved, not what the label promises.
+`environment.json` is written under this driver too, with `sandbox.driver = container`, the image digest, and the toolchain read from the image rather than the host. Its `packages` list is what the reproduction resolved, not what the label promises.
 
 ## Acceptance criteria
 
@@ -136,28 +136,19 @@ The stage's raw output is the container's stdout, read with `logs --since` and p
 
 ## Not in scope
 
-- The egress proxy that would make `allowlist: true` honest here. Named, wanted, and a spec of its own.
+- The egress proxy that would make `allowlist: true` accurate here. Named, wanted, and a spec of its own.
 - Building the image. It is published from its own repository and pinned by digest.
 - A remote engine over `DOCKER_HOST`/`CONTAINER_HOST`. The driver would work; the session directory would not, because it is a host path. Refused explicitly rather than half-working.
 - Making this the default. It is the pinned option, chosen deliberately.
 
 ## Outcome
 
-Built as `internal/runtimes/local/container`, opt-in with `--sandbox container`.
-The engine probe at construction, the three distinguished failures, capabilities
-from the image's own label, the uid mapping per engine, and the refusal of the
-allowlist mode are as specced, and all of it is testable with no engine
-installed through a scripted engine seam.
+Built as `internal/runtimes/local/container`, opt-in with `--sandbox container`. The engine probe at construction, the three distinguished failures, capabilities from the image's own label, the uid mapping per engine, and the refusal of the allowlist mode are as specced, and all of it is testable with no engine installed through a scripted engine seam.
 
 Two things are short.
 
-**The file-ownership assertion is not made.** The uid mapping is passed to both
-engines and asserted in the argv; nothing checks afterwards that every file
-under the workspace is owned by the caller. That check needs a real engine.
+**The file-ownership assertion is not made.** The uid mapping is passed to both engines and asserted in the argv; nothing checks afterwards that every file under the workspace is owned by the caller. That check needs a real engine.
 
-**`Toolchain()` is read from the image and not yet written into the run's
-environment record**, so a container run records its driver and image but not
-the pinned interpreter versions the label carries.
+**`Toolchain()` is read from the image and not yet written into the run's environment record**, so a container run records its driver and image but not the pinned interpreter versions the label carries.
 
-The image itself is not published: `DefaultImage` names a tag that does not
-exist yet, so this driver is code without an artifact to run.
+The image itself is not published: `DefaultImage` names a tag that does not exist yet, so this driver is code without an artifact to run.
