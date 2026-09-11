@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -262,6 +261,15 @@ func (s *Session) NextRevision() (uint64, error) {
 	return current, nil
 }
 
+// maxEventBytes bounds one event's line on disk. An event's Content is already
+// capped when the event is built, so the only field that can grow without
+// bound is Raw, which keeps the whole stream line. A line past this is written
+// with its Raw replaced by a marker naming how much was dropped; the whole
+// value is still in the stage's raw log. Bounding here, at the write, is what
+// stops the read from ever meeting a line it cannot scan and truncating the
+// transcript from that line on.
+const maxEventBytes = 4 << 20
+
 // AppendEvents adds decoded events to the transcript. The file is append-only
 // and lives where no stage can write, so the subject of the audit cannot edit
 // its own evidence.
@@ -284,6 +292,13 @@ func (s *Session) AppendEvents(events []managed.Event) error {
 		if err != nil {
 			return fmt.Errorf("encode event %s: %w", event.ID, err)
 		}
+		if len(line) > maxEventBytes {
+			event.Raw = elidedRaw(len(event.Raw))
+			line, err = json.Marshal(event)
+			if err != nil {
+				return fmt.Errorf("encode event %s: %w", event.ID, err)
+			}
+		}
 		if _, err := writer.Write(append(line, '\n')); err != nil {
 			return err
 		}
@@ -291,9 +306,25 @@ func (s *Session) AppendEvents(events []managed.Event) error {
 	return writer.Flush()
 }
 
+// elidedRaw is the marker that replaces an oversize event's Raw. It is a JSON
+// string, because Raw must hold valid JSON, and it names the raw log where the
+// whole value still is.
+func elidedRaw(size int) json.RawMessage {
+	encoded, err := json.Marshal(
+		fmt.Sprintf("[%d bytes elided; the whole value is in this stage's raw log]", size))
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return encoded
+}
+
 // Events reads the transcript. A truncated final line — a process killed
-// mid-write — is dropped rather than failing the read: the evidence that
-// survived is still evidence.
+// mid-write — is dropped rather than failing the read: it does not parse, and
+// the evidence that survived is still evidence. A scanner error, on the other
+// hand, is returned rather than swallowed: it means the transcript could not be
+// read to the end, and handing back a prefix would present a partial transcript
+// as the whole of it. Writes are bounded so no line this produces is too long
+// to scan.
 func (s *Session) Events() ([]managed.Event, error) {
 	file, err := os.Open(filepath.Join(s.dir, eventsFile))
 	if os.IsNotExist(err) {
@@ -317,8 +348,8 @@ func (s *Session) Events() ([]managed.Event, error) {
 		}
 		events = append(events, event)
 	}
-	if err := scanner.Err(); err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return events, nil
+	if err := scanner.Err(); err != nil {
+		return events, fmt.Errorf("read transcript: %w", err)
 	}
 	return events, nil
 }
