@@ -20,6 +20,12 @@ func TestRuntimeAdapterImportFirewall(t *testing.T) {
 		if walkErr != nil {
 			return walkErr
 		}
+		// A hidden directory is not the source tree: .git, an editor's state,
+		// or a worktree an agent checked out beside the code — a copy of the
+		// tree whose findings are not this tree's.
+		if entry.IsDir() && path != root && strings.HasPrefix(entry.Name(), ".") {
+			return filepath.SkipDir
+		}
 		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
