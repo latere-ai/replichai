@@ -6,76 +6,39 @@
 // The admin people table and the header are fed by different endpoints. The
 // table refresh alone used to leave the header's /me snapshot stale until a
 // reload, so this test requires both surfaces to show the completed top-up.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
+import { fail, start, waitUntil } from './harness.mjs'
 
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5203
-const BASE = `http://localhost:${PORT}`
 const EMAIL = 'admin@example.com'
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
 let wallet = 20_000_000
-const json = (req, body) => req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+// What the policy card actually wrote, so the test can check the request
+// rather than the button's label.
+let savedPolicy = null
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const routes = [
+  ['/me', () => ({ authenticated: true, principal: 'admin', email: EMAIL, tier: 'admin', credits: { wallet, start_reserve: 5_000_000 } })],
+  ['GET /admin/access', () => [{ email: EMAIL, tier: 'admin', bound: true, wallet }]],
+  [
+    `POST /admin/access/${encodeURIComponent(EMAIL)}/credits`,
+    ({ body }) => {
+      wallet += body.amount
+      return { email: EMAIL, wallet }
+    },
+  ],
+  ['GET /admin/settings', { start_reserve: 5_000_000, overdraft_cap: 20_000_000, rates: { models: [] } }],
+  // A PUT or a POST: whichever the card sends, its body is what it wrote.
+  [
+    '/admin/settings',
+    ({ body }) => {
+      savedPolicy = body
+      return { ...savedPolicy, updated_by: EMAIL }
+    },
+  ],
+]
+
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      // Keep waiting for Vite.
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((resolve) => setTimeout(resolve, 250))
-  }
-
-  // What the policy card actually wrote, so the test can check the request
-  // rather than the button's label.
-  let savedPolicy = null
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', async (req) => {
-    const { pathname } = new URL(req.url())
-    if (pathname === '/me') return json(req, { authenticated: true, principal: 'admin', email: EMAIL, tier: 'admin', credits: { wallet, start_reserve: 5_000_000 } })
-    if (pathname === '/admin/access' && req.method() === 'GET') return json(req, [{ email: EMAIL, tier: 'admin', bound: true, wallet }])
-    if (pathname === `/admin/access/${encodeURIComponent(EMAIL)}/credits` && req.method() === 'POST') {
-      wallet += JSON.parse(req.postData()).amount
-      return json(req, { email: EMAIL, wallet })
-    }
-    if (pathname === '/admin/settings') {
-      if (req.method() === 'PUT' || req.method() === 'POST') {
-        savedPolicy = JSON.parse(req.postData())
-        return json(req, { ...savedPolicy, updated_by: EMAIL })
-      }
-      return json(req, { start_reserve: 5_000_000, overdraft_cap: 20_000_000, rates: { models: [] } })
-    }
-    req.continue()
-  })
-
-  await page.goto(`${BASE}/console`, { waitUntil: 'networkidle0' })
+  const page = await h.page({ routes })
+  await page.open('/console')
   await page.waitForSelector('.member-row')
   const before = await page.$eval('.quota-pill', (el) => el.textContent.trim())
   if (before !== '$20.00') fail(`header started at ${JSON.stringify(before)}, want "$20.00"`)
@@ -116,9 +79,9 @@ try {
     // something to be true *of* — a card that lost its fields would pass that
     // vacuously.
     if (policy.fields !== 3) fail(`the policy card shows ${policy.fields} fields, want the reserve, the floor and the drafting model`)
-    if (policy.insideAField) fail('Save sits inside a field row, so it reads as that one field\u2019s control')
+    if (policy.insideAField) fail('Save sits inside a field row, so it reads as that one field’s control')
     if (!policy.belowEveryField) fail('Save is not below every field it writes')
-    if (!policy.last) fail('Save is not the card\u2019s final control')
+    if (!policy.last) fail('Save is not the card’s final control')
   }
 
   // And it writes both numbers: editing only the reserve must still send the
@@ -130,18 +93,16 @@ try {
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
   await page.evaluate(() => document.querySelector('[data-test="save-policy"]')?.click())
-  await page.waitForFunction(() => true)
-  await new Promise((r) => setTimeout(r, 400))
+  await waitUntil(() => savedPolicy, { what: 'the policy save to be sent' }).catch(() => {})
   if (!savedPolicy) fail('editing the start reserve and pressing Save sent nothing')
   else {
     if (savedPolicy.start_reserve !== 7_000_000) fail(`Save sent start_reserve ${savedPolicy.start_reserve}, want the edited 7_000_000`)
     if (savedPolicy.overdraft_cap !== 20_000_000) fail(`Save dropped the overdraft floor (sent ${savedPolicy.overdraft_cap})`)
   }
 
-  if (!process.exitCode) console.log('ok: an admin self-top-up refreshes the header balance, and the policy card saves the card')
+  h.ok('an admin self-top-up refreshes the header balance, and the policy card saves the card')
 } catch (e) {
-  fail(e.message)
+  fail(e)
 } finally {
-  await browser?.close()
-  vite.kill()
+  await h.close()
 }
