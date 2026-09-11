@@ -4669,10 +4669,15 @@ function SessionRow({
           <Ico name="stop" size={11} /> {stopping ? t('stopping') : t('stop')}
         </button>
       )}
+      {/* The repository, named by the part that differs. Every reproduction of
+          one paper gets the same slug and a different suffix, so a row labelled
+          "GitHub" is indistinguishable from the nine beside it the moment a
+          paper is reproduced more than once — which is the whole point of
+          reproducing it more than once. The full name stays in the tooltip. */}
       {j.repo_name && (
         <Tip text={j.repo_name}>
           <a className="link small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-            <Ico name="github" size={13} /> GitHub
+            <Ico name="github" size={13} /> {repoSuffix(j.repo_name)}
           </a>
         </Tip>
       )}
@@ -6164,6 +6169,18 @@ function tierLabel(t: I18n['t'], tier?: string) {
 const isPhase = (p: string): p is Phase => (PHASE_ORDER as readonly string[]).includes(p)
 function phaseLabel(t: I18n['t'], phase: string) {
   return isPhase(phase) ? t(`phase.${phase}`) : phase.replace(/_/g, ' ')
+}
+
+// repoSuffix is the part of a reproduction's repository name that identifies
+// this run: the registry gives every reproduction of one paper the same slug
+// and a short random suffix, so the suffix is the only part that differs
+// between five runs of the same paper. A name with no suffix — an owner and a
+// bare slug — is shown whole rather than sliced into something misleading.
+export function repoSuffix(repo: string): string {
+  const name = repo.slice(repo.lastIndexOf('/') + 1)
+  const cut = name.lastIndexOf('-')
+  const tail = cut < 0 ? '' : name.slice(cut + 1)
+  return /^[a-z0-9]{4}$/.test(tail) ? tail : name
 }
 
 // PHASE_ORDER is the lifecycle spine the timeline walks. phase_at only ever
