@@ -19,33 +19,7 @@
 // pushing the sessions below the fold. It belongs in the rail beside them, which
 // is narrower than the three controls it holds — so the row has to wrap rather
 // than clip its third button.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5209
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, json, settled, start } from './harness.mjs'
 
 const at = (i) => new Date(1754_215_200_000 - i * 86_400_000).toISOString()
 const PROJECT = 'proj-1'
@@ -62,47 +36,30 @@ const credits = { balance: 16_820_000, available: 6_820_000, start_reserve: 20_0
 // that left rather than the digits on screen.
 let allocated = null
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const routes = [
+  ['/me', { authenticated: true, principal: 'p', email: 'e@x', tier: 'user', credits: { wallet: 10_000_000, start_reserve: 20_000_000 } }],
+  ['/me/profile', {}],
+  [
+    `POST /projects/${PROJECT}/credits`,
+    ({ body }) => {
+      allocated = body.amount
+      return credits
+    },
+  ],
+  [/^\/projects\/[^/]+$/, { project, sessions: [job], papers: [paper], may_submit: true, role: 'owner', credits }],
+  [/^\/projects\/[^/]+\/papers$/, [paper]],
+  [/^\/projects\/[^/]+\/members$/, []],
+  [/^\/jobs\/[^/]+\/verdict$/, json({ error: 'no_findings' }, 404)],
+  [/^\/jobs\/[^/]+$/, job],
+  [/^\/(projects|public|shared)$/, []],
+]
+
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      const json = (body) => req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-      if (u.pathname === '/me') return json({ authenticated: true, principal: 'p', email: 'e@x', tier: 'user', credits: { wallet: 10_000_000, start_reserve: 20_000_000 } })
-      if (u.pathname === '/me/profile') return json({})
-      if (u.pathname === `/projects/${PROJECT}/credits` && req.method() === 'POST') {
-        allocated = JSON.parse(req.postData()).amount
-        return json(credits)
-      }
-      if (/^\/projects\/[^/]+$/.test(u.pathname)) return json({ project, sessions: [job], papers: [paper], may_submit: true, role: 'owner', credits })
-      if (/^\/projects\/[^/]+\/(papers)$/.test(u.pathname)) return json([paper])
-      if (/^\/projects\/[^/]+\/(members)$/.test(u.pathname)) return json([])
-      if (/^\/jobs\/[^/]+\/verdict$/.test(u.pathname)) return req.respond({ status: 404, contentType: 'application/json', body: '{"error":"no_findings"}' })
-      if (/^\/jobs\//.test(u.pathname)) return json(job)
-      if (/^\/(projects|public|shared)$/.test(u.pathname)) return json([])
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  const page = await h.page({ routes })
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('.usage-rows', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 400))
+  await settled(page)
 
   /* ── The amounts line up ── */
 
@@ -137,7 +94,9 @@ try {
 
   // And the amount that leaves is the amount typed, in micro-USD.
   await page.evaluate(() => [...document.querySelectorAll('.card .btn')].find((b) => /allocate/i.test(b.textContent))?.click())
-  await new Promise((r) => setTimeout(r, 400))
+  // The card clears the field once the allocate has landed — which is also
+  // when the next amount can be typed into an empty field.
+  await page.waitForFunction(() => document.querySelector('.numf-input')?.value === '', { timeout: 5000 }).catch(() => {})
   if (allocated !== 16_820_000) fail(`Allocate sent ${allocated}, want 16820000 — the cents were dropped`)
 
   // The stepper keeps them too: it used to parse an integer and throw the
@@ -173,10 +132,9 @@ try {
     if (c.overflows) fail(`the control "${c.text}" is clipped at the card's edge; the row has to wrap in the rail`)
   }
 
-  if (!process.exitCode) console.log('ok: the credits card lines up, takes cents, and fits its rail')
-} catch (err) {
-  fail(err.message)
+  h.ok('the credits card lines up, takes cents, and fits its rail')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
