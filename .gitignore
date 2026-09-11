@@ -4,16 +4,17 @@
 /replichai
 coverage.out
 
-# Frontend build + deps (the build is embedded at image-build time; a
-# committed dist/PLACEHOLDER keeps the go:embed non-empty without a build).
-# Everything the build writes is ignored by default rather than named one
-# artifact at a time — naming them meant each new static file (a favicon, a
-# social card) arrived untracked and one `git add` away from being committed.
+# Frontend build output and dependencies. The build is embedded at image-build
+# time, and the committed dist/PLACEHOLDER keeps the go:embed pattern non-empty
+# when there has been no build. Everything the build writes is ignored by
+# default rather than named one artifact at a time: naming them meant each new
+# static file, such as a favicon or a social card, arrived untracked and one
+# `git add` away from being committed.
 /frontend/node_modules/
 /internal/spa/dist/*
 !/internal/spa/dist/PLACEHOLDER
 
-# Secrets and local artifacts (never commit .env — it holds deployment secrets)
+# Secrets and local artifacts. Never commit .env; it holds deployment secrets.
 .env
 *.tsbuildinfo
 
