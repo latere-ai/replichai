@@ -51,7 +51,7 @@ export function emptyWallet(credits?: Credits): boolean {
 // CreateOutcome is everything the New-project screen has to say after a create:
 // a banner (empty when there is nothing to say) and a message for each paper row
 // the server did not recognise, keyed by the reference the row holds.
-export type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
+type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
 
 // createOutcome decides what a create attempt tells the person.
 //

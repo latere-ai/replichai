@@ -118,7 +118,7 @@ const LIGHT: Palette = {
   dust: [0x8f9bab, 0.34],
 }
 
-export type HeroScene = { dispose: () => void }
+type HeroScene = { dispose: () => void }
 
 // The names browsers give a rasteriser that is not a GPU. SwiftShader is
 // Chrome's, llvmpipe and softpipe are Mesa's, WARP is Direct3D's; "software

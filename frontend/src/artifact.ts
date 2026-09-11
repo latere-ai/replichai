@@ -29,7 +29,7 @@ hljs.registerLanguage('typescript', typescript)
 hljs.registerLanguage('xml', xml)
 hljs.registerLanguage('yaml', yaml)
 
-export type FileKind = 'markdown' | 'image' | 'code' | 'text'
+type FileKind = 'markdown' | 'image' | 'code' | 'text'
 
 const imageExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
 const langByExt: Record<string, string> = {

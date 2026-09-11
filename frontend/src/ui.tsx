@@ -126,7 +126,7 @@ export function RowButton({
 
 /* ── Select ── */
 
-export type Option<T extends string> = { value: T; label: string; icon?: IconName }
+type Option<T extends string> = { value: T; label: string; icon?: IconName }
 
 // Select replaces the OS-drawn <select>. It is a combobox button over a
 // listbox: click or Enter opens it, arrows move, Enter picks, Escape closes and
@@ -533,7 +533,7 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 // 'right' is for a trigger in a vertical stack. Above and below are both a
 // neighbour's row there — the folded navigation rail is the case — so the bubble
 // goes out to the side instead, where nothing is stacked.
-export type TipSide = 'top' | 'bottom' | 'right'
+type TipSide = 'top' | 'bottom' | 'right'
 
 // tipAttrs applies the tooltip to an element directly, for the cases where a
 // wrapper element would break an ARIA relationship.
