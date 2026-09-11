@@ -89,8 +89,8 @@ func TestValidateRejectsNonJSON(t *testing.T) {
 	}
 }
 
-// The one rule the product exists to defend. A file that scores the human study
-// is refused rather than rendered.
+// The product's central rule: a file that scores the human study is refused
+// rather than rendered.
 func TestOuterLoopIsNeverScored(t *testing.T) {
 	for _, o := range []verdict.ClaimOutcome{verdict.Verified, verdict.PartlyVerified, verdict.Blocked} {
 		v := good()
@@ -105,8 +105,8 @@ func TestOuterLoopIsNeverScored(t *testing.T) {
 	}
 }
 
-// The mirror image: a mechanically checkable claim that reports no outcome is
-// hiding a blocker rather than recording one.
+// The converse: an inner-loop claim marked not_scored hides a blocker instead
+// of recording it.
 func TestInnerLoopIsAlwaysScored(t *testing.T) {
 	v := good()
 	v.Boundary[2].Outcome = verdict.NotScored
@@ -192,8 +192,9 @@ func TestScorecardCoversEveryCriterionExactlyOnce(t *testing.T) {
 	}
 }
 
-// An empty scorecard is a different failure from an incomplete one and is not
-// this rule's business: a run that scored nothing has no rows to disagree.
+// An empty scorecard is a different failure from an incomplete one and is
+// outside this rule: a run that scored nothing has no rows to check for a
+// missing criterion.
 func TestAnEmptyScorecardIsNotAMissingCriterion(t *testing.T) {
 	v := good()
 	v.Scorecard = nil
@@ -211,8 +212,9 @@ func TestComponentsMustAddUpAndMatchTheInnerRows(t *testing.T) {
 		t.Fatal("counts that do not add up were accepted")
 	}
 
-	// Adds up, but claims more components than the boundary has inner rows —
-	// the rate would then summarise a decomposition nobody can see.
+	// The counts add up but claim more components than the boundary has
+	// inner rows, so the rate would summarise a decomposition the reader
+	// cannot see.
 	v = good()
 	v.Components = verdict.Components{Verified: 5, Partial: 0, Blocked: 1, Total: 6}
 	ps, _ = verdict.Validate(raw(t, v))
@@ -253,8 +255,8 @@ func TestAReleaseThatFoundSomethingLinksToIt(t *testing.T) {
 		t.Fatal("a found artifact with no URL was accepted")
 	}
 
-	// A dead link is recorded in What; requiring a URL there would force the
-	// audit to re-assert an address it just told us does not resolve.
+	// A dead link is recorded in What. Requiring a URL as well would make the
+	// audit repeat an address it has reported as unresolvable.
 	v = good()
 	ps, _ = verdict.Validate(raw(t, v))
 	if len(only(ps, "released[2]")) != 0 {
