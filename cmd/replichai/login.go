@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -21,12 +20,15 @@ import (
 // flow: a terminal cannot run a browser redirect, so it prints a URL and a
 // code and waits (045i).
 func runLogin(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("login", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("login", stderr)
 	authURL := fs.String("auth-url", envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL), "identity provider")
 	noBrowser := fs.Bool("no-browser", false, "print the URL instead of opening it")
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
+	}
+	if err := noPositionals("login", positional, stderr); err != nil {
+		return err
 	}
 	session := cloud.New(homeDir(), *authURL)
 	token, err := session.Login(ctx, func(prompt cloud.Prompt) {
@@ -46,10 +48,12 @@ func runLogin(ctx context.Context, args []string, stdout, stderr *os.File) error
 // runWhoami prints the stored identity without a network call, so it answers
 // the same when the provider is unreachable.
 func runWhoami(_ context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("whoami", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	positional, err := parseFlags(flagSet("whoami", stderr), args)
+	if err != nil {
+		return err
+	}
+	if err := noPositionals("whoami", positional, stderr); err != nil {
+		return err
 	}
 	token, err := cloud.New(homeDir(), "").Store.Load()
 	if errors.Is(err, cloud.ErrSignedOut) {
@@ -70,10 +74,12 @@ func runWhoami(_ context.Context, args []string, stdout, stderr *os.File) error 
 
 // runLogout removes the stored credential.
 func runLogout(_ context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("logout", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	positional, err := parseFlags(flagSet("logout", stderr), args)
+	if err != nil {
+		return err
+	}
+	if err := noPositionals("logout", positional, stderr); err != nil {
+		return err
 	}
 	if err := cloud.New(homeDir(), "").Logout(); err != nil {
 		return err
@@ -85,21 +91,21 @@ func runLogout(_ context.Context, args []string, stdout, stderr *os.File) error 
 // runOrg shows or switches the organisation a project belongs to. Switching
 // goes through the refresh grant, so it needs no second device login.
 func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("org", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("org", stderr)
 	personal := fs.Bool("personal", false, "switch to the personal context")
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	// One organisation, or the personal context, never both and never
 	// several: `org a b` used to switch silently to the personal context,
 	// which is the opposite of what was typed.
-	if fs.NArg() > 1 || (fs.NArg() == 1 && *personal) {
+	if len(positional) > 1 || (len(positional) == 1 && *personal) {
 		_, _ = fmt.Fprintln(stderr, "org takes one organisation id, or --personal")
 		return errExitQuiet
 	}
 	session := cloud.New(homeDir(), envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL))
-	if fs.NArg() == 0 && !*personal {
+	if len(positional) == 0 && !*personal {
 		token, err := session.Store.Load()
 		if err != nil {
 			return err
@@ -112,8 +118,8 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return nil
 	}
 	org := ""
-	if fs.NArg() == 1 {
-		org = fs.Arg(0)
+	if len(positional) == 1 {
+		org = positional[0]
 	}
 	if _, err := session.SwitchOrg(ctx, org); err != nil {
 		return err

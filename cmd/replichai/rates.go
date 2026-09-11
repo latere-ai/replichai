@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -36,13 +35,16 @@ import (
 // what sessions are actually priced from — and from the compiled-in seed
 // otherwise, which is what a fresh deployment will start with.
 func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("rates", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("rates", stderr)
 	runtimeFlagValue := runtimeFlag(fs, defaultCLIRuntime)
 	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "read the live rate card from this database instead of the compiled-in seed")
 	asJSON := fs.Bool("json", false, "emit machine-readable output")
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
+	}
+	if err := noPositionals("rates", positional, stderr); err != nil {
+		return err
 	}
 
 	runtimeName := resolveRuntime(*runtimeFlagValue, os.Getenv, defaultCLIRuntime)

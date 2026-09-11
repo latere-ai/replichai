@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,16 +20,16 @@ import (
 // anything the push has not taken. That default makes them accumulate, so
 // there has to be a way to reclaim the space that is not `rm -rf`.
 func runSessions(_ context.Context, args []string, stdout, stderr *os.File) error {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: replichai sessions ls | replichai sessions prune [--older-than 7d] [--dry-run]")
-		return errExitQuiet
-	}
-	fs := flag.NewFlagSet("sessions", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("sessions", stderr)
 	root := fs.String("session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()), "where session directories are made")
 	olderThan := fs.Duration("older-than", 7*24*time.Hour, "with prune: only remove sessions older than this")
 	dryRun := fs.Bool("dry-run", false, "with prune: say what would go, and remove nothing")
-	if err := fs.Parse(args[1:]); err != nil {
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(positional) != 1 {
+		_, _ = fmt.Fprintln(stderr, "usage: replichai sessions ls | replichai sessions prune [--older-than 7d] [--dry-run]")
 		return errExitQuiet
 	}
 
@@ -38,7 +37,7 @@ func runSessions(_ context.Context, args []string, stdout, stderr *os.File) erro
 	if err != nil {
 		return err
 	}
-	switch args[0] {
+	switch positional[0] {
 	case "ls":
 		for _, entry := range found {
 			_, _ = fmt.Fprintf(stdout, "%s\t%s\t%s\n", entry.name,
@@ -70,7 +69,7 @@ func runSessions(_ context.Context, args []string, stdout, stderr *os.File) erro
 		_, _ = fmt.Fprintf(stderr, "%d of %d session(s) older than %s\n", removed, len(found), *olderThan)
 		return nil
 	default:
-		_, _ = fmt.Fprintf(stderr, "unknown sessions command %q\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "unknown sessions command %q\n", positional[0])
 		return errExitQuiet
 	}
 }

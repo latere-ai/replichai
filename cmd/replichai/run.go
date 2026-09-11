@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,8 +27,7 @@ import (
 // runRun drives a whole replication project: a list of papers, run in
 // parallel, each in its own session, with a report at the end (045h).
 func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("run", stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
 		runtimeName  = runtimeFlag(fs, "local")
@@ -45,16 +43,9 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		local        localOptions
 	)
 	local.bind(fs)
-	var positional []string
-	for rest := args; ; {
-		if err := fs.Parse(rest); err != nil {
-			return errExitQuiet
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		rest = fs.Args()[1:]
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "run takes exactly one project file")

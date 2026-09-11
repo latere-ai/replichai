@@ -18,7 +18,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -62,83 +61,8 @@ func main() {
 // errExitQuiet signals a non-zero exit whose reason was already reported.
 var errExitQuiet = errors.New("exit")
 
-func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	if len(args) == 0 {
-		usage(stderr)
-		return errExitQuiet
-	}
-
-	switch args[0] {
-	case "rates":
-		return runRates(ctx, args[1:], stdout, stderr)
-
-	case "providers":
-		// The listing is of everything installed, so it is built from the
-		// compiled-in default; the marker follows what the environment selects.
-		selected := resolveRuntime("", os.Getenv, defaultCLIRuntime)
-		catalog, _, err := runtimeCatalog(defaultCLIRuntime, localOptions{})
-		if err != nil {
-			return err
-		}
-		for _, name := range catalog.Names() {
-			suffix := ""
-			if string(name) == selected {
-				suffix = " (default)"
-			}
-			_, _ = fmt.Fprintf(stdout, "%s%s\n", name, suffix)
-		}
-		return nil
-
-	case "audit":
-		return runAudit(ctx, args[1:], stdout, stderr)
-
-	case "run":
-		return runRun(ctx, args[1:], stdout, stderr)
-
-	case "login":
-		return runLogin(ctx, args[1:], stdout, stderr)
-
-	case "whoami":
-		return runWhoami(ctx, args[1:], stdout, stderr)
-
-	case "logout":
-		return runLogout(ctx, args[1:], stdout, stderr)
-
-	case "org":
-		return runOrg(ctx, args[1:], stdout, stderr)
-
-	case "sessions":
-		return runSessions(ctx, args[1:], stdout, stderr)
-
-	case "project":
-		return runProject(ctx, args[1:], stdout, stderr)
-
-	case "push":
-		return runPush(ctx, args[1:], stdout, stderr)
-
-	case "resolve":
-		return runResolve(ctx, args[1:], stdout, stderr)
-
-	case "publish":
-		return runPublish(ctx, args[1:], stdout, stderr)
-
-	case "finish":
-		return runFinish(ctx, args[1:], stdout, stderr)
-
-	case "-h", "--help", "help":
-		usage(stdout)
-		return nil
-
-	default:
-		_, _ = fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
-		usage(stderr)
-		return errExitQuiet
-	}
-}
-
 func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("audit", stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
 		runtimeName  = runtimeFlag(fs, defaultCLIRuntime)
@@ -155,20 +79,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		local        localOptions
 	)
 	local.bind(fs)
-	// flag stops parsing at the first non-flag argument, so a plain
-	// fs.Parse would silently drop every flag in
-	// `replichai audit <paper> --runtime memory` -- the natural way to type
-	// it. Collect positionals and keep parsing what follows each one.
-	var positional []string
-	for rest := args; ; {
-		if err := fs.Parse(rest); err != nil {
-			return errExitQuiet
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		rest = fs.Args()[1:]
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "audit takes exactly one paper reference")
@@ -711,8 +624,7 @@ func reportInstrument(stdout *os.File, present bool, violations []instrument.Vio
 // This is the recovery path when `audit --publish` times out while the agent
 // keeps committing to the mounted repo.
 func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("finish", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("finish", stderr)
 	var (
 		session     = fs.String("session", "", "legacy session id to reattach to")
 		sessionRef  = fs.String("session-ref", "", "complete session reference printed by audit --detach")
@@ -725,16 +637,9 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		local       localOptions
 	)
 	local.bind(fs)
-	var positional []string
-	for rest := args; ; {
-		if err := fs.Parse(rest); err != nil {
-			return errExitQuiet
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		rest = fs.Args()[1:]
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	if len(positional) != 2 {
 		_, _ = fmt.Fprintln(stderr, "finish takes <owner>/<repo> and a paper reference")
@@ -871,18 +776,18 @@ func envOr(key, fallback string) string {
 }
 
 func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("resolve", stderr)
 	timeout := fs.Duration("timeout", 30*time.Second, "network timeout for a single fetch")
-	if err := fs.Parse(args); err != nil {
-		return errExitQuiet
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
-	if fs.NArg() != 1 {
+	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "resolve takes exactly one paper reference")
 		return errExitQuiet
 	}
 
-	id, err := paper.Resolve(ctx, fs.Arg(0), paper.WithFetcher(httpFetcher{timeout: *timeout}))
+	id, err := paper.Resolve(ctx, positional[0], paper.WithFetcher(httpFetcher{timeout: *timeout}))
 	if err != nil {
 		return err
 	}
@@ -901,8 +806,7 @@ func runResolve(ctx context.Context, args []string, stdout, stderr *os.File) err
 }
 
 func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flagSet("publish", stderr)
 	var (
 		out       = fs.String("out", "published", "filesystem forge root")
 		live      = fs.Bool("live", false, "write the repository instead of previewing")
@@ -910,18 +814,9 @@ func runPublish(ctx context.Context, args []string, stdout, stderr *os.File) err
 		methodDir = fs.String("method", "", "path to a method directory")
 		timeout   = fs.Duration("timeout", 30*time.Second, "network timeout for identity resolution")
 	)
-	// flag stops parsing at the first non-flag argument, so collect positionals
-	// and keep parsing the flags that follow each — the same shape runAudit uses.
-	var positional []string
-	for rest := args; ; {
-		if err := fs.Parse(rest); err != nil {
-			return errExitQuiet
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		rest = fs.Args()[1:]
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	if len(positional) != 2 {
 		_, _ = fmt.Fprintln(stderr, "publish takes an artifact directory and a paper reference")
@@ -1068,72 +963,6 @@ func (h httpFetcher) fetchOnce(ctx context.Context, url string) (body []byte, re
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	return b, false, err
-}
-
-func usage(w *os.File) {
-	_, _ = fmt.Fprint(w, `replichai - audit the reproducibility of a research paper
-
-usage:
-  replichai audit <paper-ref> [flags]
-  replichai run <project-file> [flags]
-  replichai resolve <paper-ref>
-  replichai publish <artifact-dir> <paper-ref> [flags]
-  replichai finish <owner>/<repo> <paper-ref> --session <id> [flags]
-  replichai login | whoami | logout | org [<org-uuid>|--personal]
-  replichai sessions ls | replichai sessions prune [--older-than 7d]
-  replichai project create <title> | replichai project ls
-  replichai project sessions <project-id> | replichai project rm-session <id>...
-  replichai push <project-file> --project <id>
-  replichai providers
-  replichai rates [flags]
-
-a paper-ref is a DOI, an arXiv URL or bare ID, a publisher URL, or a PDF URL
-
-flags for audit:
-  -out            directory for artifacts (default "runs")
-  -runtime        managed runtime to use (default "anthropic-managed")
-  -method         path to a method directory
-  -interval       gap between status checks
-  -timeout        how long a run may take
-  -max-revisions  revision budget
-  -publish        mount a GitHub repo and publish the reproduction to it
-  -owner          GitHub owner for -publish (default "`+publish.DefaultOrg+`")
-  -invite         GitHub login to invite as a collaborator
-  -project        with --publish, the project the platform provisions the
-                  repository under, so no GitHub token is needed here
-  -detach         with -publish, start the run and return; finish it later
-  -model          model to run on: a tier (best, balanced, fast) or provider/id
-  -sandbox        with -runtime local: host (srt) or container (podman, docker)
-  -harness        with -runtime local: claude-code or codex
-
-flags for run (a project file is one paper per line, or a papers: list in YAML):
-  -runtime        managed runtime to use (default "local")
-  -parallel       how many papers to run at once
-  -resume         skip the papers that already finished
-  -publish        publish each reproduction to its own repository
-  everything audit takes, applied to every paper in the project
-
-flags for rates:
-  -runtime        managed runtime to ask (default "anthropic-managed")
-  -database-url   read the live rate card from a deployment (default $DATABASE_URL)
-  -json           machine-readable output
-
-flags for finish:
-  -session        session id to reattach to and wait for
-  -session-ref    complete session reference printed by audit --detach
-  -invite         GitHub login to invite as a collaborator
-  -method         the method directory the audit used
-  -timeout        how long to wait for the session
-
-flags for resolve:
-  -timeout        network timeout for a single fetch (default 30s)
-
-flags for publish:
-  -out            filesystem forge root (default "published")
-  -live           write the repository instead of previewing
-  -verdict        the run's grade recorded in the manifest (default "passed")
-  -method         path to a method directory
-`)
 }
 
 // slugify names a local scratch directory for one paper reference.
