@@ -390,7 +390,7 @@ func (a *Auditor) Collect(ctx context.Context, h provider.RunHandle, dst string)
 		}
 		body, err := a.provider.FetchArtifact(ctx, h, art)
 		if err != nil {
-			return nil, fmt.Errorf("fetch %s: %w", art.Path, err)
+			return nil, fmt.Errorf("read artifact %s: %w", art.Path, err)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return nil, fmt.Errorf("create %s: %w", filepath.Dir(target), err)
