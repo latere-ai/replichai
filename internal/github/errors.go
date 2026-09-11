@@ -117,12 +117,8 @@ func failure(method, path string, resp *http.Response, payload []byte, now time.
 func rateLimit(resp *http.Response, now time.Time) (limited bool, wait time.Duration) {
 	retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
 	remaining := strings.TrimSpace(resp.Header.Get("X-RateLimit-Remaining"))
-	switch {
-	case resp.StatusCode == http.StatusTooManyRequests:
-		limited = true
-	case resp.StatusCode == http.StatusForbidden && (retryAfter != "" || remaining == "0"):
-		limited = true
-	default:
+	secondary := resp.StatusCode == http.StatusForbidden && (retryAfter != "" || remaining == "0")
+	if resp.StatusCode != http.StatusTooManyRequests && !secondary {
 		return false, 0
 	}
 	if seconds, err := strconv.Atoi(retryAfter); err == nil && seconds > 0 {
