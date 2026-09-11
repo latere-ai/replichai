@@ -409,8 +409,12 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 			exhausted := managed.Verdict{Grade: managed.GradeExhausted, Explanation: verdict.Explanation}
 			status.Verdict = &exhausted
 		}
+		// A rejected evaluation is a failed session, not a done one. The other
+		// two runtimes end it StateFailed, and the job store maps state one to
+		// one, so ending it StateDone here landed the same outcome as done on
+		// local and failed everywhere else.
 		_ = file
-		r.finish(status, managed.StateDone, managed.ReasonEvaluationFailed, "")
+		r.finish(status, managed.StateFailed, managed.ReasonEvaluationFailed, "")
 		return nil
 	default:
 		return fmt.Errorf("unknown stage role %q", current.Role)
