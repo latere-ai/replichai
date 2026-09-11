@@ -261,7 +261,10 @@ func (s *PGStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 		id, KindAudit, in.Principal, in.Project, in.Ref, in.PaperKey, in.Phase, status, in.RepoName, in.Err,
 		started, now, phaseAt, OriginLocal, in.ExternalID)
 	imported, err := scanJob(row)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, ErrNotFound) {
+		// No row came back: the conflict clause found the record under another
+		// project and left it alone. scanJob reads an empty result as a missing
+		// job, which this is not.
 		return Job{}, ErrImportedElsewhere
 	}
 	return imported, err
