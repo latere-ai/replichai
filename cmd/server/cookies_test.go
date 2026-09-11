@@ -5,10 +5,11 @@ package main
 
 import "testing"
 
-// The session cookie's hardening follows the scheme and takes no override.
-// AUTH_INSECURE_COOKIES used to be able to turn Secure off, and because plain
-// HTTP already answers false, the only deployment it could ever have weakened
-// was one serving real traffic over TLS.
+// TestSecureCookiesFollowsTheSchemeAndNothingElse checks that the session
+// cookie's hardening follows the scheme and takes no override.
+// AUTH_INSECURE_COOKIES could once turn Secure off, and because plain HTTP
+// already answers false, the only deployment it could have weakened was one
+// serving real traffic over TLS.
 func TestSecureCookiesFollowsTheSchemeAndNothingElse(t *testing.T) {
 	for _, c := range []struct {
 		base string

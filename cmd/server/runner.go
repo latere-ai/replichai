@@ -26,17 +26,17 @@ import (
 	"github.com/latere-ai/replichai/internal/registry"
 )
 
-// engineRunner drives a job's phases with the real engine. It is the
-// composition root's, so it may import internal/audit and its method — the code
-// internal/job and internal/httpapi are forbidden to touch. It dispatches on
-// Kind; today it runs audits, the experiment path lands with 007b's server wiring.
+// engineRunner drives a job's phases with the real engine. It belongs to the
+// composition root, so it may import internal/audit and its method, which
+// internal/job and internal/httpapi must not import. It dispatches on Kind; it
+// runs audits now, and the experiment path arrives with 007b's server wiring.
 //
-// Every session, however old its row, goes through the managed controller: a
+// Every session, however old its row, goes through the managed controller. A
 // row that carries only a backend run id is addressed as a legacy reference,
-// which the anthropic-managed runtime knows how to poll, cancel, and read. There
-// is no second engine behind the first, so there is no path a nil one could
-// be reached on. Build one with newEngineRunner, which refuses to exist
-// without its dependencies.
+// which the anthropic-managed runtime can poll, cancel, and read. There is no
+// second engine behind the controller, so there is no path on which a nil one
+// could be reached. Build one with newEngineRunner, which refuses to construct
+// a runner without its dependencies.
 type engineRunner struct {
 	controller *managed.Controller
 	// sessions finds the runtime behind a session reference, for the one read
@@ -48,16 +48,18 @@ type engineRunner struct {
 	projects project.Store
 	jobs     jobStatusReader
 	workDir  string
-	// The forge (006i). When gh is nil (a local run with no token) the runner
-	// neither creates a repository nor publishes — the session's transcript stays
-	// readable live-only. owner is the org repositories are created under; token
-	// is the mount credential, handed to the platform egress, never the sandbox.
+	// The forge (006i). When gh is nil, as in a local run with no token, the
+	// runner neither creates a repository nor publishes, and the session's
+	// transcript is readable live only. owner is the organisation repositories
+	// are created under; token is the mount credential, passed to the platform
+	// egress and never to the sandbox.
 	gh    forge
 	owner string
 	token string
-	// delay pauses at the start of each phase. It is a dev affordance: with the
-	// instant memory provider a job finishes in ~1s, so a small delay makes the
-	// phase progression watchable over SSE. Zero in production.
+	// delay pauses at the start of each phase. It exists for development: with
+	// the instant memory provider a job finishes in about a second, so a small
+	// delay makes the phase progression observable over SSE. It is zero in
+	// production.
 	delay time.Duration
 }
 
@@ -69,7 +71,7 @@ type jobStatusReader interface {
 }
 
 // engineDeps is what an engineRunner is built from. Every field but the forge
-// is required: the forge is the one thing a deployment may run without.
+// is required; the forge is the only dependency a deployment may run without.
 type engineDeps struct {
 	controller *managed.Controller
 	sessions   managed.RuntimeRouter
@@ -110,16 +112,17 @@ func newEngineRunner(d engineDeps) (*engineRunner, error) {
 	}, nil
 }
 
-// forge is the repository host the runner creates into and finalizes against
-// (006i). Prepare allocates a collision-free name and creates the private repo;
-// the rest is publish.LiveForge, so the shared finalize drives it unchanged.
-// github-backed in production, faked in tests — the runner needs no network to
-// test its phase logic.
+// forge is the repository host the runner creates repositories in and
+// finalizes against (006i). Prepare allocates a collision-free name and creates
+// the private repository; the rest is publish.LiveForge, so the shared finalize
+// drives it unchanged. It is backed by GitHub in production and by a fake in
+// tests, so the runner needs no network to test its phase logic.
 type forge interface {
 	publish.LiveForge
 	// Prepare allocates a collision-free repository name for the paper under the
-	// owner and creates it private, returning the name. Idempotent: an existing
-	// repository of that name is reused, not an error.
+	// owner and creates it private, returning the name. It is idempotent: an
+	// existing repository of that name is reused rather than reported as an
+	// error.
 	Prepare(ctx context.Context, owner string, id paper.Identity) (name string, err error)
 }
 
@@ -185,8 +188,9 @@ func (e *engineRunner) pause(ctx context.Context) {
 	}
 }
 
-// Resolve validates the paper reference against the resolver (the resolving
-// phase). A reference that cannot resolve fails the job here, before a run.
+// Resolve validates the paper reference against the resolver; it is the
+// resolving phase. A reference that cannot resolve fails the job here, before
+// a run.
 func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 	e.pause(ctx)
 	if j.Kind != job.KindAudit {
@@ -197,9 +201,9 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 		return fmt.Errorf("resolve %q: %w", j.Ref, err)
 	}
 	// Enrich the project's offline placeholder title with the resolved paper
-	// title, but only while it is still a placeholder — so a project that already
-	// carries a real title is never clobbered. Best-effort: a failure here must
-	// not fail the run.
+	// title, but only while it is still a placeholder, so a project that already
+	// carries a real title is never overwritten. This is best-effort: a failure
+	// here must not fail the run.
 	if id.Title != "" && e.projects != nil && j.ProjectID != "" {
 		if p, err := e.projects.Get(ctx, j.ProjectID); err == nil && e.isPlaceholderTitle(ctx, p, j.Ref) {
 			_ = e.projects.SetTitle(ctx, j.ProjectID, id.Title)
@@ -216,7 +220,8 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 		if err != nil {
 			return err
 		}
-		// Best-effort: publish falls back to re-resolving if this did not land.
+		// This is best-effort: publish falls back to re-resolving if this write
+		// did not succeed.
 		_ = publish.RecordIdentity(ctx, e.gh, e.owner, name, id)
 		j.RepoName = e.owner + "/" + name
 	}
@@ -229,12 +234,16 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 	e.pause(ctx)
 	options := []audit.SessionOption{
 		audit.WithSessionHooks(e.managedHooks(j, observe)),
+		// The wait has no wall-clock deadline: the backend session is the
+		// source of truth, and a deadline would mark a session failed while
+		// its agent is still committing the reproduction.
 		audit.WithoutSessionTimeout(),
 		audit.WithSessionModel(j.Tier.OrDefault().String()),
 	}
 	// With the repository created in resolving, mount it so the agent commits
 	// its reproduction into it live (006i); the mount is also the
-	// redistribution boundary — only what lands in it is published.
+	// redistribution boundary, since only what is committed into it is
+	// published.
 	if e.gh != nil && j.RepoName != "" {
 		mount := e.mountFor(j)
 		options = append(options, audit.WithSessionMount(audit.SessionMount{
@@ -245,9 +254,10 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 	return err
 }
 
-// Resume rejoins the managed-agents session a restart left in flight (by the id
-// observed onto the job) and drives it to completion, so the job's state tracks
-// the real backend session rather than being guessed as failed.
+// Resume rejoins the managed-agents session a restart left in flight, using
+// the reference observed onto the job, and drives it to completion, so the
+// job's state tracks the real backend session rather than being assumed
+// failed.
 func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
 	ref, ok, err := j.ManagedSessionRef()
 	if err != nil {
@@ -265,9 +275,9 @@ func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(prov
 }
 
 // Close releases a managed-agents run by its session reference, so a run left
-// in flight by a restart is archived (stopped) rather than orphaned. A legacy
-// reference — a run id with no locator — is routed like any other: the runtime
-// it names knows how to address it. Idempotent.
+// in flight by a restart is stopped and archived rather than orphaned. A legacy
+// reference, which is a run id with no locator, is routed like any other: the
+// runtime it names can address it. Close is idempotent.
 func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error {
 	if ref.ID == "" {
 		return nil
@@ -329,7 +339,7 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 			}
 			// Harvest before finalizing (044b). The mount is not the only way out
 			// of a session: an agent may write its reproduction, copy it to the
-			// runtime's output directory, and never push — and then the sandbox is
+			// runtime's output directory, and never push. The sandbox is then
 			// released and the output directory is the only copy left. Finalize
 			// reads verdict.json from the committed tree, so a recovered one has to
 			// be in the tree before the manifest is written.
@@ -402,9 +412,10 @@ func providerEvents(events []managed.Event) []provider.Event {
 
 // Publish finalizes the live-mount reproduction (006i): the agent has already
 // committed its work into the mounted repository, so this verifies the committed
-// tree, writes the manifest, and commits the transcript beside it — the same
-// publish.FinalizeLive the CLI drives. With no forge, or a job that never got a
-// repository, it is a no-op and the session's transcript stays readable live.
+// tree, writes the manifest, and commits the transcript beside it, through the
+// same publish.FinalizeLive the CLI drives. With no forge, or a job that never
+// got a repository, it is a no-op and the session's transcript stays readable
+// live.
 func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 	e.pause(ctx)
 	if e.gh == nil || j.RepoName == "" {
@@ -420,14 +431,14 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 		return nil
 	}
 	// What remains is a legacy row: a run id observed before session references
-	// were persisted. Its repository still wants a manifest and a transcript.
+	// were persisted. Its repository still needs a manifest and a transcript.
 	owner, name := splitRepo(j.RepoName)
 
 	// The verdict and the backend run id were observed onto the job during the
 	// run; reload the latest, since the phase transition did not carry them. A
-	// read failure fails the publish (which retries) rather than writing a
-	// manifest that records "unknown" for a run that actually passed — a wrong
-	// manifest would stick, since nothing re-finalizes once it is written.
+	// read failure fails the publish, which retries, rather than writing a
+	// manifest that records "unknown" for a run that passed. A wrong manifest
+	// would persist, since nothing re-finalizes once it is written.
 	cur, err := e.jobs.Get(ctx, j.ID)
 	if err != nil {
 		return fmt.Errorf("reload job status for publish: %w", err)
@@ -441,8 +452,9 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 		runID = j.Status.RunID
 	}
 
-	// Prefer the identity recorded in the repo (resolving wrote it); fall back to
-	// re-resolving only if it is absent, to avoid the paper source's rate limit.
+	// Prefer the identity recorded in the repository, which resolving wrote;
+	// fall back to re-resolving only if it is absent, to avoid the paper
+	// source's rate limit.
 	id, ok, err := publish.RecordedIdentity(ctx, e.gh, owner, name)
 	if err != nil {
 		return job.RetryablePublish(fmt.Errorf("read recorded paper identity: %w", err))
@@ -459,8 +471,8 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 
 	// Commit the transcript alongside the manifest, read through the runtime
 	// the reference names. A transient read failure is retried; a runtime this
-	// deployment no longer installs is not, since no retry will install it —
-	// the manifest is published with the transcript noted as unavailable.
+	// deployment no longer installs is not, since no retry would install it,
+	// and the manifest is published with the transcript noted as unavailable.
 	var events []provider.Event
 	if runID != "" {
 		if !ok {
@@ -495,8 +507,9 @@ func (e *engineRunner) legacyTranscript(ctx context.Context, ref managed.Session
 
 // paperResolver previews a reference for the New-project screen (006j): it
 // resolves the reference to its identity through the same HTTP fetcher the
-// worker uses. An unresolvable reference is mapped to httpapi.ErrUnresolvable (a
-// 400); any other failure is a source that could not be reached (a 502).
+// worker uses. An unresolvable reference is mapped to httpapi.ErrUnresolvable,
+// which is a 400; any other failure is a source that could not be reached,
+// which is a 502.
 type paperResolver struct{ fetch paper.Fetcher }
 
 // Resolve previews one reference's identity.
@@ -538,36 +551,38 @@ func (l liveTranscript) Events(ctx context.Context, status provider.RunStatus) (
 	return providerEvents(events), nil
 }
 
-// forgePublisher flips a repository's visibility with the server token — the
-// optional half of the project public flip (006f) and of withdrawing it (006o),
-// never inside the sandbox. The owner is fixed to the org the reproductions live
-// under.
+// forgePublisher changes a repository's visibility with the server token. It
+// is the optional forge half of making a project public (006f) and of
+// withdrawing it (006o), and never runs inside the sandbox. The owner is fixed
+// to the organisation the reproductions live under.
 type forgePublisher struct {
 	client *github.Client
 	owner  string
 }
 
-// SetPublic flips one repository public.
+// SetPublic makes one repository public.
 func (p *forgePublisher) SetPublic(ctx context.Context, repo string) error {
 	return p.client.SetPublic(ctx, p.owner, repo)
 }
 
-// SetPrivate closes one repository again.
+// SetPrivate makes one repository private again.
 func (p *forgePublisher) SetPrivate(ctx context.Context, repo string) error {
 	return p.client.SetPrivate(ctx, p.owner, repo)
 }
 
 // registryReader adapts the derived registry (003) to the read surface's
-// internal checks — the publish gate's manifest-clear read and the session
-// transcript reader. It is no longer a user-facing list: the project is the unit
-// of visibility (006f), so there is no unscoped org-wide reproductions listing.
+// internal checks: the publish gate's manifest-clear read and the session
+// transcript reader. It is not a user-facing list: the project is the unit of
+// visibility (006f), so there is no unscoped organisation-wide listing of
+// reproductions.
 type registryReader struct{ source registry.Source }
 
 // Get reads one reproduction by its repository id. A repository with no
-// manifest is a miss (the run has not finalized); anything else — the forge
-// down, a malformed file — is returned as itself and becomes a 500. Collapsing
-// the two, as this used to, told an owner their reproduction did not exist
-// whenever GitHub hiccuped, and told the publish gate the same thing.
+// manifest is a miss, because the run has not finalized; any other failure,
+// such as the forge being down or a malformed file, is returned as is and
+// becomes a 500. Collapsing the two, as this once did, told an owner their
+// reproduction did not exist whenever GitHub failed briefly, and told the
+// publish gate the same thing.
 func (r *registryReader) Get(ctx context.Context, id string) (httpapi.Reproduction, error) {
 	m, err := r.source.Manifest(ctx, id)
 	if errors.Is(err, registry.ErrNoManifest) {
@@ -580,9 +595,9 @@ func (r *registryReader) Get(ctx context.Context, id string) (httpapi.Reproducti
 }
 
 // Transcript reads a repository's committed transcript.jsonl (005) through the
-// forge pass-through — the same read-only path the reproduction list uses. A
-// genuinely absent file is a miss (404); a transport failure is returned as-is
-// and becomes a 500, never disguised as not-found.
+// forge, which is the same read-only path the reproduction list uses. An
+// absent file is a miss and a 404; a transport failure is returned as is and
+// becomes a 500, and is never reported as not found.
 func (r *registryReader) Transcript(ctx context.Context, repo string) ([]byte, error) {
 	raw, ok, err := r.source.File(ctx, repo, publish.TranscriptJSONL)
 	if err != nil {
@@ -599,8 +614,8 @@ func (r *registryReader) Files(ctx context.Context, repo string) ([]string, erro
 	return r.source.Tree(ctx, repo)
 }
 
-// Artifact reads one committed file's bytes through the forge. A genuinely
-// absent file is a miss (404); a transport failure becomes a 500.
+// Artifact reads one committed file's bytes through the forge. An absent file
+// is a miss and a 404; a transport failure becomes a 500.
 func (r *registryReader) Artifact(ctx context.Context, repo, path string) ([]byte, error) {
 	raw, ok, err := r.source.File(ctx, repo, path)
 	if err != nil {
@@ -624,13 +639,13 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 		created = m.Reproduction.Created.Format(time.RFC3339)
 	}
 	// One rule decides the public flip, the same one the CLI and the manifest
-	// verifier apply; the reason is the caller's to show, not to re-derive.
+	// verifier apply; the caller shows the reason rather than re-deriving it.
 	eligible, _ := publish.EligibleForPublic(m)
 	return httpapi.Reproduction{
 		ID:           repo,
 		Repo:         full,
 		Title:        m.Paper.Title,
-		Verdict:      m.Reproduction.Verdict.String(), // the name ("passed"), not the uint8 code point
+		Verdict:      m.Reproduction.Verdict.String(), // the name, such as "passed", rather than the uint8 code point
 		Created:      created,
 		MethodDigest: m.Reproduction.MethodDigest,
 		Review:       string(m.Redistribution.Review),
@@ -638,10 +653,10 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 	}
 }
 
-// newHTTPFetcher is the network seam paper resolution uses. It is the shared
-// fetcher, so a reference typed into the app can only ever reach a public
-// address, follow a bounded chain, and fill a bounded buffer; the timeout is
-// per fetch.
+// newHTTPFetcher returns the fetcher paper resolution uses. It is the shared
+// fetcher, so a reference typed into the app can only reach a public address,
+// follow a bounded chain of redirects, and fill a bounded buffer; the timeout
+// is per fetch.
 func newHTTPFetcher(timeout time.Duration, opts ...fetch.Option) paper.Fetcher {
 	return fetch.New(append([]fetch.Option{fetch.WithTimeout(timeout)}, opts...)...)
 }
@@ -650,12 +665,12 @@ func newHTTPFetcher(timeout time.Duration, opts ...fetch.Option) paper.Fetcher {
 // stand-in it was created with, rather than a name somebody chose or a resolved
 // paper title.
 //
-// The placeholder is a paper *reference*, and since 012 a project holds several.
-// Comparing against the running job's ref alone was right while every paper
-// started at create — the first paper's session always ran, so it always did the
-// naming. Now that starting is its own act, a project created around papers A
-// and B and started at B compares B's ref to A's, declines, and keeps a URL
-// nobody chose as the project name forever.
+// The placeholder is a paper reference, and since 012 a project holds several.
+// Comparing against the running job's ref alone was correct while every paper
+// started at create, because the first paper's session always ran and so
+// always did the naming. Now that starting is a separate step, a project
+// created around papers A and B and started at B would compare B's ref to A's,
+// decline, and keep a URL nobody chose as the project name.
 func (e *engineRunner) isPlaceholderTitle(ctx context.Context, p project.Project, ref string) bool {
 	if p.Title == "" || p.Title == ref {
 		return true
@@ -678,8 +693,8 @@ func (e *engineRunner) isPlaceholderTitle(ctx context.Context, p project.Project
 // It is best-effort and never fails the retention. The transcript and the
 // manifest are the durable evidence a run always owes; a harvest is a recovery
 // on top of them, and refusing to write the evidence because the recovery could
-// not be fetched would lose more than it saves. What it does instead is say so
-// in the log, which is the only place a failed recovery can be noticed.
+// not be fetched would lose more than it saves. Instead it logs the failure,
+// which is the only place a failed recovery can be noticed.
 func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, evidence managed.EvidenceReader) {
 	files := map[string][]byte{}
 	for _, artifact := range evidence.Artifacts {
@@ -688,7 +703,8 @@ func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, ev
 		}
 		body, err := evidence.Fetch(ctx, artifact)
 		if err != nil {
-			// One unreadable artifact must not cost the rest of them.
+			// One unreadable artifact must not prevent the rest from being
+			// harvested.
 			slog.ErrorContext(ctx, "harvest: fetching an artifact", "session", jobID, "path", artifact.Path, "error", err)
 			continue
 		}
@@ -714,8 +730,8 @@ func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, ev
 //
 // It calls githubForge.Prepare rather than allocating a name of its own: a
 // second implementation would let a local session and a hosted session decide
-// the same name for the same paper, and the collision would be silent until one
-// of them pushed.
+// the same name for the same paper, and the collision would go unnoticed until
+// one of them pushed.
 type forgeProvisioner struct {
 	forge githubForge
 	owner string

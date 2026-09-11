@@ -4,8 +4,9 @@
 // Command server is the replichai web application: it wraps the audit engine in
 // an HTTP API, runs submissions asynchronously through a Postgres-backed job
 // queue, streams their progress, and gates every operator route behind the
-// fail-closed access model with an OIDC login. It is the composition root — the
-// one place the engine, the stores, the gate, and the HTTP layer are wired.
+// fail-closed access model with an OIDC login. It is the composition root, the
+// one place where the engine, the stores, the gate, and the HTTP layer are
+// wired together.
 //
 // Local runs use the in-process "memory" provider and the loopback-only dev
 // bypass (`DEV=true`), so `docker compose up` brings the whole system up with no
@@ -56,7 +57,7 @@ import (
 )
 
 // The dev bypass authenticates as this synthetic principal. It confers nothing
-// on its own — ADMIN_EMAILS must include devEmail for it to operate locally.
+// on its own; ADMIN_EMAILS must include devEmail for it to operate locally.
 const (
 	devSub   = "dev-user"
 	devEmail = "dev@local"
@@ -66,8 +67,8 @@ const (
 	serviceName = "replichai"
 )
 
-// version is the build's version string, stamped by the linker
-// (-X main.version=...) and attached to every span, metric, and log record. It
+// version is the build's version string, set by the linker with
+// -X main.version=... and attached to every span, metric, and log record. It
 // is empty under `go run` and under `go test`, where xotel.Version falls back to
 // the module's build info.
 var version string
@@ -188,15 +189,15 @@ func run() error {
 
 	// The forge (006i): with a token, reproductions are created under the org and
 	// mounted into runs so the agent commits live; the same client reads them back
-	// (003) and flips them public (006f). Without a token this stays nil and the
-	// server runs audits without a repository — transcript-only.
+	// (003) and makes them public (006f). Without a token this stays nil and the
+	// server runs audits without a repository, in transcript-only mode.
 	forgeOwner := envOr("REPLICHAI_GITHUB_OWNER", "open-hai")
 	forgeToken := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	forgeClient, err := newForgeClient(forgeOwner, forgeToken)
 	if err != nil {
 		return err
 	}
-	var runnerForge forge // nil interface when no forge — runner runs transcript-only
+	var runnerForge forge // a nil interface when there is no forge, so the runner runs transcript-only
 	var repoProvisioner httpapi.RepoProvisioner
 	if forgeClient != nil {
 		runnerForge = githubForge{forgeClient}
@@ -237,9 +238,10 @@ func run() error {
 		return err
 	}
 
-	// Reproductions are read from the forge (the derived registry, 003): the
-	// published repositories under the org are the source of truth. Falls back to
-	// a filesystem dir for a local run with no forge token.
+	// Reproductions are read from the forge, which is the derived registry
+	// (003): the published repositories under the organisation are the source
+	// of truth. A local run with no forge token falls back to a filesystem
+	// directory.
 	var reproSource registry.Source
 	var repoPublisher httpapi.RepoPublisher
 	if forgeClient != nil {
@@ -267,7 +269,7 @@ func run() error {
 	// The drafting model an admin configured, with the deployment's own key
 	// (039). It is resolved per request rather than at boot: an admin who
 	// changes the model must not have to wait for a deploy, and a deployment
-	// with no key configured simply never offers a draft.
+	// with no key configured never offers a draft.
 	draftRuntimeKey := ""
 	if selected == builtin.AnthropicManaged {
 		draftRuntimeKey = credentials.AnthropicKey
@@ -318,19 +320,20 @@ func newServer(addr string, handler http.Handler) *http.Server {
 		Addr:              addr,
 		Handler:           xotel.Handler(handler, serviceName),
 		ReadHeaderTimeout: 10 * time.Second,
-		// A kept-alive connection nobody is speaking on is closed. There is
-		// deliberately no ReadTimeout and no WriteTimeout: the event stream is
-		// a response that stays open for as long as a session runs, and either
-		// deadline would cancel it mid-run. Request bodies are bounded by the
-		// router instead, per route, which is where the size belongs.
+		// An idle kept-alive connection is closed. There is no ReadTimeout and
+		// no WriteTimeout by design: the event stream is a response that stays
+		// open for as long as a session runs, and either deadline would cancel
+		// it mid-run. Request bodies are bounded by the router instead, per
+		// route, which is where the size limit belongs.
 		IdleTimeout: 2 * time.Minute,
 	}
 }
 
 // buildHandler assembles the full HTTP surface: the gated operator router at /,
 // the open /me, the admin access endpoints behind the tier guard, and either the
-// OIDC login routes (prod) or the dev bypass (local). The auth middleware wraps
-// everything, resolving a session (or the dev principal) onto each request.
+// OIDC login routes in production or the dev bypass locally. The auth
+// middleware wraps everything and resolves a session, or the dev principal,
+// onto each request.
 func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, sweep webauth.PaperSweep, dev bool, baseURL string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
@@ -349,22 +352,24 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	// added without the tier guard fails 006k AC1 rather than shipping open.
 	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep)))
 
-	// The freeze gate sits inside the auth middleware (identity is already on the
-	// request) and outside the mux, so every mutating request from a
+	// The freeze gate sits inside the auth middleware, where identity is already
+	// on the request, and outside the mux, so every mutating request from a
 	// negative-wallet account is refused before any handler runs (022d). Adding
 	// /login and /logout to mux below still works: the gate holds the mux by
 	// reference and dispatches at request time.
 	guarded := webauth.FreezeGate(credits, acc)(mux)
 
 	if dev {
-		// The dev bypass has no login moment, so the bind sign-in performs runs
-		// once at startup for the synthetic principal instead.
+		// The dev bypass has no login step, so the membership binding that
+		// sign-in performs runs once at startup for the synthetic principal
+		// instead.
 		if members != nil {
 			if _, err := members.BindAll(ctx, access.Principal{Sub: devSub, Email: devEmail}); err != nil {
 				slog.ErrorContext(ctx, "dev: binding memberships", "error", err)
 			}
 		}
-		// No OIDC locally: /login just returns to the app, already authenticated.
+		// There is no OIDC locally: /login returns to the app, already
+		// authenticated.
 		mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, baseURL+"/", http.StatusFound)
 		})
@@ -390,10 +395,11 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	return bearer(login.Middleware(guarded)), nil
 }
 
-// serverLocalConfig is what the local runtime needs where an operator selects
-// it here. The catalogue registers the name whether or not it is configured, so
-// without this a REPLICHAI_RUNTIME=local server would refuse with a message
-// about composition roots rather than about the machine.
+// serverLocalConfig returns the configuration the local runtime needs when an
+// operator selects it for the server. The catalogue registers the name whether
+// or not it is configured, so without this a REPLICHAI_RUNTIME=local server
+// would refuse with a message about composition roots rather than about the
+// machine.
 func serverLocalConfig() builtin.LocalConfig {
 	home, _ := os.UserHomeDir()
 	root := os.Getenv("REPLICHAI_SESSION_ROOT")
@@ -412,9 +418,9 @@ func serverLocalConfig() builtin.LocalConfig {
 	}
 }
 
-// bearer is the terminal's credential path. A deployment that configures no
-// issuer refuses every bearer rather than accepting an unverified one, and
-// serves the cookie path unchanged.
+// bearer is the credential path for the terminal client. A deployment that
+// configures no issuer refuses every bearer rather than accepting an unverified
+// one, and serves the cookie path unchanged.
 func bearer(next http.Handler) http.Handler {
 	issuer := os.Getenv("AUTH_ISSUER")
 	jwks := os.Getenv("AUTH_JWKS_URL")
@@ -429,8 +435,8 @@ func bearer(next http.Handler) http.Handler {
 }
 
 // buildLogin constructs the OIDC login from the AUTH_* environment. A missing
-// cookie key or issuer is a startup error — production must not run the operator
-// surface with a broken sign-in.
+// cookie key or issuer is a startup error, because production must not run the
+// operator surface with a broken sign-in.
 func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webauth.Login, error) {
 	cookieKey := os.Getenv("AUTH_COOKIE_KEY")
 	codec, err := webauth.NewCodec(cookieKey)
@@ -448,9 +454,10 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 	if err != nil {
 		return nil, err
 	}
-	// The email may live only at /userinfo (latere auth's ID token carries the
-	// sub, not the email), and signing out has to reach the issuer's session as
-	// well as ours. Both come from one discovery document.
+	// The email may be available only at /userinfo, since latere auth's ID
+	// token carries the sub and not the email, and signing out has to end the
+	// issuer's session as well as this one. Both endpoints come from one
+	// discovery document.
 	var userInfo webauth.UserInfoFunc
 	var endSession string
 	if eps, err := webauth.Discover(ctx, issuer); err != nil {
@@ -491,27 +498,27 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 	}
 }
 
-// reportRateCoverage says, at every boot, whether the price list names the
-// models this backend will actually run.
+// reportRateCoverage logs, at every boot, whether the rate card names the
+// models this backend will run.
 //
-// It belongs here rather than in a command an operator remembers to run: the
+// It runs here rather than in a command an operator has to remember: the
 // server is the one process that holds both the deployment's rate card and the
 // provider credential, so it is the only place the question can be answered
-// without assembling those two by hand. A CLI check exists as well, for a
-// laptop; this is the one that happens whether anybody asks.
+// without assembling the two by hand. A CLI check exists as well, for a
+// laptop; this one runs whether or not anybody asks.
 //
-// It logs and never blocks. A preference resolving to a model the card does not
-// name is still priced — at the dearest rates the card holds, so a vendor's new
-// id is never free compute — just at another model's price. Refusing to boot
-// because a card is a release behind would turn a billing imprecision into an
-// outage.
+// It logs and never blocks. A preference resolving to a model the card does
+// not name is still priced, at the highest rates the card holds, so a vendor's
+// new id is never free compute; it is only priced at another model's rate.
+// Refusing to boot because a card is a release behind would turn a billing
+// imprecision into an outage.
 func reportRateCoverage(ctx context.Context, resolver credit.ModelResolver, plat platform.Store) {
 	set, err := plat.Settings(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "rates: reading the platform card", "error", err)
 		return
 	}
-	// A short deadline: this is a boot-time courtesy, and a backend that will
+	// A short deadline: this is a boot-time report, and a backend that does
 	// not answer must not hold up serving.
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -541,17 +548,18 @@ func firstLine(s string) string {
 	return s
 }
 
-// spendBackstop is the hidden floor under one project's spend (011).
+// spendBackstop returns the hidden floor under one project's spend (011).
 //
-// A session runs to completion once it has started — killing one mid-run turns
-// money into nothing — so this is not the meter. The meter is the start gate:
-// a project that has gone negative cannot begin anything until it is topped up.
-// This is the bound on how negative one runaway can take it.
+// A session runs to completion once it has started, because killing one
+// mid-run wastes what it has already spent, so this is not the meter. The
+// meter is the start gate: a project that has gone negative cannot begin
+// anything until it is topped up. This is the bound on how negative one
+// runaway session can take it.
 //
-// The projection is project-wide, and that is the part that matters. Accrued
+// The projection is project-wide, and that is the important part. Accrued
 // spend does not reach the ledger until a session settles, so a watchdog that
 // subtracted only the observing session's own cost would let N concurrent runs
-// each stay above the floor and jointly sail past it.
+// each stay above the floor and jointly exceed it.
 func spendBackstop(st stores) job.Budget {
 	platformFloor := platform.OverdraftCap(st.platform)
 	return func(ctx context.Context, j job.Job) (bool, string, error) {
@@ -566,14 +574,15 @@ func spendBackstop(st stores) job.Budget {
 		if p, err := st.projects.Get(ctx, j.ProjectID); err == nil && p.CreditCap > 0 {
 			floor = p.CreditCap
 		}
-		// Accrued is read *before* the balance, and the order matters.
-		// The two come from different tables on different connections, so a
-		// session settling between them lands on one side or the other: read
-		// this way round it is counted in the accrual and again in the balance,
+		// Accrued is read before the balance, and the order matters. The two
+		// come from different tables on different connections, so a session
+		// settling between the reads lands on one side or the other. Read in
+		// this order it is counted in the accrual and again in the balance,
 		// which makes the projection pessimistic and fires the floor early.
-		// Read the other way round it would fall out of both — the projection
-		// would look healthier than the project is, and the floor would fire
-		// late, which is the one failure this backstop exists to prevent.
+		// Read in the other order it would be missing from both, the
+		// projection would look healthier than the project is, and the floor
+		// would fire late, which is the one failure this backstop exists to
+		// prevent.
 		accrued, err := st.jobs.Accrued(ctx, j.ProjectID)
 		if err != nil {
 			return false, "", err
@@ -590,8 +599,8 @@ func spendBackstop(st stores) job.Budget {
 	}
 }
 
-// stores is every persistence seam the server composes, so adding one is a
-// field rather than another return value on a six-value signature.
+// stores holds every store the server composes, so adding one is a field
+// rather than another return value on a six-value signature.
 type stores struct {
 	jobs     job.Store
 	projects project.Store
@@ -603,10 +612,10 @@ type stores struct {
 	close    func()
 }
 
-// openStores opens every store over one Postgres pool (or their in-memory
-// equivalents), migrating each. The project migration runs after the job
-// migration: its backfill reads the jobs table. The platform store is built
-// last because it re-checks admin tier through the access store.
+// openStores opens every store over one Postgres pool, or their in-memory
+// equivalents, and migrates each. The project migration runs after the job
+// migration because its backfill reads the jobs table. The platform store is
+// built last because it re-checks admin tier through the access store.
 func openStores(ctx context.Context, dbURL string) (stores, error) {
 	if dbURL == "" {
 		slog.WarnContext(ctx, "no DATABASE_URL: using in-memory stores, so state is lost on restart")
@@ -670,9 +679,9 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	}, nil
 }
 
-// thawOnSolvent retires an account's freeze override the moment a top-up
-// leaves its wallet solvent (022d). The override is a waiver of a debt; paying
-// the debt ends it, and a fresh debt later is a fresh decision.
+// thawOnSolvent clears an account's freeze override as soon as a top-up leaves
+// its wallet solvent (022d). The override is a waiver of a debt; paying the
+// debt ends it, and a later debt is a separate decision.
 func thawOnSolvent(ov access.FreezeOverrides) func(context.Context, string) {
 	return func(ctx context.Context, email string) {
 		if err := ov.ClearOverride(ctx, email); err != nil {
@@ -696,14 +705,14 @@ func waitForDB(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 }
 
-// buildNotifier wires outbound mail (006p) from the environment: Mailgun when
-// MAILGUN_API_KEY is a real key, SMTP when SMTP_HOST is set, and a log-only
-// transport otherwise — so a local run and CI need no credentials and no
-// network, and an invitation is written to the log rather than lost silently.
+// buildNotifier configures outbound mail (006p) from the environment: Mailgun
+// when MAILGUN_API_KEY is a real key, SMTP when SMTP_HOST is set, and a
+// log-only transport otherwise, so a local run and CI need no credentials and
+// no network, and an invitation is written to the log rather than dropped.
 //
-// A misconfiguration (a key with no domain) is a startup error. Discovering it
-// at the first invitation instead would mean the one message the platform sends
-// to somebody who is not present is the one that fails.
+// A misconfiguration, such as a key with no domain, is a startup error.
+// Discovering it at the first invitation instead would mean the one message
+// the platform sends to somebody who is not present is the one that fails.
 func buildNotifier(baseURL string) (*notify.Notifier, error) {
 	tx, err := xemail.New(
 		os.Getenv("MAILGUN_API_KEY"),
@@ -734,12 +743,13 @@ func envOr(key, def string) string {
 }
 
 // newForgeClient builds the GitHub client the server publishes and reads with.
-// It prefers a GitHub App (REPLICHAI_GITHUB_APP_ID + REPLICHAI_GITHUB_APP_KEY),
-// which alone can mint the scoped, revocable mount token (009); the key value is
-// the PEM text itself or a path to a .pem file. It falls back to the personal
-// access token (REPLICHAI_GITHUB_TOKEN), and to nil when neither is set — the
-// transcript-only mode. A configured-but-invalid App is a fatal misconfiguration,
-// never a silent fallback to the PAT, so a broken App is noticed at boot.
+// It prefers a GitHub App, configured by REPLICHAI_GITHUB_APP_ID and
+// REPLICHAI_GITHUB_APP_KEY, because only an App can mint the scoped, revocable
+// mount token (009); the key value is the PEM text itself or a path to a .pem
+// file. It falls back to the personal access token in REPLICHAI_GITHUB_TOKEN,
+// and to nil when neither is set, which is transcript-only mode. An App that is
+// configured but invalid is a fatal misconfiguration rather than a fallback to
+// the PAT, so a broken App is noticed at boot.
 func newForgeClient(owner, pat string) (*github.Client, error) {
 	appID := strings.TrimSpace(os.Getenv("REPLICHAI_GITHUB_APP_ID"))
 	appKey := os.Getenv("REPLICHAI_GITHUB_APP_KEY")
@@ -773,8 +783,8 @@ func loadAppKey(v string) ([]byte, error) {
 		return []byte(v), nil
 	}
 	// G703: v is REPLICHAI_GITHUB_APP_KEY from the process environment, read at
-	// boot by the one caller (newForgeClient). It is deployment configuration,
-	// not request input, and naming a file is exactly what the variable is for.
+	// boot by its one caller, newForgeClient. It is deployment configuration
+	// rather than request input, and naming a file is what the variable is for.
 	b, err := os.ReadFile(strings.TrimSpace(v)) //nolint:gosec // G703: the only caller passes REPLICHAI_GITHUB_APP_KEY, boot-time deployment config that is meant to name a .pem path.
 	if err != nil {
 		return nil, fmt.Errorf("reading REPLICHAI_GITHUB_APP_KEY file %q: %w", v, err)
@@ -783,19 +793,19 @@ func loadAppKey(v string) ([]byte, error) {
 }
 
 // secureCookies reports whether the session cookie may carry Secure and the
-// __Host- prefix. The scheme of the base URL decides it and nothing else: a
-// plain-HTTP local run cannot use either (the browser rejects __Host- without
-// Secure, and a Secure cookie never comes back over http), and an https
+// __Host- prefix. Only the scheme of the base URL decides it. A plain-HTTP
+// local run cannot use either, because the browser rejects __Host- without
+// Secure and a Secure cookie is never sent back over http, and an https
 // deployment always can.
 //
-// There is deliberately no override. One used to exist, AUTH_INSECURE_COOKIES,
-// and it could only ever fire on an https deployment — on plain HTTP the scheme
-// has already answered false, so the variable changed nothing there. Its whole
+// There is no override by design. One existed, AUTH_INSECURE_COOKIES, and it
+// could only take effect on an https deployment: on plain HTTP the scheme has
+// already answered false, so the variable changed nothing there. Its only
 // reachable effect was to strip Secure and __Host- from a deployment serving
-// real traffic over TLS, which is not a thing a developer needs and is exactly
-// the thing an attacker does. Nothing set it: not compose, not an overlay, not
-// example.env. Unlike DEV_INSECURE, which buys a containerised local run
-// something real and is refused off loopback, this one had no case to make.
+// real traffic over TLS, which no developer needs and which an attacker
+// wants. Nothing set it: not compose, not an overlay, not example.env. Unlike
+// DEV_INSECURE, which gives a containerised local run something it needs and
+// is refused off loopback, this variable had no use.
 func secureCookies(baseURL string) bool { return strings.HasPrefix(baseURL, "https") }
 
 func envBool(key string) bool {
@@ -803,14 +813,16 @@ func envBool(key string) bool {
 	return v == "1" || v == "true" || v == "yes"
 }
 
-// draftingModel builds the drafting seam over whatever the admin configured
-// (039). Nil when nothing is configured or no credential is present, which is
-// exactly what the route reads as "this deployment does not draft".
+// draftingModel builds the Drafter over whatever the admin configured (039).
+// It returns nil when no credential is present. A deployment with no model
+// configured still gets a Drafter, whose Name is empty, which the route
+// refuses as this deployment not offering drafts.
 //
-// The settings are re-read per call rather than captured at boot: the model is
-// an admin's setting, and a setting that needed a deploy to take effect would be
-// a constant with extra steps. The credential is not: it is the deployment's,
-// read once from the environment, and it never reaches the settings row.
+// The settings are re-read per call rather than read at boot: the model is an
+// admin's setting, and a setting that needed a deploy to take effect would be
+// no better than a constant. The credential is not re-read: it is the
+// deployment's, read once from the environment, and it never reaches the
+// settings row.
 func draftingModel(ctx context.Context, plat platform.Store, draftKey, agentKey string) httpapi.Drafter {
 	if strings.TrimSpace(draftKey) == "" && strings.TrimSpace(agentKey) == "" {
 		slog.InfoContext(ctx, "drafting: no credential; project descriptions are typed")
@@ -844,7 +856,7 @@ func (d *configuredDrafter) keyFor(c draft.Config) string {
 }
 
 // Name is the model id the answer will be priced under. An unconfigured
-// deployment has none, and the empty string matches no rate-card entry — which
+// deployment has none, and the empty string matches no rate-card entry, which
 // is the refusal the drafting route already makes.
 func (d *configuredDrafter) Name() string {
 	set, err := d.plat.Settings(context.Background())

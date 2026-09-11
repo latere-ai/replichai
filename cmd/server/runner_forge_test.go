@@ -71,16 +71,16 @@ func (f *fakeForge) CommitFiles(_ context.Context, _, _, _ string, files map[str
 	return len(files) > 0, nil
 }
 
-// track puts a committed path into the tree, as a real forge does — so a
-// finalize running after a harvest reads the tree the harvest contributed to.
+// track adds a committed path to the tree, as a real forge does, so a finalize
+// running after a harvest reads the tree the harvest contributed to.
 func (f *fakeForge) track(path string) {
 	if !slices.Contains(f.tree, path) {
 		f.tree = append(f.tree, path)
 	}
 }
 
-// fakeJobs returns a canned job — the runner reloads the observed status
-// (verdict, run id) from the store at publish time.
+// fakeJobs returns a fixed job. The runner reloads the observed status, the
+// verdict and run id, from the store at publish time.
 type fakeJobs struct{ j job.Job }
 
 func (f fakeJobs) Get(context.Context, string) (job.Job, error) { return f.j, nil }
@@ -108,9 +108,10 @@ func (p *transcriptProvider) Transcript(context.Context, provider.RunHandle) ([]
 	return p.events, p.err
 }
 
-// AC7: Resolve creates and names the repository through the forge and sets
-// RepoName on the job (persisted at the transition into running), recording the
-// paper identity into the repo. A DOI resolves fully offline, so no fetcher.
+// TestResolveCreatesAndNamesRepo checks AC7: Resolve creates and names the
+// repository through the forge, sets RepoName on the job, which is persisted at
+// the transition into running, and records the paper identity into the
+// repository. A DOI resolves offline, so no fetcher is needed.
 func TestResolveCreatesAndNamesRepo(t *testing.T) {
 	f := newRunnerForge(nil)
 	e := &engineRunner{gh: f, owner: "open-hai"}
@@ -130,8 +131,8 @@ func TestResolveCreatesAndNamesRepo(t *testing.T) {
 	}
 }
 
-// With no forge, Resolve creates nothing and leaves RepoName empty (the
-// transcript-only path).
+// TestResolveNoForgeLeavesNoRepo checks that with no forge, Resolve creates
+// nothing and leaves RepoName empty, which is the transcript-only path.
 func TestResolveNoForgeLeavesNoRepo(t *testing.T) {
 	e := &engineRunner{owner: "open-hai"}
 	j := &job.Job{ID: "j1", Kind: job.KindAudit, Ref: "doi:10.1234/foo-bar"}
@@ -143,8 +144,9 @@ func TestResolveNoForgeLeavesNoRepo(t *testing.T) {
 	}
 }
 
-// AC7: Execute mounts the created repository, so the agent commits into it live.
-// The mount carries the created repo's URL and the server token.
+// TestExecuteMountsTheRepo checks AC7: Execute mounts the created repository,
+// so the agent commits into it live. The mount carries the created
+// repository's URL and the server token.
 func TestExecuteMountsTheRepo(t *testing.T) {
 	rec := &mountRecorder{Provider: memory.New()}
 	e, j := engineOver(t, rec, "open-hai/a-paper-xyz")
@@ -158,7 +160,8 @@ func TestExecuteMountsTheRepo(t *testing.T) {
 	}
 }
 
-// A run with no repository mounts nothing — the mount stays unset.
+// TestExecuteWithoutRepoDoesNotMount checks that a run with no repository
+// mounts nothing, so the mount stays unset.
 func TestExecuteWithoutRepoDoesNotMount(t *testing.T) {
 	rec := &mountRecorder{Provider: memory.New()}
 	e, j := engineOver(t, rec, "") // no RepoName
@@ -208,8 +211,9 @@ func legacySessions(t *testing.T, backend provider.Provider) managed.RuntimeRout
 	return router
 }
 
-// AC7: Publish finalizes through the shared publish.FinalizeLive — the manifest
-// (with the observed verdict) and the transcript are committed to the repo.
+// TestPublishFinalizesToTheRepo checks AC7: Publish finalizes through the
+// shared publish.FinalizeLive, so the manifest, carrying the observed verdict,
+// and the transcript are committed to the repository.
 func TestPublishFinalizesToTheRepo(t *testing.T) {
 	f := newRunnerForge([]string{"README.md", "src/run.py"}) // clean tree
 	prov := &transcriptProvider{Provider: memory.New(), events: []provider.Event{{Kind: "message", Content: "done"}}}
@@ -302,8 +306,9 @@ func TestPublishStopsWhenTranscriptCannotBeRead(t *testing.T) {
 	}
 }
 
-// With no forge (or no repository), Publish is a no-op and touches nothing —
-// the transcript-only path, and it must not dereference the job store.
+// TestPublishNoForgeIsNoOp checks that with no forge, or no repository,
+// Publish is a no-op and touches nothing. This is the transcript-only path, and
+// it must not dereference the job store.
 func TestPublishNoForgeIsNoOp(t *testing.T) {
 	e := &engineRunner{owner: "open-hai"} // gh nil, jobs nil
 	if err := e.Publish(context.Background(), &job.Job{ID: "j1", RepoName: "open-hai/x"}); err != nil {

@@ -16,8 +16,9 @@ import (
 	"github.com/latere-ai/replichai/internal/publish"
 )
 
-// A runner missing a dependency is refused at boot, where it is a startup
-// error, not at the first job whose row happens to take the path through it.
+// TestNewEngineRunnerRefusesAMissingDependency checks that a runner missing a
+// dependency is refused at boot, where it is a startup error, rather than at
+// the first job whose row takes the path through it.
 func TestNewEngineRunnerRefusesAMissingDependency(t *testing.T) {
 	controller, router := managedStack(t, job.LegacyRuntime, legacyRuntime(t, job.LegacyRuntime, memory.New()))
 	complete := engineDeps{
@@ -42,18 +43,19 @@ func TestNewEngineRunnerRefusesAMissingDependency(t *testing.T) {
 	}
 }
 
-// A row from before session references were persisted carries only a run id.
-// Cancelling it must address the run through the runtime that owns it — and
-// never reach for an engine that is not there. This is the shape that took
-// the server down on every restart with one such row in publishing.
+// TestCloseOfALegacyRowGoesThroughTheRuntime covers a row from before session
+// references were persisted, which carries only a run id. Cancelling it must
+// address the run through the runtime that owns it and never through an
+// engine that is not there. This case once took the server down on every
+// restart while one such row was in publishing.
 func TestCloseOfALegacyRowGoesThroughTheRuntime(t *testing.T) {
 	backend := memory.New()
 	e, _ := engineOver(t, backend, "")
 	legacy := managed.SessionRef{Runtime: job.LegacyRuntime, ID: "run-legacy", Revision: 1, LocatorVersion: 1}
 
 	if err := e.Close(context.Background(), legacy); err != nil {
-		// The memory backend may not know the run; what matters is that the
-		// call was routed and answered, not that it panicked.
+		// The memory backend may not know the run. What matters is that the
+		// call was routed and answered without panicking.
 		t.Logf("Close answered: %v", err)
 	}
 	if err := e.Close(context.Background(), managed.SessionRef{}); err != nil {
@@ -61,9 +63,10 @@ func TestCloseOfALegacyRowGoesThroughTheRuntime(t *testing.T) {
 	}
 }
 
-// The same legacy row at publish time reads its transcript through the
-// runtime the reference names, so the manifest lands with the events beside
-// it and no second engine is consulted.
+// TestPublishOfALegacyRowReadsItsTranscriptThroughTheRuntime checks that the
+// same legacy row at publish time reads its transcript through the runtime the
+// reference names, so the manifest is committed with the events beside it and
+// no second engine is consulted.
 func TestPublishOfALegacyRowReadsItsTranscriptThroughTheRuntime(t *testing.T) {
 	f := newRunnerForge([]string{"README.md"})
 	prov := &transcriptProvider{Provider: memory.New(), events: nil}

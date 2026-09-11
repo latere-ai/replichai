@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// An unconfigured deployment gets a Notifier that logs. It must not be nil and
-// it must not be an error: a server that refuses to start because nobody set a
-// mail credential would make outbound mail a deployment blocker, which it is
-// not (006p).
+// TestBuildNotifierWithoutMailConfigStillWorks checks that an unconfigured
+// deployment gets a Notifier that logs. It must not be nil and must not be an
+// error: a server that refused to start because no mail credential was set
+// would make outbound mail a deployment requirement, which it is not (006p).
 func TestBuildNotifierWithoutMailConfigStillWorks(t *testing.T) {
 	for _, key := range []string{"", "test"} {
 		t.Setenv("MAILGUN_API_KEY", key)
@@ -28,9 +28,10 @@ func TestBuildNotifierWithoutMailConfigStillWorks(t *testing.T) {
 	}
 }
 
-// A key with no domain is a misconfiguration, and it surfaces at startup rather
-// than at the first invitation — the one message that reaches somebody who is
-// not present is the worst one to discover a broken transport on.
+// TestBuildNotifierRefusesAKeyWithNoDomain checks that a key with no domain is
+// reported as a misconfiguration at startup rather than at the first
+// invitation. The one message that reaches somebody who is not present is the
+// worst one on which to discover a broken transport.
 func TestBuildNotifierRefusesAKeyWithNoDomain(t *testing.T) {
 	t.Setenv("MAILGUN_API_KEY", "a-real-looking-key")
 	t.Setenv("MAILGUN_DOMAIN", "")
@@ -45,7 +46,7 @@ func TestBuildNotifierRefusesAKeyWithNoDomain(t *testing.T) {
 	}
 }
 
-// A fully configured transport builds.
+// TestBuildNotifierWithMailgun checks that a fully configured transport builds.
 func TestBuildNotifierWithMailgun(t *testing.T) {
 	t.Setenv("MAILGUN_API_KEY", "a-real-looking-key")
 	t.Setenv("MAILGUN_DOMAIN", "mg.latere.ai")
@@ -58,7 +59,8 @@ func TestBuildNotifierWithMailgun(t *testing.T) {
 	}
 }
 
-// SMTP is the fallback when there is no Mailgun key.
+// TestBuildNotifierWithSMTP checks that SMTP is the fallback when there is no
+// Mailgun key.
 func TestBuildNotifierWithSMTP(t *testing.T) {
 	t.Setenv("MAILGUN_API_KEY", "")
 	t.Setenv("MAILGUN_DOMAIN", "")
