@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,6 +62,49 @@ func testProjectRunner(t *testing.T, repos repositorySource) *projectRunner {
 		owner: "open-hai", publish: true, timeout: time.Minute, maxRevisions: 1,
 		stdout: newTemp(t), stderr: newTemp(t),
 		publishers: make(map[string]*publisher), repositories: repos,
+	}
+}
+
+// `replichai run` end to end on the memory runtime: the project file is read,
+// every paper runs through the project runner, and the state and the report
+// are written beside the file. Until this test existed nothing drove runRun,
+// which is how a project file's publish block could be dead configuration
+// without anybody noticing.
+func TestRunDrivesAProjectAndWritesItsReport(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "papers.txt")
+	if err := os.WriteFile(project, []byte("# two papers\nhttps://arxiv.org/abs/2603.01795\n10.1145/3654777.3676417\n"), 0o600); err != nil {
+		t.Fatalf("write project: %v", err)
+	}
+	stdout, stderr, err := capture(t, "run", project,
+		"--runtime", "memory", "--method", writeMethod(t), "--out", filepath.Join(dir, "runs"),
+		"--interval", "0", "--parallel", "2")
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "2 papers: 2 done, 0 failed") {
+		t.Fatalf("the report does not account for both papers:\n%s", stdout)
+	}
+	// The state and the report are beside the project file, and the report
+	// is the same table the terminal printed.
+	state, err := batch.LoadState(filepath.Join(dir, "batch.json"))
+	if err != nil {
+		t.Fatalf("batch.json: %v", err)
+	}
+	if state.Summarise().Done != 2 {
+		t.Fatalf("state = %+v", state.Summarise())
+	}
+	report, err := os.ReadFile(filepath.Join(dir, "report.md"))
+	if err != nil {
+		t.Fatalf("report.md: %v", err)
+	}
+	if string(report) != state.Report() {
+		t.Fatalf("report.md is not the final report:\n%s", report)
+	}
+	for _, entry := range state.Entries {
+		if entry.Directory == "" || !strings.HasPrefix(entry.Directory, filepath.Join(dir, "runs")) {
+			t.Errorf("%s ran outside --out: %q", entry.Paper, entry.Directory)
+		}
 	}
 }
 
