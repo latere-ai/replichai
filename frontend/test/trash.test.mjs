@@ -14,28 +14,7 @@
 // The permanent delete is here too, for the one assertion a unit test cannot
 // make: its dialog spends its words on what does *not* go — the repositories
 // close rather than being destroyed.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5200
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
+import { fail, noContent, start } from './harness.mjs'
 
 const ME = 'me-sub'
 const ago = (ms) => new Date(Date.now() - ms).toISOString()
@@ -56,71 +35,47 @@ const project = {
 // A project somebody else owns: it must carry no trash button at all.
 const theirs = { ...project, id: 'shared-1', owner: 'ada-sub', owner_name: 'Ada Lovelace', title: 'The Placebo Effect', visibility: 'private' }
 let trashed = false
-const calls = []
+const removed = () => ({ ...project, deleted_at: ago(1000) })
 
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
-
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
-try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin !== BASE) return req.continue()
-    const json = (body, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(body) })
-    const path = u.pathname
-    calls.push(`${req.method()} ${path}${u.search}`)
-
-    if (path === '/me') return json({ authenticated: true, principal: ME, email: 'me@example.com', tier: 'user', credits: { wallet: 10_000_000, start_reserve: 5_000_000 } })
-    if (path === '/me/profile') return json({})
-    if (path === '/projects/trash') return json(trashed ? [{ ...project, deleted_at: ago(1000) }] : [])
-    if (path === '/projects') return json(trashed ? [theirs] : [project, theirs])
-    if (path === '/public') return json([])
-    if (path === `/projects/${project.id}` && req.method() === 'GET') {
-      // The project screen behind a trashed project's address: still its
-      // owner's to read, and read-only.
-      return json({
-        project: trashed ? { ...project, deleted_at: ago(1000) } : project,
-        sessions: [],
-        may_submit: !trashed,
-        credits: { balance: 0, available: 0, start_reserve: 5_000_000, may_reclaim: true },
-      })
-    }
-    if (path === `/projects/${project.id}/papers`) return json([])
-    if (path === `/projects/${project.id}/members`) return json([])
-    if (path === `/projects/${project.id}` && req.method() === 'DELETE') {
-      if (u.searchParams.get('purge') === '1') {
-        trashed = false
-        return req.respond({ status: 204, body: '' })
-      }
-      trashed = true
-      return req.respond({ status: 204, body: '' })
-    }
-    if (path === `/projects/${project.id}/restore`) {
+const routes = [
+  ['/me', { authenticated: true, principal: ME, email: 'me@example.com', tier: 'user', credits: { wallet: 10_000_000, start_reserve: 5_000_000 } }],
+  ['/me/profile', {}],
+  ['/projects/trash', () => (trashed ? [removed()] : [])],
+  ['/projects', () => (trashed ? [theirs] : [project, theirs])],
+  ['/public', []],
+  // The project screen behind a trashed project's address: still its owner's to
+  // read, and read-only.
+  [
+    `GET /projects/${project.id}`,
+    () => ({
+      project: trashed ? removed() : project,
+      sessions: [],
+      may_submit: !trashed,
+      credits: { balance: 0, available: 0, start_reserve: 5_000_000, may_reclaim: true },
+    }),
+  ],
+  [`/projects/${project.id}/papers`, []],
+  [`/projects/${project.id}/members`, []],
+  [
+    `DELETE /projects/${project.id}`,
+    ({ query }) => {
+      trashed = query.get('purge') !== '1'
+      return noContent()
+    },
+  ],
+  [
+    `/projects/${project.id}/restore`,
+    () => {
       trashed = false
-      return req.respond({ status: 204, body: '' })
-    }
-    if (path.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    req.continue()
-  })
+      return noContent()
+    },
+  ],
+]
 
-  await page.goto(BASE, { waitUntil: 'networkidle0' })
+const h = await start()
+try {
+  const page = await h.page({ routes })
+  await page.open('/')
   await page.waitForSelector('[data-test="project-rows"] .row')
 
   const rowCount = () => page.evaluate(() => document.querySelectorAll('[data-test="project-rows"] .row').length)
@@ -149,7 +104,7 @@ try {
 
   await page.click('[data-test="trash-confirm"]')
   await page.waitForFunction(() => document.querySelectorAll('[data-test="project-rows"] .row').length === 1)
-  if (!calls.includes(`DELETE /projects/${project.id}`)) fail(`the confirmation did not call DELETE; calls: ${calls.join(', ')}`)
+  if (!page.calls.includes(`DELETE /projects/${project.id}`)) fail(`the confirmation did not call DELETE; calls: ${page.calls.join(', ')}`)
 
   // Trash and Settings are the rail's foot group — where work goes and personal
   // chrome live, apart from the destinations where work is done (024a). The
@@ -200,7 +155,7 @@ try {
   // A trashed project keeps its address (013), and the screen behind it has to
   // explain itself and offer nothing that can only fail: every owner control is
   // gone, and the way back is on the banner.
-  await page.goto(`${BASE}/p/${project.id}`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${project.id}`)
   await page.waitForSelector('[data-test="trashed-banner"]')
   const detail = await page.evaluate(() => ({
     banner: document.querySelector('[data-test="trashed-banner"]').textContent,
@@ -218,10 +173,11 @@ try {
   // who followed a link is standing.
   await page.click('[data-test="trashed-banner"] [data-test="restore"]')
   await page.waitForFunction(() => !document.querySelector('[data-test="trashed-banner"]'))
-  if (!calls.includes(`POST /projects/${project.id}/restore`)) fail('Restore did not call the restore endpoint')
+  if (!page.calls.includes(`POST /projects/${project.id}/restore`)) fail('Restore did not call the restore endpoint')
 
-  if (!process.exitCode) console.log('ok: a project goes to the trash through the app’s own dialog, and comes back')
+  h.ok('a project goes to the trash through the app’s own dialog, and comes back')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
