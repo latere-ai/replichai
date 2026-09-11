@@ -4649,7 +4649,13 @@ function SessionRow({
           {phaseTxt}
         </Pill>
       </span>
-      <span className="row-mono row-title">{j.ref}</span>
+      {/* Under a paper, the paper's own reference is already on the card above
+          and repeating it on every row says nothing: five runs of one paper
+          render five copies of one string. What differs between them is what
+          they ran on, so that is what the row carries. A session listed on its
+          own — the dashboard — still needs the reference to say which paper it
+          is about. */}
+      <span className="row-mono row-title">{nested ? runLabel(j) : j.ref}</span>
       {/* How long it has been going, for a row that is still going (021d). A
           run costs money for as long as it runs, so the minutes are the thing
           the reader is actually watching — an age ("an hour ago") answers a
@@ -6169,6 +6175,15 @@ function tierLabel(t: I18n['t'], tier?: string) {
 const isPhase = (p: string): p is Phase => (PHASE_ORDER as readonly string[]).includes(p)
 function phaseLabel(t: I18n['t'], phase: string) {
   return isPhase(phase) ? t(`phase.${phase}`) : phase.replace(/_/g, ' ')
+}
+
+// runLabel says what one session ran on, for a row listed under the paper it
+// reproduced. The model id is the whole answer — `claude-opus-5` against
+// `gpt-6-astra` is the comparison a repeat study is for — and a session whose
+// worker reported no model yet falls back to the reference, which is what the
+// row said before anything was known about the run.
+export function runLabel(j: { ref: string; status?: { Model?: string } }): string {
+  return j.status?.Model?.trim() || j.ref
 }
 
 // repoSuffix is the part of a reproduction's repository name that identifies

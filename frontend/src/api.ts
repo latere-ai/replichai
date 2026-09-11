@@ -49,7 +49,11 @@ export type Job = {
   // What this session has cost so far, in micro-USD — the same number its
   // project is charged when it ends.
   cost?: number
-  status?: { State: string; Usage: Usage }
+  // What the run ran on, as the worker reported it. Model is the exact model
+  // id — `claude-opus-5`, `gpt-6-astra` — and it is the only thing that
+  // distinguishes one session from another under the same paper, which is the
+  // shape a repeat study produces.
+  status?: { State: string; Usage: Usage; Model?: string; ModelProvider?: string; Runtime?: string }
   // The paper this session targeted, as the offline key project_papers is keyed
   // on (012). It is what joins a run to the paper it is a run of.
   paper_key?: string
