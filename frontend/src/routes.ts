@@ -112,6 +112,18 @@ export function pathOf(view: View): string {
   }
 }
 
+// decodeHandle reads a handle out of its address segment, or nothing when the
+// encoding is malformed. decodeURIComponent throws on an escape cut short
+// ('%E0%A4%A'), and it used to throw inside the router's initial state — a
+// truncated link took the whole app down to a white screen.
+function decodeHandle(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw).toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 // viewOf is what an address means. Anything unrecognised is *not* the dashboard
 // (042c): a path that resolved to the app and then had its address corrected to
 // `/` was an unbounded set of URLs answering 200 with identical content — a soft
@@ -126,7 +138,10 @@ export function viewOf(pathname: string): View {
   // from a browser that encoded it. Both are the profile page's rules (006r),
   // kept here now that the address bar is read in one place.
   const profile = /^\/u\/([^/?#]+)$/.exec(path)
-  if (profile) return { name: 'profile', handle: decodeURIComponent(profile[1]).toLowerCase() }
+  if (profile) {
+    const handle = decodeHandle(profile[1])
+    return handle ? { name: 'profile', handle } : { name: 'notfound', path }
+  }
 
   // Settings, and a tab if the segment after it names one. A segment that names
   // no tab — 'account' (the bare path's own tab) or a typo — resolves to the
