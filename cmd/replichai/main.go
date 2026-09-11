@@ -301,9 +301,6 @@ func providerEventsFromManaged(events []managed.Event) []provider.Event {
 	return result
 }
 
-// newPublisher resolves the paper, warns about any prior reproduction, allocates
-// a collision-free name through the registry, and creates the private
-// repository. The GitHub token comes from REPLICHAI_GITHUB_TOKEN.
 // newPlatformPublisher asks the platform for the repository and the credential
 // to push it (045l). It is the path that leaves no organisation credential on
 // this machine: the token it returns can write to one repository, expires
@@ -349,6 +346,9 @@ func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeo
 	}, nil
 }
 
+// newPublisher resolves the paper, warns about any prior reproduction, allocates
+// a collision-free name through the registry, and creates the private
+// repository. The GitHub token comes from REPLICHAI_GITHUB_TOKEN.
 func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, timeout time.Duration, stderr *os.File) (*publisher, error) {
 	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	if token == "" {
@@ -453,11 +453,6 @@ func shortDigest(d string) string {
 	return d
 }
 
-// finalizePublication verifies the committed tree, writes replication.json,
-// commits the transcript, and invites the collaborator — the system-authored
-// attestation (verdict + evidence) beside the agent's work. It reads the
-// repository from GitHub, so it works whether the run finished in-process or is
-// picked up afterwards by finish.
 // workspaceReader is a runtime that can name the directory a referenced
 // session worked in. Only a local runtime can: a hosted one has no directory.
 type workspaceReader interface {
@@ -527,6 +522,11 @@ func finishLocalPush(ctx context.Context, runtime managed.Runtime, gh *github.Cl
 	return pushWorkspace(ctx, pub, workspace, "", ref, stdout, stderr)
 }
 
+// finalizePublication verifies the committed tree, writes replication.json,
+// commits the transcript, and invites the collaborator — the system-authored
+// attestation (verdict + evidence) beside the agent's work. It reads the
+// repository from GitHub, so it works whether the run finished in-process or is
+// picked up afterwards by finish.
 func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
 	repoFull := owner + "/" + name
 
