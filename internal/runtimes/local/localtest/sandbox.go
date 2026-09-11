@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package localtest is a scripted sandbox driver: it runs no process and
-// isolates nothing, and instead writes the stream a harness would have written
-// and the files a stage would have produced. It exists so the local runtime's
-// own lifecycle — the stage sequence, the pump, the grading loop, recovery by
-// reference — is testable without a machine that has srt or an engine on it.
+// Package localtest is a scripted sandbox driver. It runs no process and
+// isolates nothing. Instead it writes the stream a harness would have written
+// and the files a stage would have produced. It exists so that the local
+// runtime's lifecycle, which is the stage sequence, the pump, the grading loop
+// and recovery by reference, can be tested without a machine that has srt or a
+// container engine.
 package localtest
 
 import (
@@ -22,13 +23,13 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// Script is what the fake driver does with each stage.
+// Script describes what the fake driver does with each stage.
 type Script struct {
 	// WorkerExit is the exit code every worker and revision stage reports.
 	WorkerExit int
-	// BootstrapExit is the exit code the bootstrap stage reports, so a
-	// session whose dependencies will not install is testable apart from
-	// one whose agent failed.
+	// BootstrapExit is the exit code the bootstrap stage reports, so that a
+	// session whose dependencies fail to install can be tested separately
+	// from one whose agent failed.
 	BootstrapExit int
 	// Grades are the grades successive judge stages write, in order. A
 	// judge past the end of the slice repeats the last one.
@@ -38,21 +39,22 @@ type Script struct {
 	MalformedRounds map[int]bool
 	// SilentRounds are the judge rounds that write no verdict at all.
 	SilentRounds map[int]bool
-	// PollsBeforeExit is how many observations a stage stays running for.
+	// PollsBeforeExit is the number of observations a stage stays running
+	// for.
 	PollsBeforeExit int
-	// FinalLineOnExit holds a harness stage's last line back until the
-	// observation that finds it finished, so it is written and the stage
-	// exits between two polls. It reproduces the race a real stage runs: a
-	// runtime that drains before it observes loses that line, and the line a
-	// harness writes last is its result event, which carries the run's total
-	// cost.
+	// FinalLineOnExit holds back a harness stage's last line until the
+	// observation that finds the stage finished, so that the line is written
+	// and the stage exits between two polls. This reproduces the race a real
+	// stage has: a runtime that drains before it observes loses that line,
+	// and the line a harness writes last is its result event, which carries
+	// the run's total cost.
 	FinalLineOnExit bool
-	// WorkerCommits makes the worker commit what it wrote, as a real one
-	// does. The push path has nothing to send otherwise, so a test that
-	// reaches it needs a workspace with history in it.
+	// WorkerCommits makes the worker commit what it wrote, as a real worker
+	// does. Without a commit the push path has nothing to send, so a test
+	// that reaches the push needs a workspace with history in it.
 	WorkerCommits bool
 	// FailLaunch makes Launch fail, which is how a driver that cannot start
-	// anything is exercised.
+	// anything is tested.
 	FailLaunch error
 	// NotReady makes Preflight fail.
 	NotReady error
@@ -77,12 +79,13 @@ type stage struct {
 	round     int
 	// finalLine is a harness stage's last line, held back from the log until
 	// the observation that finds the stage finished. It is empty once
-	// written, and empty from the start where the script does not hold it.
+	// written, and empty from the start when the script does not hold it
+	// back.
 	finalLine string
 }
 
-// New returns a scripted driver. The zero Script is a usable happy path: every
-// worker exits zero and every judge passes.
+// New returns a scripted driver. The zero Script is a usable success path:
+// every worker exits zero and every judge passes.
 func New(script Script) *Sandbox {
 	if len(script.Grades) == 0 {
 		script.Grades = []string{"passed"}
@@ -90,16 +93,16 @@ func New(script Script) *Sandbox {
 	return &Sandbox{script: script, stages: make(map[string]*stage)}
 }
 
-// Name is the driver this fake stands in for. It answers to the host driver's
-// name so a session started under it routes the way a real one would.
+// Name returns the name of the driver this fake stands in for. It uses the
+// host driver's name so that a session started under it routes the way a real
+// one would.
 func (s *Sandbox) Name() sandbox.DriverName { return sandbox.Host }
 
-// Preflight reports whatever the script says.
+// Preflight returns the script's NotReady error.
 func (s *Sandbox) Preflight(context.Context) error { return s.script.NotReady }
 
-// Capabilities is a permissive declaration: this driver enforces nothing, and
-// it says so by declaring what the real host driver declares rather than
-// everything.
+// Capabilities returns a permissive declaration. This driver enforces nothing,
+// and it declares what the real host driver declares rather than every mode.
 func (s *Sandbox) Capabilities() sandbox.Capabilities {
 	return sandbox.Capabilities{
 		PackageManagers: map[string]bool{"pip": true, "npm": true},
@@ -158,8 +161,8 @@ func (s *Sandbox) judgeRoundLocked() int {
 	return round
 }
 
-// produce writes the stage's stream and its files. A worker leaves a
-// reproduction in the workspace; a judge leaves a verdict in the only
+// produce writes the stage's stream and its files. A worker writes a
+// reproduction in the workspace; a judge writes a verdict in the only
 // directory it may write.
 func (s *Sandbox) produce(entry *stage) error {
 	lines := []string{
@@ -172,9 +175,9 @@ func (s *Sandbox) produce(entry *stage) error {
 	if err := os.MkdirAll(filepath.Dir(entry.spec.LogPath), 0o700); err != nil {
 		return err
 	}
-	// A harness stage's last line is held back where the script asks, so it is
-	// written between two polls rather than up front: that is the race a
-	// runtime draining before it observes loses.
+	// When the script asks, a harness stage's last line is held back so that
+	// it is written between two polls rather than at launch. That is the race
+	// a runtime that drains before it observes loses.
 	if s.script.FinalLineOnExit && entry.role != "bootstrap" && len(lines) > 1 {
 		entry.finalLine = lines[len(lines)-1]
 		lines = lines[:len(lines)-1]
@@ -245,8 +248,9 @@ func (s *Sandbox) gradeFor(round int) string {
 	return s.script.Grades[round]
 }
 
-// Observe reports the stage running until the scripted number of polls has
-// passed, so a caller exercises the running path as well as the terminal one.
+// Observe reports the stage as running until the scripted number of polls has
+// passed, so that a caller exercises the running path as well as the finished
+// one.
 func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbox.StageStatus, error) {
 	if err := sandbox.MatchHandle(sandbox.Host, handle); err != nil {
 		return sandbox.StageStatus{}, err
@@ -265,8 +269,8 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 		if entry.polls > s.script.PollsBeforeExit {
 			entry.running = false
 			// The stage finishes on this observation, and its held-back last
-			// line is written now — after any drain that ran before this
-			// observation, so a runtime that does not drain again loses it.
+			// line is written now, after any drain that ran before this
+			// observation. A runtime that does not drain again loses it.
 			if err := entry.writeFinalLine(); err != nil {
 				return sandbox.StageStatus{}, err
 			}
@@ -327,8 +331,8 @@ func (s *Sandbox) Discard(_ context.Context, handle sandbox.StageHandle) error {
 	return nil
 }
 
-// Stages is every stage this driver was asked to launch, in order, so a test
-// can assert what the runtime built rather than only what came out.
+// Stages returns every stage this driver was asked to launch, in order, so
+// that a test can check what the runtime built and not only what it produced.
 func (s *Sandbox) Stages() []sandbox.StageSpec {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -341,8 +345,8 @@ func (s *Sandbox) Stages() []sandbox.StageSpec {
 	return specs
 }
 
-// writablePath is the host path behind one guest destination, or empty where
-// the stage was not given it writable.
+// writablePath returns the host path behind one guest destination, or the
+// empty string when the stage was not given that destination as writable.
 func writablePath(spec sandbox.StageSpec, guest string) string {
 	for _, path := range spec.Paths {
 		if path.Destination() == guest && path.Access == sandbox.ReadWrite {
@@ -352,11 +356,11 @@ func writablePath(spec sandbox.StageSpec, guest string) string {
 	return ""
 }
 
-// commit is the one thing this driver runs a process for. A worker that leaves
-// its work uncommitted is not a worker, and the host's push reads a committed
-// tree rather than a directory. It runs git in the stage's own environment,
-// because a driver that reads this process's is not standing in for one that
-// is handed everything it may see.
+// commit is the only operation for which this driver runs a process. A real
+// worker commits its work, and the host's push reads a committed tree rather
+// than a directory. It runs git in the stage's own environment, because a
+// driver that read this process's environment would not stand in for one that
+// is given everything it may see.
 func commit(workspace string, environ map[string]string, stage string) error {
 	for _, args := range [][]string{{"add", "-A"}, {"commit", "-m", "Reproduction written by " + stage}} {
 		command := exec.Command("git", append([]string{"-C", workspace}, args...)...) //nolint:gosec,noctx // a fixed git verb over this package's own arguments
