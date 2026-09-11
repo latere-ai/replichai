@@ -13,8 +13,8 @@
 
 export type Loop = 'inner' | 'outer'
 export type ClaimOutcome = 'verified' | 'partial' | 'blocked' | 'not_scored'
-export type MismatchKind = 'numeric' | 'ordering' | 'contradiction' | 'typo'
-export type FindingsVerdict = 'reproducible' | 'partial' | 'not_reproducible'
+type MismatchKind = 'numeric' | 'ordering' | 'contradiction' | 'typo'
+type FindingsVerdict = 'reproducible' | 'partial' | 'not_reproducible'
 export type Criterion = 'code' | 'data' | 'license' | 'preregistration' | 'supplement'
 export type ReleaseResult = 'found' | 'partial' | 'none' | 'dead'
 
@@ -29,8 +29,8 @@ export type Claim = {
   mismatch?: Mismatch
 }
 
-export type Decision = { question: string; where: string; assumed: string; sensitivity: string }
-export type Score = { criterion: Criterion; found: boolean; url?: string; searched?: string[] }
+type Decision = { question: string; where: string; assumed: string; sensitivity: string }
+type Score = { criterion: Criterion; found: boolean; url?: string; searched?: string[] }
 export type Release = { where: string; what: string; result: ReleaseResult; url?: string }
 export type Components = { verified: number; partial: number; blocked: number; total: number }
 

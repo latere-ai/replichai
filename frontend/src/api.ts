@@ -131,7 +131,7 @@ export type PublicProfile = {
   projects: PublicSigned[]
 }
 
-export type PublicSigned = { id: string; title: string; signed_off_at?: string }
+type PublicSigned = { id: string; title: string; signed_off_at?: string }
 
 // signer_handle is where the signer's name links (006r). It is resolved on
 // every read from the signer's current profile and never snapshotted — so a
@@ -170,7 +170,7 @@ export type ProjectView = Project & {
 // may_submit is the server's answer to "may this caller open a session here" —
 // owner or collaborator. A public project is readable by everyone, so the
 // client cannot infer it (006l).
-export type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean; signer_handle?: string; credits?: ProjectCredits }
+type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean; signer_handle?: string; credits?: ProjectCredits }
 
 // ProjectCredits is a project's money as a member reads it, in micro-USD.
 // balance is what the pot holds; available is what is still free to commit —
@@ -232,7 +232,7 @@ export const startCheckout = (amountMicro: number) =>
 // does not remember who filled it. Both answer with both balances, because both
 // moved and a client re-reading them separately could show a moment where the
 // money is in neither.
-export type CreditMove = { wallet: number; project: ProjectCredits | null }
+type CreditMove = { wallet: number; project: ProjectCredits | null }
 
 export const allocateCredits = (id: string, amount: number) =>
   fetch(`/projects/${id}/credits`, {
@@ -429,7 +429,7 @@ export type PaperCitation = {
 
 // A correction. Only the fields present are written, and each one written is
 // marked so no later lookup undoes it.
-export type PaperEdit = {
+type PaperEdit = {
   title?: string
   authors?: string[]
   venue?: string
@@ -731,11 +731,11 @@ export type PlatformSettings = {
 
 // The drafting model: which protocol to speak, where, and which model. An empty
 // provider is a deployment that does not draft.
-export type DraftConfig = { provider?: string; base_url?: string; model?: string }
+type DraftConfig = { provider?: string; base_url?: string; model?: string }
 
 // A model's price, in micro-USD per million tokens — the unit vendors quote, so
 // an admin copying a price list types the number they read.
-export type ModelRates = { model: string; input: number; output: number; cache_read: number; cache_write_5m: number; cache_write_1h: number }
+type ModelRates = { model: string; input: number; output: number; cache_read: number; cache_write_5m: number; cache_write_1h: number }
 
 export type RateCard = { models: ModelRates[] }
 

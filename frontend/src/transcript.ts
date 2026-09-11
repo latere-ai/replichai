@@ -102,7 +102,7 @@ export function phaseBands(phaseAt: Record<string, string> | undefined, span: Sp
 // are token-weighted, false when they count events instead. The distinction is
 // surfaced to the reader — "how much did this cost" and "how busy was it" are
 // different questions and the bars must not silently switch between them.
-export type Histogram = { bars: number[]; weighted: boolean }
+type Histogram = { bars: number[]; weighted: boolean }
 
 // histogram buckets events across the span. Heights are normalised to the
 // tallest bucket, so a bar is a fraction of the peak in [0, 1].

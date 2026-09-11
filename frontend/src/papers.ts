@@ -88,7 +88,7 @@ export function citationBits(r: CitationSource | undefined, etAl: string): strin
 // CitationSource is the little of a paper a citation line reads. Both shapes
 // that carry it satisfy this: the full PaperRecord a project screen holds, and
 // the trimmed PaperCitation a list is sent.
-export type CitationSource = { authors?: string[]; venue?: string; year?: number }
+type CitationSource = { authors?: string[]; venue?: string; year?: number }
 
 // listCitation is what one row of a list says about the papers behind it: the
 // first paper's citation, and how many others are filed under the same project.
