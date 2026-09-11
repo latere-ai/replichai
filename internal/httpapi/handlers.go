@@ -1766,12 +1766,24 @@ func (rt *Router) owner(ctx context.Context, principal string) (name, handle str
 // does — the zone lists other people's projects and had the identical problem of
 // naming an owner nobody could read.
 func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
-	projects, err := rt.projects.ListPublic(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_failed")
-		return
+	build := func(ctx context.Context) ([]ProjectView, error) {
+		projects, err := rt.projects.ListPublic(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return rt.projectViews(r, projects)
 	}
-	views, err := rt.projectViews(r, projects)
+	// An anonymous caller has no stake in any project, so every anonymous
+	// caller is shown the same list; it is built once per publicTTL rather
+	// than once per crawler hit. A signed-in caller's list carries their own
+	// stake in each row and is built for them.
+	var views []ProjectView
+	var err error
+	if _, signedIn := IdentityFrom(r); signedIn {
+		views, err = build(r.Context())
+	} else {
+		views, err = rt.anonRegistry.get(r.Context(), build)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
@@ -1965,6 +1977,7 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rt.closeRepos(r.Context(), sessions)
 	}
+	rt.publicChanged()
 	updated, err := rt.projects.Get(r.Context(), proj.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
@@ -2091,6 +2104,7 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	rt.publicChanged()
 	updated, err := rt.projects.Get(r.Context(), proj.ID)
 	if err != nil {
 		// The flip landed; what failed is reading it back. Say so rather than
@@ -2291,6 +2305,7 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "trash_failed")
 		return
 	}
+	rt.publicChanged()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2382,6 +2397,7 @@ func (rt *Router) restoreProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "restore_failed")
 		return
 	}
+	rt.publicChanged()
 	w.WriteHeader(http.StatusNoContent)
 }
 
