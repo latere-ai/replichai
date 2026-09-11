@@ -152,15 +152,19 @@ func (s *MemStore) OverrideActive(_ context.Context, email string) (bool, error)
 	return ok, nil
 }
 
-// GrantOverride records a freeze override for email, naming the admin.
-func (s *MemStore) GrantOverride(_ context.Context, byAdmin Principal, email string) error {
+// GrantOverride records a freeze override for email, naming the admin. Admin
+// only, like every other administrative write here.
+func (s *MemStore) GrantOverride(ctx context.Context, byAdmin Principal, email string) error {
+	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+		return err
+	}
 	e := normalizeEmail(email)
 	if e == "" {
 		return ErrNoEmail
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.overrides[e] = freezeGrant{grantedBy: byAdmin.Email, grantedAt: s.clock().UTC()}
+	s.overrides[e] = freezeGrant{grantedBy: byAdmin.Sub, grantedAt: s.clock().UTC()}
 	return nil
 }
 
@@ -297,12 +301,5 @@ func (s *MemStore) upsert(email string, tier Tier, by string) {
 
 // requireAdmin resolves the caller and refuses anyone below TierAdmin.
 func (s *MemStore) requireAdmin(ctx context.Context, p Principal) error {
-	t, ok, err := s.Resolve(ctx, p)
-	if err != nil {
-		return err
-	}
-	if !ok || t != TierAdmin {
-		return ErrNotAdmin
-	}
-	return nil
+	return RequireAdmin(ctx, s, p)
 }

@@ -10,9 +10,23 @@ import (
 
 // runFreezeContract asserts the FreezeOverrides invariants, run against both
 // stores so the in-memory and Postgres implementations cannot drift.
-func runFreezeContract(t *testing.T, ov FreezeOverrides) {
+func runFreezeContract(t *testing.T, ov interface {
+	FreezeOverrides
+	seedableAccess
+}) {
 	t.Helper()
+	// Granting an override is an administrative write and is checked like
+	// one, so the contract's admin is a real admin of the store under test.
+	if err := ov.SeedGrant(ctx, "admin@example.com", TierAdmin); err != nil {
+		t.Fatalf("SeedGrant: %v", err)
+	}
 	admin := Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if _, ok, err := ov.Resolve(ctx, admin); err != nil || !ok {
+		t.Fatalf("admin does not resolve: %v %v", ok, err)
+	}
+	if err := ov.GrantOverride(ctx, Principal{Sub: "nobody", Email: "nobody@example.com"}, "x@example.com"); !errors.Is(err, ErrNotAdmin) {
+		t.Fatalf("a non-admin granted an override: err=%v", err)
+	}
 	const who = "Debtor@Example.com"
 
 	if active, err := ov.OverrideActive(ctx, who); err != nil || active {

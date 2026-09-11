@@ -93,10 +93,7 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 		if err != nil {
 			return err
 		}
-		if principal != nil { // bound to someone else already
-			return nil
-		}
-		if revoked { // a ban is not an invitation to bind
+		if revoked { // a ban is not an invitation to bind, nor a grant to resolve
 			return nil
 		}
 		// Decoded before the UPDATE: binding is one-way, so a row carrying a tier
@@ -104,6 +101,14 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 		seeded, err := decodeTier(t)
 		if err != nil {
 			return err
+		}
+		switch outcomeOf(principal, p.Sub) {
+		case bindForeign: // bound to someone else already
+			return nil
+		case bindMine: // this principal bound it a moment ago, on a parallel request
+			tier, granted = seeded, true
+			return nil
+		case bindClaim:
 		}
 		if _, err := tx.Exec(ctx, `UPDATE access_grants SET principal=$1 WHERE email=$2`, p.Sub, email); err != nil {
 			return err
@@ -154,9 +159,15 @@ func (s *PGAccess) OverrideActive(ctx context.Context, email string) (bool, erro
 	return active, err
 }
 
-// GrantOverride records a freeze override, (re)activating it. The upsert clears
-// any prior cleared_at, so granting after a clear starts a fresh override.
+// GrantOverride records a freeze override, (re)activating it. Admin only, the
+// same belt-and-braces check every other administrative write here makes. The
+// upsert clears any prior cleared_at, so granting after a clear starts a fresh
+// override. The admin is recorded by principal, as Grant and Revoke record
+// them, so the audit trail names an admin one way.
 func (s *PGAccess) GrantOverride(ctx context.Context, byAdmin Principal, email string) error {
+	if err := s.requireAdmin(ctx, byAdmin); err != nil {
+		return err
+	}
 	e := normalizeEmail(email)
 	if e == "" {
 		return ErrNoEmail
@@ -165,7 +176,7 @@ func (s *PGAccess) GrantOverride(ctx context.Context, byAdmin Principal, email s
 		INSERT INTO freeze_overrides (email, granted_by, granted_at, cleared_at)
 		VALUES ($1,$2,$3,NULL)
 		ON CONFLICT (email) DO UPDATE SET granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at, cleared_at=NULL`,
-		e, byAdmin.Email, s.clock().UTC())
+		e, byAdmin.Sub, s.clock().UTC())
 	return err
 }
 
@@ -364,12 +375,5 @@ func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by strin
 
 // requireAdmin resolves the caller and refuses anyone below TierAdmin.
 func (s *PGAccess) requireAdmin(ctx context.Context, p Principal) error {
-	t, ok, err := s.Resolve(ctx, p)
-	if err != nil {
-		return err
-	}
-	if !ok || t != TierAdmin {
-		return ErrNotAdmin
-	}
-	return nil
+	return RequireAdmin(ctx, s, p)
 }

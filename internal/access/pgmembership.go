@@ -100,14 +100,19 @@ func (m *PGMembership) Role(ctx context.Context, p Principal, project string) (R
 		if err != nil {
 			return err
 		}
-		if principal != nil {
-			return nil
-		}
 		// Decoded before the UPDATE: binding is one-way, so a row carrying a role
 		// this package never wrote must not consume the principal on its way out.
 		seeded, err := decodeRole(r)
 		if err != nil {
 			return err
+		}
+		switch outcomeOf(principal, p.Sub) {
+		case bindForeign:
+			return nil
+		case bindMine: // bound by this principal's own parallel first request
+			role, found = seeded, true
+			return nil
+		case bindClaim:
 		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE project_members SET principal=$1 WHERE project=$2 AND email=$3`, p.Sub, project, email); err != nil {
