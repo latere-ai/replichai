@@ -10,15 +10,16 @@ import (
 	"testing"
 )
 
-// A repository name and an artifact path both arrive from the read surface: the
-// name from a session record, the path from a query string. Neither may be used
-// to read anything the caller was not authorised to see, so the source resolves
-// them inside nested roots and the operating system refuses the climb.
+// TestFSSourceConfinesRepoAndPath checks that neither a repository name nor an
+// artifact path can read anything the caller was not authorised to see. Both
+// arrive from the read surface: the name from a session record, the path from
+// a query string. The source resolves them inside nested roots, and the
+// operating system refuses a path that escapes.
 //
-// Joining and cleaning the two into one path is not enough, which is what these
-// cases pin down: "repo-a" + "../repo-b/secret.txt" collapses to a path that is
-// still inside the registry directory, so a check that only asked "does this
-// stay under the root?" would have served another session's repository.
+// Joining and cleaning the two into one path is not enough, which these cases
+// cover: "repo-a" + "../repo-b/secret.txt" collapses to a path that is still
+// inside the registry directory, so a check that only asked whether the path
+// stays under the root would have served another session's repository.
 func TestFSSourceConfinesRepoAndPath(t *testing.T) {
 	registryRoot := t.TempDir()
 	writeRepo(t, registryRoot, "repo-a", []byte("{}"))
@@ -26,7 +27,8 @@ func TestFSSourceConfinesRepoAndPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(registryRoot, "repo-b", "secret.txt"), []byte("other session"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// A file next to the registry, to prove the registry root itself holds.
+	// A file next to the registry, to check that the registry root itself
+	// holds.
 	outside := filepath.Join(filepath.Dir(registryRoot), "outside.txt")
 	if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
 		t.Fatal(err)
@@ -53,8 +55,8 @@ func TestFSSourceConfinesRepoAndPath(t *testing.T) {
 		t.Errorf("a repository name climbing out of the registry must be refused by Tree, got %v", paths)
 	}
 
-	// The ordinary read still works, so the confinement is not just refusing
-	// everything.
+	// The ordinary read still works, so the confinement does not refuse every
+	// read.
 	if raw, ok, err := src.File(ctx, "repo-b", "secret.txt"); err != nil || !ok || string(raw) != "other session" {
 		t.Errorf("the repository's own file = %q ok=%v err=%v", raw, ok, err)
 	}

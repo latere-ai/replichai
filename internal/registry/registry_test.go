@@ -69,8 +69,9 @@ var (
 	t2 = t1.Add(24 * time.Hour)
 )
 
-// The PleaSQLarify case: one paper, two reproductions under different slugs
-// (its two titles). Lookup must relate them by identity, never by slug.
+// pleasQLarifySource is the PleaSQLarify case: one paper with two
+// reproductions under different slugs, one per title. Lookup must relate them
+// by identity, never by slug.
 func pleasQLarifySource() *fakeSource {
 	return &fakeSource{
 		names: []string{"repo-b", "repo-a", "other"},

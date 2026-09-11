@@ -14,8 +14,8 @@ import (
 )
 
 // FSSource reads reproductions from a directory where each subdirectory is a
-// repository holding a replication.json — the layout FSForge writes, so the
-// whole audit→publish→registry loop runs offline against one directory.
+// repository holding a replication.json. This is the layout FSForge writes, so
+// audit, publish and registry all run offline against one directory.
 type FSSource struct{ Root string }
 
 // NewFSSource returns a source rooted at dir.
@@ -26,12 +26,12 @@ func NewFSSource(dir string) *FSSource { return &FSSource{Root: dir} }
 //
 // Both names that reach this source arrive from the read surface: the
 // repository comes from a session record and the file path from a query
-// string. Nesting one root inside the other is what makes those names safe —
-// the repository cannot climb out of the registry, and a file path cannot climb
-// out of its repository into a sibling one the caller was never authorised to
-// read. Confinement is enforced by the operating system against the open
-// directory, so it holds against a symlink swapped in mid-read, which a
-// string check cannot.
+// string. Nesting one root inside the other makes those names safe to use.
+// The repository name cannot escape the registry directory, and a file path
+// cannot escape its repository into a sibling one the caller was never
+// authorised to read. The operating system enforces the confinement against
+// the open directory, so it holds against a symlink swapped in during the
+// read, which a string check cannot.
 func (s *FSSource) openRepo(repo string) (*os.Root, bool, error) {
 	root, err := os.OpenRoot(s.Root)
 	if os.IsNotExist(err) {
@@ -40,7 +40,8 @@ func (s *FSSource) openRepo(repo string) (*os.Root, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	// The nested root holds its own descriptor, so the registry root is done.
+	// The nested root holds its own descriptor, so the registry root can be
+	// closed.
 	defer func() { _ = root.Close() }()
 	sub, err := root.OpenRoot(repo)
 	if os.IsNotExist(err) {
@@ -52,8 +53,8 @@ func (s *FSSource) openRepo(repo string) (*os.Root, bool, error) {
 	return sub, true, nil
 }
 
-// List returns the repository (subdirectory) names, or nothing when the root
-// does not yet exist.
+// List returns the subdirectory names, which are the repository names, or
+// nothing when the root does not yet exist.
 func (s *FSSource) List(_ context.Context) ([]string, error) {
 	entries, err := os.ReadDir(s.Root)
 	if os.IsNotExist(err) {
@@ -72,7 +73,8 @@ func (s *FSSource) List(_ context.Context) ([]string, error) {
 }
 
 // Manifest reads and parses one repository's replication.json. A repository
-// that has none is ErrNoManifest — an unfinalized run, not a read failure.
+// that has none yields ErrNoManifest, which marks an unfinalized run rather
+// than a read failure.
 func (s *FSSource) Manifest(_ context.Context, repo string) (publish.Manifest, error) {
 	root, ok, err := s.openRepo(repo)
 	if err != nil {
@@ -97,8 +99,8 @@ func (s *FSSource) Manifest(_ context.Context, repo string) (publish.Manifest, e
 }
 
 // File reads one file from a repository directory. A path that would leave the
-// repository is an error, not a miss: the caller asked for something it was
-// never authorised to see, and saying "not found" would hide that.
+// repository is an error, not a miss, because the caller asked for something
+// it was never authorised to see, and reporting not found would hide that.
 func (s *FSSource) File(_ context.Context, repo, path string) ([]byte, bool, error) {
 	root, ok, err := s.openRepo(repo)
 	if err != nil || !ok {

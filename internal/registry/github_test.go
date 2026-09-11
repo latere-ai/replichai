@@ -47,10 +47,10 @@ func TestGitHubSourceThroughRegistry(t *testing.T) {
 	}
 }
 
-// The forge answering "no such file" is a repository whose run has not
-// finalized. The forge answering nothing at all is a read failure. Only the
-// first is ErrNoManifest — the publish gate tells an owner two different things
-// depending on which it was.
+// TestGitHubSourceAbsentManifestIsNoManifest checks that a forge answering not
+// found yields ErrNoManifest, since the repository's run has not finalized,
+// and that a forge that fails to answer yields a read failure. The publish
+// gate tells an owner two different things depending on which it was.
 func TestGitHubSourceAbsentManifestIsNoManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/repos/open-hai/unreachable/") {

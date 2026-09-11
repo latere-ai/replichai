@@ -13,7 +13,7 @@ import (
 )
 
 // GitHubSource reads reproductions from a GitHub organisation through
-// internal/github — the production source behind the registry.
+// internal/github. It is the production source behind the registry.
 type GitHubSource struct {
 	client *github.Client
 	owner  string
@@ -38,9 +38,10 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 		return publish.Manifest{}, err
 	}
 	if !ok {
-		// Genuinely absent, which a repository the agent has not finalized into
-		// is. Distinguished from the error above — the forge failing to answer —
-		// because the publish gate reports the two differently.
+		// The file is absent, which is the state of a repository the agent has
+		// not finalized into. This is distinguished from the error above, where
+		// the forge failed to answer, because the publish gate reports the two
+		// differently.
 		return publish.Manifest{}, fmt.Errorf("%s has no %s: %w", repo, publish.ManifestFile, ErrNoManifest)
 	}
 	var m publish.Manifest
@@ -50,9 +51,9 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 	return m, nil
 }
 
-// File reads one file from a repository through the forge, via the raw media
-// type so a large artifact (a full transcript.jsonl, over the 1MB inline limit)
-// still comes back.
+// File reads one file from a repository through the forge. It uses the raw
+// media type so a large artifact, such as a full transcript.jsonl over the 1MB
+// inline limit, is still returned.
 func (s *GitHubSource) File(ctx context.Context, repo, path string) ([]byte, bool, error) {
 	return s.client.GetFileRaw(ctx, s.owner, repo, path)
 }

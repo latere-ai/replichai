@@ -10,48 +10,49 @@ import (
 	"strings"
 )
 
-// Record is what a citation is made of: who wrote the paper, where it appeared,
-// and when. It travels with the Identity, and a project stores it beside the
-// paper so a screen can render a reference without asking the network again
-// (037).
+// Record holds the citation data for a paper: its authors, venue, and date. It
+// is returned with the Identity, and a project stores it beside the paper so a
+// screen can render a reference without another network request (037).
 //
-// Every field comes from the identifier's own metadata service or from the
-// publisher's own declaration of it. Nothing here is inferred, and nothing here
-// is written by a model: a citation that is plausible rather than correct is
-// worse than one that is absent, because nothing about it looks wrong. A field
-// no source declared stays empty and is shown as missing.
+// Every field comes from the identifier's metadata service or from the
+// publisher's own declaration. Nothing is inferred, and nothing is written by
+// a model. A citation that is plausible but wrong is worse than one that is
+// absent, because a reader cannot tell it is wrong. A field no source declared
+// stays empty and is shown as missing.
 type Record struct {
 	// Authors in the order the source gave them. Order is part of a citation.
 	Authors []string `json:"authors,omitempty"`
-	// Venue is the journal or the proceedings — Crossref's container-title, an
-	// arXiv journal reference, a page's citation_journal_title.
+	// Venue is the journal or the proceedings: Crossref's container-title, an
+	// arXiv journal reference, or a page's citation_journal_title.
 	Venue string `json:"venue,omitempty"`
 	// Year the paper was published, or 0 when no source declares one.
 	Year int `json:"year,omitempty"`
-	// Volume, Issue and Pages as the source spells them, page range included
-	// ("1128-1145"), because a citation reproduces them rather than parsing them.
+	// Volume, Issue and Pages are kept as the source spells them, including a
+	// page range such as "1128-1145", because a citation reproduces them rather
+	// than parsing them.
 	Volume string `json:"volume,omitempty"`
 	Issue  string `json:"issue,omitempty"`
 	Pages  string `json:"pages,omitempty"`
 	// Publisher, where the source names one. Crossref does; arXiv does not.
 	Publisher string `json:"publisher,omitempty"`
-	// Abstract as the source publishes it, with its markup removed and nothing
-	// else changed. Plenty of records have none — Crossref carries one only when
-	// the publisher deposited it — and a paper without one shows none rather than
-	// a summary somebody wrote for it.
+	// Abstract is the source's abstract with its markup removed and nothing
+	// else changed. Many records have none, since Crossref carries one only
+	// when the publisher deposited it. A paper without one shows none rather
+	// than a summary written for it.
 	Abstract string `json:"abstract,omitempty"`
 }
 
-// Empty reports whether nothing at all is known about the paper beyond its
-// identifier — which is what a bare URL with no citation tags yields, and what
-// the project screen shows as a paper still needing its details.
+// Empty reports whether nothing is known about the paper beyond its
+// identifier. A bare URL with no citation tags yields an empty record, and the
+// project screen shows one as a paper still needing its details.
 func (r Record) Empty() bool {
 	return len(r.Authors) == 0 && r.Venue == "" && r.Year == 0 &&
 		r.Volume == "" && r.Issue == "" && r.Pages == "" && r.Publisher == "" && r.Abstract == ""
 }
 
-// crossrefRecord is the part of a Crossref record this reads. Crossref returns the
-// whole work either way — the cost of these fields is parsing, not a request.
+// crossrefRecord is the part of a Crossref work this package reads. Crossref
+// returns the whole work regardless, so reading these fields costs parsing
+// only, not an extra request.
 type crossrefRecord struct {
 	Message struct {
 		Title  []string `json:"title"`
@@ -76,9 +77,9 @@ type crossrefRecord struct {
 }
 
 // parseCrossref reads a Crossref work into a title and a record. A malformed or
-// empty response yields both zero, which every caller treats as "nothing to
-// add" rather than as a failure: enrichment is best-effort and must never fail a
-// resolution that already has its key.
+// empty response yields zero values, which every caller treats as nothing to
+// add rather than as a failure. Enrichment is best-effort and must never fail
+// a resolution that already has its key.
 func parseCrossref(body []byte) (string, Record) {
 	var w crossrefRecord
 	if json.Unmarshal(body, &w) != nil {
@@ -104,9 +105,9 @@ func parseCrossref(body []byte) (string, Record) {
 	if len(m.ContainerTitle) > 0 {
 		rec.Venue = collapseWS(m.ContainerTitle[0])
 	}
-	// `issued` is when the DOI's content was first made available; a work that
-	// was issued online in one year and printed in another keeps the earlier,
-	// which is what a citation to the DOI means.
+	// issued is the date the DOI's content was first made available. A work
+	// issued online in one year and printed in another keeps the earlier year,
+	// which is the year a citation to the DOI refers to.
 	rec.Year = firstYear(m.Issued.DateParts, m.PublishedPrint.DateParts)
 	title := ""
 	if len(m.Title) > 0 {
@@ -117,7 +118,7 @@ func parseCrossref(body []byte) (string, Record) {
 
 // firstYear returns the first year in the first of the date-part lists that has
 // one. Crossref's date-parts is [[year, month, day]], with month and day
-// optional — a work dated to a year alone is [[2024]].
+// optional; a work dated to a year alone is [[2024]].
 func firstYear(lists ...[][]int) int {
 	for _, parts := range lists {
 		if len(parts) > 0 && len(parts[0]) > 0 && parts[0][0] > 0 {
@@ -127,21 +128,21 @@ func firstYear(lists ...[][]int) int {
 	return 0
 }
 
-// metaRe builds the matcher for one Highwire / Google Scholar meta tag — the
+// metaRe builds the matcher for one Highwire / Google Scholar meta tag, the
 // per-page declaration academic publishers emit about their own paper.
 //
-// The content is matched by its own delimiter rather than by "not a quote of
-// either kind": a conference is called CHI '24 and a title contains a possessive
-// often enough that reading up to the first apostrophe inside a double-quoted
-// attribute silently truncated both. Group 1 is a double-quoted value, group 2 a
-// single-quoted one, and exactly one of them matches.
+// The content is matched up to its own closing delimiter rather than up to the
+// first quote of either kind. A conference is called CHI '24 and a title often
+// contains a possessive, and reading up to the first apostrophe inside a
+// double-quoted attribute truncated both. Group 1 is a double-quoted value,
+// group 2 a single-quoted one, and exactly one of them matches.
 func metaRe(name string) *regexp.Regexp {
 	return regexp.MustCompile(`(?i)<meta[^>]+name=["']` + name + `["'][^>]*content=(?:"([^"]*)"|'([^']*)')`)
 }
 
-// The tags this reads. A declaration, not a scrape: the page is stating its
-// paper's own bibliography in a convention every academic publisher and indexer
-// shares.
+// The meta tags this package reads. They are the page's own declaration of
+// its paper's bibliography, in a convention every academic publisher and
+// indexer shares, not a scrape of the body text.
 var (
 	citationAuthorRe    = metaRe(`citation_author`)
 	citationJournalRe   = metaRe(`citation_journal_title`)
@@ -155,19 +156,20 @@ var (
 	citationPublisherRe = metaRe(`citation_publisher`)
 	citationAbstractRe  = metaRe(`citation_abstract`)
 	// Crossref deposits an abstract as JATS XML, and a publisher page may emit
-	// one with inline markup. The tags go; the words are the source's.
+	// one with inline markup. The tags are removed and the words are left as
+	// the source wrote them.
 	tagRe  = regexp.MustCompile(`<[^>]*>`)
 	yearRe = regexp.MustCompile(`(\d{4})`)
 )
 
 // recordFromBody reads a page's own declaration of its paper's bibliography.
-// A page that declares none yields an empty record, which is exactly what a
-// bare link to a PDF does.
+// A page that declares none yields an empty record, as a bare link to a PDF
+// does.
 //
-// Author names are kept as the page spells them, "Family, Given" included. The
-// convention is not universal enough to invert safely, and a name is the field
-// where a clever transformation is most likely to be wrong about somebody's
-// actual name — the owner can correct it, and their correction is permanent.
+// Author names are kept as the page spells them, including the "Family, Given"
+// form. The convention is not universal enough to invert safely, and a name is
+// the field where a transformation is most likely to be wrong about a real
+// person's name. The owner can correct it, and the correction is permanent.
 func recordFromBody(body []byte) Record {
 	rec := Record{
 		Authors:   metaContents(body, citationAuthorRe),
@@ -183,8 +185,8 @@ func recordFromBody(body []byte) Record {
 }
 
 // metaContents returns the content of every meta tag matched by re, in document
-// order. Authors are the reason it exists: a page emits one citation_author per
-// author, and their order is the authorship.
+// order. It exists for authors: a page emits one citation_author per author,
+// and their order is the author order.
 func metaContents(body []byte, re *regexp.Regexp) []string {
 	var out []string
 	for _, m := range re.FindAllSubmatch(body, -1) {
@@ -233,13 +235,13 @@ func pageRange(first, last string) string {
 	}
 }
 
-// plainAbstract turns a source's abstract into the paragraph it is: markup
-// removed, whitespace collapsed, and the redundant "Abstract" heading many
-// publishers deposit as the first word dropped.
+// plainAbstract turns a source's abstract into plain text: markup removed,
+// whitespace collapsed, and the redundant "Abstract" heading many publishers
+// deposit as the first word dropped.
 //
-// It is the one transformation this package makes to a field's *content*, and it
-// is a rendering decision rather than an editorial one — `<jats:p>` is not part
-// of what the authors wrote.
+// It is the only transformation this package makes to a field's content. It
+// changes rendering rather than meaning, because a tag such as <jats:p> is not
+// part of what the authors wrote.
 func plainAbstract(s string) string {
 	s = collapseWS(tagRe.ReplaceAllString(s, " "))
 	for _, lead := range []string{"Abstract ", "ABSTRACT ", "Summary "} {
@@ -251,12 +253,12 @@ func plainAbstract(s string) string {
 	return s
 }
 
-// mergeRecord fills the gaps in a record from a second source, and never
-// overwrites what the first already declared. The order of the arguments is the
-// order of trust: Crossref before a publisher's page, a DOI's record before the
-// preprint's. It is the same rule a correction relies on — what is already
-// there wins — applied between two sources rather than between a person and a
-// source.
+// mergeRecord fills the empty fields of first from second, and never
+// overwrites a field first already declared. The argument order is the order
+// of trust: Crossref before a publisher's page, a DOI's record before the
+// preprint's. A correction by the owner relies on the same rule, that an
+// existing value wins; here it is applied between two sources rather than
+// between a person and a source.
 func mergeRecord(first, second Record) Record {
 	out := first
 	if len(out.Authors) == 0 {

@@ -11,9 +11,9 @@ import (
 // pleasQLarifyTitle is the arXiv/publisher title of the first paper audited.
 const pleasQLarifyTitle = "PleaSQLarify: Visual Pragmatic Repair for Natural Language Database Querying"
 
-// TestSlugGreedyFillTo48 pins the truncation rule and proves the Decisions
-// example: the title is longer than the 48-character budget, so the slug stops
-// on the last whole word that fits.
+// TestSlugGreedyFillTo48 checks the truncation rule with the example from the
+// spec's Decisions section: the title is longer than the 48-character limit,
+// so the slug stops at the last whole word that fits.
 func TestSlugGreedyFillTo48(t *testing.T) {
 	got := Slug(pleasQLarifyTitle)
 	const want = "pleasqlarify-visual-pragmatic-repair-for-natural"
