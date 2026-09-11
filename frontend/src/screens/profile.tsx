@@ -11,7 +11,7 @@ import { getPublicProfile, type PublicProfile } from '../api'
 import { type I18n } from '../i18n'
 import { Ico } from '../icons'
 import { Seams } from '../ui'
-import { Empty, Initials } from './shared'
+import { Empty, Initials, SignerRows } from './shared'
 
 // PublicProfileScreen is a researcher's page: who they say they are, and the
 // public work signed under that name. It renders for a signed-out reader, so it
@@ -59,39 +59,6 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
   }
   if (!p) return <div className="center-load">…</div>
 
-  const rows: { label: string; node: React.ReactNode }[] = []
-  if (p.contact_email)
-    rows.push({ label: t('signedOffContact'), node: (
-        <a className="link" href={`mailto:${p.contact_email}`}>
-          {p.contact_email}
-        </a>
-      ) })
-  if (p.orcid)
-    rows.push({
-      label: t('signedOffOrcid'),
-      node: (
-        <a className="link" href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer noopener">
-          {p.orcid}
-        </a>
-      ),
-    })
-  if (p.scholar_url) {
-    let host = p.scholar_url
-    try {
-      host = new URL(p.scholar_url).hostname
-    } catch {
-      /* keep the raw value if it will not parse */
-    }
-    rows.push({
-      label: t('signedOffScholar'),
-      node: (
-        <a className="link" href={p.scholar_url} target="_blank" rel="noreferrer noopener">
-          {host}
-        </a>
-      ),
-    })
-  }
-
   return (
     <div className="screen measured form">
       <div className="screen-head">
@@ -109,16 +76,7 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
               <div className="profile-email mono">@{p.handle}</div>
             </div>
           </div>
-          {rows.length > 0 && (
-            <div className="usage-rows">
-              {rows.map((r) => (
-                <div key={r.label} className="usage-line">
-                  {r.label}
-                  <span className="v">{r.node}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <SignerRows i18n={i18n} contact={p.contact_email} orcid={p.orcid} scholar={p.scholar_url} />
           <span className="muted small" style={{ lineHeight: 1.6 }}>
             {t('profileUnverified')}
           </span>

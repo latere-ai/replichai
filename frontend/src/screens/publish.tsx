@@ -22,7 +22,7 @@ import { type I18n } from '../i18n'
 import { deleteSessionErrLabel, publishBlockers, publishBlockerText, publishErrText } from '../errors'
 import { Ico, type IconName } from '../icons'
 import { Check, Modal } from '../ui'
-import { ProfileFields, type TextField } from './shared'
+import { ProfileFields, SignerRows, type TextField } from './shared'
 
 // PublishPanel is the entry to the public flip: a short summary and the button
 // that opens the wizard. The decision itself is never one click from a sidebar —
@@ -386,42 +386,6 @@ export function PublishedCard({
   const { t } = i18n
   const [withdrawing, setWithdrawing] = useState(false)
   const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
-  const rows: { label: string; node: React.ReactNode }[] = []
-  if (project.signed_off_email) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{project.signed_off_email}</span> })
-  if (project.signed_off_contact)
-    rows.push({ label: t('signedOffContact'), node: (
-        <a className="link" href={`mailto:${project.signed_off_contact}`}>
-          {project.signed_off_contact}
-        </a>
-      ) })
-  if (project.signed_off_orcid)
-    rows.push({
-      label: t('signedOffOrcid'),
-      node: (
-        <a className="link" href={`https://orcid.org/${project.signed_off_orcid}`} target="_blank" rel="noreferrer noopener">
-          {project.signed_off_orcid}
-        </a>
-      ),
-    })
-  if (project.signed_off_scholar) {
-    // The link text is the host, not the label again — a row reading
-    // "Scholar · Scholar" tells a reader nothing.
-    let host = project.signed_off_scholar
-    try {
-      host = new URL(project.signed_off_scholar).hostname
-    } catch {
-      /* keep the raw value if it will not parse */
-    }
-    rows.push({
-      label: t('signedOffScholar'),
-      node: (
-        <a className="link" href={project.signed_off_scholar} target="_blank" rel="noreferrer noopener">
-          {host}
-        </a>
-      ),
-    })
-  }
-
   return (
     <div className="card publish-panel">
       <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
@@ -450,16 +414,13 @@ export function PublishedCard({
           {project.signed_off_institution && <div className="signer-affil">{project.signed_off_institution}</div>}
         </div>
       )}
-      {rows.length > 0 && (
-        <div className="usage-rows">
-          {rows.map((r) => (
-            <div key={r.label} className="usage-line">
-              {r.label}
-              <span className="v">{r.node}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <SignerRows
+        i18n={i18n}
+        signer={project.signed_off_email}
+        contact={project.signed_off_contact}
+        orcid={project.signed_off_orcid}
+        scholar={project.signed_off_scholar}
+      />
       <button className="btn ghost" onClick={() => setWithdrawing(true)}>
         <Ico name="lock" size={13} /> {t('withdrawStart')}
       </button>
