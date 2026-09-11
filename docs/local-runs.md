@@ -1,13 +1,13 @@
 # Running audits on your own machine
 
 `replichai audit` normally sends the work to a hosted agent backend. With
-`--runtime local` it runs here instead: the coding agent you already have
-installed, confined to one folder, on whatever model you point it at.
+`--runtime local` it runs on your machine instead: the coding agent you already
+have installed, confined to one folder, on the model you choose.
 
-Everything else is the same. Same method, same rubric, same seven output files,
-same verdict. What changes is who owns the machine, whose model credential is
-used, and who gets billed — which is nobody, because you bought the compute
-from the vendor yourself.
+Everything else is the same: the same method, the same rubric, the same seven
+output files, the same verdict. What changes is who owns the machine and whose
+model credential is used. Nobody is billed by the platform, because you bought
+the compute from the vendor yourself.
 
 ```bash
 replichai audit https://arxiv.org/abs/2603.01795 --runtime local
@@ -16,7 +16,7 @@ replichai audit https://arxiv.org/abs/2603.01795 --runtime local
 ## What you need
 
 One coding agent and one sandbox. On a machine where `claude login` has already
-happened you need no API key and no configuration file.
+been run you need no API key and no configuration file.
 
 **macOS**
 
@@ -36,9 +36,9 @@ npm install -g @anthropic-ai/sandbox-runtime
 sudo apt-get install -y bubblewrap socat ripgrep    # or dnf, on Fedora and RHEL
 ```
 
-**Windows** is not supported. Run replichai inside WSL2, where both work.
+**Windows** is not supported. Run replichai inside WSL2, where both tools work.
 
-If any of it is missing the run refuses before it fetches the paper, and prints
+If anything is missing, the run refuses before it fetches the paper and prints
 the commands that would fix it on your platform. Check what it found with:
 
 ```bash
@@ -49,7 +49,7 @@ claude --version
 ## What a run does
 
 Four steps, in order. Each is a separate process the runtime starts, watches
-and can stop, so a failure says which one failed.
+and can stop, so a failure says which step failed.
 
 ```
 bootstrap   installs what the method declared into the session's own
@@ -62,9 +62,9 @@ push        your machine, after the sandbox is gone: verify what was
             committed, create the repository, push it
 ```
 
-The judge cannot edit what it grades — the workspace is mounted read-only, and
+The judge cannot edit what it grades: the workspace is mounted read-only, and
 the only place it may write is a directory the worker never sees. That is a
-filesystem permission, not an instruction the model is asked to respect.
+filesystem permission, not an instruction the model is asked to follow.
 
 ## Where everything lands
 
@@ -73,22 +73,23 @@ Each session gets a directory under `~/.replichai/sessions/<id>/`:
 | | |
 |---|---|
 | `workspace/` | your reproduction, and a git repository. This is what gets published |
-| `tmp/` | downloads: the paper PDF, datasets, anything third-party. `$TMPDIR` points here, and so does the agent's own scratch — so nothing either of them creates lands in the repository |
+| `tmp/` | downloads: the paper PDF, datasets, anything third-party. `$TMPDIR` points here, and so does the agent's own scratch space, so nothing either of them creates lands in the repository |
 | `venv/` | the language environment the bootstrap made. The agent is told to use it, and in practice sometimes installs a second one inside `workspace/` anyway. Either way a dependency tree is never committed, never harvested into your output directory, and refused at publication |
 | `grade/` | the judge's verdict, one file per grading round |
 | `session/` | the transcript, the status, and what the run ran on. Nothing inside the sandbox can write here |
 
-The split is the point. The agent works in `workspace/` and nothing else it
-needs can end up in the repository; the transcript is written by replichai from
-a stream the agent cannot reach, so the run cannot edit its own evidence.
+This split is what keeps the output clean. The agent works in `workspace/`, so
+nothing else it needs can end up in the repository; the transcript is written
+by replichai from a stream the agent cannot reach, so the run cannot edit its
+own evidence.
 
-`workspace/` is the one directory that is both the build directory and the
-deliverable, so replichai keeps installed dependencies out of it by rules the
-agent does not own: the repository ignores them, the harvest skips them, and
-publication refuses a tree that carries one. A virtualenv is recognised by the
-`pyvenv.cfg` Python writes, so one under any name is caught.
+`workspace/` is both the build directory and the deliverable, so replichai
+keeps installed dependencies out of it by rules the agent does not control: the
+repository ignores them, the harvest skips them, and publication refuses a tree
+that carries one. A virtualenv is recognised by the `pyvenv.cfg` file Python
+writes, so one under any name is caught.
 
-Directories are kept after a run, because the workspace *is* the reproduction:
+Directories are kept after a run, because the workspace is the reproduction:
 
 ```bash
 replichai sessions ls
@@ -96,25 +97,25 @@ replichai sessions prune --older-than 7d --dry-run
 ```
 
 Set `REPLICHAI_SESSION_RETENTION=on-failure` or `discard` if you would rather
-they cleaned themselves up.
+they were removed automatically.
 
 ## What the agent can and cannot reach
 
-Inside the sandbox it can write its own session directory and nothing else,
+Inside the sandbox it can write to its own session directory and nothing else,
 read the system toolchain, and reach the network only where the policy allows.
 
-It does not see your shell's environment. A stage starts from a short,
-fixed allowlist — the path, the locale, the time zone, the temporary
-directory, the TLS certificate variables — plus what the run itself sets. An
-API key, a cloud credential or a GitHub token exported in the terminal you
-launched from is not in there, and a key you did not choose for the run
-cannot override the login you did.
+It does not see your shell's environment. A stage starts from a short, fixed
+allowlist (the path, the locale, the time zone, the temporary directory, the
+TLS certificate variables) plus what the run itself sets. An API key, a cloud
+credential or a GitHub token exported in the terminal you launched from is not
+passed in, and a key you did not choose for the run cannot override the login
+you did choose.
 
 Your home directory is denied, with named exceptions:
 
 | Allowed | Why |
 |---|---|
-| the harness's own configuration (`~/.claude` and `~/.claude.json`, or `~/.codex`) | it is where your existing login lives — so it is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
+| the harness's own configuration (`~/.claude` and `~/.claude.json`, or `~/.codex`) | it holds your existing login. It is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
 | `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its login there rather than in a file, and only a session actually using that login is granted it |
 | the harness's scratch directory under `/tmp` | without it Claude Code's shell tool fails before running anything |
 | `~/.codex`, writable, for codex only | codex writes its own state back and will not start otherwise |
@@ -127,20 +128,21 @@ Also denied, for a different reason: **your own standing instructions and
 plugins.** `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,
 `~/.claude/plugins`, `~/.claude/agents`, `~/.claude/commands`,
 `~/.claude/skills` and `~/.codex/AGENTS.md` are withheld from every run. They
-are not the method, and a reproduction that silently inherits the habits of
-whoever ran it is not reproducing the paper. Codex reports the denial as an
-error line in its transcript; that is cosmetic and the run continues.
+are not part of the method, and a reproduction that silently inherits the
+habits of the person who ran it is not reproducing the paper. Codex reports the
+denial as an error line in its transcript; that is cosmetic and the run
+continues.
 
 **Outside your home directory, reads are allowed.** srt's default is to permit
 reads everywhere and restrict by denial, and this is that default with your
 home denied. A run can read `/usr`, `/opt`, `/etc` and anything else outside
 `$HOME`. If that matters for your machine, use `--sandbox container`.
 
-**No GitHub token ever enters the sandbox.** The agent commits into a folder
-that outlives it, and your machine pushes that folder afterwards. That is why
+**No GitHub token enters the sandbox.** The agent commits into a folder that
+outlives it, and your machine pushes that folder afterwards. That is why
 `--publish` works locally without giving an agent write access to anything.
 
-**And with `--project`, no GitHub token needs to be on your machine either:**
+**With `--project`, no GitHub token needs to be on your machine either:**
 
 ```bash
 replichai login
@@ -150,35 +152,35 @@ replichai audit <paper> --runtime local --publish --project <id>
 The platform allocates the repository, from the same registry a session started
 in the app allocates from, and hands back a credential that can write to that
 one repository and expires within the hour. Your machine pushes with it and
-gives it back when the run is finalized. Without `--project`, `--publish` uses
-`REPLICHAI_GITHUB_TOKEN` as before — an organisation token, so prefer the
-project path where you have one.
+returns it when the run is finalized. Without `--project`, `--publish` uses
+`REPLICHAI_GITHUB_TOKEN` as before. That is an organisation token, so prefer
+the project path where you have one.
 
 Two things that credential cannot do: `--invite` needs permission to administer
 the repository, so add the collaborator in the app instead; and a deployment
-with no GitHub App configured cannot mint at all, in which case the terminal
-says which settings are missing and falls back to your own token.
+with no GitHub App configured cannot mint a credential at all, in which case
+the terminal says which settings are missing and falls back to your own token.
 
-The one thing the read allowance costs: an agent that reads its own credential
-file puts the contents in its transcript. Everything published is swept for
-credential-shaped text first, and the transcript says so where something was
-removed. It is a backstop, not a guarantee — read a transcript before you make
+The read allowance has one cost: an agent that reads its own credential file
+puts the contents in its transcript. Everything published is swept for
+credential-shaped text first, and the transcript says where something was
+removed. This is a backstop, not a guarantee. Read a transcript before you make
 a repository public.
 
 ## Where a run is allowed to go
 
-srt is allow-only: it has no "everything" mode and refuses a wildcard outright.
-So a local audit is given a **declared list** of the places an artifact hunt
-goes — preprint servers, publishers, code hosts, data repositories, package
-indexes, and the services that resolve an identifier — plus whatever endpoint
-your model is behind. The list is in
+srt is allow-only: it has no "everything" mode and refuses a wildcard. So a
+local audit is given a **declared list** of the places an artifact hunt goes
+(preprint servers, publishers, code hosts, data repositories, package indexes,
+and the services that resolve an identifier) plus whatever endpoint your model
+is behind. The list is in
 [`internal/audit/domains.go`](../internal/audit/domains.go), and the effective
 policy is recorded in each run's `environment.json`.
 
-This costs something real, and the record is how you see it: a paper whose only
-artifact link is an author's personal university page is not reachable, and the
-hunt records it as *not fetched* rather than as *not released*. A container run
-has unrestricted egress and no such bound, which is one more reason the two
+This has a real cost, and the record is how you see it: a paper whose only
+artifact link is an author's personal university page is not reachable, and
+the hunt records it as *not fetched* rather than as *not released*. A container
+run has unrestricted egress and no such bound, which is one more reason the two
 drivers are not interchangeable.
 
 ## Choosing a model
@@ -218,28 +220,28 @@ replichai audit <paper> --runtime local --model best
 replichai audit <paper> --runtime local --model qwen/qwen3-coder-480b --harness codex
 ```
 
-Rules the file is checked against when the run starts, so a mistake costs you a
-message rather than forty seconds and a 400:
+The file is checked against these rules when the run starts, so a mistake
+costs you an error message rather than forty seconds and a 400:
 
 - **Dialect and harness must agree.** Claude Code speaks the Anthropic dialect;
   Codex speaks the OpenAI ones. An open-weights model behind an
   OpenAI-compatible gateway therefore pairs with `codex`.
-- **One model per tier per harness.** Two `best` rows is an error, not a coin
-  toss: what a session ran on has to be determinate.
+- **One model per tier per harness.** Two `best` rows is an error, not a random
+  choice: what a session ran on has to be determinate.
 - **A named credential must exist.** A gateway naming `LUX_API_KEY` with
   nothing in it fails now rather than mid-run.
 - **An exact `--model provider/id` must be in the file.** A model you never
   declared has no endpoint to reach it through.
 
-Your credentials are resolved once, passed to the agent out of view of the
-process table, and removed from anything published.
+Your credentials are resolved once, passed to the agent without appearing in
+the process table, and removed from anything published.
 
 ## A pinned toolchain instead
 
-`--sandbox container` runs the same session inside an OCI container — Podman
-first, then Docker — for the one thing your own machine cannot give: the same
-Python, the same packages, on every operator's machine. Use it for CI, or when
-comparing your reproduction against somebody else's is the point.
+`--sandbox container` runs the same session inside an OCI container (Podman
+first, then Docker) for the one thing your own machine cannot give: the same
+Python and the same packages on every operator's machine. Use it for CI, or
+when the point is to compare your reproduction against somebody else's.
 
 ```bash
 replichai audit <paper> --runtime local --sandbox container
@@ -255,7 +257,7 @@ sandbox needs nothing of the kind.
 Every run of either kind writes `environment.json` beside the transcript: the
 operating system, the sandbox, the agent and its version, the model, and the
 package versions actually resolved. Two reproductions that disagree can then be
-told apart from two that merely ran on different interpreters.
+told apart from two that only ran on different interpreters.
 
 ## A whole project at once
 
@@ -278,12 +280,12 @@ papers:
 ```
 
 Each paper gets its own session, its own sandbox and its own repository. One
-paper failing never stops the rest; the exit code is non-zero if any did, so CI
-reads it and you read the report.
+paper failing never stops the rest; the exit code is non-zero if any failed, so
+CI reads the exit code and you read the report.
 
 Two files are written beside the project file and kept current as it runs:
-`batch.json`, the state, and `report.md`, the table — what passed, what it
-cost, what did not happen. Interrupt it with Ctrl-C and nothing is lost:
+`batch.json`, the state, and `report.md`, the table of what passed, what it
+cost, and what did not happen. Interrupt it with Ctrl-C and nothing is lost:
 
 ```bash
 replichai run papers.yaml --resume
@@ -309,20 +311,21 @@ replichai push papers.yaml --project <id>
 Nothing about an imported session is billed, and none of it is charged to a
 project's credits: you paid the vendor. The record carries the paper, the
 model, the usage, the verdict and the repository; the evidence stays in the
-repository the run pushed, which is why you want `--publish` on a run you
-intend to file.
+repository the run pushed, which is why a run you intend to file should use
+`--publish`.
 
-Pushing twice is safe — a session updates its row rather than opening a second
-— so a failed upload is retried by running the command again.
+Pushing twice is safe. A session updates its row rather than opening a second
+one, so a failed upload is retried by running the command again.
 
 ## Codex
 
-`--harness codex` runs the same session through Codex instead, and it needs
-different things of the machine, which the code declares rather than assumes:
+`--harness codex` runs the same session through Codex instead. It needs
+different things of the machine, and the code declares them rather than
+assuming them:
 
 - Its login is a file in `~/.codex`, so no keychain is involved.
 - It writes its own state back into `~/.codex`, so that directory is writable
-  for a codex run — a Claude Code run gets read-only.
+  for a codex run; a Claude Code run gets it read-only.
 - It refuses a directory it has not been told to trust, and a session's
   workspace is a repository it has never seen, so the trust check is skipped.
   The sandbox is the boundary; Codex's own prompt is not.
@@ -334,21 +337,21 @@ reports that as an error line in its transcript. The run continues.
 
 ## When something goes wrong
 
-**"the host sandbox is not ready"** — the message names what is missing and the
+**"the host sandbox is not ready"**: the message names what is missing and the
 install command for your platform. It also offers `--sandbox container`, which
-needs none of it — but does need a harness image you can pull (see above).
+needs none of it but does need a harness image you can pull (see above).
 
-**"no container engine is installed" / "podman machine is not running"** — on
+**"no container engine is installed" / "podman machine is not running"**: on
 macOS Podman needs a virtual machine: `podman machine init --cpus 4 --memory
 8192 --disk-size 100 && podman machine start`.
 
-**"harness ... is unavailable"** — the name is `claude-code` or `codex`, and
+**"harness ... is unavailable"**: the name is `claude-code` or `codex`, and
 the message lists what is installed.
 
-**The push failed** — the workspace is kept and the run prints a `finish`
-command that pushes it. Nothing is lost: the work is on disk.
+**The push failed**: the workspace is kept and the run prints a `finish`
+command that pushes it. Nothing is lost; the work is on disk.
 
-**`pip install` fails with a certificate error** — pip verifies through the
+**`pip install` fails with a certificate error**: pip verifies through the
 operating system's trust service, which the sandbox does not open, so every
 certificate fails for pip while curl and Python's own client succeed on the
 same connection. The bootstrap passes `--trusted-host` for the indexes it
@@ -357,7 +360,7 @@ sandbox terminates TLS to those hosts, so it validates the real index
 certificate itself before handing pip a locally-signed connection. An index of
 your own needs the same treatment.
 
-**The run committed nothing** — that is recorded rather than reported as
+**The run committed nothing**: that is recorded rather than reported as
 success. An empty repository is a real outcome, and the transcript in
 `session/events.jsonl` says what the agent did instead.
 
@@ -368,7 +371,7 @@ success. An empty repository is a real outcome, and the transcript in
   lives in the repository the run pushed.
 - **The container image is not published.** `--sandbox container` is built and
   needs an image that does not exist yet, so the host sandbox is the only one
-  you can actually run today.
+  you can run today.
 - **The app does not label an imported session** as locally executed, though it
   stores the fact.
 - **`environment.json` records where a run was allowed to go, not where it
