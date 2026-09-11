@@ -16,9 +16,9 @@ import (
 	"time"
 )
 
-// Event is one entry in a run's transcript — the backend's own record of what
-// happened during the run, translated to a neutral shape. Raw preserves the
-// backend's original event losslessly, so nothing is lost to the translation.
+// Event is one entry in a run's transcript: the backend's record of what
+// happened during the run, translated to a neutral shape. Raw holds the
+// backend's original event, so the translation loses nothing.
 type Event struct {
 	Role    Role            `json:"role"`
 	Kind    EventKind       `json:"kind"`
@@ -41,9 +41,9 @@ const (
 )
 
 // EventKind is what an event is. The well-known kinds below are named so
-// callers compare against a constant rather than a bare string; the set is
-// deliberately open — a backend-native kind (e.g. "model_request_end") passes
-// through unchanged rather than being dropped or coerced.
+// callers compare against a constant rather than a bare string. The set is
+// open: a backend-native kind such as "model_request_end" passes through
+// unchanged rather than being dropped or coerced.
 type EventKind string
 
 // The well-known event kinds. Others pass through as the backend names them.
@@ -73,9 +73,10 @@ type WorkerSpec struct {
 // for how many times the worker may revise before giving up, optionally a
 // repository to mount, and optionally files to attach outside that mount.
 //
-// An audit uses Task/Rubric/MaxRevisions/Mount. An experiment (007b) reuses the
-// same contract with an empty rubric and no revision budget, a read-only mount,
-// and a dataset in Attachments — one contract, not a second execution path.
+// An audit uses Task, Rubric, MaxRevisions and Mount. An experiment (007b)
+// reuses the same contract with an empty rubric, no revision budget, a
+// read-only mount, and a dataset in Attachments, so there is one contract
+// rather than a second execution path.
 type RunSpec struct {
 	Task         string
 	Rubric       string
@@ -84,11 +85,11 @@ type RunSpec struct {
 	Attachments  []Attachment
 }
 
-// Attachment is a file placed into a run's sandbox OUTSIDE any mounted
-// repository — an experiment's input dataset, or a file it must read without
-// committing. Keeping it outside the mount is structural: a researcher's data
-// physically cannot be committed into a reproduction repository, which is the
-// primary control behind 007's "uploaded data is not ours to redistribute".
+// Attachment is a file placed into a run's sandbox outside any mounted
+// repository, such as an experiment's input dataset or a file it must read
+// without committing. Because the file is outside the mount, a researcher's
+// data cannot be committed into a reproduction repository. This is the primary
+// control behind 007's rule that uploaded data is not ours to redistribute.
 type Attachment struct {
 	// Path is where the file lands in the sandbox. It must be outside any mount.
 	// Empty lets the backend choose a location, which is outside the mount by
@@ -106,12 +107,12 @@ type Attachment struct {
 // Token is a write credential that lives only inside the sandbox; it must be
 // scoped to this one repository, never a broad organisation token.
 //
-// ReadOnly requests a mount the worker must not push to — an experiment reads an
-// instrument, it has no business writing to the reproduction (007b). The seam
-// carries the intent; the real enforcement is the token's GitHub scope, so a
-// read-only mount must be handed a read-only-scoped token. That scoping is
-// 006f's still-open two-token split, so today ReadOnly is an honest signal, not
-// a guarantee the backend imposes on its own.
+// ReadOnly requests a mount the worker must not push to: an experiment reads an
+// instrument and must not write to the reproduction (007b). The field records
+// the intent; enforcement is the token's GitHub scope, so a read-only mount
+// must be given a read-only-scoped token. That scoping is the two-token split
+// still open in 006f, so ReadOnly is currently a signal and not a guarantee
+// the backend enforces.
 type RepoMount struct {
 	URL       string
 	Token     string
@@ -160,27 +161,27 @@ func (v Verdict) Passed() bool { return v.Grade == GradePassed }
 // Every backend meters tokens, so these fields are neutral rather than
 // vendor-specific. A backend that does not report one leaves it zero.
 //
-// The classes are separate because they are *priced* separately (011): a cache
+// The classes are separate because they are priced separately (011): a cache
 // write costs more than fresh input and a cache read costs far less, so a
-// single "input" number cannot be turned into money. A backend reporting only a
-// total for one class must not silently fold it into another — that is what
-// CacheWriteTokens exists for.
+// single input number cannot be priced. A backend that reports only a total for
+// one class must not fold it into another; CacheWriteTokens exists for that
+// case.
 type Usage struct {
 	InputTokens  int64
 	OutputTokens int64
 	// CachedInputTokens were served from cache rather than processed fresh.
 	CachedInputTokens int64
 	// CacheWrite5mTokens and CacheWrite1hTokens wrote the prompt cache, split by
-	// the lifetime they bought. The two are priced differently, and the longer
-	// one costs more, so folding them together loses money in one direction and
-	// overcharges in the other.
+	// the lifetime bought. The two are priced differently and the longer
+	// lifetime costs more, so combining them would under-bill one and
+	// overcharge the other.
 	CacheWrite5mTokens int64
 	CacheWrite1hTokens int64
-	// CacheWriteTokens wrote the cache with the lifetime unreported — what a
-	// per-request span carries, where the session total is broken down. Kept as
-	// its own field rather than dropped into one of the buckets above so that
-	// "we do not know which" stays visible; pricing charges it at the dearer
-	// rate, on the same fail-expensive rule an unknown model follows.
+	// CacheWriteTokens wrote the cache with the lifetime unreported, which is
+	// what a per-request span carries; the session total is broken down. It is
+	// a separate field rather than added to one of the two above so that the
+	// unknown lifetime stays visible. Pricing charges it at the dearer rate,
+	// the same rule that applies to an unknown model.
 	CacheWriteTokens int64
 }
 
@@ -190,15 +191,15 @@ func (u Usage) Total() int64 {
 		u.CacheWrite5mTokens + u.CacheWrite1hTokens + u.CacheWriteTokens
 }
 
-// CacheWritten is every cache-write token, whatever lifetime it bought — the
-// figure a reader wants when the split is detail rather than the point.
+// CacheWritten is every cache-write token regardless of the lifetime bought,
+// for readers who do not need the split.
 func (u Usage) CacheWritten() int64 {
 	return u.CacheWrite5mTokens + u.CacheWrite1hTokens + u.CacheWriteTokens
 }
 
 // Add accumulates another observation into this one, class by class. It is the
-// one place a sum over usages lives, so a class added to the struct cannot be
-// forgotten by a caller that was summing fields by hand.
+// only place usages are summed, so a class added to the struct cannot be missed
+// by a caller summing fields by hand.
 func (u *Usage) Add(o Usage) {
 	u.InputTokens += o.InputTokens
 	u.OutputTokens += o.OutputTokens
@@ -213,10 +214,11 @@ type RunStatus struct {
 	State   RunState
 	Verdict *Verdict
 	Usage   Usage
-	// RunID is the backend's identifier for the run in flight (the managed-agents
-	// session id). It is observed so the worker can persist it and, after a
-	// restart, close a session the process was driving — otherwise a run left in
-	// flight by a restart keeps running on the backend, unreachable.
+	// RunID is the backend's identifier for the run in flight, the
+	// managed-agents session id. The worker persists it so that after a
+	// restart it can close a session the previous process was driving;
+	// otherwise a run left in flight keeps running on the backend and cannot
+	// be reached.
 	RunID string `json:"run_id,omitempty"`
 	// Runtime and SessionRef are the transition envelope used while durable job
 	// storage moves to the managed-session contract. SessionRef is the complete,
@@ -224,11 +226,12 @@ type RunStatus struct {
 	// locator. A missing value is decoded only by job's explicit legacy path.
 	Runtime    string          `json:"runtime,omitempty"`
 	SessionRef json.RawMessage `json:"session_ref,omitempty"`
-	// Model is what the backend actually ran, as it names it. The engine asks
-	// for a *preference* ("best") and the backend resolves it, so this is the
-	// only place the concrete model appears — and it is what settlement prices
-	// the usage at (011). Empty where a backend does not report it, which is
-	// charged at the dearest rates on the card.
+	// Model is the model the backend ran, in the backend's own naming. The
+	// engine asks for a preference such as "best" and the backend resolves
+	// it, so this is the only place the concrete model appears, and
+	// settlement prices the usage by it (011). It is empty where a backend
+	// does not report it, and such usage is charged at the dearest rates on
+	// the card.
 	Model          string `json:"model,omitempty"`
 	ModelProvider  string `json:"model_provider,omitempty"`
 	BillingVariant string `json:"billing_variant,omitempty"`
@@ -254,7 +257,7 @@ func (a Artifact) IsCompiled() bool {
 
 // Provider is a backend capable of running graded, sandboxed, tool-using work.
 //
-// Every method that can block takes a context and must honor its
+// Every method that can block takes a context and must honour its
 // cancellation, so an audit can be stopped from outside.
 type Provider interface {
 	// Name identifies the adapter.
@@ -284,9 +287,9 @@ type Provider interface {
 	// FetchArtifact downloads one artifact's bytes.
 	FetchArtifact(ctx context.Context, h RunHandle, a Artifact) ([]byte, error)
 
-	// Transcript returns the run's full event stream — the backend's record of
-	// what the worker did, as evidence (005). Fetch it before CloseRun, which
-	// may make the run unreadable.
+	// Transcript returns the run's full event stream, the backend's record of
+	// what the worker did, kept as evidence (005). Fetch it before CloseRun,
+	// which may make the run unreadable.
 	Transcript(ctx context.Context, h RunHandle) ([]Event, error)
 
 	// CloseRun stops any live work and releases the run. It must be safe to call

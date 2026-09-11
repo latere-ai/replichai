@@ -10,8 +10,8 @@ import (
 
 // RunState is where a run sits in its lifecycle.
 //
-// The zero value is StateUnknown, so a struct field that was never set cannot
-// masquerade as a meaningful state.
+// The zero value is StateUnknown, so an unset field cannot read as a
+// meaningful state.
 type RunState uint8
 
 // The lifecycle a run moves through.
@@ -122,9 +122,9 @@ func (g *Grade) UnmarshalJSON(data []byte) error {
 
 // Network is a sandbox's outbound network policy.
 //
-// The zero value is NetworkOpen: an audit's whole first phase is hunting for
-// artifacts across the public web, so open is the working default and
-// restricting is the deliberate act.
+// The zero value is NetworkOpen: an audit's first phase searches the public
+// web for artifacts, so open is the default and limiting is an explicit
+// choice.
 type Network uint8
 
 // The outbound network policies a sandbox can have.
