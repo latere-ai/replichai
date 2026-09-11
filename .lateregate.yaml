@@ -5,28 +5,27 @@
 # race suite against a live Postgres, and the bun/Chrome frontend.
 
 hermetic:
-  # The system directories, and nothing else. The suite reaches two binaries:
-  # git, for the publish and forge paths, and echo, which the local runtime
-  # uses as a stand-in command. Naming them is the point -- anything a test
-  # needs beyond these has to be added here, which is a decision rather than
-  # an accident.
+  # The system directories only. The suite reaches two binaries: git, for the
+  # publish and forge paths, and echo, which the local runtime uses as a
+  # stand-in command. Anything else a test needs has to be added here, so a new
+  # dependency is a deliberate decision.
   allow: [/usr/bin, /bin]
 
-# No cover section, and deliberately no `cover` target: the shared pipeline
-# probes for that name and would run it on a runner with no database, where
-# every PG store contract skips and internal/access alone loses about forty
-# points -- a number this repo's own Makefile calls meaningless. The real one
-# is `cover-pg`, which needs docker compose and stays local.
+# There is no cover section and deliberately no `cover` target. The shared
+# pipeline probes for that name and would run it on a runner with no database,
+# where every PG store contract skips and internal/access alone loses about
+# forty points, which makes the total meaningless. The real target is
+# `cover-pg`, which needs docker compose and stays local.
 
 # The spec tree carries YAML frontmatter, so spec-lint reads it.
 #
-# No index line. specs/README.md lists every spec, but its Status column is
-# prose on purpose -- "built (all six leaves)", "implemented; its Python half
-# deleted" -- and the table's own preamble says the column names which part is
-# missing. CheckIndex compares that cell to the enum verbatim, so 23 of 114
-# rows would fail on wording rather than on drift. README.md is therefore
-# excluded here instead: with no index configured, spec-lint would otherwise
-# try to parse the index itself as a spec.
+# There is no index line. specs/README.md lists every spec, but its Status
+# column is prose on purpose, for example "built (all six leaves)" or
+# "implemented; its Python half deleted", and the table's preamble says the
+# column names which part is missing. CheckIndex compares that cell to the enum
+# verbatim, so 23 of 114 rows would fail on wording rather than on drift.
+# README.md is excluded instead: with no index configured, spec-lint would
+# otherwise try to parse it as a spec.
 spec:
   # `superseded` is the terminal status: the work moved to the spec that
   # replaced it. `built` and `implemented` are shipped specs kept at the root,
@@ -90,14 +89,14 @@ golangci:
             - G301
             - G306
         misspell:
-          # US spelling: "artifact" is the domain term used by the research
-          # community, the backend API, and this project's own documents. It is
-          # the only word we hold to US spelling, so the locale stays US and the
-          # British forms this project writes everywhere else are listed below.
+          # The locale is US because "artifact" is the domain term used by the
+          # research community, the backend API, and this project's documents,
+          # and it is the only word held to US spelling. The British forms the
+          # project writes everywhere else are listed below.
           locale: US
-          # Prose here is British English on purpose. These are spellings, not
-          # mistakes; `artefact` is deliberately absent so the one word that must
-          # stay American keeps being enforced.
+          # Prose is British English on purpose, so these are accepted spellings.
+          # `artefact` is deliberately absent so that "artifact" keeps being
+          # enforced.
           ignore-rules:
             - analyse
             - analyses
@@ -179,8 +178,8 @@ license:
     # The built bundle, generated from frontend/src on every build.
     - dist
 
-# Gates this repository does not run yet. Each entry is temporary by
-# construction: after the date the gate runs and fails on its own terms.
+# Gates this repository does not run yet. Each entry expires: after the date
+# the gate runs and fails on its own terms.
 waive:
   cover:
     reason: >-

@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
 
-# Continuous image build on main. Tag releases (and the production deploy) are
-# owned by release.yml via the central reusable pipeline; this only keeps a
-# fresh ghcr image (branch + sha tags) available between releases.
+# Continuous image build on main. Tag releases and the production deploy are
+# handled by release.yml through the central reusable pipeline. This workflow
+# only keeps a fresh ghcr image, tagged by branch and sha, available between
+# releases.
 
 jobs:
   build:

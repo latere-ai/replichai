@@ -10,20 +10,20 @@ permissions:
   contents: read
 
 jobs:
-  # The shared bar -- `go tool lateregate`, the same command as `make check`.
-  # In the order it runs them: fmt-check, modernize, cgo-free, otel-client,
-  # license, spec-lint, depcheck (skipped here: no package is named), lint
-  # (golangci-lint against the config rendered from .lateregate.yaml), vuln,
-  # test (go vet and the suite), race, hermetic, tempdir, and cover. The exact
-  # plan for the current tree is `go tool lateregate list`. What stays below
-  # is what that bar cannot run for us -- a suite that needs a live Postgres,
-  # and a frontend that needs bun and a browser.
+  # The shared gates: `go tool lateregate`, the same command as `make check`.
+  # In order: fmt-check, modernize, cgo-free, otel-client, license, spec-lint,
+  # depcheck, lint, vuln, test, race, hermetic, tempdir, and cover. depcheck is
+  # skipped here because no package is named; lint is golangci-lint against the
+  # config rendered from .lateregate.yaml; test is go vet and the suite. The
+  # exact plan for the current tree is `go tool lateregate list`. The jobs
+  # below cover what that workflow cannot run: a suite that needs a live
+  # Postgres, and a frontend that needs bun and a browser.
   verify:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
 
-  # The Postgres contracts. The shared bar runs the suite with no database, so
-  # every store contract skips there; this job gives them one and runs the
-  # whole suite under the race detector against it. golangci-lint is not here:
+  # The Postgres contracts. The shared workflow runs the suite with no database,
+  # so every store contract skips there. This job provides one and runs the
+  # whole suite under the race detector against it. golangci-lint is not here;
   # it is the lint gate above.
   test:
     name: test (race) + postgres contracts
@@ -43,8 +43,9 @@ jobs:
           --health-timeout 5s
           --health-retries 15
     env:
-      # A live database makes the job and access store contracts run their
-      # Postgres path (SELECT ... FOR UPDATE SKIP LOCKED) instead of skipping.
+      # With a live database the job and access store contracts run their
+      # Postgres path, including SELECT ... FOR UPDATE SKIP LOCKED, instead of
+      # skipping.
       TEST_DATABASE_URL: postgres://replichai:testpass@localhost:5432/replichai?sslmode=disable
     steps:
       - uses: actions/checkout@v4
@@ -66,8 +67,9 @@ jobs:
       - run: cd frontend && bun run typecheck
       - run: cd frontend && bun run build
       - run: cd frontend && bun test src
-      # The layout regression needs a real layout engine. The runner image ships
-      # Chrome; naming it makes a missing browser a failure rather than a skip.
+      # The layout regressions need a real layout engine. The runner image ships
+      # Chrome. Naming its path makes a missing browser a failure rather than a
+      # skip.
       - run: cd frontend && bun run test:browser
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
