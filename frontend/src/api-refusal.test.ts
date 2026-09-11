@@ -15,7 +15,7 @@ test('a refusal keeps the blockers the server sent', async () => {
     new Response(JSON.stringify({ error: 'not_clear', blockers: [{ session_id: 'job-1', reason: 'not_clear', review: 'excluded' }] }), {
       status: 409,
       headers: { 'content-type': 'application/json' },
-    })) as typeof fetch
+    })) as unknown as typeof fetch
   try {
     await makeProjectPublic('p1', { signed_off_contact: 'ada@example.org' })
     throw new Error('the call should have rejected')
@@ -34,7 +34,7 @@ test('a refusal keeps the blockers the server sent', async () => {
 // an empty list, never undefined: the screen maps over it.
 test('a refusal with nothing named is an empty list', async () => {
   const real = globalThis.fetch
-  globalThis.fetch = (async () => new Response('not json', { status: 500 })) as typeof fetch
+  globalThis.fetch = (async () => new Response('not json', { status: 500 })) as unknown as typeof fetch
   try {
     await makeProjectPublic('p1', { signed_off_contact: 'ada@example.org' })
     throw new Error('the call should have rejected')
@@ -54,7 +54,7 @@ test('a refusal with nothing named is an empty list', async () => {
 test('a 2xx that is not JSON is a server fault, not a lost connection', async () => {
   const real = globalThis.fetch
   globalThis.fetch = (async () =>
-    new Response('<!doctype html><title>Not the API</title>', { status: 200, headers: { 'content-type': 'text/html' } })) as typeof fetch
+    new Response('<!doctype html><title>Not the API</title>', { status: 200, headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch
   try {
     await getMe()
     throw new Error('the call should have rejected')
