@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -90,6 +91,13 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if err := fs.Parse(args); err != nil {
 		return errExitQuiet
 	}
+	// One organisation, or the personal context, never both and never
+	// several: `org a b` used to switch silently to the personal context,
+	// which is the opposite of what was typed.
+	if fs.NArg() > 1 || (fs.NArg() == 1 && *personal) {
+		_, _ = fmt.Fprintln(stderr, "org takes one organisation id, or --personal")
+		return errExitQuiet
+	}
 	session := cloud.New(homeDir(), envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL))
 	if fs.NArg() == 0 && !*personal {
 		token, err := session.Store.Load()
@@ -104,7 +112,7 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return nil
 	}
 	org := ""
-	if fs.NArg() == 1 && !*personal {
+	if fs.NArg() == 1 {
 		org = fs.Arg(0)
 	}
 	if _, err := session.SwitchOrg(ctx, org); err != nil {
@@ -139,16 +147,30 @@ func homeDir() string {
 // openBrowser is best effort: a terminal that cannot open one still prints the
 // URL, which is the whole point of the device flow.
 func openBrowser(url string) {
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		//nolint:gosec,noctx // the URL is the identity provider's own verification URI
-		command = exec.Command("open", url)
-	case "linux":
-		//nolint:gosec,noctx // the URL is the identity provider's own verification URI
-		command = exec.Command("xdg-open", url)
-	default:
-		return
+	if command := browserCommand(runtime.GOOS, url); command != nil {
+		_ = command.Start()
 	}
-	_ = command.Start()
+}
+
+// browserCommand is the command that opens rawURL on a platform, or nil where
+// there is nothing safe to run: an unknown platform, or a URL that is not
+// https. The verification URI is the only thing this ever opens and the
+// provider's is always https; anything else handed to `open` or `xdg-open` —
+// a file: path, a custom scheme — runs something on the operator's machine at
+// the provider's say-so, and printing the URL is enough.
+func browserCommand(goos, rawURL string) *exec.Cmd {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return nil
+	}
+	switch goos {
+	case "darwin":
+		//nolint:gosec,noctx // the URL is the identity provider's own https verification URI
+		return exec.Command("open", rawURL)
+	case "linux":
+		//nolint:gosec,noctx // the URL is the identity provider's own https verification URI
+		return exec.Command("xdg-open", rawURL)
+	default:
+		return nil
+	}
 }
