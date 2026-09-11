@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { Mark, Wordmark } from '../brand'
 import { getPublicProfile, type PublicProfile } from '../api'
 import { type I18n } from '../i18n'
+import { dateOnly } from '../locale'
 import { Ico } from '../icons'
 import { Seams } from '../ui'
 import { Empty, Initials, SignerRows } from './shared'
@@ -94,7 +95,7 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
                 <a key={proj.id} className="member-row" href={`/p/${proj.id}`}>
                   <span className="member-email">{proj.title}</span>
                   {proj.signed_off_at && (
-                    <span className="muted small">{new Date(proj.signed_off_at).toLocaleDateString()}</span>
+                    <span className="muted small">{dateOnly(i18n.lang, proj.signed_off_at)}</span>
                   )}
                 </a>
               ))}

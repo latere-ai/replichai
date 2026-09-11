@@ -119,12 +119,12 @@ export function SessionRow({
           different question and rounds the minutes away. */}
       {!terminal(j.phase) && (
         <Tip text={t('runningForTitle')}>
-          <span className="muted small tabular">{elapsed(j.created_at, tick)}</span>
+          <span className="muted small tabular">{elapsed(t, j.created_at, tick)}</span>
         </Tip>
       )}
       {!!j.cost && (
         <Tip text={terminal(j.phase) ? t('sessionCostTitle') : t('sessionCostRunningTitle')}>
-          <span className="muted small tabular">{formatUSD(j.cost)}</span>
+          <span className="muted small tabular">{formatUSD(i18n.lang, j.cost)}</span>
         </Tip>
       )}
       {!terminal(j.phase) && (

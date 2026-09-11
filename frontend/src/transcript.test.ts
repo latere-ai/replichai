@@ -3,7 +3,10 @@
 
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
+import { translator } from './i18n'
 import { cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, seekTarget, splitTitle, totalOf } from './transcript'
+
+const { t } = translator('en')
 
 const at = (iso: string, over: Partial<Event> = {}): Event => ({ role: 'agent', kind: 'message', time: iso, ...over })
 
@@ -164,15 +167,22 @@ test('token counts stay scannable in a column', () => {
 
 test('an event with no timestamp shows no clock and no offset, rather than the epoch', () => {
   const none: Event = { role: 'agent', kind: 'message' }
-  expect(clockOf(none)).toBe('')
-  expect(offsetOf(none, { from: 0, to: 1 })).toBe('')
+  expect(clockOf('en', none)).toBe('')
+  expect(offsetOf(t, none, { from: 0, to: 1 })).toBe('')
 })
 
 test('an offset says how far into the run something happened', () => {
   const span = { from: Date.parse('2026-07-14T09:00:00Z'), to: Date.parse('2026-07-14T12:00:00Z') }
-  expect(offsetOf(at('2026-07-14T09:00:41Z'), span)).toBe('+41s')
-  expect(offsetOf(at('2026-07-14T09:22:04Z'), span)).toBe('+22m 4s')
-  expect(offsetOf(at('2026-07-14T10:47:00Z'), span)).toBe('+1h 47m')
+  expect(offsetOf(t, at('2026-07-14T09:00:41Z'), span)).toBe('+41s')
+  expect(offsetOf(t, at('2026-07-14T09:22:04Z'), span)).toBe('+22m 4s')
+  expect(offsetOf(t, at('2026-07-14T10:47:00Z'), span)).toBe('+1h 47m')
+})
+
+// The clock is the app's language's, not the browser's: a German OS used to
+// write the gutter's times one way and the copy beside them another.
+test('a clock reads to the minute on a 24-hour dial in the app’s language', () => {
+  const e = at('2026-07-14T09:05:41Z')
+  expect(clockOf('en', e)).toBe(new Date(Date.parse('2026-07-14T09:05:41Z')).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false }))
 })
 
 test('cache writes count toward the total, whatever lifetime they bought', () => {

@@ -19,6 +19,7 @@ import {
   withdrawProject,
 } from '../api'
 import { type I18n } from '../i18n'
+import { dateOnly } from '../locale'
 import { deleteSessionErrLabel, publishBlockers, publishBlockerText, publishErrText } from '../errors'
 import { Ico, type IconName } from '../icons'
 import { Check, Modal } from '../ui'
@@ -385,7 +386,7 @@ export function PublishedCard({
 }) {
   const { t } = i18n
   const [withdrawing, setWithdrawing] = useState(false)
-  const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
+  const when = project.signed_off_at ? dateOnly(i18n.lang, project.signed_off_at) : ''
   return (
     <div className="card publish-panel">
       <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>

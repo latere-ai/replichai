@@ -9,7 +9,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { type Event, getTranscript, type Job, type Transcript, type Usage } from '../api'
-import { type I18n, type TKey } from '../i18n'
+import { type I18n, type Lang, type TKey } from '../i18n'
+import { clockTime, formatCount } from '../locale'
 import {
   cacheWrittenOf,
   clockOf,
@@ -185,14 +186,14 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
               <span className="tx-stat-label">
                 <Ico name="bolt" size={11} /> {t('usageTotal')}
               </span>
-              <span className="tx-stat-value">{totalOf(usage).toLocaleString()}</span>
+              <span className="tx-stat-value">{formatCount(i18n.lang, totalOf(usage))}</span>
             </div>
           )}
           <div className="tx-stat">
             <span className="tx-stat-label">
               <Ico name="layers" size={11} /> {t('events')}
             </span>
-            <span className="tx-stat-value">{tr.events.length.toLocaleString()}</span>
+            <span className="tx-stat-value">{formatCount(i18n.lang, tr.events.length)}</span>
           </div>
         </div>
       </div>
@@ -287,11 +288,11 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
             </div>
             {usage ? (
               <div className="usage-rows">
-                <UsageLine label={t('usageInput')} v={usage.InputTokens} tone="var(--run)" />
-                <UsageLine label={t('usageOutput')} v={usage.OutputTokens} tone="var(--pub)" />
-                <UsageLine label={t('usageCached')} v={usage.CachedInputTokens} tone="var(--ok)" />
-                <UsageLine label={t('usageCacheWritten')} v={cacheWrittenOf(usage)} tone="var(--warn)" />
-                <UsageLine label={t('usageTotal')} v={totalOf(usage)} tone="var(--brand)" strong />
+                <UsageLine lang={i18n.lang} label={t('usageInput')} v={usage.InputTokens} tone="var(--run)" />
+                <UsageLine lang={i18n.lang} label={t('usageOutput')} v={usage.OutputTokens} tone="var(--pub)" />
+                <UsageLine lang={i18n.lang} label={t('usageCached')} v={usage.CachedInputTokens} tone="var(--ok)" />
+                <UsageLine lang={i18n.lang} label={t('usageCacheWritten')} v={cacheWrittenOf(usage)} tone="var(--warn)" />
+                <UsageLine lang={i18n.lang} label={t('usageTotal')} v={totalOf(usage)} tone="var(--brand)" strong />
               </div>
             ) : (
               <p className="muted small" style={{ margin: 0 }}>
@@ -357,7 +358,7 @@ function Scrubber({
 
   return (
     <div className="scrub">
-      <span className="scrub-clock">{fmtClock(span.from)}</span>
+      <span className="scrub-clock">{fmtClock(i18n.lang, span.from)}</span>
       <div
         ref={barRef}
         className="scrub-bar"
@@ -404,7 +405,7 @@ function Scrubber({
           </>
         )}
       </div>
-      <span className="scrub-clock right">{fmtClock(span.to)}</span>
+      <span className="scrub-clock right">{fmtClock(i18n.lang, span.to)}</span>
       <span className="scrub-legend">{hist.weighted ? t('scrubByTokens') : t('scrubByEvents')}</span>
     </div>
   )
@@ -427,16 +428,16 @@ function EventDetail({ i18n, e, span, onClose }: { i18n: I18n; e: Event; span: S
       <div className="ev-detail-meta">
         <span>{e.role}</span>
         {e.tool && <code>{e.tool}</code>}
-        {clockOf(e) && <span className="tabular">{clockOf(e)}</span>}
-        {span && offsetOf(e, span) && <span className="tabular">{offsetOf(e, span)}</span>}
+        {clockOf(i18n.lang, e) && <span className="tabular">{clockOf(i18n.lang, e)}</span>}
+        {span && offsetOf(t, e, span) && <span className="tabular">{offsetOf(t, e, span)}</span>}
       </div>
       {e.usage && (
         <div className="usage-rows" style={{ marginTop: 10 }}>
-          <UsageLine label={t('usageInput')} v={e.usage.InputTokens} tone="var(--run)" />
-          <UsageLine label={t('usageOutput')} v={e.usage.OutputTokens} tone="var(--pub)" />
-          <UsageLine label={t('usageCached')} v={e.usage.CachedInputTokens} tone="var(--ok)" />
-          <UsageLine label={t('usageCacheWritten')} v={cacheWrittenOf(e.usage)} tone="var(--warn)" />
-          <UsageLine label={t('usageTotal')} v={totalOf(e.usage)} tone="var(--brand)" strong />
+          <UsageLine lang={i18n.lang} label={t('usageInput')} v={e.usage.InputTokens} tone="var(--run)" />
+          <UsageLine lang={i18n.lang} label={t('usageOutput')} v={e.usage.OutputTokens} tone="var(--pub)" />
+          <UsageLine lang={i18n.lang} label={t('usageCached')} v={e.usage.CachedInputTokens} tone="var(--ok)" />
+          <UsageLine lang={i18n.lang} label={t('usageCacheWritten')} v={cacheWrittenOf(e.usage)} tone="var(--warn)" />
+          <UsageLine lang={i18n.lang} label={t('usageTotal')} v={totalOf(e.usage)} tone="var(--brand)" strong />
         </div>
       )}
       <pre className="ev-detail-body">{e.content || t('noContent')}</pre>
@@ -450,17 +451,17 @@ function pct(f: number) {
 }
 
 // fmtClock is a wall-clock label for the ends of the scrubber.
-function fmtClock(ms: number) {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+function fmtClock(lang: Lang, ms: number) {
+  return clockTime(lang, ms)
 }
 
-function UsageLine({ label, v, strong, tone }: { label: string; v: number; strong?: boolean; tone?: string }) {
+function UsageLine({ lang, label, v, strong, tone }: { lang: Lang; label: string; v: number; strong?: boolean; tone?: string }) {
   return (
     <div className="usage-line">
       <span className="usage-dot" style={{ background: tone }} />
       {label}
       <span className="v" style={strong ? { color: 'var(--fg-1)', fontWeight: 600 } : undefined}>
-        {v.toLocaleString()}
+        {formatCount(lang, v)}
       </span>
     </div>
   )
@@ -493,12 +494,12 @@ function EventCard({
   return (
     <RowButton className={cls} data-i={i} data-at={Number.isNaN(at) ? '' : at} selected={on} onOpen={onPick}>
       <div className="event-gutter">
-        <span className="event-clock tabular">{clockOf(e) || e.role}</span>
+        <span className="event-clock tabular">{clockOf(i18n.lang, e) || e.role}</span>
         <span className="event-kind">
           <Ico name={kindIcon(dk)} size={10} w={2.2} />
           {kindLabel(t, dk)}
         </span>
-        {span && <span className="event-offset tabular">{offsetOf(e, span)}</span>}
+        {span && <span className="event-offset tabular">{offsetOf(t, e, span)}</span>}
       </div>
       <div className="event-main">
         {e.kind === 'thinking' ? (
@@ -579,7 +580,7 @@ function Timeline({ i18n, job }: { i18n: I18n; job: Job }) {
             <span className={'tl-dot ' + phaseClass(s.phase)} />
             <div className="tl-body">
               <span className="tl-phase">{phaseLabel(t, s.phase)}</span>
-              <span className="tl-dur">{active ? t('inProgress') : next ? duration(Math.round((next.time - s.time) / 1000), { seconds: true }) : ''}</span>
+              <span className="tl-dur">{active ? t('inProgress') : next ? duration(t, Math.round((next.time - s.time) / 1000), { seconds: true }) : ''}</span>
             </div>
           </div>
         )
