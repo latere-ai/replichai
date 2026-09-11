@@ -30,63 +30,23 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
+import { DESKTOP, fail, json, settled, sleep, start } from './harness.mjs'
 
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5239
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
-
-const DESKTOP = { width: 1440, height: 900 }
 const PHONE = { width: 390, height: 844 }
 // The widest screen the page claims to serve. 044 added it: nothing in this
 // suite could see a band that stopped at 1180px on a 2560px display.
 const WIDE = { width: 2560, height: 1440 }
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 
 // open serves one mocked `/me` and returns a page at `path`. `me` is the body
 // the mock answers with; passing null makes the call fail, which is the outage
-// case 014d distinguishes from being signed out.
-const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light', json = {} } = {}) => {
-  const page = await browser.newPage()
-  await page.setViewport(viewport)
+// case 014d distinguishes from being signed out. `routes` answers whatever else
+// a block needs the server to say.
+const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light', routes = [] } = {}) => {
+  const page = await h.page({ viewport, routes: [['/me', me === null ? json({}, 500) : me], ...routes] })
   await page.evaluateOnNewDocument((t) => localStorage.setItem('theme', t), theme)
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE && u.pathname === '/me') {
-      if (me === null) return req.respond({ status: 500, contentType: 'application/json', body: '{}' })
-      return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
-    }
-    if (u.origin === BASE && u.pathname in json) {
-      return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(json[u.pathname]) })
-    }
-    req.continue()
-  })
-  await page.goto(BASE + path, { waitUntil: 'networkidle0' })
+  await page.open(path)
   return page
 }
 
@@ -99,19 +59,17 @@ const box = (page, sel) =>
     return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height }
   }, sel)
 
-try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
+// scrollThrough walks the page band by band, as a reader does, giving each one a
+// frame to land before moving on to the next.
+const scrollThrough = (page) =>
+  page.evaluate(async () => {
+    for (const b of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
+      b.scrollIntoView()
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
     }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
+  })
 
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-
+try {
   /* ── The mark ── */
 
   {
@@ -192,7 +150,7 @@ try {
       return document.documentElement.scrollHeight > window.innerHeight
     })
     if (!scrolled) fail(`at ${viewport.width}px the landing does not scroll; it is meant to be a page, not a card`)
-    await new Promise((r) => setTimeout(r, 120))
+    await page.waitForFunction(() => window.scrollY > 0)
     await seen('at the bottom')
 
     // Nothing runs off the side at either width.
@@ -238,16 +196,9 @@ try {
   /* ── Reduced motion gets the finished page, not a frozen first frame ── */
 
   {
-    const page = await browser.newPage()
-    await page.setViewport(DESKTOP)
+    const page = await h.page({ routes: [['/me', { authenticated: false }]] })
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
-    await page.setRequestInterception(true)
-    page.on('request', (req) => {
-      const u = new URL(req.url())
-      if (u.origin === BASE && u.pathname === '/me') return req.respond({ status: 200, contentType: 'application/json', body: '{"authenticated":false}' })
-      req.continue()
-    })
-    await page.goto(BASE, { waitUntil: 'networkidle0' })
+    await page.open('/')
     await page.waitForSelector('.lp-section')
     const still = await page.evaluate(() => {
       const bands = [...document.querySelectorAll('.lp-section, .lp-hero, .lp-step, .lp-part')]
@@ -269,7 +220,10 @@ try {
     await page.evaluate(() => {
       document.querySelector('.lp-walk').scrollIntoView()
     })
-    await new Promise((r) => setTimeout(r, 400))
+    // A window rather than a wait: the claim is that nothing happens. A driver
+    // that did start paints on the scroll event and dims over half a second, so
+    // this is long enough for either to show, and there is no state to wait for.
+    await sleep(400)
     const walk = await page.evaluate(() => {
       const steps = [...document.querySelectorAll('.lp-step')]
       const plates = [...document.querySelectorAll('.lp-plate')]
@@ -328,11 +282,8 @@ try {
     // which is where a reader meets it.
     const page = await open({ authenticated: false })
     await page.waitForSelector('.lp-section')
-    const keys = await page.evaluate(async () => {
-      for (const b of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
-        b.scrollIntoView()
-        await new Promise((r) => setTimeout(r, 60))
-      }
+    await scrollThrough(page)
+    const keys = await page.evaluate(() => {
       const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
       const bad = []
       for (let n = walk.nextNode(); n; n = walk.nextNode()) {
@@ -380,7 +331,7 @@ try {
       visibility: 'public',
       papers: [{ title: 'Attention Is All You Need', authors: ['Ashish Vaswani', 'Noam Shazeer'], venue: 'NeurIPS', year: 2017 }],
     }))
-    const page = await open({ authenticated: false }, { viewport: WIDE, json: { '/public': published } })
+    const page = await open({ authenticated: false }, { viewport: WIDE, routes: [['/public', published]] })
     await page.waitForSelector('[data-test="lp-strip"] .lp-card')
     // Every band, including the ones a reveal observer has not reached yet:
     // geometry is measured on the box, and a transparent box measures the same.
@@ -388,7 +339,7 @@ try {
       const out = []
       for (const band of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
         band.scrollIntoView()
-        await new Promise((r) => setTimeout(r, 60))
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
         // The band's own box is full width by construction once the cap is
         // gone; what a reader sees is where its *contents* start and stop.
         const kids = [...band.children].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 0)
@@ -440,20 +391,25 @@ try {
     // occupying its full height, and invisible. Geometry assertions do not catch
     // that — a box at opacity 0 measures exactly like a box at opacity 1 — which
     // is how a blank hero reached production.
-    const page = await open({ authenticated: false }, { json: { '/public': [] } })
+    const page = await open({ authenticated: false }, { routes: [['/public', []]] })
     await page.waitForSelector('.lp-slab')
-    await new Promise((r) => setTimeout(r, 900))
     // The hero is above the fold and must be visible with no scrolling at all.
+    // Its reveal is a transition, so it is waited for; one that never comes is
+    // the failure the check reports.
+    await page.waitForFunction(() => +getComputedStyle(document.querySelector('.lp-hero')).opacity >= 0.9, { timeout: 3000 }).catch(() => {})
     const heroOpacity = await page.evaluate(() => +getComputedStyle(document.querySelector('.lp-hero')).opacity)
     if (heroOpacity < 0.9) fail(`the hero is at opacity ${heroOpacity} on a page nobody has scrolled; the first screen is invisible`)
     const dark = await page.evaluate(async () => {
       const bands = [...document.querySelectorAll('.lp-hero, .lp-section')]
+      const seen = (b) => +getComputedStyle(b).opacity >= 0.9
+      const frame = () => new Promise((r) => requestAnimationFrame(r))
+      // Each band is given what its reveal takes — the observer, then the
+      // transition — and no more; one that never arrives is what is reported.
       for (const b of bands) {
         b.scrollIntoView()
-        await new Promise((r) => setTimeout(r, 260))
+        for (const t0 = performance.now(); !seen(b) && performance.now() - t0 < 1500; ) await frame()
       }
-      await new Promise((r) => setTimeout(r, 800))
-      return bands.filter((b) => +getComputedStyle(b).opacity < 0.9).map((b) => b.className)
+      return bands.filter((b) => !seen(b)).map((b) => b.className)
     })
     if (dark.length) fail(`${dark.length} bands never became visible after being scrolled to: ${JSON.stringify(dark)}`)
     await page.close()
@@ -464,10 +420,14 @@ try {
   {
     const page = await open({ authenticated: false })
     await page.waitForSelector('.lp-walk')
-    const lit = await page.evaluate(async () => {
+    await page.evaluate(() => {
       document.querySelector('.lp-step[data-step="2"]').scrollIntoView({ block: 'center' })
       window.dispatchEvent(new Event('scroll'))
-      await new Promise((r) => setTimeout(r, 700))
+    })
+    // The driver paints on the scroll and then dims and folds over half a
+    // second, so the count is taken once the transitions it started have ended.
+    await settled(page)
+    const lit = await page.evaluate(() => {
       const steps = [...document.querySelectorAll('.lp-step')]
       return {
         on: steps.filter((s) => +getComputedStyle(s).opacity > 0.99).length,
@@ -534,18 +494,23 @@ try {
       // render an empty line, a stray separator, or a count with no citation.
       { id: 'b', title: 'The Placebo Effect of Artificial Intelligence', signed_off_name: 'Grace Hopper', session_count: 1, visibility: 'public', papers: [{ title: 'The Placebo Effect' }] },
     ]
-    const page = await open({ authenticated: false }, { json: { '/public': published } })
+    const page = await open({ authenticated: false }, { routes: [['/public', published]] })
     await page.waitForSelector('[data-test="lp-strip"]')
     const strip = await page.evaluate(async () => {
       const band = document.querySelector('[data-test="lp-strip"]')
       band.scrollIntoView()
-      await new Promise((r) => setTimeout(r, 900))
       const seen = (e) => {
         const cs = getComputedStyle(e)
         const r = e.getBoundingClientRect()
         return +cs.opacity > 0.9 && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0
       }
-      const cards = [...document.querySelectorAll('.lp-card')]
+      const all = () => [...document.querySelectorAll('.lp-card')]
+      // The band reveals when the observer reaches it and its cards arrive one
+      // after the next, so the wait is for the last of them; a card that never
+      // shows is what the counts below report.
+      const frame = () => new Promise((r) => requestAnimationFrame(r))
+      for (const t0 = performance.now(); !(seen(band) && all().every(seen)) && performance.now() - t0 < 3000; ) await frame()
+      const cards = all()
       return {
         band: seen(band),
         cards: cards.length,
@@ -594,8 +559,12 @@ try {
   // An empty registry is not an empty band: the section is absent entirely,
   // because a heading over nothing is a claim about a community.
   {
-    const page = await open({ authenticated: false }, { json: { '/public': [] } })
+    const page = await open({ authenticated: false }, { routes: [['/public', []]] })
     await page.waitForSelector('.landing')
+    // "No band" means nothing until the registry has answered and the page has
+    // drawn what it said.
+    await page.waitForResponse((r) => new URL(r.url()).pathname === '/public')
+    await settled(page)
     const there = await page.evaluate(() => !!document.querySelector('[data-test="lp-strip"]'))
     if (there) fail('an empty registry still renders the published band')
     await page.close()
@@ -754,12 +723,7 @@ try {
       await page.waitForSelector('.lp-close')
       // Every band starts at the pre-reveal opacity; the grounds are painted
       // regardless, but scrolling through is what the reader actually does.
-      await page.evaluate(async () => {
-        for (const b of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
-          b.scrollIntoView()
-          await new Promise((r) => setTimeout(r, 60))
-        }
-      })
+      await scrollThrough(page)
       const got = await probe(page)
       for (const [name, v] of Object.entries(got)) {
         if (!v) {
@@ -867,7 +831,11 @@ try {
       const btns = [...document.querySelectorAll('.landing .site-footer .footer-seg-btn')]
       // ☀ light, ☾ dark, ◐ auto — pick whichever is not the one showing now.
       btns[before === 'dark' ? 0 : 1].click()
-      await new Promise((r) => setTimeout(r, 250))
+      // The switch is waited for rather than given time; one that never comes
+      // is what the first check below reports.
+      for (const t0 = performance.now(); document.documentElement.dataset.theme === before && performance.now() - t0 < 1000; ) {
+        await new Promise((r) => requestAnimationFrame(r))
+      }
       return {
         before,
         after: document.documentElement.dataset.theme,
@@ -938,10 +906,9 @@ try {
     await page.close()
   }
 
-  if (!process.exitCode) console.log('PASS: landing')
-} catch (err) {
-  fail(err.message)
+  h.ok('the landing is a page that reads, and the way in never leaves the screen')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
