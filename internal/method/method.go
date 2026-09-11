@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -28,6 +29,31 @@ const (
 
 // ErrInvalid reports a missing or malformed method directory.
 var ErrInvalid = errors.New("invalid method")
+
+// SourceDir is the directory the worker writes its reproduction code into.
+// Everything under it is worker-written, alongside the fixed Deliverables.
+const SourceDir = "src"
+
+// deliverables are the fixed top-level files the rubric requires of every
+// reproduction. The list is the one source of truth for what the worker is
+// asked to write: the instructions and the task template must name each of
+// them, and the publication gate admits exactly these (plus SourceDir) as
+// worker-written. A file added to the rubric but not here is withheld from
+// every publication silently, which is how verdict.json once went missing.
+var deliverables = []string{
+	"README.md",
+	"REPRODUCIBILITY.md",
+	"UNVERIFIED.md",
+	"SOURCES.md",
+	"verdict.json",
+	"instrument.json",
+}
+
+// Deliverables returns the fixed top-level files the rubric requires the
+// worker to write, in the order the method lists them. The slice is a copy.
+func Deliverables() []string {
+	return slices.Clone(deliverables)
+}
 
 // Method is the three documents that define an audit.
 type Method struct {

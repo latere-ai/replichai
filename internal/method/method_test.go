@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -203,5 +204,43 @@ func TestTheShippedMethodLoads(t *testing.T) {
 	task, err := m.TaskFor("X")
 	if err != nil || !strings.Contains(task, "X") {
 		t.Errorf("shipped task template did not render: %q, %v", task, err)
+	}
+}
+
+func TestDeliverablesIsACopyAndNamesTheRubricFiles(t *testing.T) {
+	got := Deliverables()
+	for _, want := range []string{"README.md", "REPRODUCIBILITY.md", "UNVERIFIED.md",
+		"SOURCES.md", "verdict.json", "instrument.json"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("Deliverables() lacks %s: %v", want, got)
+		}
+	}
+	got[0] = "mutated"
+	if Deliverables()[0] == "mutated" {
+		t.Error("Deliverables() must hand out a copy, not the backing slice")
+	}
+}
+
+// Every deliverable the gate publishes must be one the worker was told to
+// write, in both documents that instruct it: the standing instructions and the
+// task it is handed. A file the gate admits but the prose never asks for is
+// never written; a file the prose asks for but the gate does not know is
+// withheld silently.
+func TestTheShippedMethodNamesEveryDeliverable(t *testing.T) {
+	t.Chdir("..")
+	m, err := Load("")
+	if err != nil {
+		t.Fatalf("the shipped method must load: %v", err)
+	}
+	for _, name := range Deliverables() {
+		if !strings.Contains(m.Instructions, name) {
+			t.Errorf("instructions.md does not name deliverable %s", name)
+		}
+		if !strings.Contains(m.TaskTemplate, name) {
+			t.Errorf("task-template.md does not name deliverable %s", name)
+		}
+	}
+	if !strings.Contains(m.TaskTemplate, SourceDir+"/") {
+		t.Errorf("task-template.md does not name the %s/ directory", SourceDir)
 	}
 }
