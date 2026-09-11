@@ -15,9 +15,10 @@ import (
 	"testing"
 )
 
-// identityProvider is a scripted auth.latere.ai: the device endpoints, the
-// token endpoint that approves at once, and the actor-token mint. It records
-// the forms it was sent so a test can see what the terminal asked for.
+// identityProvider is a scripted stand-in for auth.latere.ai: the device
+// endpoints, a token endpoint that approves at once, and the actor-token mint.
+// It records the forms it was sent so a test can see what the terminal asked
+// for.
 type identityProvider struct {
 	forms []string
 }
@@ -32,7 +33,8 @@ func (p *identityProvider) serve(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/device/code", func(w http.ResponseWriter, _ *http.Request) {
 		write(w, http.StatusOK, map[string]any{
 			"device_code": "dev-1", "user_code": "WXYZ-1234",
-			// One second: the OAuth library treats a zero interval as five.
+			// The interval is one second because the OAuth library treats a
+			// zero interval as five.
 			"verification_uri": "https://auth.example/device", "expires_in": 300, "interval": 1,
 		})
 	})
@@ -66,9 +68,10 @@ func signedInHome(t *testing.T) (home string, provider *identityProvider) {
 	return home, provider
 }
 
-// The whole sign-in from the terminal: the prompt names the code, the
-// credential lands private under the operator's own configuration directory,
-// and whoami answers from it without a network call.
+// TestLoginWhoamiAndLogoutFromTheTerminal covers the whole sign-in from the
+// terminal: the prompt names the code, the credential is written with private
+// permissions under the operator's configuration directory, and whoami answers
+// from it without a network call.
 func TestLoginWhoamiAndLogoutFromTheTerminal(t *testing.T) {
 	provider := &identityProvider{}
 	home := t.TempDir()
@@ -102,7 +105,8 @@ func TestLoginWhoamiAndLogoutFromTheTerminal(t *testing.T) {
 		t.Fatalf("whoami printed %q", stdout)
 	}
 
-	// logout removes it, and whoami then says so and exits non-zero.
+	// logout removes the credential, and whoami then reports that and exits
+	// non-zero.
 	if stdout, _, err = capture(t, "logout"); err != nil || !strings.Contains(stdout, "signed out") {
 		t.Fatalf("logout = %q, %v", stdout, err)
 	}
@@ -115,8 +119,9 @@ func TestLoginWhoamiAndLogoutFromTheTerminal(t *testing.T) {
 	}
 }
 
-// Switching organisation goes through the refresh grant and is reflected by
-// whoami; switching back is the same grant with no organisation.
+// TestOrgShowsAndSwitchesTheContext checks that switching organisation goes
+// through the refresh grant and is reflected by whoami, and that switching back
+// is the same grant with no organisation.
 func TestOrgShowsAndSwitchesTheContext(t *testing.T) {
 	_, provider := signedInHome(t)
 
@@ -142,8 +147,9 @@ func TestOrgShowsAndSwitchesTheContext(t *testing.T) {
 	}
 }
 
-// `org a b` and `org a --personal` are refused rather than read as a switch
-// to the personal context, which is the opposite of what was typed.
+// TestOrgRefusesMoreThanOneChoice checks that `org a b` and `org a --personal`
+// are refused rather than read as a switch to the personal context, which is
+// the opposite of what was typed.
 func TestOrgRefusesMoreThanOneChoice(t *testing.T) {
 	_, provider := signedInHome(t)
 	before := len(provider.forms)
@@ -161,8 +167,9 @@ func TestOrgRefusesMoreThanOneChoice(t *testing.T) {
 	}
 }
 
-// The terminal opens only the provider's https verification URI. Anything
-// else it is handed is printed and never run.
+// TestOnlyAnHTTPSVerificationURIIsOpened checks that the terminal opens only
+// the provider's https verification URI. Anything else it is handed is printed
+// and never run.
 func TestOnlyAnHTTPSVerificationURIIsOpened(t *testing.T) {
 	for _, hostile := range []string{
 		"http://auth.example/device", "file:///etc/passwd", "javascript:alert(1)",

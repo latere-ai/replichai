@@ -49,8 +49,9 @@ func (f *fakeRepositories) publisher(owner, name string) *publisher {
 	}
 }
 
-// testProjectRunner is `replichai run --publish` as runRun would build it,
-// over the memory runtime and a repository source that talks to nothing.
+// testProjectRunner builds the projectRunner that `replichai run --publish`
+// would build, over the memory runtime and a repository source that makes no
+// network calls.
 func testProjectRunner(t *testing.T, repos repositorySource) *projectRunner {
 	t.Helper()
 	m, err := method.Load(writeMethod(t))
@@ -65,11 +66,11 @@ func testProjectRunner(t *testing.T, repos repositorySource) *projectRunner {
 	}
 }
 
-// `replichai run` end to end on the memory runtime: the project file is read,
-// every paper runs through the project runner, and the state and the report
-// are written beside the file. Until this test existed nothing drove runRun,
-// which is how a project file's publish block could be dead configuration
-// without anybody noticing.
+// TestRunDrivesAProjectAndWritesItsReport runs `replichai run` end to end on
+// the memory runtime: the project file is read, every paper runs through the
+// project runner, and the state and the report are written beside the file.
+// Until this test existed nothing drove runRun, which is how a project file's
+// publish block could be dead configuration without anybody noticing.
 func TestRunDrivesAProjectAndWritesItsReport(t *testing.T) {
 	dir := t.TempDir()
 	project := filepath.Join(dir, "papers.txt")
@@ -108,10 +109,11 @@ func TestRunDrivesAProjectAndWritesItsReport(t *testing.T) {
 	}
 }
 
-// The publish block is settled by one rule — flag, environment, project file,
-// default — and every step of it is reachable. The -owner flag used to default
-// to the environment or "open-hai", so it was never empty and the project
-// file's owner was dead configuration.
+// TestThePublishBlockResolvesInOneOrder checks that the publish block is
+// resolved in one order, the flag, then the environment, then the project
+// file, then the default, and that every step of it is reachable. The -owner
+// flag used to default to the environment or "open-hai", so it was never empty
+// and the project file's owner was dead configuration.
 func TestThePublishBlockResolvesInOneOrder(t *testing.T) {
 	env := func(vars map[string]string) func(string) string {
 		return func(key string) string { return vars[key] }
@@ -142,10 +144,11 @@ func TestThePublishBlockResolvesInOneOrder(t *testing.T) {
 	}
 }
 
-// docs/local-runs.md: "Resume skips what finished and retries what failed,
-// into the repository the first attempt created." Until this test existed the
-// runner allocated a fresh repository on every retry, and the state file's
-// repository was overwritten with the new one — so every --resume of a
+// TestAResumedPaperReturnsToItsRepository checks the behaviour
+// docs/local-runs.md documents: "Resume skips what finished and retries what
+// failed, into the repository the first attempt created." Until this test
+// existed the runner allocated a fresh repository on every retry and overwrote
+// the repository in the state file with the new one, so every --resume of a
 // publishing project left a sibling repository per attempt.
 func TestAResumedPaperReturnsToItsRepository(t *testing.T) {
 	const ref = "10.1145/3654777.3676417"
@@ -167,8 +170,8 @@ func TestAResumedPaperReturnsToItsRepository(t *testing.T) {
 		t.Fatalf("the first attempt recorded no repository: %+v", state.Entries[0])
 	}
 
-	// It is then interrupted, which the state records as a failure with the
-	// repository still on it, and the operator resumes.
+	// The attempt is then interrupted, which the state records as a failure
+	// that still names the repository, and the operator resumes.
 	state.Entries[0].Phase, state.Entries[0].Error = batch.Failed, "interrupted"
 	if err := state.Save(statePath); err != nil {
 		t.Fatalf("Save: %v", err)

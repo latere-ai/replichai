@@ -29,7 +29,7 @@ func TestHTTPFetcherRetriesTransientFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		if calls < 2 {
-			http.Error(w, "slow", http.StatusServiceUnavailable) // transient
+			http.Error(w, "slow", http.StatusServiceUnavailable) // A transient failure.
 			return
 		}
 		_, _ = w.Write([]byte("ok"))
@@ -63,7 +63,7 @@ func TestReadRecordedIdentity(t *testing.T) {
 		t.Errorf("read identity = %+v, want %+v", got, want)
 	}
 
-	// Absent (no recorded file) → zero identity, so the caller re-resolves.
+	// When no file is recorded the identity is zero, so the caller re-resolves.
 	absent := github.New("t", github.WithBaseURL(httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })).URL))
 	if got, err := readRecordedIdentity(context.Background(), absent, "open-hai", "x"); err != nil || got.Key != "" {
@@ -131,7 +131,7 @@ func TestVerifyInstrument(t *testing.T) {
 		t.Fatalf("valid instrument: present=%v vs=%v err=%v", present, vs, err)
 	}
 
-	// A malformed one reports a violation without erroring.
+	// A malformed one reports a violation without returning an error.
 	present, vs, err = verifyInstrument(context.Background(),
 		serve(http.StatusOK, []byte(`{"protocol":null,"analysis":null,"servability":{"components":[],"all_servable":true}}`)),
 		"open-hai", "x")
@@ -139,7 +139,8 @@ func TestVerifyInstrument(t *testing.T) {
 		t.Fatalf("malformed instrument: present=%v vs=%v err=%v", present, vs, err)
 	}
 
-	// Absent → not present, no error, so the caller reports it and moves on.
+	// An absent instrument is reported as not present with no error, so the
+	// caller reports it and continues.
 	present, _, err = verifyInstrument(context.Background(),
 		serve(http.StatusNotFound, nil), "open-hai", "x")
 	if err != nil || present {
@@ -147,7 +148,7 @@ func TestVerifyInstrument(t *testing.T) {
 	}
 }
 
-// A well-formed instrument.json for the cmd-level tests above.
+// validInstrumentJSON is a well-formed instrument.json for the tests above.
 const validInstrumentJSON = `{
   "protocol": {"design":"2x2","trials":"120","measures":[{"name":"rt"}],"plan":["LMM"],
     "reported":[{"metric":"RT","value":"p=.003","citation":"Table 2"}]},
@@ -158,7 +159,7 @@ const validInstrumentJSON = `{
 
 // capture runs the CLI with stdout and stderr redirected to temp files, and
 // returns what each received. The command writes to *os.File, so real files
-// are simpler here than plumbing an io.Writer through.
+// are simpler here than passing an io.Writer through.
 func capture(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	outFile, errFile := newTemp(t), newTemp(t)
@@ -251,8 +252,9 @@ func TestAuditReportsAnUnknownRuntime(t *testing.T) {
 	}
 }
 
-// The runtime is named by one flag. A --provider that still parsed would keep
-// two names for one choice alive in every script that copies this invocation.
+// TestTheDeprecatedProviderFlagIsGone checks that the runtime is named by one
+// flag only. A --provider that still parsed would keep two names for one
+// choice in every script that copies this invocation.
 func TestTheDeprecatedProviderFlagIsGone(t *testing.T) {
 	for _, command := range [][]string{
 		{"audit", "paper", "--provider", "memory", "--method", writeMethod(t)},
@@ -312,10 +314,11 @@ func TestUnknownCommandAndHelp(t *testing.T) {
 }
 
 func TestResolveReportsAnIdentity(t *testing.T) {
-	// A DOI's identity (key, scheme) is derived offline; its title and slug are
-	// enriched from Crossref when the network is reachable and degrade to the
-	// key-based slug when it is not. So this asserts only the network-independent
-	// identity — the command's wiring and stable output.
+	// A DOI's key and scheme are derived offline. Its title and slug are
+	// enriched from Crossref when the network is reachable and fall back to the
+	// key-based slug when it is not. This test therefore asserts only the
+	// network-independent identity, which covers the command's wiring and its
+	// stable output.
 	stdout, _, err := capture(t, "resolve", "10.1145/3772318.3791265")
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -337,8 +340,8 @@ func TestPublishPreviewThenLive(t *testing.T) {
 		"README.md":          "# reproduction",
 		"REPRODUCIBILITY.md": "verdict: passed",
 		"src/main.py":        "print(1)",
-		"data/benchmark.csv": "gated,rows", // third-party
-		"paper.pdf":          "PDF",        // third-party
+		"data/benchmark.csv": "gated,rows", // Third-party.
+		"paper.pdf":          "PDF",        // Third-party.
 	}
 	for rel, content := range files {
 		full := filepath.Join(src, filepath.FromSlash(rel))
@@ -350,7 +353,7 @@ func TestPublishPreviewThenLive(t *testing.T) {
 		}
 	}
 	forgeRoot := t.TempDir()
-	const doi = "10.1145/3025453.3025912" // resolves offline, no network
+	const doi = "10.1145/3025453.3025912" // Resolves offline with no network.
 
 	// Preview creates nothing.
 	stdout, _, err := capture(t, "publish", src, doi, "--out", forgeRoot)
@@ -430,10 +433,11 @@ func TestFinishRejectsAnInvalidVerdictBeforePublishing(t *testing.T) {
 	}
 }
 
-// A malformed session reference is refused before anything is fetched: with
-// no token in the environment the error is about the reference, not the
-// token, because the reference was read first. It also used to be used
-// before its decode error was checked.
+// TestFinishRejectsABadSessionReferenceBeforeReachingTheForge checks that a
+// malformed session reference is refused before anything is fetched. With no
+// token in the environment the error is about the reference rather than the
+// token, because the reference is read first. The reference also used to be
+// used before its decode error was checked.
 func TestFinishRejectsABadSessionReferenceBeforeReachingTheForge(t *testing.T) {
 	t.Setenv("REPLICHAI_GITHUB_TOKEN", "")
 	_, _, err := capture(t, "finish", "owner/repo", "doi:10.1234/a", "--session-ref", "not base64!")
@@ -449,10 +453,11 @@ func TestFinishRejectsABadSessionReferenceBeforeReachingTheForge(t *testing.T) {
 	}
 }
 
-// The directory finish keeps a session's artifacts in is named from an id
-// another system minted, reduced to one path segment: "../../x" stays under
-// the temporary root, and the destination is printed so the operator can find
-// what landed there.
+// TestFinishDestinationStaysUnderTheTemporaryRoot checks that the directory
+// finish keeps a session's artifacts in, which is named from an id another
+// system minted, is reduced to one path segment: "../../x" stays under the
+// temporary root. The destination is printed so the operator can find what was
+// written there.
 func TestFinishDestinationStaysUnderTheTemporaryRoot(t *testing.T) {
 	root := filepath.Clean(os.TempDir())
 	for _, id := range []string{"../../x", "/etc/passwd", "a/b", "s-1"} {
@@ -466,10 +471,11 @@ func TestFinishDestinationStaysUnderTheTemporaryRoot(t *testing.T) {
 	}
 }
 
-// finish with no session finalizes a repository the agent already committed
-// into: it reads the identity the publisher recorded there, verifies the
-// tree, writes the manifest, and reports what it did — without resolving the
-// paper over the network, and without a session to reattach to.
+// TestFinishFinalizesAnAlreadyPublishedRepository checks that finish with no
+// session finalizes a repository the agent already committed into: it reads
+// the identity the publisher recorded there, verifies the tree, writes the
+// manifest, and reports what it did, without resolving the paper over the
+// network and without a session to reattach to.
 func TestFinishFinalizesAnAlreadyPublishedRepository(t *testing.T) {
 	recorded, _ := json.Marshal(paper.Identity{
 		Key: "10.1145/3654777.3676417", Scheme: paper.SchemeDOI, Slug: "a-paper", Title: "A Paper",
@@ -562,9 +568,9 @@ func TestSlugifyNeverEscapesADirectory(t *testing.T) {
 }
 
 func TestFlagsAreAcceptedAfterThePaperReference(t *testing.T) {
-	// Regression: flag stops parsing at the first non-flag argument, so a
-	// plain fs.Parse silently drops every flag when the paper comes first --
-	// which is how anyone would naturally type it.
+	// This is a regression test. The flag package stops parsing at the first
+	// non-flag argument, so a plain fs.Parse drops every flag when the paper
+	// comes first, which is how the command is naturally typed.
 	out := t.TempDir()
 	stdout, _, err := capture(t, "audit",
 		"https://arxiv.org/abs/1",
@@ -599,9 +605,10 @@ func TestDetachedSessionReferenceRoundTripsOpaqueLocator(t *testing.T) {
 	}
 }
 
-// The local runtime is reachable from the terminal, and its choices are flags
-// rather than parts of its name: one runtime, whichever sandbox and harness an
-// operator picked.
+// TestLocalRuntimeIsInstalledAndConfigurable checks that the local runtime is
+// reachable from the terminal and that its choices are flags rather than parts
+// of its name: it is one runtime whichever sandbox and harness an operator
+// picked.
 func TestLocalRuntimeIsInstalledAndConfigurable(t *testing.T) {
 	catalog, name, err := runtimeCatalog("local", localOptions{})
 	if err != nil {
@@ -620,8 +627,8 @@ func TestLocalRuntimeIsInstalledAndConfigurable(t *testing.T) {
 		t.Fatalf("the local runtime is not installed: %v", catalog.Names())
 	}
 
-	// Every local choice has an environment default, so a machine's habits
-	// are set once rather than typed on every run.
+	// Every local choice has an environment default, so a machine's settings
+	// are made once rather than typed on every run.
 	t.Setenv("REPLICHAI_SANDBOX", "container")
 	t.Setenv("REPLICHAI_HARNESS", "codex")
 	t.Setenv("REPLICHAI_SESSION_ROOT", "/tmp/sessions-from-the-environment")
@@ -638,7 +645,7 @@ func TestLocalRuntimeIsInstalledAndConfigurable(t *testing.T) {
 	if options.root != "/tmp/sessions-from-the-environment" {
 		t.Errorf("session root = %q", options.root)
 	}
-	// A flag beats the environment.
+	// A flag takes precedence over the environment.
 	fs = flag.NewFlagSet("audit", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	options = localOptions{}
@@ -651,24 +658,26 @@ func TestLocalRuntimeIsInstalledAndConfigurable(t *testing.T) {
 	}
 }
 
-// audit takes a model, which is what makes the choice of model reachable at
-// all: the option existed and nothing on the command line reached it.
+// TestAuditAcceptsAModel checks that audit takes a --model flag. Before the
+// flag existed the session option was defined but nothing on the command line
+// reached it.
 func TestAuditAcceptsAModel(t *testing.T) {
 	for _, value := range []string{"best", "anthropic/claude-opus-5"} {
 		_, _, err := capture(t, "audit", "https://arxiv.org/abs/2603.01795",
 			"--runtime", "memory", "--model", value, "--out", t.TempDir())
-		// The memory runtime resolves only its own tiers, so an exact
-		// reference is refused there — what matters is that the flag was
-		// parsed and reached the session rather than being unknown.
+		// The memory runtime resolves only its own tiers, so it refuses an
+		// exact reference. This test asserts only that the flag was parsed and
+		// reached the session rather than being unknown.
 		if err != nil && strings.Contains(err.Error(), "flag provided but not defined") {
 			t.Fatalf("--model %q is not a flag: %v", value, err)
 		}
 	}
 }
 
-// Retention keeps a session directory by default, because the workspace is the
-// reproduction. That makes them accumulate, so listing and pruning are how the
-// space is reclaimed — without them the only tool is rm -rf.
+// TestSessionsAreListableAndPrunable checks the sessions command. Retention
+// keeps a session directory by default, because the workspace is the
+// reproduction. Directories therefore accumulate, and listing and pruning are
+// how the space is reclaimed; without them the only tool is rm -rf.
 func TestSessionsAreListableAndPrunable(t *testing.T) {
 	root := t.TempDir()
 	old := filepath.Join(root, "7f3a91c2")
@@ -713,8 +722,8 @@ func TestSessionsAreListableAndPrunable(t *testing.T) {
 	if _, err := os.Stat(recent); err != nil {
 		t.Fatalf("prune took a session inside the window: %v", err)
 	}
-	// A root that was never used is no sessions, not a failure: a machine
-	// that has never run one locally is not broken.
+	// A root that was never used lists no sessions rather than failing,
+	// because a machine that has never run a session locally is not broken.
 	if _, _, err := capture(t, "sessions", "ls", "--session-root", filepath.Join(root, "never")); err != nil {
 		t.Fatalf("an unused root = %v", err)
 	}

@@ -17,8 +17,8 @@ import (
 )
 
 // runLogin signs the terminal in against auth.latere.ai with the device-code
-// flow: a terminal cannot run a browser redirect, so it prints a URL and a
-// code and waits (045i).
+// flow (045i). A terminal cannot receive a browser redirect, so it prints a
+// URL and a code and waits.
 func runLogin(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("login", stderr)
 	authURL := fs.String("auth-url", envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL), "identity provider URL")
@@ -97,9 +97,9 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if err != nil {
 		return err
 	}
-	// One organisation, or the personal context, never both and never
-	// several: `org a b` used to switch silently to the personal context,
-	// which is the opposite of what was typed.
+	// Exactly one organisation or the personal context is accepted, never
+	// both and never several. `org a b` used to switch silently to the
+	// personal context, which is the opposite of what was typed.
 	if len(positional) > 1 || (len(positional) == 1 && *personal) {
 		_, _ = fmt.Fprintln(stderr, "org takes one organisation id, or --personal")
 		return errExitQuiet
@@ -150,20 +150,21 @@ func homeDir() string {
 	return home
 }
 
-// openBrowser is best effort: a terminal that cannot open one still prints the
-// URL, which is the whole point of the device flow.
+// openBrowser is best effort. A terminal that cannot open a browser still has
+// the printed URL, which is what the device flow relies on.
 func openBrowser(url string) {
 	if command := browserCommand(runtime.GOOS, url); command != nil {
 		_ = command.Start()
 	}
 }
 
-// browserCommand is the command that opens rawURL on a platform, or nil where
+// browserCommand is the command that opens rawURL on a platform, or nil when
 // there is nothing safe to run: an unknown platform, or a URL that is not
-// https. The verification URI is the only thing this ever opens and the
-// provider's is always https; anything else handed to `open` or `xdg-open` —
-// a file: path, a custom scheme — runs something on the operator's machine at
-// the provider's say-so, and printing the URL is enough.
+// https. The verification URI is the only thing this ever opens, and the
+// provider's is always https. Anything else handed to `open` or `xdg-open`,
+// such as a file: path or a custom scheme, would run something on the
+// operator's machine at the provider's request, and printing the URL is
+// enough.
 func browserCommand(goos, rawURL string) *exec.Cmd {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {

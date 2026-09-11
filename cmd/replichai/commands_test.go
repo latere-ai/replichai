@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// The usage text is generated from the registry, so every subcommand appears
-// in it with its own synopsis and summary — and every subcommand that appears
-// is one dispatch knows.
+// TestUsageListsEveryRegisteredCommand checks that the usage text is generated
+// from the registry: every subcommand appears in it with its own synopsis and
+// summary, and every subcommand that appears is one dispatch knows.
 func TestUsageListsEveryRegisteredCommand(t *testing.T) {
 	stdout, _, err := capture(t, "help")
 	if err != nil {
@@ -38,10 +38,11 @@ func TestUsageListsEveryRegisteredCommand(t *testing.T) {
 	}
 }
 
-// `replichai <command> -h` prints the command's own flags from its own flag
-// set, exits cleanly, and names the command's synopsis. The flags asserted
-// here are the ones the old hand-written help had drifted away from: it
-// omitted them, or showed a legacy one as canonical.
+// TestEveryCommandPrintsItsOwnFlags checks that `replichai <command> -h`
+// prints the command's own flags from its own flag set, exits cleanly, and
+// names the command's synopsis. The flags asserted here are the ones the old
+// hand-written help had drifted from: it omitted them, or showed a legacy one
+// as canonical.
 func TestEveryCommandPrintsItsOwnFlags(t *testing.T) {
 	expected := map[string][]string{
 		"audit":     {"-out", "-runtime", "-method", "-interval", "-timeout", "-max-revisions", "-publish", "-owner", "-invite", "-project", "-detach", "-model", "-sandbox", "-harness", "-engine", "-image", "-models", "-session-root", "-retention"},
@@ -89,8 +90,9 @@ func TestEveryCommandPrintsItsOwnFlags(t *testing.T) {
 	}
 }
 
-// A subcommand that takes no arguments refuses them rather than ignoring
-// them: `whoami foo` is a typo, not a request.
+// TestCommandsWithoutArgumentsRefuseThem checks that a subcommand that takes no
+// arguments refuses them rather than ignoring them, because an argument to
+// `whoami` is most likely a typo.
 func TestCommandsWithoutArgumentsRefuseThem(t *testing.T) {
 	for _, name := range []string{"whoami", "logout", "providers", "rates"} {
 		_, stderr, err := capture(t, name, "stray")

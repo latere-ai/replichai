@@ -14,9 +14,11 @@ import (
 	"github.com/latere-ai/replichai/internal/oteltest"
 )
 
-// The terminal is where a trace starts for anything a person runs by hand. A
-// resolver call that carries no context makes the deployment's side of that
-// work a trace of its own, unattached to the command that caused it.
+// TestCLIPaperFetcherRecordsAClientSpanAndPropagates checks that a paper fetch
+// records a client span and propagates the trace context. A trace for anything
+// a person runs by hand starts in the terminal. A resolver call that carries no
+// context would make the deployment's side of that work a separate trace,
+// unattached to the command that caused it.
 func TestCLIPaperFetcherRecordsAClientSpanAndPropagates(t *testing.T) {
 	recorder := oteltest.Record(t)
 	peer := oteltest.NewPeer(t, func(w http.ResponseWriter, _ *http.Request) {

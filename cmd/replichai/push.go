@@ -17,8 +17,8 @@ import (
 	"github.com/latere-ai/replichai/internal/paper"
 )
 
-// runProject creates and lists the containers a locally-run session is filed
-// under (045k).
+// runProject creates and lists the projects a locally run session is filed
+// under, and lists or removes their sessions (045k).
 func runProject(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	args, err := parseFlags(flagSet("project", stderr), args)
 	if err != nil {
@@ -72,10 +72,10 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 			_, _ = fmt.Fprintln(stderr, "usage: replichai project rm-session <session-id>...")
 			return errExitQuiet
 		}
-		// Each id is its own act: one refusal — a session still running, a
-		// session somebody else owns — must not strand the rest, because the
-		// reason to delete several at once is that a run went wrong in a way
-		// that produced several.
+		// Each id is deleted independently. One refusal, such as a session
+		// still running or a session somebody else owns, must not stop the
+		// rest, because several are deleted at once when a run went wrong in
+		// a way that produced several.
 		failed := 0
 		for _, id := range args[1:] {
 			if err := client.DeleteSession(ctx, id); err != nil {
@@ -96,12 +96,12 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 }
 
 // runPush files sessions this machine ran under a project in the app. The
-// evidence itself is already in each reproduction's repository; what travels
-// here is the record.
+// evidence itself is already in each reproduction's repository; only the
+// record is sent here.
 //
-// A push failure never fails a run: the work is on disk and in the repository,
-// and running push again finishes the job. That is why the whole command is
-// resumable and idempotent rather than transactional.
+// A push failure never fails a run. The work is on disk and in the repository,
+// and running push again finishes the job. The command is therefore resumable
+// and idempotent rather than transactional.
 func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("push", stderr)
 	projectID := fs.String("project", "", "the project to add the sessions to")
@@ -142,8 +142,9 @@ func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error 
 			failed++
 			continue
 		}
-		// The paper is filed first: a session may only be filed against a
-		// paper the project holds, for the same reason it may only run one.
+		// The paper is filed first, because a session may only be filed
+		// against a paper the project holds, for the same reason it may only
+		// run against one.
 		if err := client.AddPaper(ctx, *projectID, entry.Paper); err != nil {
 			_, _ = fmt.Fprintf(stderr, "  ! %s: %v\n", entry.Paper, err)
 			failed++
@@ -166,8 +167,8 @@ func runPush(ctx context.Context, args []string, stdout, stderr *os.File) error 
 }
 
 // recordOf turns one batch entry into the record the app files. The paper key
-// is the one the run already resolved where it has one, and is derived offline
-// where it does not: a push must not depend on a paper source being reachable.
+// is the one the run resolved when the entry has one, and is derived offline
+// otherwise, because a push must not depend on a paper source being reachable.
 func recordOf(entry batch.EntryState) (cloud.ImportRecord, error) {
 	key := entry.PaperKey
 	if key == "" {
@@ -200,9 +201,9 @@ func recordOf(entry batch.EntryState) (cloud.ImportRecord, error) {
 	}, nil
 }
 
-// runtimeOf is which runtime executed the session, from the reference the run
-// recorded. An entry with no reference is attributed to the local runtime,
-// which is what a batch state file describes.
+// runtimeOf returns the runtime that executed the session, from the reference
+// the run recorded. An entry with no reference is attributed to the local
+// runtime, which is what a batch state file describes.
 func runtimeOf(entry batch.EntryState) string {
 	if entry.Ref.Runtime != "" {
 		return string(entry.Ref.Runtime)
@@ -210,8 +211,8 @@ func runtimeOf(entry batch.EntryState) string {
 	return "local"
 }
 
-// apiClient builds the platform client over the saved credential, refusing
-// with an actionable message where there is none.
+// apiClient builds the platform client over the saved credential. When there
+// is none, it returns an error that names the login command.
 func apiClient() (*cloud.Client, error) {
 	session := cloud.New(homeDir(), envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL))
 	if _, err := session.Store.Load(); err != nil {
