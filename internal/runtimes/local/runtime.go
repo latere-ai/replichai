@@ -68,15 +68,14 @@ type Config struct {
 type Runtime struct {
 	config Config
 
-	// mu guards reservations: the sessions Capabilities has allocated and no
-	// Start has yet consumed, keyed by workspace path. There is no single
-	// pending slot — the server runs a worker pool against one Runtime, and a
-	// shared slot handed the same workspace to every concurrent caller, so two
-	// jobs templated their instructions against one directory and then one ran
-	// in another's. A reservation belongs to the caller whose specification
-	// names its workspace; Start resolves it from that.
-	mu           sync.Mutex
-	reservations map[string]*Session
+	// mu guards pending, the session allocated by Capabilities and consumed by
+	// the next Start. The two are paired by the caller — the audit reads the
+	// output directory, then starts the session that writes to it, and the push
+	// reads that same directory again — and on this runtime that directory is
+	// per-session, so the allocation happens at the first of those calls and is
+	// held until Start takes it.
+	mu      sync.Mutex
+	pending *Session
 }
 
 // New composes a local runtime, refusing a configuration that could not run a
@@ -204,7 +203,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
-	session, err := r.claim(spec)
+	session, err := r.take()
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
@@ -883,65 +882,46 @@ func (r *Runtime) reference(session *Session, locator Locator, revision uint64) 
 	return ref, ref.Validate(managed.DefaultMaxLocatorBytes)
 }
 
-// reserve allocates a fresh session and records it as this caller's
-// reservation. Each call makes its own: two concurrent Capabilities calls get
-// two workspaces, so neither templates its instructions against the other's.
+// reserve allocates the session the next Start will use, or returns the one
+// already allocated.
+//
+// The pending session is deliberately shared across calls: a session's output
+// directory is a per-session path the caller must read before Start, and one
+// job reads it twice — the audit reads it to template its instructions, and the
+// push reads it again to know where to publish from. Both must name the session
+// Start then runs, so Capabilities is idempotent until a Start consumes the
+// reservation. (A worker pool sharing one Runtime therefore serialises a job's
+// Capabilities and Start; the alternative, a per-call reservation, breaks the
+// two-read pattern above because the push would name a session no Start ran.)
 func (r *Runtime) reserve() (*Session, error) {
-	session, err := r.newSession()
-	if err != nil {
-		return nil, err
-	}
 	r.mu.Lock()
-	if r.reservations == nil {
-		r.reservations = make(map[string]*Session)
+	defer r.mu.Unlock()
+	if r.pending != nil {
+		return r.pending, nil
 	}
-	r.reservations[session.Workspace()] = session
-	r.mu.Unlock()
-	return session, nil
-}
-
-// claim resolves the session a Start belongs to. A specification carries the
-// workspace it was templated against — the audit reads Capabilities' output
-// directory and writes it into the instructions and the task — so the
-// reservation whose workspace the specification names is this caller's. A lone
-// outstanding reservation is taken even where the specification names no path,
-// which is the single-session flow a test drives. With nothing to bind to,
-// Start allocates its own, which is a Start with no preceding Capabilities.
-func (r *Runtime) claim(spec managed.SessionSpec) (*Session, error) {
-	r.mu.Lock()
-	if session := r.bindLocked(spec); session != nil {
-		r.mu.Unlock()
-		return session, nil
-	}
-	r.mu.Unlock()
-	return r.newSession()
-}
-
-// bindLocked returns and removes the reservation this specification names, or
-// the lone reservation where it names none. It runs under r.mu.
-func (r *Runtime) bindLocked(spec managed.SessionSpec) *Session {
-	for workspace, session := range r.reservations {
-		if strings.Contains(spec.Instructions, workspace) || strings.Contains(spec.Task, workspace) {
-			delete(r.reservations, workspace)
-			return session
-		}
-	}
-	if len(r.reservations) == 1 {
-		for workspace, session := range r.reservations {
-			delete(r.reservations, workspace)
-			return session
-		}
-	}
-	return nil
-}
-
-// newSession makes a fresh session directory under the root.
-func (r *Runtime) newSession() (*Session, error) {
 	id, err := sessionID()
 	if err != nil {
 		return nil, err
 	}
-	return CreateSession(r.config.Root, id, r.config.Lookup)
+	session, err := CreateSession(r.config.Root, id, r.config.Lookup)
+	if err != nil {
+		return nil, err
+	}
+	r.pending = session
+	return session, nil
+}
+
+// take consumes the reserved session, so the next Capabilities allocates a
+// fresh one and one runtime can start more than one session.
+func (r *Runtime) take() (*Session, error) {
+	session, err := r.reserve()
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	r.pending = nil
+	r.mu.Unlock()
+	return session, nil
 }
 
 // writeAttachments places a specification's attachments into the workspace,
