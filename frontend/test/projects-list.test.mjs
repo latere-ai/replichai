@@ -21,28 +21,7 @@
 // None of that is reachable from a unit test: the assertions are about rendered
 // rows and their painted order. It drives Chrome over a Vite dev server with the
 // API mocked. Run it with `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5199
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
+import { fail, start } from './harness.mjs'
 
 const ME = 'me-sub'
 const ago = (ms) => new Date(Date.now() - ms).toISOString()
@@ -88,47 +67,16 @@ const projects = [
 ]
 
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: ME, email: 'me@example.com', tier: 'user', credits: { wallet: 10_000_000, start_reserve: 5_000_000 } }],
-  [/^\/me\/profile$/, {}],
-  [/^\/projects$/, projects],
-  [/^\/public$/, []],
+  ['/me', { authenticated: true, principal: ME, email: 'me@example.com', tier: 'user', credits: { wallet: 10_000_000, start_reserve: 5_000_000 } }],
+  ['/me/profile', {}],
+  ['/projects', projects],
+  ['/public', []],
 ]
 
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
-
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  const asked = []
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      asked.push(u.pathname)
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(hit[1]) })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  const page = await h.page({ routes })
+  await page.open('/')
   await page.waitForSelector('[data-test="project-rows"] .row')
 
   const read = () =>
@@ -162,7 +110,7 @@ try {
   for (const g of segs) {
     if (g.some((l) => /mine|shared|yours|invited/i.test(l))) fail(`a segmented control splits the list by ownership again: ${JSON.stringify(g)}`)
   }
-  if (asked.some((p) => p === '/shared')) fail('the screen still fetches /shared')
+  if (page.calls.some((c) => c === 'GET /shared')) fail('the screen still fetches /shared')
 
   // Order follows the column the reader can see.
   if (rows[0].title !== projects[0].title) fail(`the first row is "${rows[0].title}", want the most recently modified "${projects[0].title}"`)
@@ -289,7 +237,7 @@ try {
   // The filter narrows the rendered rows and restores them, and asks the server
   // for nothing to do it — a filter that refetched could disagree with the rows
   // it is filtering.
-  const before = asked.length
+  const before = page.calls.length
   // Typed rather than assigned: a value written straight onto the node does not
   // fire the event React listens for, so the assertion would be about a DOM the
   // component never saw. Clearing selects the field's own text and deletes it,
@@ -302,14 +250,16 @@ try {
     })
     await page.keyboard.press('Backspace')
     if (text) await page.type('[data-test="project-filter"]', text)
-    await new Promise((r) => setTimeout(r, 200))
+    // The field is controlled, so its value is the typed text only once React
+    // has taken the event and rendered on it.
+    await page.waitForFunction((v) => document.querySelector('[data-test="project-filter"]')?.value === v, {}, text)
   }
   await typeFilter('Placebo')
   const filtered = await page.evaluate(() =>
     [...document.querySelectorAll('[data-test="project-rows"] .row .row-title')].map((e) => e.textContent.trim()),
   )
   if (filtered.length !== 1 || !/Placebo/.test(filtered[0] || '')) fail(`filtering by title left ${JSON.stringify(filtered)}`)
-  if (asked.length !== before) fail(`filtering made ${asked.length - before} network calls; it narrows what is already loaded`)
+  if (page.calls.length !== before) fail(`filtering made ${page.calls.length - before} network calls; it narrows what is already loaded`)
   // Filtering by the owner's name, not only the title — the owner is on the row,
   // so it is a thing a reader would type.
   await typeFilter('Lovelace')
@@ -325,15 +275,16 @@ try {
   // is asserted here is that it is still *readable*, and that Published is the
   // one that leaves.
   await page.setViewport({ width: 640, height: 900 })
-  await new Promise((r) => setTimeout(r, 200))
+  await page.waitForFunction((w) => window.innerWidth === w, {}, 640)
   const narrow = await read()
   const pubShown = await page.evaluate(() => [...document.querySelectorAll('[data-test="published-cell"]')].some((c) => c.getClientRects().length))
   if (pubShown) fail('the Published column still takes space on a narrow screen')
   if (narrow.some((r) => !r.ownerShown)) fail('a row lost its owner on a narrow screen; it moved to the meta line, it did not leave')
   if (narrow.some((r) => !r.title)) fail('a row lost its title on a narrow screen')
 
-  if (!process.exitCode) console.log('ok: the projects list is one list, in named columns that line up')
+  h.ok('the projects list is one list, in named columns that line up')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
