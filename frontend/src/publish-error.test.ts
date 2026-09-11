@@ -9,7 +9,7 @@ const t = ((key: string) => key) as never
 
 // A 409 on the public flip means several different things, and the status alone
 // cannot tell them apart: the signer's profile is not public (006r), or the
-// project's sessions are not publishable — and that last one is itself four
+// project's sessions are not publishable, and that last one is itself four
 // facts. Telling somebody the wrong one sends them to fix something that is not
 // broken, so the body's code decides.
 test('a 409 is disambiguated by the error code, not the status', () => {
@@ -28,10 +28,11 @@ test('a coded-less 409 says the project is blocked, not that it is contaminated'
   expect(publishErrText(t, new ApiError(409, ''))).toBe('publishBlocked')
 })
 
-// A refusal carries the sessions in the way. Each says what is wrong with that
-// one — the two not-clear reviews are different problems with different remedies
-// — and opens where that is legible: a flagged manifest on the verdict pane, a
-// run that never finished on its transcript, which has no manifest to show.
+// A refusal carries the blocking sessions. Each says what is wrong with that
+// one, since the two not-clear reviews are different problems with different
+// remedies, and opens where that is visible: a flagged manifest on the verdict
+// pane, a run that never finished on its transcript, which has no manifest to
+// show.
 test('a blocker names its own reason and where to read it', () => {
   const blocker = (b: Partial<PublishBlocker>): PublishBlocker => ({ session_id: 's', reason: 'not_clear', ...b })
   expect(publishBlockerText(t, blocker({ review: 'excluded' }))).toBe('blockerNotClear')
@@ -44,9 +45,9 @@ test('a blocker names its own reason and where to read it', () => {
   expect(blockerTab(blocker({ reason: 'unreadable' }))).toBe('transcript')
 })
 
-// The blockers survive the trip through the API client. They used to not exist;
-// what did exist — a body with more in it than `error` — was dropped on the
-// floor, so a refusal could name sessions the screen never saw.
+// The blockers survive the trip through the API client. Before, a body with
+// more in it than `error` was discarded, so a refusal could name sessions the
+// screen never saw.
 test('a refusal keeps the sessions it named', () => {
   const named: PublishBlocker[] = [{ session_id: 'job-1', repo: 'open-hai/x', reason: 'not_clear', review: 'excluded' }]
   expect(publishBlockers(new ApiError(409, 'not_clear', named))).toEqual(named)

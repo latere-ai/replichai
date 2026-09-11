@@ -3,11 +3,11 @@
 
 import { useCallback, useMemo, useState } from 'react'
 
-// English only for now. To add a language: add its code to the Lang union and a
-// matching block to `strings`. Because a translation key is derived from the
-// English block below (TKey), TypeScript then *requires* the new block to
-// translate every string — a locale cannot ship half-done — and a language
-// switcher becomes a two-line change.
+// English only for now. To add a language, add its code to the Lang union and a
+// matching block to `strings`. The translation key type TKey is derived from
+// the English block below, so TypeScript requires the new block to translate
+// every string and a locale cannot ship half-done. A language switcher is then
+// a two-line change.
 export type Lang = 'en'
 
 // I18n is what a component needs to render text: the chosen language, a setter,
@@ -17,21 +17,21 @@ export type I18n = ReturnType<typeof useI18n>
 
 // en is the source of truth: every key the product uses, in English. A new
 // locale is typed against its keys, so it cannot omit one.
-// A `|` in a heading is a seam: a place the writer says the line may break.
-// Everything between two seams is rendered unbreakable, so a heading comes
-// apart at a clause and never mid-phrase. CSS cannot make that call — it breaks
-// at whatever space overflows, and `text-wrap: balance` only equalises the
-// resulting line lengths — and a translator moving the sentence into another
+// A `|` in a heading is a seam: a place where the writer allows the line to
+// break. Everything between two seams is rendered unbreakable, so a heading
+// breaks at a clause and never mid-phrase. CSS cannot make that decision: it
+// breaks at whatever space overflows, and `text-wrap: balance` only equalises
+// the resulting line lengths. A translator moving the sentence into another
 // language moves the clause with it, which no stylesheet can follow. Only
-// headings carry seams; body copy has room to wrap wherever it likes.
+// headings carry seams; body copy wraps wherever it needs to.
 const en = {
     // auth
     // The landing (017). The claim is a question because that is the question
     // the product answers, and the lead says what it does that nothing else in
     // the field does: it runs the paper. The two titles label the inner/outer
-    // boundary in the hero legend — the thing worth putting in front of
-    // somebody before they have an account — and the card promises only what
-    // 006q made true, that signing in is open and a session is what spends.
+    // boundary in the hero legend, which is shown to readers before they have
+    // an account. The card promises only what 006q made true: signing in is
+    // open and a session is what spends.
     landingClaim: 'Does the paper|actually reproduce?',
     landingLead:
       'Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart.',
@@ -46,8 +46,8 @@ const en = {
       'Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number.',
     // The landing as a place (029): the section headings, the figure captions,
     // and the close. The claim, the lead, and the three points above are 017's
-    // and are reused verbatim — the argument did not change, only how much room
-    // it now has.
+    // and are reused verbatim; the argument did not change, only the space it
+    // has.
     lpLoopsTitle: 'One loop closes.|One never will.',
     lpLoopsCaption:
       'The algorithm re-runs, so it is drawn closed. The study with people does not, so it is drawn open — and nothing here pretends otherwise.',
@@ -89,7 +89,7 @@ const en = {
     lpCloseBody: 'Everything published here is open — the verdict, the repository, and the transcript that produced them.',
     // The rebuild (033). 029's copy above is the argument and is reused
     // untouched; everything here belongs to a band 029 did not have. The
-    // eyebrows name what a band is *about* — a reader scanning the page reads
+    // eyebrows name what a band is about. A reader scanning the page reads
     // only those, so each one is a noun, not a verb.
     lpEyebrowAudited: 'Reproducibility, audited',
     lpStepN: 'Step {n}',
@@ -111,7 +111,7 @@ const en = {
     lpShipsUnverified: 'Everything that could not be confirmed, each with its specific blocker.',
     lpShipsSources: 'The paper’s identity and every artifact search performed, with its result.',
     // The walkthrough's plates: the artifact each step leaves, drawn as the app
-    // draws it. The paper key is deliberately unresolvable — see lpDemoExample.
+    // draws it. The paper key is deliberately unresolvable; see lpDemoExample.
     lpPlateKey: 'Paper key',
     lpPlateKeyValue: '10.0000/replichai.example',
     lpPlateKeyNote: 'One identity, one slug, one thing to audit.',
@@ -196,8 +196,9 @@ const en = {
     // It is not only "you were banned" either: a session minted before the
     // change, an address the identity provider did not return, and an address
     // already bound to another account all land here too. Naming a ban would
-    // accuse somebody of something that did not happen, so the copy says what
-    // is certain — no access right now — and offers the two things that help.
+    // accuse somebody of something that did not happen, so the copy says only
+    // what is certain, that there is no access right now, and offers the two
+    // things that help.
     noAccessTitle: 'No access|to this account',
     noAccessBody:
       "You're signed in as {email}, but this account cannot use replichai right now. Signing out and back in fixes most cases; if it persists, a platform admin has revoked access and can restore it.",
@@ -320,7 +321,7 @@ const en = {
     sessionCostRunningTitle: 'What this session has cost so far. It is charged when the session ends.',
     signOut: 'Sign out',
     back: 'Back',
-    // appearance: three choices, not a toggle — "auto" follows the operating
+    // appearance: three choices, not a toggle. "auto" follows the operating
     // system, and the other two pin it regardless of what the machine does.
     theme: 'Appearance',
     themeAuto: 'Auto',
@@ -340,8 +341,8 @@ const en = {
     ledgerAllocateTo: 'Allocated to',
     ledgerReclaimFrom: 'Taken back from',
     // The merged list (018). Ownership is shown in the row rather than being a
-    // place to look, so the owner of your own project reads "You" — the common
-    // case, and the one nobody should have to read a name to recognise.
+    // place to look, so the owner of your own project reads "You", the common
+    // case, which nobody should have to read a name to recognise.
     colPaper: 'Paper',
     colStatus: 'Status',
     colVisibility: 'Visibility',
@@ -349,9 +350,8 @@ const en = {
     ownerUnknown: '—',
     noProjects: 'No projects yet. Start a new audit to open one.',
     // The boundary band (034). It replaces three counters, two of which were the
-    // list below them counted. This is the one number the product exists to
-    // produce, and it is never a bare rate: a count, its denominator, and what
-    // the remainder actually is.
+    // list below them counted. This is the product's primary number, and it is
+    // never a bare rate: a count, its denominator, and what the remainder is.
     evidenceEyebrow: 'Published evidence',
     evidenceAcross: 'across {n} projects',
     evidenceOf: 'of {n} sessions committed a repository',
@@ -375,9 +375,9 @@ const en = {
     publishedOf: '{n} of {total}',
     publishedUnit: 'sessions',
     // The trash (019). Two steps, because the dangerous one has to be
-    // deliberate: the row action is reversible and says so, and the words that
-    // matter on the permanent one are what it does *not* remove — the
-    // repositories close, they are not destroyed.
+    // deliberate: the row action is reversible and says so, and the permanent
+    // one states what it does not remove: the repositories close, they are not
+    // destroyed.
     download: 'Download everything',
 
     navTrash: 'Trash',
@@ -433,15 +433,15 @@ const en = {
     initiator: 'Published by',
     // What a reader with no account gets at an address that is not public (028).
     // The server answers one 404 for private, withdrawn, and never-existed, so
-    // the copy claims none of them — it says what is certain and offers the two
+    // the copy claims none of them; it says what is certain and offers the two
     // things that help.
     notPublicTitle: 'Not public',
     notPublicBody: 'This address is not published. If you have been given access to it, sign in and you will land right back here.',
     notPublicBodyIn: 'This address is not published, or it is not shared with your account.',
     browseRegistry: 'Browse the registry',
     // An address this app does not have (042c). It says what happened without
-    // guessing why — a typo, a link that lost its tail, a page that was never
-    // here — and offers the two places worth going next.
+    // guessing why, whether a typo, a truncated link, or a page that was never
+    // here, and offers the two places worth going next.
     notFoundTitle: 'No page|at this address',
     notFoundBody: 'This is not an address on replichai. The link may have been cut short, or the page may never have been here.',
     notFoundHome: 'Go to your projects',
@@ -473,7 +473,7 @@ const en = {
     // One mistake with two fixes, so it names both (036).
     nameOrPaper: 'Name the project, or add a paper to name it after.',
     // The short forms sit directly under the paper they belong to, so they only
-    // have to say what about it — the row already says which one.
+    // have to say what about it; the row already says which one.
     errUnresolvable: 'We don’t recognise this link.',
     somePapersNotRecognised: 'The project was created. We didn’t recognise the links marked below — you can add those papers again from inside the project.',
     createFailed: 'Something went wrong on our side and the project wasn’t created. Try again in a moment.',
@@ -489,14 +489,14 @@ const en = {
     startSession: 'Start replication',
     startingSession: 'Starting…',
     // The model tier a session runs on (031). The names say what the choice is
-    // *for* — capability against cost — rather than naming a vendor's model,
-    // which changes under the same tier on every release.
+    // for, capability against cost, rather than naming a vendor's model, which
+    // changes under the same tier on every release.
     modelTier: 'Model',
     modelTierHint: 'Which model the next session you start runs on. A cheaper tier spends the project’s credits more slowly.',
     tierBest: 'Best',
     tierBalanced: 'Balanced',
     tierFast: 'Fast',
-    // The price of a tier, per million tokens in and out — the unit the rate
+    // The price of a tier, per million tokens in and out, the unit the rate
     // card is kept in, so what is shown is what the run is billed from.
     tierPrice: '{in} / {out} per Mtok',
     errBadTier: 'That model tier isn’t offered. Pick one from the list.',
@@ -599,8 +599,9 @@ const en = {
     stopping: 'Stopping…',
     stopped: 'stopped',
     stopError: 'Couldn’t stop this session — it’s still running. Try again.',
-    // A session that failed used to print the worker's own error string here —
-    // "put replication-manifest.json in latere/x: unexpected status 422". These
+    // A session that failed used to print the worker's own error string here,
+    // such as "put replication-manifest.json in latere/x: unexpected status
+    // 422". These
     // say what class of thing went wrong and who can move it; the original text
     // is still one hover away, for whoever is actually debugging it.
     failUnresolvable: 'Stopped — the paper couldn’t be identified from its link.',
@@ -847,14 +848,14 @@ const en = {
 // is checked to cover them all.
 export type TKey = keyof typeof en
 
-// strings holds every locale. Adding one — `zh: { … }` — is where TypeScript
-// enforces completeness against TKey.
+// strings holds every locale. Adding one, such as `zh: { … }`, is where
+// TypeScript enforces completeness against TKey.
 const strings: Record<Lang, Record<TKey, string>> = { en }
 
-// readLang accepts what localStorage held. Anything that names no locale — an
-// older build's value, a hand edit, the absent value of a first visit — reads
-// as English rather than reaching the string table as a block that is not
-// there, where the first t() used to throw.
+// readLang accepts what localStorage held. Anything that names no locale,
+// whether an older build's value, a hand edit, or the absent value of a first
+// visit, reads as English rather than reaching the string table as a block
+// that is not there, where the first t() used to throw.
 export function readLang(raw: string | null): Lang {
   return raw !== null && raw in strings ? (raw as Lang) : 'en'
 }
@@ -863,10 +864,10 @@ export function readLang(raw: string | null): Lang {
 // placeholders.
 export type T = (key: TKey, vars?: Record<string, string>) => string
 
-// translator is t and raw for one language, with no hook around them — for the
-// modules that format what the screens show (when.ts, transcript.ts), which
-// have no component to read a hook in, and for the tests that pin their output.
-// useI18n is this, remembered for the language the reader chose.
+// translator is t and raw for one language, with no hook around them, for the
+// modules that format what the screens show, such as when.ts and transcript.ts,
+// which have no component to read a hook in, and for the tests that pin their
+// output. useI18n is this, remembered for the language the reader chose.
 export function translator(lang: Lang): { t: T; raw: T } {
   // raw is the string as it is written, seams and all. Only Seams (ui.tsx) has
   // any use for it; everything else wants the sentence.
@@ -880,11 +881,11 @@ export function translator(lang: Lang): { t: T; raw: T } {
     if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])
     return s
   }
-  // t is the sentence: seams removed. A seam is an instruction to whoever sets
-  // the line, and every other consumer — a tab title, an aria-label, a share
-  // card — wants the words. Stripping here rather than at each call site is what
-  // makes that true by default; the tab once read "No page|at this address".
-  // The seam stands *in place of* the space it may break at, so removing it puts
+  // t is the sentence with seams removed. A seam is an instruction to whoever
+  // sets the line, and every other consumer, such as a tab title, an aria-label
+  // or a share card, wants the words. Stripping here rather than at each call
+  // site makes that the default; the tab once read "No page|at this address".
+  // The seam stands in place of the space it may break at, so removing it puts
   // the space back. Deleting it outright once produced "No pageat this address".
   const t: T = (key, vars) => raw(key, vars).replace(/\s*\|\s*/g, ' ')
   return { t, raw }

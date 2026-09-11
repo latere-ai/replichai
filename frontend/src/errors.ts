@@ -3,18 +3,17 @@
 
 // Every refusal the user can see, in one place.
 //
-// The rule this module exists to enforce: a message names what happened and what
-// the person can do about it. It never shows a wire code, an HTTP status, or a
-// Go error string — those describe our implementation, and the reader is not
-// debugging our implementation.
+// The rule this module enforces: a message names what happened and what the
+// person can do about it. It never shows a wire code, an HTTP status, or a Go
+// error string, because those describe the implementation, which the reader is
+// not debugging.
 //
 // One mapper per flow rather than one table for everything, because the same
 // wire code means different things in different places. `no_credits` alone is
 // three separate problems with three separate remedies: a wallet that cannot
 // fund a new project, a project pot that cannot start another session, and a
-// balance that has too little uncommitted to hand back. Flattening them into one
-// sentence is how you end up telling somebody to top up a project that does not
-// exist yet.
+// balance that has too little uncommitted to hand back. One sentence for all
+// three would tell somebody to top up a project that does not exist yet.
 
 import { ApiError, type Credits, type CreatedProject, type PaperResult, type PublishBlocker } from './api'
 import type { I18n, TKey } from './i18n'
@@ -22,9 +21,9 @@ import type { I18n, TKey } from './i18n'
 type T = I18n['t']
 
 // refusal reads a rejection from the API client: the HTTP status and the
-// server's error code. A network failure has neither — fetch rejects with a
-// TypeError before any response exists — and that case gets its own message,
-// because "check your connection" and "we broke" want different reactions.
+// server's error code. A network failure has neither, because fetch rejects
+// with a TypeError before any response exists, and that case gets its own
+// message: a connection problem and a server fault call for different actions.
 export function refusal(e: unknown): { status: number; code: string; offline: boolean } {
   if (e instanceof ApiError) return { status: e.status, code: e.code, offline: false }
   return { status: 0, code: '', offline: true }
@@ -41,7 +40,7 @@ export function generic(t: T, e: unknown, fallbackKey: TKey): string {
 
 // emptyWallet reports the state a new account arrives in: nothing to spend and
 // nothing ever spent. It is not the same as a project having run out, and the
-// remedy is different — an admin top-up rather than moving your own credits.
+// remedy is different: an admin top-up rather than moving your own credits.
 export function emptyWallet(credits?: Credits): boolean {
   return !!credits && credits.wallet <= 0
 }
@@ -49,17 +48,16 @@ export function emptyWallet(credits?: Credits): boolean {
 /* ─── creating a project ─── */
 
 // CreateOutcome is everything the New-project screen has to say after a create:
-// a banner (empty when there is nothing to say) and a message for each paper row
-// the server did not recognise, keyed by the reference the row holds.
+// a banner, empty when there is nothing to say, and a message for each paper
+// row the server did not recognise, keyed by the reference the row holds.
 type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
 
 // createOutcome decides what a create attempt tells the person.
 //
-// It is a short function because the act is now a short one. A create records
-// papers and starts nothing (012), so there is no per-paper session to fail, no
-// partial success to explain, and no credits to run out of — all of that went
-// with the enqueue it no longer does. What is left: the papers were recorded, or
-// the server did not recognise some of the references.
+// A create records papers and starts nothing (012), so there is no per-paper
+// session to fail, no partial success to explain, and no credits to run out of;
+// all of that was removed with the enqueue. Two outcomes remain: the papers
+// were recorded, or the server did not recognise some of the references.
 export function createOutcome(t: T, status: number, data: CreatedProject): CreateOutcome {
   const rows = new Map<string, string>()
   const papers: PaperResult[] = data.papers ?? []
@@ -71,17 +69,17 @@ export function createOutcome(t: T, status: number, data: CreatedProject): Creat
   if (status === 403) return { ok: false, banner: t('errNotAllowed'), rows }
   // A project may start empty but not unnamed (036): with no paper there is
   // nothing to name it after. The screen guards this before asking, so reaching
-  // it means the two disagreed — say the same thing either way.
+  // it means the two disagreed, and the message is the same either way.
   if (status === 400 && data.error === 'missing_title') return { ok: false, banner: t('nameOrPaper'), rows }
   return { ok: false, banner: t('createFailed'), rows }
 }
 
 /* ─── working inside a project ─── */
 
-// startErrLabel names why starting a session was refused. This is where every
-// refusal a create used to report per paper now lives, and the one place money
-// is asked about — so "this project is out of credits" is said on the screen
-// showing the pot, which is what makes it something the reader can act on.
+// startErrLabel names why starting a session was refused. Every refusal a
+// create used to report per paper now lives here, and this is the one place
+// money is asked about, so "this project is out of credits" is said on the
+// screen showing the pot, where the reader can act on it.
 export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -117,8 +115,8 @@ export function removePaperErrLabel(t: T, e: unknown): string {
 }
 
 // movePaperErrLabel names why a paper could not be refiled (035). Each refusal
-// has a different next step — finish the run, withdraw the publication, pick
-// another project — so they are told apart rather than collapsed into one
+// has a different next step, finish the run, withdraw the publication or pick
+// another project, so they are told apart rather than collapsed into one
 // "could not move".
 export function movePaperErrLabel(t: T, e: unknown): string {
   const { status, code, offline } = refusal(e)
@@ -166,14 +164,13 @@ export function purgeErrLabel(t: T, e: unknown): string {
 //
 // `job.error` is a Go error string: "put replication-manifest.json in
 // latere/point-of-no-undo: unexpected status 422". It was rendered verbatim on
-// the session row, which is the plainest example of the problem this module
-// fixes — it tells the reader nothing they can act on and quite a lot about our
-// internals. The raw text is still worth keeping, so the caller shows it on
-// demand; what the row states is the class of failure and who can move it.
-// The order is the point. A GitHub call that returned 502 is our side failing,
-// not the paper's source being unreachable — so the publish patterns are tested
-// before the network ones, and the network ones match words rather than bare
-// status numbers.
+// the session row, which tells the reader nothing they can act on and exposes
+// the internals. The raw text is kept and the caller shows it on demand; the
+// row states the class of failure and who can move it.
+// The order of the patterns matters. A GitHub call that returned 502 is a fault
+// on our side, not the paper's source being unreachable, so the publish
+// patterns are tested before the network ones, and the network ones match words
+// rather than bare status numbers.
 export function sessionFailureText(t: T, cause: string): string {
   const c = cause.toLowerCase()
   if (/secret|credential|private key/.test(c)) return t('failSecret')
@@ -187,10 +184,11 @@ export function sessionFailureText(t: T, cause: string): string {
 /* ─── everything else ─── */
 
 // creditMoveErrLabel names why a move between a wallet and a project pot was
-// refused. `back` distinguishes the two shapes of "not enough": an allocate is
-// short because the *wallet* has too little (remedy: top up), a reclaim because
-// the pot's available is held by a running session (remedy: wait for it to
-// settle). Conflating them told a person to top up when they should wait.
+// refused. `back` distinguishes the two kinds of "not enough": an allocate is
+// short because the wallet has too little, and the remedy is to top up; a
+// reclaim is short because the pot's available is held by a running session,
+// and the remedy is to wait for it to settle. Conflating them told a person to
+// top up when they should wait.
 export function creditMoveErrLabel(t: T, e: unknown, back = false): string {
   const { code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -230,8 +228,8 @@ function profileErrorText(t: T, code: string): string {
 //
 // The four project-state codes are four different facts about the sessions. Only
 // `not_clear` is about what a reproduction contains; reporting the others as
-// that one — which is what a single code for all of them did — accuses an owner
-// of committing third-party data when their run merely had not finished.
+// that one, as a single code for all of them did, accuses an owner of
+// committing third-party data when their run merely had not finished.
 export function publishErrText(t: T, e: unknown): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -266,17 +264,16 @@ export function publishBlockers(e: unknown): PublishBlocker[] {
   return e instanceof ApiError ? e.blockers : []
 }
 
-// blockerTab is where a blocking session is worth opening. A flagged manifest is
-// read on the verdict pane, which is where the redistribution review is shown.
-// An unfinished run has no manifest and so no verdict pane — sending a reader
-// there lands them on an absence — so it opens where its status is: the
-// transcript.
+// blockerTab is the tab a blocking session opens on. A flagged manifest opens on
+// the verdict pane, where the redistribution review is shown. An unfinished run
+// has no manifest and so no verdict pane, so it opens on the transcript, where
+// its status is.
 export function blockerTab(b: PublishBlocker): 'verdict' | 'transcript' {
   return b.reason === 'not_clear' ? 'verdict' : 'transcript'
 }
 
-// profileSaveErrText is profileErrorText with the offline case in front of it —
-// a failed save with no response at all is not a malformed ORCID.
+// profileSaveErrText is profileErrorText with the offline case in front of it:
+// a failed save with no response is not a malformed ORCID.
 export function profileSaveErrText(t: T, e: unknown): string {
   const { code, offline } = refusal(e)
   return offline ? t('errOffline') : profileErrorText(t, code)

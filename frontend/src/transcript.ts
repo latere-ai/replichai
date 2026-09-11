@@ -5,8 +5,8 @@
 // so it can be tested without a browser.
 //
 // Every function here reads the run's own record and nothing else. Where the
-// record is silent — an event with no timestamp, a session with no usage
-// anywhere — the answer is an explicit absence, never a filled-in zero.
+// record is silent, as with an event with no timestamp or a session with no
+// usage anywhere, the answer is an explicit absence, never a filled-in zero.
 import type { Event, Usage } from './api'
 import type { Lang, T } from './i18n'
 import { clockTime } from './locale'
@@ -23,7 +23,7 @@ export function timeOf(e: Event): number {
   return e.time ? new Date(e.time).getTime() : NaN
 }
 
-// bounds is the raw extent of the events, before any widening — so a caller that
+// bounds is the raw extent of the events, before any widening, so a caller that
 // unions it with something else does not carry a padded end into the union.
 function bounds(events: Event[]): Span | null {
   let from = Infinity
@@ -48,7 +48,7 @@ function widen(s: Span): Span {
 //
 // The events alone are the wrong span. Every event is emitted inside `running`,
 // so a bar drawn to fit them would show one phase at full width and hide that
-// resolving took seven seconds and publishing seventeen — which is exactly the
+// resolving took seven seconds and publishing seventeen, which is the
 // proportion a reader came for. The phases alone are also wrong, because a live
 // session has not recorded its last phase yet and its events run past the end.
 export function runSpan(events: Event[], phaseAt: Record<string, string> | undefined): Span | null {
@@ -64,12 +64,12 @@ export function runSpan(events: Event[], phaseAt: Record<string, string> | undef
 }
 
 // A phase band: one lifecycle phase, positioned and sized by the time it really
-// took. Width is a fraction of the span, not of the phase count — a `running`
-// phase that ate 99% of the session is 99% of the bar, which is the whole point.
+// took. Width is a fraction of the span, not of the phase count, so a `running`
+// phase that took 99% of the session is 99% of the bar.
 export type Band = { phase: string; left: number; width: number }
 
-// PHASE_ORDER is the lifecycle spine — the one list, which the timeline strip
-// and the phase labels read from here so this module stays free of component
+// PHASE_ORDER is the ordered list of lifecycle phases. The timeline strip and
+// the phase labels read it from here so this module stays free of component
 // imports. phase_at only ever carries phases the session actually entered, so a
 // missing phase is simply skipped: nothing drawn from this list fabricates a
 // step.
@@ -77,7 +77,7 @@ export const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', '
 export type Phase = (typeof PHASE_ORDER)[number]
 
 // phaseBands lays the session's phases across a span. A phase that started after
-// the span ends, or one with no recorded start, is simply absent — the bar never
+// the span ends, or one with no recorded start, is simply absent; the bar never
 // fabricates a step the session did not take. The last phase runs to the end of
 // the span, since nothing recorded when it stopped.
 export function phaseBands(phaseAt: Record<string, string> | undefined, span: Span): Band[] {
@@ -100,8 +100,8 @@ export function phaseBands(phaseAt: Record<string, string> | undefined, span: Sp
 // A histogram of where the run spent itself. `weighted` says which question the
 // bars answer: true when at least one event carried a token charge and the bars
 // are token-weighted, false when they count events instead. The distinction is
-// surfaced to the reader — "how much did this cost" and "how busy was it" are
-// different questions and the bars must not silently switch between them.
+// shown to the reader, because "how much did this cost" and "how busy was it"
+// are different questions and the bars must not silently switch between them.
 type Histogram = { bars: number[]; weighted: boolean }
 
 // histogram buckets events across the span. Heights are normalised to the
@@ -135,9 +135,9 @@ export function cacheWrittenOf(u: Usage): number {
 // freshOf is the tokens a request actually pushed through the model: the new
 // input and the output, with the cache reads left out.
 //
-// The total is the wrong measure of a *step*. On a real session it is 99% cache
-// reads (11.6M of 11.7M), and a cache read scales with how long the conversation
-// has grown rather than with what the agent did — so ranking steps by total
+// The total is the wrong measure of a step. On a real session it is 99% cache
+// reads, 11.6M of 11.7M, and a cache read scales with how long the conversation
+// has grown rather than with what the agent did, so ranking steps by total
 // draws a monotonic ramp and calls it spend. Fresh tokens vary with the work,
 // which is the question the histogram and the per-card figure are asking. The
 // full breakdown, cache included, is always one click away in the inspector.
@@ -145,8 +145,8 @@ export function freshOf(u: Usage): number {
   return u.InputTokens + u.OutputTokens
 }
 
-// firstAtOrAfter is the index of the first event at or after an instant — where
-// the scrubber scrolls to. Events are in emission order, which is time order.
+// firstAtOrAfter is the index of the first event at or after an instant, which
+// is where the scrubber scrolls to. Events are in emission order, which is time order.
 // It returns the last index when the instant is past the final event, so
 // scrubbing to the far right lands on the end of the run rather than nowhere.
 export function firstAtOrAfter(events: Event[], t: number): number {
@@ -163,18 +163,18 @@ export function firstAtOrAfter(events: Event[], t: number): number {
 // seekTarget maps a position on the scrubber onto the event it lands on, and
 // the position the cursor should then occupy.
 //
-// The two are not the same number, and that is the whole point. The bar spans
-// the *session* (006s: every event is emitted inside `running`, so a bar drawn
-// across the events alone would make the phase bands meaningless), but a long
-// session can finish its work early and sit in a phase for hours — an overnight
-// run leaves three quarters of the bar with no events under it. Every position
-// in that tail resolves to the last event, so a cursor drawn where the pointer
-// was told you that you were at 09:00 while the transcript showed 18:45.
+// The two are not the same number. The bar spans the session (006s), because
+// every event is emitted inside `running` and a bar drawn across the events
+// alone would make the phase bands meaningless. But a long session can finish
+// its work early and sit in a phase for hours; an overnight run leaves three
+// quarters of the bar with no events under it. Every position in that tail
+// resolves to the last event, so a cursor drawn where the pointer was showed
+// 09:00 while the transcript showed 18:45.
 //
-// So the cursor follows the event, not the pointer. Clicking into the dead tail
-// snaps back to the last event, which is both where the transcript went and a
-// visible answer to "why can I not scrub further" — the span stays honest and
-// the cursor stops lying about it.
+// So the cursor follows the event, not the pointer. Clicking into the empty
+// tail snaps back to the last event, which is where the transcript went and
+// shows why scrubbing further does nothing. The span stays accurate and the
+// cursor matches it.
 export function seekTarget(events: Event[], span: Span, f: number): { index: number; at: number; cursor: number } | null {
   const width = span.to - span.from
   const at = span.from + Math.min(1, Math.max(0, f)) * width
@@ -188,7 +188,7 @@ export function seekTarget(events: Event[], span: Span, f: number): { index: num
 }
 
 // matches is the transcript search predicate: an event matches when the query
-// appears in what the reader can see of it — its content, its tool, or its kind.
+// appears in what the reader can see of it: its content, its tool, or its kind.
 // An empty query matches everything, so clearing the box restores the run.
 export function matches(e: Event, q: string): boolean {
   const needle = q.trim().toLowerCase()
@@ -202,8 +202,8 @@ export function matches(e: Event, q: string): boolean {
 
 // splitTitle divides an event's content into the line a reader scans and the
 // rest. The split is typographic and nothing else: the title is the event's own
-// first line, verbatim. A transcript is evidence, and evidence does not get a
-// narrator — so nothing here summarises, rewrites, or infers.
+// first line, verbatim. A transcript is evidence, so nothing here summarises,
+// rewrites, or infers.
 //
 // A first line long enough to be a paragraph is left as the body with no title,
 // because a title that wraps to four lines is not a title.
@@ -226,8 +226,8 @@ export function compactTokens(n: number): string {
   return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
 }
 
-// clockOf is an event's wall-clock time in the reader's own zone, to the minute
-// — the granularity the gutter has room for.
+// clockOf is an event's wall-clock time in the reader's own zone, to the minute,
+// the granularity the gutter has room for.
 export function clockOf(lang: Lang, e: Event): string {
   const at = timeOf(e)
   if (Number.isNaN(at)) return ''

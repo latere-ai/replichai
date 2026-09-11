@@ -7,7 +7,7 @@
 // deletion is in a path a developer really did touch, `git add` stages it
 // without complaint.
 //
-// What it costs is out of proportion to how easy it is to miss: PLACEHOLDER is
+// The consequence is severe for a deletion that is easy to miss: PLACEHOLDER is
 // the only thing `//go:embed all:dist` can match in a clean checkout, so losing
 // it stops internal/spa compiling, which takes down go vet, go build and go
 // test at once for everyone who pulls. internal/spa's TestEmbedSurvivesCleanCheckout

@@ -16,8 +16,8 @@ import {
 } from './errors'
 import { MICRO } from './money'
 
-// The helpers take a translate function, so asserting the key is what matters
-// here — not the English copy, which is free to be reworded.
+// The helpers take a translate function, so these tests assert the key, not the
+// English copy, which may be reworded.
 const t = ((key: string, vars?: Record<string, string>) =>
   vars ? `${key}:${Object.values(vars).join(',')}` : key) as never
 
@@ -26,8 +26,8 @@ const funded = { wallet: 40 * MICRO, start_reserve: 5 * MICRO }
 
 // A create records papers and starts nothing (012), so the only thing that can
 // go wrong per reference is the reference. Everything the old outcome had to
-// explain — a paper refused for credits, a partial batch, a project rolled back
-// because nothing started — went with the enqueue that caused it.
+// explain, a paper refused for credits, a partial batch, a project rolled back
+// because nothing started, was removed with the enqueue that caused it.
 test('a create reports the references the server did not recognise', () => {
   const data: CreatedProject = {
     project_id: 'p1',
@@ -45,8 +45,8 @@ test('a create reports the references the server did not recognise', () => {
 })
 
 // A project may start empty (036), so a create with no papers at all is the
-// ordinary case rather than an error — there is nothing to report per reference
-// because there were no references.
+// ordinary case rather than an error; there is nothing to report per reference
+// because there were none.
 test('a create with no papers is a clean create', () => {
   const out = createOutcome(t, 201, { project_id: 'p1', papers: [] })
   expect(out.ok).toBe(true)
@@ -54,9 +54,9 @@ test('a create with no papers is a clean create', () => {
   expect(out.rows.size).toBe(0)
 })
 
-// What a project may not start without is a name: the title falls back to the
-// first paper's reference, and with no paper there is no fallback. The screen
-// guards this before asking, so this path means the two disagreed — and it has
+// A project cannot start without a name: the title falls back to the first
+// paper's reference, and with no paper there is no fallback. The screen guards
+// this before asking, so reaching this path means the two disagreed, and it has
 // to say the same thing the screen would have.
 test('a create with neither a name nor a paper names both fixes', () => {
   const out = createOutcome(t, 400, { error: 'missing_title' })
@@ -73,12 +73,12 @@ test('a clean create says nothing', () => {
   expect(out.rows.size).toBe(0)
 })
 
-// A create cannot be refused for money any more — that was the whole point — so
-// a non-201 is a real fault and says so rather than blaming the papers.
+// A create can no longer be refused for money, so a non-201 is a real fault and
+// is reported as one rather than blamed on the papers.
 test('a failed create names a fault, not the references', () => {
   expect(createOutcome(t, 403, {}).banner).toBe('errNotAllowed')
   expect(createOutcome(t, 500, {}).banner).toBe('createFailed')
-  // A body that was not even JSON (a broken deployment answers 404 with HTML).
+  // A body that was not JSON, as when a broken deployment answers 404 with HTML.
   expect(createOutcome(t, 404, {}).banner).toBe('createFailed')
   expect(createOutcome(t, 500, {}).ok).toBe(false)
 })
@@ -89,7 +89,8 @@ test('a refused start names the one thing that went wrong', () => {
   expect(startErrLabel(t, new ApiError(409, 'active_session'), funded)).toBe('activeSession')
   expect(startErrLabel(t, new ApiError(402, 'no_credits'), funded)).toBe('errNoCredits')
   expect(startErrLabel(t, new ApiError(402, 'no_credits'), wallet)).toBe('errNoCreditsAtAll')
-  // A frozen account is a distinct refusal from an empty one — different remedy.
+  // A frozen account is a distinct refusal from an empty one, with a different
+  // remedy.
   expect(startErrLabel(t, new ApiError(402, 'account_frozen'), funded)).toBe('errFrozen')
   expect(startErrLabel(t, new ApiError(404, 'paper_not_found'), funded)).toBe('errPaperGone')
   expect(startErrLabel(t, new ApiError(500, ''), funded)).toBe('startFailed')
@@ -114,10 +115,10 @@ test('adding and removing a paper never mention credits', () => {
   expect(removePaperErrLabel(t, new ApiError(403, 'not_lead'))).toBe('errRemoveNotLead')
 })
 
-// 035: each refusal has a different next step — finish the run, withdraw the
-// publication, pick another project — so they must not collapse into one
-// "could not move". The two 409s in particular: one is about time, the other
-// about the destination.
+// 035: each refusal has a different next step, finish the run, withdraw the
+// publication or pick another project, so they must not collapse into one
+// "could not move". The two 409s in particular differ: one is about timing,
+// the other about the destination.
 test('moving a paper names the specific refusal', () => {
   expect(movePaperErrLabel(t, new ApiError(409, 'paper_running'))).toBe('errPaperRunning')
   expect(movePaperErrLabel(t, new ApiError(409, 'paper_exists'))).toBe('errPaperAlreadyThere')

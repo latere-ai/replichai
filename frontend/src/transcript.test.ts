@@ -213,7 +213,7 @@ test('usage from a backend that reports no cache writes still totals', () => {
 // The scrubber's cursor follows the event it landed on, not the pointer.
 //
 // A session that finishes its work early and sits in a phase for hours leaves a
-// stretch of bar with no events under it — an overnight run puts every event in
+// stretch of bar with no events under it; an overnight run puts every event in
 // the first quarter. Each position in that tail resolves to the last event, so a
 // cursor drawn where the pointer was reported 09:00 while the transcript showed
 // 18:45. Snapping it back is both honest and a visible answer to "why can I not

@@ -19,8 +19,8 @@ export const MICRO = 1_000_000
 //
 // Cents, not micro-dollars, because that is the resolution a human decides
 // anything at. A non-zero amount that would round to $0.00 shows as "<$0.01"
-// instead — a session that cost a fraction of a cent did cost something, and
-// showing it as nothing is the one rounding a reader would be misled by.
+// instead, because a session that cost a fraction of a cent did cost something,
+// and showing it as nothing would mislead the reader.
 //
 // It is written in the app's language, not the browser's: the same balance
 // used to read "$12.34" in one OS and "12,34 $" in another, beside copy that
@@ -50,9 +50,9 @@ export function toDollars(micro: number): string {
 
 // creditedMicro is what a gross top-up lands in a wallet after the purchase
 // spread (022b): the same arithmetic the server applies at checkout, so the
-// modal's quote is exactly what the webhook will credit. It snaps to whole cents
-// (the processor's unit) first, then takes the percentage and the fixed cut, and
-// never returns less than zero.
+// modal's quote is exactly what the webhook will credit. It rounds down to whole
+// cents, the processor's unit, first, then takes the percentage and the fixed
+// cut, and never returns less than zero.
 export function creditedMicro(grossMicro: number, spreadBps: number, spreadFixedMicro: number): number {
   const perCent = MICRO / 100 // 10_000 micro-USD to a cent
   const cents = Math.floor(grossMicro / perCent)
@@ -70,7 +70,7 @@ export function creditedMicro(grossMicro: number, spreadBps: number, spreadFixed
 // decide when to enable the button.
 //
 // The rules are the ones a currency has: digits, at most one point, and at most
-// two places after it — the ledger holds micro-dollars, but nobody allocates
+// two places after it. The ledger holds micro-dollars, but nobody allocates
 // tenths of a cent, and a field that accepts them invites a rounding surprise
 // between what was typed and what was charged.
 export function typedDollars(text: string): string {
@@ -81,7 +81,7 @@ export function typedDollars(text: string): string {
 }
 
 // stepDollars moves a money field by `by`, from `from` when it holds a number
-// and from `min` when it does not — so a step out of an empty field lands on the
+// and from `min` when it does not, so a step out of an empty field lands on the
 // floor rather than on NaN. The result carries cents only when it has any: a
 // field showing "17" after a step from "16" should not read "17.00".
 export function stepDollars(from: string, by: number, min = 0, max?: number): string {

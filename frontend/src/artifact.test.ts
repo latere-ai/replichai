@@ -5,7 +5,7 @@ import { expect, test } from 'bun:test'
 import { isExternalHref, resolveRelative } from './artifact'
 
 test('resolveRelative resolves against the file the link is written in', () => {
-  // A root-level README linking a sibling — the reported bug.
+  // A root-level README linking a sibling, which was the reported bug.
   expect(resolveRelative('README.md', 'REPRODUCIBILITY.md')).toBe('REPRODUCIBILITY.md')
   // Explicit current-dir and nested paths.
   expect(resolveRelative('README.md', './src/run.py')).toBe('src/run.py')
@@ -13,7 +13,7 @@ test('resolveRelative resolves against the file the link is written in', () => {
   // Parent traversal climbs out of the file's directory.
   expect(resolveRelative('docs/guide.md', '../README.md')).toBe('README.md')
   expect(resolveRelative('a/b/c.md', '../../top.md')).toBe('top.md')
-  // A fragment or query names a file, not a URL — it is dropped.
+  // A fragment or query is dropped: the result names a file, not a URL.
   expect(resolveRelative('README.md', 'NOTES.md#section')).toBe('NOTES.md')
 })
 

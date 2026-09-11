@@ -21,7 +21,7 @@ export function dateTime(lang: Lang, at: string | number | Date): string {
   return new Date(at).toLocaleString(lang)
 }
 
-// clockTime is a time of day to the minute, on a 24-hour clock — the
+// clockTime is a time of day to the minute, on a 24-hour clock, which is the
 // granularity a transcript gutter has room for.
 export function clockTime(lang: Lang, at: string | number | Date): string {
   return new Date(at).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false })

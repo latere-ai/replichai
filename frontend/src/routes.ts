@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Where the operator is, and the address that says so. The two are one mapping
-// in both directions — `pathOf` writes it, `viewOf` reads it — so a screen
+// in both directions, written by `pathOf` and read by `viewOf`, so a screen
 // cannot exist without a URL, and a reload, a Back, and a shared link all resolve
 // through the same code (013).
 //
@@ -20,8 +20,8 @@ export type ProjectTab = 'sessions' | 'verdict' | 'people'
 // repository" to browse.
 export type SessionTab = 'transcript' | 'verdict' | 'artifacts'
 
-// The settings screen is one view with two sub-tabs, each a real path
-// (/settings, /settings/profile). 'account' is the default and omitted from the
+// The settings screen is one view with two sub-tabs, each a real path,
+// /settings and /settings/profile. 'account' is the default and omitted from the
 // address, exactly as 'sessions' is for a project (024a). Credits moved to the
 // dedicated /wallet screen (022e), so there is no /settings/credits.
 export type SettingsTab = 'account' | 'profile'
@@ -29,9 +29,9 @@ export type SettingsTab = 'account' | 'profile'
 export type View =
   | { name: 'projects' }
   // An address this app does not have (042c). It carries the path it was asked
-  // for so `pathOf` stays total and the address bar keeps what was typed —
-  // silently rewriting a typo to `/` is how a person came to be shown the
-  // dashboard for a page they did not ask for.
+  // for so `pathOf` stays total and the address bar keeps what was typed.
+  // Silently rewriting a typo to `/` showed a person the dashboard for a page
+  // they did not ask for.
   | { name: 'notfound'; path: string }
   | { name: 'trash' }
   | { name: 'public' }
@@ -74,8 +74,8 @@ const isSettingsTab = (s: string): s is SettingsTab => (SETTINGS_TABS as string[
 // isPublicView reports whether a signed-out reader can be shown this view (028).
 //
 // Four of them: the registry, a project in it, a session under that project, and
-// a researcher's page. Each renders whatever the reader may actually read — a
-// private project reads as not-public, from the same screen its owner reaches by
+// a researcher's page. Each renders whatever the reader may read; a private
+// project reads as not-public, from the same screen its owner reaches by
 // signing in. Everything else is somebody's own workspace, and there is nothing
 // to render at /new or /wallet for a reader with no account, so the landing
 // stands in for those.
@@ -113,8 +113,8 @@ export function pathOf(view: View): string {
 }
 
 // decodeHandle reads a handle out of its address segment, or nothing when the
-// encoding is malformed. decodeURIComponent throws on an escape cut short
-// ('%E0%A4%A'), and it used to throw inside the router's initial state — a
+// encoding is malformed. decodeURIComponent throws on an escape cut short, such
+// as '%E0%A4%A', and it used to throw inside the router's initial state, so a
 // truncated link took the whole app down to a white screen.
 function decodeHandle(raw: string): string | null {
   try {
@@ -124,10 +124,10 @@ function decodeHandle(raw: string): string | null {
   }
 }
 
-// viewOf is what an address means. Anything unrecognised is *not* the dashboard
-// (042c): a path that resolved to the app and then had its address corrected to
-// `/` was an unbounded set of URLs answering 200 with identical content — a soft
-// 404 to a crawler, and to a person a page they did not ask for, silently
+// viewOf is what an address means. Anything unrecognised is not the dashboard
+// (042c). A path that resolved to the app and then had its address corrected to
+// `/` was an unbounded set of URLs answering 200 with identical content: a soft
+// 404 to a crawler, and for a person a page they did not ask for, silently
 // substituted. It resolves to a screen that says so, at the address they typed.
 export function viewOf(pathname: string): View {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
@@ -144,7 +144,7 @@ export function viewOf(pathname: string): View {
   }
 
   // Settings, and a tab if the segment after it names one. A segment that names
-  // no tab — 'account' (the bare path's own tab) or a typo — resolves to the
+  // no tab, whether 'account', which is the bare path's own tab, or a typo, resolves to the
   // bare settings view, and useRouter corrects the address, the same rule a
   // project's unknown tab follows.
   const settings = /^\/settings\/([a-z]+)$/.exec(path)
@@ -165,7 +165,7 @@ export function viewOf(pathname: string): View {
   }
 
   // A project, and a tab if the segment after it names one. A segment that names
-  // no tab — a typo, or a session link cut short at /p/{id}/s — still identifies
+  // no tab, such as a typo or a session link cut short at /p/{id}/s, still identifies
   // the project, so the reader lands on it rather than back at the dashboard, and
   // the address is corrected to the project's own.
   const project = /^\/p\/([A-Za-z0-9_-]+)(?:\/([a-z]+))?$/.exec(path)
@@ -178,7 +178,7 @@ export function viewOf(pathname: string): View {
 
 // Navigate takes a view, or a function of the current one for the cases that
 // fill a detail in on top of wherever the reader now is. `replace` marks a
-// correction — an address being fixed rather than a place being visited.
+// correction: an address being fixed rather than a place being visited.
 export type Navigate = (next: View | ((current: View) => View), opts?: { replace?: boolean }) => void
 
 // useRouter holds the current view in the address bar rather than beside it.
@@ -187,12 +187,12 @@ export type Navigate = (next: View | ((current: View) => View), opts?: { replace
 // not. Opening a screen adds an entry, switching a project tab adds one, and
 // writing back a title the app had not fetched yet adds none. A correction passes
 // `replace` explicitly, because a corrected address must not be a place Back can
-// return to — it would be corrected again, and Back would never get past it.
+// return to; it would be corrected again, and Back would never get past it.
 export function useRouter() {
   const [view, setView] = useState<View>(() => viewOf(window.location.pathname))
   // The current view, readable outside a render. A history write must happen
-  // exactly once per navigation, so it cannot live inside a state updater —
-  // React is free to call one twice.
+  // exactly once per navigation, so it cannot live inside a state updater,
+  // because React is free to call one twice.
   const current = useRef(view)
 
   const navigate = useCallback<Navigate>((next, opts) => {

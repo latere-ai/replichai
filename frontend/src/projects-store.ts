@@ -60,9 +60,9 @@ export function useProjects(enabled = true): ProjectView[] | null {
   return list
 }
 
-// invalidateProjects is called after anything that changes the list — a
-// project created, renamed, described, thrown away, restored, deleted, made
-// public — so every subscriber is handed the new list without asking.
+// invalidateProjects is called after anything that changes the list, such as a
+// project created, renamed, described, thrown away, restored, deleted or made
+// public, so every subscriber is handed the new list without asking.
 export function invalidateProjects(): void {
   if (listeners.size) void load()
   else projects = null

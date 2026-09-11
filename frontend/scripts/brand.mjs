@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Generates the raster brand assets that a vector cannot cover: the Apple touch
-// icon (iOS ignores SVG) and the social card (crawlers do not rasterise SVG).
+// icon, because iOS ignores SVG, and the social card, because crawlers do not
+// rasterise SVG.
 // Both come out of the same geometry the in-app mark uses, so the three can
 // never drift into three different marks.
 //
-// The output is committed, so a build needs no browser — this runs by hand when
+// The output is committed, so a build needs no browser. This runs by hand when
 // the mark changes: `node scripts/brand.mjs` from `frontend/`.
 import { createRequire } from 'node:module'
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
@@ -22,7 +23,7 @@ if (!CHROME || !existsSync(CHROME)) {
   process.exit(1)
 }
 
-// One mark, two sizes, six dashes — the same six `brand.tsx` draws, so the tab
+// One mark, two sizes, six dashes, the same six `brand.tsx` draws, so the tab
 // icon, the social card, and the app all show one mark rather than three.
 const mark = (px, { tile = false, segments = 6, radius = 0 } = {}) => {
   const s = px / 32
@@ -30,7 +31,7 @@ const mark = (px, { tile = false, segments = 6, radius = 0 } = {}) => {
   const seg = c / segments
   const dash = seg * 0.62
   // Two-tone off a tile: white rings on an azure tile for the home-screen icon;
-  // vlag's two poles — crimson outer, azure inner — on transparency everywhere
+  // vlag's two poles, crimson outer and azure inner, on transparency everywhere
   // else, matching the in-app mark.
   const outerInk = tile ? '#ffffff' : '#a9373b'
   const innerInk = tile ? '#ffffff' : '#2369bd'
@@ -44,7 +45,7 @@ const mark = (px, { tile = false, segments = 6, radius = 0 } = {}) => {
 const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 // The touch icon is the tile variant at 180px with six dashes, matching
-// favicon.svg — an icon is read small everywhere it appears. It is drawn square
+// favicon.svg, because an icon is read small everywhere it appears. It is drawn square
 // and full-bleed: iOS applies its own corner mask, and a tile that rounds itself
 // first comes out a circle on the home screen while every icon beside it is a
 // squircle.

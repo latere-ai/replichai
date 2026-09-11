@@ -21,9 +21,9 @@ export default function App() {
   // was written by the server (042a).
   useHead(view, i18n.t, me === null ? null : me.authenticated)
 
-  // refreshMe re-reads the identity, and with it the wallet — called
-  // after anything that spends allowance, so the header never shows a stale
-  // surplus (006l).
+  // refreshMe re-reads the identity, and with it the wallet. It is called after
+  // anything that spends allowance, so the header never shows a stale surplus
+  // (006l).
   const refreshMe = useCallback(() => {
     getMe().then(setMe).catch(() => {})
   }, [])
@@ -43,13 +43,13 @@ export default function App() {
   if (meUnavailable) return <AuthUnavailable i18n={i18n} onRetry={loadMe} />
   if (me === null) return <div className="center-load">…</div>
   // The registry and everything under it are readable signed out (028), and they
-  // render in the app's own frame rather than a preview of it — a reader who came
-  // from a paper is reading the work, not being shown a sample of a product.
+  // render in the app's own frame rather than a preview of it, because a reader
+  // who came from a paper is reading the work, not being shown a product sample.
   //
-  // Every other screen still needs an account, and every one of them is an
-  // address somebody can arrive at cold — an invitation mail pointing at a
-  // project, a shared link to a session. Sign-in comes back to that address
-  // rather than to the dashboard.
+  // Every other screen needs an account, and each is an address somebody can
+  // arrive at directly, from an invitation mail pointing at a project or a
+  // shared link to a session. Sign-in returns to that address rather than to
+  // the dashboard.
   if (!me.authenticated && !isPublicView(view)) return <Landing i18n={i18n} next={window.location.pathname} theme={theme} />
   if (!me.authenticated) return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />

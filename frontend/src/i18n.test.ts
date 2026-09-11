@@ -5,7 +5,7 @@ import { expect, test } from 'bun:test'
 import { readLang } from './i18n'
 
 // The language is remembered in localStorage, and localStorage holds whatever
-// was last written there — by an older build, by another tab, by hand. It used
+// was last written there, by an older build, by another tab, or by hand. It used
 // to be trusted as it was, so a value naming no locale ('fr') reached the string
 // table as an undefined block and the first t() threw. Anything unrecognised is
 // English, the same rule the theme follows for its stored mode.

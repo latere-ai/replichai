@@ -7,26 +7,27 @@ import { ApiError, type LedgerEntry } from './api'
 import { creditMoveErrLabel, emptyWallet, startErrLabel } from './errors'
 import { formatUSD, MICRO, parseUSD, toDollars } from './money'
 
-// The identity function for the label helpers: they take a translate function,
-// and asserting the key is what matters here, not the English copy.
+// An identity translator for the label helpers: they take a translate function,
+// and these tests assert the key, not the English copy.
 const t = ((key: string) => key) as never
 
-// Most people's first encounter with credits is at zero. That is a starting
-// state, not a fault — and its remedy is different from a funded project that
-// has run down, so the two must not share a message.
+// A new account starts with zero credits. That is a starting state, not a
+// fault, and its remedy differs from a funded project that has run down, so the
+// two must not share a message.
 test('emptyWallet separates a new account from a project that ran out', () => {
   expect(emptyWallet({ wallet: 0, start_reserve: 10 * MICRO })).toBe(true)
   // Has credits of their own: whatever was refused, it was the project's pot.
   expect(emptyWallet({ wallet: 5 * MICRO, start_reserve: 10 * MICRO })).toBe(false)
-  // Not enough for a session but not nothing — still their own money to move.
+  // Not enough for a session but not zero: they still have their own money to
+  // move.
   expect(emptyWallet({ wallet: 1 * MICRO, start_reserve: 10 * MICRO })).toBe(false)
   // No credits reported at all: say nothing rather than guess.
   expect(emptyWallet(undefined)).toBe(false)
 })
 
-// One refusal, two problems: only one of them the person can fix by moving
-// money they already hold. It is asked on the one act that spends — starting a
-// session — where the project's pot is on screen to answer it with.
+// One refusal covers two problems, and only one of them the person can fix by
+// moving money they already hold. It is asked when starting a session, the only
+// act that spends, where the project's pot is on screen.
 test('a refused start tells a new account something different from a spent project', () => {
   expect(startErrLabel(t, new ApiError(402), { wallet: 0, start_reserve: 10 * MICRO })).toBe('errNoCreditsAtAll')
   expect(startErrLabel(t, new ApiError(402), { wallet: 20 * MICRO, start_reserve: 10 * MICRO })).toBe('errNoCredits')
@@ -81,7 +82,8 @@ test('a field round-trips through the parser', () => {
 // the same thing it tells somebody who is not a lead.
 test('a refused credit move says which refusal it was', () => {
   // no_credits means different things by direction: an allocate is short in the
-  // wallet (top up), a reclaim is held by a running session (wait to settle).
+  // wallet, so the remedy is to top up; a reclaim is held by a running session,
+  // so the remedy is to wait for it to settle.
   expect(creditMoveErrLabel(t, new ApiError(400, 'no_credits'))).toBe('errAllocateShort')
   expect(creditMoveErrLabel(t, new ApiError(400, 'no_credits'), true)).toBe('errReclaimHeld')
   expect(creditMoveErrLabel(t, new ApiError(400, 'not_lead'))).toBe('errMoveNotLead')
@@ -104,9 +106,9 @@ test('a wallet statement names only the kinds a wallet can hold', () => {
   }
 })
 
-// A move that captured a project names it (024b). The three cases are the whole
-// point: a live project links, a purged one reads as plain text but still names
-// itself, and a pre-024b move that never captured a project keeps the old label.
+// A move that captured a project names it (024b). The three cases: a live
+// project links, a purged one reads as plain text but still names itself, and a
+// pre-024b move that never captured a project keeps the old label.
 const entry = (e: Partial<LedgerEntry>): LedgerEntry => ({ id: 'e', holder: 'user:a@b', amount: -1, kind: 'allocate', actor: 'a@b', created_at: '2026-08-09', ...e })
 
 test('an allocate to a live project links to it', () => {

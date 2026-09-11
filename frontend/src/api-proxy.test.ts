@@ -19,7 +19,7 @@ test('the dev server proxies every path the client calls', () => {
     const called = [...api.matchAll(/fetch\([`'](\/[A-Za-z0-9/_-]*)/g)].map((m) => m[1])
     expect(called.length).toBeGreaterThan(10)
 
-    // The list, however it happens to be wrapped — one line or many.
+    // The list, whether written on one line or many.
     const block = /const api = \[([^\]]*)\]/s.exec(vite)
     const prefixes = [...(block?.[1] ?? '').matchAll(/'(\/[a-z]+)'/g)].map((m) => m[1])
     expect(prefixes.length).toBeGreaterThan(5)

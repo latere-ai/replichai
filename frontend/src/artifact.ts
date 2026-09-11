@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Artifact rendering: markdown → sanitized HTML, code → syntax-highlighted,
-// images → served inline. Content comes from repositories (including public
-// ones), so every rendered HTML path is sanitized before it reaches the DOM.
+// Artifact rendering: markdown to sanitised HTML, code to syntax-highlighted
+// HTML, images served inline. Content comes from repositories, including public
+// ones, so every rendered HTML path is sanitised before it reaches the DOM.
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -69,7 +69,7 @@ export function langOf(path: string): string {
   return langByExt[ext(path)] ?? 'plaintext'
 }
 
-// renderMarkdown turns markdown into HTML and sanitizes it before it is trusted.
+// renderMarkdown turns markdown into HTML and sanitises it before it is trusted.
 // Fenced code blocks are highlighted by highlightIn after mounting.
 export function renderMarkdown(text: string): string {
   const raw = marked.parse(text, { async: false, gfm: true }) as string
@@ -77,15 +77,16 @@ export function renderMarkdown(text: string): string {
 }
 
 // isExternalHref reports whether a link/src points outside the repository tree:
-// an absolute or protocol-relative URL, a scheme (mailto:, tel:, data:), or a
-// pure in-page anchor. Everything else is a repository-relative path.
+// an absolute or protocol-relative URL, a scheme such as mailto:, tel: or
+// data:, or a pure in-page anchor. Everything else is a repository-relative path.
 export function isExternalHref(href: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')
 }
 
 // resolveRelative resolves a repository-relative href against the file it was
 // written in, so a link in `docs/guide.md` to `../README.md` lands on
-// `README.md`. Any query or fragment is dropped — it names a file, not a URL.
+// `README.md`. Any query or fragment is dropped, because the result names a
+// file, not a URL.
 export function resolveRelative(fromPath: string, href: string): string {
   const clean = href.split('#')[0].split('?')[0]
   const dir = fromPath.includes('/') ? fromPath.slice(0, fromPath.lastIndexOf('/')) : ''
@@ -98,7 +99,7 @@ export function resolveRelative(fromPath: string, href: string): string {
   return parts.join('/')
 }
 
-// highlightIn syntax-highlights every <pre><code> inside a mounted container —
+// highlightIn syntax-highlights every <pre><code> inside a mounted container:
 // the fenced code in markdown, and the single block of a code file.
 export function highlightIn(el: HTMLElement | null) {
   if (!el) return

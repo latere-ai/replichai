@@ -13,43 +13,43 @@ import { listCitation } from './papers'
 import type { Theme, ThemeMode } from './theme'
 import { Seams } from './ui'
 
-// The landing (029, rebuilt by 033). It is a place, not a door.
+// The landing (029, rebuilt by 033): a full page rather than a sign-in screen.
 //
-// 017 built it as a fold and 029 made it a page: the argument, three figures
-// that show the mechanism rather than assert it, and real published work a
-// reader can open before they have an account. 033 spends the design on it —
-// the hero becomes a slab with the mark in it as material, the figures gain the
-// artifacts they describe, and the three questions the page never answered
-// (what comes back, who it is for, what it costs) get a band each.
+// 017 built it as a single fold and 029 made it a page: the argument, three
+// figures that show the mechanism rather than assert it, and real published
+// work a reader can open before they have an account. 033 redesigned it: the
+// hero becomes a slab with the mark rendered inside it, the figures gain the
+// artifacts they describe, and the three questions the page never answered,
+// what comes back, who it is for and what it costs, get a band each.
 //
-// The way in never leaves the screen. It is in a sticky header rather than
-// above a fold, which is a guarantee that survives any page length — and this
-// page is long on purpose.
+// The sign-in control never leaves the screen. It is in a sticky header rather
+// than above a fold, which holds at any page length, and this page is long on
+// purpose.
 //
 // Everything that moves here is opt-in at the system level: the resting state
-// under `prefers-reduced-motion: reduce` is the *finished* page, never a frozen
+// under `prefers-reduced-motion: reduce` is the finished page, never a frozen
 // first frame. `frontend/test/landing.test.mjs` asserts exactly that, so a new
 // band that dims or collapses has to say so in the same place.
 
 // useReveal advances a section from its pre-reveal state to its resting one when
 // it first comes into view. It sets a class and nothing else: what the class
-// does, and whether it does anything at all, is the stylesheet's business — so a
+// does, and whether it does anything at all, is decided by the stylesheet, so a
 // reader who asked for less motion gets the resting state from the start, with
 // no JavaScript branch to keep in step with the media query.
 //
-// It is a *callback* ref rather than an effect over a ref object, because a
+// It is a callback ref rather than an effect over a ref object, because a
 // section on this page can appear after the first render: the published strip
 // renders nothing until its fetch lands, so an effect that read `ref.current`
 // once on mount read null, never observed anything, and left the section at the
-// pre-reveal opacity forever — a band that was on the page and invisible. A
+// pre-reveal opacity forever, so the band was on the page and invisible. A
 // callback ref runs when the node attaches, whenever that is.
 function useReveal<T extends HTMLElement>() {
   const io = useRef<IntersectionObserver | null>(null)
   return useCallback((el: T | null) => {
     io.current?.disconnect()
     io.current = null
-    // React calls this with null when the node goes away; disconnecting above is
-    // the whole of that case.
+    // React calls this with null when the node goes away; disconnecting above
+    // handles that case.
     if (!el) return
     // A browser without the observer gets the finished state immediately, which
     // is the same thing reduced motion gets. The page is readable either way.
@@ -115,14 +115,15 @@ function Band({
 
 // HeroSlab is the first screen: a panel with the mark inside it as a field of
 // particles rather than a drawing. The scene is loaded lazily and is allowed to
-// fail — the slab, the claim, and both ways in are HTML and never depend on it.
+// fail; the slab, the claim, and the sign-in and registry links are HTML and
+// never depend on it.
 function HeroSlab({ i18n, href, theme }: { i18n: I18n; href: string; theme: Theme }) {
   const { t } = i18n
   const stage = useRef<HTMLDivElement | null>(null)
   const mount = useRef<HTMLDivElement | null>(null)
   // The hero is a band like any other and starts at the pre-reveal opacity, so
-  // it needs the observer that ends that. Without it the whole first screen —
-  // slab, scene, claim, and both ways in — stays at opacity 0 for every reader
+  // it needs the observer that ends that. Without it the whole first screen,
+  // slab, scene, claim, and both header links, stays at opacity 0 for every reader
   // who has not asked for less motion, which is nearly all of them.
   const reveal = useReveal<HTMLElement>()
 
@@ -218,7 +219,7 @@ function ShipsBand({ i18n }: { i18n: I18n }) {
 // ── The boundary ────────────────────────────────────────────────────────────
 
 // LoopFigure is the product's one boundary, drawn: an inner ring a machine
-// re-runs — closed, and traced by a runner that goes round — and an outer ring
+// re-runs, drawn closed and traced by a runner that goes round, and an outer ring
 // that stands for the study with people, drawn open and never completed.
 //
 // It is the mark at figure scale, deliberately: the identity and the argument
@@ -229,7 +230,7 @@ function LoopFigure() {
     <figure className="lp-loop" aria-hidden="true">
       <svg viewBox="0 0 240 240" className="lp-loop-svg" role="img">
         {/* The outer loop: open, and it stays open. The dash pattern is the
-            mark's own, scaled — six dashes, so it never reads as a spinner. */}
+            mark's own, scaled: six dashes, so it never reads as a spinner. */}
         <circle className="lp-ring-outer" cx="120" cy="120" r="92" strokeDasharray="60 36.87" />
         {/* The inner loop: closed, because it is the half that re-runs. */}
         <circle className="lp-ring-inner" cx="120" cy="120" r="50" />
@@ -277,12 +278,12 @@ function LoopsBand({ i18n }: { i18n: I18n }) {
 // ── A session, step by step ─────────────────────────────────────────────────
 
 // The four steps of a session, each named by the artifact it leaves rather than
-// the verb it performs — a reader can open every one of them afterwards, which
-// is the whole claim.
+// the verb it performs, because a reader can open every one of them afterwards,
+// which is the claim the page makes.
 const STEPS = ['Paper', 'Release', 'Rerun', 'Verdict'] as const
 
-// The commit log on the third plate. The hashes are not copy — a short hash is a
-// hash in every language — so only the messages route through t().
+// The commit log on the third plate. The hashes are not copy, because a short
+// hash is the same in every language, so only the messages route through t().
 const COMMITS = [
   ['a1c9f04', 'lpPlateCommit1'],
   ['7be2d51', 'lpPlateCommit2'],
@@ -295,7 +296,7 @@ const COMMITS = [
 // The driver dims and collapses, and both of those are motion: it does not run
 // under `reduce`, and it does not run in the one-column layout either, where
 // there is no second column for a plate to be sticky in. In both cases the
-// resting state — every step lit, every plate open — is the whole content, so
+// resting state, every step lit and every plate open, is the whole content, so
 // nothing is hidden behind a listener that never fired.
 function WalkBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
@@ -625,7 +626,7 @@ function CostBand({ i18n }: { i18n: I18n }) {
 // It is progressive enhancement and the page is complete without it: a call that
 // fails, or a registry with nothing in it yet, renders nothing at all. A skeleton
 // that never fills, or a "0 reproductions" heading, would each make a claim about
-// a community — and the wrong one.
+// the community, and a wrong one.
 function PublishedStrip({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   const [rows, setRows] = useState<ProjectView[]>([])
@@ -665,7 +666,7 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
             <PaperCite i18n={i18n} papers={p.papers} />
             {/* Named, and named as what: a bare name under a paper's title reads
                 as the paper's author, which is the one person this line is never
-                about. The signer is who put their name to the *reproduction*. */}
+                about. The signer is who put their name to the reproduction. */}
             <span className="lp-card-by">
               <Ico name="shieldCheck" size={11} />
               {t('lpCardSigner', { name: p.signed_off_name || p.owner_name || t('ownerUnknown') })}
@@ -682,7 +683,7 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
 
 // PaperCite is the citation line on a registry card: the first paper's authors,
 // venue and year, and a count of the others. A project whose papers carry no
-// record renders nothing — the reader here is a stranger who cannot fill one in,
+// record renders nothing, because the reader here is a stranger who cannot fill one in,
 // so "No details yet" would be a line addressed to nobody.
 function PaperCite({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
   const { t } = i18n
@@ -712,9 +713,9 @@ export function Landing({
 
   return (
     <div className="landing">
-      {/* The way in, at every scroll position. This replaces 017's fold: a page
-          that scrolls cannot promise a button above one, and a sticky header
-          promises more than that promise did. */}
+      {/* The sign-in control, at every scroll position. This replaces 017's
+          fold: a page that scrolls cannot keep a button above the fold, and a
+          sticky header keeps it visible at every position. */}
       <header className="lp-bar">
         <a className="lp-bar-brand" href="/">
           <Lockup size={20} className="landing-lockup" />
@@ -759,7 +760,7 @@ export function Landing({
 
       {/* The footer every Latere surface ends in, from latere-ui. It is the
           product's place in a lineup, the legal links, and the appearance
-          control — none of which this page should be authoring itself.
+          control, none of which this page should implement itself.
 
           One language, because the app has one: an app that ships English only
           must not offer a dropdown that pretends otherwise, and the shared

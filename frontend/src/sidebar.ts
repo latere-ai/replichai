@@ -11,8 +11,8 @@ import { useCallback, useEffect, useState } from 'react'
 // is not something Back should undo.
 const KEY = 'sidebar'
 
-// The value stored when the rail is folded. Anything else — including the absent
-// value of a first visit — reads as open, so the rail a new operator meets is the
+// The value stored when the rail is folded. Anything else, including the absent
+// value of a first visit, reads as open, so the rail a new operator meets is the
 // one that names its destinations.
 const FOLDED = 'folded'
 
@@ -38,16 +38,16 @@ export function useSidebar(): { folded: boolean; toggle: () => void } {
 // useDrawer holds whether the rail is showing as an overlay, which is what it
 // does below the phone breakpoint (030).
 //
-// This is deliberately not the fold above. The fold is a preference — a width
-// the operator chose, kept across reloads — and a drawer standing open is a
-// moment, not a preference: a phone that reopened the navigation on every load
-// would hide the screen the link pointed at. So it lives in memory and starts
+// This is deliberately not the fold above. The fold is a preference, a width
+// the operator chose, kept across reloads. A drawer standing open is transient:
+// a phone that reopened the navigation on every load would hide the screen the
+// link pointed at. So it lives in memory and starts
 // closed, and nothing here reads or writes `sidebar`.
 //
 // There is no media query here either. Above the breakpoint the rail is a
 // column in the flow and the class this state adds paints nothing, so the state
-// is free to be open and mean nothing — which is what keeps the two widths one
-// component rather than two.
+// can be open and have no effect, which keeps the two widths one component
+// rather than two.
 export function useDrawer(): { open: boolean; show: () => void; hide: () => void } {
   const [open, setOpen] = useState(false)
 

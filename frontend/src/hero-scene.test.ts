@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The hero scene has two palettes (040), and the guard that matters is that
-// nothing paints outside them. A literal left behind in the geometry is a
-// colour that cannot follow the appearance — the exact bug 040 fixed in the
-// stylesheet — and no browser test can see it: the scene is WebGL, the test
-// harness has no GPU, and a canvas is opaque to a computed-style probe.
+// The hero scene has two palettes (040), and this test checks that nothing
+// paints outside them. A colour literal left in the geometry cannot follow the
+// appearance, which is the bug 040 fixed in the stylesheet, and no browser test
+// can see it: the scene is WebGL, the test harness has no GPU, and a canvas
+// cannot be read with a computed-style probe.
 //
-// So this reads the source. It is the same instrument latere-ui uses to keep an
+// So this test reads the source. latere-ui uses the same technique to keep an
 // `@import` out of a shipped stylesheet, for the same reason: some properties
-// are about how a file is written, not about what it renders.
+// concern how a file is written, not what it renders.
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
