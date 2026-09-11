@@ -26,10 +26,10 @@ import { Check, Modal } from '../ui'
 import { ProfileFields, SignerRows, type TextField } from './shared'
 
 // PublishPanel is the entry to the public flip: a short summary and the button
-// that opens the wizard. The decision itself is never one click from a sidebar —
-// it opens the transcript and artifacts to everyone, and it puts the signer's
-// name behind the result (006n). Withdrawable since 006o, but not undoable:
-// copies taken while it was public stay taken.
+// that opens the wizard. The decision itself is never one click from a sidebar,
+// because it opens the transcript and artifacts to everyone and puts the
+// signer's name behind the result (006n). Withdrawable since 006o, but not
+// undoable: copies taken while it was public stay taken.
 export function PublishPanel({
   i18n,
   projectID,
@@ -76,8 +76,8 @@ export function PublishPanel({
 
 // PublishWizard walks the three commitments of going public: what becomes
 // public, who stands behind it, and the responsibility for it. Step 2 is
-// prefilled from the owner's profile but recorded from what they confirm here —
-// the sign-off is a snapshot, so a later profile edit cannot rewrite it.
+// prefilled from the owner's profile but recorded from what they confirm here.
+// The sign-off is a snapshot, so a later profile edit cannot rewrite it.
 export function PublishWizard({
   i18n,
   projectID,
@@ -95,8 +95,8 @@ export function PublishWizard({
   // an owner who then closes the wizard instead of signing off again would
   // otherwise be left clicking a row that is no longer there.
   onChanged?: () => void
-  // Where a named blocker is opened. Absent on a screen with no session to go to
-  // — the refusal then still says what is wrong, it just cannot travel.
+  // Where a named blocker is opened. Absent on a screen with no session to go
+  // to; the refusal then still says what is wrong but offers no link.
   onOpenBlocker?: (b: PublishBlocker) => void
 }) {
   const { t } = i18n
@@ -122,8 +122,8 @@ export function PublishWizard({
 
   const hasContact = (p.contact_email ?? '').trim() !== ''
   // 006r: publishing puts a name on a result, and the name has to resolve to
-  // somewhere. The wizard sets it here rather than sending the signer off to
-  // settings and back — they are mid-decision, and the requirement is part of
+  // somewhere. The wizard sets it here rather than sending the signer to
+  // settings and back: they are mid-decision, and the requirement is part of
   // the decision.
   const hasPage = !!p.public && (p.handle ?? '').trim() !== ''
   const canContinueFromStep2 = hasContact && hasPage
@@ -150,7 +150,7 @@ export function PublishWizard({
       onPublished()
     } catch (e) {
       // A 409 is any of the reasons this project is not publishable, and the
-      // status alone cannot tell them apart — they need different remedies, so
+      // status alone cannot tell them apart. They need different remedies, so
       // the body's code decides. When the refusal is about the sessions rather
       // than the signer, it also names them, and the reader is offered the way
       // there instead of the sign-off form they were already past.
@@ -271,12 +271,11 @@ export function PublishWizard({
 // Blockers lists the sessions standing between a project and the public flip:
 // one row each, saying what is wrong with that one and opening it.
 //
-// The list is the point. The refusal used to be a single sentence about "the
-// reproduction", which named neither the session nor, when there were several,
-// how many more were behind it — so an owner fixed one and met the same wall.
-// An unfinished run is the one blocker with nothing to read and nothing to fix:
-// it has no manifest, so opening it lands the reader on an absence. The row
-// carries its own remedy instead (032).
+// The refusal used to be a single sentence about "the reproduction", which
+// named neither the session nor, when there were several, how many more were
+// behind it, so an owner fixed one and was refused again. An unfinished run is
+// the one blocker with nothing to read and nothing to fix: it has no manifest,
+// so opening it shows nothing. The row carries its own remedy instead (032).
 function Blockers({
   i18n,
   blockers,
@@ -305,7 +304,7 @@ function Blockers({
 //
 // The delete confirms in the row rather than in a dialog: this list is already
 // inside the publish wizard's Modal, and a second Modal over it would share the
-// Escape key with the first — one press would close both and take the list of
+// Escape key with the first, so one press would close both and take the list of
 // blockers with it.
 function BlockerRow({
   i18n,
@@ -371,7 +370,7 @@ function BlockerRow({
 
 // PublishedCard reports the recorded sign-off: who signed, where they were, and
 // how to reach them. A v1 sign-off carries no snapshot and shows the date line
-// alone, exactly as it did before 006n. It also carries the way back out — the
+// alone, exactly as it did before 006n. It also offers the withdrawal: the
 // owner may withdraw the publication (006o).
 export function PublishedCard({
   i18n,
@@ -441,9 +440,9 @@ export function PublishedCard({
 }
 
 // WithdrawDialog confirms ending a publication. One step, not the publish
-// wizard's three: withdrawing is the conservative direction. What it must not do
-// is imply erasure — going private stops new access and does not retrieve copies
-// already taken, and the dialog says so rather than letting the owner assume it.
+// wizard's three: withdrawing is the conservative direction. It must not imply
+// erasure: going private stops new access and does not retrieve copies already
+// taken, and the dialog says so rather than letting the owner assume it.
 function WithdrawDialog({
   i18n,
   projectID,

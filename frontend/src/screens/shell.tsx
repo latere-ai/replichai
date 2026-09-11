@@ -3,7 +3,7 @@
 
 // The app's frame (013, 028, 030): the rail with its destinations, the top bar
 // with its breadcrumb and wallet, the screen the address names, and the three
-// full-page states outside it — auth unavailable, no access, and not found.
+// full-page states outside it, namely auth unavailable, no access, and not found.
 
 import { useCallback, useEffect, useState } from 'react'
 import { LatereMark, Mark, Wordmark } from '../brand'
@@ -52,7 +52,7 @@ export function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
         </h2>
         <p>{i18n.t('noAccessBody', { email })}</p>
         {/* Signing out clears a session minted before sign-in was opened, and
-            re-runs the admission with a fresh identity — which is the remedy
+            re-runs the admission with a fresh identity, which is the remedy
             for every cause of this screen except an actual revocation. */}
         <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
           <Ico name="logOut" size={13} /> {i18n.t('signOut')}
@@ -93,7 +93,7 @@ function NavItem({
       <span className="nav-label">{label}</span>
       {/* Absent until it is known, so the rail never shows a 0 that is really a
           fetch in flight. It is removed from the layout when folded, not merely
-          hidden — a 64px column has no room to hold open. */}
+          hidden, because a 64px column has no room for it. */}
       {count !== undefined && <span className="count">{count}</span>}
     </button>
   )
@@ -129,8 +129,8 @@ export function Shell({
   const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string, tab?: SessionTab) =>
     setView({ name: 'session', jobId, projectId, ref, projectTitle, tab })
 
-  // A session reached by its own link knows its project's id from the path and
-  // its title from nowhere — the job carries the paper, not the project. The
+  // A session reached by its own link knows its project's id from the path but
+  // not its title, because the job carries the paper, not the project. The
   // breadcrumb's middle step is read once, here, rather than by threading the
   // title through every screen that could have linked to this one.
   const untitledSessionProject = view.name === 'session' && !view.projectTitle ? view.projectId : ''
@@ -150,19 +150,19 @@ export function Shell({
 
   // The rail folds to its icons and stays that way across reloads. Folding is a
   // preference about the chrome rather than a destination, so it is not in the
-  // address (013) — a shared link opens at the width its reader last chose.
+  // address (013), and a shared link opens at the width its reader last chose.
   const { folded, toggle: toggleRail } = useSidebar()
   const foldLabel = folded ? t('unfoldSidebar') : t('foldSidebar')
 
   // How many projects the rail's Projects row carries. It is read from the shared
   // list rather than fetched here: the rail outlives every screen, so the number
-  // has to survive the list being unmounted, and it has to move when a project
-  // is thrown away from the screen beside it — which a private read of the list
-  // on every change of screen never managed.
+  // has to survive the list being unmounted, and it has to change when a project
+  // is thrown away from the screen beside it, which a private read of the list
+  // on every change of screen did not do.
   const projectCount = useProjects(signedIn)?.length
 
   // Below the phone breakpoint the rail is an overlay instead of a column, and
-  // this is what holds it open (030). It is not the fold and never persists —
+  // this is what holds it open (030). It is not the fold and never persists;
   // see `useDrawer`. Above the breakpoint `.rail-open` paints nothing, so the
   // same markup serves both widths.
   const drawer = useDrawer()
@@ -181,7 +181,7 @@ export function Shell({
     <div className="shell">
       {/* The scrim is a sibling of the rail rather than a portal: it belongs to
           the shell's own stacking context, which nothing here promotes, and it
-          has to sit under the rail and over the screen — an order a portal to
+          has to sit under the rail and over the screen, an order a portal to
           <body> would have to restate. */}
       {drawer.open && <div className="rail-scrim" onClick={drawer.hide} />}
       <nav className={'rail' + (folded ? ' rail-fold' : '') + (drawer.open ? ' rail-open' : '')}>
@@ -237,8 +237,9 @@ export function Shell({
               on={view.name === 'public' || (!signedIn && (view.name === 'project' || view.name === 'session'))}
               onClick={() => goto({ name: 'public' })}
             />
-            {/* The wallet is a primary destination — money you manage often — so
-                it lives with the workspace rather than buried by Settings. */}
+            {/* The wallet is a primary destination, since money is managed
+                often, so it lives with the workspace rather than under
+                Settings. */}
             {signedIn && (
               <NavItem
                 label={t('navWallet')}
@@ -291,10 +292,10 @@ export function Shell({
         <div className="rail-foot">
           {signedIn ? (
             <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => goto({ name: 'settings' })}>
-              {/* Sized to the meta stack beside it (name + address + tier), not to
-                  a default: a 26px square against three rows of text left the row
-                  bottom-heavy and the card's right half empty. Folded there is no
-                  stack, and 38px would not clear the rail's own padding. */}
+              {/* Sized to the meta stack of name, address and tier beside it, not
+                  to a default: a 26px square against three rows of text left the
+                  row bottom-heavy and the card's right half empty. Folded there is
+                  no stack, and 38px would not clear the rail's own padding. */}
               <Avatar me={me} size={folded ? 30 : 38} />
               <span className="user-meta">
                 {me.name && <span className="user-name">{me.name}</span>}
@@ -317,9 +318,9 @@ export function Shell({
         <header className="topbar">
           {/* The way back to the rail once it has left the flow. It is in the
               markup at every width and hidden by CSS above the breakpoint, so
-              the shell is one tree — and it leads the bar rather than joining
-              the controls on the right, because it is where the reader is, not
-              something to do here. */}
+              the shell is one tree. It leads the bar rather than joining the
+              controls on the right, because it is navigation rather than an
+              action on this screen. */}
           <button className="rail-open-btn" aria-label={t('openNav')} aria-expanded={drawer.open} onClick={drawer.show}>
             <Ico name="menu" size={17} w={2} />
           </button>

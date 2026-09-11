@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// What more than one screen draws: the small presentation pieces — meters,
-// empty states, card heads, badges and pills, tabs, avatars — and the few
-// components two screens share outright, such as the theme switcher, the
+// What more than one screen draws: the small presentation pieces such as
+// meters, empty states, card heads, badges and pills, tabs and avatars, and the
+// few components two screens share outright, such as the theme switcher, the
 // profile fields and the not-public screen. Screen modules import from here;
 // nothing here imports a screen.
 
@@ -18,15 +18,15 @@ import { hueOf, initials, showsPicture } from '../account'
 
 // signerOf names the person who published a project. The signer's recorded name
 // is used whenever the sign-off carries one (006n); a v1 sign-off has none and
-// falls back to the owner's profile name (018). `owner` itself is never shown —
+// falls back to the owner's profile name (018). `owner` itself is never shown:
 // it is an opaque OIDC subject and names nobody.
 export const signerOf = (p: Project & { owner_name?: string }) => p.signed_off_name || p.owner_name || '—'
 
-// SignerRows is how to reach the person behind a name — contact, ORCID and
-// Scholar, each present only when set — in the one markup a researcher's page
+// SignerRows lists how to reach the person behind a name: contact, ORCID and
+// Scholar, each present only when set, in the one markup a researcher's page
 // and a sign-off card both use, so the two cannot drift. A sign-off card leads
 // with the signer's address as well; a researcher's page has no such row. The
-// Scholar link text is the host, not the label again — a row reading
+// Scholar link text is the host, not the label again, because a row reading
 // "Scholar · Scholar" tells a reader nothing.
 export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I18n; signer?: string; contact?: string; orcid?: string; scholar?: string }) {
   const { t } = i18n
@@ -78,8 +78,8 @@ export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I1
 
 // How each appearance is drawn. THEME_MODES fixes which ones exist and in what
 // order; this fixes what they look like, so adding a fourth is a type error here
-// until somebody answers it. Keeping the list in one place is the point: it used
-// to be written out again here, and the two could drift.
+// until it is drawn. The list is kept in one place because it used to be
+// written out again here, and the two could drift.
 const THEME_FACE: Record<ThemeMode, { icon: IconName; label: TKey; hint: TKey }> = {
   auto: { icon: 'monitor', label: 'themeAuto', hint: 'themeAutoHint' },
   light: { icon: 'sun', label: 'themeLight', hint: 'themeLight' },
@@ -96,9 +96,8 @@ export function ThemeSwitcher({ i18n, theme, compact }: { i18n: I18n; theme: Ret
 }
 
 // Meter is a proportion drawn as a bar. It is never the only thing said about a
-// number — the count and its denominator are always beside it in words, because
-// a bar alone is a rate, and a rate alone is the thing this product refuses to
-// hand out.
+// number: the count and its denominator are always beside it in words, because
+// a bar alone is a rate, and this product never shows a rate alone.
 export function Meter({ pct, tone, size }: { pct: number; tone: string; size?: 'sm' }) {
   return (
     <span className={size === 'sm' ? 'meter sm' : 'meter'} aria-hidden="true">
@@ -133,12 +132,12 @@ export function CardHead({ label, icon, tone = 'var(--fg-3)', children }: { labe
 }
 
 // VisibilityBadge: private is a closed lock in ink, public is the published
-// tone — the one state that means anyone can read this.
+// tone, the one state that means anyone can read this.
 export function VisibilityBadge({ i18n, visibility, icon }: { i18n: I18n; visibility: 'private' | 'public'; icon?: boolean }) {
   const glyph = <Ico name={visibility === 'public' ? 'globe' : 'lock'} size={icon ? 14 : 11} w={icon ? 1.7 : 2} />
   // In a list the word is the same on nearly every row, so the glyph carries it
-  // and the word moves into the tooltip — which is what buys the column its
-  // width back for the figures beside it. Standing on its own, it keeps the word.
+  // and the word moves into the tooltip, which frees the column's width for the
+  // figures beside it. Standing on its own, it keeps the word.
   if (icon)
     return (
       <Tip text={i18n.t(visibility)}>
@@ -157,7 +156,7 @@ export function VisibilityBadge({ i18n, visibility, icon }: { i18n: I18n; visibi
 
 // TierPill is the rounded mark of what someone may do on the platform. An admin
 // carries the brand and a shield; an ordinary member stays neutral, because
-// "user" is the unremarkable case and should not shout.
+// "user" is the common case and should not stand out.
 export function TierPill({ i18n, tier }: { i18n: I18n; tier?: string }) {
   const admin = tier === 'admin'
   return (
@@ -220,10 +219,10 @@ export function Tab({ on, onClick, icon, label }: { on: boolean; onClick: () => 
   )
 }
 
-// NotReadable is what a project nobody here may read looks like. The server
+// NotReadable is the screen for a project this reader may not read. The server
 // answers one 404 for private, withdrawn, trashed, and never-existed alike (028),
-// so this screen claims none of them: it says the address is not public, and — to
-// a reader with no account — offers the sign-in that would settle it, carrying
+// so this screen claims none of them: it says the address is not public, and to
+// a reader with no account it offers the sign-in that would settle it, carrying
 // this address so they land back on it.
 export function NotReadable({ i18n, me }: { i18n: I18n; me: Me }) {
   const { t } = i18n
@@ -250,8 +249,9 @@ export function NotReadable({ i18n, me }: { i18n: I18n; me: Me }) {
   )
 }
 
-// Initials is the avatar for someone we know only by address — a seeded member,
-// a granted email — where there is no profile picture to fall back from.
+// Initials is the avatar for someone known only by address, such as a seeded
+// member or a granted email, where there is no profile picture to fall back
+// from.
 export function Initials({ email, size = 22 }: { email: string; size?: number }) {
   return (
     <span
@@ -264,8 +264,8 @@ export function Initials({ email, size = 22 }: { email: string; size?: number })
 }
 
 // Avatar renders the IdP's picture when there is one, and falls back to
-// initials — for an absent URL, and for one that fails to load (006m AC4). A
-// broken-image glyph would be worse than the two letters we had before.
+// initials for an absent URL and for one that fails to load (006m AC4). A
+// broken-image glyph would be worse than the two letters shown before.
 export function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
   const [broken, setBroken] = useState(false)
   if (showsPicture(me.picture, broken)) {
@@ -284,7 +284,7 @@ export function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
 }
 // The account roles the server sends, each named by a key TypeScript can check.
 // Built by concatenation this read `t('tier' + …)`, which compiled whatever it
-// produced — including `tierNone`, a key that never existed and painted its own
+// produced, including `tierNone`, a key that never existed and rendered its own
 // name in the pill.
 const TIER_KEY = { user: 'tierUser', admin: 'tierAdmin' } as const satisfies Record<string, TKey>
 function tierLabel(t: I18n['t'], tier?: string) {

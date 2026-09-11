@@ -33,18 +33,18 @@ import { isMine } from '../account'
 import { CardHead, Empty } from './shared'
 import { DeleteSessionDialog, SessionRow } from './sessions'
 
-// PapersCard is what a project is about, and where a run is started (012) —
-// each paper carrying the sessions that are runs of it (015).
+// PapersCard is what a project is about, and where a run is started (012). Each
+// paper carries the sessions that are runs of it (015).
 //
-// It is the answer to two questions that used to be one. Adding a paper says
+// Adding a paper and starting a session are separate acts. Adding a paper says
 // what this project means to reproduce and costs nothing; starting a session
-// runs it and spends. Fusing them is what made creating a project an act that
-// could be refused for money — and made a paper whose only run failed disappear
-// from the project it belonged to.
+// runs it and spends. When the two were one act, creating a project could be
+// refused for money, and a paper whose only run failed disappeared from the
+// project it belonged to.
 //
-// The sessions were a flat list beside this card until 015, which is what let a
-// run float free of the paper it was a run of. They are nested now, so the
-// screen reads the way the records do.
+// Until 015 the sessions were a flat list beside this card, so a run was not
+// tied to the paper it was a run of. They are nested now, so the screen reads
+// the way the records do.
 export function PapersCard({
   i18n,
   me,
@@ -63,10 +63,10 @@ export function PapersCard({
   grouped: Grouped
   loading: boolean
   credits?: ProjectCredits
-  // Whether this caller may work here — owner or collaborator. Reading is not
-  // working: a public project's papers are what it is *about*, and the public
-  // zone exists so a visitor can check that. Adding one and starting a run are
-  // the parts that need a role.
+  // Whether this caller may work here as owner or collaborator. Reading needs no
+  // role: a public project's papers are what it is about, and the public zone
+  // exists so a visitor can check that. Adding a paper and starting a run need
+  // one.
   mayWork: boolean
   onOpenSession: (job: Job) => void
   // Something was spent, so the wallet is re-read too.
@@ -94,14 +94,14 @@ export function PapersCard({
   const [filling, setFilling] = useState(false)
   const [filled, setFilled] = useState<number | null>(null)
   const refresh = onRefresh
-  // Removing a session is the owner's alone — 019's rule, at session scale. The
-  // trashed clause matches the server, which refuses every write on a project in
-  // the trash.
+  // Only the owner may remove a session, the same rule 019 sets for projects.
+  // The trashed clause matches the server, which refuses every write on a
+  // project in the trash.
   const mayDelete = isMine(me, project.owner) && !project.deleted_at
 
   // The tiers and their prices come from the server. Read once per mount, and
-  // only where somebody can actually start a run — a reader of a public project
-  // is offered nothing to choose.
+  // only where somebody can start a run; a reader of a public project is offered
+  // nothing to choose.
   useEffect(() => {
     if (!mayWork) return
     let live = true
@@ -167,9 +167,9 @@ export function PapersCard({
     }
   }
 
-  // Whether the project can afford another run. Saying so on the button beats
-  // letting somebody press it and reading the refusal afterwards — and the pot
-  // it is short of is on the same screen.
+  // Whether the project can afford another run. The button says so before it is
+  // pressed rather than after a refusal, and the pot it is short of is on the
+  // same screen.
   const short = !!credits && credits.available < credits.start_reserve
   const shortWhy = credits ? t('startNeedsCredits', { reserve: formatUSD(i18n.lang, credits.start_reserve) }) : ''
 
@@ -177,8 +177,8 @@ export function PapersCard({
     <div className="card">
       <CardHead label={t('papers')} icon="fileText" tone="var(--accent)">
         {/* The fill-in, for the papers recorded before a paper had a
-            bibliography (037). Offered only when there is something to fill:
-            a button that always says "nothing to do" is furniture. */}
+            bibliography (037). Offered only when there is something to fill;
+            a button that always reports nothing to do serves no purpose. */}
         {mayWork && grouped.papers.some((g) => needsDetails(g.paper)) && (
           <button
             className="btn ghost sm"
@@ -273,10 +273,10 @@ export function PapersCard({
                   <span className="muted small paper-state">
                     {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
                   </span>
-                {/* Moving is offered whether or not the paper has been run —
-                    which is the point: a paper filed under the wrong project is
-                    usually noticed after a replication, and that is exactly when
-                    removing it stops being allowed. */}
+                {/* Moving is offered whether or not the paper has been run. A
+                    paper filed under the wrong project is usually noticed after
+                    a replication, which is when removing it stops being
+                    allowed. */}
                 {mayWork && (
                   <Tip text={t('editPaper')}>
                     <button
@@ -391,7 +391,7 @@ export function PapersCard({
 
 // needsDetails is the client's half of the server's rule: a paper whose record
 // has no authors, no venue or no year is one the fill-in has something to do
-// for. A title alone does not count — a title is what a paper is called, and the
+// for. A title alone does not count: a title is what a paper is called, and the
 // record is what it is.
 function needsDetails(p: ProjectPaper): boolean {
   const r = p.record
@@ -399,13 +399,14 @@ function needsDetails(p: ProjectPaper): boolean {
 }
 
 // Citation renders a paper's bibliography the way a reference list would: the
-// authors, then where and when it appeared. It is one quiet line under the
-// title, because it is what you scan a project by rather than what you click.
+// authors, then where and when it appeared. It is one muted line under the
+// title, because it is what a reader scans a project by rather than what they
+// click.
 //
-// Three authors, then "et al." — a fifteen-author paper would otherwise be the
+// Three authors, then "et al.": a fifteen-author paper would otherwise fill the
 // whole row, and the full list is in the correction dialog for anyone who needs
-// it. A paper whose record nobody could fill in says so, which is also the
-// invitation to fill it in.
+// it. A paper whose record nobody could fill in says so, which also invites the
+// owner to fill it in.
 function Citation({ i18n, paper }: { i18n: I18n; paper: ProjectPaper }) {
   const { t } = i18n
   const bits = citationBits(paper.record, t('etAl'))
@@ -431,8 +432,8 @@ function Citation({ i18n, paper }: { i18n: I18n; paper: ProjectPaper }) {
 // Abstract is what the paper is about, in its own source's words (037).
 //
 // Three lines, then "more". Long enough to tell two papers apart, short enough
-// that a project holding six of them still shows its sessions without a scroll —
-// and expanding is per paper and per visit, because a preference about somebody
+// that a project holding six of them still shows its sessions without a scroll.
+// Expanding is per paper and per visit, because a preference about somebody
 // else's abstract is not worth storing.
 function Abstract({ i18n, text }: { i18n: I18n; text?: string }) {
   const { t } = i18n
@@ -470,7 +471,7 @@ function Abstract({ i18n, text }: { i18n: I18n; text?: string }) {
 // shortRef renders a reference as the identifier it is: a DOI or arXiv id
 // without the URL scaffolding, and anything else as its host and last segment.
 // The full reference is the link's target, so nothing is lost by not printing
-// it — and a 60-character URL was taking a third of the row.
+// it, and a 60-character URL was taking a third of the row.
 function shortRef(ref: string): string {
   const trimmed = ref.trim()
   const doi = trimmed.match(/10\.\d{4,9}\/\S+/)
@@ -605,11 +606,10 @@ function EditPaperDialog({
 // MovePaperDialog refiles one paper, and its replications, under another
 // project (035).
 //
-// The destinations are the caller's own projects, private and not in the trash
-// — the plain reading of "move it to my other project", and the same three
-// things the server checks, so the list offers nothing that would be refused.
-// The server still decides: it authorises a lead of either end, which this
-// picker does not yet surface.
+// The destinations are the caller's own projects that are private and not in
+// the trash. Those are the same three things the server checks, so the list
+// offers nothing that would be refused. The server still decides: it authorises
+// a lead of either end, which this picker does not yet surface.
 function MovePaperDialog({
   i18n,
   project,

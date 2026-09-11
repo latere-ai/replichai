@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The project screen (013, 015): a project's title and description, its tabs —
-// the papers and their sessions, what the project found, and who works in it —
-// with the members card, the findings cards and the verdict rows that fill
-// them. The papers card, the credits card and publishing are modules of their
-// own.
+// The project screen (013, 015): a project's title and description, and its
+// tabs for the papers and their sessions, what the project found, and who works
+// in it, with the members card, the findings cards and the verdict rows that
+// fill them. The papers card, the credits card and publishing are modules of
+// their own.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CRITERIA, type Criterion, type Findings, rate, scoreOf, verdictTone } from '../findings'
@@ -49,8 +49,8 @@ import { PapersCard } from './papers'
 // ProjectDescription is what the project is about, under its title (038).
 //
 // Edited in place, like the title beside it: a project has one screen, and the
-// thing being described is on it. Empty is a state rather than a placeholder —
-// its owner is invited to write one, and everybody else is shown nothing at all,
+// thing being described is on it. Empty is a state rather than a placeholder.
+// Its owner is invited to write one, and everybody else is shown nothing at all,
 // because a published project should read as what it is, not as a form somebody
 // left blank.
 function ProjectDescription({
@@ -145,8 +145,8 @@ function ProjectDescription({
             {t('cancel')}
           </button>
           {/* A draft is a suggestion: it lands in the field above for somebody
-              to read and change. It is offered inside the editor for that
-              reason — there is nowhere else it could land. */}
+              to read and change. It is offered inside the editor because there
+              is nowhere else it could land. */}
           {mayDraft && (
             <Tip text={t('draftHint')}>
               <button className="btn ghost sm" onClick={askForADraft} disabled={busy || drafting} data-test="describe-draft">
@@ -221,10 +221,11 @@ function EditableTitle({ i18n, title, canEdit, onRename }: { i18n: I18n; title: 
 
   if (!editing) {
     return (
-      // The control belongs to the last word, not to the right-hand edge: inside
+      // The control sits after the last word, not at the right-hand edge. Inside
       // the heading it follows the text wherever the text ends, which is where a
-      // reader's eye already is. Beside it, on a title that wrapped to two lines,
-      // it floated off at the end of the row looking like somebody else's button.
+      // reader is already looking. Beside the heading, on a title that wrapped
+      // to two lines, it sat at the end of the row and did not read as part of
+      // the title.
       <h1 className="detail-title">
         {title}
         {canEdit && (
@@ -292,13 +293,13 @@ export function ProjectScreen({
   const [credits, setCredits] = useState<ProjectCredits | null>(null)
   const [signerHandle, setSignerHandle] = useState('')
   // A project this reader cannot see reads as missing, whether it is private,
-  // withdrawn, or never existed (028) — the server will not say which. Without
+  // withdrawn, or never existed (028); the server will not say which. Without
   // this the screen waited on a fetch that had already failed and showed a
   // loading ellipsis forever.
   const [notReadable, setNotReadable] = useState(false)
 
   // Papers and sessions are read together and by one component, because the
-  // screen renders them joined (015). Fetched separately they are two clocks:
+  // screen renders them joined (015). Fetched separately they could disagree:
   // a paper just started would read "1 session" over an empty list until
   // whichever refresh landed second.
   const refresh = useCallback(() => {
@@ -338,8 +339,8 @@ export function ProjectScreen({
 
   // What an owner may do here. A project in the trash is read-only (019): the
   // server refuses every write on one, so an owner control still on screen is a
-  // button that can only fail. The banner above says as much; this is the half
-  // that makes it true.
+  // button that can only fail. The banner above says the project is read-only;
+  // this flag removes the controls.
   const isOwner = project != null && isMine(me, project.owner) && !project.deleted_at
   const [publishing, setPublishing] = useState(false)
   // Why a restore did not land, shown in the banner that offered it. A refused
@@ -356,9 +357,10 @@ export function ProjectScreen({
     },
     [onOpenSession, project?.title],
   )
-  // What this project is, joined: every session under the paper it is a run of.
-  // Nothing here derives one session for the project — a project holds papers,
-  // and a verdict and a repository belong to the session that produced them.
+  // The project's papers and sessions, joined: every session under the paper it
+  // is a run of. Nothing here derives one session for the project: a project
+  // holds papers, and a verdict and a repository belong to the session that
+  // produced them.
   const grouped = useMemo(() => groupByPaper(papers ?? [], sessions ?? []), [papers, sessions])
 
   // The breadcrumb's leaf, once it is known: on a link followed from outside, the
@@ -412,7 +414,7 @@ export function ProjectScreen({
             )}
           </div>
           {/* Publishing is an act an operator looks for on the thing they are
-              publishing, not under Collaborators — where it lived because that
+              publishing, not under Collaborators, where it lived because that
               was the tab with room (021e). The card there keeps the sign-off
               record and the wizard stays the one path through the decision. */}
           {isOwner && project.visibility === 'private' && !project.deleted_at && (
@@ -430,8 +432,8 @@ export function ProjectScreen({
 
       <div className="screen" style={{ animation: 'none' }}>
         {/* A trashed project keeps its address (013), so its owner can still
-            follow a link to it — and has to be told why nothing here works,
-            with the way back on the same line (019). */}
+            follow a link to it. The banner says why nothing here works, with
+            the way back on the same line (019). */}
         {project.deleted_at && (
           <div className="banner warn" data-test="trashed-banner">
             <Ico name="trash" size={14} />
@@ -457,8 +459,8 @@ export function ProjectScreen({
         {tab === 'sessions' && (
           // The work on the left, the standing facts on the right. Stacked, the
           // credits card ran the full width of the screen to show two numbers
-          // and a stepper, and pushed the sessions — the reason the tab exists —
-          // below the fold.
+          // and a stepper, and pushed the sessions, which are the reason the tab
+          // exists, below the fold.
           <div className="detail-grid">
             <PapersCard
               i18n={i18n}
@@ -503,18 +505,18 @@ export function ProjectScreen({
 }
 
 // LatestFindings summarises the newest graded session of each paper the project
-// holds (021e) — its inner-loop decomposition and the open-science scorecard.
+// holds (021e): its inner-loop decomposition and the open-science scorecard.
 //
 // It is per paper on purpose. The operator design puts one rate on the project
-// header, which is true only while a project holds one paper; ours hold many
-// (012), and 015 exists because two screens made exactly that assumption and
+// header, which is true only while a project holds one paper. Projects here
+// hold many (012), and 015 exists because two screens made that assumption and
 // showed one paper's reproduction under another paper's name. Each card names
 // the session it read and links to it.
 function LatestFindings({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Grouped; onOpen: (job: Job) => void }) {
   // `done` and a repository, not "terminal and a repository". RepoName marks
-  // that publishing *began* and `publishing → failed` is legal (015), so a
-  // paper whose newest session reached publishing and then died would select
-  // that session, find no findings on it, and hide the graded run underneath.
+  // that publishing began and `publishing → failed` is legal (015), so a paper
+  // whose newest session reached publishing and then failed would select that
+  // session, find no findings on it, and hide the graded run underneath.
   const cards = grouped.papers
     .map((g) => ({ paper: g.paper, job: g.sessions.find((s) => s.phase === 'done' && !!s.repo_name) }))
     .filter((c): c is { paper: PaperGroup['paper']; job: Job } => !!c.job)
@@ -592,7 +594,7 @@ const scoreKey = (c: Criterion) =>
   c === 'code' ? 'critCode' : c === 'data' ? 'critData' : c === 'license' ? 'critLicense' : c === 'preregistration' ? 'critPreregistration' : 'critSupplement'
 
 // CountLine is one row of the decomposition legend: a swatch, a label, and the
-// count over its total — the total repeated on every line because the number
+// count over its total. The total is repeated on every line because the number
 // that matters is the share, not the count.
 function CountLine({ tone, label, n, total }: { tone: string; label: string; n: number; total: number }) {
   return (
@@ -610,11 +612,11 @@ function CountLine({ tone, label, n, total }: { tone: string; label: string; n: 
 // repository, under the paper it is a run of, each row opening that session's
 // own verdict (015).
 //
-// It is the read across papers that the deleted project-level verdict tab was
-// pretending to be. That one picked the newest session with a repository and
-// showed it under the project's name — so a project's second paper hid its
-// first, and a run that failed while publishing could be presented as the
-// result. Here every graded run has a row and reads its own manifest.
+// It replaces the deleted project-level verdict tab, which picked the newest
+// session with a repository and showed it under the project's name. There a
+// project's second paper hid its first, and a run that failed while publishing
+// could be presented as the result. Here every graded run has a row and reads
+// its own manifest.
 function ProjectVerdicts({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Grouped; onOpen: (job: Job) => void }) {
   const { t } = i18n
   const rows = useMemo(() => gradeable(grouped), [grouped])
@@ -645,7 +647,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   const [missing, setMissing] = useState(false)
   // The paper's verdict, when the run recorded one. The manifest's grade is the
   // rubric's judgement of the run, so a list about papers must not print it in
-  // the column a reader reads as "did this reproduce" — that was the same
+  // the column a reader reads as "did this reproduce". That was the same
   // conflation the session pane had, one level up.
   const [findings, setFindings] = useState<Findings | null>(null)
   useEffect(() => {
@@ -678,8 +680,8 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
           </>
         ) : repro ? (
           // The run finished and recorded no findings, so this paper has no
-          // verdict — saying so is the finding, and printing the rubric grade
-          // here would answer a question nobody asked.
+          // verdict. Saying so is the finding; printing the rubric grade here
+          // would answer a different question.
           <span className="muted small">{t('noVerdictRecorded')}</span>
         ) : (
           '…'

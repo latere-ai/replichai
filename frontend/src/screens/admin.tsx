@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The platform console (006k): who may sign in and at what tier, each account's
-// headroom, and the deployment's own policy — the start reserve, the overdraft
+// headroom, and the deployment's policy, namely the start reserve, the overdraft
 // floor, the rate card and the drafting model.
 
 import { useCallback, useEffect, useState } from 'react'
@@ -98,10 +98,10 @@ export function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsC
 
 // PlatformPolicy edits what this deployment charges and what it will risk: two
 // numbers and a price list, all micro-USD, all typed in dollars because that is
-// the resolution an admin decides anything at.
+// the resolution an admin works at.
 //
-// The two numbers fail closed in opposite directions and the copy says so — a
-// reserve that vanished would start sessions on empty projects, a floor that
+// The two numbers fail closed in opposite directions and the copy says so. A
+// reserve that vanished would start sessions on empty projects; a floor that
 // grew would stop bounding a runaway.
 function PlatformPolicy({
   i18n,
@@ -115,8 +115,9 @@ function PlatformPolicy({
   const { t } = i18n
   const [reserve, setReserve] = useState('')
   const [floor, setFloor] = useState('')
-  // The drafting model (039): a protocol, an endpoint and a model id. No key —
-  // that is the deployment's, and this form has nowhere to put one.
+  // The drafting model (039): a protocol, an endpoint and a model id. There is
+  // no key field; the key belongs to the deployment and this form has nowhere
+  // to put one.
   const [provider, setProvider] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [model, setModel] = useState('')
@@ -237,9 +238,9 @@ function PlatformPolicy({
       {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
       {/* One Save, at the foot of the card it saves. Beside the overdraft floor
           it read as that field's control, and an admin who edited the start
-          reserve had no reason to believe the button below it applied — one
-          request writes both numbers, and the button has to sit where that is
-          what it looks like. */}
+          reserve had no reason to believe the button below it applied. One
+          request writes both numbers, so the button sits where it reads as
+          saving the whole card. */}
       <div className="card-foot">
         {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
         <button className="btn" data-test="save-policy" disabled={!dirty} onClick={save}>
@@ -251,7 +252,7 @@ function PlatformPolicy({
 }
 
 // RateCardTable shows what each model costs. It is here because a reserve and a
-// floor mean nothing without the prices they bound — an admin setting a $200
+// floor mean nothing without the prices they bound: an admin setting a $200
 // floor should be able to see what output tokens cost and work out what it buys.
 function RateCardTable({ i18n, card }: { i18n: I18n; card: RateCard }) {
   const { t } = i18n
@@ -284,7 +285,7 @@ function RateCardTable({ i18n, card }: { i18n: I18n; card: RateCard }) {
 }
 
 // PeopleCard is the user list: who has signed in, at what tier, with what
-// headroom. Everything here is seeded by email — nobody needs to have signed in
+// headroom. Everything here is seeded by email. Nobody needs to have signed in
 // first, and a grant binds to them when they do.
 function PeopleCard({
   i18n,
@@ -306,7 +307,7 @@ function PeopleCard({
   const { t } = i18n
   const [email, setEmail] = useState('')
   const [tier, setTier] = useState<'user' | 'admin'>('user')
-  // Show only the accounts that owe — the debts an operator acts on (022d).
+  // Show only the accounts that owe, which are the debts an operator acts on (022d).
   const [owingOnly, setOwingOnly] = useState(false)
   // Which row's top-up is being edited. window.prompt would have drawn a
   // browser-owned box over the app; this is the app's own dialog.
@@ -352,10 +353,10 @@ function PeopleCard({
             <Tip text={t('walletOf', { email: p.email })}>
               <span className="muted small mono tabular member-wallet">{formatUSD(i18n.lang, p.wallet)}</span>
             </Tip>
-            {/* The controls travel together. Loose in the row they were sized
-                one by one, so a phone broke them across two lines and each row
-                put them somewhere else; as one group they stay on one line and
-                end where every other row's do. */}
+            {/* The controls are grouped. Loose in the row they were sized one by
+                one, so a phone broke them across two lines and each row put them
+                somewhere else. As one group they stay on one line and end where
+                every other row's do. */}
             <span className="row-actions">
               {p.wallet < 0 &&
                 (p.frozen ? (

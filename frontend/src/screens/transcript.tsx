@@ -79,9 +79,9 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
     jobRef.current = job
   }, [job])
 
-  // Poll the transcript. While the run is live (or not yet ready but still in
-  // flight) keep re-fetching so an in-flight session's trajectory streams in
-  // real time — not only after it publishes.
+  // Poll the transcript. While the run is live, or not yet ready but still in
+  // flight, keep re-fetching so an in-flight session's trajectory streams in
+  // real time rather than only after it publishes.
   useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -94,7 +94,7 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
           if (!alive) return
           setTr(data)
           setState('ready')
-          if (data.live) again() // an in-flight run — keep streaming
+          if (data.live) again() // an in-flight run; keep streaming
         })
         .catch((e: Error) => {
           if (!alive) return
@@ -120,8 +120,8 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
   // recorded phases leave no clock at all, and the lifecycle strip stands in.
   const span = useMemo(() => (tr ? runSpan(tr.events, job?.phase_at) : null), [tr, job?.phase_at])
 
-  // seek scrolls the stream to the first *rendered* card at or after an instant
-  // — the list it searches is what the filters left standing, so scrubbing never
+  // seek scrolls the stream to the first rendered card at or after an instant.
+  // The list it searches is what the filters left standing, so scrubbing never
   // aims at an event that is not on screen. Positions come off the DOM rather
   // than from tracked heights, because a card is as tall as its content and
   // nothing here knows that in advance.
@@ -138,9 +138,9 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
   }, [])
 
   if (state !== 'ready' || !tr) {
-    // A session still working (non-terminal) hasn't failed to produce a
-    // transcript — it just hasn't emitted events yet. Show its live timeline and
-    // wait, rather than the "not ready" dead-end reserved for terminal misses.
+    // A non-terminal session has not failed to produce a transcript; it has not
+    // emitted events yet. Show its live timeline and wait, rather than the "not
+    // ready" state reserved for terminal sessions with no transcript.
     const waitingLive = state === 'not_ready' && job && !terminal(job.phase)
     return (
       <>
@@ -157,7 +157,7 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
     )
   }
 
-  // Real counts by kind, and tools used — never fabricated. The counts describe
+  // Real counts by kind, and tools used, never fabricated. The counts describe
   // what the search left standing, so the rail always adds up to the stream.
   const shown: Card[] = tr.events.map((e, n) => ({ e, n })).filter(({ e }) => !(hidePlumbing && plumbingKinds.has(e.kind)) && matches(e, dq))
   const kindCounts = new Map<string, number>()
@@ -307,12 +307,12 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
 }
 
 // Scrubber draws the run against its own clock: the lifecycle phases at the
-// width they earned, a histogram of where the run spent itself, and a cursor
-// that scrolls the stream to a moment.
+// width their duration gives them, a histogram of where the run spent its time
+// or tokens, and a cursor that scrolls the stream to a moment.
 //
 // It never filters. Dimming the events outside the cursor would mean a style
-// recomputed on every one of several hundred cards per pointer frame — and
-// scrolling to the moment is what a reader wanted anyway.
+// recomputed on every one of several hundred cards per pointer frame, and
+// scrolling to the moment is what a reader wants anyway.
 function Scrubber({
   i18n,
   span,
@@ -325,7 +325,7 @@ function Scrubber({
   span: Span
   events: Event[]
   job: Job | null
-  // seekList is what the filters left standing — the same list the seek
+  // seekList is what the filters left standing, the same list the seek
   // resolves against, so the cursor never points at a card that is not on
   // screen.
   seekList: Card[]
@@ -411,9 +411,9 @@ function Scrubber({
   )
 }
 
-// EventDetail is the selected event in full — the reason the cards can stay
-// scannable. Nothing here is truncated or folded: this is where a reader goes
-// when the card was not enough.
+// EventDetail is the selected event in full, which is what lets the cards stay
+// short. Nothing here is truncated or folded: this is where a reader goes when
+// the card was not enough.
 function EventDetail({ i18n, e, span, onClose }: { i18n: I18n; e: Event; span: Span | null; onClose: () => void }) {
   const { t } = i18n
   const dk = displayKind(e.kind)
@@ -488,7 +488,7 @@ function EventCard({
   const isGrade = gradeKinds.has(e.kind)
   const cls =
     'event ' + (e.kind === 'thinking' ? 'thinking' : isGrade ? 'grade' : isTool ? 'tool' : 'message') + (on ? ' on' : '')
-  // A title is the event's own first line and nothing more — see splitTitle.
+  // A title is the event's own first line and nothing more; see splitTitle.
   const { title, body } = splitTitle(e.content)
   const at = timeOf(e)
   return (
@@ -540,14 +540,14 @@ function EventCard({
   )
 }
 
-// EventCost is what this one request pushed through the model — see freshOf for
+// EventCost is what this one request pushed through the model; see freshOf for
 // why it is not the total. An event that was charged nothing renders nothing: a
 // zero here would claim a free request happened, which is not what an absent
 // figure means (006s).
 // What the figure means is said once, in the scrubber's legend above the
 // stream, rather than in a tooltip on each card: a card clips its own overflow,
-// so an overlay anchored inside one is cut off (the reason overlays portal to
-// the body elsewhere in this app).
+// so an overlay anchored inside one is cut off, which is why overlays portal to
+// the body elsewhere in this app.
 function EventCost({ u }: { u?: Usage }) {
   if (!u) return null
   return <span className="event-cost tabular">{compactTokens(freshOf(u))}</span>

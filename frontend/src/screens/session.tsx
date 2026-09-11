@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // One replication session and what it produced (015): the screen with its
-// three panes, the verdict pane — the run's findings and the manifest's record
-// of the run — and the artifacts pane, a file browser over the repository the
-// session published. The transcript pane is screens/transcript.tsx.
+// three panes, the verdict pane with the run's findings and the manifest's
+// record of the run, and the artifacts pane, a file browser over the repository
+// the session published. The transcript pane is screens/transcript.tsx.
 
 import { useEffect, useRef, useState } from 'react'
 import { fileKind, highlightIn, isExternalHref, langOf, renderMarkdown, resolveRelative } from '../artifact'
@@ -34,22 +34,22 @@ import { useJobStream } from '../job-stream'
 import { CardHead, Empty, NotReadable, Tab } from './shared'
 import { SessionTranscript } from './transcript'
 
-// verdictLabel reads a grade the way a person would. The grader's own names are
-// snake_case identifiers (`needs_revision`, internal/provider/enum.go), and the
-// manifest carries them verbatim — which is right for the record and wrong on
-// screen, where "Needs_revision" reads as a leaked field name.
+// verdictLabel renders a grade for a reader. The grader's own names are
+// snake_case identifiers such as `needs_revision` in internal/provider/enum.go,
+// and the manifest carries them verbatim, which is right for the record and
+// wrong on screen, where "Needs_revision" reads as a leaked field name.
 export function verdictLabel(v: string) {
   if (!v) return ''
   const words = v.replace(/_/g, ' ')
   return words[0].toUpperCase() + words.slice(1)
 }
 
-// manifestTone maps the *manifest's* grade to a semantic colour, and verdictIcon
-// to the matching glyph — a passed reproduction and a failed one should not need
-// the word read to be told apart. The findings' own verdict has its own tone in
-// `findings.ts`: they are different vocabularies (passed/failed against
-// reproducible/partial/not_reproducible) and folding them would make one of the
-// two lie.
+// manifestTone maps the manifest's grade to a semantic colour, and verdictIcon
+// to the matching glyph, so a passed reproduction and a failed one are told
+// apart without reading the word. The findings' own verdict has its own tone in
+// `findings.ts`: the vocabularies differ, passed/failed against
+// reproducible/partial/not_reproducible, and folding them would misreport one
+// of the two.
 function manifestTone(v: string) {
   const s = v.toLowerCase()
   if (s.includes('pass')) return 'var(--ok)'
@@ -63,22 +63,22 @@ function verdictIcon(v: string): IconName {
   return 'info'
 }
 
-// SessionVerdict shows one session's manifest verdict and metadata — real data
+// SessionVerdict shows one session's manifest verdict and metadata, real data
 // only. Per-component scorecards are not something the backend produces, so they
 // are not shown.
 //
 // It takes a job id rather than picking a session out of a project (015): a
-// verdict is a property of the run that was graded, and there is no reading of
-// "the project's verdict" that does not have to guess which run was meant.
+// verdict is a property of the run that was graded, and "the project's verdict"
+// would have to guess which run was meant.
 function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [repro, setRepro] = useState<Reproduction | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'none'>('loading')
   // The findings are fetched beside the manifest and never gate it: a session
-  // can have a verdict with no findings (it predates the file, or its file was
-  // refused), and that pane still has something true to show. `why` keeps the
-  // two absences apart, because "the run wrote nothing" and "the system refused
-  // what it wrote" are different facts about the run.
+  // can have a verdict with no findings, because it predates the file or its
+  // file was refused, and the pane still has something true to show. `why`
+  // keeps the two absences apart, because "the run wrote nothing" and "the
+  // system refused what it wrote" are different facts about the run.
   const [findings, setFindings] = useState<Findings | null>(null)
   const [why, setWhy] = useState<'none' | 'invalid' | null>(null)
   useEffect(() => {
@@ -106,18 +106,18 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
     )
   if (state === 'loading' || !repro) return <div className="center-load">…</div>
   const tone = manifestTone(repro.verdict)
-  // The run's record, which is not the paper's verdict and never was.
+  // The run's record, which is not the paper's verdict.
   //
-  // `repro.verdict` is the grader's judgement of the *run* against the method's
-  // rubric — passed, needs_revision, exhausted, failed. The findings' verdict is
-  // about the *paper* — reproducible, partial, not_reproducible. Both used to be
+  // `repro.verdict` is the grader's judgement of the run against the method's
+  // rubric: passed, needs_revision, exhausted, failed. The findings' verdict is
+  // about the paper: reproducible, partial, not_reproducible. Both used to be
   // headed "Verdict", which put two verdict words on one screen for one paper
   // and invited the reader to take the grader's "Passed" as a statement that the
   // paper reproduced. It is not: a well-executed audit of a paper that does not
   // reproduce passes the rubric.
   //
-  // So the paper's verdict is the only headline, and this becomes what it is —
-  // the record of the run that produced it, with the rubric grade as one row.
+  // So the paper's verdict is the only headline, and this card is the record of
+  // the run that produced it, with the rubric grade as one row.
   const manifest = (
     <div className="card card-pad stack" style={{ maxWidth: 720 }} data-test="run-record">
       <span className="eyebrow eyebrow-ico">
@@ -148,8 +148,8 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
         {/* This row is the reason a project cannot go public, and the reader
             following a refusal here arrives at a pill with one word in it. The
             sentence says what the word means and that this is the thing in the
-            way — permanently, not as a flash on arrival, because it is still
-            true the next time they come. */}
+            way. It is shown permanently rather than as a notice on arrival,
+            because it is still true the next time they come. */}
         {repro.review && repro.review !== 'clear' && (
           <div className="banner warn inline" data-test="blocks-publishing">
             <Ico name="alert" size={14} />
@@ -264,8 +264,9 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
           </thead>
           <tbody>
             {f.boundary.map((c, i) => (
-              // An outer row is muted as well as labelled: the one rule this
-              // product defends has to be visible without reading the column.
+              // An outer row is muted as well as labelled: the inner/outer
+              // boundary is the rule this product defends, and it has to be
+              // visible without reading the column.
               <tr key={i} className={c.loop === 'outer' ? 'row-outer' : undefined}>
                 <td>
                   <div className="claim-text">{c.claim}</div>
@@ -357,9 +358,9 @@ function MismatchLine({ i18n, m }: { i18n: I18n; m: Mismatch }) {
   )
 }
 
-// Decomposition is the stacked bar behind the rate — verified, partial, blocked.
-// A blocked share is drawn as an empty track rather than a colour, so the eye
-// reads it as work not done rather than as a fourth result.
+// Decomposition is the stacked bar behind the rate: verified, partial, blocked.
+// A blocked share is drawn as an empty track rather than a colour, so it reads
+// as work not done rather than as a fourth result.
 export function Decomposition({ c }: { c: Components }) {
   if (!c || c.total <= 0) return null
   const pct = (n: number) => `${(n / c.total) * 100}%`
@@ -372,7 +373,7 @@ export function Decomposition({ c }: { c: Components }) {
 }
 
 // fileIcon names a repository file by what it is, reusing the same kinds the
-// viewer renders by — so the list and the pane never disagree.
+// viewer renders by, so the list and the pane never disagree.
 function fileIcon(path: string): IconName {
   const kind = fileKind(path)
   if (kind === 'image') return 'image'
@@ -381,13 +382,12 @@ function fileIcon(path: string): IconName {
 }
 
 // SessionArtifacts is the in-app file browser over one session's reproduction
-// repository — a forge pass-through that works even when the repository stays
-// private. Files render properly: markdown formatted, code highlighted, images
-// inline.
+// repository, a forge pass-through that works even when the repository stays
+// private. Markdown is formatted, code highlighted, images shown inline.
 //
 // The repository belongs to the session that published it. A project has as many
 // as it has published sessions, which is why the project-level version of this
-// browser is gone rather than taught to choose between them (015).
+// browser was removed rather than made to choose between them (015).
 function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [files, setFiles] = useState<string[] | null>(null)
@@ -454,9 +454,9 @@ function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
     </div>
   )
 
-  // Authors first, then the reproduction. The order is the argument: the
-  // reproduction exists because of what was and was not released, and reading
-  // the repository first inverts that.
+  // Authors first, then the reproduction. The reproduction exists because of
+  // what was and was not released, and reading the repository first inverts
+  // that.
   return (
     <div className="stack" style={{ gap: 16 }}>
       {findings && <ReleasedByAuthors i18n={i18n} findings={findings} />}
@@ -543,7 +543,7 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
 }
 
 // FileView renders one artifact by its kind: an image inline, markdown as
-// formatted (sanitized) HTML, code syntax-highlighted, anything else as text.
+// formatted and sanitised HTML, code syntax-highlighted, anything else as text.
 function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string; path: string; onNavigate: (target: string) => void }) {
   const { t } = i18n
   const kind = fileKind(path)
@@ -561,8 +561,8 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
   }, [jobId, path, kind])
 
   // After the markdown mounts: highlight code, point relative image sources at
-  // the in-app artifact endpoint (so a committed PNG renders, not 404s), and
-  // send external links to a new tab so the app is never navigated away.
+  // the in-app artifact endpoint so a committed PNG renders rather than 404ing,
+  // and send external links to a new tab so the app is never navigated away.
   useEffect(() => {
     const el = bodyRef.current
     if (text === null || !el) return
@@ -623,7 +623,7 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
 // SessionScreen is one replication session, and everything it produced: the
 // transcript of the run, the verdict it was graded to, and the repository it
 // published. All three are the session's, which is why all three are addressed
-// under it (015) — a project holds papers and a paper has runs, so there is no
+// under it (015). A project holds papers and a paper has runs, so there is no
 // level above this one at which "the verdict" or "the repository" names one
 // thing.
 export function SessionScreen({
@@ -639,7 +639,7 @@ export function SessionScreen({
   jobId: string
   tab: SessionTab
   onTab: (tab: SessionTab) => void
-  // The paper this session is about, reported once the job is read — a session
+  // The paper this session is about, reported once the job is read. A session
   // opened by its own link has nothing else to name it with.
   onLoaded: (ref: string) => void
   onBack: () => void
@@ -649,8 +649,8 @@ export function SessionScreen({
 }) {
   const { t } = i18n
   const [job, setJob] = useState<Job | null>(null)
-  // A session under a project this reader may not see reads as missing — the one
-  // answer its project gives too (028).
+  // A session under a project this reader may not see reads as missing, the same
+  // answer its project gives (028).
   const [notReadable, setNotReadable] = useState(false)
 
   useEffect(() => {
@@ -670,11 +670,11 @@ export function SessionScreen({
   // The run is watched here rather than in the transcript, because all three
   // panes are about it and only one of them is open at a time.
   //
-  // It watches only what there is to watch: the live stream is an operator route
-  // and stays gated (028), so for a reader with no account it is a connection
-  // that is refused and reopened for as long as the page is up — and a session
-  // that has finished has nothing left to send either. Whether to watch is a
-  // boolean, so the snapshot the stream delivers cannot reopen the stream.
+  // It watches only what there is to watch. The live stream is an operator route
+  // and stays gated (028), so for a reader with no account it would be a
+  // connection refused and reopened for as long as the page is up, and a session
+  // that has finished has nothing left to send. Whether to watch is a boolean,
+  // so the snapshot the stream delivers cannot reopen the stream.
   useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob)
   useEffect(() => {
     if (job?.ref) onLoaded(job.ref)

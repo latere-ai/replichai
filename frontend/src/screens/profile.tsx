@@ -18,18 +18,18 @@ import { Empty, Initials, SignerRows } from './shared'
 // public work signed under that name. It renders for a signed-out reader, so it
 // carries its own frame rather than the app shell's.
 //
-// Nothing here is verified — the platform does not check that somebody works
-// where they say they work, exactly as a preprint server does not. What it does
-// guarantee is that the work listed is public and was signed by this person.
+// Nothing here is verified. The platform does not check that somebody works
+// where they say they work, just as a preprint server does not. It does
+// guarantee that the work listed is public and was signed by this person.
 export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
   const { t } = i18n
   const [p, setP] = useState<PublicProfile | null>(null)
   const [missing, setMissing] = useState(false)
 
-  // Each handle starts from nothing: the previous one's "not found" cleared,
-  // its answer — however late — ignored. Without both, /u/a answering 404 left
-  // "No such profile" standing over /u/b, and a slow 404 for a handle the reader
-  // had already left could land on the page they had moved to.
+  // Each handle starts from nothing: the previous one's "not found" is cleared
+  // and its answer, however late, is ignored. Without both, /u/a answering 404
+  // left "No such profile" standing over /u/b, and a slow 404 for a handle the
+  // reader had already left could land on the page they had moved to.
   useEffect(() => {
     let live = true
     setP(null)

@@ -29,9 +29,9 @@ import { ledgerLabel } from '../ledger'
 // WalletPill shows what this person has to spend, next to the button that
 // starts spending it.
 //
-// A brand-new account and one that has spent down read differently. Most
-// people's first sight of this pill is at zero, and it has to say they have
-// none *yet* and how to get some, rather than implying they lost something.
+// A new account and one that has spent down read differently. Most people first
+// see this pill at zero, and it has to say they have none yet and how to get
+// some, rather than implying they lost something.
 export function WalletPill({ i18n, credits, onTopUp }: { i18n: I18n; credits?: Credits; onTopUp?: () => void }) {
   const { t } = i18n
   if (!credits) return null
@@ -49,8 +49,8 @@ export function WalletPill({ i18n, credits, onTopUp }: { i18n: I18n; credits?: C
     <Tip text={onTopUp ? t('topUp') : empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(i18n.lang, credits.start_reserve) })}>
       {onTopUp ? (
         // The balance is the way to buy more: click it to top up. A button rather
-        // than a span, with the pill's own look kept (only the font a button does
-        // not inherit needs restoring).
+        // than a span, with the pill's own look kept; only the font, which a
+        // button does not inherit, needs restoring.
         <button type="button" className={'quota-pill' + state} style={{ font: 'inherit', cursor: 'pointer' }} onClick={onTopUp} aria-label={t('topUp')}>
           {inner}
         </button>
@@ -62,17 +62,19 @@ export function WalletPill({ i18n, credits, onTopUp }: { i18n: I18n; credits?: C
 }
 
 // pctText renders basis points as a percentage a person reads: 500 → "5",
-// 290 → "2.9". No trailing ".0", because a whole percent should not wear cents.
+// 290 → "2.9". No trailing ".0", because a whole percent needs no decimal.
 function pctText(bps: number): string {
   return String(Math.round((bps / 100) * 10) / 10)
 }
 
-// TopUpModal buys credits. It shows exactly where the money goes — what you pay,
-// the fee, and the credits you get — before sending you to the processor. The webhook, not the return from that
-// page, is what actually credits (022b); this only opens the payment, and the
-// wallet screen re-reads the balance when they come back.
+// TopUpModal buys credits. It shows where the money goes, namely what you pay,
+// the fee, and the credits you get, before sending you to the processor. The
+// webhook, not the return from that page, is what credits the wallet (022b);
+// this only opens the payment, and the wallet screen re-reads the balance when
+// the person comes back.
 // The preset top-up amounts, in whole dollars. A person picks one or types their
-// own — a bare stepper made buying feel like filling a form, not a purchase.
+// own; a bare stepper made buying feel like filling a form rather than a
+// purchase.
 const TOPUP_PRESETS = [10, 25, 50, 100]
 
 export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
@@ -91,8 +93,8 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
 
   const min = wallet?.min_topup_micro ?? 0
   const raw = choice === 'other' ? parseUSD(custom) : choice
-  // The amount actually charged, snapped to whole cents — the figure the fee and
-  // the credit are both computed from, so the three add up on screen.
+  // The amount charged, snapped to whole cents. The fee and the credit are both
+  // computed from it, so the three add up on screen.
   const gross = raw !== null ? Math.floor(raw / 10_000) * 10_000 : 0
   const belowMin = choice === 'other' && raw !== null && raw > 0 && gross < min
   const valid = gross > 0 && gross >= min
@@ -240,9 +242,9 @@ export function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me:
 }
 
 // WalletActivity is the wallet's history, shown rather than hidden behind a
-// toggle: the one place a person reads their own balance is where they read
-// where it came from. It stays light no matter how long the history grows —
-// bounded to a scroll region, and to the server's most recent entries.
+// toggle: the place a person reads their own balance is where they read where
+// it came from. It stays light however long the history grows, bounded to a
+// scroll region and to the server's most recent entries.
 function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
   const { t } = i18n
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
@@ -316,17 +318,17 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
 // it. It sits above the submit form because it is the answer to the question a
 // refused submit raises.
 //
-// Both numbers are shown, not one. They differ by the sessions running right now
-// — each holds the start reserve — and that difference is the whole reason a
-// project with credits can still refuse a submit. Showing only the balance would
-// make that refusal look like a bug.
+// Both numbers are shown, not one. They differ by the sessions running right
+// now, each of which holds the start reserve, and that difference is the reason
+// a project with credits can still refuse a submit. Showing only the balance
+// would make that refusal look like a bug.
 export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp }: { i18n: I18n; projectID: string; credits: ProjectCredits; onMoved: () => void; onTopUp: () => void }) {
   const { t } = i18n
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  // Whether the last refusal was a short *wallet* on an allocate — the one an
-  // in-place top-up fixes. A reclaim held by a running session is not.
+  // Whether the last refusal was a short wallet on an allocate, which is the
+  // one an in-place top-up fixes. A reclaim held by a running session is not.
   const [offerTopUp, setOfferTopUp] = useState(false)
 
   const parsed = parseUSD(amount)
@@ -365,7 +367,7 @@ export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp 
           <span className="v tabular">{formatUSD(i18n.lang, credits.balance)}</span>
         </div>
         {/* The available row appears only when a running session is holding some
-            of the balance — otherwise it equals the balance and reads as a
+            of the balance; otherwise it equals the balance and reads as a
             confusing duplicate. data-tip rather than a <Tip> wrapper: an inline
             wrapper around a block row collapses it to its content. */}
         {held > 0 && (
