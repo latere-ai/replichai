@@ -2,10 +2,15 @@
 .github
 cmd/replichai/replichai
 cmd/server/server
-reference
 evals
 docs
 specs
+# A local .env holds credentials (example.env tells you to make one). The build
+# stage does COPY . ., so without this it would land in the image layers and in
+# the GitHub Actions build cache. Only the example, which holds none, goes in.
+.env
+*.env
+!example.env
 # The frontend is rebuilt in the image; don't ship local deps or build output.
 frontend/node_modules
 internal/spa/dist
