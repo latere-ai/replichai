@@ -13,7 +13,7 @@ status: built
 
 ## Problem
 
-The app maps every `/me` rejection—network failure, 5xx, invalid JSON—to `{authenticated:false}`. During an outage it therefore replaces the application with a Sign in button. Following it restarts an authentication flow that cannot repair the unavailable service and can trap a signed-in person in a loop.
+The app maps every `/me` rejection (network failure, 5xx, invalid JSON) to `{authenticated:false}`. During an outage it therefore replaces the application with a Sign in button. Following it restarts an authentication flow that cannot repair the unavailable service and can trap a signed-in person in a loop.
 
 ## Decisions
 
