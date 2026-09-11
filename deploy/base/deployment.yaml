@@ -5,14 +5,14 @@ metadata:
   labels:
     app: replichai
 spec:
-  # Two replicas for availability: a single pod makes every deploy, node drain,
-  # or crash a moment of downtime. All state is in Postgres and the concurrency-
-  # critical paths are built for it — Claim uses SELECT ... FOR UPDATE SKIP
-  # LOCKED so two workers never take the same job, the enqueue/credit gate and
-  # settlement are advisory-locked and exactly-once, the Stripe webhook is
-  # idempotent, and cancel/live-stream carry no pod-local state (auth is a
-  # stateless cookie, so no session affinity is needed). The PodDisruptionBudget
-  # beside this keeps at least one pod through a voluntary disruption.
+  # Two replicas for availability: with a single pod every deploy, node drain
+  # or crash is downtime. All state is in Postgres and the concurrency-critical
+  # paths are built for it. Claim uses SELECT ... FOR UPDATE SKIP LOCKED so two
+  # workers never take the same job, the enqueue/credit gate and settlement are
+  # advisory-locked and exactly-once, the Stripe webhook is idempotent, and
+  # cancel and the live stream carry no pod-local state. Auth is a stateless
+  # cookie, so no session affinity is needed. The PodDisruptionBudget beside
+  # this keeps at least one pod through a voluntary disruption.
   replicas: 2
   strategy:
     rollingUpdate:
@@ -26,9 +26,9 @@ spec:
       labels:
         app: replichai
     spec:
-      # The image already runs as a numeric non-root user; the cluster is told
-      # to refuse it if that ever changes, and the process gets no route to
-      # more privilege than it started with.
+      # The image already runs as a numeric non-root user. runAsNonRoot makes
+      # the cluster refuse the pod if that changes, and the container settings
+      # below deny the process any privilege escalation.
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -45,19 +45,19 @@ spec:
           ports:
             - containerPort: 8080
           # replichai-config is created from the deployment's .env and holds
-          # credentials only: ANTHROPIC_API_KEY, the GitHub App id and key (or
-          # the REPLICHAI_GITHUB_TOKEN fallback), AUTH_COOKIE_KEY,
+          # credentials only: ANTHROPIC_API_KEY, the GitHub App id and key or
+          # the REPLICHAI_GITHUB_TOKEN fallback, AUTH_COOKIE_KEY,
           # AUTH_CLIENT_SECRET where the client has one, MAILGUN_API_KEY,
           # DRAFT_API_KEY, and the Stripe keys. A key in the secret that a
-          # manifest also sets with `env` is dead: Kubernetes gives `env` the
-          # last word over `envFrom`. See deploy/README.md.
+          # manifest also sets with `env` is ignored, because Kubernetes gives
+          # `env` precedence over `envFrom`. See deploy/README.md.
           envFrom:
             - secretRef:
                 name: replichai-config
-          # What is the same in every environment lives here. What differs —
-          # BASE_URL, the OIDC client id and redirect URL, and the bootstrap
-          # admin list — is patched in by each overlay (deploy/prod,
-          # deploy/staging), so staging can never inherit production's client
+          # Values shared by every environment live here. Values that differ,
+          # namely BASE_URL, the OIDC client id and redirect URL, and the
+          # bootstrap admin list, are patched in by each overlay in deploy/prod
+          # and deploy/staging, so staging cannot inherit production's client
           # or admins by omission.
           env:
             # DATABASE_URL comes from the terraform-owned db secret, not .env, so
@@ -69,7 +69,7 @@ spec:
                   key: DATABASE_URL
             - name: ADDR
               value: ":8080"
-            # Real audits run on the Anthropic managed runtime (memory is dev only).
+            # Real audits run on the Anthropic managed runtime. memory is dev only.
             - name: REPLICHAI_RUNTIME
               value: anthropic-managed
             # DEV is deliberately unset: the gate is fail-closed and every
@@ -84,8 +84,8 @@ spec:
             # Outbound mail (006p): the project invitation. The sending domain
             # and region are policy and live here; MAILGUN_API_KEY is a
             # credential and comes from the replichai-config secret. With no key
-            # in that secret the server logs invitations instead of sending them
-            # — visible in the pod log, and never a failed invite.
+            # in that secret the server logs invitations instead of sending
+            # them, so they appear in the pod log and an invite never fails.
             - name: MAILGUN_DOMAIN
               value: mg.latere.ai
             - name: MAILGUN_REGION

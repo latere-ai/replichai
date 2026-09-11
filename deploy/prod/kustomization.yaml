@@ -1,11 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Production: the `latere` namespace, and the values that are production's own
-# — its public host, the OIDC client registered for that host, and who is a
-# platform admin before anyone has an account to promote them from. The base
-# carries only what every environment shares. The release pipeline
-# (.github/workflows/release.yml) applies this on every v* tag; by hand:
+# Production: the `latere` namespace and the values specific to production,
+# namely its public host, the OIDC client registered for that host, and the
+# platform admins seeded before anyone has an account to promote them from. The
+# base carries only what every environment shares. The release pipeline in
+# .github/workflows/release.yml applies this on every v* tag. By hand:
 #   kubectl apply -k deploy/prod/
 namespace: latere
 
@@ -36,14 +36,15 @@ patches:
                     value: replichai
                   - name: AUTH_REDIRECT_URL
                     value: https://replichai.latere.ai/callback
-                  # Who is an admin — a policy, not a secret, so it lives here,
-                  # version-controlled and reviewable, not in the .env secret.
-                  # Runtime changes go through an admin via /admin/access.
+                  # The admin list is policy, not a secret, so it lives here,
+                  # version-controlled and reviewable, rather than in the .env
+                  # secret. Runtime changes go through an admin via
+                  # /admin/access.
                   #
-                  # Anyone who signs in is granted `user`; credits are what
-                  # limit them, and a new account has none. This list is only
-                  # how the first platform admin exists before anyone has an
-                  # account to promote them from.
+                  # Anyone who signs in is granted `user`. Credits limit what
+                  # they can do, and a new account has none. This list only
+                  # seeds the first platform admin before anyone has an account
+                  # to promote them from.
                   - name: ADMIN_EMAILS
                     value: hi@changkun.de
   - target:

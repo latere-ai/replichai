@@ -12,5 +12,5 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
   ingressClassName: nginx
-  # No host and no TLS secret here: they are the one thing an environment is
-  # named by, so each overlay's patch supplies its own `tls` and `rules`.
+  # No host and no TLS secret here: they identify an environment, so each
+  # overlay's patch supplies its own `tls` and `rules`.

@@ -1,21 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# ── STAGING (STUB — NOT DEPLOYED YET) ────────────────────────────────────────
-# Placeholder overlay so a future staging environment is a small diff, not a new
-# setup. Nothing applies this today; only deploy/prod/ is deployed. Before using
-# staging, provision the `latere-staging` namespace, a
-# `replichai-config`/`replichai-db` secret, DNS + a cert for
+# ── STAGING: a stub, not deployed yet ────────────────────────────────────────
+# Placeholder overlay so a future staging environment is a small diff rather
+# than a new setup. Nothing applies this today; only deploy/prod/ is deployed.
+# Before using staging, provision the `latere-staging` namespace, the
+# `replichai-config` and `replichai-db` secrets, DNS and a certificate for
 # replichai-staging.latere.ai, and register an OIDC redirect for it on a
-# dedicated staging client (keep loopback/staging redirects off the prod client).
+# dedicated staging client. Loopback and staging redirects stay off the prod
+# client.
 namespace: latere-staging
 
 resources:
   - ../base
 
-# Everything an environment is named by is set here, not inherited: the base
-# carries no host, client, or admin list, so a value missing from this patch is
-# missing, not silently production's.
+# Every environment-specific value is set here, not inherited. The base carries
+# no host, client or admin list, so a value missing from this patch is absent
+# rather than silently production's.
 patches:
   - target:
       kind: Deployment
@@ -35,8 +36,8 @@ patches:
                     value: https://replichai-staging.latere.ai
                   # PLACEHOLDER: the id of the staging client once it is
                   # registered with auth.latere.ai. It must not be the prod
-                  # client — a redirect to this host on that client would be
-                  # a redirect the prod client accepts.
+                  # client, because registering a redirect to this host on the
+                  # prod client would make the prod client accept it.
                   - name: AUTH_CLIENT_ID
                     value: replichai-staging
                   - name: AUTH_REDIRECT_URL

@@ -5,10 +5,10 @@ metadata:
   labels:
     app: replichai
 spec:
-  # Keep at least one pod serving through a voluntary disruption (a node drain,
-  # a cluster upgrade). With replicas: 2 this evicts one at a time rather than
-  # both at once. It does not constrain crashes or the rolling deploy — that is
-  # the Deployment's maxUnavailable: 0 — only the eviction API.
+  # Keep at least one pod serving through a voluntary disruption such as a node
+  # drain or a cluster upgrade. With replicas: 2 this evicts one pod at a time
+  # rather than both at once. It constrains only the eviction API, not crashes
+  # or the rolling deploy; the Deployment's maxUnavailable: 0 covers the deploy.
   minAvailable: 1
   selector:
     matchLabels:
