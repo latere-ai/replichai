@@ -11,37 +11,36 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// PackageManifest is where the bootstrap records what it actually resolved. It
-// is inside the language environment rather than the workspace, so it is not
-// committed, and the host reads it afterwards into the run's environment
-// record: the versions a run got are a fact about the run, and asking for
-// numpy is not the same as having numpy 2.1.0.
+// PackageManifest is the file in which the bootstrap records the package
+// versions it resolved. It lives inside the language environment rather than
+// the workspace, so it is not committed. The host reads it afterwards into the
+// run's environment record, because the versions a run installed are a fact
+// about the run and may differ from the versions it asked for.
 const PackageManifest = "replichai-packages.txt"
 
-// PackageIndexHosts are the index hosts pip is told to accept without checking
-// the certificate itself.
+// PackageIndexHosts are the index hosts pip is told to accept without
+// verifying the certificate itself.
 //
-// It reads worse than it is, and the alternative is that nothing installs at
-// all. pip verifies through the operating system's trust service, which the
-// sandbox does not open — every certificate fails, whatever bundle pip is
-// pointed at, while curl and Python's own client on the same connection
-// succeed. So the verification moves rather than disappearing: the sandbox
-// terminates TLS to these hosts, which means it validates the real index
-// certificate itself, outside the sandbox, before handing pip a connection
-// signed by its own authority. What pip skips is checking the local proxy it
-// was given; what nobody skips is checking the index.
+// Without this nothing installs. pip verifies certificates through the
+// operating system's trust service, which the sandbox does not open, so every
+// certificate fails whatever bundle pip is pointed at, while curl and Python's
+// own client on the same connection succeed. Verification still happens, but
+// outside pip: the sandbox terminates TLS to these hosts and validates the real
+// index certificate itself, outside the sandbox, before handing pip a
+// connection signed by the sandbox's own authority. pip skips checking only
+// the local proxy it was given; the index certificate is still checked.
 func PackageIndexHosts() []string {
 	return []string{"pypi.org", "files.pythonhosted.org"}
 }
 
 // bootstrapArgv is the fixed script that prepares a session before any agent
-// runs. It is built here rather than by a harness adapter: what a session
-// needs installed is the specification's, and no model is involved.
+// runs. It is built here rather than by a harness adapter because the packages
+// a session needs come from the specification and no model is involved.
 //
 // Every declared package is installed into the session's own environment,
-// which lives outside the workspace — so nothing an install writes can be
-// committed by the agent, and one `git add -A` cannot put an interpreter into
-// the reproduction's history.
+// which lives outside the workspace, so nothing an install writes can be
+// committed by the agent and a `git add -A` cannot put an interpreter into the
+// reproduction's history.
 func (r *Runtime) bootstrapArgv(spec managed.SessionSpec, session *Session) []string {
 	var script strings.Builder
 	script.WriteString("set -eu\n")
@@ -73,9 +72,10 @@ func (r *Runtime) bootstrapArgv(spec managed.SessionSpec, session *Session) []st
 	return []string{"/bin/sh", "-c", script.String()}
 }
 
-// bootstrapPaths are what the bootstrap may touch: its own environment and the
-// temporary directory. Not the workspace — nothing installed belongs in the
-// reproduction — and not the evidence directory, like every other stage.
+// bootstrapPaths are the paths the bootstrap may write: its own environment,
+// the temporary directory and the harness home. The workspace is excluded
+// because nothing installed belongs in the reproduction, and the evidence
+// directory is excluded as it is for every other stage.
 func (r *Runtime) bootstrapPaths(session *Session) []sandbox.Path {
 	return []sandbox.Path{
 		{Host: session.Venv(), Guest: "/venv", Access: sandbox.ReadWrite},

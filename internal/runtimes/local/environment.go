@@ -21,11 +21,12 @@ import (
 // changed.
 const Name managed.RuntimeName = "local"
 
-// Environment is what a run ran on, recorded because the host sandbox does not
-// pin it. The container driver pins the toolchain; this driver records it, and
-// the record is what makes two reproductions comparable — two that disagree on
-// different interpreter minors disagree about the interpreter, and without
-// this file nobody can tell that from a disagreement about the paper.
+// Environment records what a run ran on. The container driver pins the
+// toolchain; the host driver does not, so it records the toolchain instead.
+// The record is what makes two reproductions comparable: two runs on different
+// interpreter minor versions may disagree because of the interpreter, and
+// without this file that cannot be distinguished from a disagreement about the
+// paper.
 //
 // It is written by the host, never by the agent, and finalize commits it as
 // system-authored evidence beside the transcript.
@@ -38,16 +39,17 @@ type Environment struct {
 	Network  EnvironmentNetwork `json:"network"`
 }
 
-// EnvironmentSandbox is which boundary the work ran behind. Every field here is
-// written by something: a field a disclosure record carries but never fills
-// reads as "nothing to disclose" whether that is true or not, so a field that
-// nothing could fill is not carried at all.
+// EnvironmentSandbox records which boundary the work ran behind. Every field
+// is filled by some driver. An empty field in a disclosure record reads as
+// nothing to disclose whether or not that is true, so a field no driver could
+// fill is not carried at all.
 //
 // Version and Image are the container driver's pinned toolchain and image
-// reference, empty under the host driver, which pins neither and records what
-// it ran on in Packages and Host instead. ConfigRead is the read the host
-// driver grants outside the session — the harness's own login — populated with
-// exactly what a run was granted.
+// reference. They are empty under the host driver, which pins neither and
+// records what it ran on in Packages and Host instead. ConfigRead lists the
+// paths outside the session that the host driver granted read access to,
+// which is the harness's own login, and holds exactly what the run was
+// granted.
 type EnvironmentSandbox struct {
 	Driver      sandbox.DriverName `json:"driver"`
 	Version     string             `json:"version,omitempty"`
@@ -82,10 +84,10 @@ type EnvironmentPkg struct {
 
 // EnvironmentNetwork is where the run was allowed to go.
 type EnvironmentNetwork struct {
-	// Allowed is where the run was permitted to go. Under an open policy it
-	// is empty, which means everywhere; under an allowlist it is the whole
-	// of the run's reach, and a hunt that found nothing had this much room
-	// to look.
+	// Allowed lists the hosts the run was permitted to reach. Under an open
+	// policy it is empty, meaning everywhere. Under an allowlist it is the
+	// run's entire reach, which bounds what a search that found nothing
+	// could have looked at.
 	Allowed []string `json:"allowed,omitempty"`
 }
 
@@ -100,8 +102,8 @@ func NewEnvironment(ctx context.Context, driver sandbox.DriverName, harnessName 
 	}
 }
 
-// kernelVersion is best effort: an unavailable one leaves the field empty
-// rather than failing a run over a description of the machine.
+// kernelVersion is best effort. If the version cannot be read the field is
+// left empty rather than failing the run, since it only describes the machine.
 func kernelVersion(parent context.Context) string {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()

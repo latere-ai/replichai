@@ -9,8 +9,8 @@ import (
 )
 
 // writeFileMode writes body to path with the given mode, creating parents. It
-// is the one place file modes are applied, so a credential file cannot be
-// created world-readable by a caller that forgot.
+// is the only place file modes are applied, so a caller cannot create a
+// credential file world-readable by omitting the mode.
 func writeFileMode(path string, body []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err

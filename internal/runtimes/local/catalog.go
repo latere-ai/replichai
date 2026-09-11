@@ -24,8 +24,9 @@ import (
 type LookupEnv func(string) (string, bool)
 
 // GatewayConfig is one declared model endpoint. A gateway with no key_env
-// authenticates through the harness's own login where auth says so, or not at
-// all — which is how a local server that wants no credential is reached.
+// authenticates through the harness's own login when auth says so, and
+// otherwise not at all, which is how a local server that needs no credential
+// is reached.
 type GatewayConfig struct {
 	BaseURL string `yaml:"base_url"`
 	Dialect string `yaml:"dialect"`
@@ -53,9 +54,9 @@ type CatalogFile struct {
 // and a harness that speaks its dialect, every credential has been resolved,
 // and no preference resolves two ways within one harness.
 //
-// Declared rather than discovered, because there is nothing to discover that a
-// preference tier could be resolved from: a gateway in front of an open-weights
-// model may serve one model and expose no catalogue at all.
+// The catalogue is declared rather than discovered because a gateway in front
+// of an open-weights model may serve one model and expose no catalogue at all,
+// leaving nothing a preference tier could be resolved from.
 type Catalog struct {
 	entries  []entry
 	gateways map[string]harness.Gateway
@@ -86,8 +87,8 @@ func DefaultCatalogFile() CatalogFile {
 }
 
 // ReadCatalogFile reads a declaration from disk. A missing file is not an
-// error: it yields the default declaration, so the common case needs no
-// configuration and an unreadable file still fails loudly.
+// error and yields the default declaration, so the common case needs no
+// configuration. Any other read error is returned.
 func ReadCatalogFile(path string) (CatalogFile, error) {
 	if strings.TrimSpace(path) == "" {
 		return DefaultCatalogFile(), nil
@@ -108,9 +109,9 @@ func ReadCatalogFile(path string) (CatalogFile, error) {
 }
 
 // NewCatalog validates a declaration against the installed harnesses and
-// resolves every credential. Validation happens here rather than at first use:
-// an operator learns their catalogue is wrong before a paper is fetched, not
-// forty seconds into a run through somebody else's 400.
+// resolves every credential. Validation happens here rather than at first use,
+// so an operator learns that the catalogue is wrong before a paper is fetched
+// rather than from a gateway's 400 response partway through a run.
 func NewCatalog(file CatalogFile, registry *harness.Registry, lookup LookupEnv) (*Catalog, error) {
 	if lookup == nil {
 		return nil, errors.New("the model catalogue needs an environment reader; configuration arrives from the composition root")

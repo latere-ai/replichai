@@ -13,15 +13,15 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
-// VerdictFile is the name pattern the judge writes under grade/. One file per
-// grading round, so a revision cannot quietly edit the verdict that rejected
-// it.
+// VerdictFile is the name of the file the judge writes under grade/ for one
+// round. Each round has its own file, so a revision cannot edit the verdict
+// that rejected it.
 func VerdictFile(round int) string { return fmt.Sprintf("verdict-%d.json", round) }
 
 // JudgeVerdict is what a judge stage writes: a decided grade, the reasoning a
 // reader is shown, the model that produced it, and the per-criterion detail.
-// It is validated before it is believed — a judge returning prose where a
-// grade was asked for is a failed round, not an undecided session.
+// It is validated before it is used: a judge that returns prose where a grade
+// was asked for fails the round rather than leaving the session undecided.
 type JudgeVerdict struct {
 	Grade       string           `json:"grade"`
 	Explanation string           `json:"explanation"`
@@ -77,10 +77,9 @@ func (v JudgeVerdict) Verdict() (managed.Verdict, error) {
 	return managed.Verdict{Grade: grade, Explanation: strings.TrimSpace(b.String())}, nil
 }
 
-// ReadVerdict reads and validates one grading round's output, returning the
-// normalized verdict. The judge's raw record is not returned: the one caller
-// wants the verdict, and a returned value nothing reads is a value a caller has
-// to discard.
+// ReadVerdict reads and validates one grading round's output and returns the
+// verdict in the contract's form. The judge's raw record is not returned
+// because the only caller needs the verdict alone.
 func ReadVerdict(gradeDir string, round int) (managed.Verdict, error) {
 	body, err := os.ReadFile(filepath.Join(gradeDir, VerdictFile(round))) //nolint:gosec // this package's own grade directory
 	if os.IsNotExist(err) {
@@ -97,10 +96,10 @@ func ReadVerdict(gradeDir string, round int) (managed.Verdict, error) {
 }
 
 // judgeTask is the runtime's own instruction to the grader. It is
-// system-authored — the rubric travels with the run, and what to do with it
-// does not — and it names the two paths the sandbox has already made true:
-// the evidence is read-only and the grade directory is the only writable
-// place the judge has.
+// system-authored: the rubric travels with the run, but the instruction on
+// what to do with it does not. It states two constraints the sandbox already
+// enforces: the evidence is read-only and the grade directory is the only
+// path the judge may write.
 func judgeTask(rubric, evidence, gradePath string, round int, model managed.ModelRef) string {
 	return fmt.Sprintf(`Grade the reproduction in %[2]s against the rubric below. It is mounted read-only: you are grading it, not fixing it.
 

@@ -22,10 +22,9 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// The session directory's layout. The split is the point: workspace/ is what
-// becomes the repository, tmp/ and venv/ are what the agent needs and must not
-// publish, and session/ is evidence — authored by the host, and never writable
-// by any stage.
+// The session directory's layout. workspace/ becomes the repository, tmp/ and
+// venv/ hold what the agent needs but must not publish, and session/ holds the
+// evidence, which the host writes and no stage may write.
 const (
 	workspaceDir  = "workspace"
 	tmpDir        = "tmp"
@@ -53,10 +52,10 @@ const LocatorVersion = 1
 
 // Locator is adapter-owned recovery metadata: enough to find a session's
 // directory and its stages after the process that started them has gone.
-// Nothing in it is a credential — SessionRef.Validate rejects a locator key
-// containing one of the secret-bearing words, so these names are chosen to
-// survive that check rather than to be excused from it — and nothing in it is
-// user content.
+// Nothing in it is a credential and nothing in it is user content.
+// SessionRef.Validate rejects a locator key that contains one of the
+// secret-bearing words, and these field names are chosen to pass that check
+// rather than to be exempted from it.
 type Locator struct {
 	Version int                `json:"version"`
 	Dir     string             `json:"dir"`
@@ -88,14 +87,14 @@ type Session struct {
 }
 
 // ErrSessionExists reports a session id that already has a directory. It is
-// surfaced rather than absorbed, because creating into an existing directory
+// returned rather than ignored, because creating into an existing directory
 // would re-initialise another session's workspace as if it were new.
 var ErrSessionExists = errors.New("session already exists")
 
 // CreateSession makes a fresh session directory under root, 0700, and the
 // subdirectories a run needs. The workspace is initialised as a git repository
 // with a committer already configured, so a run cannot stall on git refusing
-// an empty user.email — and with no remote, because the host pushes (045g).
+// an empty user.email, and with no remote, because the host pushes (045g).
 // The git that does it runs with the same allowlisted environment a stage
 // gets, read through lookup, so a credential in the operator's shell reaches
 // neither. An id whose directory already exists is refused with
@@ -108,8 +107,8 @@ func CreateSession(root, id string, lookup LookupEnv) (*Session, error) {
 		return nil, fmt.Errorf("create session root: %w", err)
 	}
 	dir := filepath.Join(root, id)
-	// Mkdir, not MkdirAll: the one is a claim on a fresh name, the other
-	// would silently adopt whatever is already there.
+	// Mkdir rather than MkdirAll: Mkdir fails if the directory exists,
+	// whereas MkdirAll would adopt whatever is already there.
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("%w: %s", ErrSessionExists, id)
@@ -123,9 +122,9 @@ func CreateSession(root, id string, lookup LookupEnv) (*Session, error) {
 		return nil, fmt.Errorf("secure session directory: %w", err)
 	}
 	session := &Session{dir: dir, id: id}
-	// tmp/harness is where a harness is pointed to keep its own scratch, so
-	// that what it derives from a temporary root lands inside the session
-	// rather than in the workspace it is meant to keep clean.
+	// tmp/harness is the temporary root a harness is pointed at, so that
+	// whatever it derives from that root lands inside the session rather
+	// than in the workspace.
 	for _, child := range []string{workspaceDir, tmpDir, harnessTmpDir, venvDir, gradeDir, homeDir, evidenceDir, rawDir} {
 		if err := os.MkdirAll(filepath.Join(dir, child), 0o700); err != nil {
 			return nil, fmt.Errorf("create %s: %w", child, err)
@@ -159,20 +158,19 @@ func (s *Session) Workspace() string { return workspacePath(filepath.Dir(s.dir),
 
 // workspacePath is where session id under root keeps its workspace. It is a
 // pure function of the two so a workspace can be named before the session
-// exists — Capabilities names it, Start creates it.
+// exists: Capabilities names it and Start creates it.
 func workspacePath(root, id string) string { return filepath.Join(root, id, workspaceDir) }
 
 // Tmp is where downloads go, deliberately outside the repository.
 func (s *Session) Tmp() string { return filepath.Join(s.dir, tmpDir) }
 
 // HarnessTmp is the temporary root a harness is pointed at. It sits inside the
-// session's own temporary directory, so whatever a harness derives from it —
-// Claude Code makes siblings, one per shell — lands somewhere writable and
-// goes away with the run.
+// session's own temporary directory, so the directories a harness derives from
+// it, such as the per-shell siblings Claude Code creates, are writable and are
+// removed with the run.
 //
-// It matters more than it sounds: with the root outside the session, pip fell
-// back to the working directory and filled a reproduction's repository with
-// unpack caches.
+// With the root outside the session, pip fell back to the working directory
+// and filled a reproduction's repository with unpack caches.
 func (s *Session) HarnessTmp() string { return filepath.Join(s.dir, harnessTmpDir) }
 
 // Venv is the session's language environment, outside the repository so one
@@ -230,8 +228,8 @@ func (s *Session) ReadStatus() (managed.Status, error) {
 }
 
 // WriteEnvironment records what this run ran on. It is system-authored
-// evidence: the answer to whether two reproductions that disagree disagree
-// about the paper or about the machine.
+// evidence, and it is what shows whether two reproductions that disagree
+// differ about the paper or about the machine.
 func (s *Session) WriteEnvironment(record Environment) error {
 	return s.writeJSON(environmentFile, record)
 }
@@ -245,11 +243,11 @@ func (s *Session) ReadEnvironment() (Environment, error) {
 
 // NextRevision is the session's own monotonic checkpoint counter.
 //
-// It belongs to the session rather than being derived from whatever reference
-// a caller happens to hold. The contract allows a caller to poll twice with
-// the same reference, and a revision computed from that reference would come
-// back unchanged while the journal underneath it had moved — which the
-// controller reads, correctly, as a checkpoint that changed without saying so.
+// It belongs to the session rather than being derived from the reference a
+// caller holds. The contract allows a caller to poll twice with the same
+// reference. A revision computed from that reference would stay the same while
+// the journal underneath it moved, and the controller would correctly treat
+// that as a checkpoint that changed without a new revision.
 func (s *Session) NextRevision() (uint64, error) {
 	current := uint64(0)
 	if body, err := os.ReadFile(filepath.Join(s.dir, revisionFile)); err == nil {
@@ -269,9 +267,9 @@ func (s *Session) NextRevision() (uint64, error) {
 // capped when the event is built, so the only field that can grow without
 // bound is Raw, which keeps the whole stream line. A line past this is written
 // with its Raw replaced by a marker naming how much was dropped; the whole
-// value is still in the stage's raw log. Bounding here, at the write, is what
-// stops the read from ever meeting a line it cannot scan and truncating the
-// transcript from that line on.
+// value is still in the stage's raw log. Bounding at the write ensures the
+// read never meets a line it cannot scan, which would truncate the transcript
+// from that line on.
 const maxEventBytes = 4 << 20
 
 // AppendEvents adds decoded events to the transcript. The file is append-only
@@ -322,13 +320,13 @@ func elidedRaw(size int) json.RawMessage {
 	return encoded
 }
 
-// Events reads the transcript. A truncated final line — a process killed
-// mid-write — is dropped rather than failing the read: it does not parse, and
-// the evidence that survived is still evidence. A scanner error, on the other
-// hand, is returned rather than swallowed: it means the transcript could not be
-// read to the end, and handing back a prefix would present a partial transcript
-// as the whole of it. Writes are bounded so no line this produces is too long
-// to scan.
+// Events reads the transcript. A truncated final line, left by a process
+// killed mid-write, does not parse and is dropped rather than failing the
+// read, since the events that survived are still valid evidence. A scanner
+// error is returned rather than ignored, because it means the transcript could
+// not be read to the end and returning a prefix would present a partial
+// transcript as the whole. Writes are bounded so no line this produces is too
+// long to scan.
 func (s *Session) Events() ([]managed.Event, error) {
 	file, err := os.Open(filepath.Join(s.dir, eventsFile))
 	if os.IsNotExist(err) {
@@ -384,10 +382,10 @@ func (s *Session) Artifacts() ([]managed.Artifact, error) {
 		}
 		// Only a regular file is an artifact. WalkDir reports a symlink as a
 		// non-directory whatever it points at, so a link into an installed
-		// dependency tree — uv unpacks its wheel cache as one — is listed
-		// here and then read, and reading a link to a directory fails the
-		// whole harvest. Following it is not the fix either: a link's meaning
-		// is its target, and the target's bytes are not what the run made.
+		// dependency tree, such as the wheel cache uv unpacks as one, would
+		// be listed and then read, and reading a link to a directory fails
+		// the whole harvest. Following the link is not the answer either:
+		// the target's bytes are not what the run produced.
 		if !entry.Type().IsRegular() {
 			return nil
 		}
@@ -455,10 +453,9 @@ func (s *Session) readJSON(name string, into any) error {
 }
 
 // initRepository makes the workspace a git repository with an identity already
-// set and no remote. The identity is here so a run cannot stall on git
-// refusing to commit; the absence of a remote is the whole containment
-// argument of 045g. environ is the allowlisted host environment, never the
-// process's own.
+// set and no remote. The identity is set so a run cannot stall on git refusing
+// to commit; the absence of a remote is the containment argument of 045g.
+// environ is the allowlisted host environment, never the process's own.
 func initRepository(workspace string, environ []string) error {
 	steps := [][]string{
 		{"init", "--initial-branch=main"},
@@ -477,12 +474,11 @@ func initRepository(workspace string, environ []string) error {
 	return writeExcludes(workspace)
 }
 
-// The agent builds in the same directory that becomes the repository, so an
-// installed dependency tree of a few hundred megabytes sits in the repository
-// root from the moment anything is installed. It is neither committed nor
-// harvested, and both of those follow from this one list.
-//
-// vendoredDirs are the names that always mean installed dependencies.
+// vendoredDirs are the directory names that always hold installed
+// dependencies. The agent builds in the same directory that becomes the
+// repository, so an installed dependency tree of a few hundred megabytes sits
+// in the repository root from the moment anything is installed. This list is
+// what keeps such a tree both uncommitted and unharvested.
 var vendoredDirs = []string{"venv", ".venv", "node_modules", "__pycache__"}
 
 // isVendoredDir reports whether a directory holds installed dependencies
@@ -498,13 +494,13 @@ func isVendoredDir(path, name string) bool {
 }
 
 // writeExcludes keeps those trees out of the repository by a rule the agent
-// does not own. It writes .git/info/exclude, not .gitignore: .gitignore is a
-// file of the reproduction, and an agent that writes its own replaces whatever
-// was seeded there. info/exclude is the repository's own, is never committed,
-// and survives anything the agent writes. It can only match by name — git has
-// no structural test — so a virtualenv under an unexpected name is caught
-// instead by the harvest above and by publish.VerifyTree, which both look for
-// what is inside the tree rather than what it is called.
+// does not control. It writes .git/info/exclude rather than .gitignore,
+// because .gitignore belongs to the reproduction and an agent that writes its
+// own replaces whatever was seeded there. info/exclude belongs to the
+// repository, is never committed, and survives anything the agent writes. git
+// can only match by name, so a virtualenv under an unexpected name is caught
+// instead by the harvest above and by publish.VerifyTree, which both inspect
+// the tree's contents rather than its name.
 func writeExcludes(workspace string) error {
 	dir := filepath.Join(workspace, ".git", "info")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
