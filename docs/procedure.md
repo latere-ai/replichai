@@ -71,7 +71,7 @@ Both are graded, and both grade the *declaration* only. A paper with no extracta
 
 ## Grading
 
-Every run is graded against `method/rubric.md` — eight binary criteria covering the verdict, the boundary, the hidden decisions, the open-science score, evidence that code was actually run, honesty of citation, and the two machine-readable files that carry the same findings as data. The worker revises and is re-graded up to its revision budget.
+Every run is graded against `method/rubric.md`: binary criteria covering the verdict, the boundary, the hidden decisions, the open-science score, evidence that code was actually run, honesty of citation, the two machine-readable files that carry the same findings as data, and — where a remote is configured — whether the work reached it. The rubric is the source for how many there are and in what order. The worker revises and is re-graded up to its revision budget.
 
 ## 8. Finalize (publishing runs only)
 

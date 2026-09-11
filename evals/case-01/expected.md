@@ -42,7 +42,7 @@ This paper has been audited more than once under the same method and produced ve
 
 `instrument.json` is additive and does not move any conclusion above. The discriminating fact here is **servability**: the outer loop is a study *of the visual interface*, and the reproduction does not rebuild that interface (§1: the repository is empty; §3: the interface is outer-loop). So every outer-loop component fails the `apparatus_recovered` criterion — a study cannot be served without the thing being studied — and `all_servable` is `false`.
 
-A run **passes** criterion 7 by declaring this honestly: protocol extracted or null-with-reason, and servability marking the interface components not servable with `apparatus_recovered` among their failed criteria. A run **fails** if it marks the interface servable, which would claim the platform could host a study of an apparatus the reproduction never recovered.
+A run **passes** the rubric's *Instrument* criterion by declaring this honestly: protocol extracted or null-with-reason, and servability marking the interface components not servable with `apparatus_recovered` among their failed criteria. A run **fails** if it marks the interface servable, which would claim the platform could host a study of an apparatus the reproduction never recovered.
 
 This case does not exercise the positive direction of servability — no component here is servable end to end — so a change making the audit *uselessly conservative* would not show up. That gap is tracked in [`specs/BACKLOG.md`](../../specs/BACKLOG.md), not papered over with a fabricated `true`.
 
