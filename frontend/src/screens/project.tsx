@@ -38,6 +38,7 @@ import { type ProjectTab, type SessionTab } from '../routes'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from '../papers'
 import { Pill, RowButton, Tip } from '../ui'
 import { isMine } from '../account'
+import { invalidateProjects } from '../projects-store'
 import { CardHead, Empty, Initials, NotReadable, Tab, VisibilityBadge } from './shared'
 import { PublishedCard, PublishPanel, PublishWizard } from './publish'
 import { ProjectCreditsCard } from './wallet'
@@ -320,12 +321,19 @@ export function ProjectScreen({
   useEffect(() => {
     refresh()
   }, [refresh])
+  // changed is refresh after a write: this screen is re-read, and so is the
+  // shared list of projects, whose rows carry the title, the description, the
+  // session counts and the visibility that a write here can move.
+  const changed = useCallback(() => {
+    refresh()
+    invalidateProjects()
+  }, [refresh])
 
   // A submit spends allowance, so the header pill is re-read after one.
   const onSpent = useCallback(() => {
-    refresh()
+    changed()
     onCreditsSpent()
-  }, [refresh, onCreditsSpent])
+  }, [changed, onCreditsSpent])
 
   // What an owner may do here. A project in the trash is read-only (019): the
   // server refuses every write on one, so an owner control still on screen is a
@@ -376,9 +384,9 @@ export function ProjectScreen({
           onClose={() => setPublishing(false)}
           onPublished={() => {
             setPublishing(false)
-            refresh()
+            changed()
           }}
-          onChanged={refresh}
+          onChanged={changed}
           onOpenBlocker={openBlocker}
         />
       )}
@@ -386,14 +394,14 @@ export function ProjectScreen({
         <div className="detail-title-row">
           <div className="detail-title-main">
             <div className="detail-title-line">
-              <EditableTitle i18n={i18n} title={project.title} canEdit={isOwner} onRename={async (next) => { await renameProject(id, next); refresh() }} />
+              <EditableTitle i18n={i18n} title={project.title} canEdit={isOwner} onRename={async (next) => { await renameProject(id, next); changed() }} />
               <VisibilityBadge i18n={i18n} visibility={project.visibility} />
             </div>
             <ProjectDescription
               i18n={i18n}
               project={project}
               canEdit={isOwner && !project.deleted_at}
-              onSaved={refresh}
+              onSaved={changed}
             />
             {project.visibility === 'public' && project.signed_off_at && (
               <div className="detail-meta">
@@ -435,7 +443,7 @@ export function ProjectScreen({
                 setRestoreErr('')
                 try {
                   await restoreProject(id)
-                  refresh()
+                  changed()
                 } catch (e) {
                   setRestoreErr(generic(t, e, 'restoreFailed'))
                 }
@@ -461,7 +469,7 @@ export function ProjectScreen({
               mayWork={maySubmit}
               onOpenSession={(s) => onOpenSession(s.id, s.ref, project.title)}
               onChanged={onSpent}
-              onRefresh={refresh}
+              onRefresh={changed}
             />
             <div className="stack">
               {/* Money cannot move in or out of a trashed project either, so the
@@ -482,9 +490,9 @@ export function ProjectScreen({
               <Members i18n={i18n} projectID={id} />
             </div>
             {project.visibility === 'private' ? (
-              <PublishPanel i18n={i18n} projectID={id} onPublished={refresh} onOpenBlocker={openBlocker} />
+              <PublishPanel i18n={i18n} projectID={id} onPublished={changed} onOpenBlocker={openBlocker} />
             ) : (
-              <PublishedCard i18n={i18n} project={project} signerHandle={signerHandle} onWithdrawn={refresh} />
+              <PublishedCard i18n={i18n} project={project} signerHandle={signerHandle} onWithdrawn={changed} />
             )}
           </div>
         )}

@@ -12,18 +12,17 @@ import {
   editPaper,
   type Job,
   listModels,
-  listProjects,
   type Me,
   type ModelTier,
   movePaper,
   type Project,
   type ProjectCredits,
   type ProjectPaper,
-  type ProjectView,
   refreshPapers,
   removePaper,
   startSession,
 } from '../api'
+import { useProjects } from '../projects-store'
 import { type I18n } from '../i18n'
 import { addPaperErrLabel, movePaperErrLabel, removePaperErrLabel, startErrLabel } from '../errors'
 import { formatUSD } from '../money'
@@ -625,25 +624,17 @@ function MovePaperDialog({
   onDone: () => void
 }) {
   const { t } = i18n
-  const [targets, setTargets] = useState<ProjectView[] | null>(null)
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
+  // Where the paper may go: every other private, live project of the reader's,
+  // read from the shared list rather than fetched again for the dialog.
+  const all = useProjects()
+  const targets = all === null ? null : all.filter((p) => p.id !== project.id && p.visibility === 'private' && !p.deleted_at)
   useEffect(() => {
-    let live = true
-    listProjects()
-      .then((ps) => {
-        if (!live) return
-        const open = ps.filter((p) => p.id !== project.id && p.visibility === 'private' && !p.deleted_at)
-        setTargets(open)
-        if (open.length > 0) setTo(open[0].id)
-      })
-      .catch(() => live && setTargets([]))
-    return () => {
-      live = false
-    }
-  }, [project.id])
+    if (!to && targets && targets.length > 0) setTo(targets[0].id)
+  }, [targets, to])
 
   const go = async () => {
     if (!to || busy) return

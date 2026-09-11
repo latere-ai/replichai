@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   archiveUrl,
-  listProjects,
   listPublic,
   listTrash,
   type Me,
@@ -18,6 +17,7 @@ import {
   restoreProject,
   trashProject,
 } from '../api'
+import { invalidateProjects, useProjects } from '../projects-store'
 import { type I18n } from '../i18n'
 import { generic, purgeErrLabel, trashErrLabel } from '../errors'
 import { formatUSD } from '../money'
@@ -54,20 +54,15 @@ function projectMatches(p: ProjectView, q: string, f: ProjectFilter, ownerLabel:
 // over.
 export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
-  const [list, setList] = useState<ProjectView[] | null>(null)
+  // The shared list: the rail reads the same one, so the count up there and the
+  // rows down here cannot disagree.
+  const list = useProjects()
   // The project the reader has asked to throw away, held while they confirm.
   const [dropping, setDropping] = useState<ProjectView | null>(null)
   // The filter narrows what is already loaded and fetches nothing, so it can
   // never disagree with what the rows say.
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ProjectFilter>('all')
-
-  const load = useCallback(() => {
-    listProjects()
-      .then((p) => setList(p ?? []))
-      .catch(() => setList([]))
-  }, [])
-  useEffect(load, [load])
 
   const projects = list ?? []
   const sessionTotal = projects.reduce((n, p) => n + p.session_count, 0)
@@ -304,7 +299,7 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
           onClose={() => setDropping(null)}
           onDone={() => {
             setDropping(null)
-            load()
+            invalidateProjects()
           }}
         />
       )}
@@ -381,6 +376,7 @@ export function TrashScreen({ i18n, me }: { i18n: I18n; me: Me }) {
     try {
       await restoreProject(p.id)
       load()
+      invalidateProjects()
     } catch (e) {
       setErr(generic(t, e, 'restoreFailed'))
     }
