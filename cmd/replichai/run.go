@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"latere.ai/x/pkg/atomicfile"
+
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/batch"
 	"github.com/latere-ai/replichai/internal/managed"
@@ -82,7 +84,13 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	state, err := batch.Run(ctx, file, runner, batch.Options{
 		Parallel: *parallel, StatePath: statePath, Resume: *resume, Publishing: *doPublish,
 		Progress: func(state batch.State) {
-			_ = os.WriteFile(reportPath, []byte(state.Report()), 0o644)
+			// The report is rewritten after every change, the same way the
+			// state is, so a reader never sees half of one; and a write
+			// that fails is said, because a report that silently stops
+			// updating reads as a batch that stopped.
+			if err := atomicfile.Write(reportPath, []byte(state.Report()), 0o644); err != nil {
+				_, _ = fmt.Fprintf(stderr, "  ! could not write %s: %v\n", reportPath, err)
+			}
 		},
 	})
 	_, _ = fmt.Fprintln(stdout, state.Report())
