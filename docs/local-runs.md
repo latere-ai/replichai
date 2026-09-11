@@ -239,7 +239,10 @@ replichai audit <paper> --runtime local --sandbox container
 
 It costs an image pull, a virtual machine on macOS, and an API key instead of
 your existing login. It also cannot filter the network by domain, which `srt`
-can, so `--sandbox host` is the default.
+can, so `--sandbox host` is the default. The image it pulls by default,
+`ghcr.io/latere-ai/replichai-harness:latest`, is not published yet, so today a
+container run needs `--image` pointing at one you built yourself; the host
+sandbox needs nothing of the kind.
 
 Every run of either kind writes `environment.json` beside the transcript: the
 operating system, the sandbox, the agent and its version, the model, and the
@@ -323,7 +326,7 @@ reports that as an error line in its transcript. The run continues.
 
 **"the host sandbox is not ready"** — the message names what is missing and the
 install command for your platform. It also offers `--sandbox container`, which
-needs none of it.
+needs none of it — but does need a harness image you can pull (see above).
 
 **"no container engine is installed" / "podman machine is not running"** — on
 macOS Podman needs a virtual machine: `podman machine init --cpus 4 --memory
@@ -376,7 +379,7 @@ success. An empty repository is a real outcome, and the transcript in
 | `--session-root` | `~/.replichai/sessions` | where session directories are made |
 | `--retention` | `keep` | `keep`, `on-failure`, or `discard` |
 | `--engine` | podman, then docker | with `--sandbox container` |
-| `--image` | the published harness image | with `--sandbox container` |
+| `--image` | `ghcr.io/latere-ai/replichai-harness:latest`, not published yet | with `--sandbox container` |
 | `--parallel` | half the cores, capped at 4 | with `replichai run`: papers at once |
 | `--resume` | off | with `replichai run`: skip what finished |
 
