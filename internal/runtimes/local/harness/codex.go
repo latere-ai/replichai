@@ -13,8 +13,8 @@ import (
 )
 
 // CodexHarness drives the Codex CLI. It speaks the OpenAI dialects, so it is
-// the harness an open-weights model behind an OpenAI-compatible gateway pairs
-// with, and it carries both its role and its model provider in a configuration
+// the harness to pair with an open-weights model behind an OpenAI-compatible
+// gateway. It carries both its role and its model provider in a configuration
 // file written outside the workspace.
 type CodexHarness struct{}
 
@@ -27,8 +27,8 @@ func (CodexHarness) Name() Name { return Codex }
 // Binary is the executable a preflight looks for.
 func (CodexHarness) Binary() string { return "codex" }
 
-// Dialects are the two OpenAI wire protocols. Which one a gateway speaks is
-// the operator's declaration, and it reaches the harness as wire_api.
+// Dialects returns the two OpenAI wire protocols. The operator declares which
+// one a gateway speaks, and the declaration reaches the harness as wire_api.
 func (CodexHarness) Dialects() []Dialect {
 	return []Dialect{DialectOpenAIResponses, DialectOpenAIChat}
 }
@@ -37,22 +37,23 @@ func (CodexHarness) Dialects() []Dialect {
 func (CodexHarness) VersionArgv() []string { return []string{"codex", "--version"} }
 
 // CodexKeyEnv is the environment variable the generated provider block reads
-// its credential from. It is a fixed name so the configuration file never has
-// to hold the credential itself.
+// its credential from. It is a fixed name so that the configuration file never
+// has to hold the credential itself.
 const CodexKeyEnv = "REPLICHAI_MODEL_KEY"
 
-// Argv is the stage's command. The harness's own sandbox is switched off
-// because this stage is already inside a real one; a second boundary the model
-// can be talked past adds nothing, and the runtime refuses to build this argv
-// without a driver confining the stage.
+// Argv returns the stage's command. The harness's own sandbox is switched off
+// because this stage is already inside a real one. A second boundary that the
+// model can be persuaded to bypass adds nothing, and the runtime refuses to
+// build this argv without a driver confining the stage.
 func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 	workdir, task, err := stageWork(stage, request)
 	if err != nil {
 		return nil, err
 	}
-	// --skip-git-repo-check: Codex refuses to run in a directory it does not
-	// consider trusted, and the workspace is a fresh repository it has never
-	// seen. The boundary here is the sandbox, not Codex's own trust list.
+	// --skip-git-repo-check is needed because Codex refuses to run in a
+	// directory it does not consider trusted, and the workspace is a fresh
+	// repository it has never seen. The boundary here is the sandbox, not
+	// Codex's own trust list.
 	argv := []string{"codex", "exec", "--json", "--skip-git-repo-check",
 		"--sandbox", "danger-full-access", "--cd", workdir}
 	if request.Model.ID != "" {
@@ -61,16 +62,16 @@ func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 	return append(argv, "--", codexTask(request, task)), nil
 }
 
-// codexTask is the prompt, with the standing instructions in front of it where
-// no file carried them.
+// codexTask returns the prompt, with the standing instructions prepended when
+// no file carries them.
 //
 // Codex reads a role from AGENTS.md under CODEX_HOME and has no flag for one.
 // A run on the operator's own login keeps the operator's own CODEX_HOME, and
-// replichai will not write into it — so Files writes nothing, and the
-// instructions have no file to arrive in. Three runs found that out: with no
-// standing instructions the agent never learned the workspace protocol, wrote
-// its reproduction into a subdirectory, committed nothing, and left an empty
-// repository behind a session that the rubric had passed.
+// replichai does not write into it, so Files writes nothing and the
+// instructions have no file to arrive in. Three runs showed the consequence:
+// with no standing instructions the agent never learned the workspace
+// protocol, wrote its reproduction into a subdirectory, committed nothing, and
+// left an empty repository behind a session that the rubric had passed.
 //
 // Codex documents the prompt argument as the agent's initial instructions, so
 // that is where they go. The role is the same text either way; only the
@@ -88,11 +89,11 @@ func codexTask(request Request, task string) string {
 // gateway credential under the fixed name the provider block reads.
 func (CodexHarness) Env(_ Stage, request Request) (map[string]string, []string, error) {
 	env := map[string]string{}
-	// Codex keeps its token in a file under CODEX_HOME. Redirecting it to a
-	// session-scoped directory is how a session gets an isolated
-	// configuration — and it is also how a session loses the login, because
-	// an empty directory holds no token and the endpoint answers 401. The
-	// redirect happens only where a credential is being supplied instead.
+	// Codex keeps its token in a file under CODEX_HOME. Redirecting
+	// CODEX_HOME to a session-scoped directory gives a session an isolated
+	// configuration, but it also loses the login, because an empty directory
+	// holds no token and the endpoint answers 401. The redirect therefore
+	// happens only when a credential is supplied instead.
 	if request.Gateway.Auth != AuthHarness {
 		env["CODEX_HOME"] = request.Paths.Home
 	}
@@ -110,12 +111,12 @@ func (CodexHarness) Env(_ Stage, request Request) (map[string]string, []string, 
 	}
 }
 
-// Files writes the configuration Codex reads: the model provider block that
+// Files returns the configuration Codex reads: the model provider block that
 // points at the operator's gateway, and the standing instructions. Both go to
-// CODEX_HOME, outside the workspace, so neither is committed by the agent and
-// published as part of the reproduction.
+// CODEX_HOME, outside the workspace, so that neither is committed by the agent
+// and published as part of the reproduction.
 func (CodexHarness) Files(_ Stage, request Request) ([]File, error) {
-	// Where the login is the operator's own, so is the configuration: the
+	// When the login is the operator's own, so is the configuration. The
 	// session writes none, because nothing would read it.
 	if request.Gateway.Auth == AuthHarness {
 		return nil, nil
@@ -136,7 +137,7 @@ func (CodexHarness) Files(_ Stage, request Request) ([]File, error) {
 }
 
 // codexConfig renders the provider block. A gateway with no base URL leaves
-// Codex on its own default, which is the vendor endpoint.
+// Codex on its default, which is the vendor endpoint.
 func codexConfig(gateway Gateway) string {
 	if gateway.BaseURL == "" {
 		return "# replichai: the harness keeps its own model provider and its own login.\n"
@@ -158,22 +159,23 @@ wire_api = %q
 %s`, gateway.BaseURL, wire, key)
 }
 
-// Needs is what Codex requires of the machine: its configuration directory,
-// where its token lives and where it writes its own state — its aliases, its
-// app-server, its session records — and fails to start where it cannot; and a
-// scratch area under the temporary root.
+// Needs reports what Codex requires of the machine: its configuration
+// directory, and a scratch area under the temporary root. The configuration
+// directory holds its token, and Codex writes its own state there, including
+// its aliases, its app-server and its session records; it fails to start when
+// it cannot.
 //
-// The configuration directory is a login grant, not a standing one: a session
-// carrying its own credential has CODEX_HOME redirected into the session and
-// never touches the operator's, so it is granted nothing there.
+// The configuration directory is a login grant, not a standing one. A session
+// that carries its own credential has CODEX_HOME redirected into the session
+// and never touches the operator's directory, so it is granted nothing there.
 //
-// The operator's standing instructions are denied for the same reason they are
-// for any harness: they are not the method.
+// The operator's standing instructions are denied for the same reason as for
+// every harness: they are not the method.
 func (CodexHarness) Needs(machine Machine) Needs {
 	// Codex is a Rust binary and does not read an injected certificate
 	// authority, so a sandbox that terminates TLS to inspect egress breaks
-	// every request it makes. Its own endpoints are tunnelled opaquely
-	// instead — still allowlisted, just not inspected.
+	// every request it makes. Its own endpoints are tunnelled without
+	// inspection instead. They are still subject to the allowlist.
 	needs := Needs{TLSPassthrough: []string{
 		"chatgpt.com", "*.chatgpt.com", "api.openai.com", "auth.openai.com",
 	}}
@@ -192,7 +194,7 @@ func (CodexHarness) Needs(machine Machine) Needs {
 //
 // Codex emits a flat envelope: a type, and for the events that carry one, an
 // item. Older builds wrapped the same content in a msg field, so both are
-// accepted and anything else becomes a raw event rather than a guess.
+// accepted. Anything else becomes a raw event rather than being interpreted.
 type codexLine struct {
 	Type     string          `json:"type"`
 	ThreadID string          `json:"thread_id"`
@@ -201,7 +203,7 @@ type codexLine struct {
 	Usage    *codexTokens    `json:"usage"`
 }
 
-// codexItem is one thing the agent did.
+// codexItem is one action the agent took.
 type codexItem struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
@@ -215,7 +217,7 @@ type codexItem struct {
 	Reason   string `json:"reason"`
 }
 
-// codexTokens is what a turn consumed, as Codex reports it.
+// codexTokens is the token usage of a turn, as Codex reports it.
 type codexTokens struct {
 	InputTokens          int64 `json:"input_tokens"`
 	CachedInputTokens    int64 `json:"cached_input_tokens"`
@@ -225,8 +227,8 @@ type codexTokens struct {
 }
 
 // usage maps Codex's accounting onto the contract's buckets. Cached input is
-// its own bucket, and reasoning output is decomposition of the output bucket
-// rather than a bucket of its own: it is already counted in Output, and
+// its own bucket. Reasoning output is a breakdown of the output bucket rather
+// than a bucket of its own, because it is already counted in Output, and
 // pricing never iterates Details.
 func (t *codexTokens) usage(model managed.ModelRef) managed.Usage {
 	if t == nil {
@@ -251,8 +253,8 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 	if trimmed == "" {
 		return nil, nil
 	}
-	// Time is left for the runtime to stamp from its own clock: the harness
-	// decodes, the runtime times, so a test drives both deterministically.
+	// The runtime sets Time from its own clock. The harness decodes and the
+	// runtime timestamps, so a test can drive both deterministically.
 	event := managed.Event{ID: EventID(stream, index), Raw: Raw(line)}
 	raw := func() []managed.Event {
 		event.Role, event.Kind, event.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
@@ -290,8 +292,8 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 		return raw(), nil
 	}
 	// A started item is the same item as its completion, and the completion
-	// carries the result; recording both would double the transcript and
-	// say nothing twice.
+	// carries the result. Recording both would duplicate every entry in the
+	// transcript without adding information.
 	if envelope.Type == "item.started" && item.Type != "command_execution" {
 		return nil, nil
 	}
@@ -323,8 +325,8 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 	return []managed.Event{event}, nil
 }
 
-// codexCommandResult renders an executed command's outcome, keeping the exit
-// code visible: a tool result that shows only output hides the failure.
+// codexCommandResult renders an executed command's outcome with the exit code
+// visible. A tool result that showed only the output would hide a failure.
 func codexCommandResult(item codexItem) string {
 	var b strings.Builder
 	if item.ExitCode != nil {

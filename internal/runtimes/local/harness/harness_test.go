@@ -28,8 +28,9 @@ func (s stub) Files(Stage, Request) ([]File, error)                    { return 
 func (s stub) Decode(string, int, []byte) ([]managed.Event, error)     { return nil, nil }
 func (s stub) Needs(Machine) Needs                                     { return Needs{} }
 
-// An id is derived from position, not content: two identical tool results are
-// two events, and a content hash would merge them into one.
+// TestEventIDIsPositional checks that an id is derived from position, not
+// content. Two identical tool results are two events, and a content hash would
+// merge them into one.
 func TestEventIDIsPositional(t *testing.T) {
 	if a, b := EventID("worker-0", 3), EventID("worker-0", 3); a != b {
 		t.Fatalf("id is not stable across reads: %q, %q", a, b)
@@ -42,7 +43,8 @@ func TestEventIDIsPositional(t *testing.T) {
 	}
 }
 
-// Truncation marks what it removed and says where the whole value still is.
+// TestTruncateMarksAndPointsAtTheRawLog checks that truncation marks what it
+// removed and names where the whole value remains.
 func TestTruncateMarksAndPointsAtTheRawLog(t *testing.T) {
 	if got := Truncate("short"); got != "short" {
 		t.Fatalf("short content was altered: %q", got)
@@ -54,10 +56,11 @@ func TestTruncateMarksAndPointsAtTheRawLog(t *testing.T) {
 	}
 }
 
-// A cut that lands inside a multi-byte rune must move back to the rune
-// boundary: the truncated content is persisted and re-sent to a model.
+// TestTruncateNeverSplitsARune checks that a cut inside a multi-byte rune
+// moves back to the rune boundary. The truncated content is persisted and
+// re-sent to a model.
 func TestTruncateNeverSplitsARune(t *testing.T) {
-	long := strings.Repeat("語", MaxContentBytes/3+1) // 3 bytes each, so the cap falls mid-rune
+	long := strings.Repeat("語", MaxContentBytes/3+1) // Each rune is 3 bytes, so the limit falls inside a rune.
 	got := Truncate(long)
 	if !utf8.ValidString(got) {
 		t.Fatal("truncation produced invalid UTF-8")
@@ -97,8 +100,9 @@ func TestSpeaksGatesTheDialectPairing(t *testing.T) {
 	}
 }
 
-// Only the judge is barred from writing the workspace, and that is the whole
-// mechanism behind a grader that cannot edit what it grades.
+// TestOnlyTheJudgeIsReadOnly checks that only the judge is barred from writing
+// the workspace. This is the mechanism that prevents the grader from editing
+// what it grades.
 func TestOnlyTheJudgeIsReadOnly(t *testing.T) {
 	if !StageWorker.Writes() || !StageRevision.Writes() || StageJudge.Writes() {
 		t.Fatal("the writable stages are wrong")
@@ -122,8 +126,9 @@ func TestOutsideTheWorkspace(t *testing.T) {
 	}
 }
 
-// Folding is an elementwise maximum, so a harness that repeats its running
-// total cannot double-count and two consecutive observations never decrease.
+// TestFoldIsMonotonicAndDoesNotDoubleCount checks that folding is an
+// elementwise maximum, so that a harness that repeats its running total cannot
+// double-count and two consecutive observations never decrease.
 func TestFoldIsMonotonicAndDoesNotDoubleCount(t *testing.T) {
 	model := managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"}
 	total := managed.Usage{}
@@ -139,7 +144,7 @@ func TestFoldIsMonotonicAndDoesNotDoubleCount(t *testing.T) {
 	if !grown.MonotonicFrom(total) || grown.InputFresh != 300 {
 		t.Fatalf("growth = %+v", grown)
 	}
-	// A late report that is smaller does not walk the total backwards.
+	// A later report that is smaller does not reduce the total.
 	shrunk := Fold(grown, managed.Usage{Model: model, InputFresh: 1, Output: 1})
 	if !shrunk.MonotonicFrom(grown) {
 		t.Fatalf("a smaller report reduced the total: %+v", shrunk)

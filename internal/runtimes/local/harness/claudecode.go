@@ -26,17 +26,17 @@ func (ClaudeCodeHarness) Name() Name { return ClaudeCode }
 // Binary is the executable a preflight looks for.
 func (ClaudeCodeHarness) Binary() string { return "claude" }
 
-// Dialects is the Anthropic wire protocol, and only that: a gateway speaking
-// an OpenAI dialect is refused by the catalogue rather than discovered at the
-// first request.
+// Dialects returns the Anthropic wire protocol only. The catalogue refuses a
+// gateway that speaks an OpenAI dialect rather than letting the mismatch
+// appear at the first request.
 func (ClaudeCodeHarness) Dialects() []Dialect { return []Dialect{DialectAnthropic} }
 
 // VersionArgv prints the installed version, which a run records.
 func (ClaudeCodeHarness) VersionArgv() []string { return []string{"claude", "--version"} }
 
-// Argv is the stage's command. The permission mode is bypassed deliberately:
-// the sandbox is the boundary, and an interactive prompt inside a
-// non-interactive run only stalls it. The runtime refuses to build this argv
+// Argv returns the stage's command. The permission mode is bypassed
+// deliberately: the sandbox is the boundary, and an interactive prompt inside
+// a non-interactive run only stalls it. The runtime refuses to build this argv
 // without a driver confining the stage.
 func (ClaudeCodeHarness) Argv(stage Stage, request Request) ([]string, error) {
 	workdir, task, err := stageWork(stage, request)
@@ -58,30 +58,31 @@ func (ClaudeCodeHarness) Argv(stage Stage, request Request) ([]string, error) {
 	return append(argv, "--", task), nil
 }
 
-// Env is the harness's environment. A credential is named in the second
-// return so the driver delivers it out of the process table; where the gateway
-// authenticates through the harness's own login there is no credential at all,
-// which is the case the host sandbox exists to serve.
+// Env returns the harness's environment. A credential is named in the second
+// return value so that the driver keeps it out of the process table. When the
+// gateway authenticates through the harness's own login there is no credential
+// at all, which is the case the host sandbox exists to serve.
 func (ClaudeCodeHarness) Env(_ Stage, request Request) (map[string]string, []string, error) {
-	// Claude Code puts its scratch area beside its temporary root — a
-	// directory per working directory, a marker file per shell — and the
-	// sandbox overrides TMPDIR to a shared path a session cannot write. So
-	// the root is pointed inside the session, where the siblings it derives
-	// land in a directory that is already writable and goes away with the
-	// run. Without this every shell command fails before it runs.
+	// Claude Code puts its scratch area under its temporary root, with a
+	// directory per working directory and a marker file per shell, and the
+	// sandbox overrides TMPDIR to a shared path a session cannot write. The
+	// root is therefore pointed inside the session, so the paths derived
+	// from it are in a directory that is already writable and is removed
+	// with the run. Without this every shell command fails before it runs.
 	env := map[string]string{
 		"CLAUDE_CODE_TMPDIR": request.Paths.HarnessTmp,
-		// A reproduction does not phone home. Claude Code otherwise reaches a
-		// telemetry service and an error reporter on every run; these turn
-		// both off, and the egress allowlist no longer opens either host.
+		// A reproduction sends no telemetry. Claude Code otherwise contacts a
+		// telemetry service and an error reporter on every run. These
+		// variables turn both off, and the egress allowlist no longer opens
+		// either host.
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		"DISABLE_TELEMETRY":                        "1",
 	}
-	// The harness's own login lives in its own configuration directory.
-	// Redirecting the directory is how a session gets an isolated one — and
-	// it is also how a session loses the login, because an empty directory
-	// holds no credential and the harness answers "not logged in". So the
-	// redirect happens only where a credential is being supplied instead.
+	// The harness's own login lives in its configuration directory.
+	// Redirecting the directory gives a session an isolated configuration,
+	// but it also loses the login, because an empty directory holds no
+	// credential and the harness reports "not logged in". The redirect
+	// therefore happens only when a credential is supplied instead.
 	if request.Gateway.Auth != AuthHarness {
 		env["CLAUDE_CONFIG_DIR"] = request.Paths.Home
 	}
@@ -104,11 +105,12 @@ func (ClaudeCodeHarness) Env(_ Stage, request Request) (map[string]string, []str
 	}
 }
 
-// Files writes the harness's own settings into its session-scoped
-// configuration directory. Nothing goes into the workspace: a file written
-// there is committed by the agent and published as part of the reproduction.
+// Files returns the harness's settings, to be written into its session-scoped
+// configuration directory. Nothing goes into the workspace, because a file
+// written there is committed by the agent and published as part of the
+// reproduction.
 func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
-	// Where the login is the operator's own, so is the configuration: the
+	// When the login is the operator's own, so is the configuration. The
 	// session writes none, because nothing would read it.
 	if request.Gateway.Auth == AuthHarness {
 		return nil, nil
@@ -123,24 +125,26 @@ func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
 	return []File{{Path: filepath.Join(request.Paths.Home, "settings.json"), Mode: 0o600, Body: settings}}, nil
 }
 
-// Needs is what Claude Code requires of the machine.
+// Needs reports what Claude Code requires of the machine.
 //
-// The login: its configuration directory and file, where the credential lives
-// on Linux and the account state lives everywhere; and on macOS the login
-// Keychain as well, because there the credential is in the keychain rather
-// than in a file. All read-only, and only for a session that actually uses
-// that sign-in. It is a real widening and the narrowest one that works;
-// without it the harness answers "not logged in".
+// The login consists of the configuration directory and file, where the
+// credential lives on Linux and the account state lives on every platform,
+// and on macOS the login Keychain as well, because there the credential is in
+// the keychain rather than in a file. All of these are read-only, and they are
+// granted only to a session that uses that login. This is a widening of the
+// sandbox, and the narrowest one that works; without it the harness reports
+// "not logged in".
 //
-// The denials: the operator's standing instructions are not the method, and a
-// reproduction that silently inherits them is not reproducing the paper. Their
-// plugins, agents, commands and skills are not the method either, Claude Code
-// loads all four at startup, and they run code.
+// The denials cover the operator's standing instructions, which are not the
+// method: a reproduction that silently inherited them would not be
+// reproducing the paper. The operator's plugins, agents, commands and skills
+// are not the method either; Claude Code loads all four at startup, and they
+// run code.
 func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 	needs := Needs{}
-	// Nothing under the shared temporary root: the scratch area is
-	// redirected into the session by CLAUDE_CODE_TMPDIR instead, so it is
-	// writable without granting anything outside the run and it is removed
+	// Nothing is granted under the shared temporary root. The scratch area
+	// is redirected into the session by CLAUDE_CODE_TMPDIR instead, so it is
+	// writable without granting anything outside the run, and it is removed
 	// with the run.
 	if machine.Home == "" {
 		return needs
@@ -157,7 +161,7 @@ func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 }
 
 // claudeLine is the subset of the stream this adapter reads. Everything else
-// survives in the event's Raw payload, which is the transcript's evidence.
+// is preserved in the event's Raw payload, which is the transcript's evidence.
 type claudeLine struct {
 	Type    string `json:"type"`
 	Subtype string `json:"subtype"`
@@ -193,9 +197,9 @@ type claudeUsage struct {
 }
 
 // usage maps the harness's own accounting onto the contract's buckets, which
-// are mutually exclusive so each is priced exactly once. The split cache-write
-// figures win where the harness reports them, because adding them to the
-// unsplit total would count the same tokens twice.
+// are mutually exclusive so that each is priced exactly once. The split
+// cache-write figures take precedence when the harness reports them, because
+// adding them to the unsplit total would count the same tokens twice.
 func (u *claudeUsage) usage(model managed.ModelRef) managed.Usage {
 	if u == nil {
 		return managed.Usage{Model: model}
@@ -216,27 +220,28 @@ func (u *claudeUsage) usage(model managed.ModelRef) managed.Usage {
 }
 
 // Decode reads one line of the stream. A line this build does not recognise
-// becomes one raw event rather than nothing: a transcript that silently drops
-// what it cannot parse is not evidence.
+// becomes one raw event rather than being dropped, because a transcript that
+// silently dropped what it could not parse would not be evidence.
 func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]managed.Event, error) {
 	trimmed := strings.TrimSpace(string(line))
 	if trimmed == "" {
 		return nil, nil
 	}
-	// Time is left for the runtime to stamp from its own clock: the harness
-	// decodes, the runtime times, so a test drives both deterministically.
+	// The runtime sets Time from its own clock. The harness decodes and the
+	// runtime timestamps, so a test can drive both deterministically.
 	base := managed.Event{ID: EventID(stream, index), Raw: Raw(line)}
 	var parsed claudeLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
 		// A line this build cannot parse becomes a raw event rather than an
-		// error: a transcript that drops what it does not understand is not
-		// evidence, and the harness's stream is not this program's to define.
+		// error. A transcript that dropped what it did not understand would
+		// not be evidence, and the harness's stream format is not this
+		// program's to define.
 		base.Role, base.Kind, base.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
 		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return []managed.Event{base}, nil
 	}
-	// total_cost_usd is the harness's own figure and is decoded separately so
-	// a malformed number cannot lose the whole result line.
+	// total_cost_usd is the harness's own figure. It is decoded separately so
+	// that a malformed number cannot lose the whole result line.
 	var cost struct {
 		Total float64 `json:"total_cost_usd"`
 	}
@@ -269,9 +274,9 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 }
 
 // claudeContentEvents expands one message line into an event per content
-// block, so a turn that both spoke and called a tool reads as two entries. The
-// line's raw payload is attached to the first, which is the one that carries
-// its usage.
+// block, so that a turn that both produced text and called a tool reads as two
+// entries. The line's raw payload is attached to the first event, which is
+// also the one that carries its usage.
 func claudeContentEvents(base managed.Event, parsed claudeLine, model managed.ModelRef, role managed.Role) []managed.Event {
 	events := make([]managed.Event, 0, len(parsed.Message.Content))
 	for _, block := range parsed.Message.Content {
@@ -307,7 +312,7 @@ func claudeContentEvents(base managed.Event, parsed claudeLine, model managed.Mo
 }
 
 // decodeToolResult renders a tool result, whose content is a string in the
-// simple case and a list of blocks in the rest.
+// simple case and a list of blocks otherwise.
 func decodeToolResult(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -329,8 +334,9 @@ func decodeToolResult(raw json.RawMessage) string {
 	return string(raw)
 }
 
-// stageWork is the working directory and task for one stage, shared by every
-// harness: the judge reads the evidence copy and writes only its verdict.
+// stageWork returns the working directory and task for one stage. It is
+// shared by every harness. The judge reads the evidence copy and writes only
+// its verdict.
 func stageWork(stage Stage, request Request) (string, string, error) {
 	switch stage {
 	case StageWorker, StageRevision:
