@@ -26,16 +26,16 @@ import (
 )
 
 // This file makes github.Client authenticate as a GitHub App instead of with a
-// personal access token. The App is the only credential that can *mint* a
-// scoped, short-lived token — which is what lets the mount carry a per-repository
-// token instead of the organisation's (009). Every server-side call keeps its
-// existing shape: the Client transparently mints, caches, and refreshes the
+// personal access token. The App is the only credential that can mint a
+// scoped, short-lived token, which is what lets the mount carry a
+// per-repository token instead of the organisation's (009). Every server-side
+// call keeps its existing shape: the Client mints, caches, and refreshes the
 // App's installation token and sends it as the Bearer, so no caller changes.
 //
-// An installation token lives at most an hour; the server lives for weeks. So
-// the token is never captured once at startup — it is refreshed on expiry inside
-// bearer(), the one change that would 401 the whole server an hour after a deploy
-// if it were missing.
+// An installation token lives at most an hour and the server lives for weeks,
+// so the token is not read once at startup. It is refreshed on expiry inside
+// bearer. Without that refresh the whole server would receive 401 an hour
+// after a deploy.
 
 // appAuth holds the GitHub App's signing key and the derived, cached installation
 // token. It is safe for concurrent use: the HTTP handlers and the worker share
@@ -50,15 +50,16 @@ type appAuth struct {
 	refresh time.Duration // re-mint this long before the token actually expires
 
 	mu       sync.Mutex
-	instID   int64     // resolved installation id (0 until first resolved)
+	instID   int64     // resolved installation id, 0 until first resolved
 	token    string    // cached broad installation token
 	tokenExp time.Time // its expiry
 }
 
 // NewApp builds a Client that authenticates as a GitHub App installed on owner.
-// privateKeyPEM is the App's private key (the .pem GitHub generates, PKCS#1 or
-// PKCS#8). It replaces New for the server; all of CreateRepo/Invite/HeadCommit/
-// TreePaths/PutFile/SetPublic/ListRepos then run on the installation token.
+// privateKeyPEM is the App's private key, the .pem file GitHub generates, in
+// PKCS#1 or PKCS#8. It replaces New for the server; CreateRepo, Invite,
+// HeadCommit, TreePaths, PutFile, SetPublic and ListRepos then run on the
+// installation token.
 func NewApp(appID int64, privateKeyPEM []byte, owner string, opts ...Option) (*Client, error) {
 	key, err := parseRSAPrivateKey(privateKeyPEM)
 	if err != nil {
@@ -80,9 +81,10 @@ func NewApp(appID int64, privateKeyPEM []byte, owner string, opts ...Option) (*C
 	return c, nil
 }
 
-// bearer returns the token to authenticate a REST call with: the App's cached
-// installation token (refreshed on expiry) when the Client is App-backed, or the
-// static PAT otherwise. This is the single seam the App swap runs through.
+// bearer returns the token that authenticates a REST call: the App's cached
+// installation token, refreshed on expiry, when the Client is App-backed, or
+// the static PAT otherwise. It is the single point at which the credential is
+// chosen.
 func (c *Client) bearer(ctx context.Context) (string, error) {
 	if c.app == nil {
 		return c.token, nil
@@ -107,10 +109,10 @@ func (a *appAuth) serverToken(ctx context.Context) (string, error) {
 }
 
 // mintLocked mints an installation access token. With scope nil the token
-// carries the installation's full grant (the server token); with a scope it is
-// narrowed to those repositories and permissions (the mount token). The caller
-// holds a.mu when this touches shared state; the token minting itself is
-// stateless beyond resolving the installation id.
+// carries the installation's full grant and is the server token; with a scope
+// it is narrowed to those repositories and permissions and is the mount token.
+// The caller holds a.mu when this touches shared state; minting itself is
+// stateless apart from resolving the installation id.
 func (a *appAuth) mintLocked(ctx context.Context, scope map[string]any) (string, time.Time, error) {
 	instID, err := a.installationID(ctx)
 	if err != nil {
@@ -135,8 +137,8 @@ func (a *appAuth) mintLocked(ctx context.Context, scope map[string]any) (string,
 	return out.Token, out.ExpiresAt, nil
 }
 
-// installationID resolves — and caches — the id of the App's installation on the
-// owner org, so token minting knows which installation to mint for.
+// installationID resolves and caches the id of the App's installation on the
+// owner organisation, so token minting knows which installation to mint for.
 func (a *appAuth) installationID(ctx context.Context) (int64, error) {
 	if a.instID != 0 {
 		return a.instID, nil
@@ -163,8 +165,8 @@ func (a *appAuth) installationID(ctx context.Context) (int64, error) {
 }
 
 // signJWT builds the short-lived RS256 JWT that authenticates as the App itself
-// (as opposed to an installation). GitHub caps its life at ten minutes; the iat
-// is backdated a minute to tolerate clock skew.
+// rather than as an installation. GitHub caps its life at ten minutes; the iat
+// is set a minute in the past to tolerate clock skew.
 func (a *appAuth) signJWT() (string, error) {
 	now := a.now()
 	header := map[string]any{"alg": "RS256", "typ": "JWT"}
@@ -185,8 +187,9 @@ func (a *appAuth) signJWT() (string, error) {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
-// doJWT performs one App-authenticated (JWT Bearer) request. It is separate from
-// Client.do because App calls carry the JWT, never an installation token.
+// doJWT performs one App-authenticated request, with the JWT as the Bearer. It
+// is separate from Client.do because App calls carry the JWT and never an
+// installation token.
 func (a *appAuth) doJWT(ctx context.Context, jwt, method, path string, body, out any) (int, error) {
 	var reader io.Reader
 	if body != nil {
@@ -223,9 +226,9 @@ func (a *appAuth) doJWT(ctx context.Context, jwt, method, path string, body, out
 	return resp.StatusCode, nil
 }
 
-// parseRSAPrivateKey reads GitHub's App key, which is PKCS#1 ("RSA PRIVATE KEY")
-// as downloaded, but PKCS#8 ("PRIVATE KEY") is accepted too so a re-encoded key
-// still loads.
+// parseRSAPrivateKey reads GitHub's App key. As downloaded it is PKCS#1, with
+// the "RSA PRIVATE KEY" block type, but PKCS#8, with the "PRIVATE KEY" block
+// type, is accepted too so a re-encoded key still loads.
 func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -264,25 +267,25 @@ func joinB64(header, claims map[string]any) (string, error) {
 // itself: GitHub offers no such thing, and only a GitHub App can mint one.
 var ErrMintingUnavailable = errors.New("github: minting a scoped token needs a GitHub App")
 
-// Token is a credential with an end.
+// Token is a credential with an expiry.
 type Token struct {
 	Value   string
 	Expires time.Time
 }
 
-// CanMint reports whether this client can mint a scoped token at all, without
-// minting one to find out. A boot-time probe that actually minted would create
-// a live credential nobody asked for.
+// CanMint reports whether this client can mint a scoped token, without minting
+// one to find out. A startup probe that minted would create a live credential
+// that nothing asked for.
 func (c *Client) CanMint() bool { return c.app != nil }
 
 // MintRepoToken mints a credential that can write to one repository and to
 // nothing else, for at most an hour (045l). It is the scope 009 designed and
-// never called: every other mint passes nil and gets the installation's whole
+// did not call: every other mint passes nil and gets the installation's whole
 // grant.
 //
-// contents:write is the entire permission set. Not administration, not a second
-// repository: a leaked minted token can push to the reproduction it was minted
-// for, until it expires, and can do nothing else anywhere.
+// contents:write is the entire permission set, with no administration
+// permission and no second repository. A leaked minted token can push to the
+// reproduction it was minted for until it expires, and can do nothing else.
 func (c *Client) MintRepoToken(ctx context.Context, name string) (Token, error) {
 	if c.app == nil {
 		return Token{}, ErrMintingUnavailable
@@ -301,8 +304,8 @@ func (c *Client) MintRepoToken(ctx context.Context, name string) (Token, error) 
 
 // RevokeToken ends an installation token early. The token being revoked is what
 // authenticates the call, so revocation needs no further credential and cannot
-// be turned against anybody else's. A token already expired or already revoked
-// answers 401, which is the outcome asked for rather than a failure.
+// revoke any other token. A token already expired or already revoked answers
+// 401, which is the requested outcome rather than a failure.
 func (c *Client) RevokeToken(ctx context.Context, token string) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"/installation/token", nil)
 	if err != nil {

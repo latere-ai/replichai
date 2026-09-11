@@ -3,9 +3,9 @@
 
 // Package github is a small client for the handful of operations publishing a
 // reproduction needs: create a private repository, invite a collaborator, read
-// the head commit, and make a repository public. It is hand-rolled over
-// net/http rather than a full SDK to keep the dependency list lean — it covers
-// only these endpoints, and none of them is on a hot path.
+// the head commit, and make a repository public. It is written over net/http
+// rather than a full SDK to keep the dependency list small; it covers only
+// these endpoints, and none of them is on a hot path.
 //
 // All of these run server-side with the organisation's token. None of them
 // belongs inside the sandbox; the sandbox gets only a scoped mount token (006f).
@@ -32,8 +32,8 @@ import (
 // DefaultBaseURL is GitHub's REST API root.
 const DefaultBaseURL = "https://api.github.com"
 
-// ErrRepoExists reports that a repository of that name already exists — a
-// republish, not a failure. The caller fetches it with GetRepo.
+// ErrRepoExists reports that a repository of that name already exists. This
+// is a republish rather than a failure; the caller fetches it with GetRepo.
 var ErrRepoExists = errors.New("repository already exists")
 
 // Repo is the subset of a repository this package reads.
@@ -96,9 +96,9 @@ func (c *Client) CreateRepo(ctx context.Context, owner, name string, private boo
 	}
 	var repo Repo
 	status, err := c.do(ctx, http.MethodPost, "/orgs/"+owner+"/repos", body, &repo)
-	// GitHub answers 422 to every validation failure — an invalid name, a
-	// blocked organisation, a plan limit — and only one of them means the
-	// repository is there to reuse. The body says which.
+	// GitHub answers 422 to every validation failure, including an invalid
+	// name, a blocked organisation and a plan limit, and only one of them
+	// means the repository exists to be reused. The body says which.
 	var refused *APIError
 	if errors.As(err, &refused) && refused.saysAlreadyExists() {
 		return Repo{}, ErrRepoExists
@@ -169,7 +169,7 @@ func (c *Client) Invite(ctx context.Context, owner, name, login string) error {
 }
 
 // HeadCommit returns the sha of the latest commit on the repository's default
-// branch — the commit a reproduction's history ends at.
+// branch, which is the commit a reproduction's history ends at.
 func (c *Client) HeadCommit(ctx context.Context, owner, name string) (string, error) {
 	var commits []struct {
 		SHA string `json:"sha"`
@@ -187,9 +187,9 @@ func (c *Client) HeadCommit(ctx context.Context, owner, name string) (string, er
 	return commits[0].SHA, nil
 }
 
-// TreePaths lists the blob paths committed on a ref (a branch or a commit sha),
-// recursively — the committed tree the post-run verifier checks against the
-// bounded-workspace rule.
+// TreePaths lists the blob paths committed on a ref, which may be a branch or
+// a commit sha, recursively. This is the committed tree the post-run verifier
+// checks against the bounded-workspace rule.
 func (c *Client) TreePaths(ctx context.Context, owner, name, ref string) ([]string, error) {
 	var tree struct {
 		Tree []struct {
@@ -219,15 +219,16 @@ func (c *Client) TreePaths(ctx context.Context, owner, name, ref string) ([]stri
 }
 
 // PutFile commits a single file, creating or updating it. The server uses it to
-// add replication.json after the agent's history — the manifest records facts
-// the agent never had (the method digest, the head commit, the repository name).
+// add replication.json after the agent's history; the manifest records facts
+// the agent never had, such as the method digest, the head commit, and the
+// repository name.
 func (c *Client) PutFile(ctx context.Context, owner, name, path, message string, content []byte) error {
 	body := map[string]any{
 		"message": message,
 		"content": base64.StdEncoding.EncodeToString(content),
 	}
-	// If the file already exists (a republish), its blob sha is required; fetch
-	// it and include it so the update is accepted rather than rejected.
+	// If the file already exists, as on a republish, its blob sha is required;
+	// fetch it and include it so the update is accepted.
 	if sha, ok, err := c.fileSHA(ctx, owner, name, path); err != nil {
 		return err
 	} else if ok {
@@ -244,8 +245,8 @@ func (c *Client) PutFile(ctx context.Context, owner, name, path, message string,
 	return nil
 }
 
-// GetFileContent returns the decoded bytes of a file, or ok=false if it is
-// absent — so a caller can compare against what it is about to write and skip a
+// GetFileContent returns the decoded bytes of a file, or ok false if it is
+// absent, so a caller can compare against what it is about to write and skip a
 // no-op commit.
 func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) ([]byte, bool, error) {
 	var file struct {
@@ -263,10 +264,10 @@ func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) (
 		return nil, false, fmt.Errorf("read %s in %s/%s: unexpected status %d", path, owner, name, status)
 	}
 	if file.Encoding != "base64" {
-		// GitHub answers "none" for a file it will not inline (over ~1MB).
-		// The file is present, so it is read through the raw media type,
-		// which streams any size; answering "absent" here made a large
-		// verdict.json read as never written.
+		// GitHub answers "none" for a file it will not inline, which is one
+		// over about 1MB. The file is present, so it is read through the raw
+		// media type, which streams any size. Answering absent here once made
+		// a large verdict.json read as never written.
 		return c.GetFileRaw(ctx, owner, name, path)
 	}
 	// GitHub wraps base64 content at 60 columns; strip the newlines to decode.
@@ -278,10 +279,10 @@ func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) (
 }
 
 // GetFileRaw reads a file's bytes through the Contents API's raw media type,
-// which streams the content directly rather than inlining base64 — so it works
-// for files the JSON path will not return (over ~1MB, e.g. a full transcript),
-// up to GitHub's 100MB limit. ok is false for an absent file; a non-200 is an
-// error, never a disguised miss.
+// which streams the content directly rather than inlining base64, so it works
+// for files the JSON path will not return, such as a full transcript over
+// about 1MB, up to GitHub's 100MB limit. ok is false for an absent file; any
+// other non-200 status is an error and is never reported as absent.
 func (c *Client) GetFileRaw(ctx context.Context, owner, name, path string) ([]byte, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/repos/"+owner+"/"+name+"/contents/"+path, nil)
 	if err != nil {
@@ -314,8 +315,8 @@ func (c *Client) GetFileRaw(ctx context.Context, owner, name, path string) ([]by
 }
 
 // FileUnchanged reports whether path already holds exactly content, by comparing
-// git blob shas. This works for any size — including files too large for the
-// Contents API to inline — so it is the reliable idempotency check.
+// git blob shas. This works for any size, including files too large for the
+// Contents API to inline, so it is the reliable idempotency check.
 func (c *Client) FileUnchanged(ctx context.Context, owner, name, path string, content []byte) (bool, error) {
 	sha, ok, err := c.fileSHA(ctx, owner, name, path)
 	if err != nil || !ok {
@@ -324,9 +325,9 @@ func (c *Client) FileUnchanged(ctx context.Context, owner, name, path string, co
 	return sha == gitBlobSHA(content), nil
 }
 
-// gitBlobSHA computes a blob's git object id — sha1("blob <len>\x00<content>") —
-// the same id GitHub reports for a file, so two can be compared without
-// downloading either.
+// gitBlobSHA computes a blob's git object id, sha1("blob <len>\x00<content>"),
+// which is the same id GitHub reports for a file, so two can be compared
+// without downloading either.
 func gitBlobSHA(content []byte) string {
 	h := sha1.New() //nolint:gosec // G401: git defines the blob id as sha1; the digest only decides whether a commit would be a no-op, and is never stored or trusted as evidence.
 	// hash.Hash.Write never returns an error, so neither can this: the discard
@@ -367,13 +368,13 @@ func (c *Client) SetPublic(ctx context.Context, owner, name string) error {
 	return nil
 }
 
-// SetPrivate makes a repository private again, the forge half of withdrawing a
-// publication (006o). It closes the door; it does not retrieve what already went
-// through it — forks, clones, and GitHub's own public event history survive, and
-// GitHub refuses the change outright on some repositories that have forks. On an
-// already-private repository it is a no-op that still answers 200, which is what
-// lets the withdrawal path set every project repository private without knowing
-// which ones the publish actually flipped.
+// SetPrivate makes a repository private again. It is the forge half of
+// withdrawing a publication (006o). It stops further public access but does
+// not retrieve what was already copied: forks, clones, and GitHub's own public
+// event history survive, and GitHub refuses the change on some repositories
+// that have forks. On an already private repository it is a no-op that still
+// answers 200, which lets the withdrawal path set every project repository
+// private without knowing which ones the publish made public.
 func (c *Client) SetPrivate(ctx context.Context, owner, name string) error {
 	status, err := c.do(ctx, http.MethodPatch, "/repos/"+owner+"/"+name,
 		map[string]any{"private": true, "visibility": "private"}, nil)

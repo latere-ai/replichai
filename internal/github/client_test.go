@@ -68,9 +68,11 @@ func TestCreateRepoExistsIsTyped(t *testing.T) {
 	}
 }
 
-// GitHub answers 422 to every validation failure. Only "already exists" means
-// there is a repository to reuse; treating an invalid name or a plan limit as
-// one sent the caller to fetch a repository that was never created.
+// TestCreateRepoOtherValidationFailuresAreNotExists checks that only an
+// "already exists" 422 is reported as ErrRepoExists. GitHub answers 422 to
+// every validation failure, and treating an invalid name or a plan limit as an
+// existing repository once sent the caller to fetch a repository that was
+// never created.
 func TestCreateRepoOtherValidationFailuresAreNotExists(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -85,9 +87,9 @@ func TestCreateRepoOtherValidationFailuresAreNotExists(t *testing.T) {
 	}
 }
 
-// A refusal says what GitHub said. "unexpected status 403" told an operator
-// nothing; "Resource not accessible by integration" tells them which
-// permission the token lacks.
+// TestAFailureCarriesGitHubsMessage checks that a refusal carries GitHub's
+// message. "unexpected status 403" told an operator nothing, while "Resource
+// not accessible by integration" says which permission the token lacks.
 func TestAFailureCarriesGitHubsMessage(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -118,9 +120,9 @@ func TestAFailureCarriesGitHubsMessage(t *testing.T) {
 	}
 }
 
-// A rate limit is a temporary failure with a figure attached, in the shape
-// managed.IsTemporary already matches, so a caller backs off rather than
-// failing a publication over "not now".
+// TestARateLimitIsTemporaryAndSaysHowLong checks that a rate limit is a
+// temporary failure with a wait attached, in the shape managed.IsTemporary
+// already matches, so a caller backs off rather than failing a publication.
 func TestARateLimitIsTemporaryAndSaysHowLong(t *testing.T) {
 	t.Run("secondary limit with Retry-After", func(t *testing.T) {
 		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -181,10 +183,11 @@ func TestARateLimitIsTemporaryAndSaysHowLong(t *testing.T) {
 	})
 }
 
-// GitHub will not inline a file over about a megabyte: the JSON answer says
-// encoding "none" and carries no content. The file is there, so it is read
-// through the raw media type; answering "absent" made a large verdict.json
-// read as never written.
+// TestGetFileContentReadsALargeFileThroughTheRawPath checks the case of a file
+// GitHub will not inline, which is one over about a megabyte: the JSON answer
+// says encoding "none" and carries no content. The file is present, so it is
+// read through the raw media type. Answering absent once made a large
+// verdict.json read as never written.
 func TestGetFileContentReadsALargeFileThroughTheRawPath(t *testing.T) {
 	want := []byte(strings.Repeat(`{"boundary":[]}`, 10))
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -342,10 +345,12 @@ func TestSetPrivateSendsPrivateTrue(t *testing.T) {
 	}
 }
 
-// GitHub refuses the flip on some repositories (a fork network, an organisation
-// policy). The client must surface that rather than report a withdrawal it did
-// not perform — the caller decides that a forge failure is non-fatal, and it can
-// only decide that if it hears about it.
+// TestSetPrivateRefusedSurfaces checks that a refused visibility change is
+// returned as an error. GitHub refuses the change on some repositories, such
+// as one in a fork network or one under an organisation policy, and the client
+// must report that rather than a withdrawal it did not perform. The caller
+// decides that a forge failure is non-fatal, and it can only decide that if it
+// is told.
 func TestSetPrivateRefusedSurfaces(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "cannot change visibility", http.StatusUnprocessableEntity)
@@ -419,7 +424,8 @@ func TestGetFileContentDecodesBase64(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/repos/open-hai/x/contents/replication.json" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		// GitHub wraps base64 at 60 cols; include a newline to prove we strip it.
+		// GitHub wraps base64 at 60 columns; the newline checks that it is
+		// stripped.
 		enc := base64.StdEncoding.EncodeToString(want)
 		_ = json.NewEncoder(w).Encode(map[string]any{"content": enc[:4] + "\n" + enc[4:], "encoding": "base64"})
 	})
@@ -441,8 +447,9 @@ func TestGetFileContentAbsent(t *testing.T) {
 	}
 }
 
-// GetFileRaw streams content via the raw media type — the path a large file
-// (a full transcript, over the inline limit) must use.
+// TestGetFileRawStreamsRawMedia checks that GetFileRaw streams content through
+// the raw media type, which is the path a large file such as a full transcript
+// over the inline limit must use.
 func TestGetFileRawStreamsRawMedia(t *testing.T) {
 	want := []byte(`{"role":"agent","kind":"message"}` + "\n")
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {

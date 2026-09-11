@@ -14,10 +14,11 @@ import (
 	"github.com/latere-ai/replichai/internal/oteltest"
 )
 
-// Publishing a reproduction is the longest hop the server makes, and the one
-// most worth seeing in a trace when it is slow. Both constructors have to build
-// an instrumented client; NewApp used to be a second copy of the same literal,
-// which is exactly how one of them goes uninstrumented unnoticed.
+// TestClientConstructorsInstrumentTheirTransport checks that both constructors
+// build an instrumented client. Publishing a reproduction is the longest
+// network call the server makes, and the one most worth seeing in a trace when
+// it is slow. NewApp was once a second copy of the same literal, which is how
+// one constructor ends up uninstrumented without notice.
 func TestClientConstructorsInstrumentTheirTransport(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
