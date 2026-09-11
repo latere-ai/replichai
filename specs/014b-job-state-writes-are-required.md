@@ -13,7 +13,7 @@ status: built
 
 ## Problem
 
-The worker ignores `Store.Observe` and final `Store.Advance` errors. Losing the first observation loses the managed session id needed for restart reconciliation and cancellation; losing usage undercharges the run. Losing the final `done` write strands a successfully published job while `Process` reports success. Even the fallback failure write is discarded without a log or returned error.
+The worker ignores `Store.Observe` and final `Store.Advance` errors. Losing the first observation loses the managed session id needed for restart reconciliation and cancellation; losing usage undercharges the run. Losing the final `done` write leaves a successfully published job stranded while `Process` reports success. Even the fallback failure write is discarded without a log or returned error.
 
 ## Decisions
 

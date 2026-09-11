@@ -13,7 +13,7 @@ status: built
 
 ## Problem
 
-`anthropic.Provider.CloseRun` sends `user.interrupt` and archives the session, but discards both errors. The audit and experiment orchestrators discard `CloseRun` again, and `job.Worker.Cancel` discards the runner's close error before making the local row terminal. A backend outage therefore produces the strongest possible lie: the API says the session stopped while the agent may still be working and spending.
+`anthropic.Provider.CloseRun` sends `user.interrupt` and archives the session, but discards both errors. The audit and experiment orchestrators discard `CloseRun` again, and `job.Worker.Cancel` discards the runner's close error before making the local row terminal. A backend outage therefore produces a false report: the API says the session stopped while the agent may still be working and spending.
 
 ## Decisions
 
