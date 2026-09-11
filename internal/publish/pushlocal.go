@@ -19,6 +19,11 @@ var (
 	// commit. It is 044d's outcome reached earlier: the run produced
 	// nothing, and that is recorded rather than reported as success.
 	ErrNothingCommitted = errors.New("the run committed nothing")
+	// ErrNoWorkspace reports that there is no repository to push: the
+	// directory is gone or was never initialised. It is a failure of the
+	// push, never a finding about the run, which is why it is not
+	// ErrNothingCommitted.
+	ErrNoWorkspace = errors.New("the workspace is not a git repository")
 	// ErrRefusedContent reports a committed tree carrying third-party
 	// content the redistribution gate will not publish.
 	ErrRefusedContent = errors.New("the committed tree carries content that may not be redistributed")
@@ -66,8 +71,12 @@ type LocalPush struct {
 // is the backstop written for exactly this case: it flags the paper, a
 // dataset, model weights, an archive or a leaked credential, and presumes
 // everything else is the reproduction's own work.
+//
+// It reads the tree at HEAD, because that is what the push sends. The index
+// is not: a file staged and never committed does not travel, and a file
+// committed and then unstaged does.
 func (push LocalPush) Verify(ctx context.Context) ([]string, error) {
-	files, err := push.git(ctx, "ls-files")
+	files, err := push.git(ctx, "ls-tree", "-r", "--name-only", "HEAD")
 	if err != nil {
 		return nil, err
 	}
@@ -88,8 +97,21 @@ func (push LocalPush) Run(ctx context.Context) (Pushed, error) {
 	if branch == "" {
 		branch = "main"
 	}
-	head, err := push.git(ctx, "rev-parse", "HEAD")
+	head, err := push.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD")
 	if err != nil {
+		// HEAD cannot be read. Either the repository has no commit yet —
+		// the run produced nothing, which is a result and is recorded as
+		// one — or there is nothing to read it from: git is missing, the
+		// directory is gone, or it was never a repository. Only the first
+		// is ErrNothingCommitted. Reporting the rest as "committed nothing"
+		// would record a false outcome over a run that may have committed
+		// everything.
+		if errors.Is(err, exec.ErrNotFound) {
+			return Pushed{}, err
+		}
+		if _, repoErr := push.git(ctx, "rev-parse", "--is-inside-work-tree"); repoErr != nil {
+			return Pushed{}, fmt.Errorf("%w: %s: %w", ErrNoWorkspace, push.Workspace, repoErr)
+		}
 		return Pushed{}, fmt.Errorf("%w: %s", ErrNothingCommitted, push.Workspace)
 	}
 	flagged, err := push.Verify(ctx)
