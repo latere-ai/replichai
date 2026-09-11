@@ -22,13 +22,14 @@ import (
 const Name managed.RuntimeName = "memory"
 
 // OutputDir is the workspace path a session writes its artifacts to. It is a
-// filesystem path and deliberately not a RuntimeName: sharing a const block
-// with Name left it untyped and one edit away from inheriting the wrong type.
+// filesystem path and deliberately not a RuntimeName. It is declared outside
+// the const block that holds Name so that it cannot inherit that type by
+// accident.
 const OutputDir = "/workspace/outputs/"
 
-// FailurePoint names a runtime boundary that can be made to fail. Keying
+// FailurePoint names a runtime method that can be made to fail. Keying
 // Config.Failures by one lets a test drive the error path of a single call
-// without standing up a fake runtime around the real one.
+// without wrapping the runtime in a fake.
 type FailurePoint string
 
 // The failure points, one per boundary a caller can reach. Each names the
@@ -48,7 +49,7 @@ const (
 // Config is the scripted behaviour of one Runtime: which model it advertises,
 // how many polls a session runs for, what verdict and artifacts it produces,
 // and where it fails. NewWithStore fills in the zero values, so the zero
-// Config is a usable happy path.
+// Config is a usable success path.
 type Config struct {
 	Model           managed.ModelRef
 	PollsBeforeDone int
@@ -58,11 +59,11 @@ type Config struct {
 	Failures        map[FailurePoint]error
 }
 
-// Store holds the sessions. It lives outside Runtime on purpose: that is what
-// makes this runtime restartable, because a Runtime rebuilt around the same
-// Store (as the builtin catalogue does on every lookup) still finds the
-// sessions an earlier Runtime started. Keeping the map on Runtime would have
-// made every rebuild silently lose them.
+// Store holds the sessions. It is deliberately separate from Runtime, which
+// is what makes this runtime restartable: a Runtime rebuilt around the same
+// Store, as the builtin catalogue does on every lookup, still finds the
+// sessions an earlier Runtime started. Keeping the map on Runtime would make
+// every rebuild lose them.
 type Store struct {
 	mu       sync.Mutex
 	next     uint64
@@ -90,7 +91,7 @@ type Runtime struct {
 	config Config
 }
 
-// New returns a Runtime on the default Config with a private Store, for the
+// New returns a Runtime with the default Config and a private Store, for the
 // common case where one test owns the whole session lifecycle.
 func New() *Runtime { return NewWithStore(NewStore(), Config{}) }
 
@@ -117,8 +118,8 @@ func NewWithStore(store *Store, config Config) *Runtime {
 	return &Runtime{store: store, config: config}
 }
 
-// Name is the runtime name stamped into every SessionRef this runtime issues
-// and the one validateRef demands back.
+// Name is the runtime name recorded in every SessionRef this runtime issues
+// and the one validateRef requires.
 func (r *Runtime) Name() managed.RuntimeName { return Name }
 
 // Capabilities advertises every capability the managed contract defines, so a
@@ -132,9 +133,9 @@ func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error
 }
 
 // capabilities is the context-free half of Capabilities. Validate needs the
-// same answer and has no context to pass; borrowing a background one there
-// would claim an I/O boundary this runtime does not have, and forced the error
-// it cannot return to be discarded.
+// same answer and has no context to pass. Using a background context there
+// would imply an I/O boundary this runtime does not have, and would force
+// Validate to discard an error it cannot return.
 func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
 		OutputDir:          OutputDir,
@@ -307,8 +308,8 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 }
 
 // Release retires the session and is idempotent: an unknown or already
-// released session is not an error. That is why it repeats the checks by hand
-// instead of going through before, which would turn the second call into a
+// released session is not an error. That is why it repeats the checks itself
+// instead of calling before, which would turn the second call into a
 // NotFoundError.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	if err := contextError(ctx); err != nil {
@@ -331,8 +332,8 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 }
 
 // Specs returns the specs of every live session in the Store, ordered by
-// session id. It is outside the managed.Runtime contract and exists so a test
-// can assert on what the caller actually submitted.
+// session id. It is outside the managed.Runtime contract and exists so that a
+// test can check what the caller submitted.
 func (r *Runtime) Specs() []managed.SessionSpec {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
