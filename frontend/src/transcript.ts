@@ -8,6 +8,7 @@
 // record is silent — an event with no timestamp, a session with no usage
 // anywhere — the answer is an explicit absence, never a filled-in zero.
 import type { Event, Usage } from './api'
+import { duration } from './when'
 
 // A run's real elapsed span, in milliseconds since the epoch. Null when no event
 // carries a usable timestamp: there is then no clock to draw, and the caller
@@ -232,9 +233,5 @@ export function clockOf(e: Event): string {
 export function offsetOf(e: Event, span: Span): string {
   const t = timeOf(e)
   if (Number.isNaN(t)) return ''
-  const s = Math.max(0, Math.round((t - span.from) / 1000))
-  if (s < 60) return `+${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `+${m}m ${s % 60}s`
-  return `+${Math.floor(m / 60)}h ${m % 60}m`
+  return '+' + duration(Math.max(0, Math.round((t - span.from) / 1000)), { seconds: true })
 }

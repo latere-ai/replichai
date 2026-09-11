@@ -143,7 +143,7 @@ import { useHead } from './head'
 import { citationBits, gradeable, groupByPaper, listCitation, type Grouped, type PaperGroup } from './papers'
 import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, RowButton, Seams, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { THEME_MODES, useTheme, type ThemeMode } from './theme'
-import { absoluteTime, elapsed, relativeTime } from './when'
+import { absoluteTime, duration, elapsed, relativeTime } from './when'
 import { useDrawer, useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
 import { useJobStream } from './job-stream'
@@ -6147,16 +6147,6 @@ function phaseLabel(t: I18n['t'], phase: string) {
 const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed'] as const
 type Phase = (typeof PHASE_ORDER)[number]
 
-// fmtDur renders a millisecond span as a compact human duration.
-function fmtDur(ms: number): string {
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ${s % 60}s`
-  const h = Math.floor(m / 60)
-  return `${h}h ${m % 60}m`
-}
-
 // Timeline draws the session's phase progression from the durable phase_at
 // timestamps: each phase, when it started, and how long it took to reach the
 // next. The final phase carries no duration; a still-running phase shows "in
@@ -6178,7 +6168,7 @@ function Timeline({ i18n, job }: { i18n: I18n; job: Job }) {
             <span className={'tl-dot ' + phaseClass(s.phase)} />
             <div className="tl-body">
               <span className="tl-phase">{phaseLabel(t, s.phase)}</span>
-              <span className="tl-dur">{active ? t('inProgress') : next ? fmtDur(next.time - s.time) : ''}</span>
+              <span className="tl-dur">{active ? t('inProgress') : next ? duration(Math.round((next.time - s.time) / 1000), { seconds: true }) : ''}</span>
             </div>
           </div>
         )

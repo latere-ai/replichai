@@ -51,10 +51,19 @@ function plural(n: number, unit: string): string {
 export function elapsed(iso: string | undefined, now: number = Date.now()): string {
   const at = iso ? Date.parse(iso) : NaN
   if (Number.isNaN(at)) return ''
-  const s = Math.max(0, Math.floor((now - at) / 1000))
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m`
+  return duration(Math.max(0, Math.floor((now - at) / 1000)))
+}
+
+// duration renders a count of seconds the way the whole client does: seconds
+// under a minute, minutes under an hour, then hours and minutes. `seconds`
+// keeps the seconds at minute scale — a phase on the timeline and an offset
+// into a transcript are read to the second; a session still running is not
+// (see elapsed). Callers do their own rounding, so a floor and a round each
+// stay where they were.
+export function duration(seconds: number, opts?: { seconds?: boolean }): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  if (m < 60) return opts?.seconds ? `${m}m ${seconds % 60}s` : `${m}m`
   const h = Math.floor(m / 60)
   return `${h}h ${m % 60}m`
 }
