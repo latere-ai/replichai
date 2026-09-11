@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// migrations are the access schema, versioned and applied at startup alongside
-// the job schema. The access tables live in the same database the deployment
-// owns — grants and the authorisation trail, never a reproduction.
+// migrations is the access schema, versioned and applied at startup alongside
+// the job schema. The access tables are in the same database the deployment
+// owns, and hold grants and the authorisation trail, never a reproduction.
 var migrations = []struct {
 	version int
 	sql     string
@@ -44,26 +44,26 @@ CREATE TABLE forge_links (
 	{2, `
 -- The "trusted" tier (value 2) was removed in the two-tier rework: publishing is
 -- authorised by project ownership plus a sign-off (006f), not a tier. Fold any
--- stray trusted grant down to a plain user so no orphan tier lingers in the ACL.
+-- stray trusted grant down to a plain user so no orphan tier remains in the ACL.
 UPDATE access_grants SET tier = 1 WHERE tier = 2;
 `},
 	{3, `
 -- Sign-in is open (006q): a first login grants itself TierUser. That turns a
--- deleted grant into a logout, because the very next sign-in would re-create
--- the row an admin just removed. Revocation therefore becomes a recorded state
--- rather than a DELETE, and the self-grant refuses a revoked address.
+-- deleted grant into a logout, because the next sign-in would re-create the row
+-- an admin just removed. Revocation therefore becomes a recorded state rather
+-- than a DELETE, and the self-grant refuses a revoked address.
 --
--- Every existing grant is un-revoked, which is what it already meant.
+-- Every existing grant is unrevoked, which matches its existing meaning.
 ALTER TABLE access_grants ADD COLUMN revoked_at TIMESTAMPTZ;
 ALTER TABLE access_grants ADD COLUMN revoked_by TEXT NOT NULL DEFAULT '';
 `},
 	{4, `
 -- An admin's decision to let a negative-wallet account keep working despite its
--- debt (022d), beside revocation because it is the same shape: recorded state an
--- admin sets, keyed by email. Unlike revocation it is retired — cleared_at set
--- when the wallet recovers — so a later chargeback re-freezes as a fresh
--- decision. It is not in the credit ledger because the ledger is append-only and
--- this is a fact that gets taken back.
+-- debt (022d). It is beside revocation because it has the same shape: recorded
+-- state an admin sets, keyed by email. Unlike revocation it is retired, with
+-- cleared_at set when the wallet recovers, so a later chargeback re-freezes as
+-- a new decision. It is not in the credit ledger because the ledger is
+-- append-only and this is a fact that is later withdrawn.
 CREATE TABLE freeze_overrides (
 	email      TEXT PRIMARY KEY,
 	granted_by TEXT NOT NULL,
@@ -76,22 +76,23 @@ CREATE TABLE freeze_overrides (
 -- principal owns a GitHub login, so 006f could invite that login; 006f instead
 -- takes the login from the request and invites it, and ownership is granted by
 -- the organisation's invitation rather than by anything this table asserted.
--- Nothing read it, nothing wrote it, and a table nobody writes cannot be
--- evidence of anything -- so it goes rather than waiting for a consumer that
--- two specs failed to produce.
+-- Nothing read it and nothing wrote it, and a table nobody writes cannot be
+-- evidence of anything, so it is dropped rather than kept for a consumer that
+-- two specs did not produce.
 DROP TABLE IF EXISTS forge_links;
 `},
 }
 
-// migrationLock is this migrator's advisory-lock id. A rolling deploy runs the
+// migrationLock is this migrator's advisory lock id. A rolling deploy runs the
 // old and new pods at once (maxSurge), so two processes migrate the same
-// database concurrently: both find a version missing, both run its DDL, and the
-// loser dies on "column already exists". It self-heals on restart, and it
-// crash-loops a pod on every schema change until it does.
+// database concurrently: both find a version missing, both run its DDL, and
+// the loser fails on "column already exists". Without the lock the failure
+// resolves itself on restart, but it crash-loops a pod on every schema change
+// until then.
 //
 // The lock is taken inside the migration transaction and released with it, so
-// the second process waits, then reads the version the first just recorded and
-// skips. Each namespace has its own id, so the five migrators only ever
+// the second process waits, then reads the version the first recorded and
+// skips it. Each namespace has its own id, so the five migrators only ever
 // serialise against another copy of themselves.
 const migrationLock = 2
 
@@ -99,11 +100,12 @@ const migrationLock = 2
 // it composes with job.Migrate on the same database without either owning the
 // other's versions.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	// Under the same lock the versions are applied under. IF NOT EXISTS is
-	// not atomic against a concurrent creator: two sessions both find the
-	// table absent, both run the DDL, and the loser dies on a duplicate key
-	// in pg_type — which is the crash this lock exists to prevent, one
-	// statement before the lock was taken.
+	// The table is created under the same lock the versions are applied
+	// under. IF NOT EXISTS is not atomic against a concurrent creator: two
+	// sessions both find the table absent, both run the DDL, and the loser
+	// fails on a duplicate key in pg_type. That is the crash this lock exists
+	// to prevent, and without the lock here it would happen one statement
+	// before the lock was taken.
 	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
 			return err

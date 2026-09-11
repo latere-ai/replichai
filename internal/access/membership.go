@@ -19,8 +19,8 @@ type member struct {
 
 // MemMembership is an in-memory Membership. It is a distinct store from the
 // grant store: a role and a tier are different relations, and keeping them
-// separate is what makes "membership admits nobody to the platform" structural
-// rather than a promise.
+// separate makes it structurally impossible for a membership to admit anybody
+// to the platform.
 type MemMembership struct {
 	mu sync.Mutex
 	// members[project][email] = member; bound[project][principal] = email.
@@ -36,7 +36,7 @@ func NewMemMembership() *MemMembership {
 	}
 }
 
-// SeedLead creates the first lead of a project with no lead check — the
+// SeedLead creates the first lead of a project with no lead check. It is the
 // bootstrap path project creation (007) uses, mirroring SeedAdmin. It seeds by
 // email like every other membership and binds the lead's principal at once, so
 // an owner is never listed as a pending invitation to their own project.
@@ -52,7 +52,8 @@ func (m *MemMembership) SeedLead(_ context.Context, project string, lead Princip
 		return nil
 	}
 	// Bind, unless this project already holds a row for someone else on this
-	// email or another row for this principal — the rules Role and BindAll obey.
+	// email or another row for this principal, which are the rules Role and
+	// BindAll follow.
 	row := m.members[project][email]
 	if _, held := m.bound[project][lead.Sub]; held || row.Principal != "" {
 		return nil
@@ -152,7 +153,7 @@ func (m *MemMembership) BindAll(_ context.Context, p Principal) (int, error) {
 			continue
 		}
 		// Never a second row for this principal in one project: an email change
-		// at the IdP must not make somebody a member twice over.
+		// at the IdP must not make somebody a member twice.
 		if _, held := m.bound[project][p.Sub]; held {
 			continue
 		}
