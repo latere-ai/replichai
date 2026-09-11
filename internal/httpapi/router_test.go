@@ -422,8 +422,8 @@ func TestPaperRouteValidation(t *testing.T) {
 
 	// Working in a project the caller is neither owner nor collaborator of.
 	other, _ := d.Projects.Create(context.Background(), "someone-else", "Theirs")
-	if w := do(t, h, "POST", "/projects/"+other.ID+"/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "me"); w.Code != http.StatusForbidden {
-		t.Errorf("not-owner add: status %d, want 403", w.Code)
+	if w := do(t, h, "POST", "/projects/"+other.ID+"/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "me"); w.Code != http.StatusNotFound {
+		t.Errorf("stranger add: status %d, want 404", w.Code)
 	}
 	if w := do(t, h, "POST", "/projects/nope/papers", `{"url":"https://arxiv.org/abs/2302.03714"}`, "me"); w.Code != http.StatusNotFound {
 		t.Errorf("missing-project add: status %d, want 404", w.Code)
@@ -493,9 +493,9 @@ func TestMakeProjectPublic(t *testing.T) {
 	_ = publishInto(t, d.Jobs, "me", p.ID, "r1")
 	publishable(t, d, "me", "ada")
 
-	// A non-owner is refused, and nothing changes.
-	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "stranger"); w.Code != http.StatusForbidden {
-		t.Fatalf("non-owner flip: status %d, want 403", w.Code)
+	// A stranger is told nothing exists, and nothing changes.
+	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, "stranger"); w.Code != http.StatusNotFound {
+		t.Fatalf("stranger flip: status %d, want 404", w.Code)
 	}
 	// An un-signed flip changes nothing.
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", `{}`, "me"); w.Code != http.StatusBadRequest {
@@ -1114,13 +1114,14 @@ func TestMembersAPI(t *testing.T) {
 		t.Fatalf("members = %+v (status %d); want collab@x.com listed", members, w.Code)
 	}
 
-	// A non-owner may neither list, add, nor remove.
+	// A stranger may neither list, add, nor remove — and is not told the
+	// project exists.
 	stranger := Identity{Sub: "stranger", Email: "s@x.com"}
-	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/members", "", stranger); w.Code != http.StatusForbidden {
-		t.Errorf("non-owner list: status %d, want 403", w.Code)
+	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/members", "", stranger); w.Code != http.StatusNotFound {
+		t.Errorf("stranger list: status %d, want 404", w.Code)
 	}
-	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"x@x.com"}`, stranger); w.Code != http.StatusForbidden {
-		t.Errorf("non-owner add: status %d, want 403", w.Code)
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/members", `{"email":"x@x.com"}`, stranger); w.Code != http.StatusNotFound {
+		t.Errorf("stranger add: status %d, want 404", w.Code)
 	}
 
 	// The owner removes the collaborator.
@@ -1283,9 +1284,9 @@ func TestCancelSession(t *testing.T) {
 	_, _, _ = jobs.Claim(ctx, "test-worker") // -> resolving (non-terminal)
 	h := NewRouter(d).Handler()
 
-	// A non-owner cannot stop it.
-	if w := do(t, h, "POST", "/jobs/"+j.ID+"/cancel", "", "stranger"); w.Code != http.StatusForbidden {
-		t.Fatalf("non-owner cancel: %d, want 403", w.Code)
+	// A stranger cannot stop it, and is told nothing is there.
+	if w := do(t, h, "POST", "/jobs/"+j.ID+"/cancel", "", "stranger"); w.Code != http.StatusNotFound {
+		t.Fatalf("stranger cancel: %d, want 404", w.Code)
 	}
 	// The owner stops it; it ends failed/cancelled.
 	if w := do(t, h, "POST", "/jobs/"+j.ID+"/cancel", "", "me"); w.Code != http.StatusOK {

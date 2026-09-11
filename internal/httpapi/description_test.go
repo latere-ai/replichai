@@ -78,8 +78,8 @@ func TestADescriptionIsBoundedAndOwned(t *testing.T) {
 	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{"description":`+string(long)+`}`, "me"); w.Code != http.StatusBadRequest {
 		t.Errorf("an over-long description = %d, want 400", w.Code)
 	}
-	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{"description":"mine now"}`, "somebody-else"); w.Code != http.StatusForbidden {
-		t.Errorf("a stranger describing a project = %d, want 403", w.Code)
+	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{"description":"mine now"}`, "somebody-else"); w.Code != http.StatusNotFound {
+		t.Errorf("a stranger describing a project = %d, want 404: a stranger learns nothing", w.Code)
 	}
 	if got := projectOf(t, h, p.ID, "me"); got.Description != "" {
 		t.Errorf("a refused edit still wrote: %q", got.Description)

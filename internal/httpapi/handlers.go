@@ -797,28 +797,10 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 }
 
 // moveTarget resolves a move's destination — projectForWork's job for a project
-// named in the body rather than the path. It answers 404 for a project the
-// caller has no stake in, not 403: the id came from the caller, and confirming
-// that some other person's project exists is the leak projectForRead avoids.
+// named in the body rather than the path, with its own not-found code so the
+// app can say which end of the move was missing.
 func (rt *Router) moveTarget(w http.ResponseWriter, r *http.Request, id string) (project.Project, bool) {
-	p, err := rt.projects.Get(r.Context(), id)
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "target_not_found")
-		return project.Project{}, false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "project_read_failed")
-		return project.Project{}, false
-	}
-	if !rt.mayWorkInProject(r, p, principal(r)) {
-		writeError(w, http.StatusNotFound, "target_not_found")
-		return project.Project{}, false
-	}
-	if p.Trashed() {
-		writeError(w, http.StatusConflict, "project_trashed")
-		return project.Project{}, false
-	}
-	return p, true
+	return rt.resolveProject(w, r, id, needWork, false, "target_not_found")
 }
 
 // leads reports whether the caller may take a lead's action in this project. An
@@ -898,55 +880,83 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"job_id": j.ID, "project_id": proj.ID})
 }
 
-// projectForWork loads the project named in the path and refuses a caller who
-// may not work in it — the one gate every paper and session write shares, so no
-// route can forget it.
-func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
-	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
+// need is what a route requires of the caller in a project.
+type need int
+
+const (
+	// needView: the caller may see the project — it is public, or they own
+	// it or are a member of it.
+	needView need = iota
+	// needWork: the caller may work in it — owner, or a member with a working
+	// role (mayWorkInProject).
+	needWork
+	// needOwner: the caller owns it.
+	needOwner
+)
+
+// resolveProject is the one gate every project-scoped route passes, so the
+// rules live in one place and no route can hold a different one:
+//
+//   - a project that does not exist and a project the caller may not view
+//     answer the same 404, with the same body. Whether a stranger's project is
+//     there is not a stranger's business, and a 403 would tell them;
+//   - a project the caller may view but not at the level the route needs is
+//     refused with 403 not_owner — they are inside, and the explanation is
+//     theirs to have;
+//   - a project in the trash is readable by its owner and writable by nobody
+//     (019). A route that works on one asks for allowTrashed; every other route
+//     is refused with 409 project_trashed here, once, rather than in each.
+//
+// notFound is the code the route answers a hidden project with; the codes
+// differ by route history and the app keys on them.
+func (rt *Router) resolveProject(w http.ResponseWriter, r *http.Request, id string, n need, allowTrashed bool, notFound string) (project.Project, bool) {
+	proj, err := rt.projects.Get(r.Context(), id)
 	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "project_not_found")
+		writeError(w, http.StatusNotFound, notFound)
 		return project.Project{}, false
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return project.Project{}, false
 	}
-	if !rt.mayWorkInProject(r, proj, principal(r)) {
-		writeError(w, http.StatusForbidden, "not_owner")
+	if !rt.mayViewProject(r, proj) {
+		writeError(w, http.StatusNotFound, notFound)
 		return project.Project{}, false
 	}
-	// A project in the trash is readable by its owner and writable by nobody
-	// (019). It is refused here, at the one gate every working route passes, so
-	// starting a session, adding a paper, moving credits and publishing are all
-	// closed by one check rather than five that have to be remembered.
-	if proj.Trashed() {
+	switch n {
+	case needView:
+	case needWork:
+		if !rt.mayWorkInProject(r, proj, principal(r)) {
+			writeError(w, http.StatusForbidden, "not_owner")
+			return project.Project{}, false
+		}
+	case needOwner:
+		if proj.Owner != principal(r) {
+			writeError(w, http.StatusForbidden, "not_owner")
+			return project.Project{}, false
+		}
+	}
+	if proj.Trashed() && !allowTrashed {
 		writeError(w, http.StatusConflict, "project_trashed")
 		return project.Project{}, false
 	}
 	return proj, true
 }
 
+// projectForWork loads the project named in the path and refuses a caller who
+// may not work in it — the one gate every paper and session write shares, so no
+// route can forget it. A project in the trash is refused too: starting a
+// session, adding a paper, moving credits and publishing are all closed by one
+// check rather than five that have to be remembered.
+func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
+	return rt.resolveProject(w, r, r.PathValue("id"), needWork, false, "project_not_found")
+}
+
 // projectForRead is projectForWork's read counterpart: a public project is open
 // to anyone signed in, so listing what a project is about follows the same rule
-// as listing its sessions.
+// as listing its sessions. A trashed project stays readable by its owner.
 func (rt *Router) projectForRead(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
-	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "project_not_found")
-		return project.Project{}, false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "project_read_failed")
-		return project.Project{}, false
-	}
-	// Hidden, not refused — the same rule getProject follows. It mattered less
-	// while the route was gated; open (028), a 403 here would confirm to anybody
-	// walking ids that a private project exists.
-	if !rt.mayViewProject(r, proj) {
-		writeError(w, http.StatusNotFound, "project_not_found")
-		return project.Project{}, false
-	}
-	return proj, true
+	return rt.resolveProject(w, r, r.PathValue("id"), needView, true, "project_not_found")
 }
 
 // stakeIn reports whether this caller has a stake in a project — its owner or a
@@ -1366,28 +1376,19 @@ func (rt *Router) reclaimCredits(w http.ResponseWriter, r *http.Request) {
 // nonsense amount, move, and answer with the balances the client would
 // otherwise have to re-read.
 func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool) {
+	// Resolved before anything about this deployment is disclosed: a stranger
+	// learns neither that the project exists nor whether credits are wired.
+	// Somebody who can see the project still gets the honest 403 below from
+	// the ledger's own membership rule, which is the authority over its money.
+	proj, ok := rt.resolveProject(w, r, r.PathValue("id"), needView, true, "not_found")
+	if !ok {
+		return
+	}
 	if rt.credits == nil {
 		writeError(w, http.StatusNotImplemented, "credits_unavailable")
 		return
 	}
-	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "project_read_failed")
-		return
-	}
-	// A project the caller may not see reads as not-found here exactly as it
-	// does on every read path. Answering `not_member` instead would confirm
-	// that a guessed private id exists — the one thing getProject's 404 is
-	// there to withhold. Somebody who *can* see the project still gets the
-	// honest 403 below: that refusal tells them nothing they did not know.
-	if !rt.mayViewProject(r, proj) {
-		writeError(w, http.StatusNotFound, "not_found")
-		return
-	}
+	var err error
 	var body struct {
 		Amount int64 `json:"amount"`
 	}
@@ -1422,7 +1423,13 @@ func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool)
 	}
 	// Both sides come back, because both moved and a client that re-read them
 	// separately could show a moment where the money is in neither.
-	wallet, _ := rt.credits.Balance(r.Context(), credit.Wallet(id.Email))
+	wallet, err := rt.credits.Balance(r.Context(), credit.Wallet(id.Email))
+	if err != nil {
+		// The move landed. A wallet of zero here would be a false zero — the one
+		// number this API promises never to emit — so the read failure is said.
+		writeError(w, http.StatusInternalServerError, "credits_read_failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"wallet":  wallet,
 		"project": rt.projectCredits(r, proj),
@@ -1964,27 +1971,24 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rt.closeRepos(r.Context(), sessions)
 	}
-	updated, _ := rt.projects.Get(r.Context(), proj.ID)
-	writeJSON(w, http.StatusOK, updated)
-}
-
-// makeProjectPublic is the owner's public flip, gated by a responsibility
-// sign-off (006f). It refuses a non-owner (403), refuses a project none of whose
-// published sessions cleared 002's redistribution gate (409 not_clear), records
-// the sign-off with its signer snapshot (006n), marks the project public, and —
-// best-effort — flips the forge repository public when a publisher is wired.
-func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
-	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found")
-		return
-	}
+	updated, err := rt.projects.Get(r.Context(), proj.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	if proj.Owner != principal(r) {
-		writeError(w, http.StatusForbidden, "not_owner")
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// makeProjectPublic is the owner's public flip, gated by a responsibility
+// sign-off (006f). It resolves through ownedProject, so a stranger sees no
+// project, a collaborator is refused, and a project in the trash cannot be
+// published (019). It refuses a project none of whose
+// published sessions cleared 002's redistribution gate (409 not_clear), records
+// the sign-off with its signer snapshot (006n), marks the project public, and —
+// best-effort — flips the forge repository public when a publisher is wired.
+func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
+	proj, _, ok := rt.ownedProject(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -2093,7 +2097,13 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	updated, _ := rt.projects.Get(r.Context(), proj.ID)
+	updated, err := rt.projects.Get(r.Context(), proj.ID)
+	if err != nil {
+		// The flip landed; what failed is reading it back. Say so rather than
+		// answering with an empty project that reads as "nothing changed".
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, updated)
 }
 
@@ -2225,58 +2235,24 @@ func (rt *Router) publishBlockers(ctx context.Context, sessions []job.Job) ([]Pu
 	return blockers, repos
 }
 
-// ownedProject resolves a project and asserts the caller owns it, writing the
-// error and returning ok=false otherwise — the authority behind every member
-// route (006f): membership is owner-driven.
+// ownedProject resolves the project named in the path for a route only its
+// owner may take — the authority behind every member route (006f): membership
+// is owner-driven. Nothing about a project in the trash changes (019) — not
+// its name, not its members, not its visibility — so a trashed one is refused;
+// the trash routes resolve through trashableProject instead.
 func (rt *Router) ownedProject(w http.ResponseWriter, r *http.Request) (project.Project, Identity, bool) {
 	id, _ := IdentityFrom(r)
-	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found")
-		return project.Project{}, id, false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "project_read_failed")
-		return project.Project{}, id, false
-	}
-	if proj.Owner != id.Sub {
-		writeError(w, http.StatusForbidden, "not_owner")
-		return project.Project{}, id, false
-	}
-	// Nothing about a project in the trash changes (019) — not its name, not its
-	// members, not its visibility. The trash routes resolve through
-	// trashableProject instead, which is what lets them act on one.
-	if proj.Trashed() {
-		writeError(w, http.StatusConflict, "project_trashed")
-		return project.Project{}, id, false
-	}
-	return proj, id, true
+	proj, ok := rt.resolveProject(w, r, r.PathValue("id"), needOwner, false, "not_found")
+	return proj, id, ok
 }
 
 // trashableProject resolves a project for the trash routes (019): the owner
-// alone may remove one. A collaborator is refused; anybody who may not even view
-// it is told nothing exists, the same rule getProject applies, because whether a
-// stranger's project is there is not a stranger's business.
+// alone may remove or restore one, and the one they act on may already be in
+// the trash.
 func (rt *Router) trashableProject(w http.ResponseWriter, r *http.Request) (project.Project, Identity, bool) {
 	id, _ := IdentityFrom(r)
-	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, project.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found")
-		return project.Project{}, id, false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "project_read_failed")
-		return project.Project{}, id, false
-	}
-	if proj.Owner != id.Sub {
-		if !rt.mayViewProject(r, proj) {
-			writeError(w, http.StatusNotFound, "not_found")
-		} else {
-			writeError(w, http.StatusForbidden, "not_owner")
-		}
-		return project.Project{}, id, false
-	}
-	return proj, id, true
+	proj, ok := rt.resolveProject(w, r, r.PathValue("id"), needOwner, true, "not_found")
+	return proj, id, ok
 }
 
 // trashProject moves a project to the trash, or — with ?purge=1 — removes it for
@@ -3166,16 +3142,17 @@ func (rt *Router) getJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // cancelSession stops a running session. Only the owner of the session's project
-// may stop it (a write action, so 403 explains rather than hides). It returns
-// the resulting job; stopping an already-finished session is a no-op.
+// may stop it: a collaborator is refused with 403, a stranger is told nothing
+// exists, as every session route tells them. It returns the resulting job;
+// stopping an already-finished session is a no-op.
 func (rt *Router) cancelSession(w http.ResponseWriter, r *http.Request) {
-	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found")
+	// Resolved like every other session route: a session the caller may not
+	// view does not exist to them, and a store failure is a store failure.
+	j, proj, ok := rt.viewableSessionIn(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
-	proj, err := rt.projects.Get(r.Context(), j.ProjectID)
-	if err != nil || proj.Owner != principal(r) {
+	if proj.Owner != principal(r) {
 		writeError(w, http.StatusForbidden, "not_owner")
 		return
 	}
@@ -3187,7 +3164,11 @@ func (rt *Router) cancelSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "cancel_failed")
 		return
 	}
-	updated, _ := rt.jobs.Get(r.Context(), j.ID)
+	updated, err := rt.jobs.Get(r.Context(), j.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "session_read_failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, updated)
 }
 

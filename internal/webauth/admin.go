@@ -246,12 +246,17 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	next := platform.Settings{StartReserve: body.StartReserve, OverdraftCap: body.OverdraftCap}
 	// An omitted card, spread, or floor keeps the value in force, so a partial
-	// edit never silently wipes a setting it did not touch.
-	current, currentErr := a.platform.Settings(r.Context())
+	// edit never silently wipes a setting it did not touch. That needs the
+	// value in force: if it cannot be read, the edit is refused rather than
+	// written over compiled defaults.
+	current, err := a.platform.Settings(r.Context())
+	if err != nil {
+		writeAdminError(w, err)
+		return
+	}
+	next.Rates = current.Rates
 	if body.Rates != nil {
 		next.Rates = *body.Rates
-	} else if currentErr == nil {
-		next.Rates = current.Rates
 	}
 	next.SpreadBps = current.SpreadBps
 	next.SpreadFixedMicro = current.SpreadFixedMicro
@@ -273,7 +278,11 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
-	s, _ := a.platform.Settings(r.Context())
+	s, err := a.platform.Settings(r.Context())
+	if err != nil {
+		writeAdminError(w, err)
+		return
+	}
 	writeJSON(w, s)
 }
 

@@ -5,7 +5,9 @@ package httpapi
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
+	"github.com/latere-ai/replichai/internal/project"
 	"log"
 	"net/http"
 	"regexp"
@@ -40,8 +42,12 @@ import (
 // A truncated zip with a 200 is silently incomplete; a noted one is not.
 func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
-	if err != nil {
+	if errors.Is(err, project.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
 	// Hidden, not refused — getProject's rule rather than the older member
