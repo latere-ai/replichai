@@ -278,9 +278,17 @@ func (r *Runtime) abandon(ctx context.Context, session *Session, locator Locator
 	_ = session.Remove()
 }
 
-// Poll advances the session: it drains whatever the current stage has written,
-// observes it, and where it has finished decides what comes next — a judge
+// Poll advances the session: it observes the current stage, drains whatever it
+// has written, and where it has finished decides what comes next — a judge
 // after a worker, a revision after a rejection, or a terminal state.
+//
+// The observation comes before the drain, and a stage found finished is
+// drained once more to end of file before Poll returns. A stage writes its
+// last line and exits between two polls, so a drain that ran before the
+// observation would leave that line for a next poll that a terminal stage never
+// gets — and the line a harness writes last is its result event, which carries
+// the run's total cost. Draining first folded the bill from a per-message
+// maximum instead of the session total.
 func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
 	session, locator, err := r.attach(ref)
 	if err != nil {
@@ -304,21 +312,32 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	}
 
 	current := &locator.Stages[len(locator.Stages)-1]
+	status.Model = model
+
+	// Observe first, then drain: a stage that has just written its final line
+	// and exited must have that line read, not held for a poll a terminal
+	// stage never receives.
+	observed, err := r.config.Sandbox.Observe(ctx, current.Handle)
+	if err != nil {
+		return managed.Status{}, err
+	}
 	usage, err := r.drain(ctx, session, locator.Harness, current)
 	if err != nil {
 		return managed.Status{}, err
 	}
 	status.Usage = harness.Fold(status.Usage, usage)
-	status.Model = model
-
-	observed, err := r.config.Sandbox.Observe(ctx, current.Handle)
-	if err != nil {
-		return managed.Status{}, err
-	}
 	if observed.Running {
 		status.State = managed.StateRunning
 		return status, r.save(session, locator, &status, ref)
 	}
+	// The stage has finished. Drain once more to end of file, so anything it
+	// wrote between the observation and now — its result event above all — is
+	// in the transcript and its usage in the total before the stage is closed.
+	final, err := r.drain(ctx, session, locator.Harness, current)
+	if err != nil {
+		return managed.Status{}, err
+	}
+	status.Usage = harness.Fold(status.Usage, final)
 	// A stage the driver has lost is not a stage that succeeded. Its exit is
 	// unknowable, and reporting success on an unknown exit is exactly the
 	// class of defect 044 recorded.

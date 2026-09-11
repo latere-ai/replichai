@@ -331,6 +331,34 @@ func TestStartCleansUpTheSessionWhenLaunchFails(t *testing.T) {
 	}
 }
 
+// A stage writes its last line and exits between two polls. That line is the
+// harness's result event, which carries the run's total cost, and a Poll that
+// drained before it observed left it for a next poll a finished stage never
+// gets — so the line was lost and the bill folded from a per-message maximum.
+func TestPollKeepsTheFinalLineOfAStageThatExitsBetweenObservations(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 1, FinalLineOnExit: true})
+	status := runToTerminal(t, runtime, start(t, runtime, spec(false)))
+
+	events, err := runtime.Events(context.Background(), status.Ref)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	found := false
+	for _, event := range events {
+		if event.Kind == harness.KindResult {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the stage's final result line was lost: the poll drained before it observed")
+	}
+	// The result event carries the run's vendor cost, and the terminal status's
+	// usage is only complete if that final line was folded in.
+	if status.Usage.Details["vendor_cost_micro_usd"] == 0 {
+		t.Errorf("the total cost was lost with the final line: %+v", status.Usage.Details)
+	}
+}
+
 // A graded session that passes ends done with a decided verdict, having run
 // one worker and one judge.
 func TestAGradedSessionRunsAWorkerThenAJudge(t *testing.T) {

@@ -40,6 +40,13 @@ type Script struct {
 	SilentRounds map[int]bool
 	// PollsBeforeExit is how many observations a stage stays running for.
 	PollsBeforeExit int
+	// FinalLineOnExit holds a harness stage's last line back until the
+	// observation that finds it finished, so it is written and the stage
+	// exits between two polls. It reproduces the race a real stage runs: a
+	// runtime that drains before it observes loses that line, and the line a
+	// harness writes last is its result event, which carries the run's total
+	// cost.
+	FinalLineOnExit bool
 	// WorkerCommits makes the worker commit what it wrote, as a real one
 	// does. The push path has nothing to send otherwise, so a test that
 	// reaches it needs a workspace with history in it.
@@ -68,6 +75,10 @@ type stage struct {
 	discarded bool
 	role      string
 	round     int
+	// finalLine is a harness stage's last line, held back from the log until
+	// the observation that finds the stage finished. It is empty once
+	// written, and empty from the start where the script does not hold it.
+	finalLine string
 }
 
 // New returns a scripted driver. The zero Script is a usable happy path: every
@@ -120,6 +131,23 @@ func (s *Sandbox) Launch(_ context.Context, spec sandbox.StageSpec) (sandbox.Sta
 	return sandbox.StageHandle{Driver: sandbox.Host, ID: id}, nil
 }
 
+// writeFinalLine appends the stage's held-back last line to its log, once.
+func (e *stage) writeFinalLine() error {
+	if e.finalLine == "" {
+		return nil
+	}
+	file, err := os.OpenFile(e.spec.LogPath, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	if _, err := file.WriteString(e.finalLine + "\n"); err != nil {
+		return err
+	}
+	e.finalLine = ""
+	return nil
+}
+
 func (s *Sandbox) judgeRoundLocked() int {
 	round := 0
 	for _, existing := range s.stages {
@@ -143,6 +171,13 @@ func (s *Sandbox) produce(entry *stage) error {
 	}
 	if err := os.MkdirAll(filepath.Dir(entry.spec.LogPath), 0o700); err != nil {
 		return err
+	}
+	// A harness stage's last line is held back where the script asks, so it is
+	// written between two polls rather than up front: that is the race a
+	// runtime draining before it observes loses.
+	if s.script.FinalLineOnExit && entry.role != "bootstrap" && len(lines) > 1 {
+		entry.finalLine = lines[len(lines)-1]
+		lines = lines[:len(lines)-1]
 	}
 	if err := os.WriteFile(entry.spec.LogPath, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		return err
@@ -229,6 +264,12 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 		entry.polls++
 		if entry.polls > s.script.PollsBeforeExit {
 			entry.running = false
+			// The stage finishes on this observation, and its held-back last
+			// line is written now — after any drain that ran before this
+			// observation, so a runtime that does not drain again loses it.
+			if err := entry.writeFinalLine(); err != nil {
+				return sandbox.StageStatus{}, err
+			}
 		}
 	}
 	return sandbox.StageStatus{Running: entry.running, ExitCode: entry.exit}, nil
