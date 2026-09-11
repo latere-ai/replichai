@@ -44,8 +44,8 @@ func instrumentJSON(t *testing.T, design string) []byte {
 var testRepo = publish.Repo{Owner: "open-hai", Name: "a-repro"}
 
 // AC1: an instrument resolves at a pinned commit, and re-resolving the same ref
-// after the reproduction gains a commit returns the pinned declaration — the
-// store need keep no copy, because the ref is enough.
+// after the reproduction gains a commit returns the pinned declaration, so the
+// store need keep no copy; the ref is enough.
 func TestResolvePinsToACommit(t *testing.T) {
 	f := &fakeForge{
 		head: "aaaaaaaa1111",
@@ -69,7 +69,7 @@ func TestResolvePinsToACommit(t *testing.T) {
 	f.files["bbbbbbbb2222"] = map[string][]byte{InstrumentPath: instrumentJSON(t, "design-v2")}
 	f.head = "bbbbbbbb2222"
 
-	// Re-resolving the ORIGINAL ref still yields the pinned declaration.
+	// Re-resolving the original ref still yields the pinned declaration.
 	pinned, err := ResolveAt(context.Background(), f, first.Ref)
 	if err != nil {
 		t.Fatalf("ResolveAt: %v", err)
@@ -78,8 +78,8 @@ func TestResolvePinsToACommit(t *testing.T) {
 		t.Errorf("pinned re-resolution = %q, want design-v1 (head moved to v2)", pinned.Decl.Protocol.Design)
 	}
 
-	// Resolving afresh follows the moved head — proof the pin, not the forge, is
-	// what held the first result steady.
+	// Resolving afresh follows the moved head, which shows that the pin, not
+	// the forge, held the first result steady.
 	latest, err := Resolve(context.Background(), f, testRepo)
 	if err != nil {
 		t.Fatalf("Resolve latest: %v", err)
@@ -89,9 +89,9 @@ func TestResolvePinsToACommit(t *testing.T) {
 	}
 }
 
-// AC1 (second clause): the store keeps no copy of the instrument declaration —
-// only a reference. Asserted structurally, so swapping Experiment.Ref for a
-// stored Instrument would trip here rather than silently persisting src/ and
+// AC1, second clause: the store keeps no copy of the instrument declaration,
+// only a reference. This is asserted structurally, so swapping Experiment.Ref
+// for a stored Instrument fails here rather than silently persisting src/ and
 // instrument.json against 003's no-drift rule.
 func TestStoredExperimentHoldsNoDeclaration(t *testing.T) {
 	declType := reflect.TypeFor[Instrument]()

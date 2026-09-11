@@ -11,11 +11,11 @@ import (
 	"errors"
 )
 
-// This spec ships before Postgres (007b sits before 006b in the build
-// sequence), so persistence is an interface with in-memory and filesystem
-// implementations, exactly as 006b does for jobs. The Postgres implementation,
-// its migration, and the job-kind dispatch land with 006b against these
-// contracts — the engine is complete and testable first.
+// 007b ships before Postgres (006b) in the build sequence, so persistence is an
+// interface with in-memory and filesystem implementations, as 006b does for
+// jobs. The Postgres implementation, its migration, and the job-kind dispatch
+// land with 006b against these contracts, so the engine is complete and
+// testable first.
 
 // Errors the stores return.
 var (
@@ -27,10 +27,10 @@ var (
 	ErrNoID = errors.New("record has no ID")
 )
 
-// Experiment is the durable record of what was run against what. Unlike a job,
-// it is not disposable: it is a finding the platform is the only holder of, so
-// it outlives the job that produced it. The instrument is kept as a reference,
-// never a copy — the declaration re-resolves from the pinned commit.
+// Experiment is the durable record of what was run against what. Unlike a job
+// it is not disposable: it is a finding only the platform holds, so it outlives
+// the job that produced it. The instrument is kept as a reference, not a copy;
+// the declaration is re-resolved from the pinned commit.
 type Experiment struct {
 	ID        string        `json:"id"`
 	ProjectID string        `json:"project_id"`
@@ -39,10 +39,10 @@ type Experiment struct {
 	DatasetID string        `json:"dataset_id,omitempty"` // empty for released
 	Command   string        `json:"command"`              // resolved from analysis
 	Outcome   *Outcome      `json:"outcome,omitempty"`    // nil until the run completes
-	// CohortKind is the indelible synthetic label (007c) — CohortGenerated or
-	// CohortModel — empty for a non-synthetic source. It is a required field on
-	// every synthetic experiment and becomes a NOT NULL column when 006b lands,
-	// so no synthetic result can reach a reader stripped of what it is.
+	// CohortKind is the synthetic label (007c), CohortGenerated or
+	// CohortModel, and is empty for a non-synthetic source. It is required on
+	// every synthetic experiment and becomes a NOT NULL column when 006b
+	// lands, so no synthetic result can reach a reader without it.
 	CohortKind CohortKind `json:"cohort_kind,omitempty"`
 }
 
@@ -58,9 +58,9 @@ type Dataset struct {
 }
 
 // Store persists experiment and dataset rows. It is the metadata plane; bytes
-// live in the ArtifactStore. Deleting a dataset is real (AC9) and cascades to
-// the bytes through the ArtifactStore, which the caller wires — the Store owns
-// only the rows.
+// live in the ArtifactStore. Deleting a dataset removes it (AC9) and cascades
+// to the bytes through the ArtifactStore, which the caller wires; the Store
+// owns only the rows.
 type Store interface {
 	CreateExperiment(ctx context.Context, e *Experiment) error
 	GetExperiment(ctx context.Context, id string) (*Experiment, error)

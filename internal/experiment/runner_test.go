@@ -196,9 +196,9 @@ func TestRunnerMissingReportIsFailedToRun(t *testing.T) {
 	}
 }
 
-// The worker may name an output it did not actually produce; the runner skips
-// it rather than failing, since a missing file is the worker's honesty problem,
-// not the runner's error.
+// The worker may name an output it did not produce; the runner skips it rather
+// than failing, since a missing file is a fault in the worker's report and not
+// a runner error.
 func TestRunnerSkipsNamedButAbsentOutput(t *testing.T) {
 	p := memory.New()
 	p.Files = map[string][]byte{
@@ -325,8 +325,8 @@ func TestRunnerTimesOut(t *testing.T) {
 	}
 }
 
-// AC6: the doctrine the worker is given carries no license to repair. Asserted
-// on the real method/experiment.md, since that is the instruction sent live.
+// AC6: the instructions the worker is given grant no permission to repair.
+// Asserted on the real method/experiment.md, since that is what is sent live.
 func TestExperimentDoctrineForbidsRepair(t *testing.T) {
 	doctrine, err := method.LoadExperiment("")
 	if err != nil {
@@ -338,8 +338,8 @@ func TestExperimentDoctrineForbidsRepair(t *testing.T) {
 			t.Errorf("doctrine is missing the no-repair rule %q", must)
 		}
 	}
-	// A doctrine that licensed repair would grant permission to change the
-	// command. It must never phrase modification as allowed.
+	// Instructions that permitted repair would allow the command to be
+	// changed. They must never phrase modification as allowed.
 	for _, license := range []string{"you may modify", "feel free to", "if needed, adjust", "make it work"} {
 		if strings.Contains(lower, license) {
 			t.Errorf("doctrine appears to license repair: %q", license)

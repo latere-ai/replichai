@@ -32,7 +32,7 @@ func TestSweepFindsInstability(t *testing.T) {
 		t.Errorf("a well-behaved analysis should show no instability, got %v", rep.Unstable)
 	}
 
-	// An analysis that breaks above an effect of 10 — the sweep must surface it.
+	// An analysis that breaks above an effect of 10; the sweep must report it.
 	brittle := func(data []byte) (float64, bool) {
 		d := meanDifference(t, data, "score", "condition", groupTreatment)
 		if d > 12 {

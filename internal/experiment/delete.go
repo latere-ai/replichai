@@ -8,14 +8,15 @@ import (
 	"fmt"
 )
 
-// PurgeDataset deletes a researcher's dataset for real: the uploaded file, every
-// artifact derived from it, and the checksums that pointed at them. It keeps the
-// experiment rows — a run happened, and that record stands — but strips their
-// inputs, so what survives is the fact of the run, not the data behind it.
+// PurgeDataset deletes a researcher's dataset: the uploaded file, every artifact
+// derived from it, and the checksums that pointed at them. The experiment rows
+// are kept, because the run happened, but their inputs are stripped, so only
+// the record of the run survives.
 //
-// This is deletion, not a flag (007b's rejected soft-delete): after it, nothing
-// the researcher asked us to remove is still on disk. It runs before the row so
-// it can find the experiments that used the dataset through its project.
+// This is a deletion and not a flag; 007b rejected soft-delete. Afterwards
+// nothing the researcher asked to remove remains on disk. The bytes are removed
+// before the row so the experiments that used the dataset can still be found
+// through its project.
 func PurgeDataset(ctx context.Context, store Store, blobs ArtifactStore, datasetID string) error {
 	d, err := store.GetDataset(ctx, datasetID)
 	if err != nil {

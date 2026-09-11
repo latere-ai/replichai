@@ -10,9 +10,9 @@ import (
 )
 
 // A synthetic cohort drives an extracted protocol with no people in it. It is a
-// pilot — by construction it precedes a study and never is one — and everything
-// it produces is a claim about the instrument, never about the paper or about
-// people. Two sub-kinds, named as cohort kinds:
+// pilot: it precedes a study and is never one, and everything it produces is a
+// claim about the instrument, never about the paper or about people. There are
+// two kinds.
 
 // CohortKind is which synthetic cohort produced a pilot's data.
 type CohortKind string
@@ -20,8 +20,8 @@ type CohortKind string
 const (
 	// CohortGenerated is a deterministic data generator: it reads the protocol
 	// and emits conforming trial data from a recorded seed, with no model and no
-	// credential. It carries the shakedown and the positive control, the two uses
-	// that hold weight, and it is ungated because it claims nothing about a
+	// credential. It serves the shakedown and the positive control, the two
+	// uses that carry weight, and is ungated because it claims nothing about a
 	// responder.
 	CohortGenerated CohortKind = "synthetic:generated"
 	// CohortModel is a model cohort: N sessions driven through the protocol,
@@ -34,34 +34,34 @@ const (
 // creation, never a run that discovers the problem after the fact.
 var (
 	// ErrNoReleasedData reports that the platform holds no released dataset to
-	// calibrate a model cohort against. Availability is a store fact — a 007b
-	// dataset row exists or it does not — not something instrument.json declares,
-	// because the audit cannot verify what data a deployment happens to hold.
+	// calibrate a model cohort against. Availability is a store fact, whether
+	// a 007b dataset row exists, and not something instrument.json declares,
+	// because the audit cannot verify what data a deployment holds.
 	ErrNoReleasedData = errors.New("a model cohort needs the paper's released data to calibrate against")
 	// ErrNoReportedGroundTruth reports an instrument that declares no reported
 	// results, so a cohort's numbers could not be checked against a real answer.
 	ErrNoReportedGroundTruth = errors.New("a model cohort needs the instrument's reported ground truth")
-	// ErrNoServableComponent reports a protocol no component of which a model can
-	// be driven through — a page cannot serve it, and neither can a cohort.
+	// ErrNoServableComponent reports a protocol with no component a model can
+	// be driven through; a page cannot serve it, and neither can a cohort.
 	ErrNoServableComponent = errors.New("a model cohort needs at least one servable component")
 )
 
 // Coverage is which components a model cohort may drive and which it must skip.
 // A model cohort covers the servable components and refuses the rest: a
 // manipulation the page cannot administer is one a model cannot undergo either,
-// and describing it in a prompt and recording what the model does is exactly the
-// fabrication this spec exists to prevent.
+// and describing it in a prompt and recording what the model does is the
+// fabrication this spec prevents.
 type Coverage struct {
 	Servable []string                          // component names a cohort may cover
 	Skipped  []instrument.ComponentServability // unservable components, with their failed criteria
 }
 
 // GateModelCohort decides whether a model cohort may run, and over which
-// components. The gate is an intersection — released data held by the platform,
-// reported ground truth in the instrument, and at least one servable component —
-// so a model cohort the platform runs at first can always be checked against a
-// real answer. It is a gate to relax deliberately once calibration has been
-// measured, not a permanent property.
+// components. The gate requires all of: released data held by the platform,
+// reported ground truth in the instrument, and at least one servable
+// component, so every model cohort the platform runs at first can be checked
+// against a real answer. It is meant to be relaxed once calibration has been
+// measured and is not a permanent property.
 //
 // releasedAvailable is the platform's own answer to "do we hold this paper's
 // released data?", supplied by the caller because it is a store fact.

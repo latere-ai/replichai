@@ -39,9 +39,9 @@ func (c Caps) Admit(participants, trials int) error {
 	return nil
 }
 
-// PilotConfig is a pilot's own hidden decisions, recorded so the pilot is
-// reproducible in exactly the way the audit's hidden-decisions list exists to
-// expose. The platform holds itself to the standard it grades papers against.
+// PilotConfig records a pilot's own hidden decisions, so the pilot is
+// reproducible in the way the audit's hidden-decisions list requires of
+// papers. The platform holds itself to the standard it grades papers against.
 type PilotConfig struct {
 	N    int  `json:"n"`
 	Caps Caps `json:"caps"`
@@ -54,10 +54,10 @@ type PilotConfig struct {
 	Seed int64 `json:"seed,omitempty"`
 }
 
-// Pilot is what a synthetic run emits. It is deliberately NOT an Outcome or a
-// Result: the compiler, not a code review, is what stops a pilot from flowing
-// into a path that reports findings about people (AC7). Kind is always set — a
-// pilot with no cohort_kind is never written.
+// Pilot is what a synthetic run emits. It is a distinct type rather than an
+// Outcome or a Result so that the compiler, not code review, stops a pilot from
+// flowing into a path that reports findings about people (AC7). Kind is always
+// set; a pilot with no cohort_kind is never written.
 type Pilot struct {
 	Kind        CohortKind                        `json:"cohort_kind"` // the indelible label
 	Config      PilotConfig                       `json:"config"`
@@ -97,10 +97,10 @@ func (p Pilot) validate() error {
 	return nil
 }
 
-// Render produces PILOT.md — never RESULTS.md — which opens with what the pilot
-// does NOT establish before it shows a single number (AC6), and carries the
-// cohort_kind label. It returns an error rather than a report for an incomplete
-// pilot, so an unreproducible pilot is simply not written.
+// Render produces PILOT.md, never RESULTS.md. The report opens with what the
+// pilot does not establish before it shows any number (AC6) and carries the
+// cohort_kind label. An incomplete pilot yields an error rather than a report,
+// so an unreproducible pilot is not written.
 func (p Pilot) Render() ([]byte, error) {
 	if err := p.validate(); err != nil {
 		return nil, err

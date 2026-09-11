@@ -14,18 +14,17 @@ import (
 	"github.com/latere-ai/replichai/internal/instrument"
 )
 
-// Cohort is a source of trial data with no people in it (007c) — and the seam
-// 007d's human cohort becomes a third implementation of, rather than a parallel
+// Cohort is a source of trial data with no people in it (007c). 007d's human
+// cohort becomes a third implementation of it rather than a parallel
 // mechanism. Collect emits data conforming to the instrument's analysis input,
 // so the instrument's own pipeline runs on it unchanged.
 type Cohort interface {
 	Collect(ctx context.Context, decl instrument.Instrument) (CohortData, error)
 }
 
-// The seam is only a seam if the compiler checks it. Nothing holds a Cohort
-// yet — the kind travels as Pilot.Kind and each caller knows its concrete
-// cohort — so without these the two implementations could drift apart and the
-// interface would still compile.
+// Nothing holds a Cohort yet: the kind travels as Pilot.Kind and each caller
+// knows its concrete cohort. Without these assertions the two implementations
+// could drift from the interface and still compile.
 var (
 	_ Cohort = Generated{}
 	_ Cohort = (*ModelCohort)(nil)
@@ -50,8 +49,9 @@ type SpecifiedEffect struct {
 
 // Generated is a deterministic data generator: it reads the analysis input
 // schema and emits conforming trial data from a recorded seed, with no model and
-// no credential. Same seed, same bytes — the run is reproducible from the seed
-// alone, which is what keeps the shakedown and the positive control honest.
+// no credential. The same seed produces the same bytes, so the run is
+// reproducible from the seed alone; the shakedown and the positive control
+// depend on this.
 type Generated struct {
 	N      int
 	Seed   int64
