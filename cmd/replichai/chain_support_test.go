@@ -121,7 +121,7 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 	runtime, err := local.New(local.Config{
 		Sandbox: localtest.New(localtest.Script{WorkerCommits: true}),
 		Harness: harness.NewClaudeCode(), Catalog: catalog,
-		Root: r.root, Environ: os.Environ(),
+		Root: r.root, Lookup: os.LookupEnv,
 	})
 	if err != nil {
 		return batch.Outcome{}, err
