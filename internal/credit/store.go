@@ -465,17 +465,15 @@ func kindFor(e ledger.Entry) Kind {
 	}
 }
 
-// requireAdmin refuses a caller who is not a platform admin.
+// requireAdmin refuses a caller who is not a platform admin: the shared rule,
+// reported in this package's words.
 func (s *store) requireAdmin(ctx context.Context, p access.Principal) error {
-	if s.auth == nil {
-		return nil
+	err := access.RequireAdmin(ctx, s.auth, p)
+	if errors.Is(err, access.ErrNotAdmin) {
+		return ErrNotAdmin
 	}
-	tier, ok, err := s.auth.Resolve(ctx, p)
 	if err != nil {
 		return fmt.Errorf("resolve admin: %w", err)
-	}
-	if !ok || tier != access.TierAdmin {
-		return ErrNotAdmin
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -43,17 +44,11 @@ func NewMemStore(auth Authority) *MemStore {
 // A nil authority means every caller is an admin — the offline run with no
 // access store wired, never a served deployment.
 func requireAdmin(ctx context.Context, auth Authority, p access.Principal) error {
-	if auth == nil {
-		return nil
-	}
-	tier, _, err := auth.Resolve(ctx, p)
-	if err != nil {
-		return err
-	}
-	if tier != access.TierAdmin {
+	err := access.RequireAdmin(ctx, auth, p)
+	if errors.Is(err, access.ErrNotAdmin) {
 		return ErrNotAdmin
 	}
-	return nil
+	return err
 }
 
 // Settings reads the platform row.

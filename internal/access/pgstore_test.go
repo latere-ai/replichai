@@ -94,6 +94,11 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 
 	// The freeze-override contract, against the same real store (022d).
 	runFreezeContract(t, acc)
+
+	// The first-login binding, with the concurrency only a real database
+	// shows: parallel transactions queue on the row lock and the second must
+	// recognise the row the first just bound as its own.
+	runBindContract(t, acc, "bind-pg@example.com")
 }
 
 // TestTheMigrationLeavesNoForgeLinkBehind asserts migration 5 removed the table

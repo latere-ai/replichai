@@ -66,6 +66,13 @@ func TestFreezeGateThawsAndRespectsAOneShotOverride(t *testing.T) {
 	email := "debtor@example.com"
 	admin := access.Principal{Sub: "admin", Email: "admin@example.com"}
 	gate, ledger, ov := frozenGate(t)
+	// An override is an administrative write and is checked like one.
+	if err := ov.SeedGrant(ctx, admin.Email, access.TierAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := ov.Resolve(ctx, admin); !ok {
+		t.Fatal("admin does not resolve")
+	}
 	post := func() int { return driveAs(gate, "POST", "/projects", email) }
 
 	// -$2: frozen.
