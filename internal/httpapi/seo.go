@@ -75,8 +75,8 @@ var hidden = seo.Page{NoIndex: true}
 
 func (rt *Router) landingPage(*http.Request) seo.Page {
 	return rt.page(seo.Page{
-		Title:       "ReplicHAI — does the paper actually reproduce?",
-		Description: "replichai audits the reproducibility of research papers. It implements and re-runs the part of a paper a machine can run, never simulates the study with human participants, and returns a verdict published with the full transcript.",
+		Title:       "ReplicHAI: reproducibility audits of research papers",
+		Description: "replichai audits the reproducibility of research papers. It implements and re-runs the parts of a paper a machine can run. It does not simulate studies with human participants. Each audit returns a verdict, published with the full transcript.",
 		Canonical:   rt.site.Abs(seo.LandingPath),
 		JSONLD: map[string]any{
 			"@context": schemaOrg,
@@ -92,7 +92,7 @@ func (rt *Router) landingPage(*http.Request) seo.Page {
 					// written so it stays true as research on this platform
 					// becomes something a researcher runs rather than only
 					// something the platform re-runs for them.
-					"description": "A platform for research that runs: work implemented, executed and published as evidence anyone can check, under the name of the researcher who signed it off.",
+					"description": "A platform where research is implemented, run and published as evidence anyone can check, under the name of the researcher who signed it off.",
 					"publisher":   latere,
 				},
 				latere,
@@ -103,8 +103,8 @@ func (rt *Router) landingPage(*http.Request) seo.Page {
 
 func (rt *Router) registryPage(*http.Request) seo.Page {
 	return rt.page(seo.Page{
-		Title:       "The registry — published reproductions · ReplicHAI",
-		Description: "The public record on ReplicHAI: research that has been run, what held and what did not, the researcher who signed off each result, and the full transcript behind it.",
+		Title:       "The registry: published reproductions · ReplicHAI",
+		Description: "The public record on ReplicHAI: the research that has been run, what reproduced and what did not, the researcher who signed off each result, and the full transcript behind it.",
 		Canonical:   rt.site.Abs(seo.RegistryPath),
 		JSONLD: map[string]any{
 			"@context":    schemaOrg,
@@ -158,7 +158,7 @@ func (rt *Router) sessionPage(r *http.Request) seo.Page {
 	url := rt.site.Abs(seo.SessionPath(proj.ID, j.ID))
 	return rt.page(seo.Page{
 		Title:       "Reproduction of " + name + " · ReplicHAI",
-		Description: summarize(proj.Description, "One reproduction session of "+name+" — what the agent did, what it committed, and the verdict that came out."),
+		Description: summarize(proj.Description, "One reproduction session of "+name+": what the agent did, what it committed, and the verdict."),
 		Canonical:   url,
 		Type:        "article",
 		JSONLD:      reportLD(rt.site, proj, []project.Paper{subject}, url, "Reproduction of "+name),
@@ -183,7 +183,7 @@ func (rt *Router) profilePage(r *http.Request) seo.Page {
 	}
 	return rt.page(seo.Page{
 		Title:       name + " · ReplicHAI",
-		Description: desc + " — the reproductions published under this name, each signed off in person.",
+		Description: desc + ". The reproductions published under this name, each signed off by this researcher.",
 		Canonical:   url,
 		Type:        "profile",
 		JSONLD: map[string]any{
@@ -352,7 +352,7 @@ func title(value, fallback string) string {
 // thing true of every project.
 func describes(name string) string {
 	name = title(name, "a paper")
-	return "An independent reproduction of " + name + " on ReplicHAI — what reproduced, what did not, and the full transcript behind the verdict."
+	return "An independent reproduction of " + name + " on ReplicHAI: what reproduced, what did not, and the full transcript behind the verdict."
 }
 
 // maxDescription is where a description is cut. Search results and link cards
