@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.28.3 - 2026-09-11
+
 - **A run on your own machine can publish what it produced.** Every local
   `--publish` run was refused at the last step: the repository was created
   with a commit already in it, and a workspace that was never cloned from
