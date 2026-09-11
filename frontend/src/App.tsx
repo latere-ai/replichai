@@ -128,6 +128,7 @@ import {
   histogram,
   matches,
   offsetOf,
+  PHASE_ORDER,
   phaseBands,
   runSpan,
   splitTitle,
@@ -141,7 +142,7 @@ import { Landing } from './landing'
 import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { useHead } from './head'
 import { citationBits, gradeable, groupByPaper, listCitation, type Grouped, type PaperGroup } from './papers'
-import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, RowButton, Seams, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, RowButton, Seams, Segmented, Select, Tip, tipAttrs, Toggle } from './ui'
 import { THEME_MODES, useTheme, type ThemeMode } from './theme'
 import { absoluteTime, duration, elapsed, relativeTime } from './when'
 import { useDrawer, useSidebar } from './sidebar'
@@ -150,33 +151,13 @@ import { useJobStream } from './job-stream'
 import { hueOf, initials, isAdmin, isMine, showsPicture } from './account'
 import { ledgerLabel } from './ledger'
 import { repoSuffix, runLabel } from './repo'
+import { phaseClass, phaseIcon, phaseLabel, phaseTone } from './phase'
 
 // signerOf names the person who published a project. The signer's recorded name
 // is used whenever the sign-off carries one (006n); a v1 sign-off has none and
 // falls back to the owner's profile name (018). `owner` itself is never shown —
 // it is an opaque OIDC subject and names nobody.
 const signerOf = (p: Project & { owner_name?: string }) => p.signed_off_name || p.owner_name || '—'
-
-// phaseClass tones a phase badge: any non-terminal phase reads as "running".
-const phaseClass = (p: string) => (terminal(p) ? p : 'running')
-
-// phaseTone maps a session phase onto the semantic ramp, so a phase is the same
-// colour wherever it appears — a row badge, a timeline dot, a pill.
-function phaseTone(phase: string): Tone {
-  if (phase === 'done') return 'ok'
-  if (phase === 'failed') return 'err'
-  return 'run'
-}
-
-// phaseIcon gives each phase a glyph, so the lifecycle is legible before the
-// label is read.
-function phaseIcon(phase: string): IconName {
-  if (phase === 'done') return 'check'
-  if (phase === 'failed') return 'alert'
-  if (phase === 'publishing') return 'package'
-  if (phase === 'resolving') return 'search'
-  return 'clock'
-}
 
 export default function App() {
   const i18n = useI18n()
@@ -6133,19 +6114,6 @@ const TIER_KEY = { user: 'tierUser', admin: 'tierAdmin' } as const satisfies Rec
 function tierLabel(t: I18n['t'], tier?: string) {
   return t(TIER_KEY[tier as keyof typeof TIER_KEY] ?? 'tierNone')
 }
-// A phase the client knows is named; one it does not is shown as itself. The
-// backend can add a phase before the client learns it, and `phase.reconciling`
-// on screen is an identifier leaking out, not a label.
-const isPhase = (p: string): p is Phase => (PHASE_ORDER as readonly string[]).includes(p)
-function phaseLabel(t: I18n['t'], phase: string) {
-  return isPhase(phase) ? t(`phase.${phase}`) : phase.replace(/_/g, ' ')
-}
-
-// PHASE_ORDER is the lifecycle spine the timeline walks. phase_at only ever
-// carries phases the session actually entered, so a missing phase is simply
-// skipped — the timeline never fabricates a step.
-const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed'] as const
-type Phase = (typeof PHASE_ORDER)[number]
 
 // Timeline draws the session's phase progression from the durable phase_at
 // timestamps: each phase, when it started, and how long it took to reach the
