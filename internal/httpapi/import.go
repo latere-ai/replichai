@@ -5,6 +5,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -99,6 +100,10 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 		StartedAt:  body.StartedAt,
 		FinishedAt: body.FinishedAt,
 	})
+	if errors.Is(err, job.ErrImportedElsewhere) {
+		writeError(w, http.StatusConflict, "session_elsewhere")
+		return
+	}
 	if err != nil {
 		rt.writeEnqueueError(w, err)
 		return

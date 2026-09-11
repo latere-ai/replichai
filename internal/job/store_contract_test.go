@@ -584,7 +584,57 @@ func runLeaseContract(t *testing.T, s Store, at func(time.Time)) {
 	}
 }
 
+// runImportContract is the ownership rule for imported records, held by both
+// stores: a re-push finds the pusher's own row and nobody else's, and never
+// moves a record between projects.
+func runImportContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+	record := func(principal, project string, phase Phase) Import {
+		return Import{
+			Principal: principal, Project: project, Ref: "arxiv:2302.03714", PaperKey: "arxiv:2302.03714",
+			Runtime: "local", ExternalID: "7f3a91c2", Phase: phase,
+			Status: provider.RunStatus{State: provider.StateDone, Runtime: "local", RunID: "7f3a91c2"},
+		}
+	}
+
+	first, err := s.ImportLocal(ctx, record("alice", "P", PhaseFailed))
+	if err != nil {
+		t.Fatalf("ImportLocal: %v", err)
+	}
+	// Alice re-pushes after a retry: her row, updated in place.
+	again, err := s.ImportLocal(ctx, record("alice", "P", PhaseDone))
+	if err != nil || again.ID != first.ID || again.Phase != PhaseDone {
+		t.Fatalf("re-push = %+v, %v; want the same row moved to done", again, err)
+	}
+
+	// Bob, a member of another project, pushes the same session id: his own
+	// row, and Alice's is untouched.
+	bobs, err := s.ImportLocal(ctx, record("bob", "Q", PhaseDone))
+	if err != nil {
+		t.Fatalf("another principal's import: %v", err)
+	}
+	if bobs.ID == first.ID {
+		t.Fatal("another principal's push landed on Alice's row")
+	}
+	alices, _ := s.Get(ctx, first.ID)
+	if alices.ProjectID != "P" || alices.Principal != "alice" {
+		t.Fatalf("Alice's row after Bob's push = project %s principal %s; it was re-homed", alices.ProjectID, alices.Principal)
+	}
+
+	// Alice pushes her own session under a different project: refused, and
+	// the record stays where it was. Moving a record is the app's job.
+	if _, err := s.ImportLocal(ctx, record("alice", "R", PhaseDone)); !errors.Is(err, ErrImportedElsewhere) {
+		t.Fatalf("re-push into another project: err=%v, want ErrImportedElsewhere", err)
+	}
+	alices, _ = s.Get(ctx, first.ID)
+	if alices.ProjectID != "P" {
+		t.Fatalf("Alice's row moved to %s", alices.ProjectID)
+	}
+}
+
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
+	runImportContract(t, NewMemStore())
 	runStoreContract(t, NewMemStore())
 	runGuardContract(t, NewMemStore())
 	runProjectJoinContract(t, NewMemStore(WithRates(fixedCard(testCard))))
@@ -635,6 +685,10 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 		t.Fatalf("truncate: %v", err)
 	}
 	runClaimContention(t, NewPGStore(pool))
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	runImportContract(t, NewPGStore(pool))
 	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}

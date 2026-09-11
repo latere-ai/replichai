@@ -121,6 +121,16 @@ CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, external_id)
 	WHERE external_id <> '';
 CREATE INDEX jobs_origin ON jobs (origin);
 `},
+	{10, `
+-- An imported session is idempotent on who pushed it as well as on the
+-- runtime's session id. Keyed on the id alone, a member of one project could
+-- re-push another person's session id and re-home their record; keyed on the
+-- principal too, one operator's re-push finds only their own row and two
+-- operators' runtimes cannot collide.
+DROP INDEX IF EXISTS jobs_imported_session;
+CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, principal, external_id)
+	WHERE external_id <> '';
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

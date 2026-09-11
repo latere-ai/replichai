@@ -242,24 +242,31 @@ func (s *PGStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	// Idempotent on (origin, external id), which the partial unique index
-	// enforces: a re-push updates the row rather than opening a second
-	// session for one run.
+	// Idempotent on (origin, principal, external id), which the partial unique
+	// index enforces: an operator's re-push updates their own row rather than
+	// opening a second session for one run, and cannot find anybody else's.
+	// The update is further held to the project the record already lives in:
+	// a row that would move projects is left alone and the conflict is
+	// reported, so a re-push cannot re-home a record.
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error,
 		                  created_at, updated_at, phase_at, rate_card, tier, origin, external_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'{}','',$14,$15)
-		ON CONFLICT (origin, external_id) WHERE external_id <> '' DO UPDATE SET
-			project_id = EXCLUDED.project_id, ref = EXCLUDED.ref, paper_key = EXCLUDED.paper_key,
+		ON CONFLICT (origin, principal, external_id) WHERE external_id <> '' DO UPDATE SET
+			ref = EXCLUDED.ref, paper_key = EXCLUDED.paper_key,
 			phase = EXCLUDED.phase, status = EXCLUDED.status, repo_name = EXCLUDED.repo_name,
 			error = EXCLUDED.error, updated_at = EXCLUDED.updated_at, phase_at = EXCLUDED.phase_at
+		WHERE jobs.project_id = EXCLUDED.project_id
 		RETURNING `+jobColumns,
 		id, KindAudit, in.Principal, in.Project, in.Ref, in.PaperKey, in.Phase, status, in.RepoName, in.Err,
 		started, now, phaseAt, OriginLocal, in.ExternalID)
-	return scanJob(row)
+	imported, err := scanJob(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Job{}, ErrImportedElsewhere
+	}
+	return imported, err
 }
 
-// checkQuotaTx refuses a submission past the payer's allowance, holding an
 // takeReserveTx refuses a submission the project cannot afford to start, and
 // holds the reserve against its pot — inside the transaction that inserts the
 // session, so the balance it read cannot change underneath it and a new submit
