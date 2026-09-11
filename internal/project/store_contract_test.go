@@ -32,7 +32,7 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Fatalf("blank owner: want ErrNoOwner, got %v", err)
 	}
 
-	// Create and read back — private by default.
+	// Create and read back; private by default.
 	p, err := s.Create(ctx, "owner", "Attention Is All You Need")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -72,10 +72,10 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("SetTitle on a missing project: %v", err)
 	}
 
-	// SetPublic marks a project public and records the sign-off — including the
+	// SetPublic marks a project public and records the sign-off, including the
 	// signer snapshot (006n), which every implementation must round-trip whole,
-	// since it is what a public page reports. ListPublic returns it (and never a
-	// private one).
+	// since it is what a public page reports. ListPublic returns it and never a
+	// private one.
 	so := SignOff{
 		By: "owner", AttestationVersion: "v2",
 		Name: "Ada Lovelace", Institution: "LMU Munich", Contact: "ada@example.org",
@@ -107,7 +107,7 @@ func runStoreContract(t *testing.T, s Store) {
 
 	// SetPrivate withdraws the publication (006o). It is a retraction, not an
 	// erasure: visibility returns to private and the project leaves the public
-	// zone, but every signed_off_* field must survive intact — a store that
+	// zone, but every signed_off_* field must survive intact. A store that
 	// cleared them would let a project be published, withdrawn, and republished
 	// under a different signer with no evidence of any of it.
 	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "owner", Reason: "unreleased figure"}); err != nil {
@@ -131,9 +131,9 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("ListPublic after withdrawal = %+v err=%v; want empty", list, err)
 	}
 
-	// Withdrawing again succeeds and changes nothing — the timestamp keeps
-	// pointing at the moment the publication actually ended, not at the last time
-	// somebody asked.
+	// Withdrawing again succeeds and changes nothing: the timestamp keeps
+	// recording the moment the publication ended, not the last time somebody
+	// asked.
 	first := *gone.WithdrawnAt
 	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "someone-else", Reason: "again"}); err != nil {
 		t.Fatalf("repeated SetPrivate: %v", err)
@@ -158,7 +158,8 @@ func runStoreContract(t *testing.T, s Store) {
 	if back.SignedOffName != "Ada Again" {
 		t.Errorf("republish did not overwrite the snapshot: %+v", back)
 	}
-	// Leave it private again so the rest of the contract sees a clean slate.
+	// Leave it private again so the rest of the contract starts from a known
+	// state.
 	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "owner", Reason: "tidy"}); err != nil {
 		t.Fatalf("SetPrivate (tidy): %v", err)
 	}
@@ -182,7 +183,7 @@ func runStoreContract(t *testing.T, s Store) {
 
 // runPapersByProjectsContract asserts the list's read (043): every named
 // project's papers in one call, keyed by project, ordered the way ListPapers
-// orders them, and silent about ids that hold nothing.
+// orders them, and omitting ids that hold nothing.
 func runPapersByProjectsContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
@@ -230,13 +231,13 @@ func runPapersByProjectsContract(t *testing.T, s Store) {
 	if got := by[two.ID]; len(got) != 1 || got[0].Key != "arxiv:2401.00001" {
 		t.Errorf("the one-paper project = %+v", got)
 	}
-	// Each project answers for itself. A key that crossed would put one
-	// project's bibliography on another's card.
+	// Each project's papers are keyed to that project. A key attributed to the
+	// wrong project would put one project's bibliography on another's card.
 	if _, ok := by["nobody"]; ok {
 		t.Errorf("PapersByProjects answered for a project that is not there")
 	}
 
-	// Asking for none is not an error — it is the empty registry's read.
+	// Asking for none is not an error; it is the empty registry's read.
 	if got, err := s.PapersByProjects(ctx, nil); err != nil || len(got) != 0 {
 		t.Errorf("PapersByProjects(nil) = %v, %v; want an empty map and no error", got, err)
 	}
@@ -286,13 +287,13 @@ func runTrashContract(t *testing.T, s Store) {
 	if err != nil || !slices.ContainsFunc(trashed, hasID(p.ID)) {
 		t.Errorf("ListTrashed = %v, %v; want the project", trashed, err)
 	}
-	// Somebody else's trash is not yours.
+	// ListTrashed is scoped to the owner.
 	if other, err := s.ListTrashed(ctx, "stranger"); err != nil || len(other) != 0 {
 		t.Errorf("ListTrashed for a stranger = %v, %v; want nothing", other, err)
 	}
 
-	// Trashing again keeps the first moment: a repeated call must not rewrite
-	// when the project actually left the list.
+	// Trashing again keeps the first timestamp: a repeated call must not rewrite
+	// when the project left the list.
 	first := *got.DeletedAt
 	if err := s.Trash(ctx, p.ID); err != nil {
 		t.Fatalf("repeated Trash: %v", err)
@@ -344,8 +345,8 @@ func runModifiedContract(t *testing.T, s Store) {
 	if err != nil {
 		t.Fatalf("ModifiedAt: %v", err)
 	}
-	// A project with no papers answers its creation time rather than dropping out
-	// of the result — the row still has to sort somewhere.
+	// A project with no papers returns its creation time rather than dropping
+	// out of the result; the row still has to sort somewhere.
 	if got, want := at[p.ID].UTC(), p.CreatedAt.UTC(); !got.Equal(want) {
 		t.Errorf("ModifiedAt with no papers = %v, want the creation time %v", got, want)
 	}
@@ -362,8 +363,8 @@ func runModifiedContract(t *testing.T, s Store) {
 		t.Errorf("ModifiedAt after AddPaper = %v, want the paper's time %v", got, added.UTC())
 	}
 
-	// A project nobody asked about is not answered for, and asking for none is
-	// not an error — an empty list is what a signed-in newcomer's page sends.
+	// A project not asked about is not returned, and asking for none is not an
+	// error; an empty list is what a signed-in newcomer's page sends.
 	if at, err := s.ModifiedAt(ctx, nil); err != nil || len(at) != 0 {
 		t.Errorf("ModifiedAt(nil) = %v, %v; want an empty map and no error", at, err)
 	}
@@ -373,9 +374,9 @@ func runModifiedContract(t *testing.T, s Store) {
 }
 
 // runPaperContract asserts what a project's papers must do (012). A paper is
-// what the project is *about*, so it exists before any session and outlives
-// every one — which is the difference from the session list this store
-// deliberately does not hold.
+// what the project is about, so it exists before any session and outlives every
+// one, which is the difference from the session list this store deliberately
+// does not hold.
 func runPaperContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
@@ -421,9 +422,9 @@ func runPaperContract(t *testing.T, s Store) {
 		t.Errorf("a paper nobody has resolved should carry no title, got %q", papers[0].Title)
 	}
 
-	// What a project is about is its owner's to write (038), and it is a
-	// deliberate act rather than an enrichment: a project that is not there is an
-	// error, and one that is too long is refused rather than truncated.
+	// The owner writes what a project is about (038), and it is a deliberate
+	// act rather than an enrichment: a project that is not there is an error,
+	// and a description that is too long is refused rather than truncated.
 	if err := s.SetDescription(ctx, p.ID, "Two papers on trust in automation."); err != nil {
 		t.Fatalf("SetDescription: %v", err)
 	}
@@ -470,7 +471,7 @@ func runPaperContract(t *testing.T, s Store) {
 	if papers[0].Title != "Point of no Undo" || papers[0].Record.Venue != "CHI '24" {
 		t.Errorf("a second source overwrote what was already there: %+v", papers[0])
 	}
-	// It does fill what is still empty.
+	// It fills what is still empty.
 	if _, err := s.EnrichPaper(ctx, p.ID, first.Key, "", paper.Record{Publisher: "ACM"}); err != nil {
 		t.Fatalf("EnrichPaper: %v", err)
 	}
@@ -479,8 +480,8 @@ func runPaperContract(t *testing.T, s Store) {
 		t.Errorf("an empty field was not filled: %+v", papers[0].Record)
 	}
 
-	// A correction is a person's, and it is permanent: what they wrote is marked,
-	// and no later enrichment may put the source's answer back.
+	// A correction is made by a person and is permanent: what they wrote is
+	// marked, and no later enrichment may restore the source's answer.
 	edited, err := s.EditPaper(ctx, p.ID, first.Key, PaperEdit{
 		Venue:   ptr("Proc. ACM Hum.-Comput. Interact."),
 		Authors: ptr([]string{"Ada Lovelace"}),
@@ -513,8 +514,8 @@ func runPaperContract(t *testing.T, s Store) {
 	if papers[0].Record.Pages != "" {
 		t.Errorf("enrichment refilled a field somebody deliberately cleared: %q", papers[0].Record.Pages)
 	}
-	// A correction aimed at a paper nobody holds is a mistake worth hearing
-	// about, unlike an enrichment that found nothing.
+	// A correction aimed at a paper nobody holds is a mistake worth reporting,
+	// unlike an enrichment that found nothing.
 	if _, err := s.EditPaper(ctx, p.ID, "url:nobody", PaperEdit{Venue: ptr("x")}); !errors.Is(err, ErrPaperNotFound) {
 		t.Errorf("EditPaper on a missing paper = %v, want ErrPaperNotFound", err)
 	}
@@ -522,7 +523,7 @@ func runPaperContract(t *testing.T, s Store) {
 		t.Errorf("EnrichPaper on a missing paper: %v", err)
 	}
 
-	// Removal is the store's to do and idempotent; who may ask is the caller's.
+	// The store performs removal idempotently; the caller decides who may ask.
 	if err := s.RemovePaper(ctx, p.ID, second.Key); err != nil {
 		t.Fatalf("RemovePaper: %v", err)
 	}
@@ -534,8 +535,8 @@ func runPaperContract(t *testing.T, s Store) {
 		t.Errorf("after RemovePaper: %+v", papers)
 	}
 
-	// A project that is not there is ErrNotFound on both sides, so "no papers"
-	// and "no project" never read as the same answer.
+	// A project that is not there is ErrNotFound on both sides, so no papers and
+	// no project never read as the same answer.
 	if err := s.AddPaper(ctx, "nope", first); !errors.Is(err, ErrNotFound) {
 		t.Errorf("AddPaper to a missing project: want ErrNotFound, got %v", err)
 	}
@@ -565,20 +566,21 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	runStoreContract(t, NewPGStore(pool))
 }
 
-// TestMigrationBackfillsProjectsFromSessions is 006g AC6: the backfill turns the
-// distinct (principal, project_id) pairs already in jobs into projects, reusing
-// the slug as the id so sessions' FK already points at them — no re-run, no data
-// loss. It replays the real migration order — jobs exist under the job schema
-// BEFORE the project migration introduces the table, the backfill, and the
-// session FK — since the FK (correctly) forbids a session pointing at a project
-// that does not yet exist. Postgres-only.
+// TestMigrationBackfillsProjectsFromSessions checks 006g AC6: the backfill
+// turns the distinct (principal, project_id) pairs already in jobs into
+// projects, reusing the slug as the id so the sessions' FK already points at
+// them, with no re-run and no data loss. It replays the real migration order:
+// jobs exist under the job schema before the project migration introduces the
+// table, the backfill, and the session FK, since the FK correctly forbids a
+// session pointing at a project that does not yet exist. Postgres-only.
 func TestMigrationBackfillsProjectsFromSessions(t *testing.T) {
 	pool := freshDB(t)
 	defer pool.Close()
 	ctx := context.Background()
 
-	// Only the job schema exists — no projects table, no FK — so three finished
-	// CLI sessions seed against three project slugs, as they did before 006g.
+	// Only the job schema exists, with no projects table and no FK, so three
+	// finished CLI sessions seed against three project slugs, as they did
+	// before 006g.
 	if err := job.Migrate(ctx, pool); err != nil {
 		t.Fatalf("job migrate: %v", err)
 	}
@@ -595,8 +597,8 @@ func TestMigrationBackfillsProjectsFromSessions(t *testing.T) {
 		}
 	}
 
-	// Now introduce the project migration — it backfills projects from those
-	// jobs, then adds the FK; the sessions' project_id already points at the
+	// Now run the project migration. It backfills projects from those jobs,
+	// then adds the FK; the sessions' project_id already points at the
 	// slug-named projects, so the FK holds.
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatalf("project migrate: %v", err)
@@ -623,13 +625,13 @@ func TestMigrationBackfillsProjectsFromSessions(t *testing.T) {
 
 // projectTestDB is the dedicated database the project PG tests run in. The
 // project migration adds a foreign key to the shared jobs table, which
-// internal/job's own contract test (it inserts sessions with dangling
-// project_ids) cannot tolerate — and `go test ./...` runs both packages in
-// parallel against one server. A private database keeps the two hermetic.
+// internal/job's own contract test, which inserts sessions with dangling
+// project_ids, cannot tolerate, and `go test ./...` runs both packages in
+// parallel against one server. A private database keeps the two isolated.
 const projectTestDB = "replichai_project_test"
 
-// freshDB creates a clean, empty project test database and returns a pool to it,
-// with no migrations applied — so a caller can control the migration order.
+// freshDB creates a clean, empty project test database and returns a pool to
+// it, with no migrations applied, so a caller can control the migration order.
 func freshDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	base := os.Getenv("TEST_DATABASE_URL")
@@ -641,8 +643,9 @@ func freshDB(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	// Terminate stragglers, then drop and recreate — a clean database per run.
-	// These cannot run in a transaction, so they go through the pool directly.
+	// Terminate remaining connections, then drop and recreate, for a clean
+	// database per run. These cannot run in a transaction, so they go through
+	// the pool directly.
 	_, _ = admin.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()`, projectTestDB)
 	if _, err := admin.Exec(ctx, `DROP DATABASE IF EXISTS `+projectTestDB); err != nil {
 		admin.Close()
@@ -688,9 +691,9 @@ func swapDBName(t *testing.T, raw, name string) string {
 	return u.String()
 }
 
-// TestMigrationBackfillsPapersFromSessions is 012 AC9: after the migration,
-// every paper a project has ever run is listed on it — including one whose only
-// session failed, which is the case that proves a paper is not the same thing as
+// TestMigrationBackfillsPapersFromSessions checks 012 AC9: after the migration,
+// every paper a project has ever run is listed on it, including one whose only
+// session failed, which is the case that shows a paper is not the same thing as
 // a successful run. Postgres-only.
 func TestMigrationBackfillsPapersFromSessions(t *testing.T) {
 	pool := freshDB(t)
@@ -703,7 +706,7 @@ func TestMigrationBackfillsPapersFromSessions(t *testing.T) {
 	js := job.NewPGStore(pool)
 
 	// One project, two papers: one that finished, one whose session failed. The
-	// second is the point — before 012 the only record of that paper was a red
+	// second is the point: before 012 the only record of that paper was a failed
 	// row, and after it the paper is still what the project is about.
 	done, err := js.Enqueue(ctx, job.Submission{
 		Principal: "owner", Ref: "https://doi.org/10.1145/3544548.3581433",
@@ -751,12 +754,12 @@ func TestMigrationBackfillsPapersFromSessions(t *testing.T) {
 	}
 }
 
-/* ─── Moving a paper to another project (035) ─── */
+// Moving a paper to another project (035).
 
-// recordingMover stands in for the job store on both sides of the seam: it
+// recordingMover stands in for the job store on both sides of the boundary: it
 // satisfies SessionMover and PGSessionMover at once, so one fake drives the
 // contract against both implementations. It records what it was asked to move
-// and can be told to fail, which is how the rollback is checked.
+// and can be made to fail, which is how the rollback is checked.
 type recordingMover struct {
 	moves []string
 	fail  error
@@ -801,8 +804,8 @@ func runMovePaperContract(t *testing.T, s Store, mover *recordingMover) {
 		}
 	}
 
-	// A key the source does not hold names nothing to move, and is not the same
-	// answer as a project that is not there.
+	// A key the source does not hold names nothing to move, and is a different
+	// answer from a project that is not there.
 	if err := s.MovePaper(ctx, from.ID, to.ID, "doi:10.0000/nope"); !errors.Is(err, ErrPaperNotFound) {
 		t.Errorf("moving a paper the project does not hold: want ErrPaperNotFound, got %v", err)
 	}
@@ -820,7 +823,7 @@ func runMovePaperContract(t *testing.T, s Store, mover *recordingMover) {
 		t.Errorf("the sessions were not carried across: %v", mover.moves)
 	}
 
-	// The paper is in exactly one project afterwards, and the one that stayed
+	// The paper is in exactly one project afterwards, and the other paper
 	// stayed.
 	left, err := s.ListPapers(ctx, from.ID)
 	if err != nil {
@@ -836,14 +839,14 @@ func runMovePaperContract(t *testing.T, s Store, mover *recordingMover) {
 	if len(arrived) != 1 || arrived[0].Key != moving.Key {
 		t.Fatalf("destination holds %v; want %s", keysOf(arrived), moving.Key)
 	}
-	// It arrives as it was written down: moving a paper does not re-date it or
-	// re-attribute who added it.
+	// It arrives as it was added: moving a paper does not change its date or
+	// who added it.
 	if !arrived[0].AddedAt.Equal(added) || arrived[0].AddedBy != "owner" || arrived[0].Ref != moving.Ref {
 		t.Errorf("the moved paper was rewritten: %+v", arrived[0])
 	}
 
-	// Moving it back and forth is fine; moving it where it already is, is not —
-	// merging two papers' histories is not a move.
+	// Moving it back and forth is allowed; moving it where it already is, is
+	// not, because merging two papers' histories is not a move.
 	if err := s.AddPaper(ctx, from.ID, moving); err != nil {
 		t.Fatalf("re-adding the key to the source: %v", err)
 	}
@@ -897,10 +900,10 @@ func TestPGStoreMovesAPaper(t *testing.T) {
 	runMovePaperContract(t, NewPGStore(pool, WithPGSessions(m)), m)
 }
 
-// TestMovingAPaperNeedsASessionMover is the loud failure a composition root has
-// to trip over: a store with no mover refuses rather than moving the paper and
+// TestMovingAPaperNeedsASessionMover checks the failure a composition root
+// must hit: a store with no mover refuses rather than moving the paper and
 // leaving its runs in the old project, which is the orphan 015 exists to
-// prevent and would be silent.
+// prevent and would otherwise be silent.
 func TestMovingAPaperNeedsASessionMover(t *testing.T) {
 	ctx := context.Background()
 	s := NewMemStore()
@@ -920,11 +923,11 @@ func TestMovingAPaperNeedsASessionMover(t *testing.T) {
 	}
 }
 
-// ptr is how a PaperEdit says "this field is present" — including when the
-// value it is set to is the zero one.
+// ptr returns a pointer to v, which is how a PaperEdit marks a field as
+// present, including when the value is the zero value.
 func ptr[T any](v T) *T { return &v }
 
-// hasID matches a project by id, so a membership check reads as one.
+// hasID returns a predicate matching a project by id.
 func hasID(id string) func(Project) bool {
 	return func(p Project) bool { return p.ID == id }
 }

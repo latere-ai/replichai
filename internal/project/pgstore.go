@@ -24,9 +24,9 @@ const (
 	uniqueViolation     = "23505"
 )
 
-// PGSessionMover is SessionMover's Postgres half: it moves a paper's sessions
-// inside the caller's transaction, so the paper and its runs arrive together or
-// not at all. Satisfied by the job store.
+// PGSessionMover is SessionMover's Postgres form: it moves a paper's sessions
+// inside the caller's transaction, so the paper and its runs move together or
+// not at all. The job store satisfies it.
 type PGSessionMover interface {
 	MovePaperSessionsTx(ctx context.Context, tx pgx.Tx, fromID, toID, key string) error
 }
@@ -36,15 +36,15 @@ type PGSessionMover interface {
 type PGStore struct {
 	pool  *pgxpool.Pool
 	clock func() time.Time
-	// sessions carries a moved paper's runs across (035). Nil means MovePaper
-	// refuses rather than stranding them.
+	// sessions moves the runs of a paper that is being moved (035). Nil means
+	// MovePaper refuses rather than stranding them.
 	sessions PGSessionMover
 }
 
 // PGOption configures a PGStore.
 type PGOption func(*PGStore)
 
-// WithPGSessions wires the store that holds a paper's sessions, so a move takes
+// WithPGSessions sets the store that holds a paper's sessions, so a move takes
 // them with it inside the move's own transaction (035). Without it MovePaper
 // returns ErrNoSessionMover.
 func WithPGSessions(m PGSessionMover) PGOption {
@@ -112,8 +112,9 @@ func (s *PGStore) ListTrashed(ctx context.Context, owner string) ([]Project, err
 }
 
 // Trash moves a project to the trash. The NULL predicate keeps the first
-// timestamp, so a repeated call cannot rewrite the moment it left the list —
-// which costs one extra read to tell "already trashed" from "not there".
+// timestamp, so a repeated call cannot rewrite the moment it left the list.
+// This costs one extra read to distinguish an already trashed project from a
+// missing one.
 func (s *PGStore) Trash(ctx context.Context, id string) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE projects SET deleted_at=$2 WHERE id=$1 AND deleted_at IS NULL`, id, s.clock())
 	if err != nil {
@@ -164,7 +165,8 @@ func (s *PGStore) SetTitle(ctx context.Context, id, title string) error {
 }
 
 // SetDescription writes what a project says it is about, and reports a project
-// that is not there — this one is somebody typing, not an enrichment.
+// that is not there, because this is a person's edit rather than an
+// enrichment.
 func (s *PGStore) SetDescription(ctx context.Context, id, description string) error {
 	if len(description) > MaxDescription {
 		return ErrDescriptionTooLong
@@ -209,8 +211,8 @@ func (s *PGStore) SetPublic(ctx context.Context, id string, so SignOff) error {
 // SetPrivate withdraws a publication, recording the retraction beside the
 // sign-off it ends. The visibility predicate makes it a no-op on a project that
 // is already private, so a repeated call cannot overwrite the moment the
-// publication actually ended — which costs one extra read to tell that apart
-// from a missing project.
+// publication ended. This costs one extra read to distinguish that case from a
+// missing project.
 func (s *PGStore) SetPrivate(ctx context.Context, id string, w Withdrawal) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE projects SET visibility='private', withdrawn_at=$2, withdrawn_by=$3, withdrawn_reason=$4
@@ -235,8 +237,8 @@ func (s *PGStore) ListPublic(ctx context.Context) ([]Project, error) {
 }
 
 // ModifiedAt returns each named project's creation-or-newest-paper time, in one
-// query. The LEFT JOIN is what makes a project with no papers answer its
-// creation time rather than dropping out of the result.
+// query. The LEFT JOIN makes a project with no papers return its creation time
+// rather than dropping out of the result.
 func (s *PGStore) ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error) {
 	if len(ids) == 0 {
 		return map[string]time.Time{}, nil
@@ -263,7 +265,7 @@ func (s *PGStore) ModifiedAt(ctx context.Context, ids []string) (map[string]time
 	return out, rows.Err()
 }
 
-// ListAll returns every project, oldest first — the platform's own read.
+// ListAll returns every project, oldest first. It is the platform's own read.
 func (s *PGStore) ListAll(ctx context.Context) ([]Project, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects ORDER BY created_at, id`)
 	if err != nil {
@@ -295,7 +297,7 @@ const paperColumns = `paper_key, ref, title, added_by, added_at,
 func scanPaper(row interface{ Scan(...any) error }) (Paper, error) { return scanPaperWith(row) }
 
 // scanPaperWith reads one paper row whose select prefixes paperColumns with the
-// destinations given — the multi-project read selects the project id first, and
+// given destinations. The multi-project read selects the project id first, and
 // the column list must stay one string for the two reads to agree.
 func scanPaperWith(row interface{ Scan(...any) error }, before ...any) (Paper, error) {
 	var p Paper
@@ -305,9 +307,9 @@ func scanPaperWith(row interface{ Scan(...any) error }, before ...any) (Paper, e
 	return p, err
 }
 
-// AddPaper records a paper the project is about. The primary key is what makes
-// a duplicate impossible, so the refusal is read off the insert rather than
-// guessed at with a prior SELECT — two adds racing must not both succeed.
+// AddPaper records a paper the project is about. The primary key makes a
+// duplicate impossible, so the refusal is read from the insert rather than
+// checked with a prior SELECT, because two racing adds must not both succeed.
 func (s *PGStore) AddPaper(ctx context.Context, projectID string, p Paper) error {
 	if p.AddedAt.IsZero() {
 		p.AddedAt = s.clock()
@@ -339,7 +341,7 @@ func (s *PGStore) AddPaper(ctx context.Context, projectID string, p Paper) error
 // ListPapers returns a project's papers in the order they were added.
 func (s *PGStore) ListPapers(ctx context.Context, projectID string) ([]Paper, error) {
 	// The project read comes first so a missing project is ErrNotFound rather
-	// than an empty list — "no papers" and "no project" are different answers.
+	// than an empty list; no papers and no project are different answers.
 	if _, err := s.Get(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -363,7 +365,8 @@ func (s *PGStore) ListPapers(ctx context.Context, projectID string) ([]Paper, er
 
 // PapersByProjects returns the papers of every named project in one query,
 // ordered within each project the way ListPapers orders them. A project with no
-// papers is simply absent from the map — the same answer, one fewer allocation.
+// papers is absent from the map, which is the same answer with one fewer
+// allocation.
 func (s *PGStore) PapersByProjects(ctx context.Context, ids []string) (map[string][]Paper, error) {
 	if len(ids) == 0 {
 		return map[string][]Paper{}, nil
@@ -398,10 +401,10 @@ func nonNil(s []string) []string {
 // EnrichPaper fills a paper's empty fields from what a source answered,
 // ignoring a missing project or paper.
 //
-// It reads the row, applies the rule, and writes it back inside one transaction:
-// the rule depends on what is already there ("fill only what is empty, and never
-// what a person edited"), so a read outside the write's transaction would let a
-// correction land between the two and be overwritten by this.
+// It reads the row, applies the rule, and writes it back inside one
+// transaction. The rule depends on what is already there, filling only what is
+// empty and never what a person edited, so a read outside the write's
+// transaction would let a correction land between the two and be overwritten.
 func (s *PGStore) EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error) {
 	changed := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -464,23 +467,23 @@ func (s *PGStore) RemovePaper(ctx context.Context, projectID, key string) error 
 	return err
 }
 
-// MovePaper refiles a paper under another project, and its sessions with it,
-// in one transaction (035). The paper row and the job rows live in different
-// tables owned by different packages but in the same database, so the seam is
-// the transaction: this store opens it and hands it to the mover, exactly as
-// the job store hands its own transaction to the credit ledger at settlement.
+// MovePaper moves a paper to another project, and its sessions with it, in one
+// transaction (035). The paper row and the job rows are in different tables
+// owned by different packages but in the same database, so the transaction is
+// the boundary: this store opens it and passes it to the mover, exactly as the
+// job store passes its own transaction to the credit ledger at settlement.
 //
 // The UPDATE is the duplicate check. A destination that already holds the key
-// breaks the primary key, and reading that off the error is what keeps two
-// concurrent moves from both believing they were first — the same reason
+// violates the primary key, and reading that from the error keeps two
+// concurrent moves from both believing they were first, for the same reason
 // AddPaper does not SELECT before it inserts.
 func (s *PGStore) MovePaper(ctx context.Context, fromID, toID, key string) error {
 	if s.sessions == nil {
 		return ErrNoSessionMover
 	}
-	// Both projects are read outside the transaction only to tell a missing
-	// project from a missing paper; inside it, the UPDATE is still the authority
-	// on what actually moved.
+	// Both projects are read outside the transaction only to distinguish a
+	// missing project from a missing paper; inside it, the UPDATE remains the
+	// authority on what moved.
 	if _, err := s.Get(ctx, fromID); err != nil {
 		return err
 	}
