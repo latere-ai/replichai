@@ -180,7 +180,7 @@ specs/               designs, and the record of what got built
 
 ## The method is data
 
-`method/` holds three documents: the worker's standing instructions, the rubric every run is graded against, and the task template. Changing the rubric is a text edit with no rebuild and no redeployment, which is what makes iterating on the bar cheap.
+`method/` holds four documents. Three define an audit and are hashed into its method digest: the worker's standing instructions, the rubric every run is graded against, and the task template. The fourth, `experiment.md`, is the doctrine `internal/experiment` hands its runner when a reproduction's declared analysis is run on new data; it sits outside the digest on purpose, so editing it cannot change what an audit is comparable against. Changing the rubric is a text edit with no rebuild and no redeployment, which is what makes iterating on the bar cheap.
 
 Whenever the method changes, re-run the golden set before trusting it:
 
