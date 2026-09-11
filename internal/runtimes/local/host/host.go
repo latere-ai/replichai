@@ -19,35 +19,36 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// Config is what a composition root hands this driver.
+// Config is the configuration a composition root passes to this driver.
 type Config struct {
-	// Platform is the operating system, a parameter rather than a call to
-	// runtime.GOOS so every refusal is testable on one machine.
+	// Platform is the operating system. It is a parameter rather than a call
+	// to runtime.GOOS so that every refusal can be tested on one machine.
 	Platform sandbox.Platform
-	// Home is the operator's home directory, denied wholesale.
+	// Home is the operator's home directory. The whole directory is denied.
 	Home string
-	// HarnessBinary is the executable the stage runs, checked by the
-	// preflight so a missing harness is a refusal with instructions rather
-	// than an exec failure a minute in.
+	// HarnessBinary is the executable the stage runs. Preflight checks for
+	// it so that a missing harness is reported with install instructions
+	// rather than as an exec failure after the stage has started.
 	HarnessBinary string
-	// StopGrace is how long Stop waits after SIGTERM before it SIGKILLs the
-	// stage's process group. Zero takes the default; a stage that ignores the
-	// term is killed once it elapses.
+	// StopGrace is how long Stop waits after SIGTERM before it sends SIGKILL
+	// to the stage's process group. Zero selects the default. A stage that
+	// ignores SIGTERM is killed when the grace period elapses.
 	StopGrace time.Duration
-	// Look resolves an executable, defaulting to exec.LookPath.
+	// Look resolves an executable. It defaults to exec.LookPath.
 	Look func(string) (string, error)
-	// Lookup reads one variable of the process environment, os.LookupEnv at
-	// the composition root. A stage inherits only what
-	// sandbox.HostEnvironment admits through it — PATH above all — and
-	// there is no way to hand this driver the whole environment: a
-	// credential exported in the operator's shell must not reach an agent
-	// running with its permission prompts bypassed.
+	// Lookup reads one variable of the process environment; the composition
+	// root passes os.LookupEnv. A stage inherits only the variables that
+	// sandbox.HostEnvironment admits through it, PATH above all. There is no
+	// way to pass this driver the whole environment, because a credential
+	// exported in the operator's shell must not reach an agent that runs
+	// with its permission prompts bypassed.
 	Lookup func(string) (string, bool)
 }
 
-// defaultStopGrace is how long Stop waits after SIGTERM before it SIGKILLs a
-// stage that has not exited. It matches the container driver's stop timeout, so
-// the two boundaries give a stage the same moment to shut down cleanly.
+// defaultStopGrace is how long Stop waits after SIGTERM before it sends
+// SIGKILL to a stage that has not exited. It matches the container driver's
+// stop timeout, so both drivers give a stage the same time to shut down
+// cleanly.
 const defaultStopGrace = 10 * time.Second
 
 // Sandbox is the srt driver.
@@ -70,8 +71,9 @@ func New(config Config) *Sandbox {
 // Name is the driver's canonical name.
 func (s *Sandbox) Name() sandbox.DriverName { return sandbox.Host }
 
-// dependencies are what srt itself needs, per platform. macOS uses Seatbelt,
-// which is in the operating system; Linux needs bubblewrap and a socket relay.
+// dependencies returns the executables srt itself needs on a platform. macOS
+// uses Seatbelt, which is part of the operating system; Linux needs bubblewrap
+// and a socket relay.
 func dependencies(platform sandbox.Platform) []string {
 	switch platform {
 	case sandbox.Linux:
@@ -81,9 +83,9 @@ func dependencies(platform sandbox.Platform) []string {
 	}
 }
 
-// Preflight reports whether this machine can run the driver, and says what to
-// install when it cannot. Windows is refused outright: srt marks it alpha, and
-// a boundary that is alpha is not a boundary.
+// Preflight reports whether this machine can run the driver, and names what
+// to install when it cannot. Windows is refused because srt marks its Windows
+// support as alpha, which is not an acceptable isolation boundary.
 func (s *Sandbox) Preflight(context.Context) error {
 	if s.config.Platform == sandbox.Windows {
 		return sandbox.NotReady(s.config.Platform, sandbox.Host, sandbox.ConditionUnsupported, "srt")
@@ -108,22 +110,22 @@ func (s *Sandbox) Preflight(context.Context) error {
 	return nil
 }
 
-// CarriesHarnessLogin reports whether a stage here can reach the credential
-// the harness on this machine is already signed in with. It can: a stage runs
-// on the operator's own filesystem, and the runtime grants read on exactly the
-// paths the harness says its login lives in.
+// CarriesHarnessLogin reports whether a stage under this driver can reach the
+// credential the harness on this machine is already signed in with. It can: a
+// stage runs on the operator's own filesystem, and the runtime grants read
+// access to exactly the paths the harness names for its login.
 func (s *Sandbox) CarriesHarnessLogin() bool { return true }
 
-// Capabilities is what this driver can enforce and install. It declares the
-// allowlist mode, which the container driver cannot, and refuses apt, which it
-// has no privileged root to run.
+// Capabilities reports what this driver can enforce and install. It declares
+// the allowlist network mode, which the container driver cannot, and omits
+// apt, which needs a privileged root this driver does not have.
 func (s *Sandbox) Capabilities() sandbox.Capabilities {
 	return sandbox.Capabilities{
 		PackageManagers: map[string]bool{"pip": true, "npm": true},
-		// No open mode. srt is allow-only and refuses a wildcard, so
-		// unrestricted egress is not something this driver can enforce or
-		// even express — and a driver declaring what it cannot enforce is
-		// the one thing the capability declaration exists to prevent.
+		// There is no open mode. srt is allow-only and refuses a wildcard,
+		// so this driver can neither enforce nor express unrestricted
+		// egress. The capability declaration exists so that a driver never
+		// declares a mode it cannot enforce.
 		NetworkModes: map[string]bool{
 			sandbox.NetworkNone: true, sandbox.NetworkAllowlist: true,
 		},
@@ -131,10 +133,10 @@ func (s *Sandbox) Capabilities() sandbox.Capabilities {
 	}
 }
 
-// Launch starts one stage under srt, detached, with its output going to a file
-// the stage itself has no write access to. The wrapper writes the exit status
-// to a second file, because a reaped child tells nobody anything and this
-// process may be gone before anyone asks.
+// Launch starts one stage under srt, detached, with its output written to a
+// file the stage itself cannot write. The wrapper writes the exit status to a
+// second file, because the exit status of a reaped child is lost and this
+// process may have exited before anyone asks for it.
 func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.StageHandle, error) {
 	if err := s.Preflight(ctx); err != nil {
 		return sandbox.StageHandle{}, err
@@ -142,10 +144,10 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	if len(spec.Argv) == 0 {
 		return sandbox.StageHandle{}, errors.New("a stage needs a command")
 	}
-	// A stage with no PATH cannot run anything, and it fails as an exit 127
-	// with an empty log — which is the unexplained failure this driver exists
-	// to not produce. srt is itself a script whose shebang resolves node, so
-	// even an absolute command is not enough.
+	// A stage with no PATH cannot run anything. It fails with exit code 127
+	// and an empty log, which is the kind of unexplained failure this driver
+	// must not produce. srt is itself a script whose shebang resolves node,
+	// so an absolute command path is not enough.
 	base := sandbox.HostEnvironment(s.config.Lookup)
 	if !hasPath(base) {
 		return sandbox.StageHandle{}, fmt.Errorf(
@@ -164,9 +166,9 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 		return sandbox.StageHandle{}, err
 	}
 
-	// The resolved path, not the bare name: the wrapper runs under a
-	// controlled PATH, and a bare name there is how a stage exits 127 with
-	// nothing in its log to say why.
+	// The resolved path is used rather than the bare name. The wrapper runs
+	// under a controlled PATH, and a bare name there makes a stage exit 127
+	// with nothing in its log to explain why.
 	srt, err := s.config.Look("srt")
 	if err != nil {
 		return sandbox.StageHandle{}, sandbox.NotReady(s.config.Platform, sandbox.Host, sandbox.ConditionMissing, "srt")
@@ -175,20 +177,20 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	statusPath := s.statusPath(spec.LogPath, spec.Name)
 	_ = os.Remove(statusPath)
 	_ = os.Remove(statusPath + ".part")
-	// The "--" is not decoration. srt parses options anywhere in what it is
-	// given unless separated, so a harness argv containing -d, -s, -c, -V or
-	// -h has them eaten: `srt --settings f echo -d -s -V` fails as an srt
-	// settings error rather than running echo. Today's harnesses happen to
-	// use long flags only, which is not a property to rely on.
+	// The "--" is required. srt parses options anywhere in its arguments
+	// unless they are separated, so a harness argv containing -d, -s, -c, -V
+	// or -h would have them consumed by srt: `srt --settings f echo -d -s -V`
+	// fails with an srt settings error rather than running echo. Current
+	// harnesses use long flags only, but that is not a property to rely on.
 	command := append([]string{srt, "--settings", settingsPath, "--"}, spec.Argv...)
 	// The status is written to a temporary file and renamed, so it appears
-	// whole or not at all. Written in place it can be observed empty — the
-	// process has exited, the file exists, and nothing is in it yet — which
-	// reads as a stage the driver lost.
+	// whole or not at all. Written in place, it could be observed empty, with
+	// the process exited and the file present but not yet written, which
+	// would read as a stage the driver lost.
 	script := wrapperScript(token, command, statusPath)
 
-	// The script is built here from a shell-quoted argv: every element is
-	// quoted by shellJoin, so nothing in a task or a model id is interpreted.
+	// The script is built from a shell-quoted argv. ShellJoin quotes every
+	// element, so nothing in a task or a model id is interpreted by the shell.
 	launcher := exec.Command("/bin/sh", "-c", script) //nolint:gosec,noctx // a quoted argv, and the stage outlives this process by design
 	launcher.Dir = spec.Workdir
 	launcher.Env = s.environment(base, spec)
@@ -197,40 +199,42 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 		return sandbox.StageHandle{}, fmt.Errorf("open stage log: %w", err)
 	}
 	defer func() { _ = log.Close() }()
-	// Stdin stays nil, which gives the stage the null device. It matters:
-	// a harness reading an inherited stdin waits on it — Claude Code stalls
-	// three seconds and says so — and a detached stage whose stdin is a pipe
-	// nobody closes waits for good.
+	// Stdin stays nil, which gives the stage the null device. A harness that
+	// reads an inherited stdin waits on it; Claude Code stalls for three
+	// seconds and reports this. A detached stage whose stdin is a pipe that
+	// nobody closes waits forever.
 	launcher.Stdout, launcher.Stderr = log, log
 	launcher.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := launcher.Start(); err != nil {
 		return sandbox.StageHandle{}, fmt.Errorf("start stage %s: %w", spec.Name, err)
 	}
 	pid := launcher.Process.Pid
-	// Reaped in a goroutine rather than released: a released child is never
-	// waited on, so it lingers as a zombie for the life of this process —
-	// every stage a long-running server ran would. The wait only reaps; it
-	// sends no signal, so the stage stays detached and outlives this process
-	// where it must, reparented to init and reaped there instead.
+	// The child is reaped in a goroutine rather than released. A released
+	// child is never waited on, so it would remain a zombie for the life of
+	// this process, and a long-running server would accumulate one per
+	// stage. The wait only reaps; it sends no signal, so the stage stays
+	// detached and outlives this process when it must, in which case it is
+	// reparented to init and reaped there.
 	go func() { _ = launcher.Wait() }()
 	return sandbox.StageHandle{Driver: sandbox.Host, ID: fmt.Sprintf("pid:%d:%s:%s", pid, token, spec.LogPath)}, nil
 }
 
-// wrapperScript is what the driver actually runs: the stage's command, and the
-// record of how it exited.
+// wrapperScript returns the shell script the driver runs: the stage's command
+// followed by a record of its exit status.
 //
-// The status is written to a temporary file and renamed, so it appears whole or
-// not at all. Written where it is read it can be observed empty — the process
-// has exited, the file exists, and nothing is in it yet — which reads as a
-// stage the driver lost and fails a session that actually finished.
+// The status is written to a temporary file and renamed, so it appears whole
+// or not at all. Written directly to the path it is read from, it could be
+// observed empty, with the process exited and the file present but not yet
+// written. That would read as a stage the driver lost and fail a session that
+// finished.
 func wrapperScript(token string, command []string, statusPath string) string {
 	return fmt.Sprintf("# replichai-stage:%s\n%s\ncode=$?\nprintf %%s $code > %s\nmv -f %s %s\n",
 		token, sandbox.ShellJoin(command),
 		sandbox.ShellQuote(statusPath+".part"), sandbox.ShellQuote(statusPath+".part"), sandbox.ShellQuote(statusPath))
 }
 
-// hasPath reports whether the environment a stage inherits can resolve a
-// command at all.
+// hasPath reports whether the environment a stage inherits has a non-empty
+// PATH, without which no command can be resolved.
 func hasPath(environ []string) bool {
 	for _, entry := range environ {
 		if name, value, found := strings.Cut(entry, "="); found && name == "PATH" && strings.TrimSpace(value) != "" {
@@ -240,10 +244,11 @@ func hasPath(environ []string) bool {
 	return false
 }
 
-// profile is the whole access decision for one stage. Inside the operator's
-// home directory it grants what the StageSpec carries and nothing of its own:
-// the harness's configuration reaches a run only where the runtime put it in
-// Paths, which it does for a session on the operator's sign-in alone.
+// profile builds the complete access policy for one stage. Inside the
+// operator's home directory it grants only what the StageSpec carries and
+// adds nothing of its own. The harness's configuration reaches a run only when
+// the runtime has put it in Paths, which it does only for a session that uses
+// the operator's own login.
 func (s *Sandbox) profile(spec sandbox.StageSpec) Profile {
 	profile := Profile{Home: s.config.Home, Network: spec.Network}
 	if binary := strings.TrimSpace(s.config.HarnessBinary); binary != "" {
@@ -260,23 +265,23 @@ func (s *Sandbox) profile(spec sandbox.StageSpec) Profile {
 			profile.Writes = append(profile.Writes, path.Host)
 		}
 	}
-	// srt keeps a denial that is more specific than the allowance it falls
-	// inside, which is what lets one file be withheld from a directory that
-	// has to be readable for another.
+	// srt honours a denial that is more specific than the allowance it falls
+	// inside. This is what allows one file to be withheld from a directory
+	// that must be readable for another file.
 	profile.Denies = append(profile.Denies, spec.Denied...)
 	// The evidence directory is never in Paths, so it is already outside
-	// every allowWrite entry. It is denied explicitly as well, because a
-	// future path that grants a writable parent would otherwise carry it.
+	// every allowWrite entry. It is also denied explicitly, because a future
+	// path that grants a writable parent would otherwise include it.
 	if evidence := evidenceDir(spec.LogPath); evidence != "" {
 		profile.DenyWrites = append(profile.DenyWrites, evidence)
 	}
 	return profile
 }
 
-// environment is what the stage runs with: the allowlisted base, the home and
-// terminal this driver sets, and the stage's own variables. Credentials named
-// in EnvFile are passed through the environment of the launcher rather than on
-// a command line, so they never appear in the process table.
+// environment returns the environment the stage runs with: the allowlisted
+// base, the HOME and TERM this driver sets, and the stage's own variables.
+// Credentials named in EnvFile are passed through the launcher's environment
+// rather than on a command line, so they never appear in the process table.
 func (s *Sandbox) environment(base []string, spec sandbox.StageSpec) []string {
 	environment := append([]string(nil), base...)
 	environment = append(environment, "HOME="+s.config.Home, "TERM=dumb")
@@ -287,10 +292,10 @@ func (s *Sandbox) environment(base []string, spec sandbox.StageSpec) []string {
 }
 
 // Observe reports whether the stage is alive. A stage is finished when its
-// wrapper has written a status file; otherwise it is running only if the pid
+// wrapper has written a status file. Otherwise it is running only if the pid
 // is alive and still belongs to this stage. The command line carries the
-// stage's own marker, which is what makes a recycled pid detectable — without
-// it a session would report a live run that is somebody else's process.
+// stage's marker, which makes a recycled pid detectable. Without the marker, a
+// session could report a live run that is in fact another process.
 func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbox.StageStatus, error) {
 	pid, token, logPath, err := parseHandle(handle)
 	if err != nil {
@@ -303,12 +308,12 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 	if alive(pid) && belongsTo(pid, token) {
 		return sandbox.StageStatus{Running: true}, nil
 	}
-	// Not obviously alive, and no status yet. The wrapper records its status
-	// before it exits, so these two observations race: the process can be
-	// gone while the rename that records why has not landed, and `ps` can
-	// miss a process that is on its way out. Give it a bounded moment rather
-	// than reporting a stage lost that in fact finished — an exit read as
-	// gone fails a run that succeeded.
+	// The process is not observably alive and there is no status yet. The
+	// wrapper records its status before it exits, so these two observations
+	// race: the process can be gone before the rename that records its
+	// status has completed, and ps can miss a process that is exiting. Wait
+	// a bounded time rather than reporting a finished stage as lost, because
+	// an exit read as gone fails a run that succeeded.
 	for range 10 {
 		time.Sleep(20 * time.Millisecond)
 		if code, ok := readStatus(statusPath); ok {
@@ -318,14 +323,15 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 			return sandbox.StageStatus{Running: true}, nil
 		}
 	}
-	// No status and no process: the stage went away without recording why.
-	// That is not success, and an unknowable exit must not read as one.
+	// No status and no process: the stage exited without recording its
+	// status. That is not success, and an unknown exit must not be reported
+	// as one.
 	return sandbox.StageStatus{Gone: true}, nil
 }
 
-// Output streams the stage's log from an offset. The log is written by this
-// process, into a directory no stage may write, so a stage cannot rewrite its
-// own transcript.
+// Output streams the stage's log from an offset. This process writes the log
+// into a directory no stage may write, so a stage cannot rewrite its own
+// transcript.
 func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset int64) (io.ReadCloser, error) {
 	_, _, logPath, err := parseHandle(handle)
 	if err != nil {
@@ -334,8 +340,8 @@ func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset i
 	//nolint:gosec // the path comes from this package's own stage handle
 	file, err := os.Open(logPath)
 	if os.IsNotExist(err) {
-		// A stage that has written nothing yet has an empty read, not a
-		// failure: the caller polls.
+		// A stage that has written nothing yet yields an empty read rather
+		// than an error, because the caller polls.
 		return io.NopCloser(strings.NewReader("")), nil
 	}
 	if err != nil {
@@ -348,14 +354,16 @@ func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset i
 	return file, nil
 }
 
-// Stop ends a running stage, and its whole process group with it: srt starts
-// helpers, and killing only the wrapper would leave the harness running.
+// Stop ends a running stage together with its whole process group. srt starts
+// helper processes, and killing only the wrapper would leave the harness
+// running.
 //
-// It is a term, a grace, then a kill. A well-behaved stage exits on the SIGTERM
-// and records its status; one that ignores it is SIGKILLed once the grace
-// elapses. The kill goes to the group, not the leader alone: a child that
-// outlived a leader that died on the term is still in the group and is reaped
-// with it, so nothing is left running behind a returned Stop.
+// Stop sends SIGTERM, waits for the grace period, then sends SIGKILL. A
+// well-behaved stage exits on SIGTERM and records its status. One that ignores
+// it is killed when the grace period elapses. The kill goes to the group, not
+// the leader alone: a child that outlived a leader killed by SIGTERM is still
+// in the group and is killed with it, so nothing is left running when Stop
+// returns.
 func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 	pid, token, logPath, err := parseHandle(handle)
 	if err != nil {
@@ -369,10 +377,11 @@ func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 		return nil
 	}
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
-	// The status file is the authoritative "finished" signal, not the leader's
-	// liveness: a leader can die on the term while a child it started keeps
-	// running. So the grace waits for the status rather than for the pid, and
-	// where it never comes the whole group is killed.
+	// The status file, not the leader's liveness, is the authoritative signal
+	// that the stage has finished, because a leader can exit on SIGTERM while
+	// a child it started keeps running. The grace period therefore waits for
+	// the status rather than for the pid, and if the status never appears
+	// the whole group is killed.
 	deadline := time.Now().Add(s.config.StopGrace)
 	for time.Now().Before(deadline) {
 		if _, done := readStatus(statusPath); done {
@@ -389,15 +398,16 @@ func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 	return nil
 }
 
-// Discard has nothing to remove: this driver creates no image, no container
-// and no volume, and the session directory belongs to the runtime.
+// Discard stops the stage. There is nothing else to remove: this driver
+// creates no image, container or volume, and the session directory belongs to
+// the runtime.
 func (s *Sandbox) Discard(ctx context.Context, handle sandbox.StageHandle) error {
 	return s.Stop(ctx, handle)
 }
 
-// Version reports what the harness on this machine actually is, so a run
-// records what produced it. It runs outside the sandbox: it is this program's
-// own question about its own dependency, not the agent's work.
+// Version reports the version of the harness on this machine, so that a run
+// records what produced it. It runs outside the sandbox because it is this
+// program's query about its own dependency, not the agent's work.
 func (s *Sandbox) Version(ctx context.Context, argv []string) (string, error) {
 	if len(argv) == 0 {
 		return "", errors.New("no version command")
@@ -459,9 +469,9 @@ func alive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
 
-// belongsTo reports whether the process still running under this pid is the
-// stage that was launched. The wrapper's own command line carries the marker,
-// so a pid the operating system handed to somebody else fails the test.
+// belongsTo reports whether the process running under this pid is the stage
+// that was launched. The wrapper's command line carries the marker, so a pid
+// the operating system has reassigned to another process fails the test.
 func belongsTo(pid int, token string) bool {
 	//nolint:gosec,noctx // a fixed command over an integer pid; liveness has no deadline to honour
 	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()

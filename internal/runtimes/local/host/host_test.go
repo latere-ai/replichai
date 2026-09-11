@@ -20,8 +20,8 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox/sandboxtest"
 )
 
-// found is a Look that resolves only the named executables, so a preflight can
-// be driven on a machine that has none of them.
+// found returns a Look that resolves only the named executables, so that a
+// preflight can be tested on a machine that has none of them.
 func found(names ...string) func(string) (string, error) {
 	return func(name string) (string, error) {
 		if slices.Contains(names, name) {
@@ -31,8 +31,9 @@ func found(names ...string) func(string) (string, error) {
 	}
 }
 
-// Every way this machine can be unready produces a refusal naming what to
-// install, and the container alternative. None of it needs srt present.
+// TestPreflightRefusalsAreActionable checks that every way a machine can be
+// unready produces a refusal that names what to install and the container
+// alternative. None of the cases needs srt installed.
 func TestPreflightRefusalsAreActionable(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -59,13 +60,14 @@ func TestPreflightRefusalsAreActionable(t *testing.T) {
 			}
 		})
 	}
-	// Everything present is ready.
+	// A machine with everything installed is ready.
 	ready := New(Config{Platform: sandbox.Darwin, Look: found("srt", "rg", "claude"), HarnessBinary: "claude", Home: "/home/x"})
 	if err := ready.Preflight(context.Background()); err != nil {
 		t.Fatalf("a ready machine was refused: %v", err)
 	}
-	// Windows is refused whatever is installed: srt marks it alpha, and a
-	// boundary that is alpha is not a boundary.
+	// Windows is refused regardless of what is installed, because srt marks
+	// its Windows support as alpha, which is not an acceptable isolation
+	// boundary.
 	windows := New(Config{Platform: sandbox.Windows, Look: found("srt", "rg", "claude"), HarnessBinary: "claude"})
 	err := windows.Preflight(context.Background())
 	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "WSL2") {
@@ -73,9 +75,9 @@ func TestPreflightRefusalsAreActionable(t *testing.T) {
 	}
 }
 
-// Every entry in the deny list reaches the settings file. A default that
-// widens by accident is how a rule like this fails, so the table is asserted
-// rather than trusted.
+// TestEveryDeniedPathReachesTheSettings checks that every entry in the deny
+// list reaches the settings file. A rule like this fails when a default widens
+// by accident, so the table is asserted rather than trusted.
 func TestEveryDeniedPathReachesTheSettings(t *testing.T) {
 	home := "/Users/x"
 	settings := Render(Profile{
@@ -92,21 +94,23 @@ func TestEveryDeniedPathReachesTheSettings(t *testing.T) {
 		}
 	}
 	// The home directory itself is denied, so anything not named in
-	// allowRead is unreadable rather than merely unlisted.
+	// allowRead is unreadable rather than only unlisted.
 	if !slices.Contains(settings.Filesystem.DenyRead, home) {
 		t.Errorf("the home directory is not denied: %v", settings.Filesystem.DenyRead)
 	}
-	// A .env is a credential file by convention, and the guide says it is
-	// denied; the table is what makes that true.
+	// A .env file holds credentials by convention, and the guide says it is
+	// denied. The table is what makes that true.
 	if !slices.Contains(settings.Filesystem.DenyRead, "/Users/x/.env") {
 		t.Errorf("~/.env is readable: %v", settings.Filesystem.DenyRead)
 	}
-	// The harness's own configuration is the one allowance inside it.
+	// The harness's own configuration is the only allowance inside the home
+	// directory.
 	if !slices.Contains(settings.Filesystem.AllowRead, "/Users/x/.claude") {
 		t.Errorf("the harness configuration is not readable: %v", settings.Filesystem.AllowRead)
 	}
 	// The evidence directory is denied for writing even though nothing
-	// grants it: a future writable parent would otherwise carry it.
+	// grants it, because a future writable parent would otherwise include
+	// it.
 	if !slices.Contains(settings.Filesystem.DenyWrite, "/s/session") {
 		t.Errorf("the evidence directory is writable: %+v", settings.Filesystem)
 	}
@@ -123,8 +127,8 @@ func TestEveryDeniedPathReachesTheSettings(t *testing.T) {
 	}
 }
 
-// The three network modes render as three different policies, and none of them
-// leaves egress unstated.
+// TestNetworkModesRender checks that the network modes render as distinct
+// policies, and that none of them leaves egress unspecified.
 func TestNetworkModesRender(t *testing.T) {
 	none := Render(Profile{Network: sandbox.Network{Mode: sandbox.NetworkNone}})
 	if len(none.Network.AllowedDomains) != 0 {
@@ -134,9 +138,9 @@ func TestNetworkModesRender(t *testing.T) {
 	if !slices.Contains(list.Network.AllowedDomains, "arxiv.org") || len(list.Network.AllowedDomains) != 2 {
 		t.Errorf("allowlist = %v", list.Network.AllowedDomains)
 	}
-	// There is no open mode: srt refuses a wildcard, so a driver that
-	// declared one would emit a profile srt rejects — which is what it did
-	// until a real run met it.
+	// There is no open mode. srt refuses a wildcard, so a driver that
+	// declared one would emit a profile srt rejects, which is what it did
+	// until a real run encountered it.
 	if New(Config{Platform: sandbox.Darwin}).Capabilities().NetworkModes[sandbox.NetworkOpen] {
 		t.Error("the host driver claims it can leave egress unrestricted")
 	}
@@ -146,15 +150,16 @@ func TestNetworkModesRender(t *testing.T) {
 			t.Errorf("a wildcard srt refuses reached the settings: %v", rendered.Network.AllowedDomains)
 		}
 	}
-	// A unix socket is a hole straight through the boundary, and local
-	// binding is a service the sandbox is talking to from outside it.
+	// A unix socket bypasses the boundary, and local binding means the
+	// sandbox is communicating with a service outside it.
 	if list.Network.AllowAllUnixSockets || list.Network.AllowLocalBinding {
 		t.Error("the network policy leaves a hole open by default")
 	}
 }
 
-// The stage's own paths become its access, and the judge's read-only workspace
-// stays read-only.
+// TestTheProfileIsBuiltFromTheStagePaths checks that the stage's paths
+// determine its access, and that the judge's read-only workspace stays
+// read-only.
 func TestTheProfileIsBuiltFromTheStagePaths(t *testing.T) {
 	driver := New(Config{Platform: sandbox.Darwin, Home: "/Users/x", Look: found("srt", "rg")})
 	spec := sandbox.StageSpec{
@@ -181,8 +186,9 @@ func TestTheProfileIsBuiltFromTheStagePaths(t *testing.T) {
 	}
 }
 
-// A credential is never rendered into a command line: it reaches the stage
-// through the launcher's environment, where the process table does not show it.
+// TestCredentialsDoNotReachTheCommandLine checks that a credential is never
+// rendered into a command line. It reaches the stage through the launcher's
+// environment, which the process table does not show.
 func TestCredentialsDoNotReachTheCommandLine(t *testing.T) {
 	driver := New(Config{Platform: sandbox.Darwin, Home: t.TempDir(), Look: found("srt", "rg")})
 	spec := sandbox.StageSpec{
@@ -193,7 +199,7 @@ func TestCredentialsDoNotReachTheCommandLine(t *testing.T) {
 	}
 	for _, entry := range driver.environment(sandbox.HostEnvironment(os.LookupEnv), spec) {
 		if strings.HasPrefix(entry, "ANTHROPIC_API_KEY=") && strings.Contains(entry, "sk-secret") {
-			// The environment is the intended channel; the command line
+			// The environment is the intended channel. The command line
 			// is not.
 			goto commandline
 		}
@@ -206,13 +212,15 @@ commandline:
 	}
 }
 
-// A stage that ignores SIGTERM is SIGKILLed once the grace elapses, group and
-// all, so nothing is left running behind a returned Stop. The stage ticks a
-// marker file while it lives, so its death is observed rather than inferred
-// from the leader alone.
+// TestStopKillsAStageThatIgnoresSIGTERM checks that a stage which ignores
+// SIGTERM is killed with SIGKILL, together with its process group, when the
+// grace period elapses, so that nothing is left running when Stop returns.
+// The stage appends to a marker file while it runs, so its death is observed
+// directly rather than inferred from the leader alone.
 func TestStopKillsAStageThatIgnoresSIGTERM(t *testing.T) {
 	shim := filepath.Join(t.TempDir(), "srt")
-	// Stands in for srt: drop `--settings <file> --` and exec the command.
+	// The shim stands in for srt: it drops `--settings <file> --` and execs
+	// the command.
 	if err := os.WriteFile(shim, []byte("#!/bin/sh\nshift 3\nexec \"$@\"\n"), 0o700); err != nil {
 		t.Fatalf("write shim: %v", err)
 	}
@@ -232,8 +240,8 @@ func TestStopKillsAStageThatIgnoresSIGTERM(t *testing.T) {
 	marker := filepath.Join(dir, "ticks")
 	spec := sandbox.StageSpec{
 		Name: "worker-0", Workdir: dir,
-		// Ignore the term and keep ticking the marker, so a Stop that only
-		// signaled and returned would leave this running.
+		// The stage ignores SIGTERM and keeps appending to the marker, so a
+		// Stop that only signalled and returned would leave it running.
 		Argv:    []string{"/bin/sh", "-c", `trap "" TERM; while :; do echo tick >> "$MARK"; sleep 0.05; done`},
 		Env:     map[string]string{"MARK": marker},
 		Network: sandbox.Network{Mode: sandbox.NetworkNone},
@@ -243,7 +251,7 @@ func TestStopKillsAStageThatIgnoresSIGTERM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	// Wait until the stage is ticking.
+	// Wait until the stage has started writing the marker.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(marker); err == nil {
@@ -262,7 +270,8 @@ func TestStopKillsAStageThatIgnoresSIGTERM(t *testing.T) {
 	if elapsed := time.Since(start); elapsed < grace {
 		t.Errorf("Stop returned in %v, before the %v grace: it did not wait for the term to take", elapsed, grace)
 	}
-	// The stage is gone: the marker stops growing once the group is killed.
+	// The stage is gone once the marker stops growing after the group is
+	// killed.
 	size := fileSize(t, marker)
 	time.Sleep(300 * time.Millisecond)
 	if grown := fileSize(t, marker); grown != size {
@@ -286,8 +295,8 @@ func fileSize(t *testing.T, path string) int64 {
 	return info.Size()
 }
 
-// srt is not on every machine, so the contract suite runs where it is and says
-// why it did not where it is not.
+// TestHostDriverMeetsTheSandboxContract runs the contract suite where srt is
+// installed, and reports why it was skipped where it is not.
 func TestHostDriverMeetsTheSandboxContract(t *testing.T) {
 	driver := New(Config{Home: os.Getenv("HOME")})
 	if err := driver.Preflight(context.Background()); err != nil {
@@ -295,8 +304,9 @@ func TestHostDriverMeetsTheSandboxContract(t *testing.T) {
 	}
 	sandboxtest.Run(t, func(t *testing.T) *sandboxtest.Subject {
 		return &sandboxtest.Subject{
-			// The environment is the composition root's, here as anywhere:
-			// a stage with no PATH resolves nothing, not even the sandbox.
+			// The environment comes from the composition root, here as
+			// elsewhere. A stage with no PATH resolves nothing, not even the
+			// sandbox.
 			Driver: New(Config{Home: os.Getenv("HOME"), Lookup: os.LookupEnv}),
 			Dir:    t.TempDir(),
 			Print: func(text string, code int) []string {
@@ -309,14 +319,15 @@ func TestHostDriverMeetsTheSandboxContract(t *testing.T) {
 	})
 }
 
-// A stage outlives the process that launched it, and its exit status is
-// recoverable afterwards: a reaped child tells nobody anything, so the wrapper
-// records it. This runs without srt, because it is the driver's own bookkeeping
-// rather than its isolation.
+// TestAStageOutlivesItsLauncher checks that a stage outlives the process that
+// launched it and that its exit status can be recovered afterwards. The exit
+// status of a reaped child is lost, so the wrapper records it. The test runs
+// without srt, because it exercises the driver's bookkeeping rather than its
+// isolation.
 func TestAStageOutlivesItsLauncher(t *testing.T) {
-	// srt stands in as /bin/echo and its dependencies as anything on PATH:
-	// what is under test here is the driver's own bookkeeping — a detached
-	// stage and a recoverable exit status — not srt's isolation.
+	// /bin/echo stands in for srt and for its dependencies. What is under
+	// test is the driver's bookkeeping, a detached stage and a recoverable
+	// exit status, not srt's isolation.
 	stub := func(name string) (string, error) {
 		if name == "srt" {
 			return "/bin/echo", nil
@@ -346,10 +357,11 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 	if !strings.HasPrefix(handle.ID, "pid:") || handle.Driver != sandbox.Host {
 		t.Fatalf("handle = %+v", handle)
 	}
-	// The status is renamed into place rather than written where it is read.
-	// Written in place it is observable empty — the process has exited, the
-	// file exists, and nothing is in it yet — which reads as a stage the
-	// driver lost, and fails a session that actually finished.
+	// The status is renamed into place rather than written directly to the
+	// path it is read from. Written in place, it could be observed empty,
+	// with the process exited and the file present but not yet written. That
+	// would read as a stage the driver lost, and fail a session that
+	// finished.
 	if !strings.Contains(readScript(t, spec), "mv -f") {
 		t.Fatalf("the stage's status is not written atomically:\n%s", readScript(t, spec))
 	}
@@ -371,23 +383,23 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 	if status.ExitCode != 0 {
 		t.Fatalf("exit = %d", status.ExitCode)
 	}
-	// The status survives being asked again from a driver that never saw
-	// the launch, which is what a fresh process does.
+	// The status can be read by a driver that never saw the launch, which is
+	// what happens after a process restart.
 	fresh := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: driver.config.Look})
 	again, err := fresh.Observe(context.Background(), handle)
 	if err != nil || again.Running || again.ExitCode != 0 {
 		t.Fatalf("a fresh driver lost the exit status: %+v, %v", again, err)
 	}
-	// A handle naming a pid that never was is gone, not running: an
-	// unknowable exit must not read as success.
+	// A handle naming a pid that never existed is reported as gone, not
+	// running. An unknown exit must not be reported as success.
 	lost := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:999999:worker-9:" + spec.LogPath}
 	if got, err := fresh.Observe(context.Background(), lost); err != nil || !got.Gone {
 		t.Fatalf("a lost stage = %+v, %v", got, err)
 	}
 }
 
-// readScript is the wrapper the driver would run for a stage, so a test can
-// assert how it records its own exit without racing it.
+// readScript returns the wrapper script the driver would run for a stage, so
+// that a test can check how it records its exit without racing the stage.
 func readScript(t *testing.T, spec sandbox.StageSpec) string {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Dir(spec.LogPath))
@@ -398,17 +410,18 @@ func readScript(t *testing.T, spec sandbox.StageSpec) string {
 	for _, entry := range entries {
 		names = append(names, entry.Name())
 	}
-	// The settings file is written beside the log, which is what proves the
-	// stage was built rather than only launched.
+	// The settings file is written beside the log, which shows that the
+	// stage's profile was built and not only that the stage was launched.
 	if !slices.Contains(names, spec.Name+".srt.json") {
 		t.Fatalf("no sandbox profile was written: %v", names)
 	}
 	return wrapperScript(spec.Name, spec.Argv, filepath.Join(filepath.Dir(spec.LogPath), spec.Name+".status"))
 }
 
-// Stopping and discarding a stage that is already finished, or one this
-// driver never launched, are both fine: the controller cancels and releases
-// without knowing the state.
+// TestStopAndDiscardTolerateAGoneStage checks that stopping and discarding a
+// stage that has already finished, or one this driver never launched, both
+// succeed. The controller cancels and releases without knowing the stage's
+// state.
 func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
 	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv,
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
@@ -422,8 +435,8 @@ func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
 			t.Fatalf("Discard: %v", err)
 		}
 	}
-	// A handle from the other driver is refused rather than acted on: two
-	// drivers' handles are both opaque strings.
+	// A handle from the other driver is refused rather than acted on. Both
+	// drivers' handles are opaque strings.
 	other := sandbox.StageHandle{Driver: sandbox.Container, ID: "replichai-x"}
 	if err := driver.Stop(context.Background(), other); !errors.Is(err, sandbox.ErrMismatch) {
 		t.Errorf("Stop = %v", err)
@@ -431,16 +444,16 @@ func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
 	if _, err := driver.Output(context.Background(), other, 0); !errors.Is(err, sandbox.ErrMismatch) {
 		t.Errorf("Output = %v", err)
 	}
-	// A malformed handle is refused rather than parsed into a pid nobody
-	// meant.
+	// A malformed handle is refused rather than parsed into an unintended
+	// pid.
 	malformed := sandbox.StageHandle{Driver: sandbox.Host, ID: "not-a-handle"}
 	if _, err := driver.Observe(context.Background(), malformed); !errors.Is(err, sandbox.ErrNotReady) {
 		t.Errorf("Observe = %v", err)
 	}
 }
 
-// The stage's own output is readable from an offset, out of a file the stage
-// has no write access to.
+// TestOutputReadsTheStageLogFromAnOffset checks that the stage's output is
+// readable from an offset, from a file the stage cannot write.
 func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
 	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv,
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
@@ -460,8 +473,8 @@ func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
 	if string(body[:n]) != "sandbox" {
 		t.Fatalf("output from offset = %q", body[:n])
 	}
-	// A stage that has written nothing yet reads empty rather than failing:
-	// the caller polls.
+	// A stage that has written nothing yet reads empty rather than failing,
+	// because the caller polls.
 	absent := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:1:worker-1:" + filepath.Join(dir, "absent.log")}
 	stream, err = driver.Output(context.Background(), absent, 0)
 	if err != nil {
@@ -473,8 +486,9 @@ func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
 	}
 }
 
-// A stage with no command is refused, and so is a launch on a machine whose
-// sandbox went missing between construction and the launch.
+// TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine checks that a stage with no
+// command is refused, and so is a launch on a machine whose sandbox went
+// missing between construction and launch.
 func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
 	ready := func(string) (string, error) { return "/bin/echo", nil }
 	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: ready, Lookup: os.LookupEnv})
@@ -490,9 +504,9 @@ func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
 	}
 }
 
-// The version is read by running the harness's own version command, outside
-// the sandbox: it is this program's question about its own dependency, not
-// the agent's work.
+// TestVersionRunsTheHarnessVersionCommand checks that the version is read by
+// running the harness's own version command outside the sandbox. It is this
+// program's query about its own dependency, not the agent's work.
 func TestVersionRunsTheHarnessVersionCommand(t *testing.T) {
 	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv,
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
@@ -505,12 +519,14 @@ func TestVersionRunsTheHarnessVersionCommand(t *testing.T) {
 	}
 }
 
-// A stage reads from the null device, never from whatever this process had.
-// A harness that reads an inherited stdin waits on it, and a detached stage
-// whose stdin is a pipe nobody closes waits for good.
+// TestAStageReadsTheNullDevice checks that a stage reads from the null device
+// and never from this process's stdin. A harness that reads an inherited stdin
+// waits on it, and a detached stage whose stdin is a pipe that nobody closes
+// waits forever.
 func TestAStageReadsTheNullDevice(t *testing.T) {
 	shim := filepath.Join(t.TempDir(), "srt")
-	// Stands in for srt: ignore the settings flag, report what stdin held.
+	// The shim stands in for srt: it ignores the settings flag and reports
+	// what it read from stdin.
 	script := "#!/bin/sh\nshift 2\nprintf 'stdin:[%s]' \"$(cat)\"\n"
 	if err := os.WriteFile(shim, []byte(script), 0o700); err != nil {
 		t.Fatalf("write shim: %v", err)
@@ -557,11 +573,13 @@ func TestAStageReadsTheNullDevice(t *testing.T) {
 	}
 }
 
-// srt parses options anywhere in what it is given unless they are separated,
-// so a harness argv carrying -d, -s, -c, -V or -h has them eaten: without the
-// separator `srt --settings f echo -d -s -V` fails as an srt settings error
-// rather than running echo. Today's harnesses use long flags only, which is
-// not a property to rely on.
+// TestTheCommandIsSeparatedFromTheSandboxsOwnFlags checks that the command is
+// separated from srt's own options. srt parses options anywhere in its
+// arguments unless they are separated, so a harness argv containing -d, -s,
+// -c, -V or -h would have them consumed by srt: without the separator,
+// `srt --settings f echo -d -s -V` fails with an srt settings error rather
+// than running echo. Current harnesses use long flags only, but that is not a
+// property to rely on.
 func TestTheCommandIsSeparatedFromTheSandboxsOwnFlags(t *testing.T) {
 	argv := []string{"claude", "--print", "-d", "-s", "-c", "--", "reproduce it"}
 	script := wrapperScript("worker-0", append([]string{"/opt/srt", "--settings", "/s/p.json", "--"}, argv...),
@@ -571,7 +589,7 @@ func TestTheCommandIsSeparatedFromTheSandboxsOwnFlags(t *testing.T) {
 	if separator < 0 || first < 0 || separator > first {
 		t.Fatalf("the command is not separated from the sandbox's own flags:\n%s", script)
 	}
-	// And every element of the command survives, in order.
+	// Every element of the command survives, in order.
 	previous := separator
 	for _, arg := range argv {
 		at := strings.Index(script[previous:], "'"+arg+"'")
@@ -582,9 +600,10 @@ func TestTheCommandIsSeparatedFromTheSandboxsOwnFlags(t *testing.T) {
 	}
 }
 
-// A stage with no PATH resolves nothing — not even the sandbox, whose own
-// shebang needs node. That failed as an exit 127 with an empty log, which is
-// the unexplained failure this driver exists not to produce.
+// TestAStageWithNoEnvironmentIsRefused checks that a stage with no PATH is
+// refused. Such a stage resolves nothing, not even the sandbox, whose own
+// shebang needs node. It used to fail with exit code 127 and an empty log,
+// which is the kind of unexplained failure this driver must not produce.
 func TestAStageWithNoEnvironmentIsRefused(t *testing.T) {
 	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
@@ -596,7 +615,7 @@ func TestAStageWithNoEnvironmentIsRefused(t *testing.T) {
 	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "PATH") {
 		t.Fatalf("Launch with no environment = %v", err)
 	}
-	// One with an environment carrying no PATH is the same thing.
+	// A driver whose environment has no PATH is refused in the same way.
 	driver = New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
 		Lookup: func(name string) (string, bool) { return "/x", name == "HOME" },
 		Look:   func(string) (string, error) { return "/bin/echo", nil }})
@@ -608,17 +627,20 @@ func TestAStageWithNoEnvironmentIsRefused(t *testing.T) {
 	}
 }
 
-// A stage inherits the allowlist and nothing else. The operator's shell may
-// export an ANTHROPIC_API_KEY, a GITHUB_TOKEN or an AWS secret, and an agent
-// running with its permission prompts bypassed must see none of them — while
-// PATH, without which nothing runs, and the HOME and TERM the driver sets all
-// arrive. This runs the real driver with srt stood in by a shim that executes
-// the command, so what is asserted is the environment a stage actually gets.
+// TestAStageInheritsOnlyTheAllowlistedEnvironment checks that a stage
+// inherits the allowlisted variables and nothing else. The operator's shell
+// may export an ANTHROPIC_API_KEY, a GITHUB_TOKEN or an AWS secret, and an
+// agent running with its permission prompts bypassed must see none of them.
+// PATH, without which nothing runs, and the HOME and TERM the driver sets must
+// all arrive. The test runs the real driver with a shim in place of srt that
+// executes the command, so the assertion is about the environment a stage
+// receives in practice.
 func TestAStageInheritsOnlyTheAllowlistedEnvironment(t *testing.T) {
 	t.Setenv("REPLICHAI_TEST_CANARY", "leaked-into-the-sandbox")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-leaked")
 	shim := filepath.Join(t.TempDir(), "srt")
-	// Stands in for srt: drop `--settings <file> --` and run the command.
+	// The shim stands in for srt: it drops `--settings <file> --` and runs
+	// the command.
 	if err := os.WriteFile(shim, []byte("#!/bin/sh\nshift 3\nexec \"$@\"\n"), 0o700); err != nil {
 		t.Fatalf("write shim: %v", err)
 	}
@@ -673,17 +695,18 @@ func TestAStageInheritsOnlyTheAllowlistedEnvironment(t *testing.T) {
 	}
 }
 
-// The operator's own sign-in is reachable here — a stage runs on their own
-// filesystem — and what it takes is granted per session rather than standing
-// open. A session carrying its own credential gets none of it, and the
-// keychain is never in the profile unless the run is actually using the login
-// that lives there.
+// TestTheLoginGrantIsTiedToTheSessionThatNeedsIt checks that the operator's
+// login is reachable under this driver, because a stage runs on the operator's
+// own filesystem, and that the paths it needs are granted per session rather
+// than always. A session that carries its own credential gets none of them,
+// and the keychain is never in the profile unless the run uses the login that
+// lives there.
 func TestTheLoginGrantIsTiedToTheSessionThatNeedsIt(t *testing.T) {
 	if !New(Config{Platform: sandbox.Darwin}).CarriesHarnessLogin() {
 		t.Error("the host sandbox refuses a login on the operator's own machine")
 	}
-	// A stage the runtime did not add login paths to opens nothing extra:
-	// the driver grants what the StageSpec carries and no more.
+	// A stage the runtime did not add login paths to gets nothing extra. The
+	// driver grants what the StageSpec carries and no more.
 	settings := Render(New(Config{Platform: sandbox.Darwin, Home: "/Users/x"}).profile(sandbox.StageSpec{
 		Paths: []sandbox.Path{{Host: "/s/workspace", Access: sandbox.ReadWrite}},
 	}))
@@ -692,9 +715,9 @@ func TestTheLoginGrantIsTiedToTheSessionThatNeedsIt(t *testing.T) {
 			t.Fatalf("a session that does not use the login still opened the keychain: %v", path)
 		}
 	}
-	// One that does carries it as a read-only path, and its denials reach
-	// the profile: the keychain is readable, the operator's own standing
-	// instructions are not.
+	// A stage that does use the login carries it as a read-only path, and
+	// its denials reach the profile: the keychain is readable, and the
+	// operator's own standing instructions are not.
 	withLogin := Render(New(Config{Platform: sandbox.Darwin, Home: "/Users/x"}).profile(sandbox.StageSpec{
 		Paths: []sandbox.Path{
 			{Host: "/s/workspace", Access: sandbox.ReadWrite},
