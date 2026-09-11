@@ -31,8 +31,7 @@ type Entry struct {
 	// canonicalised on registration and may not collide with any entry's
 	// name or with another entry's alias.
 	Aliases []string
-	// Build is required: an entry without a factory is a name that could
-	// never be honoured, so NewCatalog refuses it.
+	// Build is required. NewCatalog rejects an entry without one.
 	Build Factory
 }
 
@@ -85,10 +84,9 @@ func NewCatalog(entries ...Entry) (*Catalog, error) {
 	return catalog, nil
 }
 
-// Names lists the canonical names installed, sorted, so the choices an
-// UnavailableError offers the operator come out in a stable order. Aliases are
-// left out: they resolve, but they are not what a caller should be told to
-// spell.
+// Names lists the installed canonical names, sorted, so an UnavailableError
+// offers the operator its choices in a stable order. Aliases are left out
+// because they resolve but are not the form a caller should be told to use.
 func (c *Catalog) Names() []managed.RuntimeName {
 	names := make([]managed.RuntimeName, 0, len(c.entries))
 	for name := range c.entries {
@@ -115,8 +113,8 @@ func (c *Catalog) Canonical(raw string) (managed.RuntimeName, error) {
 
 // Build resolves raw and constructs the runtime registered under it. It
 // refuses an adapter that reports a name other than the one it was registered
-// as, because routes are persisted by name: a mismatch would quietly bind
-// later sessions to a different adapter than the one that started them.
+// as, because routes are persisted by name: a mismatch would bind later
+// sessions to a different adapter than the one that started them.
 func (c *Catalog) Build(ctx context.Context, raw string) (managed.Runtime, error) {
 	name, err := c.Canonical(raw)
 	if err != nil {
@@ -135,9 +133,9 @@ func (c *Catalog) Build(ctx context.Context, raw string) (managed.Runtime, error
 	return runtime, nil
 }
 
-// UnavailableError reports that nothing installed answers to the name asked
-// for. It carries the installed set rather than only the miss, so the operator
-// is told what they could have asked for instead of being left to guess.
+// UnavailableError reports that no installed runtime answers to the requested
+// name. It carries the installed set as well as the miss, so the operator can
+// see which names are valid.
 type UnavailableError struct {
 	// Runtime is the requested name in canonical form, not the raw text.
 	Runtime managed.RuntimeName
