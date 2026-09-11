@@ -53,9 +53,9 @@ func concreteFor(pattern string) string {
 }
 
 // 006k AC1: every route MountAdmin registers is refused for a signed-in
-// non-admin. Driven from the enumerated set, so a route added to the mount
-// without the guard — or a new admin route mounted elsewhere and forgotten —
-// fails here rather than shipping open.
+// non-admin. The test is driven from the enumerated set, so a route added to
+// the mount without the guard, or a new admin route mounted elsewhere and not
+// listed, fails here rather than shipping open.
 func TestEveryAdminRouteRefusesANonAdmin(t *testing.T) {
 	mux, routes, _, user := mountedAdmin(t)
 	if len(routes) < 6 {
@@ -72,8 +72,8 @@ func TestEveryAdminRouteRefusesANonAdmin(t *testing.T) {
 	}
 }
 
-// 006k AC1: an unauthenticated caller is refused too — the tab being hidden is
-// not the guard.
+// 006k AC1: an unauthenticated caller is refused too. Hiding the tab in the UI
+// is not the guard.
 func TestEveryAdminRouteRefusesTheUnauthenticated(t *testing.T) {
 	mux, routes, _, _ := mountedAdmin(t)
 	for _, rt := range routes {
@@ -86,8 +86,8 @@ func TestEveryAdminRouteRefusesTheUnauthenticated(t *testing.T) {
 	}
 }
 
-// 022c: the solvency read reports outstanding sold-liability — the fold over
-// every wallet and pot — so an operator can watch it against the vendor account.
+// 022c: the solvency read reports outstanding sold liability, the sum over
+// every wallet and pot, so an operator can compare it with the vendor account.
 func TestSolvencyReportsOutstandingLiability(t *testing.T) {
 	ctx := context.Background()
 	acc := access.NewMemStore()
@@ -121,8 +121,8 @@ func TestSolvencyReportsOutstandingLiability(t *testing.T) {
 	}
 }
 
-// 022d: the people table reports a frozen state, filters to the accounts that
-// owe, and an admin unfreezes one — granting the override that thaws it.
+// 022d: the people table reports a frozen state, filters to the accounts with a
+// negative balance, and an admin unfreezes one by granting the override.
 func TestAdminFreezeListAndUnfreeze(t *testing.T) {
 	ctx := context.Background()
 	acc := access.NewMemStore()
@@ -193,9 +193,9 @@ func TestAdminFreezeListAndUnfreeze(t *testing.T) {
 	}
 }
 
-// 006k AC2/AC5/AC7, in 011's terms: an admin drives the whole console — read
-// the policy, write it, put credits in somebody's wallet, and see the balance
-// in the people table.
+// 006k AC2/AC5/AC7, in 011's terms: an admin drives the whole console. They
+// read the policy, write it, put credits in somebody's wallet, and see the
+// balance in the people table.
 func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	mux, _, admin, _ := mountedAdmin(t)
 
@@ -261,8 +261,8 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	}
 
 	// Credits for someone who has never signed in show up in the people table
-	// next to their grant — the wallet is keyed by email, which is exactly what
-	// lets an admin fund somebody before inviting them.
+	// next to their grant. The wallet is keyed by email, which is what lets an
+	// admin fund somebody before inviting them.
 	if w := do("POST", "/admin/access", `{"email":"newcomer@example.com","tier":"user"}`, admin); w.Code != http.StatusOK {
 		t.Fatalf("grant = %d %s", w.Code, w.Body.String())
 	}

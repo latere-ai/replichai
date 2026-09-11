@@ -22,7 +22,7 @@ func TestWriteJSONReportsAnUnencodableBody(t *testing.T) {
 	}
 }
 
-// TestWriteJSONWritesTheBody keeps the happy path honest: the encoded value
+// TestWriteJSONWritesTheBody checks the success path: the encoded value
 // reaches the client as a 200 under the JSON content type.
 func TestWriteJSONWritesTheBody(t *testing.T) {
 	w := httptest.NewRecorder()

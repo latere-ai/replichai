@@ -63,8 +63,9 @@ func TestSessionFromIdentityDropsClaims(t *testing.T) {
 	if s.Sub != "user-1" || s.Email != "u@example.com" {
 		t.Fatalf("session = %+v, want only sub/email/verified", s)
 	}
-	// The session type has no field any of those claims could land in — checked
-	// structurally in TestSessionCarriesNoTier and by the shape of Session here.
+	// The session type has no field any of those claims could land in. This is
+	// checked structurally in TestSessionCarriesNoTier and by the shape of
+	// Session here.
 }
 
 func TestHandleLoginSetsFlowCookieAndRedirects(t *testing.T) {
@@ -108,9 +109,9 @@ func TestCallbackHappyPathSetsSession(t *testing.T) {
 	}
 }
 
-// When the ID token carries no email (latere auth), the callback fetches it
-// from /userinfo so the whitelist can bind — the fix for a signed-in principal
-// stuck at tier none with an empty email.
+// When the ID token carries no email, as with latere auth, the callback fetches
+// it from /userinfo so the grant list can bind. This fixed a signed-in
+// principal stuck at tier none with an empty email.
 func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	// The ID token yields a sub but no email.
@@ -136,10 +137,10 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	}
 }
 
-// Signing in is what turns a project invitation into a membership. Binding used
-// to be a side effect of the authorisation checks, every one of which
-// short-circuits for an owner or a public project — so an invitee stayed
-// unbound, absent from "shared with me" and shown as "pending" forever.
+// Signing in turns a project invitation into a membership. Binding used to be
+// a side effect of the authorisation checks, every one of which short-circuits
+// for an owner or a public project, so an invitee stayed unbound, absent from
+// "shared with me" and shown as "pending" indefinitely.
 func TestCallbackBindsProjectMemberships(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	members := access.NewMemMembership()
@@ -178,10 +179,10 @@ func TestCallbackBindsProjectMemberships(t *testing.T) {
 	}
 }
 
-// 006q: signing in admits you. Before this, a stranger who proved their
-// identity was refused by the gate until an admin added them by hand, which
-// made every evaluation of the product a support ticket — and made a project
-// invitation a promise the platform could not keep.
+// 006q: signing in admits the principal. Before this, a new user who proved
+// their identity was refused by the gate until an admin added them by hand.
+// Every evaluation of the product therefore needed a support ticket, and a
+// project invitation could not be honoured without one.
 func TestCallbackAdmitsAnyoneWhoSignsIn(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	acc := access.NewMemStore()
@@ -199,7 +200,7 @@ func TestCallbackAdmitsAnyoneWhoSignsIn(t *testing.T) {
 	if err != nil || !ok || tier != access.TierUser {
 		t.Fatalf("after signing in: %s/%v/%v, want user", tier, ok, err)
 	}
-	// The gate is untouched and still resolves per request — the sign-in only
+	// The gate is unchanged and still resolves per request. The sign-in only
 	// created the row it now finds.
 	if allowed, reason := Gate(acc).Allow(requestAs(&httpapi.Identity{Sub: p.Sub, Email: p.Email})); !allowed {
 		t.Errorf("the gate refused a signed-in principal: %q", reason)
@@ -224,7 +225,8 @@ func TestCallbackDoesNotDemoteASeededAdmin(t *testing.T) {
 	}
 }
 
-// A ban has to survive a re-login, or it is a logout.
+// A revocation must survive a re-login; otherwise revoking is only a forced
+// logout.
 func TestCallbackDoesNotReadmitARevokedPrincipal(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	acc := access.NewMemStore()
@@ -338,7 +340,8 @@ func TestCallbackRejections(t *testing.T) {
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("a forged state should be 400, got %d", w.Code)
 		}
-		// The flow cookie is cleared even on rejection (deleted before exchange).
+		// The flow cookie is cleared even on rejection, since it is deleted
+		// before the exchange.
 		if c := clearedCookie(w, cookieName(flowCookie, false)); !c {
 			t.Error("flow cookie should be cleared on the callback")
 		}

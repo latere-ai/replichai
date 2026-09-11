@@ -77,8 +77,9 @@ func TestCallbackKeepsDisplayClaims(t *testing.T) {
 	})
 }
 
-// AC1: name falls back to preferred_username, and the two are decoded from the
-// wire — the struct is the filter, so a role claim is not even parsed.
+// AC1: name falls back to preferred_username, and both are decoded from the
+// wire. The target struct has no field for a role claim, so one is never
+// parsed.
 func TestHTTPUserInfoDecodesDisplayClaims(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer tok" {
@@ -103,8 +104,8 @@ func TestHTTPUserInfoDecodesDisplayClaims(t *testing.T) {
 	}
 }
 
-// AC4: an avatar URL is rendered only when it is absolute https — a
-// javascript: or data: value from the issuer must never reach an <img src>.
+// AC4: an avatar URL is rendered only when it is absolute https. A javascript:
+// or data: value from the issuer must never reach an <img src>.
 func TestSafePicture(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"https://auth.latere.ai/a.png", "https://auth.latere.ai/a.png"},
@@ -122,8 +123,8 @@ func TestSafePicture(t *testing.T) {
 }
 
 // AC2: /me reports the display claims when present, omits them when absent, and
-// reports them for an ungranted principal too — the not-invited screen greets a
-// person.
+// reports them for an ungranted principal too, so the not-invited screen can
+// address the person by name.
 func TestMeReportsDisplayClaims(t *testing.T) {
 	me := Me(access.NewMemStore(), nil, nil)
 

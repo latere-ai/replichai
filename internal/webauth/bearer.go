@@ -31,17 +31,17 @@ func NewValidator(issuer, jwksURL string, audiences []string) *jwt.Validator {
 // Bearer authenticates a request presenting an Authorization: Bearer
 // credential, and places the same identity the cookie path would (045j).
 //
-// One principal, two credential sources: nothing downstream learns which one
-// answered, because nothing downstream should behave differently for the same
-// person on a laptop and the same person in a terminal.
+// The cookie and the bearer resolve to one principal type, and nothing
+// downstream learns which credential authenticated the request. The same
+// person in a browser and in a terminal must be treated identically.
 //
 // Precedence is fixed and total. A request carrying a bearer is authenticated
 // by the bearer: the cookie is not consulted, and a failed bearer is a 401
 // rather than a fall-through. A fall-through would let an attacker-supplied
 // header downgrade a cookie session, or a stale cookie rescue a revoked token.
 //
-// A nil validator — a deployment that has configured no bearer path — refuses
-// every bearer rather than accepting an unverified one.
+// A nil validator, meaning a deployment that has configured no bearer path,
+// refuses every bearer rather than accepting an unverified one.
 func Bearer(validator TokenValidator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,24 +59,23 @@ func Bearer(validator TokenValidator) func(http.Handler) http.Handler {
 				httpapi.WriteError(w, http.StatusUnauthorized, reasonFor(err))
 				return
 			}
-			// The cookie is not consulted. Removing it here is what makes
-			// that true for every handler downstream rather than only for
-			// the identity the gate reads.
+			// Deleting the cookie header here ensures no downstream handler
+			// consults it, not only the identity lookup the gate performs.
 			r.Header.Del("Cookie")
 			next.ServeHTTP(w, r.WithContext(httpapi.WithIdentity(r.Context(), identityFromClaims(claims))))
 		})
 	}
 }
 
-// identityFromClaims is the one mapping from a verified credential to a
+// identityFromClaims is the single mapping from a verified credential to a
 // principal. The cookie path fills the same fields from the same claim names,
 // so the two sources cannot disagree about what identifies a person.
 func identityFromClaims(claims *jwt.Claims) httpapi.Identity {
 	return httpapi.Identity{Sub: claims.Sub, Email: claims.Email}
 }
 
-// bearerToken reads the credential, reporting whether one was presented at
-// all. Another scheme is not a bearer and is left alone.
+// bearerToken reads the credential and reports whether one was presented.
+// A header with another scheme is not a bearer and is left alone.
 func bearerToken(r *http.Request) (string, bool) {
 	header := r.Header.Get("Authorization")
 	if header == "" {

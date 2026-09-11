@@ -54,7 +54,8 @@ func TestGateFailsClosedAndReResolves(t *testing.T) {
 		t.Error("a granted principal should be admitted")
 	}
 
-	// Revoke; the very next request is locked out — no session caches the tier.
+	// Revoke; the next request is locked out, because no session caches the
+	// tier.
 	if err := store.Revoke(ctx, admin, "seed@example.com"); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
@@ -100,15 +101,15 @@ func TestRequireTier(t *testing.T) {
 	}
 }
 
-// AC2 (route coverage): every operator route the router serves is behind the
+// AC2, route coverage: every operator route the router serves is behind the
 // gate. There is no API to enumerate a ServeMux's patterns, so this asserts the
-// known operator routes appear in GatedRoutes — a route added without the gated
-// helper would be absent here and fail the test.
+// known operator routes appear in GatedRoutes. A route added without the gated
+// helper would be absent there and fail the test.
 //
 // The public reads left this list with 028: a project anyone may read is read
-// without an account. What remains here is what an account is *for* — writing,
-// spending, the caller's own lists, the live stream, and the member roll. The
-// open set itself is asserted whole in httpapi's own router test.
+// without an account. What remains here is what requires an account: writing,
+// spending, the caller's own lists, the live stream, and the member list. The
+// open set itself is asserted in full in httpapi's own router test.
 func TestOperatorRoutesAreGated(t *testing.T) {
 	rt := httpapi.NewRouter(httpapi.Deps{Jobs: job.NewMemStore(), Reproductions: nil, Gate: Gate(access.NewMemStore())})
 	gated := map[string]bool{}

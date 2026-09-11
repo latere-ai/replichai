@@ -30,9 +30,9 @@ const sessionTTL = 12 * time.Hour
 // coming back.
 const flowTTL = 10 * time.Minute
 
-// OIDCClient is the slice of oidc.Provider the login uses. Behind an
-// interface so the callback flow tests offline against a fake; the real
-// *oidc.Provider satisfies it.
+// OIDCClient is the subset of oidc.Provider the login uses. It is an interface
+// so the callback flow tests offline against a fake. The real *oidc.Provider
+// satisfies it.
 type OIDCClient interface {
 	AuthCodeURL(state, nonce, verifier string, extra ...oauth2.AuthCodeOption) string
 	Exchange(ctx context.Context, code, verifier string) (*oauth2.Token, error)
@@ -48,17 +48,17 @@ type Profile struct {
 }
 
 // UserInfoFunc fetches the profile from the OIDC userinfo endpoint with an
-// access token. latere auth carries the sub in the ID token but the email (PII)
-// only at /userinfo, so the login fetches it there when the ID token has none.
-// The access token is discarded with the rest of the callback, so this is the
-// one moment the profile can be read at all. Behind a function so it tests
-// offline.
+// access token. latere auth carries the sub in the ID token but the email,
+// which is PII, only at /userinfo, so the login fetches it there when the ID
+// token has none. The access token is discarded with the rest of the callback,
+// so the callback is the only point at which the profile can be read. It is a
+// function type so it tests offline.
 type UserInfoFunc func(ctx context.Context, accessToken string) (Profile, error)
 
-// Login is the OIDC login front door: a standard public PKCE flow, sealed
+// Login is the OIDC login entry point: a standard public PKCE flow, sealed
 // session and flow cookies, and the middleware that turns a session into an
-// httpapi.Identity. It consumes only sub + verified email from the ID token —
-// roles, scopes, and org claims are dropped (006c AC1).
+// httpapi.Identity. It consumes only the sub and the verified email from the
+// ID token. Roles, scopes and org claims are dropped (006c AC1).
 type Login struct {
 	auth    OIDCClient
 	codec   *Codec
@@ -72,22 +72,22 @@ type Login struct {
 	userInfo   UserInfoFunc
 }
 
-// NewLogin builds the login front door. userInfo may be nil, in which case the
+// NewLogin builds the login entry point. userInfo may be nil, in which case the
 // email is taken only from the ID token.
 func NewLogin(auth OIDCClient, codec *Codec, acc access.Access, baseURL string, secure bool, userInfo UserInfoFunc) *Login {
 	return &Login{auth: auth, codec: codec, access: acc, baseURL: strings.TrimRight(baseURL, "/"), secure: secure, userInfo: userInfo}
 }
 
-// EndSessionAt tells the login where the issuer ends its own session, so
-// signing out here signs out there too. Returned fluently, like BindMemberships.
+// EndSessionAt sets the issuer's end-session endpoint, so signing out here
+// also signs out at the issuer. It returns the receiver, like BindMemberships.
 func (l *Login) EndSessionAt(url string) *Login {
 	l.endSession = url
 	return l
 }
 
-// BindMemberships gives the login the membership store to bind on sign-in.
-// Optional, and returned fluently so the wiring reads as one expression: a
-// deployment without a membership store simply never binds.
+// BindMemberships sets the membership store the login binds on sign-in. It is
+// optional and returns the receiver so the wiring reads as one expression. A
+// deployment without a membership store never binds.
 func (l *Login) BindMemberships(m access.Membership) *Login {
 	l.members = m
 	return l
@@ -157,11 +157,12 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := sessionFromIdentity(id)
-	// The sub comes from the ID token; the email may live only at /userinfo
-	// (latere auth keeps PII out of the token), and the display claims live only
-	// there. This is the only moment an access token exists, so the profile is
-	// read once here and carried in the session (006m) — a failure costs the name
-	// and avatar, never the sign-in.
+	// The sub comes from the ID token. The email may be available only at
+	// /userinfo, because latere auth keeps PII out of the token, and the
+	// display claims are available only there. This is the only point at which
+	// an access token exists, so the profile is read once here and carried in
+	// the session (006m). A failure costs the name and avatar, never the
+	// sign-in.
 	if l.userInfo != nil {
 		if p, err := l.userInfo(r.Context(), tok.AccessToken); err == nil {
 			if sess.Email == "" && p.Email != "" {
@@ -171,23 +172,24 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Signing in admits you (006q). Anyone who proves their identity gets
-	// TierUser; what limits them is budget, metered inside Enqueue, not an
-	// admin's guest list. The gate is untouched and still fail-closed — this
-	// only creates the row it then finds — and SelfGrant never promotes, never
-	// demotes, and never re-admits a revoked address, so a seeded admin stays an
-	// admin through their first login and a ban survives one.
+	// Signing in admits the principal (006q). Anyone who proves their identity
+	// gets TierUser; the limit on them is budget, metered inside Enqueue, not
+	// an admin's invitation list. The gate is unchanged and still fail-closed:
+	// this only creates the row the gate then finds. SelfGrant never promotes,
+	// never demotes and never re-admits a revoked address, so a seeded admin
+	// stays an admin through their first login and a revocation survives one.
 	if _, _, err := l.access.SelfGrant(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
 		slog.WarnContext(r.Context(), "login: admitting", "principal", sess.Sub, "error", err)
 	}
 
-	// Sign-in is the one moment that always happens, so it is where a project
-	// invitation stops being an email and becomes this principal's membership.
-	// It cannot live in an authorisation check: every one of those short-circuits
-	// for an owner or a public project, leaving an invitee unbound — absent from
-	// "shared with me" and permanently "pending" in the members view. Best-effort
-	// and logged: a bind failure costs a collaborator one sign-in, never the
-	// sign-in itself, and the next one retries it.
+	// Sign-in is the one step every principal passes through, so it is where a
+	// project invitation addressed to an email becomes this principal's
+	// membership. The bind cannot live in an authorisation check: every one of
+	// those short-circuits for an owner or a public project, which would leave
+	// an invitee unbound, absent from "shared with me" and permanently
+	// "pending" in the members view. The bind is best-effort and logged: a
+	// failure costs a collaborator one sign-in, never the sign-in itself, and
+	// the next sign-in retries it.
 	if l.members != nil && sess.Email != "" {
 		if n, err := l.members.BindAll(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
 			slog.WarnContext(r.Context(), "login: binding memberships", "principal", sess.Sub, "error", err)
@@ -205,16 +207,16 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, l.baseURL+fs.Next, http.StatusFound)
 }
 
-// HandleLogout ends the session here *and* at the identity provider.
+// HandleLogout ends the session both here and at the identity provider.
 //
-// Clearing only this app's cookie is not signing out. The provider's own
-// session survives it, so the next visit to /login is answered with a fresh
-// code for the same account without ever showing a prompt: the app looks signed
-// out, bounces straight back in, and there is no way to reach another profile
-// or to actually leave a shared machine.
+// Clearing only this app's cookie does not sign the user out. The provider's
+// own session survives, so the next visit to /login is answered with a fresh
+// code for the same account without a prompt: the app appears signed out,
+// signs straight back in, and the user cannot reach another profile or sign
+// out fully on a shared machine.
 //
-// So the local cookie goes first — it must be gone whatever the provider does
-// next — and the browser is then handed to the issuer's RP-initiated logout,
+// The local cookie is cleared first, so it is gone whatever the provider does
+// next. The browser is then redirected to the issuer's RP-initiated logout,
 // which returns it here. An issuer that advertises no such endpoint leaves
 // sign-out local-only, which is all it can offer.
 func (l *Login) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -259,32 +261,32 @@ func (l *Login) Middleware(next http.Handler) http.Handler {
 }
 
 // Credits is what a principal has to spend, as /me reports it (011). The wallet
-// is rendered beside the "New project" button, and the reserve is what the
-// client needs to say *this project needs at least this much to start a
-// session* before a submit is attempted.
+// is rendered beside the "New project" button. The reserve lets the client
+// state how much a project needs to start a session before a submit is
+// attempted.
 type Credits struct {
 	// Wallet is this person's own balance, in micro-USD. It is never spent by a
 	// session directly: money reaches a run by being allocated to a project.
 	Wallet int64 `json:"wallet"`
 	// StartReserve is how much a project must have available before a session
-	// may start there. Public on purpose — the refusal it causes has to be
-	// explainable before it happens.
+	// may start there. It is public so the refusal it causes can be explained
+	// before it happens.
 	StartReserve int64 `json:"start_reserve"`
 }
 
-// CreditsFunc reports one principal's credits. Injected so this package does
-// not import the ledger or the policy store; nil leaves the field off /me
-// entirely, which is what an offline unmetered run wants.
+// CreditsFunc reports one principal's credits. It is injected so this package
+// does not import the ledger or the policy store. Nil leaves the field off /me
+// entirely, which an offline unmetered run needs.
 type CreditsFunc func(ctx context.Context, principalSub, email string) (Credits, error)
 
-// FrozenFunc reports whether an account is in view-only mode (022d). Injected
-// for the same reason CreditsFunc is; nil leaves the field off /me, so the
-// frontend renders no banner when this deployment sells no credits.
+// FrozenFunc reports whether an account is in view-only mode (022d). It is
+// injected for the same reason CreditsFunc is. Nil leaves the field off /me,
+// so the frontend renders no banner when this deployment sells no credits.
 type FrozenFunc func(ctx context.Context, email string) (bool, error)
 
-// Me reports the current identity and its resolved tier. It sits OUTSIDE the
-// gate and always answers 200: an ungranted principal gets tier "none", which is
-// how the frontend learns to render the not-invited screen.
+// Me reports the current identity and its resolved tier. It is mounted outside
+// the gate and always answers 200: an ungranted principal gets tier "none",
+// which tells the frontend to render the not-invited screen.
 func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := httpapi.IdentityFrom(r)
@@ -294,9 +296,9 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 		}
 		tier, _, err := acc.Resolve(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email})
 		if err != nil {
-			// A store that cannot answer is not a person who was not invited.
-			// Say so, so the app shows an outage rather than the not-invited
-			// screen to somebody who is.
+			// A store that cannot answer is an outage, not an ungranted
+			// principal. Reporting it as such makes the app show an outage
+			// rather than the not-invited screen to a granted person.
 			slog.WarnContext(r.Context(), "me: resolving", "principal", id.Sub, "error", err)
 			httpapi.WriteError(w, http.StatusServiceUnavailable, "access_unavailable")
 			return
@@ -324,8 +326,9 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 				slog.WarnContext(r.Context(), "me: reading credits", "principal", id.Sub, "error", err)
 			}
 		}
-		// Frozen rides along so the frontend can render the view-only banner and
-		// disable the spend controls, over the same predicate the gate enforces.
+		// Frozen is included so the frontend can render the view-only banner
+		// and disable the spend controls, from the same predicate the gate
+		// enforces.
 		if frozen != nil && tier.Granted() {
 			if f, err := frozen(r.Context(), id.Email); err == nil {
 				body["frozen"] = f
@@ -338,7 +341,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 }
 
 // sessionFromIdentity maps the verified ID token to the session, keeping only
-// sub and email. Roles and every other claim are dropped — no IdP-issued
+// sub and email. Roles and every other claim are dropped, because no IdP-issued
 // authority may reach a grant decision (006c AC1). The display claims are added
 // afterwards, from /userinfo, and confer nothing.
 func sessionFromIdentity(id oidc.User) Session {
@@ -373,13 +376,13 @@ func randToken() string {
 }
 
 // writeJSON writes v as a 200 JSON response. Every answer this package sends
-// through it is a 200 — the failures go out as plain text through http.Error —
-// so the status is not a parameter: one would only ever be passed
-// http.StatusOK, and a caller reading it might believe otherwise.
+// through it is a 200, and failures go out as plain text through http.Error,
+// so the status is not a parameter: it would only ever be passed
+// http.StatusOK, and a parameter would suggest otherwise to a reader.
 //
 // The value is encoded before the status line is committed, so a body that
-// cannot become JSON answers 500 rather than a 200 whose payload is empty and
-// whose caller cannot tell.
+// cannot be encoded answers 500 rather than a 200 with an empty payload the
+// caller cannot distinguish from success.
 func writeJSON(w http.ResponseWriter, v any) {
 	b, err := json.Marshal(v)
 	if err != nil {

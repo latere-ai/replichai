@@ -21,10 +21,11 @@ import (
 
 // Signing out must end the session at the identity provider too.
 //
-// Clearing only this app's cookie is not signing out: the provider's session
-// survives, so the next /login is answered with a fresh code for the same
-// account with no prompt. The app appears to sign out and bounces straight back
-// in — and nobody can reach another profile or leave a shared machine.
+// Clearing only this app's cookie does not sign the user out: the provider's
+// session survives, so the next /login is answered with a fresh code for the
+// same account with no prompt. The app appears to sign out and signs straight
+// back in, and the user cannot reach another profile or sign out fully on a
+// shared machine.
 func TestHandleLogoutEndsTheProviderSession(t *testing.T) {
 	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore()).
 		EndSessionAt("https://auth.latere.ai/logout")
@@ -43,7 +44,7 @@ func TestHandleLogoutEndsTheProviderSession(t *testing.T) {
 	if loc.Host != "auth.latere.ai" || loc.Path != "/logout" {
 		t.Errorf("Location = %q, want the issuer's end-session endpoint", loc)
 	}
-	// And it has to come back here, or signing out strands the person at the
+	// The redirect has to return here, or signing out leaves the user at the
 	// identity provider.
 	if got := loc.Query().Get("post_logout_redirect_uri"); got != "https://replichai.latere.ai/" {
 		t.Errorf("post_logout_redirect_uri = %q, want the app root", got)
@@ -61,7 +62,7 @@ func TestHandleLogoutEndsTheProviderSession(t *testing.T) {
 }
 
 // An issuer that advertises no end-session endpoint still gets a working local
-// sign-out — and the cookie goes either way, before anything is redirected.
+// sign-out, and the cookie is cleared in either case before any redirect.
 func TestHandleLogoutWithoutAnIssuerEndpoint(t *testing.T) {
 	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore())
 	w := httptest.NewRecorder()
@@ -81,7 +82,7 @@ func TestHandleLogoutWithoutAnIssuerEndpoint(t *testing.T) {
 	}
 }
 
-// A malformed endpoint must not strand somebody mid-sign-out on a broken URL.
+// A malformed endpoint must not leave the user on a broken URL mid-sign-out.
 func TestHandleLogoutFallsBackOnAnUnparseableEndpoint(t *testing.T) {
 	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore()).EndSessionAt("://not a url")
 	w := httptest.NewRecorder()
@@ -107,8 +108,8 @@ func TestHandleLogoutPreservesExistingQuery(t *testing.T) {
 }
 
 // ?next= decides where the login returns to, so it is attacker-reachable. Only
-// a same-site relative path survives: anything else would make the sign-in an
-// open redirect somebody could hang a phishing page off.
+// a same-site relative path is kept: anything else would make the sign-in an
+// open redirect usable for phishing.
 func TestSafeNextRefusesAnOpenRedirect(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{
 		{"/projects/p-1", "/projects/p-1"},
@@ -127,7 +128,7 @@ func TestSafeNextRefusesAnOpenRedirect(t *testing.T) {
 }
 
 // The login redirect carries the state, and the flow cookie carries the same
-// state sealed — the pair is what makes the callback verifiable.
+// state sealed. The pair is what makes the callback verifiable.
 func TestHandleLoginStartsAVerifiableFlow(t *testing.T) {
 	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore())
 	w := httptest.NewRecorder()
@@ -260,9 +261,9 @@ type failingPlatform struct {
 }
 
 // Settings mirrors the Store contract on failure: the conservative default is
-// returned *alongside* the error, never a zero value. A fake that returned zero
-// here would make this test pass against a handler that shows a reserve of
-// nothing — which is the one answer that admits a session on an empty pot.
+// returned together with the error, never a zero value. A fake that returned
+// zero here would make this test pass against a handler that shows a reserve
+// of zero, which is the one answer that admits a session on an empty pot.
 func (f failingPlatform) Settings(ctx context.Context) (platform.Settings, error) {
 	if f.err != nil {
 		return platform.Settings{StartReserve: platform.DefaultStartReserve}, f.err
@@ -277,7 +278,7 @@ func (f failingPlatform) SetSettings(ctx context.Context, by access.Principal, s
 	return f.Store.SetSettings(ctx, by, s)
 }
 
-// A policy *write* that did not happen must not be reported as done.
+// A policy write that did not happen must not be reported as done.
 func TestAdminReportsPlatformWriteFailures(t *testing.T) {
 	acc := access.NewMemStore()
 	adminID := seedAdmin(t, acc)
@@ -304,10 +305,10 @@ func TestAdminReportsPlatformWriteFailures(t *testing.T) {
 	}
 }
 
-// A policy *read* is the opposite case, and deliberately so: the store is
-// fail-closed, so a failed read still yields the conservative default. The
-// console shows the number that is actually in force rather than an error, and
-// the number it shows is never "unlimited".
+// A policy read is the opposite case by design: the store is fail-closed, so a
+// failed read still yields the conservative default. The console shows the
+// number in force rather than an error, and the number it shows is never
+// "unlimited".
 func TestAdminShowsTheEnforcedDefaultWhenTheReadFails(t *testing.T) {
 	acc := access.NewMemStore()
 	adminID := seedAdmin(t, acc)
@@ -328,8 +329,8 @@ func TestAdminShowsTheEnforcedDefaultWhenTheReadFails(t *testing.T) {
 	}
 }
 
-// With no platform store or ledger wired at all, those routes say so rather
-// than pretending the deployment has no policy and no money.
+// With no platform store or ledger wired, those routes answer 503 rather than
+// reporting that the deployment has no policy and no money.
 func TestAdminWithoutAPlatformStore(t *testing.T) {
 	acc := access.NewMemStore()
 	adminID := seedAdmin(t, acc)

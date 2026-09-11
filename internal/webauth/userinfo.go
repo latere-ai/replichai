@@ -23,20 +23,20 @@ var httpClient = xotel.HTTPClient()
 
 // Endpoints are the issuer-advertised URLs this service uses.
 type Endpoints struct {
-	// UserInfo is where the email lives when the ID token does not carry it
-	// (latere auth keeps PII out of the token).
+	// UserInfo is the endpoint that serves the email when the ID token does
+	// not carry it. latere auth keeps PII out of the token.
 	UserInfo string
-	// EndSession is the issuer's RP-initiated logout. Without it, signing out
-	// clears this app's cookie and leaves the identity provider's session
-	// standing — so the next sign-in silently re-issues a code for the same
-	// account, and nobody can switch profiles or actually leave a shared
-	// machine. Empty when the issuer advertises none.
+	// EndSession is the issuer's RP-initiated logout endpoint. Without it,
+	// signing out clears this app's cookie and leaves the identity provider's
+	// session in place, so the next sign-in silently re-issues a code for the
+	// same account and a user cannot switch profiles or sign out fully on a
+	// shared machine. Empty when the issuer advertises none.
 	EndSession string
 }
 
 // Discover reads the endpoints this service needs from an issuer's OIDC
-// discovery document. One request for both: they are two fields of one
-// document, and two round trips to fetch them would be two ways to fail.
+// discovery document. Both are read in one request: they are two fields of one
+// document, and a second round trip would add a second failure point.
 func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 	url := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -67,9 +67,9 @@ func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 }
 
 // HTTPUserInfo builds a UserInfoFunc that GETs the OIDC userinfo endpoint with
-// the access token and returns the profile: the email, and the two display
-// claims (006m). Roles, scopes, and org claims are not decoded at all — the
-// struct is the filter.
+// the access token and returns the profile: the email and the two display
+// claims (006m). Roles, scopes and org claims are never decoded, because the
+// target struct has no fields for them.
 func HTTPUserInfo(endpoint string) UserInfoFunc {
 	return func(ctx context.Context, accessToken string) (Profile, error) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

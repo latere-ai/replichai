@@ -14,8 +14,8 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 )
 
-// passthrough answers a distinctive code so a test can tell "the gate let it
-// through" from "the gate refused it 402".
+// passthrough is a distinctive status code, so a test can distinguish a request
+// the gate passed from one it refused with 402.
 const passthrough = 299
 
 func frozenGate(t *testing.T) (http.Handler, *credit.MemStore, *access.MemStore) {
@@ -93,7 +93,7 @@ func TestFreezeGateThawsAndRespectsAOneShotOverride(t *testing.T) {
 	if post() != passthrough {
 		t.Fatalf("override should thaw a negative account")
 	}
-	// A further debit keeps it writable — the override survives.
+	// A further debit keeps it writable: the override survives.
 	_ = ledger.RefundPaid(ctx, email, 1*credit.Dollar, "re_2", "a") // -$3
 	if post() != passthrough {
 		t.Fatalf("override should survive a further debit")
@@ -108,7 +108,8 @@ func TestFreezeGateThawsAndRespectsAOneShotOverride(t *testing.T) {
 		t.Fatalf("override should be cleared once the wallet is solvent")
 	}
 
-	// A fresh chargeback re-freezes: the waiver did not outlive its debt.
+	// A fresh chargeback re-freezes: the override did not outlive the debt it
+	// waived.
 	_ = ledger.RefundPaid(ctx, email, 5*credit.Dollar, "re_3", "a") // -$3
 	if post() != http.StatusPaymentRequired {
 		t.Fatalf("a new debt should re-freeze, a fresh decision")

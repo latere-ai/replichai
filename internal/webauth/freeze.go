@@ -14,14 +14,14 @@ import (
 )
 
 // Frozen reports whether an account is in view-only mode (022d): its wallet is
-// negative and no admin override is in force. It is the one predicate the
+// negative and no admin override is in force. It is the single predicate the
 // gate and /me both read.
 //
-// It reads and never writes. An override is a waiver of a debt; the top-up
-// that pays the debt retires it, through the ledger's on-solvent hook wired
-// at the composition root — so a later chargeback re-freezes as a fresh
-// decision, and this path, which runs on every mutating request and every
-// /me, costs the database nothing but a balance read.
+// It reads and never writes. An override is a waiver of a debt. The top-up
+// that pays the debt retires the override, through the ledger's on-solvent
+// hook wired at the composition root, so a later chargeback re-freezes as a
+// fresh decision. This path runs on every mutating request and every /me, and
+// costs the database only a balance read.
 func Frozen(ctx context.Context, credits credit.Store, ov access.FreezeOverrides, email string) (bool, error) {
 	bal, err := credits.Balance(ctx, credit.Wallet(email))
 	if err != nil {
@@ -37,7 +37,7 @@ func Frozen(ctx context.Context, credits credit.Store, ov access.FreezeOverrides
 	return !active, nil
 }
 
-// isMutating reports whether a method changes state. Reads (and CORS preflight)
+// isMutating reports whether a method changes state. Reads and CORS preflight
 // pass a frozen account untouched.
 func isMutating(method string) bool {
 	switch method {
@@ -48,25 +48,25 @@ func isMutating(method string) bool {
 	}
 }
 
-// allowedWhileFrozen are the two mutating paths a frozen account may still hit:
-// the checkout that is its only way out, and the payment webhook (which carries
-// no identity and credits the account back).
+// allowedWhileFrozen reports the two mutating paths a frozen account may still
+// call: the checkout, which is its only way to become solvent again, and the
+// payment webhook, which carries no identity and credits the account back.
 func allowedWhileFrozen(path string) bool {
 	return path == "/me/credits/checkout" || path == "/stripe/webhook"
 }
 
 // FreezeGate refuses a mutating request from a negative-wallet account with
-// 402 account_frozen, at the one narrow point every request passes — so a
-// frozen account calling the API directly is refused exactly as the UI is,
-// while reads (including the project archive download) and the top-up that thaws
-// it still go through. It composes *inside* the auth middleware, which has
-// already put the identity on the request.
+// 402 account_frozen, at the single point every request passes. A frozen
+// account calling the API directly is therefore refused exactly as the UI is,
+// while reads, including the project archive download, and the top-up that
+// unfreezes it still go through. It composes inside the auth middleware, which
+// has already put the identity on the request.
 //
-// It is a coarse net over a guarantee the ledger also keeps: spend is refused in
-// the credit store whether or not this gate runs, so a read error here fails
-// open (log and allow) rather than freezing everybody on a database hiccup. A
-// nil ledger or override store leaves it a pass-through, which an offline run
-// wants.
+// It is a coarse check over a guarantee the ledger also keeps: spend is refused
+// in the credit store whether or not this gate runs. A read error here
+// therefore fails open, logging and allowing the request, rather than freezing
+// every account on a transient database error. A nil ledger or override store
+// makes it a pass-through, which an offline run needs.
 func FreezeGate(credits credit.Store, ov access.FreezeOverrides) func(http.Handler) http.Handler {
 	if credits == nil || ov == nil {
 		return func(next http.Handler) http.Handler { return next }
