@@ -5,21 +5,21 @@ status: implemented
 
 # 041e — Anthropic conforms to the session contract
 
-**Status:** implemented through the managed compatibility adapter, with two deviations worth naming. The Anthropic adapter was never built at `internal/managed/anthropic`: the SDK stays in `internal/provider/anthropic`, behind `internal/managed/legacy.Runtime`, which `internal/runtimes/builtin` alone constructs. And the removal is half-done — the old resource contract (`WorkspaceSpec`, `WorkerSpec`, `RunHandle`, `EnsureWorkspace`, `EnsureWorker`, `StartRun`, `CloseRun`) still stands in `internal/provider`, still called directly by `internal/audit` and `cmd/server/runner.go`, so acceptance criteria 4 and 8 do not yet hold. The global registry and the blank imports are gone as specified.
+**Status:** implemented through the managed compatibility adapter, with two deviations. The Anthropic adapter was never built at `internal/managed/anthropic`: the SDK stays in `internal/provider/anthropic`, behind `internal/managed/legacy.Runtime`, which `internal/runtimes/builtin` alone constructs. And the removal is half done: the old resource contract (`WorkspaceSpec`, `WorkerSpec`, `RunHandle`, `EnsureWorkspace`, `EnsureWorker`, `StartRun`, `CloseRun`) still stands in `internal/provider`, still called directly by `internal/audit` and `cmd/server/runner.go`, so acceptance criteria 4 and 8 do not yet hold. The global registry and the blank imports are gone as specified.
 
-**Scope:** migrate memory and Anthropic Managed Agents to `internal/managed.Runtime`; add the reusable conformance suite and mocked Anthropic transaction tests; remove the old provider registry/resource contract and all non-adapter Anthropic usage parsing/imports; preserve current audit, experiment, publication, restart, cancellation, and billing behavior.
+**Scope:** migrate memory and Anthropic Managed Agents to `internal/managed.Runtime`; add the reusable conformance suite and mocked Anthropic transaction tests; remove the old provider registry/resource contract and all non-adapter Anthropic usage parsing/imports; preserve current audit, experiment, publication, restart, cancellation, and billing behaviour.
 
 **Depends on:** [041a](041a-one-managed-session-contract.md), [041b](041b-one-managed-session-lifecycle.md), [041c](041c-a-session-remembers-its-runtime.md), [041d](041d-models-and-meters-name-their-source.md).
 
 ## Problem
 
-The seam is not proven by types or fakes alone. The production adapter must realize the new semantic request without weakening it, every existing caller must use the controller/router, and the adapter's partial-failure behavior must be demonstrated at its HTTP boundary. Until then, “OpenAI-ready” only means another interface exists beside the Anthropic path.
+The seam is not proven by types or fakes alone. The production adapter must realise the new semantic request without weakening it, every existing caller must use the controller/router, and the adapter's partial-failure behaviour must be demonstrated at its HTTP boundary. Until then, “OpenAI-ready” only means another interface exists beside the Anthropic path.
 
 ## Anthropic mapping
 
 `internal/managed/anthropic` keeps all Anthropic SDK types, endpoint knowledge, model matching, event decoding, and raw usage translation. Its public constructor receives typed config and an injectable client/transport; it does not read environment variables or self-register.
 
-`Start(SessionSpec)` realizes vendor resources privately:
+`Start(SessionSpec)` realises vendor resources privately:
 
 1. validate the complete spec and capability set with zero remote writes;
 2. resolve the exact Anthropic `ModelRef` deterministically from the requested preference;
@@ -32,17 +32,17 @@ The seam is not proven by types or fakes alone. The production adapter must real
 
 The names environment, agent, version, and `user.define_outcome` do not escape the adapter or appear in neutral JSON. Private helpers may retain the current endpoint mapping.
 
-Capability validation is honest:
+Capability validation is strict:
 
 - `pip` is supported; an unimplemented package manager is rejected rather than ignored;
 - Anthropic's open/limited network modes map only when their semantics satisfy the requested policy; an arbitrary domain allowlist is unsupported until the vendor API can enforce it;
 - a read-write GitHub repository uses the existing GitHub resource; read-only is advertised only if enforcement is demonstrated rather than assumed from a token comment;
 - evaluation is supported through the native outcome/revision mechanism;
-- attachments honor limits before upload.
+- attachments honour limits before upload.
 
 The adapter's locator is versioned, redacted, and records ownership. Caller-owned repository references are never released. Created sessions, temporary uploads, and any environment/agent objects that the API allows the caller to archive/delete are released idempotently in reverse dependency order. A vendor object with no deletion API is represented as archived/retained in adapter diagnostics rather than silently claimed deleted.
 
-`Poll` maps vendor state and grader records to neutral monotonic status. `Events` maps every event once, including normalized per-event usage; raw JSON remains attached only as evidence. `Cancel` interrupts a live session. `Release` archives/releases owned resources but does not run before retention. Not-found after a prior terminal/release observation is idempotent success.
+`Poll` maps vendor state and grader records to neutral monotonic status. `Events` maps every event once, including normalised per-event usage; raw JSON remains attached only as evidence. `Cancel` interrupts a live session. `Release` archives/releases owned resources but does not run before retention. Not-found after a prior terminal/release observation is idempotent success.
 
 ## Memory mapping
 
@@ -64,19 +64,19 @@ Once both adapters and all consumers migrate:
 
 A repository architecture test walks Go imports/AST rather than grepping comments. Vendor SDK imports are allowed only in their adapter. Concrete adapter imports are allowed only in their own tests and `internal/runtimes/builtin`. Core packages may import `internal/managed` and the router/controller, never an adapter.
 
-## Compatibility behavior
+## Compatibility behaviour
 
 Through this leaf:
 
 - the production deployment remains configured to `anthropic-managed`;
 - server local default remains memory and CLI legacy default remains Anthropic as defined in 041c;
 - model preference mapping preserves the same Opus/Sonnet/Haiku choices, but no longer falls back to an arbitrary first catalog item;
-- audit prompt, rubric, revision budget, repository live-write behavior, artifacts, transcript ordering/raw evidence, verdict, and usage totals remain the same;
+- audit prompt, rubric, revision budget, repository live-write behaviour, artifacts, transcript ordering/raw evidence, verdict, and usage totals remain the same;
 - experiments/cohorts become truly ungraded: Anthropic receives no empty outcome definition and terminal status carries no verdict;
 - cancellation still interrupts and archives, now with evidence retention before archive/release;
 - public API compatibility fields remain while runtime/model provenance is additive.
 
-Any behavior change discovered during migration is either an explicit correction above with a failing regression test or a new spec; it is not hidden in the adapter rewrite.
+Any behaviour change discovered during migration is either an explicit correction above with a failing regression test or a new spec; it is not hidden in the adapter rewrite.
 
 ## Contract and regression tests
 
@@ -89,7 +89,7 @@ The suite must cover:
 5. state progression and terminal verdict invariants, including vendor idle/grader timing, are stable across repeated polls;
 6. cancel and release are separately idempotent; events/artifacts are readable after terminal/cancel and before release;
 7. locator JSON round-trips restart data and contains no request content, repository credential, API key, attachment bytes, or raw transcript;
-8. a contract violation returned by a mocked client is surfaced rather than normalized into success.
+8. a contract violation returned by a mocked client is surfaced rather than normalised into success.
 
 ## Acceptance criteria
 
@@ -106,7 +106,7 @@ The suite must cover:
 
 ## Commit sequence
 
-Implementation lands as independently green commits: neutral types and conformance fixtures; controller and consumer migration on memory; catalog/router and persistence migration; metering/rate migration; Anthropic adapter with rollback; composition/docs and old-contract deletion. Each behavior correction lands with its regression test in the same commit.
+Implementation lands as independently green commits: neutral types and conformance fixtures; controller and consumer migration on memory; catalog/router and persistence migration; metering/rate migration; Anthropic adapter with rollback; composition/docs and old-contract deletion. Each behaviour correction lands with its regression test in the same commit.
 
 ## Out of scope
 
@@ -116,4 +116,4 @@ Implementation lands as independently green commits: neutral types and conforman
 
 ## Outcome
 
-Anthropic is constructed only at `internal/runtimes/builtin` and is exposed to consumers only as a managed runtime. Ungraded work emits no evaluator payload. Vendor transcript usage is normalized in the adapter. Uploaded file ids, workspace, worker revision, and model are retained in the opaque locator; failures roll back uploads, sessions, agent, and environment, and successful release cleans owned resources after retention. The old protocol types remain internal to the compatibility adapter rather than being deleted outright, which kept existing behavior and tests stable while removing them from application consumers.
+Anthropic is constructed only at `internal/runtimes/builtin` and is exposed to consumers only as a managed runtime. Ungraded work emits no evaluator payload. Vendor transcript usage is normalised in the adapter. Uploaded file ids, workspace, worker revision, and model are retained in the opaque locator; failures roll back uploads, sessions, agent, and environment, and successful release cleans owned resources after retention. The old protocol types remain internal to the compatibility adapter rather than being deleted outright, which kept existing behaviour and tests stable while removing them from application consumers.

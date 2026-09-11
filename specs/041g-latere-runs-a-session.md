@@ -21,7 +21,7 @@ The direct adapters bind lifecycle and inference to one vendor. Latere deliberat
 - **Auth** proves which principal/service the work acts for and mints delegated credentials;
 - **Drive** owns durable workspaces and their attach/materialize/sync/release contract when that integration is available.
 
-The normalized identities therefore look like:
+The normalised identities therefore look like:
 
 ```
 SessionRef.Runtime       = latere-topos
@@ -52,11 +52,11 @@ One adapter-owned state table, keyed by immutable session id, stores:
 
 - locator revision and current stage/attempt;
 - Cella sandbox id and owned-resource state;
-- normalized Topos event log and replayable transcript checkpoints;
+- normalised Topos event log and replayable transcript checkpoints;
 - current model/provider, cumulative usage/cost evidence, and Lux request ids;
 - cancellation flag, evaluator result/revision count, terminal result, and cleanup state.
 
-It contains task/transcript content and is therefore private evidence storage with the same authorization/retention as session transcripts; unlike `SessionRef.Locator`, it is never returned as opaque browser data. Writes are append/CAS, and the ref locator carries only the state-row id plus current checkpoint revision.
+It contains task/transcript content and is therefore private evidence storage with the same authorisation/retention as session transcripts; unlike `SessionRef.Locator`, it is never returned as opaque browser data. Writes are append/CAS, and the ref locator carries only the state-row id plus current checkpoint revision.
 
 Topos can resume a crashed loop from a replayed event transcript, and interruption returns a valid partial transcript. That is sufficient after a controlled cancel. It is not by itself sufficient for a process death during:
 
@@ -76,7 +76,7 @@ No OpenAI/Anthropic provider key enters replichai or the sandbox. Lux stores pro
 
 Background work cannot persist a user's browser bearer. Enqueue snapshots the actor subject and organization. A credential broker exchanges the service identity for short-lived, audience-scoped delegated tokens for Lux/Cella on demand; token sources refresh per request. If Auth cannot mint that delegation, the route is unavailable. Tokens/API keys never enter job JSON, the adapter journal, events, locators, command argv, or logs.
 
-Cella secret inputs are vault entry references. Bootstrap/tool commands use `SecretEnv` or the platform's current egress-substitution contract; plaintext secrets are not materialized into prompts. Network access is compiled from `SessionSpec.Network` into an approved Cella policy/capability mapping. A policy that cannot exactly enforce `none|allowlist|open` is refused before sandbox creation.
+Cella secret inputs are vault entry references. Bootstrap/tool commands use `SecretEnv` or the platform's current egress-substitution contract; plaintext secrets are not materialised into prompts. Network access is compiled from `SessionSpec.Network` into an approved Cella policy/capability mapping. A policy that cannot exactly enforce `none|allowlist|open` is refused before sandbox creation.
 
 ## Sandbox, repository, artifacts, and Drive
 
@@ -98,9 +98,9 @@ Drive is not reimplemented in this adapter. When Cella's Drive mount client is p
 
 Each model request uses the exact snapshotted namespaced target and cost tags such as `product=replichai`, `job=<id>`, and `project=<id>` (non-personal identifiers only). Lux's effective provider/model becomes `ModelRef`; a mismatch from the snapshot is a contract failure before another turn.
 
-Topos/Lux normalized usage maps once into `managed.Usage`: fresh input, cached input, generic cache write, output, and reported details. The adapter retains Lux request ids and reported micro-USD cost for reconciliation. Replichai still settles the project job exactly once from its enqueue snapshot; Lux's request log is compared by job cost tag and must reconcile within defined token/cost tolerance. Crash-replayed requests, once durable replay exists, must resolve to one logical Lux request and one charge.
+Topos/Lux normalised usage maps once into `managed.Usage`: fresh input, cached input, generic cache write, output, and reported details. The adapter retains Lux request ids and reported micro-USD cost for reconciliation. Replichai still settles the project job exactly once from its enqueue snapshot; Lux's request log is compared by job cost tag and must reconcile within defined token/cost tolerance. Crash-replayed requests, once durable replay exists, must resolve to one logical Lux request and one charge.
 
-Topos' own `BudgetUSD` receives the maximum spend authorized for the session from the held project credit and a cost source consistent with the snapshot/Lux evidence. A budget breach returns partial evidence and terminal failure; it never overruns silently. Lux spend caps are an upstream guard, not the project wallet.
+Topos' own `BudgetUSD` receives the maximum spend authorised for the session from the held project credit and a cost source consistent with the snapshot/Lux evidence. A budget breach returns partial evidence and terminal failure; it never overruns silently. Lux spend caps are an upstream guard, not the project wallet.
 
 The Lux native dialect reports fields it cannot preserve. Any loss affecting tool calls, system instructions, structured evaluator output, reasoning budget promised by the selected route, or usage is fatal. Cosmetic/non-semantic loss may be retained as an event warning only when enumerated in route policy.
 
@@ -122,5 +122,5 @@ The Lux native dialect reports fields it cannot preserve. Any loss affecting too
 - Using the not-yet-stable Topos cloud `/v1` merely because the console exists; only a documented durable run contract satisfies the gate.
 - Multi-agent delegation, mesh regions, or graphs. Replichai's first platform path is one worker plus separate evaluator turns.
 - Persisting provider keys or user bearers in replichai.
-- Reimplementing Drive mount synchronization or Cella network/secret policy in replichai.
+- Reimplementing Drive mount synchronisation or Cella network/secret policy in replichai.
 - Replacing GitHub as the published reproduction or Lux as the model credential/cost boundary.

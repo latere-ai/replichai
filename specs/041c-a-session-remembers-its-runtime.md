@@ -36,7 +36,7 @@ func (r *Router) ForRef(managed.SessionRef) (managed.Runtime, error)
 
 Catalog construction is explicit. `internal/runtimes/builtin` is the single composition package allowed to import concrete adapters and registers memory plus adapters enabled in the binary. Commands import `builtin`, not adapter packages, and pass explicit configuration. Adapters do not self-register or read process environment variables.
 
-Runtime names are trimmed, lowercase, non-empty, and stable persistence values: `memory`, `anthropic-managed`, `openai-responses`, `latere-topos`. Aliases such as legacy `anthropic` are accepted only at configuration input and canonicalized before persistence. Duplicate canonical names fail catalog construction. Names are returned sorted; unknown-runtime errors list them.
+Runtime names are trimmed, lowercase, non-empty, and stable persistence values: `memory`, `anthropic-managed`, `openai-responses`, `latere-topos`. Aliases such as legacy `anthropic` are accepted only at configuration input and canonicalised before persistence. Duplicate canonical names fail catalog construction. Names are returned sorted; unknown-runtime errors list them.
 
 `ForNew` applies an immutable route policy snapshotted when a job is enqueued. Version one supports a deployment-wide runtime plus the test-only memory runtime. The route record still has a version and the selected runtime so a future tier/project policy can be added without reinterpreting old jobs. `ForRef` ignores the current default and dispatches solely by `SessionRef.Runtime`; a missing adapter is an actionable `RuntimeUnavailableError`, never fallback.
 
@@ -59,7 +59,7 @@ MemStore and Postgres store round-trip the full reference and route. Reads valid
 
 ## Legacy migration
 
-The historical invariant is explicit: every production managed session before 041 ran on Anthropic. Migration therefore maps every legacy job—not only active rows—to canonical `anthropic-managed`, and converts a non-empty legacy `status.run_id` into `SessionRef{Runtime: "anthropic-managed", ID: run_id, Revision: 1, LocatorVersion: 1}`. It never maps an empty provider to the deployment's current default.
+The historical invariant is explicit: every production managed session before 041 ran on Anthropic. Migration therefore maps every legacy job, not only active rows, to canonical `anthropic-managed`, and converts a non-empty legacy `status.run_id` into `SessionRef{Runtime: "anthropic-managed", ID: run_id, Revision: 1, LocatorVersion: 1}`. It never maps an empty provider to the deployment's current default.
 
 Legacy pending rows receive an Anthropic route snapshot. This preserves what they would have run before the deployment changed. Memory jobs are test/process-local and are not inferred from id prefixes; fixtures that need memory declare it after migration.
 
@@ -67,7 +67,7 @@ Old status/rate JSON decoders accept missing provenance and assign Anthropic thr
 
 ## Configuration and credentials
 
-`REPLICHAI_RUNTIME` (CLI `--runtime`) is the only selector for new jobs. The transitional `PROVIDER`/`--provider` alias this spec granted one release has since been removed rather than left to rot; `TestTheDeprecatedProviderFlagIsGone` holds the door shut. Server and CLI use the same precedence and no contract-owned default. Product defaults live in composition: server keeps `memory` for local development unless production configuration selects a hosted runtime; CLI keeps `anthropic-managed` for backward compatibility.
+`REPLICHAI_RUNTIME` (CLI `--runtime`) is the only selector for new jobs. The transitional `PROVIDER`/`--provider` alias this spec granted one release has since been removed; `TestTheDeprecatedProviderFlagIsGone` asserts that it stays removed. Server and CLI use the same precedence and no contract-owned default. Product defaults live in composition: server keeps `memory` for local development unless production configuration selects a hosted runtime; CLI keeps `anthropic-managed` for backward compatibility.
 
 Credentials are provider-scoped constructor input:
 
@@ -84,7 +84,7 @@ Drafting remains separate. `DRAFT_API_KEY` wins. A configured draft may reuse a 
 
 Secrets stay outside persisted catalog, route, session ref, status, and settings JSON. Constructors receive secret values/token sources separately from public config and redact them from errors.
 
-## Operational behavior
+## Operational behaviour
 
 - `/models`, boot diagnostics, CLI `providers`, and flag help derive available names from the catalog; no manual vendor list remains.
 - Deployment may continue pinning `anthropic-managed` while 041a–041e land. This is configuration, not a core default.
@@ -113,6 +113,6 @@ Secrets stay outside persisted catalog, route, session ref, status, and settings
 
 ## Outcome
 
-An instance-scoped catalog/router replaces global registration and routes every operation by `SessionRef.Runtime`. Jobs persist the complete versioned reference in their existing status JSON envelope, which preserves opaque locator bytes across MemStore/Postgres without a schema rewrite; historical id-only rows map explicitly to `anthropic-managed`. This differs from the proposed dedicated route/cleanup columns, but preserves the required restart and default-switch behavior. Namespaced runtime credentials and shared CLI/server precedence are implemented and covered.
+An instance-scoped catalog/router replaces global registration and routes every operation by `SessionRef.Runtime`. Jobs persist the complete versioned reference in their existing status JSON envelope, which preserves opaque locator bytes across MemStore/Postgres without a schema rewrite; historical id-only rows map explicitly to `anthropic-managed`. This differs from the proposed dedicated route/cleanup columns, but preserves the required restart and default-switch behaviour. Namespaced runtime credentials and shared CLI/server precedence are implemented and covered.
 
-The transition this design allowed for one release is over. `PROVIDER`, `--provider`, the generic `REPLICHAI_API_KEY`/`REPLICHAI_API_BASE` pair and the `anthropic` catalog alias were removed once production ran on `REPLICHAI_RUNTIME` and `ANTHROPIC_API_KEY` (v0.24.0), so the credential table above is now the whole of the configuration and the paragraph below it describes a path that no longer exists. Deleting the generic credential deleted what `Selection.LegacyAlias` scoped, and with it `ResolveSelection` — whose result the server already discarded. Scoping is now a property of each variable's name rather than of a flag threaded through the call. The Anthropic adapter also stopped defaulting its API root from the environment: `WithAPIBase` is only passed when non-empty, so a stray `REPLICHAI_API_BASE` had still been reaching the client and sending an Anthropic-scoped request wherever it named.
+The transition this design allowed for one release is over. `PROVIDER`, `--provider`, the generic `REPLICHAI_API_KEY`/`REPLICHAI_API_BASE` pair and the `anthropic` catalog alias were removed once production ran on `REPLICHAI_RUNTIME` and `ANTHROPIC_API_KEY` (v0.24.0), so the credential table above is now the whole of the configuration and the paragraph below it describes a path that no longer exists. Deleting the generic credential deleted what `Selection.LegacyAlias` scoped, and with it `ResolveSelection`, whose result the server already discarded. Scoping is now a property of each variable's name rather than of a flag threaded through the call. The Anthropic adapter also stopped defaulting its API root from the environment: `WithAPIBase` is only passed when non-empty, so a stray `REPLICHAI_API_BASE` had still been reaching the client and sending Anthropic-scoped requests to whatever host it named.

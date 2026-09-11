@@ -17,7 +17,7 @@ Audit, experiments, and model cohorts each resolve a model, ensure a workspace, 
 
 `CloseRun` also combines three different acts: interrupt live work, archive/delete remote resources, and make evidence potentially unreadable. Audit defers it inside `Run`, while server publication asks for the transcript only after `Run` returns. Anthropic archive happens to retain events; an OpenAI release that deletes a container need not.
 
-The split lands in `managed.Runtime`, not in `provider.Provider`. `CloseRun` survives at the provider boundary [014a](014a-managed-runs-close-truthfully.md) designed, and stays the teardown call on the legacy path: `internal/managed/legacy` maps both `Cancel` and `Release` onto it, `internal/audit` still polls and closes a `provider.RunHandle` directly, and `engineRunner.Close` falls back to it when there is no controller or no locator. This spec wraps 014a; it does not retire it.
+The split lands in `managed.Runtime`, not in `provider.Provider`. `CloseRun` survives at the provider boundary that [014a](014a-managed-runs-close-truthfully.md) designed, and stays the teardown call on the legacy path: `internal/managed/legacy` maps both `Cancel` and `Release` onto it, `internal/audit` still polls and closes a `provider.RunHandle` directly, and `engineRunner.Close` falls back to it when there is no controller or no locator. This spec wraps 014a; it does not retire it.
 
 ## Decision: one controller owns the ordering
 
@@ -50,7 +50,7 @@ When a runtime advances its internal multi-stage orchestration, `Poll` returns a
 
 `Status` receives the initial pending observation and every distinct later observation. Observer failure is treated as a caller failure: cancel, retain, release. Duplicate runtime observations are not emitted.
 
-`Retain` is the evidence handoff. `EvidenceReader` exposes terminal/partial status, normalized events, artifact metadata, and bounded artifact fetch while the remote resources still exist. For a reproduction, the hook writes/commits the transcript and completes publication evidence. For an experiment or cohort, it stores the transcript and required output artifacts. Only a successful `Retain` permits release.
+`Retain` is the evidence handoff. `EvidenceReader` exposes terminal/partial status, normalised events, artifact metadata, and bounded artifact fetch while the remote resources still exist. For a reproduction, the hook writes/commits the transcript and completes publication evidence. For an experiment or cohort, it stores the transcript and required output artifacts. Only a successful `Retain` permits release.
 
 If retention fails, the reference remains durable and the controller deliberately does **not** release. The job records `cleanup_pending` with the retention error, and reconciliation retries `Resume`/retention. Preserving recoverable evidence is more important than eager remote cleanup. A later explicit admin purge may release it under the existing destructive-action rules.
 
@@ -67,7 +67,7 @@ One `WaitPolicy` governs all callers:
 
 The controller enforces reference equality, state monotonicity, terminal stability, usage monotonicity, and graded-verdict invariants on every observation. An adapter contract violation is permanent and names the runtime.
 
-Runtime `failed` is a normal terminal observation, not a poll error. It still passes through retention and release, and its final cumulative usage is returned for settlement. A poll outage that exhausts policy triggers cancellation; cancellation failure does not erase the original outage. The two exhaustion budgets are recorded apart: running out of silence yields `ReasonTimedOut`, running out of consecutive faults yields the runtime failure reason, and silence wins when both blow on the same poll. A session that stopped answering timed out — it did not fail.
+Runtime `failed` is a normal terminal observation, not a poll error. It still passes through retention and release, and its final cumulative usage is returned for settlement. A poll outage that exhausts policy triggers cancellation; cancellation failure does not erase the original outage. The two exhaustion budgets are recorded separately: exhausting the silence budget yields `ReasonTimedOut`, exhausting the consecutive-failure budget yields the runtime failure reason, and silence takes precedence when both are exhausted on the same poll. A session that stopped answering timed out; it did not fail.
 
 ## Cancellation and release
 
@@ -75,7 +75,7 @@ Runtime `failed` is a normal terminal observation, not a poll error. It still pa
 
 `Release` frees only resources the session owns. It is idempotent and safe after process restart. It never edits a mounted Git repository or deletes durable artifacts retained by the application. Adapter-owned temporary uploads, agents/environments created only for the run, containers, and temporary workspaces are listed in the adapter locator and released in dependency order.
 
-Cleanup uses `context.WithoutCancel` plus a bounded cleanup timeout, so cancelling the user's request does not cancel the cleanup call. Errors are joined in causal order: execution/retention error first, then cancel, terminal wait, and release. A successful run whose release fails returns its successful result plus a typed `CleanupError`, so the job can settle usage and schedule cleanup without lying that the reproduction failed.
+Cleanup uses `context.WithoutCancel` plus a bounded cleanup timeout, so cancelling the user's request does not cancel the cleanup call. Errors are joined in causal order: execution/retention error first, then cancel, terminal wait, and release. A successful run whose release fails returns its successful result plus a typed `CleanupError`, so the job can settle usage and schedule cleanup without reporting falsely that the reproduction failed.
 
 ## Transactional start
 
@@ -119,4 +119,4 @@ Pre-existing repositories, Drive workspaces, and caller-owned resources are refe
 
 ## Outcome
 
-`managed.Controller` centralizes validation, start notification, checkpointing, monotonic polling, transient retry, cancellation, evidence retention, and release. Audit, experiment runner, and model cohort construct one `SessionSpec`; server and CLI use the same controller. Controller tests cover ordering, restart, cancellation, retention failure, cleanup error joining, and complete memory-runtime execution.
+`managed.Controller` centralises validation, start notification, checkpointing, monotonic polling, transient retry, cancellation, evidence retention, and release. Audit, experiment runner, and model cohort construct one `SessionSpec`; server and CLI use the same controller. Controller tests cover ordering, restart, cancellation, retention failure, cleanup error joining, and complete memory-runtime execution.
