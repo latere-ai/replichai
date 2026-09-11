@@ -9,33 +9,7 @@
 // and that the prices beside each tier are the server's rather than numbers the
 // client made up. Both are invisible to a test that only reads the DOM, so this
 // one drives the picker and inspects what actually left the browser.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5211
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, settled, start, waitUntil } from './harness.mjs'
 
 const at = (i) => new Date(1754_215_200_000 - i * 86_400_000).toISOString()
 const PROJECT = 'proj-1'
@@ -54,46 +28,29 @@ const tiers = [
 // What the start request actually carried.
 let started = null
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const routes = [
+  ['/me', { authenticated: true, principal: 'p', email: 'e@x', tier: 'user', credits: { wallet: 100_000_000, start_reserve: 20_000_000 } }],
+  ['/me/profile', {}],
+  ['/models', { tiers }],
+  [
+    `POST /projects/${PROJECT}/sessions`,
+    ({ body }) => {
+      started = body
+      return { job_id: 'j-new', project_id: PROJECT }
+    },
+  ],
+  [/^\/projects\/[^/]+$/, { project, sessions: [], papers: [paper], may_submit: true, role: 'owner', credits }],
+  [/^\/projects\/[^/]+\/papers$/, [paper]],
+  [/^\/projects\/[^/]+\/members$/, []],
+  [/^\/(projects|public|shared)$/, []],
+]
+
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      const json = (body) => req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-      if (u.pathname === '/me') return json({ authenticated: true, principal: 'p', email: 'e@x', tier: 'user', credits: { wallet: 100_000_000, start_reserve: 20_000_000 } })
-      if (u.pathname === '/me/profile') return json({})
-      if (u.pathname === '/models') return json({ tiers })
-      if (u.pathname === `/projects/${PROJECT}/sessions` && req.method() === 'POST') {
-        started = JSON.parse(req.postData())
-        return json({ job_id: 'j-new', project_id: PROJECT })
-      }
-      if (/^\/projects\/[^/]+$/.test(u.pathname)) return json({ project, sessions: [], papers: [paper], may_submit: true, role: 'owner', credits })
-      if (/^\/projects\/[^/]+\/papers$/.test(u.pathname)) return json([paper])
-      if (/^\/projects\/[^/]+\/members$/.test(u.pathname)) return json([])
-      if (/^\/(projects|public|shared)$/.test(u.pathname)) return json([])
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  const page = await h.page({ routes })
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('.tier-pick', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 300))
+  await settled(page)
 
   /* ── The picker offers every tier the server named, at the server's prices ── */
 
@@ -116,9 +73,10 @@ try {
   /* ── The tier picked is the tier the request carries ── */
 
   await page.evaluate(() => [...document.querySelectorAll('.sel-list .sel-opt')].find((o) => /Fast/.test(o.textContent))?.click())
-  await new Promise((r) => setTimeout(r, 200))
+  // A pick closes the list in the same render that commits the choice.
+  await page.waitForFunction(() => !document.querySelector('.sel-list'))
   await page.evaluate(() => [...document.querySelectorAll('.paper-group .btn')].find((b) => /Start replication/i.test(b.textContent))?.click())
-  await new Promise((r) => setTimeout(r, 500))
+  await waitUntil(() => started, { what: 'the start request to be sent' }).catch(() => {})
 
   if (!started) fail('pressing Start sent no request')
   else {
@@ -135,10 +93,9 @@ try {
   })
   if (clipped) fail('the tier picker is clipped at the card edge')
 
-  if (!process.exitCode) console.log('ok: the tier picker prices every tier from the server and sends the one chosen')
-} catch (err) {
-  fail(err.message)
+  h.ok('the tier picker prices every tier from the server and sends the one chosen')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
