@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import { stepDollars, typedDollars } from './money'
 import { createPortal } from 'react-dom'
 import { Ico, type IconName } from './icons'
@@ -84,6 +84,43 @@ export function Toggle({ on, onChange, disabled, children }: { on: boolean; onCh
       </span>
       {children && <span className="ck-label">{children}</span>}
     </button>
+  )
+}
+
+/* ── RowButton ── */
+
+// RowButton is a list row that opens something: a project, a file, a session.
+// It is a div rather than a <button> because a row holds buttons of its own —
+// Stop, Remove — and a button may not contain a button; the role, the tab stop
+// and the key handling make it one to the keyboard and to a screen reader all
+// the same. Every clickable row goes through here, so none of them is a div a
+// keyboard cannot reach, which five of them were.
+//
+// A key pressed on a control inside the row is that control's, not the row's:
+// Enter on Stop stops the session, and does not also open it.
+export function RowButton({
+  onOpen,
+  selected,
+  children,
+  ...rest
+}: { onOpen: () => void; selected?: boolean; children: ReactNode } & Omit<HTMLAttributes<HTMLDivElement>, 'onClick' | 'onKeyDown' | 'role' | 'tabIndex'>) {
+  return (
+    <div
+      {...rest}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+    >
+      {children}
+    </div>
   )
 }
 

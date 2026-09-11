@@ -141,7 +141,7 @@ import { Landing } from './landing'
 import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { useHead } from './head'
 import { citationBits, gradeable, groupByPaper, listCitation, type Grouped, type PaperGroup } from './papers'
-import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, Seams, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
+import { Check, Disclosure, Modal, NumberField, Pill, PromptDialog, RowButton, Seams, Segmented, Select, Tip, tipAttrs, Toggle, type Tone } from './ui'
 import { THEME_MODES, useTheme, type ThemeMode } from './theme'
 import { absoluteTime, elapsed, relativeTime } from './when'
 import { useDrawer, useSidebar } from './sidebar'
@@ -1076,7 +1076,7 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
               <span />
             </div>
             {shown.map((p) => (
-              <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
+              <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
                 <div className="row-main">
                   <div className="row-title">{p.title}</div>
                   {/* Which paper the project is about (043), directly under its
@@ -1176,7 +1176,7 @@ function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id:
                   <span className="row-slot" />
                 )}
                 <Ico name="chevronRight" size={15} className="chev" />
-              </div>
+              </RowButton>
             ))}
           </div>
         )}
@@ -1452,7 +1452,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
         ) : (
           <div className="rows">
             {list.map((p) => (
-              <div key={p.id} className="row" onClick={() => onOpen(p.id, p.title)}>
+              <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row-title">{p.title}</div>
                   {/* Which paper this row is a reproduction of (043), above the
@@ -1478,7 +1478,7 @@ function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string, title
                 <StatusBadge i18n={i18n} p={p} />
                 <VisibilityBadge i18n={i18n} visibility="public" />
                 <Ico name="chevronRight" size={15} className="chev" />
-              </div>
+              </RowButton>
             ))}
           </div>
         )}
@@ -3186,12 +3186,12 @@ function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
         <CardHead label={t('artifacts')} icon="package" tone="var(--warn)" />
         <div className="rows">
           {files.map((f) => (
-            <div key={f} className={'row file-row' + (sel === f ? ' on' : '')} style={{ padding: '7px 14px' }} onClick={() => setSel(f)}>
+            <RowButton key={f} className={'row file-row' + (sel === f ? ' on' : '')} style={{ padding: '7px 14px' }} selected={sel === f} onOpen={() => setSel(f)}>
               <Ico name={fileIcon(f)} size={13} className="file-ico" />
               <span className="row-mono row-title" style={{ fontSize: 12 }}>
                 {f}
               </span>
-            </div>
+            </RowButton>
           ))}
         </div>
       </div>
@@ -4528,7 +4528,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   }, [job.id])
   const tone = findings ? verdictTone(findings.verdict) : 'var(--fg-3)'
   return (
-    <div className="row file-row" onClick={onOpen}>
+    <RowButton className="row file-row" onOpen={onOpen}>
       <span className="row-title">{paper.title || paper.ref}</span>
       <span className="muted small">{job.created_at ? new Date(job.created_at).toLocaleDateString() : ''}</span>
       {repro?.review && <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review}</Pill>}
@@ -4551,7 +4551,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
           '…'
         )}
       </span>
-    </div>
+    </RowButton>
   )
 }
 
@@ -4664,7 +4664,7 @@ function SessionRow({
   const stopped = isStopped(j)
   const phaseTxt = stopped ? t('stopped') : phaseLabel(t, j.phase)
   return (
-    <div className={nested ? 'row row-nested' : 'row'} onClick={onOpen}>
+    <RowButton className={nested ? 'row row-nested' : 'row'} onOpen={onOpen}>
       <span className="phase-slot">
         <Pill
           tone={stopped ? 'neutral' : phaseTone(j.phase)}
@@ -4768,7 +4768,7 @@ function SessionRow({
         </span>
       )}
       <Ico name="chevronRight" size={15} className="chev" />
-    </div>
+    </RowButton>
   )
 }
 
@@ -6067,21 +6067,7 @@ function EventCard({
   const { title, body } = splitTitle(e.content)
   const at = timeOf(e)
   return (
-    <div
-      className={cls}
-      data-i={i}
-      data-at={Number.isNaN(at) ? '' : at}
-      onClick={onPick}
-      role="button"
-      tabIndex={0}
-      aria-pressed={on}
-      onKeyDown={(ev) => {
-        if (ev.key === 'Enter' || ev.key === ' ') {
-          ev.preventDefault()
-          onPick()
-        }
-      }}
-    >
+    <RowButton className={cls} data-i={i} data-at={Number.isNaN(at) ? '' : at} selected={on} onOpen={onPick}>
       <div className="event-gutter">
         <span className="event-clock tabular">{clockOf(e) || e.role}</span>
         <span className="event-kind">
@@ -6125,7 +6111,7 @@ function EventCard({
           </>
         )}
       </div>
-    </div>
+    </RowButton>
   )
 }
 
