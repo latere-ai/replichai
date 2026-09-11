@@ -146,6 +146,68 @@ func TestTranscriptAppendsAndSurvivesATruncatedLine(t *testing.T) {
 	}
 }
 
+// An event whose Raw carries a whole enormous stream line is bounded when it is
+// written, not left to break the read. The line on disk stays under the cap,
+// the event still round-trips, and its Raw is replaced by a marker that names
+// the raw log where the whole value still is.
+func TestAppendBoundsAnOversizeEventLine(t *testing.T) {
+	session := newSession(t)
+	payload := strings.Repeat("a", maxEventBytes+1<<10)
+	raw, err := json.Marshal(payload) // Raw must be valid JSON
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	event := managed.Event{ID: "worker-0", Role: managed.RoleAgent, Kind: managed.KindMessage, Raw: raw}
+	if err := session.AppendEvents([]managed.Event{event}); err != nil {
+		t.Fatalf("AppendEvents: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(session.Dir(), eventsFile))
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+		if len(line) > maxEventBytes {
+			t.Fatalf("an event line of %d bytes was written past the %d-byte bound", len(line), maxEventBytes)
+		}
+	}
+	events, err := session.Events()
+	if err != nil || len(events) != 1 {
+		t.Fatalf("Events = %+v, %v", events, err)
+	}
+	if !strings.Contains(string(events[0].Raw), "elided") || !strings.Contains(string(events[0].Raw), "raw log") {
+		t.Fatalf("the oversize Raw was not marked: %s", events[0].Raw)
+	}
+}
+
+// A transcript that cannot be read to the end fails the read rather than
+// returning the prefix that fitted as if it were the whole of it. The write
+// side can no longer produce a line this long; one written directly stands in
+// for a transcript damaged some other way.
+func TestEventsSurfacesAScannerErrorRatherThanTruncating(t *testing.T) {
+	session := newSession(t)
+	if err := session.AppendEvents([]managed.Event{
+		{ID: "worker-0", Role: managed.RoleAgent, Kind: managed.KindMessage, Content: "ok"},
+	}); err != nil {
+		t.Fatalf("AppendEvents: %v", err)
+	}
+	path := filepath.Join(session.Dir(), eventsFile)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open transcript: %v", err)
+	}
+	// A single line longer than the read buffer, which bufio cannot scan.
+	if _, err := file.WriteString(strings.Repeat("x", 9<<20) + "\n"); err != nil {
+		_ = file.Close()
+		t.Fatalf("write oversize line: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := session.Events(); err == nil {
+		t.Fatal("a transcript that could not be read to the end returned no error")
+	}
+}
+
 // Artifacts are the run's own work. The repository's metadata and build
 // residue are not results and never reach a reproduction.
 func TestArtifactsExcludeRepositoryMetadataAndResidue(t *testing.T) {
