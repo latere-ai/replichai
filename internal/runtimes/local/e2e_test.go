@@ -25,6 +25,12 @@ import (
 // It uses the login the operator already has: no API key, nothing configured.
 // That is the case the host sandbox exists to serve, and the one most likely
 // to break silently, so it is the one that gets driven against the real thing.
+//
+// It is opt-in, because it launches a real, paid, minutes-long agent session:
+// it runs only with REPLICHAI_E2E=1 in the environment, and is skipped
+// otherwise. To run it:
+//
+//	REPLICHAI_E2E=1 go test ./internal/runtimes/local/ -run TestRealEndToEnd -v
 func TestRealEndToEnd(t *testing.T) {
 	runRealSession(t, harness.NewClaudeCode(), "claude")
 }
@@ -33,12 +39,22 @@ func TestRealEndToEnd(t *testing.T) {
 // file rather than a keychain and speaks a different stream, so the two are
 // not one test with a parameter changed: they exercise different halves of
 // what the seam has to absorb.
+//
+// Opt-in on the same REPLICHAI_E2E=1 as TestRealEndToEnd, and paid the same
+// way. To run it:
+//
+//	REPLICHAI_E2E=1 go test ./internal/runtimes/local/ -run TestRealEndToEndWithCodex -v
 func TestRealEndToEndWithCodex(t *testing.T) {
 	runRealSession(t, harness.NewCodex(), "codex")
 }
 
 func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	t.Helper()
+	// A real agent session is paid and takes minutes, so it does not run as
+	// part of an ordinary `go test`: it is asked for explicitly.
+	if os.Getenv("REPLICHAI_E2E") != "1" {
+		t.Skip("set REPLICHAI_E2E=1 to run the real, paid end-to-end session")
+	}
 	home, _ := os.UserHomeDir()
 	driver := host.New(host.Config{Home: home, HarnessBinary: binary, Lookup: os.LookupEnv})
 	if err := driver.Preflight(context.Background()); err != nil {
@@ -59,11 +75,9 @@ func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := "/tmp/replichai-e2e"
-	_ = os.RemoveAll(root)
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	// A temporary directory the test framework cleans up, not a fixed /tmp
+	// path an os.RemoveAll would blow away whatever it found there.
+	root := t.TempDir()
 	t.Logf("session root: %s", root)
 	runtime, err := local.New(local.Config{
 		Sandbox: driver, Harness: agent, Catalog: catalog,
