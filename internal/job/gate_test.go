@@ -16,16 +16,17 @@ import (
 	"github.com/latere-ai/replichai/internal/credit"
 )
 
-// The gate's reserve, fixed for a test. A session may start only where this much
-// is available, and starting holds exactly this much.
+// testReserve is the gate's reserve, fixed for a test. A session may start
+// only where this much is available, and starting holds exactly this much.
 const testReserve = 2 * credit.Dollar
 
 func fixedReserve(n int64) credit.Reserve {
 	return func(context.Context) (int64, error) { return n, nil }
 }
 
-// fund puts amount into a project's pot without going through the membership
-// checks, which are the ledger's concern and not the gate's.
+// funder is the part of a ledger that fund uses to put credit into a project's
+// pot without going through the membership checks, which are the ledger's
+// concern and not the gate's.
 type funder interface {
 	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error
 	Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error
@@ -51,16 +52,15 @@ func runGateContract(t *testing.T, s Store, ledger credit.Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	// A project that cannot commit the reserve cannot start a session. Distinct
-	// paper keys throughout, so the double-trigger guard is never what refuses.
+	// A project that cannot commit the reserve cannot start a session. Paper
+	// keys are distinct throughout, so the double-trigger guard never refuses.
 	broke := Submission{Principal: "u", Ref: "arxiv:0000.0", Kind: KindAudit, Project: "poor", PaperKey: "arxiv:0000.0"}
 	if _, err := s.Enqueue(ctx, broke); !errors.Is(err, ErrNoCredits) {
 		t.Fatalf("submitting into an unfunded project: want ErrNoCredits, got %v", err)
 	}
 
-	// A funded one can, and starting holds the reserve rather than spending it:
-	// the pot still holds what it held, and only what may still be committed
-	// moved.
+	// A funded project can, and starting holds the reserve rather than spending
+	// it: the balance is unchanged, and only the available amount moved.
 	before, _ := ledger.Balance(ctx, credit.Pot("p"))
 	first, err := s.Enqueue(ctx, Submission{Principal: "u", Ref: "arxiv:1111.1", Kind: KindAudit, Project: "p", PaperKey: "arxiv:1111.1"})
 	if err != nil {
@@ -88,8 +88,9 @@ func runGateContract(t *testing.T, s Store, ledger credit.Store) {
 		t.Errorf("no hold entry for session %s in %+v", first.ID, entries)
 	}
 
-	// Each further session holds its own, so a burst cannot be admitted against
-	// money the earlier ones already committed. Four reserves funded, one taken.
+	// Each further session holds its own reserve, so a burst cannot be admitted
+	// against money the earlier ones already committed. Four reserves are
+	// funded and one is taken.
 	for i, ref := range []string{"arxiv:2222.2", "arxiv:3333.3"} {
 		if _, err := s.Enqueue(ctx, Submission{Principal: "u", Ref: ref, Kind: KindAudit, Project: "p", PaperKey: ref}); err != nil {
 			t.Fatalf("enqueue %d: %v", i, err)
@@ -104,14 +105,14 @@ func runGateContract(t *testing.T, s Store, ledger credit.Store) {
 		t.Fatalf("a fifth session with four reserves funded: want ErrNoCredits, got %v", err)
 	}
 
-	// The pot is what pays, not the person: a different submitter in the same
-	// project meets exactly the same wall.
+	// The pot pays, not the person: a different submitter in the same project
+	// is refused in the same way.
 	other := Submission{Principal: "somebody-else", Ref: "arxiv:6666.6", Kind: KindAudit, Project: "p", PaperKey: "arxiv:6666.6"}
 	if _, err := s.Enqueue(ctx, other); !errors.Is(err, ErrNoCredits) {
 		t.Fatalf("another member in the same exhausted project: want ErrNoCredits, got %v", err)
 	}
-	// And a funded project admits them, because who they are was never the
-	// question.
+	// A funded project admits them, because the gate does not check the
+	// submitter's identity.
 	if _, err := s.Enqueue(ctx, Submission{Principal: "somebody-else", Ref: "arxiv:7777.7", Kind: KindAudit, Project: "rich", PaperKey: "arxiv:7777.7"}); err != nil {
 		t.Fatalf("a funded project admits any submitter: %v", err)
 	}
@@ -125,10 +126,11 @@ func TestMemStoreGateContract(t *testing.T) {
 	runGateContract(t, s, ledger)
 }
 
-// At the boundary, exactly what the pot can commit gets through. The in-memory
-// store passes this under its mutex; the Postgres one is where it has teeth,
-// and is the reason the check and the hold run inside the inserting transaction
-// under an advisory lock rather than as a read-then-insert.
+// runGateConcurrency checks that at the boundary exactly as many sessions as
+// the pot can commit are admitted. The in-memory store passes this under its
+// mutex. The Postgres store is where the check matters, and is the reason the
+// check and the hold run inside the inserting transaction under an advisory
+// lock rather than as a read followed by an insert.
 func runGateConcurrency(t *testing.T, s Store, room int, attempts int) {
 	t.Helper()
 	ctx := context.Background()
@@ -165,9 +167,9 @@ func TestMemStoreGateIsExactUnderConcurrency(t *testing.T) {
 	runGateConcurrency(t, s, 3, 12)
 }
 
-// The Postgres gate, against a real database. This is the only place the
-// concurrency claim is genuinely tested: under READ COMMITTED a read-then-hold
-// check admits more sessions than the pot can pay for.
+// TestPGStoreGateContract runs the gate contract against a real database. This
+// is the only place the concurrency claim is tested: under READ COMMITTED a
+// read followed by a hold admits more sessions than the pot can pay for.
 func TestPGStoreGateContract(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -200,8 +202,9 @@ func TestPGStoreGateContract(t *testing.T) {
 	runGateConcurrency(t, NewPGStore(pool, WithPGCredits(ledger, fixedReserve(testReserve))), 3, 12)
 }
 
-// An unmetered store (no ledger wired) admits everything — an offline run and
-// every test that is not about money keep working.
+// TestNoLedgerMeansUnmetered checks that a store with no ledger admits every
+// submission, so an offline run and every test that is not about money keep
+// working.
 func TestNoLedgerMeansUnmetered(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()

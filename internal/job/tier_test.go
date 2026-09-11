@@ -11,14 +11,14 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// Choosing a cheaper tier is only worth anything if the cheaper model is what
-// the session is actually billed at. Nothing in 031 adds a pricing path: the
-// tier decides which model the backend serves, the resolved model is observed
-// onto the job, and the card snapshotted at enqueue prices it. This asserts that
-// chain end to end on the number settlement charges — the same expression the
-// client is shown, since both come from Job.cost.
+// TestATierIsBilledAtItsOwnModelsRates checks that a session on a cheaper tier
+// is billed at the cheaper model's rates. Nothing in 031 adds a pricing path:
+// the tier decides which model the backend serves, the resolved model is
+// observed onto the job, and the card snapshotted at enqueue prices it. This
+// test asserts that chain end to end on the number settlement charges, which
+// is the same expression the client is shown, since both come from Job.cost.
 func TestATierIsBilledAtItsOwnModelsRates(t *testing.T) {
-	// One session's worth of usage, held constant, so the only thing moving
+	// One session's worth of usage, held constant, so the only difference
 	// between the cases is which model served it.
 	usage := provider.Usage{InputTokens: 2_000_000, OutputTokens: 500_000}
 
@@ -32,8 +32,9 @@ func TestATierIsBilledAtItsOwnModelsRates(t *testing.T) {
 		// $3 × 2M + $15 × 0.5M.
 		{credit.PrefBalanced, "claude-sonnet-5", 6*credit.Dollar + 7*credit.Dollar + credit.Dollar/2},
 		// $1 × 2M + $5 × 0.5M. A dated snapshot of a model the card names is
-		// that model, so the cheap tier is billed cheaply rather than at the
-		// dearest-rates fallback — the production finding behind the snapshot rule.
+		// priced as that model, so the cheap tier is billed cheaply rather than
+		// at the dearest-rates fallback. This was the production finding behind
+		// the snapshot rule.
 		{credit.PrefFast, "claude-haiku-4-5-20251001", 2*credit.Dollar + 2*credit.Dollar + credit.Dollar/2},
 	} {
 		t.Run(tc.tier.String(), func(t *testing.T) {
@@ -48,8 +49,8 @@ func TestATierIsBilledAtItsOwnModelsRates(t *testing.T) {
 		})
 	}
 
-	// And the cheapest tier really is cheaper than the dearest, which is the
-	// whole reason to offer the choice.
+	// The cheapest tier is cheaper than the dearest, which is the reason to
+	// offer the choice.
 	cost := func(model string) int64 {
 		return Job{Rates: credit.DefaultCard(), Status: provider.RunStatus{Model: model, Usage: usage}}.withCost().Cost
 	}
@@ -58,10 +59,10 @@ func TestATierIsBilledAtItsOwnModelsRates(t *testing.T) {
 	}
 }
 
-// The tier changes what a session burns, not what it must have to begin. The
-// reserve is read with no model in hand, so picking the cheap tier does not let
-// a project that could not afford a run start one — and nobody reading this
-// change should conclude the gate moved.
+// TestTheStartReserveDoesNotVaryByTier checks that the tier changes what a
+// session spends, not what it must have to begin. The reserve is read without
+// a model, so choosing the cheap tier does not let a project that could not
+// afford a run start one. The gate is unchanged by 031.
 func TestTheStartReserveDoesNotVaryByTier(t *testing.T) {
 	ctx := context.Background()
 
@@ -79,8 +80,8 @@ func TestTheStartReserveDoesNotVaryByTier(t *testing.T) {
 			t.Errorf("tier %q started a session the project could not afford; the tier is not the gate", tier)
 		}
 
-		// And a project holding exactly one reserve starts, holding exactly that —
-		// the same amount for every tier.
+		// A project holding exactly one reserve starts, and exactly that amount
+		// is held, for every tier.
 		fund(t, ledger, "exact", testReserve)
 		before, err := ledger.Available(ctx, credit.Pot("exact"))
 		if err != nil {

@@ -25,25 +25,27 @@ type MemStore struct {
 	mu    sync.Mutex
 	jobs  map[string]Job
 	order []string // submission order, so Claim is FIFO
-	// deleted holds the ids of sessions the owner threw away (032). It is a set
+	// deleted holds the ids of sessions the owner deleted (032). It is a set
 	// beside the map rather than a field on Job for the same reason the Postgres
-	// side is a column nobody selects: a deleted session never leaves the store,
-	// so nothing downstream should be able to read a flag saying it did.
+	// column is never selected: a deleted session never leaves the store, so
+	// nothing downstream should be able to read a flag saying it did.
 	deleted map[string]bool
-	// leases records which worker is driving each job and when it last said so
-	// — beside the map for the same reason as deleted, and matching the Postgres
-	// side, where they are columns no read selects. A lease is a fact about the
-	// process driving a session, not about the session.
+	// leases records which worker is driving each job and when it last reported
+	// that it was alive. It is kept beside the map for the same reason as
+	// deleted, and matches the Postgres side, where the lease columns are never
+	// selected. A lease is a fact about the process driving a session, not
+	// about the session.
 	leases map[string]lease
 	clock  func() time.Time
 	// credits and reserve are the enqueue gate (011). Both nil means unmetered,
-	// which is what an offline run and every test that is not about money want.
+	// which is the mode for an offline run and every test that is not about
+	// money.
 	credits *credit.MemStore
 	reserve credit.Reserve
 	card    credit.CardSnapshot
 }
 
-// lease is one job's driver and when it last proved it was alive.
+// lease is one job's driver and when it last reported that it was alive.
 type lease struct {
 	by string
 	at time.Time
@@ -65,15 +67,15 @@ func WithCredits(c *credit.MemStore, r credit.Reserve) MemOption {
 
 // WithRates prices a settled session from the card in force when it started.
 // Without it a metered store still holds and releases the reserve but charges
-// nothing — what a test about the gate rather than about money wants.
+// nothing, which is the mode for a test about the gate rather than about money.
 func WithRates(c credit.CardSnapshot) MemOption {
 	return func(s *MemStore) { s.card = c }
 }
 
-// settleLocked releases a session's hold and charges what it actually cost,
-// under the same lock that wrote its terminal phase. A session is never
-// terminal-but-unsettled, and settling twice is refused by the ledger rather
-// than guarded here.
+// settleLocked releases a session's hold and charges what it cost, under the
+// same lock that wrote its terminal phase. A session is therefore never
+// terminal and unsettled, and the ledger refuses a second settlement, so there
+// is no check here.
 func (s *MemStore) settleLocked(ctx context.Context, j Job) {
 	if s.credits == nil || j.ProjectID == "" {
 		return
@@ -81,14 +83,14 @@ func (s *MemStore) settleLocked(ctx context.Context, j Job) {
 	if _, err := s.credits.Settle(ctx, credit.Pot(j.ProjectID), j.ID, j.cost()); err != nil {
 		// A settlement that could not be written must not fail the transition:
 		// a session stuck non-terminal is worse than one whose charge has to be
-		// reconciled. The hold stays open until it is.
+		// reconciled. The hold stays open until the charge is reconciled.
 		slog.WarnContext(ctx, "settle session", "session", j.ID, "error", err)
 	}
 }
 
 // takeReserve refuses a submission the project cannot afford to start, and
-// holds the reserve against its pot when it can. The hold is what stops a burst
-// of concurrent submits each being admitted against the same credits.
+// holds the reserve against its pot when it can. The hold stops a burst of
+// concurrent submits from each being admitted against the same credits.
 func (s *MemStore) takeReserve(ctx context.Context, project, jobID string) error {
 	if s.credits == nil || s.reserve == nil {
 		return nil
@@ -120,11 +122,10 @@ func NewMemStore(opts ...MemOption) *MemStore {
 }
 
 // ImportLocal records a session executed on somebody's own machine. It is a
-// separate entry point from Enqueue rather than a flag on it, and the reason
-// is the credit seam: Enqueue takes the start reserve inside the write, and a
-// boolean asking it not to would be one forgotten branch away from charging an
-// operator for compute they bought themselves. This function has no path to
-// takeReserve at all.
+// separate entry point from Enqueue rather than a flag on it because of the
+// credit path: Enqueue takes the start reserve inside the write, and a boolean
+// asking it not to would let a single missed branch charge an operator for
+// compute they bought themselves. This function has no path to takeReserve.
 func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 	if strings.TrimSpace(in.Ref) == "" {
 		return Job{}, ErrEmptyRef
@@ -139,11 +140,12 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Idempotent on (principal, external id): an operator's re-push of the
-	// same session updates their own row, which is what makes an interrupted
-	// upload resumable by running it again — and finds nobody else's row. A
-	// re-push under a different project is refused rather than re-homing the
-	// record; the same rule the Postgres store's conflict clause holds.
+	// The import is idempotent on (principal, external id): an operator's
+	// re-push of the same session updates their own row, so an interrupted
+	// upload is resumed by running it again, and never finds another
+	// operator's row. A re-push under a different project is refused rather
+	// than moving the record, which is the same rule the Postgres store's
+	// conflict clause enforces.
 	for _, id := range s.order {
 		existing := s.jobs[id]
 		if existing.Origin.OrDefault() != OriginLocal || existing.Principal != in.Principal || existing.ExternalID != in.ExternalID {
@@ -169,7 +171,8 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 }
 
 // applyImport writes what the operator's machine reported onto the row. The
-// times are when the work happened over there, not when the record arrived.
+// times are when the work happened on that machine, not when the record
+// arrived.
 func applyImport(j *Job, in Import, now time.Time) {
 	j.Phase, j.Status, j.RepoName, j.Err = in.Phase, in.Status, in.RepoName, in.Err
 	j.Ref, j.PaperKey, j.ProjectID = in.Ref, in.PaperKey, in.Project
@@ -186,8 +189,9 @@ func applyImport(j *Job, in Import, now time.Time) {
 	}
 }
 
-// Enqueue records a new submitted job, refusing a paper already running under
-// the double-trigger guard and a submit the project's pot cannot reserve for.
+// Enqueue records a new submitted job. It refuses a paper already running,
+// under the double-trigger guard, and a submit the project's pot cannot
+// reserve for.
 func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
@@ -202,10 +206,11 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// The guard: at most one non-terminal session per paper, per project and per
-	// principal. An empty key (an experiment, or a paper that could not be keyed)
-	// never guards. This mirrors the two partial unique indexes Postgres enforces,
-	// so the in-memory and database stores refuse the same double-fire.
+	// The double-trigger guard: at most one non-terminal session per paper, per
+	// project and per principal. An empty key, from an experiment or a paper
+	// that could not be keyed, is never guarded. This mirrors the two partial
+	// unique indexes Postgres enforces, so the in-memory and database stores
+	// refuse the same duplicate.
 	if sub.PaperKey != "" {
 		for _, other := range s.jobs {
 			if other.PaperKey != sub.PaperKey || other.Phase.Terminal() {
@@ -218,15 +223,15 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	}
 	// Pricing is resolved before the reserve is held, not after: the in-memory
 	// store has no transaction to roll back, so a hold taken and then abandoned
-	// by a refusal would sit against the project forever.
+	// by a refusal would remain against the project forever.
 	rates, err := s.snapshot(ctx)
 	if err != nil {
 		return Job{}, err
 	}
 	j.Rates = rates
-	// The gate (011): the project must be able to commit the start reserve, and
-	// committing it is what stops a burst of submits all reading the same
-	// balance.
+	// The credit gate (011): the project must be able to commit the start
+	// reserve, and committing it stops a burst of submits from all reading the
+	// same balance.
 	if err := s.takeReserve(ctx, sub.Project, id); err != nil {
 		return Job{}, err
 	}
@@ -237,19 +242,20 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 
 // snapshot reads the price list this session will be charged at.
 //
-// Two states, and the difference matters. No card wired at all is the deliberate
-// unpriced mode — an offline run, or a test about the gate rather than about
-// money — and a session there costs nothing. A card that is wired but cannot be
-// read is a fault, and falling back to nothing would make every session free
-// for as long as the fault lasted, which is the silent underspend this whole
-// spec exists to close. It resolves to the compiled-in list instead.
+// Two cases differ. No card configured is the deliberate unpriced mode, for an
+// offline run or a test about the gate rather than about money, and a session
+// there costs nothing. A card that is configured but cannot be read is a
+// fault, and falling back to an empty card would make every session free for
+// as long as the fault lasted, which is the silent underspend 011 exists to
+// prevent. It resolves to the compiled-in list instead.
 func (s *MemStore) snapshot(ctx context.Context) (credit.Card, error) {
 	return resolveCard(ctx, s.card)
 }
 
-// Get returns a copy of one job. A deleted session is ErrNotFound (032): this
-// one gate is what closes the per-session reads — the job, its transcript,
-// verdict, artifacts, event stream and cancel all resolve through here.
+// Get returns a copy of one job. A deleted session returns ErrNotFound (032).
+// This single check covers every per-session read, because the job, its
+// transcript, verdict, artifacts, event stream and cancel all resolve through
+// Get.
 func (s *MemStore) Get(_ context.Context, id string) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -310,10 +316,10 @@ func (s *MemStore) DeleteByProject(_ context.Context, projectID string) error {
 	return nil
 }
 
-// MovePaperSessions repoints one paper's sessions at another project (035), the
-// in-memory half of project.MovePaper. Deleted sessions move too, and nothing
-// else on the row is touched — see the Postgres mover for why updated_at in
-// particular is left where it is.
+// MovePaperSessions moves one paper's sessions to another project (035). It is
+// the in-memory half of project.MovePaper. Deleted sessions move too, and
+// nothing else on the row changes. See MovePaperSessionsTx on PGStore for why
+// updated_at in particular is left unchanged.
 func (s *MemStore) MovePaperSessions(_ context.Context, fromID, toID, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -326,9 +332,9 @@ func (s *MemStore) MovePaperSessions(_ context.Context, fromID, toID, key string
 	return nil
 }
 
-// Delete marks one session deleted (032). Idempotent, and a success on an id
-// that was never here — removal asks for an absence, and an absence is what the
-// caller gets either way.
+// Delete marks one session deleted (032). It is idempotent and succeeds on an
+// id that was never stored, because the caller asked for the session to be
+// absent and it is.
 func (s *MemStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -336,13 +342,13 @@ func (s *MemStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// SpendSince sums each project's metered session costs from `since` onwards. Cost comes
-// from the same withCost the read paths use, so the tile and the row can never
-// disagree about what a session cost.
+// SpendSince sums each project's metered session costs from since onwards.
+// Cost comes from the same withCost the read paths use, so the tile and the
+// row cannot disagree about what a session cost.
 //
-// Deleted sessions are counted, and that is the one read path where they are
-// (032). Their charge is still in the ledger; dropping it here would show an
-// owner one total in the rail and another in their wallet.
+// Deleted sessions are counted, and this is the only read path where they are
+// (032). Their charge is still in the ledger, and dropping it here would show
+// an owner one total in the rail and another in their wallet.
 func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) (map[string]int64, error) {
 	want := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -356,10 +362,10 @@ func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) 
 		if !want[j.ProjectID] || j.UpdatedAt.Before(since) {
 			continue
 		}
-		// A locally-executed session is not counted. The rail asks what
-		// this project has been costing, and this deployment charged
-		// nothing for it — the opposite answer to 035's moved session,
-		// which keeps counting because the ledger still holds its charge.
+		// A locally executed session is not counted. The rail shows what this
+		// project has cost, and this deployment charged nothing for such a
+		// session. This is the opposite of 035's moved session, which is still
+		// counted because the ledger still holds its charge.
 		if !j.Origin.Metered() {
 			continue
 		}
@@ -369,13 +375,13 @@ func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) 
 }
 
 // StatusByProjects summarises the sessions of each named project: how many
-// there are, how many are still running, how many have a repository name (set
-// once publishing begins), and where the newest one stands.
+// there are, how many are still running, how many have a repository name,
+// which is set once publishing begins, and the newest one's phase.
 //
-// Deleted sessions are left out, unlike SpendSince. A tile counting sessions is
-// answering "what is in this project", and a removed session is not; a tile
-// counting money is answering "what was charged", and a removed session still
-// was.
+// Deleted sessions are left out, unlike in SpendSince. A tile counting sessions
+// reports what is in the project, and a removed session is not in it. A tile
+// counting money reports what was charged, and a removed session was still
+// charged.
 func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string]ProjectStatus, error) {
 	want := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -385,7 +391,8 @@ func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string
 	defer s.mu.Unlock()
 	out := map[string]ProjectStatus{}
 	latestAt := map[string]time.Time{}
-	// s.order is oldest-first; the last non-before wins as the newest.
+	// s.order is oldest-first; the last row whose CreatedAt is not earlier than
+	// the current newest becomes the newest.
 	for _, id := range s.order {
 		j := s.jobs[id]
 		if !want[j.ProjectID] || s.deleted[id] {
@@ -420,7 +427,7 @@ func (s *MemStore) Cancel(ctx context.Context, id string) (Job, error) {
 		return Job{}, ErrNotFound
 	}
 	if j.Phase.Terminal() {
-		return cloneJob(j), nil // already done or failed — nothing to stop
+		return cloneJob(j), nil // already done or failed; nothing to stop
 	}
 	now := s.clock()
 	j.Phase = PhaseFailed
@@ -436,8 +443,8 @@ func (s *MemStore) Cancel(ctx context.Context, id string) (Job, error) {
 	return cloneJob(j), nil
 }
 
-// Claim takes the oldest submitted job into resolving and returns it. The lock
-// makes the take atomic, so two concurrent claims never hand out the same job.
+// Claim moves the oldest submitted job into resolving and returns it. The lock
+// makes the claim atomic, so two concurrent claims never return the same job.
 func (s *MemStore) Claim(_ context.Context, worker string) (Job, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -454,8 +461,7 @@ func (s *MemStore) Claim(_ context.Context, worker string) (Job, bool, error) {
 	return Job{}, false, nil
 }
 
-// Adopt leases a job in flight to one driver, under the lock that is this
-// store's whole concurrency story.
+// Adopt leases a job in flight to one driver, under the store's single lock.
 func (s *MemStore) Adopt(_ context.Context, id, worker string, ttl time.Duration) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -473,7 +479,7 @@ func (s *MemStore) Adopt(_ context.Context, id, worker string, ttl time.Duration
 }
 
 // Touch refreshes this worker's lease and reports whether it still holds it,
-// under the lock that is this store's whole concurrency story.
+// under the store's single lock.
 func (s *MemStore) Touch(_ context.Context, id, worker string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -552,9 +558,9 @@ func (s *MemStore) Active(_ context.Context) ([]Job, error) {
 	return out, nil
 }
 
-// transition applies a validated phase change: run the caller's mutation, then
-// stamp the new phase and its timestamp. It assumes the transition is legal —
-// Advance and Claim check first.
+// transition applies a validated phase change: it runs the caller's mutation,
+// then records the new phase and its timestamp. It assumes the transition is
+// legal; Advance and Claim check first.
 func (s *MemStore) transition(j *Job, to Phase, mutate func(*Job)) {
 	if mutate != nil {
 		mutate(j)
@@ -570,9 +576,9 @@ func (s *MemStore) transition(j *Job, to Phase, mutate func(*Job)) {
 	j.PhaseAt[to] = now
 }
 
-// cloneJob copies a job on its way out of the store — the one boundary every
-// read crosses, which is why the derived cost is filled in here rather than at
-// each of the eight call sites.
+// cloneJob copies a job on its way out of the store. Every read crosses this
+// boundary, so the derived cost is filled in here rather than at each of the
+// eight call sites.
 func cloneJob(j Job) Job {
 	j = j.withCost()
 	j.PhaseAt = clonePhaseAt(j.PhaseAt)

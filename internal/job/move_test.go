@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// runMoveSessionsContract asserts what carrying a paper's sessions to another
-// project must do (035). The mover is passed in rather than read off Store: it
+// runMoveSessionsContract asserts what moving a paper's sessions to another
+// project must do (035). The mover is passed in rather than read from Store: it
 // runs inside the project store's transaction where there is one, so the two
 // implementations take different arguments and cannot share a method on the
 // interface.
@@ -28,13 +28,13 @@ func runMoveSessionsContract(t *testing.T, s Store, move func(from, to, key stri
 		key  = "doi:10.1145/3544548.3581433"
 	)
 
-	// Two runs of the paper being moved, one of them thrown away; one run of a
+	// Two runs of the paper being moved, one of them deleted; one run of a
 	// different paper in the same project; and one run of the same paper that
 	// somebody else already has in the destination.
 	//
 	// Each run of the moving paper is finished before the next is enqueued: the
-	// guard forbids two live runs of one paper, and terminal is the only state a
-	// move is allowed in anyway.
+	// guard forbids two live runs of one paper, and a move is only allowed in a
+	// terminal state anyway.
 	thrownAway, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "r1", Kind: KindAudit, Project: from, PaperKey: key})
 	if err != nil {
 		t.Fatalf("enqueue thrown away: %v", err)
@@ -75,11 +75,11 @@ func runMoveSessionsContract(t *testing.T, s Store, move func(from, to, key stri
 		t.Errorf("source holds %s; want only %s — the other paper's run stays", first3(got), sibling.ID)
 	}
 
-	// The deleted one moved too, even though no list will say so: SpendSince is
-	// the read that still counts it, and a charge left under a project that no
-	// longer holds the paper it paid for is a total nobody can explain. Only the
-	// thrown-away run burned anything, so the whole of its cost appearing under
-	// the destination is the assertion that it travelled.
+	// The deleted session moved too, even though no list shows it: SpendSince
+	// still counts it, and a charge left under a project that no longer holds
+	// the paper it paid for would be an unexplainable total. Only the deleted
+	// run spent anything, so the whole of its cost appearing under the
+	// destination shows that it moved.
 	spend, err := s.SpendSince(ctx, []string{from, to}, time.Now().Add(-24*time.Hour))
 	if err != nil {
 		t.Fatalf("SpendSince: %v", err)
@@ -91,9 +91,9 @@ func runMoveSessionsContract(t *testing.T, s Store, move func(from, to, key stri
 		t.Errorf("source spend = %d; want 0", spend[from])
 	}
 
-	// Nothing else on the row was rewritten. updated_at especially: SpendSince
-	// windows on it, so a bump here would drag old sessions into the 30-day
-	// figure of both projects at once.
+	// Nothing else on the row was rewritten, updated_at in particular:
+	// SpendSince windows on it, so updating it here would pull old sessions
+	// into the 30-day figure of both projects at once.
 	after, err := s.Get(ctx, moving.ID)
 	if err != nil {
 		t.Fatalf("Get after: %v", err)
@@ -123,7 +123,7 @@ func TestMemStoreMovesAPapersSessions(t *testing.T) {
 }
 
 // TestPGStoreMovesAPapersSessions runs the same contract through a real
-// transaction, which is where the mover actually lives.
+// transaction, which is where the mover runs in production.
 func TestPGStoreMovesAPapersSessions(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -149,9 +149,9 @@ func TestPGStoreMovesAPapersSessions(t *testing.T) {
 	})
 }
 
-// TestAFailedMoveRollsBack is the reason the mover takes the caller's
+// TestAFailedMoveRollsBack checks the reason the mover takes the caller's
 // transaction rather than the pool: a paper that fails to move must leave its
-// sessions where they were, not half of them somewhere else.
+// sessions where they were, not half of them in another project.
 func TestAFailedMoveRollsBack(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {

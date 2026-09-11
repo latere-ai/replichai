@@ -12,7 +12,7 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// TestEncodeStatusRejectsMalformedSessionRef pins the write half of the
+// TestEncodeStatusRejectsMalformedSessionRef checks the write half of the
 // database boundary: SessionRef is raw JSON the caller supplies, and a run
 // status carrying invalid bytes must fail the write rather than encode to nil
 // and null the column that holds the session's usage.
@@ -32,8 +32,8 @@ func TestEncodeStatusRejectsMalformedSessionRef(t *testing.T) {
 	}
 }
 
-// TestEncodeStatusKeepsUsage is the companion pass: a well-formed status still
-// round-trips, so the error path above is not simply refusing everything.
+// TestEncodeStatusKeepsUsage is the companion check: a well-formed status still
+// round-trips, so the error path above does not refuse everything.
 func TestEncodeStatusKeepsUsage(t *testing.T) {
 	raw, err := encodeStatus(provider.RunStatus{State: provider.StateDone, Usage: provider.Usage{OutputTokens: 7}})
 	if err != nil {
@@ -49,8 +49,8 @@ func TestEncodeStatusKeepsUsage(t *testing.T) {
 }
 
 // TestEncodePhaseAtRejectsUnencodableTime covers the other written column. The
-// clock is injectable, so a timestamp time.Time refuses to encode must fail the
-// write instead of erasing the whole timeline.
+// clock is injectable, so a timestamp that time.Time cannot encode must fail
+// the write instead of erasing the whole timeline.
 func TestEncodePhaseAtRejectsUnencodableTime(t *testing.T) {
 	outOfRange := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
 

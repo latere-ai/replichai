@@ -16,7 +16,7 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// A card with round numbers, so a cost is checkable by hand.
+// testCard is a card with round numbers, so a cost can be checked by hand.
 var testCard = credit.Card{Models: []credit.Rates{
 	{Model: "cheap", Input: 1 * credit.Dollar, Output: 2 * credit.Dollar, CacheRead: 100_000, CacheWrite5m: 1_250_000, CacheWrite1h: 2 * credit.Dollar},
 	{Model: "dear", Input: 10 * credit.Dollar, Output: 20 * credit.Dollar, CacheRead: 1 * credit.Dollar, CacheWrite5m: 12_500_000, CacheWrite1h: 20 * credit.Dollar},
@@ -26,8 +26,8 @@ func fixedCard(c credit.Card) credit.CardSnapshot {
 	return func(context.Context) (credit.Card, error) { return c, nil }
 }
 
-// One million input and half a million output tokens on the cheap model: $1 +
-// $1 = $2.
+// burned is one million input and half a million output tokens on the cheap
+// model: $1 + $1 = $2.
 var burned = provider.RunStatus{
 	Model: "cheap",
 	Usage: provider.Usage{InputTokens: 1_000_000, OutputTokens: 500_000},
@@ -61,8 +61,8 @@ func runSettleContract(t *testing.T, s Store, ledger credit.Store) {
 
 	before, _ := ledger.Balance(ctx, credit.Pot("p"))
 
-	// A session that finishes is charged what it burned, and its reserve comes
-	// back — the balance moves by the cost, not by the reserve.
+	// A session that finishes is charged what it spent, and its reserve is
+	// released: the balance moves by the cost, not by the reserve.
 	done := start(t, "arxiv:1111.1")
 	if err := s.Observe(ctx, done.ID, burned); err != nil {
 		t.Fatalf("observe: %v", err)
@@ -79,9 +79,9 @@ func runSettleContract(t *testing.T, s Store, ledger credit.Store) {
 		t.Errorf("balance %d != available %d — the hold outlived the session", bal, avail)
 	}
 
-	// "Failed is refunded" is gone. A session that burned tokens and was then
-	// cancelled is charged for them: a refund for a run that cost real money is
-	// the platform paying for it.
+	// A failed session is no longer refunded. A session that spent tokens and
+	// was then cancelled is charged for them, because refunding a run that cost
+	// real money would make the platform pay for it.
 	stopped := start(t, "arxiv:2222.2")
 	if err := s.Observe(ctx, stopped.ID, burned); err != nil {
 		t.Fatalf("observe: %v", err)
@@ -108,8 +108,8 @@ func runSettleContract(t *testing.T, s Store, ledger credit.Store) {
 		t.Error("an unrun session left its hold open")
 	}
 
-	// Settlement is exactly-once. Cancelling again — which is idempotent at the
-	// phase level — must not charge or release a second time.
+	// Settlement is exactly-once. Cancelling again, which is idempotent at the
+	// phase level, must not charge or release a second time.
 	mark, _ = ledger.Balance(ctx, credit.Pot("p"))
 	if _, err := s.Cancel(ctx, stopped.ID); err != nil {
 		t.Fatalf("re-cancel: %v", err)
@@ -152,9 +152,10 @@ func TestMemStoreSettleContract(t *testing.T) {
 	runSettleContract(t, s, ledger)
 }
 
-// The rate card a session is charged at is the one in force when it *started*.
-// An admin editing prices mid-run must not make the ceiling a run was watched
-// against and the amount it is finally charged come from different numbers.
+// TestTheRatesAreSnapshottedAtEnqueue checks that the rate card a session is
+// charged at is the one in force when it started. An admin editing prices
+// mid-run must not make the ceiling a run was checked against and the amount
+// it is finally charged come from different numbers.
 func TestTheRatesAreSnapshottedAtEnqueue(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
@@ -189,9 +190,9 @@ func TestTheRatesAreSnapshottedAtEnqueue(t *testing.T) {
 	}
 }
 
-// An unknown model is charged at the dearest rates on the snapshotted card. A
-// vendor shipping a model id the card does not name must not become free
-// compute.
+// TestAnUnknownModelIsChargedTheDearestRates checks that an unknown model is
+// charged at the dearest rates on the snapshotted card. A vendor shipping a
+// model id the card does not name must not become free compute.
 func TestAnUnknownModelIsChargedTheDearestRates(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
@@ -220,9 +221,10 @@ func TestAnUnknownModelIsChargedTheDearestRates(t *testing.T) {
 	}
 }
 
-// The Postgres settlement, against a real database. This is the only place the
-// exactly-once claim is genuinely tested: the partial unique index is what
-// stops a retried or concurrent terminal transition charging twice.
+// TestPGStoreSettleContract runs the settlement contract against a real
+// database. This is the only place the exactly-once claim is tested: the
+// partial unique index stops a retried or concurrent terminal transition from
+// charging twice.
 func TestPGStoreSettleContract(t *testing.T) {
 	pool := settlePool(t)
 	defer pool.Close()
@@ -234,15 +236,16 @@ func TestPGStoreSettleContract(t *testing.T) {
 	runSettleContract(t, s, ledger)
 }
 
-// Concurrent cancels of one session produce one charge.
+// TestPGStoreConcurrentCancelsSettleOnce checks that concurrent cancels of one
+// session produce one charge.
 //
-// What makes this hold is the phase machine, not the ledger: Cancel's UPDATE
+// The phase machine, not the ledger, is what makes this hold: Cancel's UPDATE
 // carries `WHERE phase NOT IN ('done','failed')`, so exactly one of the racing
-// writers ever reaches settlement and the rest read back the terminal row. The
-// ledger's own exactly-once guard is a second line behind that, and is asserted
-// where it actually bites — by settling the same session twice directly, in
-// internal/credit's store contract. Removing that guard does not fail this
-// test, which is why it does not claim to test it.
+// writers reaches settlement and the rest read back the terminal row. The
+// ledger's own exactly-once guard is a second line of defence behind that, and
+// is asserted where it applies, by settling the same session twice directly,
+// in internal/credit's store contract. Removing that guard does not fail this
+// test, so this test does not claim to cover it.
 func TestPGStoreConcurrentCancelsSettleOnce(t *testing.T) {
 	pool := settlePool(t)
 	defer pool.Close()
@@ -314,12 +317,14 @@ func settlePool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// A metered deployment that cannot price a session refuses it at the door.
+// TestAnUnpriceableSessionIsRefusedAtTheDoor checks that a metered deployment
+// that cannot price a session refuses it at enqueue.
 //
 // The alternative is worse than it looks: an empty card makes Cost() zero, so
-// the session settles at nothing *and* is invisible to the backstop's accrual —
-// it would run for free and count against no floor. Tokens nobody can price are
-// not free tokens, so the refusal is at enqueue, where nothing has been spent.
+// the session would settle at nothing and be invisible to the backstop's
+// accrual. It would run for free and count against no floor. Tokens that
+// cannot be priced are not free, so the refusal is at enqueue, where nothing
+// has been spent.
 func TestAnUnpriceableSessionIsRefusedAtTheDoor(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
@@ -333,7 +338,7 @@ func TestAnUnpriceableSessionIsRefusedAtTheDoor(t *testing.T) {
 	if !errors.Is(err, ErrUnpriceable) {
 		t.Fatalf("enqueue with an empty card: want ErrUnpriceable, got %v", err)
 	}
-	// And nothing was committed on the way to the refusal.
+	// Nothing was committed before the refusal.
 	bal, _ := ledger.Balance(ctx, credit.Pot("p"))
 	avail, _ := ledger.Available(ctx, credit.Pot("p"))
 	if bal != avail || bal != 10*credit.Dollar {
@@ -341,9 +346,10 @@ func TestAnUnpriceableSessionIsRefusedAtTheDoor(t *testing.T) {
 	}
 }
 
-// A rate card that cannot be *read* is a fault, not an unpriced deployment. It
-// resolves to the compiled-in list, because falling back to nothing would make
-// every session free for as long as the fault lasted.
+// TestABrokenRateCardStillPrices checks that a rate card that cannot be read
+// is treated as a fault, not as an unpriced deployment. It resolves to the
+// compiled-in list, because falling back to an empty card would make every
+// session free for as long as the fault lasted.
 func TestABrokenRateCardStillPrices(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
@@ -379,9 +385,10 @@ func TestABrokenRateCardStillPrices(t *testing.T) {
 	}
 }
 
-// An in-flight session with no priced rates would be invisible to the floor.
-// Accrued must see what every running session has cost, which is only true if a
-// session can never be admitted unpriced in the first place.
+// TestAccruedSeesEveryInFlightSession checks that Accrued sees what every
+// running session has cost. An in-flight session with no priced rates would be
+// invisible to the floor, so this holds only if a session can never be
+// admitted unpriced.
 func TestAccruedSeesEveryInFlightSession(t *testing.T) {
 	ctx := context.Background()
 	ledger := credit.NewMemStore(nil, nil)
