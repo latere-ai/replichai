@@ -5,7 +5,7 @@ status: implemented
 
 # 041d — Models and meters name their source
 
-**Status:** implemented with legacy billing bridges retained, and one path diverged. `Capabilities.BillableMeters` was deleted because no runtime ever set it and no caller ever read it, and `Capabilities` carries no json tags, so there was no wire contract either. Removing it regressed nothing — it made visible that acceptance criterion 4, the enqueue-time preflight over declared meters, had never been met, and the Outcome's "extra meters must be declared and priced" holds only for *priced*. Nor is there a `billing_review` state: an unpriced meter fails `Rates.PriceManaged` with a typed error instead. Extra-meter pricing, charge-once, and the provider-scoped fallback shipped as written.
+**Status:** implemented with legacy billing bridges retained, and one path diverged. `Capabilities.BillableMeters` was deleted because no runtime ever set it and no caller ever read it, and `Capabilities` carries no json tags, so there was no wire contract either. Removing it regressed nothing. It made visible that acceptance criterion 4, the enqueue-time preflight over declared meters, had never been met, and that the Outcome's "extra meters must be declared and priced" holds only for priced. Nor is there a `billing_review` state: an unpriced meter fails `Rates.PriceManaged` with a typed error instead. Extra-meter pricing, charge-once, and the provider-scoped fallback shipped as written.
 
 **Scope:** make model identity, event usage, session usage, and rate lookup provider-neutral and provider-qualified. Preserve project holds, enqueue-time rate snapshots, and exactly-once settlement while preventing cross-provider fallback or silent omission of hosted-tool cost.
 
@@ -39,7 +39,7 @@ The user-facing `best|balanced|fast` remains a preference. Runtime `Models` retu
 
 `GET /models` reports the selected runtime and exact provider/id/variant behind each preference, along with the snapshotted price summary. Cache keys include route-policy version and rate-card revision; changing either invalidates the answer.
 
-## Normalized usage
+## Normalised usage
 
 `managed.Usage` retains explicit token fields for compatibility and adds named non-token meters:
 
@@ -57,13 +57,13 @@ type Usage struct {
 }
 ```
 
-- The six token buckets are mutually exclusive billable quantities. `InputFresh + InputCached + CacheWrite + CacheWrite5m + CacheWrite1h` is normalized input; `Output` is normalized output.
+- The six token buckets are mutually exclusive billable quantities. `InputFresh + InputCached + CacheWrite + CacheWrite5m + CacheWrite1h` is normalised input; `Output` is normalised output.
 - `CacheWrite` is a real generic class with its own rate. It is not mapped to Anthropic's 5m/1h classes. A legacy unattributed Anthropic write may use the old fail-expensive lifetime fallback only when its source is explicitly Anthropic.
 - `Extra` carries typed, non-negative billable meters such as `container.second` or `hosted_tool.call`. Each runtime declares the meters it can emit in capabilities.
 - `Details` is non-billable decomposition, for example reasoning tokens already included in `Output`. Pricing never iterates it.
 - Status usage is cumulative and component-wise monotonic. `Event.Usage` is an optional per-event delta. Summing event deltas may lag the status total while a runtime has not emitted detailed events, but no bucket may be interpreted with vendor wire rules outside its adapter.
 
-Adapter normalization rules are contractual:
+Adapter normalisation rules are contractual:
 
 - Anthropic's input, cache-read, and cache-creation fields are additive; cache creation remains split into 5m/1h when reported.
 - OpenAI's cached tokens are part of input, so `InputFresh = input - cached`; negative results are a contract error. Generic cache writes remain `CacheWrite` if reported. Reasoning is a detail of output, not a second billable output.
