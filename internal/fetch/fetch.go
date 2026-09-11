@@ -115,9 +115,6 @@ func WithMaxBytes(n int64) Option { return func(c *Client) { c.maxBytes = n } }
 // WithTimeout bounds one fetch, redirects included.
 func WithTimeout(d time.Duration) Option { return func(c *Client) { c.timeout = d } }
 
-// WithUserAgent names the caller to the far side.
-func WithUserAgent(ua string) Option { return func(c *Client) { c.userAgent = ua } }
-
 // AllowPrivate admits loopback and private addresses. A test reaching an
 // httptest server needs it; nothing serving people does.
 func AllowPrivate() Option { return func(c *Client) { c.permit = func(net.IP) bool { return true } } }
