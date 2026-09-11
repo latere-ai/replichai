@@ -2,22 +2,22 @@
 
 Audits the reproducibility of research papers.
 
-Give it a paper. It finds what the authors actually released, works out which parts of the work a machine can re-run and which parts need people, implements and runs the machine-runnable part, records every decision the paper left unwritten, and returns a verdict with a reproducibility rate you can decompose.
+Give it a paper. It finds what the authors released, works out which parts of the work a machine can re-run and which parts need people, implements and runs the machine-runnable part, records every decision the paper left unwritten, and returns a verdict with a reproducibility rate you can decompose.
 
-Built for research with human participants — human-computer interaction, psychology, social science, and anywhere else a finding rests on what people did. A paper of that kind almost always contains two loops:
+Built for research with human participants: human-computer interaction, psychology, social science, and any other field where a finding rests on what people did. A paper of that kind almost always contains two loops:
 
-- an **inner loop** — the algorithm, model, system, or analysis pipeline, mechanically re-runnable;
-- an **outer loop** — the study that validates it with human participants.
+- an **inner loop**: the algorithm, model, system, or analysis pipeline, which a machine can re-run;
+- an **outer loop**: the study that validates it with human participants.
 
-The inner loop is reproducible. The outer loop is not, and pretending otherwise is the most common way reproducibility claims go wrong. Placing that boundary precisely, and defending it, is the point.
+The inner loop is reproducible. The outer loop is not, and reproducibility claims most often go wrong by treating it as if it were. The audit places that boundary precisely and defends it.
 
 ## Two ways in
 
-The same engine runs behind both.
+Both run on the same engine.
 
-**The web application** is the product: sign in, put papers in a project, start a replication session per paper, watch it stream, read the verdict, take the repository out, and pay for the compute it burned. It is what runs at `replichai.latere.ai`.
+**The web application** is the product: sign in, put papers in a project, start a replication session per paper, watch it stream, read the verdict, take the repository out, and pay for the compute it used. It runs at `replichai.latere.ai`.
 
-**The CLI** is the engine with a terminal on it: one audit, one paper, no account and no database. It is how the method is exercised and how the golden set is re-run.
+**The CLI** is the engine with a terminal front end: one audit, one paper, no account and no database. It is how the method is exercised and how the golden set is re-run.
 
 ## Run the app locally
 
@@ -25,7 +25,7 @@ The same engine runs behind both.
 make up          # Postgres + the server, on http://localhost:8080
 ```
 
-That brings up the whole stack in the foreground. It defaults to the in-process `memory` runtime, so it costs nothing and needs no API key: a submitted paper walks `submitted → done` through the real HTTP, worker, and Postgres path with a fake audit inside it. Sign-in is bypassed locally (`--dev`, refused off loopback); production runs behind OIDC.
+That brings up the whole stack in the foreground. It defaults to the in-process `memory` runtime, so it costs nothing and needs no API key: a submitted paper moves from `submitted` to `done` through the real HTTP, worker, and Postgres path with a fake audit inside it. Sign-in is bypassed locally (`--dev`, refused off loopback); production runs behind OIDC.
 
 The server embeds the frontend, so a code change in `frontend/` needs a rebuild:
 
@@ -53,25 +53,25 @@ Every subcommand, one line each:
 |---|---|
 | `replichai audit <paper>` | one audit: resolve the paper, run the session, write the reproduction; `--publish` gives it a repository |
 | `replichai run <project-file>` | a whole project: many papers, one session each, in parallel and resumable |
-| `replichai resolve <paper>` | the identity and slug a reference gets, and nothing else |
-| `replichai publish <artifact-dir> <paper>` | the offline publish path: preview what a filesystem forge would write, write it with `--live` |
+| `replichai resolve <paper>` | print the identity and slug a reference resolves to; nothing else runs |
+| `replichai publish <artifact-dir> <paper>` | the offline publish path: preview what a filesystem forge would write; write it with `--live` |
 | `replichai finish <owner>/<repo> <paper>` | reattach to a detached run and finalize it: verify, write the manifest, commit the transcript, invite |
 | `replichai providers` | the runtimes this build knows |
 | `replichai rates` | what a session costs per model, from the compiled-in rate card or a live one (`--database-url`) |
-| `replichai login` / `whoami` / `logout` | sign in to the app from the terminal by device code, see who you are, forget it |
+| `replichai login` / `whoami` / `logout` | sign in to the app from the terminal by device code, show who you are, forget the credential |
 | `replichai org [<org-uuid>\|--personal]` | show or switch the organisation projects are filed under |
-| `replichai sessions ls` / `replichai sessions prune` | the session directories on this machine, and reclaiming their space |
+| `replichai sessions ls` / `replichai sessions prune` | list the session directories on this machine, and reclaim their space |
 | `replichai project create <title>` / `replichai project ls` | the projects in the app that locally run sessions are filed under |
-| `replichai project sessions <id>` / `replichai project rm-session <id>...` | a project's sessions, and deleting one |
+| `replichai project sessions <id>` / `replichai project rm-session <id>...` | list a project's sessions, and delete one |
 | `replichai push <project-file> --project <id>` | file the sessions this machine ran under a project in the app |
 | `replichai help` | this list, with every flag |
 
 `--runtime` picks the runtime for one command, `REPLICHAI_RUNTIME` picks it for
-every command in a shell, and with neither `audit` uses `anthropic-managed` and
-`run` uses `local`. The flag beats the variable and the variable beats the
-default. The choices are `memory`, `anthropic-managed`, and `local`. Each
-runtime reads only the variables named for it, so a future OpenAI runtime can
-never receive an Anthropic key accidentally.
+every command in a shell, and with neither set `audit` uses `anthropic-managed`
+and `run` uses `local`. The flag overrides the variable and the variable
+overrides the default. The choices are `memory`, `anthropic-managed`, and
+`local`. Each runtime reads only the variables named for it, so a future OpenAI
+runtime can never receive an Anthropic key by accident.
 
 The audit writes a reproduction repository into `runs/<paper>/`:
 
@@ -82,19 +82,19 @@ The audit writes a reproduction repository into `runs/<paper>/`:
 | `src/` | A best-effort implementation of the inner loop, runnable |
 | `UNVERIFIED.md` | Everything that could not be confirmed, each with its specific blocker |
 | `SOURCES.md` | The paper's identity and every artifact search performed, with its result |
-| `verdict.json` | The same findings as data — boundary rows, hidden decisions, scorecard, what was released |
+| `verdict.json` | The same findings as data: boundary rows, hidden decisions, scorecard, what was released |
 | `instrument.json` | The declared study protocol, the analysis entrypoint, and whether the outer loop could be hosted |
 
-`verdict.json` is what the app reads to render a session's findings without anyone opening a markdown file. `instrument.json` is graded and published beside it, but no screen renders it yet.
+The app renders a session's findings from `verdict.json`, not from the markdown. `instrument.json` is graded and published beside it, but no screen renders it yet.
 
 Reproduction output is never committed to this repository. See [`docs/architecture.md`](docs/architecture.md).
 
 ## Run it on your own machine
 
-`--runtime local` runs the whole session here instead: the coding agent you
-already have installed, confined to one folder, on whatever model you point it
-at. Same method, same rubric, same output — and nobody is billed, because you
-bought the compute from the vendor yourself.
+`--runtime local` runs the whole session on your machine instead: the coding
+agent you already have installed, confined to one folder, on the model you
+choose. The method, rubric and output are the same. The platform bills nobody,
+because you bought the compute from the vendor yourself.
 
 ```bash
 npm install -g @anthropic-ai/sandbox-runtime   # the sandbox
@@ -102,36 +102,36 @@ brew install ripgrep                           # it uses this; Linux also needs 
 replichai audit https://arxiv.org/abs/2603.01795 --runtime local
 ```
 
-On a machine where `claude login` has already happened that needs no API key
+On a machine where `claude login` has already been run, this needs no API key
 and no configuration. That host sandbox is what runs today. `--sandbox
-container` is built to swap it for Podman or Docker when a pinned toolchain
+container` is built to replace it with Podman or Docker when a pinned toolchain
 matters, but it needs the harness image
-(`ghcr.io/latere-ai/replichai-harness`), which is not published yet — until it
+(`ghcr.io/latere-ai/replichai-harness`), which is not published yet; until it
 is, point `--image` at one you built. `--harness codex` and a gateway in
-`models.yaml` put an open-weights model behind the same run.
+`models.yaml` run an open-weights model through the same run.
 
-A whole project at once, and the results in the app:
+A whole project at once, with the results filed in the app:
 
 ```bash
 replichai run papers.yaml --parallel 4 --publish --resume
 replichai login && replichai push papers.yaml --project <id>
 ```
 
-No GitHub token ever enters the sandbox: the agent commits into a folder that
+No GitHub token enters the sandbox: the agent commits into a folder that
 outlives it, and your machine verifies and pushes that folder afterwards. With
-`--publish --project <id>` no GitHub token needs to be on your machine at all —
+`--publish --project <id>` no GitHub token needs to be on your machine at all:
 the platform allocates the repository and mints a credential that can write to
 that one repository and expires within the hour.
 
-**[`docs/local-runs.md`](docs/local-runs.md)** is the guide — prerequisites per
-platform, what a run does, where files land, what the agent can and cannot
-reach, choosing a model, and what to do when something refuses.
+**[`docs/local-runs.md`](docs/local-runs.md)** is the full guide: prerequisites
+per platform, what a run does, where files land, what the agent can and cannot
+reach, choosing a model, and what to do when something refuses to run.
 
 ## Publish a reproduction
 
 With `--publish`, the reproduction gets its own GitHub repository and the agent
-commits into it live, so the history is the agent's own work rather than one
-squashed drop:
+commits into it as it works, so the history is the agent's own work rather than
+one squashed drop:
 
 ```bash
 export REPLICHAI_GITHUB_TOKEN=...       # server-side; never enters the sandbox unscoped
@@ -139,14 +139,14 @@ replichai audit https://arxiv.org/abs/2603.01795 --publish --invite <github-logi
 ```
 
 The repository is created private under `open-hai` (override with `--owner` or
-`REPLICHAI_GITHUB_OWNER`), named from the paper's identity so repeat
-reproductions of one paper are related rather than colliding. When the run ends,
-the system — not the agent — verifies what was committed, writes
+`REPLICHAI_GITHUB_OWNER`) and named from the paper's identity, so repeat
+reproductions of one paper are related rather than colliding. When the run
+ends, the system, not the agent, verifies what was committed, writes
 `replication.json`, commits `transcript.jsonl` and `TRANSCRIPT.md`, and invites
 the collaborator.
 
-Long runs need not hold the process open. `--detach` starts the run and prints
-the command that finishes it later:
+Long runs do not need to hold the process open. `--detach` starts the run and
+prints the command that finishes it later:
 
 ```bash
 replichai audit <paper> --publish --detach
@@ -156,15 +156,15 @@ replichai finish open-hai/<repo> <paper> --session-ref <opaque-ref> --invite <gi
 `replichai publish <artifact-dir> <paper>` is the offline path: it previews what
 a filesystem forge would write, and writes it only with `--live`.
 
-The app does the same thing without the terminal: a session started from a
-project gets its own repository, and publishing a project is an owner's
-deliberate act with a recorded sign-off.
+The app does the same without the terminal: a session started from a project
+gets its own repository, and publishing a project is a deliberate act by its
+owner with a recorded sign-off.
 
 ## Layout
 
 ```
-cmd/replichai/       the CLI — argument parsing, output, and the composition root
-cmd/server/          the web app composition root — engine + stores + gate + worker + HTTP
+cmd/replichai/       the CLI: argument parsing, output, and the composition root
+cmd/server/          the web app composition root: engine + stores + gate + worker + HTTP
 internal/audit/      the orchestrator
 internal/paper/      resolving a reference to a stable identity and a slug
 internal/method/     loading the method from disk
@@ -178,25 +178,25 @@ internal/provider/   the transitional Anthropic protocol adapter behind managed
 internal/publish/    the manifest, the redistribution gate, the transcript, the forge seam
 internal/registry/   the derived registry of published reproductions
 internal/github/     the small GitHub client publishing needs
-internal/verdict/    the schema for verdict.json — the findings as data
-internal/instrument/ the schema for instrument.json — the study protocol as data
+internal/verdict/    the schema for verdict.json: the findings as data
+internal/instrument/ the schema for instrument.json: the study protocol as data
 internal/experiment/ running a reproduction's declared analysis on new data
 internal/job/        the session lifecycle: states, the one transition function, the store, the worker
 internal/project/    projects, the papers they hold, and the sessions run against them
 internal/access/     who may sign in, who may operate, at what tier
 internal/webauth/    OIDC login, the session cookie, the gate policy, the admin routes
 internal/platform/   the policy row an admin tunes at runtime
-internal/credit/     the ledger — wallets, project pots, holds and charges, in micro-USD;
+internal/credit/     the ledger: wallets, project pots, holds and charges, in micro-USD;
                      the Stripe webhook posts its credit here
 internal/profile/    the researcher identity a public sign-off is published under
-internal/notify/     what the platform says to somebody who is not looking at it
+internal/notify/     outbound messages to people not using the app, such as a project invitation
 internal/draft/      one short model call, for drafting a project description
 internal/httpapi/    the HTTP surface: submit, stream, read, publish, pay (payments.go
                      holds the Stripe checkout and webhook routes)
 internal/seo/        the head the server writes, the sitemap, and the addresses Go knows
 internal/spa/        embeds and serves the built frontend
-frontend/            the researcher UI — bun + React + Vite
-method/              the audit itself — instructions, rubric, task template (data, not code)
+frontend/            the researcher UI: bun + React + Vite
+method/              the audit itself: instructions, rubric, task template (data, not code)
 evals/               golden set: papers with known answers, used as a regression check
 deploy/              k8s kustomize for staging and prod
 docs/                local runs, architecture, procedure, landscape
@@ -205,7 +205,7 @@ specs/               designs, and the record of what got built
 
 ## The method is data
 
-`method/` holds four documents. Three define an audit and are hashed into its method digest: the worker's standing instructions, the rubric every run is graded against, and the task template. The fourth, `experiment.md`, is the doctrine `internal/experiment` hands its runner when a reproduction's declared analysis is run on new data; it sits outside the digest on purpose, so editing it cannot change what an audit is comparable against. Changing the rubric is a text edit with no rebuild and no redeployment, which is what makes iterating on the bar cheap.
+`method/` holds four documents. Three define an audit and are hashed into its method digest: the worker's standing instructions, the rubric every run is graded against, and the task template. The fourth, `experiment.md`, is the doctrine `internal/experiment` hands its runner when a reproduction's declared analysis is run on new data; it is kept outside the digest on purpose, so editing it cannot change what an audit is comparable against. Changing the rubric is a text edit with no rebuild and no redeployment, which keeps iterating on the bar cheap.
 
 Whenever the method changes, re-run the golden set before trusting it:
 
@@ -213,23 +213,23 @@ Whenever the method changes, re-run the golden set before trusting it:
 replichai audit "$(head -1 evals/case-01/input.txt)" --out runs
 ```
 
-Compare against `evals/case-01/expected.md`. The two cases are chosen to fail in opposite directions — one paper whose repository exists but is empty, one that genuinely practises open science — so a change that games either one shows up in the other.
+Compare against `evals/case-01/expected.md`. The two cases are chosen to fail in opposite directions: one paper whose repository exists but is empty, one that genuinely practises open science. A change that games either one shows up in the other.
 
 ## Development
 
 ```bash
-make check       # the whole bar, the one CI runs: format, vet, test, race, lint, vuln, licence, specs
+make check       # every gate CI runs: format, vet, test, race, lint, vuln, licence, specs
 make lint        # one gate on its own: golangci-lint against the shared config
-make lint-dead   # code nothing reaches — not a main, not a test, not an exported path
+make lint-dead   # code nothing reaches: not a main, not a test, not an exported path
 make test        # the whole Go suite, offline against fakes
-make cover-pg    # the number to quote — runs the Postgres contracts rather than skipping them
+make cover-pg    # the coverage figure to quote: runs the Postgres contracts rather than skipping them
 make e2e         # submit → run → done through the real server, no Docker
 make web-e2e     # the frontend's browser regressions, in headless Chrome
 make smoke       # the compose stack, end to end
 make hooks       # once per clone: pre-commit runs the cheap gates, pre-push lints what changed
 ```
 
-`make test` needs no network and no credential: the backend adapter is exercised against a local HTTP server, and an in-process provider stands in for the backend everywhere else. The store contracts that need a real Postgres skip themselves when `TEST_DATABASE_URL` is unset — [`CONTRIBUTING.md`](CONTRIBUTING.md) explains how to run them safely.
+`make test` needs no network and no credential: the backend adapter is exercised against a local HTTP server, and an in-process provider stands in for the backend everywhere else. The store contracts that need a real Postgres skip themselves when `TEST_DATABASE_URL` is unset; [`CONTRIBUTING.md`](CONTRIBUTING.md) explains how to run them safely.
 
 ## License
 
