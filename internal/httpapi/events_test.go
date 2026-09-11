@@ -55,12 +55,18 @@ func TestSSESnapshotThenStream(t *testing.T) {
 	srv := httptest.NewServer(rt.Handler())
 	defer srv.Close()
 
-	// Drive the run to completion shortly after the client connects.
-	go func() {
-		time.Sleep(30 * time.Millisecond)
+	// The run is driven to completion once the client has its snapshot — on
+	// the first frame read below, not after a guessed pause — so the snapshot
+	// is always the running phase and the stream always has the rest to show.
+	advanced := false
+	finish := func() {
+		if advanced {
+			return
+		}
+		advanced = true
 		_ = store.Advance(ctx, j.ID, job.PhasePublishing, nil)
 		_ = store.Advance(ctx, j.ID, job.PhaseDone, nil)
-	}()
+	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -85,6 +91,7 @@ func TestSSESnapshotThenStream(t *testing.T) {
 		case strings.HasPrefix(line, "data: "):
 			d := strings.TrimPrefix(line, "data: ")
 			datas = append(datas, d)
+			finish() // the snapshot has arrived; now the run moves on
 			if strings.Contains(d, `"phase":"done"`) {
 				resp.Body.Close() // got the terminal event; stop reading
 			}
