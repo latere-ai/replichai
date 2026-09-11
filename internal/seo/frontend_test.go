@@ -11,14 +11,14 @@ import (
 	"testing"
 )
 
-// The two copies, held together (042b, 042c).
+// These tests keep the two copies of the route table in step (042b, 042c).
 //
-// Go holds a second copy of the client's screen table and a static robots.txt
-// sits in the frontend's public directory. Neither can be derived from the other
-// at run time — one has to answer before any script runs, the other is a file a
-// crawler asks for before it asks for anything else — so what keeps them honest
-// is this test, which reads the client's own source rather than a description of
-// it.
+// Go holds a second copy of the client's screen table, and a static robots.txt
+// sits in the frontend's public directory. Neither can be derived from the
+// other at run time: the server copy has to answer before any script runs, and
+// robots.txt is a file a crawler fetches before anything else. This test reads
+// the client's own source rather than a description of it, so a divergence
+// fails here.
 
 const routesTS = "../../frontend/src/routes.ts"
 
@@ -54,14 +54,14 @@ func TestTheServerKnowsEveryScreenTheClientHas(t *testing.T) {
 			t.Errorf("%s is a client screen and is missing from Screens", path)
 		}
 	}
-	// And nothing the server claims is a screen has been deleted from the
-	// client, which is the direction that leaves an address answering 200 with
-	// a screen that no longer exists.
+	// In the other direction, no screen the server lists has been deleted from
+	// the client. That divergence would leave an address answering 200 with a
+	// screen that no longer exists.
 	client := screenPaths(t)
 	for _, path := range Screens {
-		// /settings/profile is a tab of /settings, matched by routes.ts with a
-		// pattern rather than named in SCREENS (024a), so it is legitimately
-		// absent from the literal.
+		// /settings/profile is a tab of /settings. routes.ts matches it with a
+		// pattern rather than naming it in SCREENS (024a), so its absence from
+		// the literal is expected.
 		if path == "/settings/profile" {
 			continue
 		}
@@ -71,15 +71,14 @@ func TestTheServerKnowsEveryScreenTheClientHas(t *testing.T) {
 	}
 }
 
-// The record shapes, which routes.ts matches with regexps rather than naming.
+// The record shapes are matched by routes.ts with regexps rather than named.
 func TestTheRecordShapesAreAddresses(t *testing.T) {
 	for _, path := range []string{
 		"/p/abc", "/p/abc/verdict", "/p/abc/s/xyz", "/p/abc/s/xyz/artifacts", "/u/ada", "/u/ADA",
-		"/wallet/", // a trailing slash is the same address, as it is on the client
-		// A session link cut short still identifies its project, which is what
-		// routes.ts resolves it to rather than sending the reader back to the
-		// dashboard. The server agrees rather than 404ing a link somebody
-		// truncated by hand.
+		"/wallet/", // a trailing slash is the same address, as on the client
+		// A truncated session link still identifies its project. routes.ts
+		// resolves it to the project rather than the dashboard, and the server
+		// agrees rather than answering 404 for a link truncated by hand.
 		"/p/abc/s",
 	} {
 		if !Known(path) {
@@ -95,8 +94,8 @@ func TestTheRecordShapesAreAddresses(t *testing.T) {
 	}
 }
 
-// The operator screens are the ones a signed-out reader — which is what a
-// crawler is — renders nothing at.
+// The operator screens are the ones at which a signed-out reader, which is
+// what a crawler is, renders nothing.
 func TestTheOperatorScreensAreNamedInBothPlaces(t *testing.T) {
 	robots, err := os.ReadFile("../../frontend/public/robots.txt")
 	if err != nil {
@@ -116,8 +115,9 @@ func TestTheOperatorScreensAreNamedInBothPlaces(t *testing.T) {
 			t.Errorf("%s is an operator screen and robots.txt does not disallow it", path)
 		}
 	}
-	// AC1: the sitemap is named by absolute URL — a crawler reading robots.txt
-	// resolves it against nothing — and the public zone is not disallowed.
+	// AC1: the sitemap is named by absolute URL, because a crawler reading
+	// robots.txt has no base to resolve against, and the public zone is not
+	// disallowed.
 	if !strings.Contains(text, "Sitemap: "+DefaultBase+"/sitemap.xml") {
 		t.Error("robots.txt does not name the sitemap by absolute URL")
 	}

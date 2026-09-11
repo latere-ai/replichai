@@ -30,8 +30,8 @@ func TestDescribeReplacesTheRegionAndNothingElse(t *testing.T) {
 	}
 }
 
-// A page with no title is one nobody may read. There is nothing truer to say
-// about it than the shell already says, and the response is marked instead.
+// A page with no title is one the reader may not read. The shell's default
+// head stands, and the response is marked noindex instead.
 func TestAPageWithNoTitleKeepsTheDefaultHead(t *testing.T) {
 	if got := string(Describe([]byte(shell), Page{NoIndex: true}, true)); got != shell {
 		t.Error("a not-indexed page rewrote the head")
@@ -41,8 +41,8 @@ func TestAPageWithNoTitleKeepsTheDefaultHead(t *testing.T) {
 	}
 }
 
-// A shell with no markers is a build this repository did not produce — the
-// committed placeholder, or a stale dist. It goes out unchanged rather than
+// A shell with no markers was not built from this repository: it is the
+// committed placeholder or a stale dist. It is served unchanged rather than
 // gaining a second title.
 func TestAShellWithoutMarkersIsServedUnchanged(t *testing.T) {
 	plain := "<head><title>only</title></head>"
@@ -52,7 +52,7 @@ func TestAShellWithoutMarkersIsServedUnchanged(t *testing.T) {
 }
 
 // Titles are researcher-supplied text: quotes, angle brackets and a `</script>`
-// are ordinary, not hostile, and must not become markup.
+// are ordinary input and must not become markup.
 func TestEveryValueIsEscaped(t *testing.T) {
 	head := Page{
 		Title:       `</script><img src=x onerror="boom()">`,
@@ -72,8 +72,8 @@ func TestEveryValueIsEscaped(t *testing.T) {
 	}
 }
 
-// og:url is the canonical, always: two addresses claiming to be the page is the
-// ambiguity a canonical exists to remove.
+// og:url is always the canonical. Two addresses claiming to be the page is
+// exactly the ambiguity a canonical exists to remove.
 func TestTheCardPointsAtTheCanonical(t *testing.T) {
 	head := Page{Title: "t", Canonical: "https://x.test/p/1", Image: "https://x.test/og.png"}.Head()
 	if !strings.Contains(head, `<meta property="og:url" content="https://x.test/p/1" />`) {
@@ -82,7 +82,7 @@ func TestTheCardPointsAtTheCanonical(t *testing.T) {
 	if !strings.Contains(head, `content="https://x.test/og.png"`) {
 		t.Error("the card image is not absolute")
 	}
-	// A page built without one still renders a valid card.
+	// A page built without an image still renders a valid card.
 	if !strings.Contains(Page{Title: "t"}.Head(), DefaultBase+CardImage) {
 		t.Error("a page with no image did not fall back to the site's own")
 	}
@@ -122,7 +122,7 @@ func TestWriteShellMarksWhatMustNotBeIndexed(t *testing.T) {
 	}
 }
 
-// The paths mirror the client's pathOf (013); routes.ts is the other copy.
+// The paths mirror the client's pathOf (013). routes.ts holds the other copy.
 func TestThePathsAreTheClientsPaths(t *testing.T) {
 	if ProjectPath("abc") != "/p/abc" || SessionPath("abc", "s1") != "/p/abc/s/s1" || ProfilePath("ada") != "/u/ada" {
 		t.Error("a path stopped agreeing with the client's")
