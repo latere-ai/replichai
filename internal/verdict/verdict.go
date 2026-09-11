@@ -1,32 +1,32 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package verdict is the schema for verdict.json — what a reproduction found,
-// as data rather than as prose.
+// Package verdict is the schema for verdict.json, the findings of a
+// reproduction recorded as data rather than prose.
 //
-// The rubric already demands all of it: a per-component reproduction table
-// (criterion 1), every component classified inner or outer with a citation (2),
-// the unwritten decisions with their sensitivity (3), and code, data, licence,
-// preregistration and supplement each scored against a fetched URL or an
-// explicit "none found" naming where it looked (4). Until this file existed the
-// audit wrote every one of them into REPRODUCIBILITY.md and SOURCES.md, where
-// nothing downstream could read them — so the product's whole claim, which is
-// per-claim, reached the screen as one word and one number.
+// The rubric already requires everything in it: a per-component reproduction
+// table (criterion 1), every component classified inner or outer with a
+// citation (2), the unwritten decisions with their sensitivity (3), and code,
+// data, licence, preregistration and supplement each scored against a fetched
+// URL or an explicit "none found" naming where the run looked (4). Before this
+// file existed the audit wrote all of it into REPRODUCIBILITY.md and
+// SOURCES.md, where nothing downstream could read it, so a per-claim result
+// reached the screen as one word and one number.
 //
-// It holds the schema and its validation and nothing else, on the model of
-// internal/instrument. Two rules are worth stating here rather than leaving to
-// the field comments:
+// The package holds the schema and its validation and nothing else, following
+// internal/instrument. Two rules are stated here rather than in the field
+// comments:
 //
-// An outer-loop claim is never scored. That is the one thing replichai exists
-// to defend, so it is a schema constraint and not a convention: a file claiming
-// an outcome for a human study is refused, not rendered.
+// An outer-loop claim is never scored. Defending this rule is the purpose of
+// replichai, so it is a schema constraint rather than a convention: a file
+// that claims an outcome for a human study is refused, not rendered.
 //
 // A mismatch is separate from an outcome. A claim can be verified and still
-// disagree with the paper — 89.6% against a reported 91.4% — and a paper can
-// simply be wrong, a transposed figure or a caption that contradicts its own
-// table. Folding that into the outcome would make "verified" mean "the paper
-// was right", which is a different and much stronger statement than the one the
-// run is entitled to make.
+// disagree with the paper, for example 89.6% against a reported 91.4%, and a
+// paper can be wrong on its own terms, with a transposed figure or a caption
+// that contradicts its table. Folding a mismatch into the outcome would make
+// "verified" mean "the paper was right", which is a stronger statement than
+// the run can make.
 package verdict
 
 import (
@@ -39,15 +39,15 @@ import (
 // Schema is the version this package reads and writes.
 const Schema = 1
 
-// File is where the findings live in a reproduction repository. It sits with
-// the schema rather than with the publisher because a reader that knows the
-// shape needs the name too, and the HTTP layer may not import the engine.
+// File is the path of the findings in a reproduction repository. It is defined
+// here rather than in the publisher because a reader of the schema needs the
+// name too, and the HTTP layer may not import the engine.
 const File = "verdict.json"
 
 // Outcome is the run's overall answer about the inner loop.
 type Outcome string
 
-// The overall outcomes. They are the inner loop's, always: no value here says
+// The overall outcomes. They describe the inner loop only; no value says
 // anything about the study with human participants.
 const (
 	Reproducible    Outcome = "reproducible"
@@ -58,7 +58,7 @@ const (
 // Loop names which half of the paper a claim belongs to.
 type Loop string
 
-// The two loops. The boundary between them is the finding, not a formality.
+// The two loops. Where the boundary between them falls is itself a finding.
 const (
 	Inner Loop = "inner"
 	Outer Loop = "outer"
@@ -92,8 +92,8 @@ const (
 // Criterion is one row of the open-science scorecard.
 type Criterion string
 
-// The five the rubric scores. The list is closed so an audit cannot invent a
-// bar it then passes.
+// The five criteria the rubric scores. The list is closed so an audit cannot
+// invent a criterion and then pass it.
 const (
 	Code            Criterion = "code"
 	Data            Criterion = "data"
@@ -105,9 +105,9 @@ const (
 // Criteria is the closed scorecard list, in the order a reader reads it.
 var Criteria = []Criterion{Code, Data, Licence, Preregistration, Supplement}
 
-// Result is what one search for the authors' artifacts turned up. None and Dead
-// are deliberately distinct: nothing was ever published, versus something was
-// published and no longer resolves. The second is the one an author can fix.
+// Result is what one search for the authors' artifacts found. NothingFound and
+// Dead are distinct: nothing was published, versus something was published and
+// no longer resolves. Only the second can be fixed by the author.
 type Result string
 
 // The search results.
@@ -131,9 +131,9 @@ type Verdict struct {
 	Released   []Release  `json:"released"`
 }
 
-// Components is the decomposition the rate is derived from. It travels with the
-// rate everywhere the rate is shown, because a rate without the decomposition
-// it summarises is the number the rubric forbids reading alone.
+// Components is the decomposition the rate is derived from. It is shown
+// wherever the rate is shown, because the rubric forbids reading the rate
+// without the decomposition it summarises.
 type Components struct {
 	Verified int `json:"verified"`
 	Partial  int `json:"partial"`
@@ -218,17 +218,17 @@ func Parse(raw []byte) (Verdict, error) {
 	return v, nil
 }
 
-// Validate reports every way raw departs from the schema, in one pass, so a
-// worker's revision receives all of them together. A nil, empty result means the
+// Validate reports every way raw departs from the schema in one pass, so a
+// worker's revision receives all of them together. An empty result means the
 // file is well-formed. The returned error is non-nil only when raw is not JSON
-// at all — a structural problem no revision of the content can fix.
+// at all, which no revision of the content can fix.
 //
-// What it enforces is invariants, not judgement: an outer-loop claim is never
-// scored, every claim carries a citation, every decision carries its
-// sensitivity, a scored criterion carries either the URL it fetched or the
-// places it searched, and the component counts add up to the total they claim.
-// Whether the boundary was drawn in the right place is the grader's honesty
-// criterion, not this function's.
+// It enforces invariants only: an outer-loop claim is never scored, every
+// claim carries a citation, every decision carries its sensitivity, a scored
+// criterion carries either the URL it fetched or the places it searched, and
+// the component counts add up to the total they claim. Whether the boundary
+// was drawn in the right place is judged by the grader's honesty criterion,
+// not here.
 func Validate(raw []byte) ([]Problem, error) {
 	v, err := Parse(raw)
 	if err != nil {
@@ -265,7 +265,7 @@ func Validate(raw []byte) ([]Problem, error) {
 		if !knownClaim[c.Outcome] {
 			add(at("outcome"), fmt.Sprintf("%q is not one of verified, partial, blocked, not_scored", c.Outcome))
 		}
-		// The one rule the product exists to defend, as a schema constraint.
+		// The product's central rule, enforced as a schema constraint.
 		if c.Loop == Outer && c.Outcome != NotScored {
 			add(at("outcome"), fmt.Sprintf("an outer-loop claim is %q; the study with human participants is never scored", c.Outcome))
 		}
