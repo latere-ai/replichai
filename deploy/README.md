@@ -6,9 +6,13 @@ a prepared stub (see `staging/`).
 
 ## Layout
 
-- `base/` — environment-neutral Deployment, Service, Ingress.
-- `prod/` — the production overlay (namespace `latere`, host `replichai.latere.ai`).
-- `staging/` — a stub overlay for a future `latere-staging` environment.
+- `base/` — what every environment shares: the Deployment with the settings
+  that are the same everywhere, the Service, the Ingress class and its
+  annotations, the PodDisruptionBudget.
+- `prod/` — namespace `latere`, host `replichai.latere.ai`, the OIDC client
+  registered for it, and the bootstrap admin list.
+- `staging/` — a stub for a future `latere-staging` environment, with its own
+  placeholders for the same values.
 
 ## One-time prerequisites (terraform owns these)
 
@@ -23,9 +27,9 @@ Apply them there (`tofu apply`) before the first deploy.
 
 ## The config secret (from `.env`)
 
-The deployment reads its secrets from a `replichai-config` secret via `envFrom`.
-Create it from the deployment's `.env` (never commit the `.env`; never read it
-into anything but the cluster):
+The deployment reads its credentials from a `replichai-config` secret via
+`envFrom`. Create it from the deployment's `.env` (never commit the `.env`;
+never read it into anything but the cluster):
 
 ```bash
 kubectl -n latere create secret generic replichai-config \
@@ -33,22 +37,29 @@ kubectl -n latere create secret generic replichai-config \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-`.env` should carry the secret/config values the app needs, for example:
+`.env` carries credentials and nothing else:
 
 ```
 ANTHROPIC_API_KEY=...          # the anthropic-managed runtime credential
-REPLICHAI_GITHUB_TOKEN=...     # the forge token for publishing (006f)
-AUTH_ISSUER=https://auth.latere.ai
-AUTH_CLIENT_ID=replichai
-AUTH_REDIRECT_URL=https://replichai.latere.ai/callback
-AUTH_COOKIE_KEY=...            # openssl rand -hex 32 (public OIDC client)
-ADMIN_EMAILS=you@latere.ai     # bootstrap platform admins, comma-separated
+REPLICHAI_GITHUB_APP_ID=...    # the GitHub App the server publishes as (009), and
+REPLICHAI_GITHUB_APP_KEY=...   # its private key: the PEM text, or a path to it.
+                               # REPLICHAI_GITHUB_TOKEN is the PAT fallback when neither is set
+AUTH_COOKIE_KEY=...            # openssl rand -hex 32
+AUTH_CLIENT_SECRET=            # only for a confidential OIDC client; prod's is public PKCE, so empty
 MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
-DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint (039); Anthropic may reuse ANTHROPIC_API_KEY
+DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint (039); Anthropic reuses ANTHROPIC_API_KEY
+STRIPE_SECRET_KEY=...          # card payments (022b); omit and checkout answers payments_unconfigured
+STRIPE_WEBHOOK_SECRET=...
 ```
 
-`DATABASE_URL`, `ADDR`, `BASE_URL`, and `REPLICHAI_RUNTIME` are set by the manifest and
-override any same-named key in `.env`, so the two cannot drift.
+Everything else is set by the manifests, and in Kubernetes a container's own
+`env` entry beats the same key arriving through `envFrom` — so a policy value
+put in the secret is not an override, it is dead. The base sets what every
+environment shares: `DATABASE_URL` (from the terraform-owned `replichai-db`
+secret), `ADDR`, `REPLICHAI_RUNTIME`, `AUTH_ISSUER`, `MAILGUN_DOMAIN`,
+`MAILGUN_REGION`. Each overlay sets what is its own: `BASE_URL`,
+`AUTH_CLIENT_ID`, `AUTH_REDIRECT_URL`, `ADMIN_EMAILS`. Change those in the
+overlay, where the change is reviewed, not in `.env`.
 
 ### Which model drafts a description
 

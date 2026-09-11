@@ -12,18 +12,5 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
   ingressClassName: nginx
-  tls:
-    - hosts:
-        - replichai.latere.ai
-      secretName: latere-replichai-tls
-  rules:
-    - host: replichai.latere.ai
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: replichai
-                port:
-                  number: 80
+  # No host and no TLS secret here: they are the one thing an environment is
+  # named by, so each overlay's patch supplies its own `tls` and `rules`.
