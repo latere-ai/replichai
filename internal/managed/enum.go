@@ -51,8 +51,8 @@ func (s State) String() string {
 // depend on the numbering of the constants.
 func (s State) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
-// UnmarshalJSON decodes a stable name and rejects any it does not know, so a
-// state this build cannot interpret fails loudly instead of arriving as
+// UnmarshalJSON decodes a stable name and rejects any it does not know, so
+// that a state this build cannot interpret is an error instead of arriving as
 // StateUnknown.
 func (s *State) UnmarshalJSON(raw []byte) error {
 	var name string
@@ -111,8 +111,8 @@ func (g Grade) String() string {
 // depend on the numbering of the constants.
 func (g Grade) MarshalJSON() ([]byte, error) { return json.Marshal(g.String()) }
 
-// UnmarshalJSON decodes a stable name and rejects any it does not know, so a
-// grade this build cannot interpret fails loudly instead of arriving as
+// UnmarshalJSON decodes a stable name and rejects any it does not know, so
+// that a grade this build cannot interpret is an error instead of arriving as
 // GradeUnknown.
 func (g *Grade) UnmarshalJSON(raw []byte) error {
 	var name string
@@ -129,8 +129,8 @@ func (g *Grade) UnmarshalJSON(raw []byte) error {
 }
 
 // NetworkMode is the outbound network policy a sandbox runs under. The empty
-// value is not a mode: validation reads an omitted mode as NetworkNone, so a
-// spec that forgets to say gets the closed sandbox rather than the open one.
+// value is not a mode. Validation reads an omitted mode as NetworkNone, so a
+// spec that does not set one gets the closed sandbox rather than the open one.
 type NetworkMode string
 
 // The outbound network policies. NetworkNone closes the sandbox off and
@@ -169,9 +169,9 @@ const (
 )
 
 // TerminalReason says why a session stopped, and is carried only on a terminal
-// Status. StateFailed alone cannot tell a run the runtime broke on from one
-// that was cancelled or timed out, and operators chase those in different
-// places.
+// Status. StateFailed alone cannot distinguish a run that failed in the
+// runtime from one that was cancelled or timed out, and operators investigate
+// those in different places.
 type TerminalReason string
 
 // Why a session stopped. ReasonSucceeded and ReasonEvaluationFailed are
