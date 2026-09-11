@@ -329,6 +329,15 @@ func (s *Session) Artifacts() ([]managed.Artifact, error) {
 		if relative == "." {
 			return nil
 		}
+		// Only a regular file is an artifact. WalkDir reports a symlink as a
+		// non-directory whatever it points at, so a link into an installed
+		// dependency tree — uv unpacks its wheel cache as one — is listed
+		// here and then read, and reading a link to a directory fails the
+		// whole harvest. Following it is not the fix either: a link's meaning
+		// is its target, and the target's bytes are not what the run made.
+		if !entry.Type().IsRegular() {
+			return nil
+		}
 		artifact := managed.Artifact{ID: relative, Path: relative}
 		if artifact.IsCompiled() {
 			return nil

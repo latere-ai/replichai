@@ -168,6 +168,40 @@ func TestArtifactsExcludeRepositoryMetadataAndResidue(t *testing.T) {
 	}
 }
 
+// A symlink is not an artifact. uv unpacks its wheel cache into directories
+// and links to them, and WalkDir reports a link as a non-directory whatever it
+// points at: listing one and then reading it failed the whole harvest, and
+// with it every publication of a run that had installed a dependency.
+func TestArtifactsSkipLinks(t *testing.T) {
+	session := newSession(t)
+	workspace := session.Workspace()
+	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte("r"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cache := filepath.Join(workspace, "cache", "wheels", "attrs-26.1.0-py3-none-any")
+	if err := os.MkdirAll(cache, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "attrs.py"), []byte("w"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.Symlink(cache, filepath.Join(workspace, "attrs-26.1.0-py3-none-any")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	artifacts, err := session.Artifacts()
+	if err != nil {
+		t.Fatalf("Artifacts: %v", err)
+	}
+	for _, artifact := range artifacts {
+		if artifact.Path == "attrs-26.1.0-py3-none-any" {
+			t.Fatalf("a link to a directory was listed as an artifact: %v", artifacts)
+		}
+		if _, err := session.Fetch(artifact); err != nil {
+			t.Fatalf("listed %s but could not read it: %v", artifact.Path, err)
+		}
+	}
+}
+
 // A fresh process finds a detached run by its directory alone: the locator,
 // the status and the transcript are all on disk.
 func TestAFreshProcessReopensASession(t *testing.T) {
