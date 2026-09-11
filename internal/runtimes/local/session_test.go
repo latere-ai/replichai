@@ -165,7 +165,7 @@ func TestAppendBoundsAnOversizeEventLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read transcript: %v", err)
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(body)), "\n") {
 		if len(line) > maxEventBytes {
 			t.Fatalf("an event line of %d bytes was written past the %d-byte bound", len(line), maxEventBytes)
 		}
