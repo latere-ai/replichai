@@ -77,7 +77,6 @@ type StageRecord struct {
 	Lines     int                 `json:"lines"`
 	Exit      *int                `json:"exit,omitempty"`
 	Verdict   *managed.Verdict    `json:"verdict,omitempty"`
-	Usage     *managed.Usage      `json:"usage,omitempty"`
 }
 
 // Session is one run's directory on disk. Every durable fact about a local

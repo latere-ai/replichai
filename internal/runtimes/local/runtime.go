@@ -703,9 +703,6 @@ func (r *Runtime) drain(ctx context.Context, session *Session, harnessName harne
 		return usage, err
 	}
 	record.Offset += read
-	if usage.TotalTokens() > 0 || len(usage.Details) > 0 {
-		record.Usage = &usage
-	}
 	return usage, nil
 }
 

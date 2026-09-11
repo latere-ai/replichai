@@ -369,6 +369,17 @@ func TestPollKeepsTheFinalLineOfAStageThatExitsBetweenObservations(t *testing.T)
 	}
 }
 
+// The session total is folded onto the status, which is the one place it
+// lives. There is no per-stage usage field carrying a single poll's increment,
+// which each poll overwrote rather than accumulated.
+func TestTheSessionTotalIsFoldedOntoTheStatus(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 1})
+	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	if status.Usage.TotalTokens() == 0 {
+		t.Fatalf("the session total is empty: %+v", status.Usage)
+	}
+}
+
 // A graded session that passes ends done with a decided verdict, having run
 // one worker and one judge.
 func TestAGradedSessionRunsAWorkerThenAJudge(t *testing.T) {
