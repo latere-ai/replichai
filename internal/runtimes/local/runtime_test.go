@@ -233,6 +233,76 @@ func TestTheOutputDirectoryIsTheSessionsOwnWorkspace(t *testing.T) {
 	}
 }
 
+// Two Capabilities+Start pairs run at once against one runtime, as the server's
+// worker pool does. Each gets its own workspace, and the session each Start
+// launches is the one its own Capabilities advertised — no shared pending slot
+// hands one caller's directory to another, so no two jobs template their
+// instructions against one workspace.
+func TestConcurrentSessionsGetTheirOwnWorkspace(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{})
+
+	type outcome struct {
+		advertised string
+		ran        string
+	}
+	results := make(chan outcome, 2)
+	start := make(chan struct{})
+	for range 2 {
+		go func() {
+			<-start
+			capabilities, err := runtime.Capabilities(context.Background())
+			if err != nil {
+				results <- outcome{}
+				return
+			}
+			// The audit templates the output directory into the task, which
+			// is the binding Start resolves the reservation from.
+			s := spec(false)
+			s.Task = "Write your reproduction into " + capabilities.OutputDir
+			ref, err := runtime.Start(context.Background(), s)
+			if err != nil {
+				results <- outcome{}
+				return
+			}
+			runToTerminal(t, runtime, ref)
+			workspace, err := runtime.Workspace(ref)
+			if err != nil {
+				results <- outcome{}
+				return
+			}
+			results <- outcome{advertised: capabilities.OutputDir, ran: workspace}
+		}()
+	}
+	close(start)
+
+	seen := map[string]bool{}
+	for range 2 {
+		got := <-results
+		if got.advertised == "" || got.ran == "" {
+			t.Fatal("a concurrent session failed to start")
+		}
+		if got.advertised != got.ran {
+			t.Errorf("a session ran in %q but advertised %q", got.ran, got.advertised)
+		}
+		if seen[got.ran] {
+			t.Errorf("two sessions shared the workspace %q", got.ran)
+		}
+		seen[got.ran] = true
+	}
+
+	// Every worker stage the driver launched ran in a distinct workspace: the
+	// two sessions never touched one directory.
+	workspaces := map[string]bool{}
+	for _, stage := range driver.Stages() {
+		if strings.HasPrefix(stage.Name, "worker") {
+			if workspaces[stage.Workdir] {
+				t.Errorf("two workers ran in %q", stage.Workdir)
+			}
+			workspaces[stage.Workdir] = true
+		}
+	}
+}
+
 // A graded session that passes ends done with a decided verdict, having run
 // one worker and one judge.
 func TestAGradedSessionRunsAWorkerThenAJudge(t *testing.T) {
