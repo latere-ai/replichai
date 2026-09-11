@@ -30,19 +30,24 @@ const Name managed.RuntimeName = "local"
 // It is written by the host, never by the agent, and finalize commits it as
 // system-authored evidence beside the transcript.
 type Environment struct {
-	Sandbox   EnvironmentSandbox `json:"sandbox"`
-	Host      EnvironmentHost    `json:"host"`
-	Harness   EnvironmentHarness `json:"harness"`
-	Model     managed.ModelRef   `json:"model"`
-	Toolchain map[string]string  `json:"toolchain,omitempty"`
-	Packages  []EnvironmentPkg   `json:"packages,omitempty"`
-	Network   EnvironmentNetwork `json:"network"`
+	Sandbox  EnvironmentSandbox `json:"sandbox"`
+	Host     EnvironmentHost    `json:"host"`
+	Harness  EnvironmentHarness `json:"harness"`
+	Model    managed.ModelRef   `json:"model"`
+	Packages []EnvironmentPkg   `json:"packages,omitempty"`
+	Network  EnvironmentNetwork `json:"network"`
 }
 
-// EnvironmentSandbox is which boundary the work ran behind. ConfigRead records
-// the one read allowance the host driver grants outside the session — the
-// harness's own configuration — so it is a disclosed property of a local run
-// rather than a surprise.
+// EnvironmentSandbox is which boundary the work ran behind. Every field here is
+// written by something: a field a disclosure record carries but never fills
+// reads as "nothing to disclose" whether that is true or not, so a field that
+// nothing could fill is not carried at all.
+//
+// Version and Image are the container driver's pinned toolchain and image
+// reference, empty under the host driver, which pins neither and records what
+// it ran on in Packages and Host instead. ConfigRead is the read the host
+// driver grants outside the session — the harness's own login — populated with
+// exactly what a run was granted.
 type EnvironmentSandbox struct {
 	Driver      sandbox.DriverName `json:"driver"`
 	Version     string             `json:"version,omitempty"`
@@ -75,15 +80,13 @@ type EnvironmentPkg struct {
 	Version string `json:"version,omitempty"`
 }
 
-// EnvironmentNetwork is where the run went. Under an open policy the driver's
-// proxy log is the source, so an artifact hunt is defensible by being visible.
+// EnvironmentNetwork is where the run was allowed to go.
 type EnvironmentNetwork struct {
 	// Allowed is where the run was permitted to go. Under an open policy it
 	// is empty, which means everywhere; under an allowlist it is the whole
 	// of the run's reach, and a hunt that found nothing had this much room
 	// to look.
-	Allowed        []string `json:"allowed,omitempty"`
-	DomainsReached []string `json:"domains_reached,omitempty"`
+	Allowed []string `json:"allowed,omitempty"`
 }
 
 // NewEnvironment starts the record with what is knowable before the first

@@ -238,6 +238,15 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	if gateway.Auth == harness.AuthHarness {
 		record.Sandbox.ConfigRead = harness.LoginPaths(r.config.Harness.Needs(r.config.Machine))
 	}
+	// The container driver pins a toolchain and an image; the host driver
+	// pins neither and leaves both empty. Read through the optional interfaces
+	// a driver satisfies, so this package names no concrete driver.
+	if reporter, ok := r.config.Sandbox.(interface{ Image() string }); ok {
+		record.Sandbox.Image = reporter.Image()
+	}
+	if reporter, ok := r.config.Sandbox.(interface{ Toolchain() string }); ok {
+		record.Sandbox.Version = reporter.Toolchain()
+	}
 	if err = session.WriteEnvironment(record); err != nil {
 		return managed.SessionRef{}, err
 	}
