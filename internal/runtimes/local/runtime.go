@@ -319,6 +319,13 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	if err != nil {
 		return managed.Status{}, err
 	}
+	// A running session always has a stage — Start launches the bootstrap
+	// before it returns a reference — so a non-terminal journal with none is a
+	// corruption, not a state to index into. Cancel guards the same access;
+	// this one refuses rather than panicking on a truncated locator.
+	if len(locator.Stages) == 0 {
+		return managed.Status{}, fmt.Errorf("session %s is not terminal but its journal names no stage", session.ID())
+	}
 
 	current := &locator.Stages[len(locator.Stages)-1]
 	status.Model = model

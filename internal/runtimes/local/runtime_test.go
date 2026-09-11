@@ -205,6 +205,28 @@ func start(t *testing.T, runtime *local.Runtime, s managed.SessionSpec) managed.
 	return ref
 }
 
+// A running session whose journal names no stage is refused rather than
+// crashing on the index. It cannot arise from a normal Start — the bootstrap is
+// launched before the reference returns — but a truncated locator on disk could
+// present it, and Poll must not panic on it.
+func TestPollRefusesARunningSessionWithNoStages(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{})
+	ref := start(t, runtime, spec(false))
+
+	// Truncate the on-disk journal to no stages, while the status stays
+	// running, which is the corruption the guard defends against.
+	session, err := local.OpenSession(sessionDir(t, ref))
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	if err := session.WriteLocator(local.Locator{Driver: sandbox.Host, Harness: harness.ClaudeCode}); err != nil {
+		t.Fatalf("WriteLocator: %v", err)
+	}
+	if _, err := runtime.Poll(context.Background(), ref); err == nil {
+		t.Fatal("Poll accepted a running session with no stages")
+	}
+}
+
 // The output directory a caller reads before starting is the workspace the
 // session it then starts actually writes to. On this runtime that path is
 // per-session, so the two calls have to agree.
