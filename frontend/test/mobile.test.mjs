@@ -24,39 +24,12 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5241
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { check, DESKTOP, fail, settled, start, text } from './harness.mjs'
 
 const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true }
 // 360 is the common Android width, and the only one that reaches the drawer's
 // `max-width: 84vw` clamp.
 const NARROW = { width: 360, height: 780, isMobile: true, hasTouch: true }
-const DESKTOP = { width: 1440, height: 900 }
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
@@ -95,9 +68,9 @@ const SIGNED_IN = { authenticated: true, principal: 'p', email: 'tester@example.
 const SIGNED_OUT = { authenticated: false }
 
 const routes = [
-  [/^\/me\/profile$/, { handle: HANDLE, display_name: 'Ada Lovelace', institution: 'University of Somewhere', contact_email: ADDRESS }],
+  ['/me/profile', { handle: HANDLE, display_name: 'Ada Lovelace', institution: 'University of Somewhere', contact_email: ADDRESS }],
   [
-    /^\/me\/credits$/,
+    '/me/credits',
     {
       balance: 12_500_000,
       spread_bps: 500,
@@ -109,13 +82,13 @@ const routes = [
       ],
     },
   ],
-  [/^\/projects$/, [listed]],
-  [/^\/projects\/trash$/, [{ ...listed, id: 'proj-2', running: 0, latest_phase: 'done' }]],
+  ['/projects', [listed]],
+  ['/projects/trash', [{ ...listed, id: 'proj-2', running: 0, latest_phase: 'done' }]],
   [/^\/projects\/[^/]+\/papers$/, [{ key: 'pap-a', ref: job.ref, title: TITLE, sessions: 1 }]],
   [/^\/projects\/[^/]+\/members$/, [{ email: ADDRESS, role: 2, bound: true }]],
   [
-    /^\/projects\/[^/]+$/,
-    (id) => ({
+    /^\/projects\/([^/]+)$/,
+    ({ params: [id] }) => ({
       project: {
         ...project,
         id,
@@ -141,8 +114,9 @@ const routes = [
       live: false,
     },
   ],
-  [/^\/jobs\/[^/]+\/reproduction$/, (id) => ({ id, repo: 'open-hai/retention-under-load', title: TITLE, verdict: 'passed', review: 'clear', can_publish: true })],
+  [/^\/jobs\/([^/]+)\/reproduction$/, ({ params: [id] }) => ({ id, repo: 'open-hai/retention-under-load', title: TITLE, verdict: 'passed', review: 'clear', can_publish: true })],
   [/^\/jobs\/[^/]+\/artifacts$/, { files: ['README.md', 'analysis/recompute_attention_decline.py'] }],
+  [/^\/jobs\/[^/]+\/artifact$/, text('# a file\n\nOne line.\n')],
   [
     /^\/jobs\/[^/]+\/verdict$/,
     {
@@ -164,7 +138,7 @@ const routes = [
     { handle: HANDLE, display_name: 'Ada Lovelace', institution: 'University of Somewhere, Department of Rather Long Names', contact_email: ADDRESS, projects: [{ id: PROJECT, title: TITLE, signed_off_at: at(9000) }] },
   ],
   [
-    /^\/admin\/access$/,
+    '/admin/access',
     [
       // Two ordinary rows and one crowded one: the tiers differ in width, which
       // is what used to move every column after them.
@@ -173,7 +147,7 @@ const routes = [
       { email: ADDRESS, tier: 'user', wallet: -1_500_000, created_at: at(0), bound: true, frozen: true },
     ],
   ],
-  [/^\/admin\/solvency$/, { outstanding_micro: 1_500_000 }],
+  ['/admin/solvency', { outstanding_micro: 1_500_000 }],
   [/^\/admin\//, {}],
 ]
 
@@ -201,43 +175,6 @@ const SCREENS = [
 // registry, a project in it, a session under that project, and a researcher's
 // page. Everything else is somebody's workspace and renders the landing.
 const PUBLIC_SCREENS = SCREENS.filter(([, path]) => path === '/registry' || path.startsWith('/p/') || path.startsWith('/u/'))
-
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
-
-// open serves the mocked API and returns a page at `path`. `sidebar` seeds the
-// stored fold, which the phone must ignore and the desktop must obey.
-const open = async (path, { viewport = PHONE, sidebar, me = SIGNED_IN } = {}) => {
-  const page = await browser.newPage()
-  await page.setViewport(viewport)
-  // The fold is always written, never left over: localStorage is shared by
-  // every page this browser opens, and one test seeding `folded` would
-  // otherwise decide what the next one measures.
-  await page.evaluateOnNewDocument(
-    (s) => {
-      localStorage.setItem('theme', 'light')
-      localStorage.setItem('sidebar', s)
-    },
-    sidebar ?? 'open',
-  )
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      if (u.pathname.endsWith('/artifact')) return req.respond({ status: 200, contentType: 'text/plain', body: '# a file\n\nOne line.\n' })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-      if (u.pathname === '/me') return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) {
-        const body = typeof hit[1] === 'function' ? hit[1](u.pathname.split('/')[2]) : hit[1]
-        return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-      }
-    }
-    req.continue()
-  })
-  await page.goto(BASE + path, { waitUntil: 'networkidle0' })
-  return page
-}
 
 // spill reports what a phone cannot see: anything painted past the right edge,
 // and any pane hiding that fact behind its own sideways scroll.
@@ -272,19 +209,37 @@ const spill = (page, vw) =>
     }
   }, vw)
 
+// drawerIs waits for the drawer to be open or shut, then for its slide to end —
+// a drawer mid-slide measures where it is — and gives up quietly: whether it
+// got there is the assertion that follows.
+const drawerIs = async (page, open) => {
+  await page.waitForFunction((o) => document.querySelector('.rail').classList.contains('rail-open') === o, { timeout: 2000 }, open).catch(() => {})
+  await settled(page)
+}
+
+const h = await start()
+
+// open serves the mocked API to `me` and returns a page at `path`, with
+// everything the screen fetches on it — the measure is of the loaded screen.
+// `sidebar` seeds the stored fold, which the phone must ignore and the desktop
+// must obey.
+const open = async (path, { viewport = PHONE, sidebar, me = SIGNED_IN } = {}) => {
+  const page = await h.page({ viewport, routes: [['/me', me], ...routes] })
+  // The fold is always written, never left over: localStorage is shared by
+  // every page this browser opens, and one test seeding `folded` would
+  // otherwise decide what the next one measures.
+  await page.evaluateOnNewDocument(
+    (s) => {
+      localStorage.setItem('theme', 'light')
+      localStorage.setItem('sidebar', s)
+    },
+    sidebar ?? 'open',
+  )
+  await page.open(path, { waitUntil: 'networkidle0' })
+  return page
+}
+
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-
   /* ── The rail leaves the flow, on every screen ── */
 
   // sweep measures one reader at one width. The signed-out pass is not a
@@ -306,7 +261,7 @@ try {
       }
       // Give the entry animation its 0.3s: a card mid-fade is mid-transform,
       // and a transformed box measures where it is, not where it lands.
-      await new Promise((r) => setTimeout(r, 400))
+      await settled(page)
 
       // The public profile is a page for strangers and renders outside the shell.
       const shell = await page.evaluate(() => !!document.querySelector('.shell'))
@@ -315,12 +270,12 @@ try {
           main: Math.round(document.querySelector('.main').getBoundingClientRect().width),
           railInFlow: document.querySelector('.rail').getBoundingClientRect().right > 0,
         }))
-        if (w.main !== viewport.width) fail(`${label}: the content column is ${w.main}px of a ${viewport.width}px phone; the rail is still taking its 236`)
-        if (w.railInFlow) fail(`${label}: the rail is still on screen with the drawer closed`)
+        check(w.main === viewport.width, `${label}: the content column is ${w.main}px of a ${viewport.width}px phone; the rail is still taking its 236`)
+        check(!w.railInFlow, `${label}: the rail is still on screen with the drawer closed`)
       }
 
       const sp = await spill(page, viewport.width)
-      if (sp.doc > 1) fail(`${label}: the document scrolls ${sp.doc}px sideways`)
+      check(sp.doc <= 1, `${label}: the document scrolls ${sp.doc}px sideways`)
       for (const q of sp.panes) fail(`${label}: ${q} scrolls sideways — a pane hiding its own overflow is what made this invisible`)
       for (const o of sp.over) fail(`${label}: ${o}, past the ${viewport.width}px edge`)
       await page.close()
@@ -339,20 +294,18 @@ try {
     const isOpen = () => page.evaluate(() => document.querySelector('.rail').classList.contains('rail-open'))
     const railLeft = () => page.evaluate(() => Math.round(document.querySelector('.rail').getBoundingClientRect().left))
 
-    if (await isOpen()) fail('the drawer is open on arrival; a phone must land on the screen the link named')
-    if (!(await page.evaluate(() => getComputedStyle(document.querySelector('.rail-open-btn')).display !== 'none'))) {
-      fail('the phone has no control that opens the drawer')
-    }
+    check(!(await isOpen()), 'the drawer is open on arrival; a phone must land on the screen the link named')
+    check(await page.evaluate(() => getComputedStyle(document.querySelector('.rail-open-btn')).display !== 'none'), 'the phone has no control that opens the drawer')
 
     const openIt = async () => {
       await page.click('.rail-open-btn')
-      await new Promise((r) => setTimeout(r, 300))
-      if (!(await isOpen())) fail('clicking the hamburger did not open the drawer')
-      if ((await railLeft()) !== 0) fail(`the open drawer sits at x=${await railLeft()}, not against the edge`)
+      await drawerIs(page, true)
+      check(await isOpen(), 'clicking the hamburger did not open the drawer')
+      check((await railLeft()) === 0, `the open drawer sits at x=${await railLeft()}, not against the edge`)
     }
     const shut = async (how) => {
-      await new Promise((r) => setTimeout(r, 300))
-      if (await isOpen()) fail(`${how} did not close the drawer`)
+      await drawerIs(page, false)
+      check(!(await isOpen()), `${how} did not close the drawer`)
     }
 
     await openIt()
@@ -375,7 +328,7 @@ try {
     await openIt()
     await page.evaluate(() => [...document.querySelectorAll('.rail-nav .nav-btn')].find((b) => /wallet/i.test(b.textContent)).click())
     await shut('opening a destination')
-    if ((await page.evaluate(() => location.pathname)) !== '/wallet') fail('opening a destination from the drawer did not navigate')
+    check((await page.evaluate(() => location.pathname)) === '/wallet', 'opening a destination from the drawer did not navigate')
 
     await page.close()
   }
@@ -389,11 +342,11 @@ try {
     const page = await open('/registry', { me: SIGNED_OUT })
     await page.waitForSelector('.screen')
     const bar = await page.waitForSelector('.rail-open-btn', { visible: true, timeout: 15000 }).then(() => true).catch(() => false)
-    await new Promise((r) => setTimeout(r, 400))
+    await settled(page)
     if (!bar) fail('signed out, a phone has no control that opens the drawer')
     else {
       await page.click('.rail-open-btn')
-      await new Promise((r) => setTimeout(r, 350))
+      await drawerIs(page, true)
       const read = await page.evaluate((w) => {
         const rail = document.querySelector('.rail').getBoundingClientRect()
         const foot = document.querySelector('.rail-foot')
@@ -406,13 +359,13 @@ try {
           .map((e) => (typeof e.className === 'string' ? e.className : e.tagName))
         return { open: document.querySelector('.rail').classList.contains('rail-open'), left: Math.round(rail.left), footBottom: f ? Math.round(f.bottom) : null, h: w, wide: wide.slice(0, 3) }
       }, PHONE.height)
-      if (!read.open) fail('signed out, the hamburger did not open the drawer')
-      if (read.left !== 0) fail(`signed out, the open drawer sits at x=${read.left}`)
+      check(read.open, 'signed out, the hamburger did not open the drawer')
+      check(read.left === 0, `signed out, the open drawer sits at x=${read.left}`)
       if (read.footBottom !== null && read.footBottom > read.h) fail(`the drawer's foot ends at ${read.footBottom}px, below the ${read.h}px screen — that is where the sign-in lives`)
       for (const c of read.wide) fail(`signed out, ${c} runs past the drawer's own right edge`)
       // And the way in is reachable from it.
       const href = await page.evaluate(() => document.querySelector('.rail-foot a[href^="/login"]')?.getAttribute('href') ?? null)
-      if (href === null) fail('the signed-out drawer offers no way in')
+      check(href !== null, 'the signed-out drawer offers no way in')
     }
     await page.close()
   }
@@ -425,15 +378,15 @@ try {
     const page = await open('/', { sidebar: 'folded' })
     await page.waitForSelector('.rail-open-btn', { visible: true })
     await page.click('.rail-open-btn')
-    await new Promise((r) => setTimeout(r, 300))
+    await drawerIs(page, true)
     const read = await page.evaluate(() => ({
       labels: [...document.querySelectorAll('.rail-nav .nav-label')].filter((e) => getComputedStyle(e).display !== 'none').length,
       width: Math.round(document.querySelector('.rail').getBoundingClientRect().width),
       stored: localStorage.getItem('sidebar'),
     }))
-    if (read.labels < 3) fail(`the open drawer names ${read.labels} of its destinations; a touch screen has no hover to read the rest`)
-    if (read.width < 200) fail(`the open drawer is ${read.width}px wide — that is the folded rail, not a drawer`)
-    if (read.stored !== 'folded') fail(`opening the drawer rewrote the stored fold to ${read.stored}; it is a preference this width must not touch`)
+    check(read.labels >= 3, `the open drawer names ${read.labels} of its destinations; a touch screen has no hover to read the rest`)
+    check(read.width >= 200, `the open drawer is ${read.width}px wide — that is the folded rail, not a drawer`)
+    check(read.stored === 'folded', `opening the drawer rewrote the stored fold to ${read.stored}; it is a preference this width must not touch`)
     await page.close()
   }
 
@@ -443,7 +396,7 @@ try {
     for (const path of ['/', `/p/${PROJECT}/s/${JOB}`]) {
       const page = await open(path)
       await page.waitForSelector('.topbar-actions')
-      await new Promise((r) => setTimeout(r, 300))
+      await settled(page)
       const outside = await page.evaluate((w) => {
         const bad = []
         for (const e of document.querySelectorAll('.topbar button, .topbar a')) {
@@ -464,7 +417,7 @@ try {
     const page = await open(`/p/${PROJECT}/s/${JOB}`)
     await page.waitForSelector('.tx-body')
     const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.tx-body')).gridTemplateColumns.split(' ').length)
-    if (cols !== 1) fail(`the transcript is ${cols} columns at 390px`)
+    check(cols === 1, `the transcript is ${cols} columns at 390px`)
     await page.close()
   }
 
@@ -474,7 +427,7 @@ try {
     // A paper title is what a row is. Squeezed into a 1fr track beside five
     // fixed ones it had ~120px; on its own line it has the card.
     const title = await page.evaluate(() => Math.round(document.querySelector('.project-list .row .row-main').getBoundingClientRect().width))
-    if (title < 280) fail(`a project's title cell is ${title}px wide; the row is still trying to be a table`)
+    check(title >= 280, `a project's title cell is ${title}px wide; the row is still trying to be a table`)
     await page.close()
   }
 
@@ -488,8 +441,8 @@ try {
   {
     const page = await open(`/p/${PRIVATE}`)
     await page.waitForSelector('[data-test="publish-project"]')
-    await new Promise((r) => setTimeout(r, 400))
-    const h = await page.evaluate(() => {
+    await settled(page)
+    const head = await page.evaluate(() => {
       const box = (s) => {
         const e = document.querySelector(s)
         const b = e.getBoundingClientRect()
@@ -497,11 +450,11 @@ try {
       }
       return { head: box('.detail-head'), title: box('.detail-title'), tabs: box('.detail-tabs') }
     })
-    if (h.title.w < 260) fail(`the project title is ${h.title.w}px wide; the button beside it is taking the line again`)
+    check(head.title.w >= 260, `the project title is ${head.title.w}px wide; the button beside it is taking the line again`)
     // 300 with a description under the title; the head was 582 before this was
     // fixed, and the number is asserted so it cannot creep back.
-    if (h.head.h > 300) fail(`the project head is ${h.head.h}px of an 844px phone`)
-    if (h.tabs.top > 330) fail(`the tabs start at y=${h.tabs.top}; a phone cannot reach them without scrolling past the title`)
+    check(head.head.h <= 300, `the project head is ${head.head.h}px of an 844px phone`)
+    check(head.tabs.top <= 330, `the tabs start at y=${head.tabs.top}; a phone cannot reach them without scrolling past the title`)
     await page.close()
   }
 
@@ -514,7 +467,7 @@ try {
   {
     const page = await open('/console')
     await page.waitForSelector('.member-row')
-    await new Promise((r) => setTimeout(r, 400))
+    await settled(page)
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll('.member-row')].map((r) => {
         const at = (s) => {
@@ -531,19 +484,19 @@ try {
         }
       }),
     )
-    if (rows.length < 3) fail(`the console listed ${rows.length} people; this measures alignment across rows`)
+    check(rows.length >= 3, `the console listed ${rows.length} people; this measures alignment across rows`)
     if (rows.some((r) => !r.actions)) {
       fail('a person’s controls are loose in the row; grouped is what lets every row end them in the same place')
       await page.close()
       throw new Error('people rows have no control group')
     }
     const edges = new Set(rows.map((r) => r.actions.r))
-    if (edges.size !== 1) fail(`the controls end at ${[...edges].join(', ')} — every row puts them somewhere else`)
+    check(edges.size === 1, `the controls end at ${[...edges].join(', ')} — every row puts them somewhere else`)
     const plain = rows.filter((r) => r.controls === 2)
     const money = new Set(plain.map((r) => r.money.l))
-    if (money.size !== 1) fail(`the amount starts at ${[...money].join(', ')}; the tier beside it is still setting the column`)
+    check(money.size === 1, `the amount starts at ${[...money].join(', ')}; the tier beside it is still setting the column`)
     for (const r of plain) {
-      if (r.h > 100) fail(`a person's row is ${r.h}px tall on a phone; it is an address, a tier, an amount and two controls`)
+      check(r.h <= 100, `a person's row is ${r.h}px tall on a phone; it is an address, a tier, an amount and two controls`)
     }
     await page.close()
   }
@@ -562,27 +515,28 @@ try {
       scrim: !!document.querySelector('.rail-scrim'),
       label: !!document.querySelector('.btn-topbar .btn-label')?.offsetWidth,
     }))
-    if (desk.rail !== 236) fail(`at ${DESKTOP.width}px the rail is ${desk.rail}px, want the 236 it has always been`)
-    if (desk.left !== 0) fail('the desktop rail left the flow')
-    if (desk.hamburger !== 'none') fail('the hamburger is showing on a desktop that has its rail')
-    if (desk.close !== 'none') fail('the drawer’s close control is showing on a desktop')
-    if (desk.fold === 'none') fail('the desktop lost its fold control')
-    if (desk.scrim) fail('a scrim is in the desktop DOM')
-    if (!desk.label) fail('the New project button lost its label on a desktop')
+    check(desk.rail === 236, `at ${DESKTOP.width}px the rail is ${desk.rail}px, want the 236 it has always been`)
+    check(desk.left === 0, 'the desktop rail left the flow')
+    check(desk.hamburger === 'none', 'the hamburger is showing on a desktop that has its rail')
+    check(desk.close === 'none', 'the drawer’s close control is showing on a desktop')
+    check(desk.fold !== 'none', 'the desktop lost its fold control')
+    check(!desk.scrim, 'a scrim is in the desktop DOM')
+    check(desk.label, 'the New project button lost its label on a desktop')
 
-    // And the fold still folds, and still persists.
+    // And the fold still folds, and still persists. The rail's width eases
+    // shut, so it is measured once the fold has landed.
     await page.click('.rail-fold-btn')
-    await new Promise((r) => setTimeout(r, 300))
+    await page.waitForFunction(() => document.querySelector('.rail').classList.contains('rail-fold'), { timeout: 2000 }).catch(() => {})
+    await settled(page)
     const folded = await page.evaluate(() => ({ w: Math.round(document.querySelector('.rail').getBoundingClientRect().width), stored: localStorage.getItem('sidebar') }))
-    if (folded.w > 80) fail(`folding the desktop rail left it ${folded.w}px wide`)
-    if (folded.stored !== 'folded') fail(`the fold was not stored (sidebar=${folded.stored})`)
+    check(folded.w <= 80, `folding the desktop rail left it ${folded.w}px wide`)
+    check(folded.stored === 'folded', `the fold was not stored (sidebar=${folded.stored})`)
     await page.close()
   }
 
-  if (!process.exitCode) console.log('PASS: mobile')
-} catch (err) {
-  fail(err.message)
+  h.ok('on a phone the rail is a drawer, nothing spills past the edge, and the desktop keeps its rail and its fold')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
