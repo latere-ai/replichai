@@ -25,9 +25,8 @@ import (
 )
 
 // Retention is what Release does with a session directory. The default is
-// keep, because the directory is the artifact: the workspace is the
-// reproduction, and deleting it on success would destroy the only copy of
-// anything the push has not yet taken.
+// keep, because the workspace is the reproduction and deleting it on success
+// would destroy the only copy of anything the push has not yet taken.
 type Retention string
 
 // The retention policies.
@@ -46,15 +45,15 @@ type Config struct {
 	Catalog   *Catalog
 	Root      string
 	Retention Retention
-	// Machine is the little a harness needs to know about where it runs in
-	// order to say what it needs of it: the platform, the operator's home,
+	// Machine is what a harness needs to know about where it runs in order
+	// to report what it needs from it: the platform, the operator's home,
 	// the temporary root, and the user id.
 	Machine harness.Machine
 	// Lookup reads one variable of the process environment, os.LookupEnv at
 	// the composition root. The git this runtime runs inherits only what
 	// sandbox.HostEnvironment admits through it; nothing inside the seam
 	// reads the environment itself, because a second, unscoped source of
-	// configuration is how a credential meant for one runtime reaches
+	// configuration would let a credential meant for one runtime reach
 	// another.
 	Lookup LookupEnv
 	// Clock is the time source, so a test does not depend on wall time.
@@ -62,8 +61,8 @@ type Config struct {
 }
 
 // Runtime executes a managed session on this machine. It owns the stage
-// sequence, the transcript pump, and the grading loop; it owns no isolation
-// (that is the driver) and no harness specifics (that is the adapter).
+// sequence, the transcript pump, and the grading loop. Isolation belongs to
+// the driver and harness specifics to the adapter.
 type Runtime struct {
 	config Config
 }
@@ -99,14 +98,15 @@ func (r *Runtime) Name() managed.RuntimeName { return Name }
 // itself. OutputDir is the workspace of the session the next Start will use,
 // because on this runtime the output directory is a per-session path and the
 // caller reads it before starting.
-// Capabilities names the session the caller's Start will run in — a fresh
-// id, its workspace path derived from it — and creates nothing. Every call
-// names a different session, so two callers sharing one Runtime cannot be
-// handed the same workspace; and a name nobody starts costs nothing, so a
-// caller asking only what the runtime can do leaves nothing behind. Start
-// reads the name back out of the specification it is handed (the audit
-// templates the workspace path into the instructions) and creates that
-// session then.
+//
+// Capabilities names that session, with a fresh id and a workspace path
+// derived from it, but creates nothing. Every call names a different session,
+// so two callers sharing one Runtime cannot be handed the same workspace. A
+// named session that is never started leaves nothing on disk, so a caller
+// that only asks what the runtime can do leaves nothing behind. Start reads
+// the name back out of the specification it is handed, because the audit
+// templates the workspace path into the instructions, and creates the session
+// at that point.
 func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error) {
 	if err := r.config.Sandbox.Preflight(ctx); err != nil {
 		return managed.Capabilities{}, err
@@ -132,9 +132,9 @@ func (r *Runtime) capabilities(outputDir string) managed.Capabilities {
 		OutputDir:       outputDir,
 		PackageManagers: driver.PackageManagers,
 		NetworkModes:    networks,
-		// The local path mounts no writable remote: the host pushes after
-		// the run, which is what keeps a forge credential out of the
-		// sandbox entirely (045g).
+		// The local runtime mounts no writable remote: the host pushes
+		// after the run, which keeps a forge credential out of the sandbox
+		// entirely (045g).
 		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true},
 		Evaluation:         true,
 		DurableEvents:      true,
@@ -205,10 +205,10 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
-	// Until the reference is returned the session is not recoverable by
-	// anyone, so a failure past this point must not leave its directory on
-	// disk nor a bootstrap it launched still running: both would be a leak no
-	// later call could find to clean up.
+	// Until the reference is returned nothing can recover the session, so a
+	// failure past this point must not leave its directory on disk or a
+	// bootstrap it launched running: no later call could find either to
+	// clean it up.
 	locator := Locator{Driver: r.config.Sandbox.Name(), Harness: r.config.Harness.Name()}
 	defer func() {
 		if err != nil {
@@ -219,23 +219,23 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	if err = r.writeAttachments(session, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
-	// The spec persisted for Poll drops the attachment bytes: they are already
-	// materialised into the workspace above, and Poll needs the model, the
-	// task and the evaluation, not the base64. Kept whole, a large attachment
-	// is decoded from disk on every single poll for the life of the session.
+	// The spec persisted for Poll drops the attachment bytes. They are already
+	// materialised into the workspace above, and Poll needs only the model,
+	// the task and the evaluation. Kept whole, a large attachment would be
+	// decoded from disk on every poll for the life of the session.
 	if err = session.writeJSON(specFile, withoutAttachmentBytes(spec)); err != nil {
 		return managed.SessionRef{}, err
 	}
 	effective := r.network(spec, gateway)
 	record := NewEnvironment(ctx, r.config.Sandbox.Name(), r.config.Harness.Name(), model, gateway, effective.Mode)
-	// What a run was allowed to reach is part of what it is: a hunt with a
-	// bound and a hunt without one find different things, and a reader
-	// comparing two reproductions is entitled to know which they have.
+	// What a run was allowed to reach is part of its record: a bounded
+	// search and an unbounded one find different things, and a reader
+	// comparing two reproductions needs to know which they have.
 	record.Network.Allowed = effective.Domains
 	record.Harness.Version = r.harnessVersion(ctx)
-	// What the run could read of the operator's own machine is part of what
-	// it is. Only a session on the operator's sign-in is opened any of it,
-	// and the record lists exactly what launch will grant.
+	// What the run could read of the operator's own machine is also part of
+	// its record. Only a session on the operator's sign-in is granted any of
+	// it, and the record lists exactly what launch will grant.
 	if gateway.Auth == harness.AuthHarness {
 		record.Sandbox.ConfigRead = harness.LoginPaths(r.config.Harness.Needs(r.config.Machine))
 	}
@@ -254,7 +254,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 
 	// The bootstrap runs first and as a stage of its own, so a dependency
 	// that will not install fails the session with a reason rather than
-	// surfacing an hour later as an agent that cannot import.
+	// appearing later as an agent that cannot import.
 	if err = r.launch(ctx, session, &locator, spec, model, gateway, harness.StageBootstrap, spec.Task); err != nil {
 		return managed.SessionRef{}, err
 	}
@@ -289,16 +289,16 @@ func (r *Runtime) abandon(ctx context.Context, session *Session, locator Locator
 }
 
 // Poll advances the session: it observes the current stage, drains whatever it
-// has written, and where it has finished decides what comes next — a judge
-// after a worker, a revision after a rejection, or a terminal state.
+// has written, and when the stage has finished decides what comes next: a
+// judge after a worker, a revision after a rejection, or a terminal state.
 //
 // The observation comes before the drain, and a stage found finished is
-// drained once more to end of file before Poll returns. A stage writes its
-// last line and exits between two polls, so a drain that ran before the
-// observation would leave that line for a next poll that a terminal stage never
-// gets — and the line a harness writes last is its result event, which carries
-// the run's total cost. Draining first folded the bill from a per-message
-// maximum instead of the session total.
+// drained once more to end of file before Poll returns. A stage may write its
+// last line and exit between two polls. A drain that ran before the
+// observation would leave that line for a next poll that a terminal stage
+// never gets, and the line a harness writes last is its result event, which
+// carries the run's total cost. Draining first folded the bill from a
+// per-message maximum instead of the session total.
 func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
 	session, locator, err := r.attach(ref)
 	if err != nil {
@@ -320,10 +320,11 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 	if err != nil {
 		return managed.Status{}, err
 	}
-	// A running session always has a stage — Start launches the bootstrap
-	// before it returns a reference — so a non-terminal journal with none is a
-	// corruption, not a state to index into. Cancel guards the same access;
-	// this one refuses rather than panicking on a truncated locator.
+	// A running session always has a stage, because Start launches the
+	// bootstrap before it returns a reference, so a non-terminal journal with
+	// none is corrupt rather than a state to index into. Cancel guards the
+	// same access; this check returns an error rather than panicking on a
+	// truncated locator.
 	if len(locator.Stages) == 0 {
 		return managed.Status{}, fmt.Errorf("session %s is not terminal but its journal names no stage", session.ID())
 	}
@@ -348,16 +349,16 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 		return status, r.save(session, locator, &status, ref)
 	}
 	// The stage has finished. Drain once more to end of file, so anything it
-	// wrote between the observation and now — its result event above all — is
+	// wrote between the observation and now, above all its result event, is
 	// in the transcript and its usage in the total before the stage is closed.
 	final, err := r.drain(ctx, session, locator.Harness, current)
 	if err != nil {
 		return managed.Status{}, err
 	}
 	status.Usage = harness.Fold(status.Usage, final)
-	// A stage the driver has lost is not a stage that succeeded. Its exit is
-	// unknowable, and reporting success on an unknown exit is exactly the
-	// class of defect 044 recorded.
+	// A stage the driver has lost has not succeeded. Its exit code is
+	// unknown, and reporting success on an unknown exit is the class of
+	// defect 044 recorded.
 	exit := observed.ExitCode
 	if observed.Gone && current.Exit == nil {
 		exit = -1
@@ -427,9 +428,9 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 			status.Verdict = &exhausted
 		}
 		// A rejected evaluation is a failed session, not a done one. The other
-		// two runtimes end it StateFailed, and the job store maps state one to
-		// one, so ending it StateDone here landed the same outcome as done on
-		// local and failed everywhere else.
+		// two runtimes end it StateFailed and the job store maps state one to
+		// one, so ending it StateDone here reported the same outcome as done
+		// on local and failed everywhere else.
 		r.finish(status, managed.StateFailed, managed.ReasonEvaluationFailed, "")
 		return nil
 	default:
@@ -500,10 +501,10 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 			paths = append(paths, sandbox.Path{Host: path, Access: sandbox.ReadWrite})
 		}
 		stageNetwork.Passthrough = needs.TLSPassthrough
-		// The operator's own sign-in is reached only by a session that
-		// uses it; one carrying its own credential is granted none of it.
-		// This is the one decision point: the harness says where its login
-		// lives, and only here is it decided whether that is opened.
+		// Only a session that uses the operator's own sign-in may reach
+		// it; a session carrying its own credential is granted none of it.
+		// This is the single decision point: the harness reports where its
+		// login lives, and only here is it decided whether to grant access.
 		if gateway.Auth == harness.AuthHarness {
 			for _, grant := range needs.Login {
 				access := sandbox.ReadOnly
@@ -513,8 +514,8 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 				paths = append(paths, sandbox.Path{Host: grant.Path, Access: access})
 			}
 		}
-		// Withheld either way: the operator's standing instructions and
-		// plugins are not the method.
+		// Denied in either case: the operator's standing instructions and
+		// plugins are not part of the method.
 		denied = needs.Denies
 	}
 	stage := sandbox.StageSpec{
@@ -585,13 +586,14 @@ func gatewayHosts(gateway harness.Gateway) []string {
 	return []string{parsed.Hostname()}
 }
 
-// defaultVendorHosts are where a harness talks when nobody redirected it.
+// defaultVendorHosts are the endpoints a harness reaches when no base URL
+// redirects it.
 func defaultVendorHosts(dialect harness.Dialect) []string {
 	switch dialect {
 	case harness.DialectAnthropic:
 		// The model endpoint only. statsig.anthropic.com and sentry.io are
 		// the harness's telemetry and error reporting, which a reproduction
-		// does not open — and the harness is told not to reach them at all.
+		// does not open; the harness is told not to reach them at all.
 		return []string{"api.anthropic.com"}
 	default:
 		// Codex signs in against ChatGPT and streams over a websocket on
@@ -604,10 +606,10 @@ func defaultVendorHosts(dialect harness.Dialect) []string {
 	}
 }
 
-// stagePaths is the sandbox's whole access decision. The judge gets the
-// workspace read-only and grade/ read-write, which is the mechanism behind a
-// grader that cannot edit what it grades; session/ is in neither list, which
-// is the mechanism behind a transcript the agent cannot rewrite.
+// stagePaths is the sandbox's complete access decision. The judge gets the
+// workspace read-only and grade/ read-write, so a grader cannot edit what it
+// grades. session/ is in neither list, so the agent cannot rewrite the
+// transcript.
 func (r *Runtime) stagePaths(session *Session, role harness.Stage) []sandbox.Path {
 	workspace := sandbox.Path{Host: session.Workspace(), Guest: "/workspace", Access: sandbox.ReadWrite}
 	if role == harness.StageJudge {
@@ -636,15 +638,16 @@ func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]s
 		"VIRTUAL_ENV":  session.Venv(),
 		"REPLICHAI_WS": session.Workspace(),
 		// git reads the operator's global configuration unless told not
-		// to, and the sandbox denies it — so every git command a stage
-		// runs fails on a file it has no business reading. The
+		// to, and the sandbox denies that file, so without this every git
+		// command a stage runs would fail on a file it must not read. The
 		// reproduction's own repository is configured by the runtime.
 		"GIT_CONFIG_GLOBAL": os.DevNull,
 		"GIT_CONFIG_SYSTEM": os.DevNull,
-		// Every pip in the session, not only the bootstrap's. A
-		// reproduction installs what the paper needs, and it hits the
-		// same wall: pip verifies through a trust service the sandbox
-		// does not open. The sandbox still validates the index itself.
+		// This applies to every pip in the session, not only the
+		// bootstrap's. A reproduction installs what the paper needs and
+		// meets the same problem: pip verifies through a trust service the
+		// sandbox does not open. The sandbox still validates the index
+		// itself.
 		"PIP_TRUSTED_HOST": strings.Join(PackageIndexHosts(), " "),
 	}
 	maps.Copy(merged, env)
@@ -654,7 +657,7 @@ func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]s
 // drain reads whatever the current stage has written since the last poll,
 // decodes it, appends it to the transcript, and returns the usage it reported.
 // The pump's position is journalled, so a restart resumes rather than
-// re-decoding — which is what keeps event ids stable across a restart.
+// re-decoding, which keeps event ids stable across a restart.
 func (r *Runtime) drain(ctx context.Context, session *Session, harnessName harness.Name, record *StageRecord) (managed.Usage, error) {
 	if harnessName != r.config.Harness.Name() {
 		return managed.Usage{}, fmt.Errorf("session was started with harness %q, this runtime has %q", harnessName, r.config.Harness.Name())
@@ -770,9 +773,9 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 	return session.WriteStatus(status)
 }
 
-// Release discards what the driver created. What happens to the directory is
-// the retention policy's, and the default keeps it: the workspace is the
-// reproduction, and the push may not have taken it yet.
+// Release discards what the driver created. The retention policy decides what
+// happens to the directory, and the default keeps it, because the workspace is
+// the reproduction and the push may not have taken it yet.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	session, locator, err := r.attach(ref)
 	if err != nil {
@@ -792,8 +795,8 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	return session.writeJSON(releasedFile, map[string]any{"released_at": r.config.Clock()})
 }
 
-// discards reports whether the retention policy says this session's directory
-// may go.
+// discards reports whether the retention policy allows this session's
+// directory to be removed.
 func (r *Runtime) discards(session *Session) bool {
 	switch r.config.Retention {
 	case RetainNever:
@@ -880,12 +883,13 @@ func (r *Runtime) reference(session *Session, locator Locator, revision uint64) 
 	return ref, ref.Validate(managed.DefaultMaxLocatorBytes)
 }
 
-// claim creates the session a specification names, or a fresh one where it
+// claim creates the session a specification names, or a fresh one when it
 // names none. The name is the one Capabilities handed the caller: the audit
 // templates that session's workspace path into the instructions, so the
 // session Start runs is the one the caller was told about, and two callers
-// who were told about different sessions cannot end up in one. Creating it
-// here rather than at Capabilities means a name nobody starts is just a name.
+// told about different sessions cannot end up in one. Creating it here rather
+// than at Capabilities means a session that is named but never started leaves
+// nothing on disk.
 func (r *Runtime) claim(spec managed.SessionSpec) (*Session, error) {
 	id, ok := r.namedSession(spec)
 	if !ok {
@@ -900,8 +904,8 @@ func (r *Runtime) claim(spec managed.SessionSpec) (*Session, error) {
 
 // namedSession finds the session id a specification carries, by the
 // workspace path under this runtime's root that Capabilities handed out. A
-// specification that carries none — one built without asking — names no
-// session.
+// specification that carries none, because it was built without calling
+// Capabilities, names no session.
 func (r *Runtime) namedSession(spec managed.SessionSpec) (string, bool) {
 	prefix := r.config.Root + string(filepath.Separator)
 	for _, text := range []string{spec.Instructions, spec.Task} {
@@ -950,9 +954,9 @@ func (r *Runtime) writeAttachments(session *Session, spec managed.SessionSpec) e
 	return nil
 }
 
-// harnessVersion records what actually produced the work. It is best effort:
-// an unavailable version leaves the field empty rather than failing a run over
-// a description of the harness.
+// harnessVersion records the version of the harness that produced the work.
+// It is best effort: if the version cannot be read the field is left empty
+// rather than failing the run, since it only describes the harness.
 func (r *Runtime) harnessVersion(ctx context.Context) string {
 	argv := r.config.Harness.VersionArgv()
 	if len(argv) == 0 {
@@ -970,9 +974,9 @@ func (r *Runtime) harnessVersion(ctx context.Context) string {
 	return ""
 }
 
-// recordPackages folds what the bootstrap actually resolved into the run's
-// environment record. Asking for numpy is not the same as having numpy 2.1.0,
-// and the record is what makes two reproductions comparable.
+// recordPackages adds the package versions the bootstrap resolved to the run's
+// environment record. The installed versions may differ from the requested
+// ones, and the record is what makes two reproductions comparable.
 func (r *Runtime) recordPackages(session *Session) {
 	manifest, err := os.ReadFile(filepath.Join(session.Venv(), PackageManifest))
 	if err != nil {
@@ -1001,9 +1005,8 @@ func readSpec(session *Session) (managed.SessionSpec, error) {
 // withoutAttachmentBytes is the specification as it is persisted for Poll: the
 // same, but with each attachment's content dropped. The bytes have already been
 // written into the workspace, and nothing Poll does reads them back; keeping
-// them would decode the whole attachment from disk on every poll. The metadata
-// — path, media type, digest — stays, so the record of what was supplied is
-// intact.
+// them would decode the whole attachment from disk on every poll. The path,
+// media type and digest stay, so the record of what was supplied is intact.
 func withoutAttachmentBytes(spec managed.SessionSpec) managed.SessionSpec {
 	if len(spec.Resources) == 0 {
 		return spec
@@ -1023,8 +1026,8 @@ func withoutAttachmentBytes(spec managed.SessionSpec) managed.SessionSpec {
 
 // currentRound is which grading round the session is in, counted from zero:
 // one per worker-side stage. It is the single definition, used both to tell
-// the judge which file to write and to read that file back — two definitions
-// is how the judge came to write verdict-1.json while the runtime looked for
+// the judge which file to write and to read that file back. With two
+// definitions the judge once wrote verdict-1.json while the runtime looked for
 // verdict-0.json.
 func currentRound(locator Locator) int {
 	rounds := 0
