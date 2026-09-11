@@ -15,37 +15,13 @@
 // geometry and painted hit tests, which need a real layout engine. It drives
 // Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5196
-const BASE = `http://localhost:${PORT}`
+import { fail, settled, start } from './harness.mjs'
 
 // The folded rail's width, and the expanded one, as the stylesheet sets them.
 const OPEN = 236
 // 64, not 56 (034): the rail lost its border and gained the desk's padding, and
 // the fold is sized to the nav row's own 12px radius rather than to the icon.
 const FOLDED = 64
-
-// Naming a browser is a demand that it run: an unset PUPPETEER_EXECUTABLE_PATH
-// skips on a machine without Chrome, but a set one that does not exist fails, so
-// CI cannot quietly stop guarding the regression.
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
@@ -55,9 +31,9 @@ const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility:
 // than one — the Platform group's eyebrow is the label most likely to be left
 // behind holding width open.
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 42.5, start_reserve: 5 } }],
-  [/^\/me\/profile$/, {}],
-  [/^\/projects$/, [{ ...project, session_count: 0, running: 0, latest_phase: '' }]],
+  ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 42.5, start_reserve: 5 } }],
+  ['/me/profile', {}],
+  ['/projects', [{ ...project, session_count: 0, running: 0, latest_phase: '' }]],
   [/^\/projects\/[^/]+$/, { project, sessions: [], papers: [], may_submit: true, role: 'owner' }],
   [/^\/projects\/[^/]+\/papers$/, []],
   [/^\/projects\/[^/]+\/members$/, []],
@@ -66,44 +42,14 @@ const routes = [
   [/^\/admin\//, []],
 ]
 
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
-
 const near = (got, want, slack = 1.5) => Math.abs(got - want) <= slack
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    // A cold dep-optimize pass takes tens of seconds on a first run.
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(hit[1]) })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  const page = await h.page({ routes })
+  await page.open('/')
   await page.waitForSelector('.rail .rail-fold-btn')
-  await new Promise((r) => setTimeout(r, 400)) // let the entrance animation settle
+  await settled(page)
 
   // read reports the whole geometry of the rail at once: its width, the width
   // the main area got, whether each nav row still paints its own icon, and
@@ -159,7 +105,7 @@ try {
   // Fold it. The click is a real one on the real control — the affordance being
   // reachable is half of what is being tested.
   await page.click('.rail-fold-btn')
-  await new Promise((r) => setTimeout(r, 400)) // the width transition
+  await settled(page) // the width transition
 
   const shut = await read()
   if (!shut.folded) fail('clicking the toggle did not fold the rail')
@@ -187,7 +133,10 @@ try {
   // squarely on the next row's icon: the tip that names one destination would
   // cover the next one.
   await page.hover('.rail .nav-btn')
-  await new Promise((r) => setTimeout(r, 400))
+  // The bubble fades up into place, so it is waited for and then let finish:
+  // the position measured is where it came to rest, not a frame of its rise.
+  await page.waitForFunction(() => [...document.querySelectorAll('.tip-bubble')].some((x) => +getComputedStyle(x).opacity > 0.5), { timeout: 3000 }).catch(() => {})
+  await settled(page)
   const tip = await page.evaluate(() => {
     const b = [...document.querySelectorAll('.tip-bubble')].find((x) => +getComputedStyle(x).opacity > 0.5)
     if (!b) return { text: '' }
@@ -218,7 +167,7 @@ try {
   // A folded rail still navigates. This is the assertion that a rail collapsed
   // by width alone — icons squeezed to nothing — would fail.
   await page.evaluate(() => document.querySelectorAll('.rail .nav-btn')[1].click())
-  await new Promise((r) => setTimeout(r, 400))
+  await page.waitForFunction(() => document.querySelectorAll('.rail .nav-btn')[1]?.classList.contains('active'), { timeout: 3000 }).catch(() => {})
   const moved = await page.evaluate(() => ({
     active: document.querySelector('.rail .nav-btn.active .nav-label')?.textContent.trim() || '',
     stillFolded: document.querySelector('.rail').classList.contains('rail-fold'),
@@ -228,9 +177,9 @@ try {
 
   // The choice outlives a reload — that is what makes it a preference rather
   // than a gesture.
-  await page.reload({ waitUntil: 'networkidle0' })
-  await page.waitForSelector('.rail')
-  await new Promise((r) => setTimeout(r, 400))
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.rail .rail-fold-btn')
+  await settled(page)
   const back = await read()
   if (!back.folded) fail('the rail forgot it was folded across a reload')
   if (!near(back.width, FOLDED)) fail(`the reloaded rail is ${back.width}px, want ${FOLDED}px`)
@@ -238,7 +187,7 @@ try {
   // And unfolding restores the rail whole, from the persisted state rather than
   // from whatever the first render happened to leave behind.
   await page.click('.rail-fold-btn')
-  await new Promise((r) => setTimeout(r, 400))
+  await settled(page)
   const again = await read()
   if (again.folded) fail('clicking the toggle in a folded rail did not unfold it')
   if (!near(again.width, OPEN)) fail(`the unfolded rail is ${again.width}px, want ${OPEN}px`)
@@ -246,16 +195,13 @@ try {
     if (!row.labelShown) fail(`the "${row.label}" label did not come back when the rail unfolded`)
   }
 
-  if (!process.exitCode) {
-    console.log(
-      `ok: rail folds ${Math.round(open.width)}→${Math.round(shut.width)}px and back; ` +
-        `${shut.rows.length} destinations stay clickable with tooltips (${shut.rows.map((r) => `"${r.tip}"`).join(', ')}); ` +
-        `main claims the space; the fold survives a reload`,
-    )
-  }
+  h.ok(
+    `rail folds ${Math.round(open.width)}→${Math.round(shut.width)}px and back; ` +
+      `${shut.rows.length} destinations stay clickable with tooltips (${shut.rows.map((r) => `"${r.tip}"`).join(', ')}); ` +
+      `main claims the space; the fold survives a reload`,
+  )
 } catch (e) {
-  fail(e.message)
+  fail(e)
 } finally {
-  await browser?.close()
-  vite.kill()
+  await h.close()
 }
