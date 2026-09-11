@@ -206,6 +206,86 @@ commandline:
 	}
 }
 
+// A stage that ignores SIGTERM is SIGKILLed once the grace elapses, group and
+// all, so nothing is left running behind a returned Stop. The stage ticks a
+// marker file while it lives, so its death is observed rather than inferred
+// from the leader alone.
+func TestStopKillsAStageThatIgnoresSIGTERM(t *testing.T) {
+	shim := filepath.Join(t.TempDir(), "srt")
+	// Stands in for srt: drop `--settings <file> --` and exec the command.
+	if err := os.WriteFile(shim, []byte("#!/bin/sh\nshift 3\nexec \"$@\"\n"), 0o700); err != nil {
+		t.Fatalf("write shim: %v", err)
+	}
+	grace := 400 * time.Millisecond
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv, StopGrace: grace,
+		Look: func(name string) (string, error) {
+			if name == "srt" {
+				return shim, nil
+			}
+			return "/bin/echo", nil
+		}})
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, "session", "raw")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	marker := filepath.Join(dir, "ticks")
+	spec := sandbox.StageSpec{
+		Name: "worker-0", Workdir: dir,
+		// Ignore the term and keep ticking the marker, so a Stop that only
+		// signalled and returned would leave this running.
+		Argv:    []string{"/bin/sh", "-c", `trap "" TERM; while :; do echo tick >> "$MARK"; sleep 0.05; done`},
+		Env:     map[string]string{"MARK": marker},
+		Network: sandbox.Network{Mode: sandbox.NetworkNone},
+		LogPath: filepath.Join(logDir, "worker-0.log"),
+	}
+	handle, err := driver.Launch(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	// Wait until the stage is ticking.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the stage never started ticking: %v", err)
+	}
+
+	start := time.Now()
+	if err := driver.Stop(context.Background(), handle); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < grace {
+		t.Errorf("Stop returned in %v, before the %v grace: it did not wait for the term to take", elapsed, grace)
+	}
+	// The stage is gone: the marker stops growing once the group is killed.
+	size := fileSize(t, marker)
+	time.Sleep(300 * time.Millisecond)
+	if grown := fileSize(t, marker); grown != size {
+		t.Fatalf("the stage kept running after Stop: marker grew from %d to %d", size, grown)
+	}
+	status, err := driver.Observe(context.Background(), handle)
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if status.Running {
+		t.Fatalf("the stage is still running after Stop: %+v", status)
+	}
+}
+
+func fileSize(t *testing.T, path string) int64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return info.Size()
+}
+
 // srt is not on every machine, so the contract suite runs where it is and says
 // why it did not where it is not.
 func TestHostDriverMeetsTheSandboxContract(t *testing.T) {

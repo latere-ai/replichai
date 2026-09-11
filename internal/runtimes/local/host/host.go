@@ -30,6 +30,10 @@ type Config struct {
 	// preflight so a missing harness is a refusal with instructions rather
 	// than an exec failure a minute in.
 	HarnessBinary string
+	// StopGrace is how long Stop waits after SIGTERM before it SIGKILLs the
+	// stage's process group. Zero takes the default; a stage that ignores the
+	// term is killed once it elapses.
+	StopGrace time.Duration
 	// Look resolves an executable, defaulting to exec.LookPath.
 	Look func(string) (string, error)
 	// Lookup reads one variable of the process environment, os.LookupEnv at
@@ -41,6 +45,11 @@ type Config struct {
 	Lookup func(string) (string, bool)
 }
 
+// defaultStopGrace is how long Stop waits after SIGTERM before it SIGKILLs a
+// stage that has not exited. It matches the container driver's stop timeout, so
+// the two boundaries give a stage the same moment to shut down cleanly.
+const defaultStopGrace = 10 * time.Second
+
 // Sandbox is the srt driver.
 type Sandbox struct{ config Config }
 
@@ -51,6 +60,9 @@ func New(config Config) *Sandbox {
 	}
 	if config.Look == nil {
 		config.Look = exec.LookPath
+	}
+	if config.StopGrace <= 0 {
+		config.StopGrace = defaultStopGrace
 	}
 	return &Sandbox{config: config}
 }
@@ -195,10 +207,12 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 		return sandbox.StageHandle{}, fmt.Errorf("start stage %s: %w", spec.Name, err)
 	}
 	pid := launcher.Process.Pid
-	// Released rather than waited on: the stage outlives this process, which
-	// is what makes a detached run and a batch that survives a closed lid
-	// work at all.
-	_ = launcher.Process.Release()
+	// Reaped in a goroutine rather than released: a released child is never
+	// waited on, so it lingers as a zombie for the life of this process —
+	// every stage a long-running server ran would. The wait only reaps; it
+	// sends no signal, so the stage stays detached and outlives this process
+	// where it must, reparented to init and reaped there instead.
+	go func() { _ = launcher.Wait() }()
 	return sandbox.StageHandle{Driver: sandbox.Host, ID: fmt.Sprintf("pid:%d:%s:%s", pid, token, spec.LogPath)}, nil
 }
 
@@ -336,18 +350,42 @@ func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset i
 
 // Stop ends a running stage, and its whole process group with it: srt starts
 // helpers, and killing only the wrapper would leave the harness running.
-func (s *Sandbox) Stop(_ context.Context, handle sandbox.StageHandle) error {
+//
+// It is a term, a grace, then a kill. A well-behaved stage exits on the SIGTERM
+// and records its status; one that ignores it is SIGKILLed once the grace
+// elapses. The kill goes to the group, not the leader alone: a child that
+// outlived a leader that died on the term is still in the group and is reaped
+// with it, so nothing is left running behind a returned Stop.
+func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 	pid, token, logPath, err := parseHandle(handle)
 	if err != nil {
 		return err
 	}
-	if _, done := readStatus(s.statusPath(logPath, token)); done {
+	statusPath := s.statusPath(logPath, token)
+	if _, done := readStatus(statusPath); done {
 		return nil
 	}
 	if !alive(pid) {
 		return nil
 	}
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	// The status file is the authoritative "finished" signal, not the leader's
+	// liveness: a leader can die on the term while a child it started keeps
+	// running. So the grace waits for the status rather than for the pid, and
+	// where it never comes the whole group is killed.
+	deadline := time.Now().Add(s.config.StopGrace)
+	for time.Now().Before(deadline) {
+		if _, done := readStatus(statusPath); done {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
 	return nil
 }
 
