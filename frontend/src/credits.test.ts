@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { expect, test } from 'bun:test'
-import { ledgerKindLabel, ledgerLabel } from './App'
+import { ledgerKindLabel, ledgerLabel } from './ledger'
 import { ApiError, type LedgerEntry } from './api'
 import { creditMoveErrLabel, emptyWallet, startErrLabel } from './errors'
 import { formatUSD, MICRO, parseUSD, toDollars } from './money'

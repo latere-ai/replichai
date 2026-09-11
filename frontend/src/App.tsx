@@ -148,6 +148,7 @@ import { useDrawer, useSidebar } from './sidebar'
 import { freshest, stopPending, terminal } from './session-stop'
 import { useJobStream } from './job-stream'
 import { hueOf, initials, isAdmin, isMine, showsPicture } from './account'
+import { ledgerLabel } from './ledger'
 
 // signerOf names the person who published a project. The signer's recorded name
 // is used whenever the sign-off carries one (006n); a v1 sign-off has none and
@@ -3362,42 +3363,6 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
       )}
     </div>
   )
-}
-
-// ledgerKindLabel names an entry in the reader's terms. A wallet only ever sees
-// three of the seven kinds — holds, releases and charges happen to a project's
-// pot, never to a person — so the rest fall through to a neutral label rather
-// than leaking vocabulary nobody here needs.
-export function ledgerKindLabel(t: I18n['t'], kind: LedgerEntry['kind']): string {
-  if (kind === 'topup') return t('ledgerTopup')
-  if (kind === 'allocate') return t('ledgerAllocate')
-  if (kind === 'reclaim') return t('ledgerReclaim')
-  return t('ledgerOther')
-}
-
-// ledgerLabel names one statement row (024b). An allocate or reclaim that
-// carries a project snapshot names it — a link while the project still exists, a
-// plain name once it is purged. Every other kind, and a pre-024b move that never
-// captured a project, falls back to the neutral kind label so an old statement
-// still reads.
-export type LedgerLabel = { kind: 'plain'; text: string } | { kind: 'project'; prefix: string; name: string; href?: string }
-
-export function ledgerLabel(t: I18n['t'], e: LedgerEntry): LedgerLabel {
-  if ((e.kind === 'allocate' || e.kind === 'reclaim') && e.project_name) {
-    return {
-      kind: 'project',
-      prefix: e.kind === 'allocate' ? t('ledgerAllocateTo') : t('ledgerReclaimFrom'),
-      name: e.project_name,
-      href: e.project_alive && e.project_id ? `/p/${e.project_id}` : undefined,
-    }
-  }
-  // A card payment names its source, not "an admin": the actor distinguishes a
-  // purchase (stripe:…) from an admin grant, and a refund (stripe:refund:…) from
-  // a manual correction (022b/022c).
-  const byCard = e.actor.startsWith('stripe:')
-  if (e.kind === 'topup') return { kind: 'plain', text: byCard ? t('ledgerCardTopup') : t('ledgerTopup') }
-  if (e.kind === 'adjust' && byCard) return { kind: 'plain', text: t('ledgerRefund') }
-  return { kind: 'plain', text: ledgerKindLabel(t, e.kind) }
 }
 
 // WalletPill shows what this person has to spend, next to the button that
