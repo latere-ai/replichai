@@ -54,9 +54,6 @@ type ModelCohort struct {
 	usage managed.Usage
 }
 
-// Kind identifies the cohort.
-func (*ModelCohort) Kind() CohortKind { return CohortModel }
-
 // Usage reports what the last Collect consumed, for the pilot.
 func (m *ModelCohort) Usage() managed.Usage { return m.usage }
 

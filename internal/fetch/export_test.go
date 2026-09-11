@@ -8,9 +8,6 @@ import (
 	"net"
 )
 
-// withPermit judges resolved addresses with a test's own rule.
-func withPermit(permit func(ip net.IP) bool) Option { return func(c *Client) { c.permit = permit } }
-
 // withResolver answers name lookups from a test's own table, so a test can
 // stand a hostname in front of a loopback server without touching DNS.
 func withResolver(table map[string][]net.IPAddr) Option {
