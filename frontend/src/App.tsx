@@ -5529,6 +5529,12 @@ function WithdrawDialog({
 
 // plumbingKinds are backend lifecycle ticks, hidden by default.
 const plumbingKinds = new Set(['status_idle', 'status_running', 'thread_status_idle', 'thread_status_running', 'model_request_start', 'model_request_end'])
+
+// Card is an event with its place in the whole transcript. The place is the
+// event's identity on screen: cards were keyed by their position in the
+// filtered list, so a search that dropped one card handed its neighbour's open
+// disclosure to whichever event moved into that position.
+type Card = { e: Event; n: number }
 // gradeKinds is the whole outcome family, which the filter rail folds into one
 // row: a reader wants "the grading" as a thing, not four of the backend's
 // internal steps (006s).
@@ -5642,8 +5648,9 @@ function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; jo
   // several hundred events: the input updates now, the list re-filters when
   // React has room.
   const dq = useDeferredValue(q)
-  // Which card the inspector is showing, as an index into the *filtered* list —
-  // so it is cleared whenever the filters move under it.
+  // Which card the inspector is showing, by the event's place in the whole
+  // transcript. It is cleared whenever the filters move, because what it showed
+  // may no longer be on screen.
   const [sel, setSel] = useState<number | null>(null)
   const streamRef = useRef<HTMLElement>(null)
 
@@ -5701,15 +5708,15 @@ function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; jo
   // aims at an event that is not on screen. Positions come off the DOM rather
   // than from tracked heights, because a card is as tall as its content and
   // nothing here knows that in advance.
-  const seek = useCallback((at: number, list: Event[]) => {
+  const seek = useCallback((at: number, list: Card[]) => {
     const stream = streamRef.current
     if (!stream) return
-    const i = list.findIndex((e) => {
+    const hit = list.find(({ e }) => {
       const t = timeOf(e)
       return !Number.isNaN(t) && t >= at
     })
-    if (i < 0) return
-    const card = stream.querySelector<HTMLElement>(`.event[data-i="${i}"]`)
+    if (!hit) return
+    const card = stream.querySelector<HTMLElement>(`.event[data-i="${hit.n}"]`)
     if (card) stream.scrollTo({ top: card.offsetTop - stream.offsetTop - 8, behavior: 'smooth' })
   }, [])
 
@@ -5735,16 +5742,16 @@ function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; jo
 
   // Real counts by kind, and tools used — never fabricated. The counts describe
   // what the search left standing, so the rail always adds up to the stream.
-  const shown = tr.events.filter((e) => !(hidePlumbing && plumbingKinds.has(e.kind)) && matches(e, dq))
+  const shown: Card[] = tr.events.map((e, n) => ({ e, n })).filter(({ e }) => !(hidePlumbing && plumbingKinds.has(e.kind)) && matches(e, dq))
   const kindCounts = new Map<string, number>()
   const toolCounts = new Map<string, number>()
-  for (const e of shown) {
+  for (const { e } of shown) {
     kindCounts.set(displayKind(e.kind), (kindCounts.get(displayKind(e.kind)) ?? 0) + 1)
     if (e.kind === 'tool_use' && e.tool) toolCounts.set(e.tool, (toolCounts.get(e.tool) ?? 0) + 1)
   }
-  const visible = shown.filter((e) => !off.has(displayKind(e.kind)))
+  const visible = shown.filter(({ e }) => !off.has(displayKind(e.kind)))
   const usage = tr.usage
-  const picked = sel !== null ? visible[sel] : undefined
+  const picked = sel !== null ? visible.find((c) => c.n === sel)?.e : undefined
 
   return (
     <>
@@ -5797,7 +5804,7 @@ function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; jo
               aria-label={t('searchTranscript')}
               onChange={(ev) => {
                 setQ(ev.target.value)
-                setSel(null) // the selection indexes the filtered list
+                setSel(null) // what the inspector showed may no longer be on screen
               }}
             />
           </div>
@@ -5851,8 +5858,8 @@ function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; jo
         </aside>
 
         <main className="tx-stream" ref={streamRef}>
-          {visible.map((e, i) => (
-            <EventCard key={i} i18n={i18n} e={e} i={i} span={span} on={i === sel} onPick={() => setSel(i === sel ? null : i)} />
+          {visible.map(({ e, n }) => (
+            <EventCard key={n} i18n={i18n} e={e} i={n} span={span} on={n === sel} onPick={() => setSel(n === sel ? null : n)} />
           ))}
         </main>
 
@@ -5904,8 +5911,8 @@ function Scrubber({
   // seekList is what the filters left standing — the same list the seek
   // resolves against, so the cursor never points at a card that is not on
   // screen.
-  seekList: Event[]
-  onSeek: (at: number, list: Event[]) => void
+  seekList: Card[]
+  onSeek: (at: number, list: Card[]) => void
 }) {
   const { t } = i18n
   const barRef = useRef<HTMLDivElement>(null)
@@ -5923,7 +5930,7 @@ function Scrubber({
     const box = barRef.current?.getBoundingClientRect()
     if (!box) return
     const f = Math.min(1, Math.max(0, (clientX - box.left) / box.width))
-    const target = seekTarget(seekList, span, f)
+    const target = seekTarget(seekList.map((c) => c.e), span, f)
     if (!target) {
       setCursor(f)
       return
