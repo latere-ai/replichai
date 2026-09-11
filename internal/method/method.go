@@ -3,10 +3,10 @@
 
 // Package method loads the audit method from disk.
 //
-// The method is data, not code: the worker's standing instructions, the rubric
-// it is graded against, and the task template a paper reference is substituted
-// into. Keeping the rubric in a file means sharpening it costs a text edit
-// rather than a redefinition of the worker.
+// The method is data: the worker's standing instructions, the rubric it is
+// graded against, and the task template the paper reference is substituted
+// into. Keeping the rubric in a file means a change to it is a text edit and
+// needs no rebuild.
 package method
 
 import (
@@ -35,11 +35,11 @@ var ErrInvalid = errors.New("invalid method")
 const SourceDir = "src"
 
 // deliverables are the fixed top-level files the rubric requires of every
-// reproduction. The list is the one source of truth for what the worker is
-// asked to write: the instructions and the task template must name each of
-// them, and the publication gate admits exactly these (plus SourceDir) as
-// worker-written. A file added to the rubric but not here is withheld from
-// every publication silently, which is how verdict.json once went missing.
+// reproduction. The list defines what the worker is asked to write: the
+// instructions and the task template must name each entry, and the
+// publication gate admits exactly these files, plus SourceDir, as
+// worker-written. A file added to the rubric but not listed here is silently
+// withheld from every publication; verdict.json was once lost this way.
 var deliverables = []string{
 	"README.md",
 	"REPRODUCIBILITY.md",
@@ -62,10 +62,10 @@ type Method struct {
 	TaskTemplate string
 }
 
-// Digest pins which version of the method produced a reproduction, as
+// Digest identifies the version of the method that produced a reproduction, as
 // "sha256:<hex>". Two reproductions are only comparable if their digests match.
-// The three documents are framed with length-prefixed labels so no edit that
-// moves a byte across the boundary between them can go unnoticed.
+// Each document is framed with a length-prefixed label, so an edit that moves
+// bytes across the boundary between two documents changes the digest.
 func (m Method) Digest() string {
 	h := sha256.New()
 	for _, part := range []struct{ name, text string }{
@@ -144,10 +144,10 @@ func Load(dir string) (Method, error) {
 // from the method directory. Like Load, an empty dir discovers the method
 // directory by walking up from the working directory.
 //
-// It is separate from Load and outside Digest because the experiment worker
-// (007b) is graded by nothing — it runs a declared command and reports what
-// happened — so it needs no rubric or task template, and editing its doctrine
-// must not change an audit's method digest.
+// It is separate from Load and excluded from Digest because the experiment
+// worker (007b) is not graded: it runs a declared command and reports the
+// result. It therefore needs no rubric or task template, and an edit to its
+// instructions must not change an audit's method digest.
 func LoadExperiment(dir string) (string, error) {
 	if dir == "" {
 		found, err := discover()
@@ -169,9 +169,9 @@ func LoadExperiment(dir string) (string, error) {
 
 // discover walks up from the working directory looking for a method directory.
 //
-// A candidate must actually contain the method, not merely be named "method" —
-// this repository has a Go package at internal/method, and matching on the name
-// alone would resolve to it from anywhere inside internal/.
+// A candidate must contain the method documents; the name "method" alone is
+// not enough, because this repository has a Go package at internal/method and
+// a name match would resolve to it from anywhere inside internal/.
 func discover() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {

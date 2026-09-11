@@ -35,12 +35,12 @@ func writeMethod(t *testing.T, root string, overrides map[string]string) string 
 func TestLoadExperiment(t *testing.T) {
 	root := writeMethod(t, filepath.Join(t.TempDir(), "method"), nil)
 
-	// Absent experiment.md → error.
+	// A missing experiment.md is an error.
 	if _, err := LoadExperiment(root); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("missing experiment.md should be ErrInvalid, got %v", err)
 	}
 
-	// Present and non-empty → returned.
+	// A present, non-empty file is returned.
 	if err := os.WriteFile(filepath.Join(root, "experiment.md"), []byte("Run the command exactly as given."), 0o644); err != nil {
 		t.Fatalf("write experiment.md: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestLoadExperiment(t *testing.T) {
 		t.Fatalf("LoadExperiment = %q, err %v", got, err)
 	}
 
-	// Present but empty → error.
+	// A present but empty file is an error.
 	if err := os.WriteFile(filepath.Join(root, "experiment.md"), []byte("   "), 0o644); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
@@ -169,8 +169,8 @@ func TestDigestIsStableAndDistinguishing(t *testing.T) {
 	if changed.Digest() == d {
 		t.Error("changing the rubric must change the digest")
 	}
-	// The length-prefixed framing keeps a byte from crossing a boundary
-	// unnoticed: moving text from one document to the next is a different digest.
+	// The length-prefixed framing makes the boundary part of the digest:
+	// moving text from one document to the next changes it.
 	shifted := Method{Instructions: "auditrubric", Rubric: "", TaskTemplate: "do {{PAPER}}"}
 	joined := Method{Instructions: "audit", Rubric: "rubric", TaskTemplate: "do {{PAPER}}"}
 	if shifted.Digest() == joined.Digest() {
@@ -188,10 +188,11 @@ func TestTheShippedMethodLoads(t *testing.T) {
 	if !strings.Contains(strings.ToLower(m.Instructions), "inner") {
 		t.Error("instructions should describe the inner/outer loop doctrine")
 	}
-	// The method is scoped by what makes the outer loop irreducible — human
-	// participants — not by one field that happens to have them. Naming a
-	// field here would tell the auditor a psychology or social-science paper
-	// is out of scope, which the product promises it is not.
+	// The method is scoped by human participants, which are what makes the
+	// outer loop irreducible, not by one field that happens to have them.
+	// Naming a field would tell the auditor that a psychology or
+	// social-science paper is out of scope, which the product promises it is
+	// not.
 	lower := strings.ToLower(m.Instructions)
 	for _, field := range []string{"human-computer interaction", "hci"} {
 		if strings.Contains(lower, field) {
@@ -221,11 +222,10 @@ func TestDeliverablesIsACopyAndNamesTheRubricFiles(t *testing.T) {
 	}
 }
 
-// Every deliverable the gate publishes must be one the worker was told to
-// write, in both documents that instruct it: the standing instructions and the
-// task it is handed. A file the gate admits but the prose never asks for is
-// never written; a file the prose asks for but the gate does not know is
-// withheld silently.
+// Every deliverable the gate publishes must be named in both documents that
+// instruct the worker: the standing instructions and the task. A file the gate
+// admits but neither document asks for is never written; a file the documents
+// ask for but the gate does not list is withheld silently.
 func TestTheShippedMethodNamesEveryDeliverable(t *testing.T) {
 	t.Chdir("..")
 	m, err := Load("")
