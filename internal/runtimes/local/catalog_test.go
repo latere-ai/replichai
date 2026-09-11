@@ -27,6 +27,9 @@ func env(pairs map[string]string) LookupEnv {
 	}
 }
 
+// writeFile writes an ordinary file, the one caller of which is this test.
+func writeFile(path string, body []byte) error { return writeFileMode(path, body, 0o600) }
+
 func parse(t *testing.T, body string) CatalogFile {
 	t.Helper()
 	path := t.TempDir() + "/models.yaml"
