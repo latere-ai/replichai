@@ -20,8 +20,12 @@ const passthrough = 299
 
 func frozenGate(t *testing.T) (http.Handler, *credit.MemStore, *access.MemStore) {
 	t.Helper()
-	ledger := credit.NewMemStore(nil, nil)
 	ov := access.NewMemStore()
+	// Wired as the composition root wires it: the top-up that leaves a wallet
+	// solvent is what retires its override.
+	ledger := credit.NewMemStore(nil, nil, credit.WithOnSolvent(func(ctx context.Context, email string) {
+		_ = ov.ClearOverride(ctx, email)
+	}))
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(passthrough) })
 	return FreezeGate(ledger, ov)(next), ledger, ov
 }
@@ -95,7 +99,7 @@ func TestFreezeGateThawsAndRespectsAOneShotOverride(t *testing.T) {
 		t.Fatalf("override should survive a further debit")
 	}
 
-	// A top-up to solvent passes and clears the override on the solvent read.
+	// A top-up to solvent passes, and the top-up itself retires the override.
 	_ = ledger.TopupPaid(ctx, email, 5*credit.Dollar, "pi_2", "a") // +$2
 	if post() != passthrough {
 		t.Fatalf("solvent account should pass")

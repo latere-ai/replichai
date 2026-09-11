@@ -13,23 +13,21 @@ import (
 	"github.com/latere-ai/replichai/internal/httpapi"
 )
 
-// Frozen reports whether an account is in view-only mode: its wallet is negative
-// and no admin override is in force (022d). It also retires a spent override —
-// one whose wallet has recovered to >= 0 — so a later chargeback re-freezes as a
-// fresh decision. Retiring here, in the one predicate every surface reads,
-// rather than at each crediting path, keeps the override's lifecycle in one
-// place; the cost is that an override outlives its debt until the next solvent
-// read, which is benign because a negative wallet cannot allocate regardless of
-// the freeze.
+// Frozen reports whether an account is in view-only mode (022d): its wallet is
+// negative and no admin override is in force. It is the one predicate the
+// gate and /me both read.
+//
+// It reads and never writes. An override is a waiver of a debt; the top-up
+// that pays the debt retires it, through the ledger's on-solvent hook wired
+// at the composition root — so a later chargeback re-freezes as a fresh
+// decision, and this path, which runs on every mutating request and every
+// /me, costs the database nothing but a balance read.
 func Frozen(ctx context.Context, credits credit.Store, ov access.FreezeOverrides, email string) (bool, error) {
 	bal, err := credits.Balance(ctx, credit.Wallet(email))
 	if err != nil {
 		return false, err
 	}
 	if bal >= 0 {
-		// Solvent: retire any override best-effort. A failed clear leaves a
-		// harmless stale override, cleared on the next solvent read.
-		_ = ov.ClearOverride(ctx, email)
 		return false, nil
 	}
 	active, err := ov.OverrideActive(ctx, email)
