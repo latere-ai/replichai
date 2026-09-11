@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { expect, test } from 'bun:test'
-import { ApiError, makeProjectPublic } from './api'
+import { ApiError, getMe, makeProjectPublic } from './api'
+import { refusal } from './errors'
 
 // The client used to read one field off a refusal — `error` — and drop the rest
 // of the body. A publish refusal now carries the sessions standing in the way,
@@ -42,4 +43,33 @@ test('a refusal with nothing named is an empty list', async () => {
   } finally {
     globalThis.fetch = real
   }
+})
+
+// A 2xx whose body is not JSON — the dev server's own HTML for a path it does
+// not proxy, a gateway page from in front of the API — used to reach r.json()
+// and reject with a SyntaxError. Nothing downstream knew that error, so every
+// screen filed it under "you appear to be offline", which is the one thing it
+// is not: the network answered. It is a fault of the server's, reported with
+// its status and a code, so the mappers can say "we broke" instead.
+test('a 2xx that is not JSON is a server fault, not a lost connection', async () => {
+  const real = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response('<!doctype html><title>Not the API</title>', { status: 200, headers: { 'content-type': 'text/html' } })) as typeof fetch
+  try {
+    await getMe()
+    throw new Error('the call should have rejected')
+  } catch (e) {
+    expect(e).toBeInstanceOf(ApiError)
+    expect((e as ApiError).status).toBe(200)
+    expect((e as ApiError).code).toBe('malformed_response')
+    expect(refusal(e).offline).toBe(false)
+  } finally {
+    globalThis.fetch = real
+  }
+})
+
+// The classification the fix exists for: a fetch that never got an answer is
+// still offline, and only that is.
+test('a fetch that never got an answer is offline', () => {
+  expect(refusal(new TypeError('Failed to fetch')).offline).toBe(true)
 })
