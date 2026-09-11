@@ -127,8 +127,8 @@ func managedController(t *testing.T, defaultName managed.RuntimeName, installed 
 	return controller
 }
 
-// managedStack is the controller and the router behind it, as main wires
-// them: the runner needs both, the controller to drive sessions and the router
+// managedStack returns the controller and the router behind it, as main wires
+// them. The runner needs both: the controller to drive sessions and the router
 // to read a legacy row's transcript.
 func managedStack(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) (*managed.Controller, *runtimes.Router) {
 	t.Helper()

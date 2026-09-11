@@ -18,9 +18,8 @@ import (
 	"github.com/latere-ai/replichai/internal/registry"
 )
 
-// A server-side run waits on the backend session, not on a clock: an audit that
-// takes longer than any wall-clock bound is still a live session, and cutting it
-// marks a session failed while its agent goes on committing the reproduction.
+// TestToReproVerdictIsAName checks that the verdict in a Reproduction is the
+// grade's name and that a clear manifest is publishable.
 func TestToReproVerdictIsAName(t *testing.T) {
 	m := publish.Manifest{
 		Paper:          publish.ManifestPaper{Title: "A Paper"},
@@ -36,9 +35,10 @@ func TestToReproVerdictIsAName(t *testing.T) {
 	}
 }
 
-// A manifest barred because its transcript leaked a secret must not be publishable
-// — the new review reason (009 commit 1) reads as not-clear at the CanPublish
-// seam, so the public flip refuses it just as a tree leak does.
+// TestToReproSecretInTranscriptCannotPublish checks that a manifest barred
+// because its transcript leaked a secret is not publishable. The review reason
+// from 009 commit 1 reads as not clear at CanPublish, so the public flip
+// refuses it as it does a tree leak.
 func TestToReproSecretInTranscriptCannotPublish(t *testing.T) {
 	m := publish.Manifest{
 		Reproduction:   publish.Reproduction{Repo: "open-hai/x", Verdict: provider.GradePassed},
@@ -49,9 +49,9 @@ func TestToReproSecretInTranscriptCannotPublish(t *testing.T) {
 	}
 }
 
-// errSource is a registry source whose Manifest fails with whatever the test
-// hands it — the seam between "this repository has no manifest yet" and "the
-// forge did not answer".
+// errSource is a registry source whose Manifest fails with the error the test
+// supplies, to distinguish a repository with no manifest yet from a forge that
+// did not answer.
 type errSource struct {
 	registry.Source
 	err error
@@ -61,11 +61,11 @@ func (s errSource) Manifest(context.Context, string) (publish.Manifest, error) {
 	return publish.Manifest{}, s.err
 }
 
-// The reader must not disguise a read failure as a miss. It used to answer every
-// error with ErrReproNotFound, so a GitHub timeout reached the publish gate as
-// "this reproduction is not there" and reached the owner as "your reproduction
-// did not pass the redistribution check". Only a genuinely absent manifest — a
-// run that never finalized — is a miss.
+// TestRegistryReaderSeparatesAMissFromAReadFailure checks that the reader does
+// not report a read failure as a miss. It once answered every error with
+// ErrReproNotFound, so a GitHub timeout reached the publish gate as a missing
+// reproduction and reached the owner as a failed redistribution check. Only an
+// absent manifest, from a run that never finalized, is a miss.
 func TestRegistryReaderSeparatesAMissFromAReadFailure(t *testing.T) {
 	ctx := context.Background()
 
@@ -81,12 +81,15 @@ func TestRegistryReaderSeparatesAMissFromAReadFailure(t *testing.T) {
 	}
 }
 
-// A project's placeholder title is a paper *reference*, and since 012 a project
-// holds several. The enrichment used to compare only against the running job's
-// ref, which was right while every paper started at create — the first paper's
-// session always ran, so it always did the naming. Now that starting is its own
-// act, a project created around papers A and B and started at B compared B's ref
-// to A's, declined, and kept a URL nobody chose as the project name forever.
+// TestResolveNamesAProjectFromWhicheverPaperRunsFirst checks that the
+// placeholder title is replaced by whichever paper runs first. A project's
+// placeholder title is a paper reference, and since 012 a project holds
+// several. The enrichment once compared only against the running job's ref,
+// which was correct while every paper started at create, because the first
+// paper's session always ran and so always did the naming. Once starting
+// became a separate step, a project created around papers A and B and started
+// at B compared B's ref to A's, declined, and kept a URL nobody chose as the
+// project name.
 func TestResolveNamesAProjectFromWhicheverPaperRunsFirst(t *testing.T) {
 	ctx := context.Background()
 	ps := project.NewMemStore()
@@ -109,7 +112,7 @@ func TestResolveNamesAProjectFromWhicheverPaperRunsFirst(t *testing.T) {
 		return []byte(`{"message":{"title":["Point of no Undo"]}}`), nil
 	})
 
-	// The *second* paper is the one somebody presses Start on.
+	// The second paper is the one somebody starts.
 	e := &engineRunner{projects: ps, fetch: titles}
 	j := &job.Job{ID: "j1", Kind: job.KindAudit, Ref: "doi:10.1234/second", ProjectID: p.ID}
 	if err := e.Resolve(ctx, j); err != nil {

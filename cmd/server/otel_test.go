@@ -18,9 +18,10 @@ import (
 	"github.com/latere-ai/replichai/internal/oteltest"
 )
 
-// The server surface has to record a span for every request it serves, and that
-// span has to be the caller's when the caller sent one. A trace that restarts
-// at this boundary is the failure the whole exercise is about.
+// TestServerRecordsAServerSpanAndJoinsTheCallersTrace checks that the server
+// records a span for every request it serves, and that the span belongs to the
+// caller's trace when the caller sent one. A trace that restarts at this
+// boundary is the failure the instrumentation exists to prevent.
 func TestServerRecordsAServerSpanAndJoinsTheCallersTrace(t *testing.T) {
 	recorder := oteltest.Record(t)
 
@@ -40,8 +41,8 @@ func TestServerRecordsAServerSpanAndJoinsTheCallersTrace(t *testing.T) {
 	const caller = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 	req.Header.Set("traceparent", caller)
 
-	// http.DefaultClient on purpose: it is not instrumented, so the only span
-	// this test can record is the server's own.
+	// http.DefaultClient is used deliberately: it is not instrumented, so the
+	// only span this test can record is the server's own.
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("requesting the server: %v", err)
@@ -64,8 +65,10 @@ func TestServerRecordsAServerSpanAndJoinsTheCallersTrace(t *testing.T) {
 	}
 }
 
-// The paper resolver reaches arbitrary publisher hosts. It is still a hop the
-// trace has to survive, so its client carries the context out.
+// TestPaperFetcherRecordsAClientSpanAndPropagates checks that the paper
+// resolver's client propagates the trace context. The resolver reaches
+// arbitrary publisher hosts, and that call is still one the trace has to
+// survive.
 func TestPaperFetcherRecordsAClientSpanAndPropagates(t *testing.T) {
 	recorder := oteltest.Record(t)
 	peer := oteltest.NewPeer(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -73,7 +76,7 @@ func TestPaperFetcherRecordsAClientSpanAndPropagates(t *testing.T) {
 	})
 
 	// The peer is on loopback, which the production fetcher refuses; the trace
-	// is what this test is about, so loopback is admitted here alone.
+	// is what this test checks, so loopback is allowed here only.
 	body, err := newHTTPFetcher(5*time.Second, fetch.AllowPrivate()).Fetch(context.Background(), peer.URL)
 	if err != nil {
 		t.Fatalf("fetching: %v", err)

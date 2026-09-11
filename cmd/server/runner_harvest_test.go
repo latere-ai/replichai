@@ -42,9 +42,9 @@ func validVerdict(t *testing.T) []byte {
 	return raw
 }
 
-// harvestSetup builds the incident's shape: a repository holding nothing but
-// what the system wrote before the run, and a session whose files exist only in
-// the runtime's output directory because the agent never pushed.
+// harvestSetup reproduces the incident: a repository holding nothing but what
+// the system wrote before the run, and a session whose files exist only in the
+// runtime's output directory because the agent never pushed.
 func harvestSetup(t *testing.T, files map[string][]byte) (*engineRunner, job.Job, *job.MemStore) {
 	t.Helper()
 	forge := newRunnerForge([]string{"README.md", publish.IdentityFile})
@@ -74,10 +74,11 @@ func harvestSetup(t *testing.T, files map[string][]byte) (*engineRunner, job.Job
 
 func forgeOf(e *engineRunner) *fakeForge { return e.gh.(*fakeForge) }
 
-// The incident, end to end: the agent committed into the mount and never
-// pushed, so the repository is empty, and its whole reproduction — verdict.json
-// included — exists only as session files. The run must end with the
-// reproduction in the repository and a manifest that records findings present.
+// TestRetainHarvestsARunThatNeverPushed checks the incident end to end: the
+// agent committed into the mount and never pushed, so the repository is empty,
+// and its whole reproduction, including verdict.json, exists only as session
+// files. The run must end with the reproduction in the repository and a
+// manifest that records findings present.
 func TestRetainHarvestsARunThatNeverPushed(t *testing.T) {
 	engine, j, _ := harvestSetup(t, map[string][]byte{
 		"REPRODUCIBILITY.md": []byte("# The verdict\n"),
@@ -114,8 +115,9 @@ func TestRetainHarvestsARunThatNeverPushed(t *testing.T) {
 	}
 }
 
-// The redistribution boundary holds on the harvest path too: a paper PDF in the
-// output directory never reaches the repository.
+// TestRetainHarvestRefusesThirdPartyData checks that the redistribution
+// boundary holds on the harvest path too: a paper PDF in the output directory
+// never reaches the repository.
 func TestRetainHarvestRefusesThirdPartyData(t *testing.T) {
 	engine, j, _ := harvestSetup(t, map[string][]byte{
 		"paper.pdf":    []byte("%PDF-1.4"),

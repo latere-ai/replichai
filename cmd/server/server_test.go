@@ -14,9 +14,10 @@ import (
 	"github.com/latere-ai/replichai/internal/fetch"
 )
 
-// The reference a person types into the app is a URL this process will open.
-// The server's fetcher must therefore be the guarded one: a loopback or
-// private address is refused before a connection is made.
+// TestServerFetcherRefusesPrivateAddresses checks that the server's fetcher is
+// the guarded one. The reference a person types into the app is a URL this
+// process opens, so a loopback or private address must be refused before a
+// connection is made.
 func TestServerFetcherRefusesPrivateAddresses(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("<title>secret</title>"))
@@ -29,8 +30,9 @@ func TestServerFetcherRefusesPrivateAddresses(t *testing.T) {
 	}
 }
 
-// A connection kept alive and left silent is closed, and the deadlines that
-// would cut a running event stream short are left unset on purpose.
+// TestServerClosesIdleConnectionsAndLeavesStreamsAlone checks that an idle
+// kept-alive connection is closed, and that the deadlines that would cut a
+// running event stream short are left unset.
 func TestServerClosesIdleConnectionsAndLeavesStreamsAlone(t *testing.T) {
 	srv := newServer(":0", http.NotFoundHandler())
 	if srv.IdleTimeout <= 0 {

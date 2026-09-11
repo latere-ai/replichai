@@ -21,12 +21,13 @@ import (
 	"github.com/latere-ai/replichai/internal/webauth"
 )
 
-// TestServerEndToEnd is the lightweight full-stack check: it wires the real
-// composition root — HTTP router, job worker, engine runner — over the
-// in-process memory provider and an in-memory store, submits a paper, and
-// asserts the job walks all the way to done. No Docker, no network, no API key,
-// no cost. It exercises every seam the compose stack does except Postgres
-// itself (which the job store contract covers against a real database).
+// TestServerEndToEnd is the lightweight full-stack check. It wires the real
+// composition root, consisting of the HTTP router, job worker and engine
+// runner, over the in-process memory provider and an in-memory store, submits
+// a paper, and asserts the job reaches done. It needs no Docker, no network,
+// no API key, and costs nothing. It exercises every component the compose
+// stack does except Postgres itself, which the job store contract covers
+// against a real database.
 func TestServerEndToEnd(t *testing.T) {
 	m, err := method.Load("") // discovers ../../method from this package
 	if err != nil {
@@ -36,7 +37,7 @@ func TestServerEndToEnd(t *testing.T) {
 	ctx := t.Context()
 
 	store := job.NewMemStore()
-	// The free, in-process engine — no real audit runs — behind the same
+	// The free, in-process engine, which runs no real audit, behind the same
 	// controller and router main wires.
 	controller, sessions := managedStack(t, "memory", managedmemory.New())
 	runner, err := newEngineRunner(engineDeps{
@@ -49,8 +50,8 @@ func TestServerEndToEnd(t *testing.T) {
 	}
 	go job.NewWorker(store, runner, job.WithPoll(5*time.Millisecond)).Start(ctx, 1)
 
-	// The dev principal is seeded as an admin (as ADMIN_EMAILS does in compose),
-	// so it clears the real fail-closed gate.
+	// The dev principal is seeded as an admin, as ADMIN_EMAILS does in compose,
+	// so it passes the real fail-closed gate.
 	acc := access.NewMemStore()
 	if err := acc.SeedAdmin(ctx, devEmail); err != nil {
 		t.Fatalf("seed admin: %v", err)
@@ -68,9 +69,10 @@ func TestServerEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(webauth.DevMiddleware(devSub, devEmail)(router.Handler()))
 	defer srv.Close()
 
-	// Open a project holding one paper (a DOI resolves offline, so the run stays
-	// free). Since 012 this records and starts nothing — the create costs no
-	// credits, which is why it works on a deployment with no ledger wired at all.
+	// Open a project holding one paper. A DOI resolves offline, so the run stays
+	// free. Since 012 this records the paper and starts nothing; the create
+	// costs no credits, which is why it works on a deployment with no ledger
+	// wired.
 	body := strings.NewReader(`{"papers":["10.1145/3544548.3580778"]}`)
 	resp, err := http.Post(srv.URL+"/projects", "application/json", body)
 	if err != nil {
@@ -93,7 +95,7 @@ func TestServerEndToEnd(t *testing.T) {
 		t.Fatalf("create returned %+v", created)
 	}
 
-	// Starting it is the second act, and the only one that runs anything.
+	// Starting it is the second step, and the only one that runs anything.
 	body = strings.NewReader(`{"paper_key":"` + created.Papers[0].Key + `"}`)
 	resp, err = http.Post(srv.URL+"/projects/"+created.ProjectID+"/sessions", "application/json", body)
 	if err != nil {
@@ -148,8 +150,8 @@ func TestServerEndToEnd(t *testing.T) {
 	}
 
 	// 035: the paper was filed under the wrong project, and moving it takes the
-	// run with it. This is the whole point of the move — a reproduction that is
-	// already finished is exactly when somebody notices where it belongs.
+	// run with it. This is the purpose of the move: a finished reproduction is
+	// when somebody notices where it belongs.
 	resp, err = http.Post(srv.URL+"/projects", "application/json", strings.NewReader(`{"title":"Where it belongs","papers":["10.1145/3411764.3445649"]}`))
 	if err != nil {
 		t.Fatalf("create the destination: %v", err)
@@ -177,7 +179,7 @@ func TestServerEndToEnd(t *testing.T) {
 
 	// Read it back the way the project screen does, on both projects. The
 	// destination was opened with a paper of its own, so the moved one arrives
-	// beside it — and arrives carrying its session, which is the whole point.
+	// beside it, and arrives with its session, which is the point of the move.
 	arrived := readPapers(t, srv.URL, second.ProjectID)
 	if len(arrived) != 2 {
 		t.Fatalf("destination papers = %+v; want two", arrived)
