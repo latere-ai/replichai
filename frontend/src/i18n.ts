@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 // English only for now. To add a language: add its code to the Lang union and a
 // matching block to `strings`. Because a translation key is derived from the
@@ -575,6 +575,20 @@ const en = {
     // The two steppers on every number field, as a screen reader says them.
     stepDown: 'Decrease',
     stepUp: 'Increase',
+    // Ages and durations, as when.ts says them. An age rounds down to one unit
+    // and stops at a week; a duration keeps the minutes, and the seconds where
+    // they are wanted.
+    justNow: 'just now',
+    agoMinute: '1 minute ago',
+    agoMinutes: '{n} minutes ago',
+    agoHour: '1 hour ago',
+    agoHours: '{n} hours ago',
+    agoDay: '1 day ago',
+    agoDays: '{n} days ago',
+    durSeconds: '{s}s',
+    durMinutes: '{m}m',
+    durMinutesSeconds: '{m}m {s}s',
+    durHoursMinutes: '{h}h {m}m',
     save: 'Save',
     cancel: 'Cancel',
     // project detail
@@ -845,6 +859,37 @@ export function readLang(raw: string | null): Lang {
   return raw !== null && raw in strings ? (raw as Lang) : 'en'
 }
 
+// T is the translate function's shape: a key, and the values for its {name}
+// placeholders.
+export type T = (key: TKey, vars?: Record<string, string>) => string
+
+// translator is t and raw for one language, with no hook around them — for the
+// modules that format what the screens show (when.ts, transcript.ts), which
+// have no component to read a hook in, and for the tests that pin their output.
+// useI18n is this, remembered for the language the reader chose.
+export function translator(lang: Lang): { t: T; raw: T } {
+  // raw is the string as it is written, seams and all. Only Seams (ui.tsx) has
+  // any use for it; everything else wants the sentence.
+  const raw: T = (key, vars) => {
+    // Typed against TKey: a key with no string is a compile error rather than
+    // a landing band that paints `landingVerdictBody` at a reader. The runtime
+    // fallback below is for a locale that is missing a key English has, not
+    // for a key that exists nowhere.
+    const table = strings[lang] as Record<string, string>
+    let s = table[key] ?? (strings.en as Record<string, string>)[key] ?? key
+    if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])
+    return s
+  }
+  // t is the sentence: seams removed. A seam is an instruction to whoever sets
+  // the line, and every other consumer — a tab title, an aria-label, a share
+  // card — wants the words. Stripping here rather than at each call site is what
+  // makes that true by default; the tab once read "No page|at this address".
+  // The seam stands *in place of* the space it may break at, so removing it puts
+  // the space back. Deleting it outright once produced "No pageat this address".
+  const t: T = (key, vars) => raw(key, vars).replace(/\s*\|\s*/g, ' ')
+  return { t, raw }
+}
+
 // useI18n stores the chosen language in localStorage and returns a translate
 // function that interpolates {name} placeholders.
 export function useI18n() {
@@ -854,27 +899,6 @@ export function useI18n() {
     setLangState(l)
     document.documentElement.lang = l
   }, [])
-  // raw is the string as it is written, seams and all. Only Seams (ui.tsx) has
-  // any use for it; everything else wants the sentence.
-  const raw = useCallback(
-    (key: TKey, vars?: Record<string, string>) => {
-      // Typed against TKey: a key with no string is a compile error rather than
-      // a landing band that paints `landingVerdictBody` at a reader. The runtime
-      // fallback below is for a locale that is missing a key English has, not
-      // for a key that exists nowhere.
-      const table = strings[lang] as Record<string, string>
-      let s = table[key] ?? (strings.en as Record<string, string>)[key] ?? key
-      if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])
-      return s
-    },
-    [lang],
-  )
-  // t is the sentence: seams removed. A seam is an instruction to whoever sets
-  // the line, and every other consumer — a tab title, an aria-label, a share
-  // card — wants the words. Stripping here rather than at each call site is what
-  // makes that true by default; the tab once read "No page|at this address".
-  // The seam stands *in place of* the space it may break at, so removing it puts
-  // the space back. Deleting it outright once produced "No pageat this address".
-  const t = useCallback((key: TKey, vars?: Record<string, string>) => raw(key, vars).replace(/\s*\|\s*/g, ' '), [raw])
+  const { t, raw } = useMemo(() => translator(lang), [lang])
   return { lang, setLang, t, raw }
 }

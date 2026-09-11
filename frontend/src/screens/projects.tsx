@@ -119,7 +119,7 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
             <span className="eyebrow">{t('creditsEyebrow')}</span>
           </div>
           <div className="boundary-figure">
-            <span className="boundary-n">{me.credits ? formatUSD(me.credits.wallet) : '—'}</span>
+            <span className="boundary-n">{me.credits ? formatUSD(i18n.lang, me.credits.wallet) : '—'}</span>
             <span className="boundary-of">{t('creditsInWallet')}</span>
           </div>
           <p className="boundary-note">{t('creditsNote')}</p>
@@ -127,7 +127,7 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
               (021e): a figure whose period is not stated is not a figure. */}
           <div className="boundary-foot" data-test="spend-30d">
             <span>{t('statSpend30d')}</span>
-            <span className="boundary-foot-n">{list === null || !spendKnown ? '—' : formatUSD(spend30d)}</span>
+            <span className="boundary-foot-n">{list === null || !spendKnown ? '—' : formatUSD(i18n.lang, spend30d)}</span>
           </div>
         </div>
       </div>
@@ -507,8 +507,8 @@ function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
 
 // The Last-modified column: an age to scan, the exact moment to read.
 function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
-  const rel = relativeTime(at)
-  const tip = tipAttrs(absoluteTime(at))
+  const rel = relativeTime(i18n.t, i18n.lang, at)
+  const tip = tipAttrs(absoluteTime(i18n.lang, at))
   return (
     <span {...tip} className={`row-modified ${tip.className}`} data-test="modified">
       {rel || i18n.t('ownerUnknown')}

@@ -41,20 +41,20 @@ test('a refused start tells a new account something different from a spent proje
 // one place so a balance in the header and the same balance in the admin
 // console cannot round differently.
 test('amounts render in dollars', () => {
-  expect(formatUSD(0)).toBe('$0.00')
-  expect(formatUSD(12_340_000)).toBe('$12.34')
-  expect(formatUSD(200 * MICRO)).toBe('$200.00')
+  expect(formatUSD('en', 0)).toBe('$0.00')
+  expect(formatUSD('en', 12_340_000)).toBe('$12.34')
+  expect(formatUSD('en', 200 * MICRO)).toBe('$200.00')
   // A negative balance is a real state: a session may overrun what its project
   // held, and the pot goes below zero rather than the run being killed.
-  expect(formatUSD(-1_500_000)).toBe('-$1.50')
+  expect(formatUSD('en', -1_500_000)).toBe('-$1.50')
 })
 
 // A charge smaller than a cent is not nothing. Rendering it as $0.00 would tell
 // somebody a session that cost real money cost them nothing.
 test('a sub-cent amount says so rather than rounding to zero', () => {
-  expect(formatUSD(500)).toBe('<$0.01')
-  expect(formatUSD(-500)).toBe('-<$0.01')
-  expect(formatUSD(10_000)).toBe('$0.01')
+  expect(formatUSD('en', 500)).toBe('<$0.01')
+  expect(formatUSD('en', -500)).toBe('-<$0.01')
+  expect(formatUSD('en', 10_000)).toBe('$0.01')
 })
 
 // What an admin types is dollars; what the ledger holds is micro-USD.

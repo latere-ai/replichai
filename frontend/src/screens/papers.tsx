@@ -119,7 +119,7 @@ export function PapersCard({
   // than in a new Select option field, so the shared control is reused as it is.
   const tierOptions = tiers.map((m) => {
     const name = m.tier === 'best' ? t('tierBest') : m.tier === 'balanced' ? t('tierBalanced') : t('tierFast')
-    const priced = m.input && m.output ? ` — ${t('tierPrice', { in: formatUSD(m.input), out: formatUSD(m.output) })}` : ''
+    const priced = m.input && m.output ? ` — ${t('tierPrice', { in: formatUSD(i18n.lang, m.input), out: formatUSD(i18n.lang, m.output) })}` : ''
     return { value: m.tier, label: name + priced }
   })
 
@@ -171,7 +171,7 @@ export function PapersCard({
   // letting somebody press it and reading the refusal afterwards — and the pot
   // it is short of is on the same screen.
   const short = !!credits && credits.available < credits.start_reserve
-  const shortWhy = credits ? t('startNeedsCredits', { reserve: formatUSD(credits.start_reserve) }) : ''
+  const shortWhy = credits ? t('startNeedsCredits', { reserve: formatUSD(i18n.lang, credits.start_reserve) }) : ''
 
   return (
     <div className="card">

@@ -19,6 +19,7 @@ import {
   type Wallet,
 } from '../api'
 import { type I18n } from '../i18n'
+import { dateOnly } from '../locale'
 import { checkoutErrLabel, creditMoveErrLabel } from '../errors'
 import { creditedMicro, formatUSD, MICRO, parseUSD } from '../money'
 import { Ico } from '../icons'
@@ -41,11 +42,11 @@ export function WalletPill({ i18n, credits, onTopUp }: { i18n: I18n; credits?: C
   const inner = (
     <>
       <Ico name={empty ? 'alert' : 'wallet'} size={12} />
-      {empty ? t('walletEmpty') : formatUSD(credits.wallet)}
+      {empty ? t('walletEmpty') : formatUSD(i18n.lang, credits.wallet)}
     </>
   )
   return (
-    <Tip text={onTopUp ? t('topUp') : empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(credits.start_reserve) })}>
+    <Tip text={onTopUp ? t('topUp') : empty ? t('walletEmptyTitle') : t('walletTitle', { reserve: formatUSD(i18n.lang, credits.start_reserve) })}>
       {onTopUp ? (
         // The balance is the way to buy more: click it to top up. A button rather
         // than a span, with the pill's own look kept (only the font a button does
@@ -121,7 +122,7 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
             {t('cancel')}
           </button>
           <button className="btn" disabled={!valid || busy} onClick={go}>
-            <Ico name="lock" size={13} /> {busy ? t('topUpRedirecting') : valid ? t('topUpPayCta', { total: formatUSD(gross) }) : t('topUpContinue')}
+            <Ico name="lock" size={13} /> {busy ? t('topUpRedirecting') : valid ? t('topUpPayCta', { total: formatUSD(i18n.lang, gross) }) : t('topUpContinue')}
           </button>
         </>
       }
@@ -134,7 +135,7 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
           const p = d * MICRO
           return (
             <button key={d} type="button" className={'topup-preset' + (choice === p ? ' on' : '')} aria-pressed={choice === p} onClick={() => setChoice(p)}>
-              {formatUSD(p)}
+              {formatUSD(i18n.lang, p)}
             </button>
           )
         })}
@@ -145,28 +146,28 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
       {choice === 'other' && (
         <div className="field-row" style={{ marginTop: 10 }}>
           <NumberField i18n={i18n} value={custom} onChange={setCustom} min={0} ariaLabel={t('topUpAmount')} autoFocus />
-          <span className="muted small">{t('topUpMinHint', { min: formatUSD(min) })}</span>
+          <span className="muted small">{t('topUpMinHint', { min: formatUSD(i18n.lang, min) })}</span>
         </div>
       )}
       {credited !== null && wallet && (
         <div className="usage-rows" style={{ marginTop: 14 }} data-test="topup-quote">
           <div className="usage-line">
             {t('topUpPay')}
-            <span className="v tabular">{formatUSD(gross)}</span>
+            <span className="v tabular">{formatUSD(i18n.lang, gross)}</span>
           </div>
           <div className="usage-line" data-tip={t('topUpFeeWhy')}>
-            {t('topUpFee', { pct: pctText(wallet.spread_bps), fixed: formatUSD(wallet.spread_fixed_micro) })}
-            <span className="v tabular">−{formatUSD(gross - credited)}</span>
+            {t('topUpFee', { pct: pctText(wallet.spread_bps), fixed: formatUSD(i18n.lang, wallet.spread_fixed_micro) })}
+            <span className="v tabular">−{formatUSD(i18n.lang, gross - credited)}</span>
           </div>
           <div className="usage-line" style={{ fontWeight: 600 }}>
             {t('topUpGet')}
-            <span className="v tabular">{formatUSD(credited)}</span>
+            <span className="v tabular">{formatUSD(i18n.lang, credited)}</span>
           </div>
         </div>
       )}
       {belowMin && (
         <span className="err small" style={{ marginTop: 8, display: 'inline-block' }}>
-          {t('topUpMin', { min: formatUSD(min) })}
+          {t('topUpMin', { min: formatUSD(i18n.lang, min) })}
         </span>
       )}
       {err && (
@@ -220,7 +221,7 @@ export function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me:
               <div className="eyebrow eyebrow-ico">
                 <Ico name="wallet" size={12} /> {t('creditsBalance')}
               </div>
-              <div className="tabular" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1.15, marginTop: 6 }}>{formatUSD(balance)}</div>
+              <div className="tabular" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1.15, marginTop: 6 }}>{formatUSD(i18n.lang, balance)}</div>
             </div>
             <button className="btn lg" onClick={onTopUp}>
               <Ico name="wallet" size={15} w={2} /> {t('topUp')}
@@ -292,9 +293,9 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
                       </>
                     )}
                   </span>
-                  <span className="muted small ledger-when">{new Date(e.created_at).toLocaleDateString()}</span>
+                  <span className="muted small ledger-when">{dateOnly(i18n.lang, e.created_at)}</span>
                   <span className="v">
-                    <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(e.amount)}</span>
+                    <span className={e.amount < 0 ? 'err' : ''}>{formatUSD(i18n.lang, e.amount)}</span>
                   </span>
                 </div>
               )
@@ -361,7 +362,7 @@ export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp 
       <div className="usage-rows">
         <div className="usage-line">
           {t('creditsBalance')}
-          <span className="v tabular">{formatUSD(credits.balance)}</span>
+          <span className="v tabular">{formatUSD(i18n.lang, credits.balance)}</span>
         </div>
         {/* The available row appears only when a running session is holding some
             of the balance — otherwise it equals the balance and reads as a
@@ -370,12 +371,12 @@ export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp 
         {held > 0 && (
           <div className="usage-line" data-tip={t('creditsAvailableTitle')}>
             {t('creditsAvailable')}
-            <span className="v tabular">{formatUSD(credits.available)}</span>
+            <span className="v tabular">{formatUSD(i18n.lang, credits.available)}</span>
           </div>
         )}
       </div>
       <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {short ? t('creditsShort', { reserve: formatUSD(credits.start_reserve) }) : t('creditsEnough', { reserve: formatUSD(credits.start_reserve) })}
+        {short ? t('creditsShort', { reserve: formatUSD(i18n.lang, credits.start_reserve) }) : t('creditsEnough', { reserve: formatUSD(i18n.lang, credits.start_reserve) })}
       </p>
       {/* The amount on its own line, then the two actions side by side, so a
           narrow card does not wrap "Take back" onto a lonely second row. */}

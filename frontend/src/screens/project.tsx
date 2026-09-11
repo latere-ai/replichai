@@ -32,6 +32,7 @@ import {
   restoreProject,
 } from '../api'
 import { type I18n } from '../i18n'
+import { dateOnly } from '../locale'
 import { blockerTab, generic } from '../errors'
 import { Ico } from '../icons'
 import { type ProjectTab, type SessionTab } from '../routes'
@@ -406,7 +407,7 @@ export function ProjectScreen({
             {project.visibility === 'public' && project.signed_off_at && (
               <div className="detail-meta">
                 <Ico name="check" size={12} w={2.2} style={{ color: 'var(--ok)' }} />
-                {t('publishedNote', { when: new Date(project.signed_off_at).toLocaleDateString() })}
+                {t('publishedNote', { when: dateOnly(i18n.lang, project.signed_off_at) })}
               </div>
             )}
           </div>
@@ -663,7 +664,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   return (
     <RowButton className="row file-row" onOpen={onOpen}>
       <span className="row-title">{paper.title || paper.ref}</span>
-      <span className="muted small">{job.created_at ? new Date(job.created_at).toLocaleDateString() : ''}</span>
+      <span className="muted small">{job.created_at ? dateOnly(i18n.lang, job.created_at) : ''}</span>
       {repro?.review && <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review}</Pill>}
       <span className="verdict-cell" style={{ color: tone }} data-test="paper-verdict">
         {findings ? (

@@ -9,6 +9,9 @@
 // Formatting belongs here and nowhere else, so a balance rendered in the header
 // and the same balance rendered in the admin console cannot round differently.
 
+import type { Lang } from './i18n'
+import { formatCurrency } from './locale'
+
 // MICRO is one dollar, in micro-USD.
 export const MICRO = 1_000_000
 
@@ -18,11 +21,15 @@ export const MICRO = 1_000_000
 // anything at. A non-zero amount that would round to $0.00 shows as "<$0.01"
 // instead — a session that cost a fraction of a cent did cost something, and
 // showing it as nothing is the one rounding a reader would be misled by.
-export function formatUSD(micro: number): string {
+//
+// It is written in the app's language, not the browser's: the same balance
+// used to read "$12.34" in one OS and "12,34 $" in another, beside copy that
+// had not changed.
+export function formatUSD(lang: Lang, micro: number): string {
   const neg = micro < 0
   const abs = Math.abs(micro)
   if (abs > 0 && abs < MICRO / 100) return (neg ? '-' : '') + '<$0.01'
-  const s = (abs / MICRO).toLocaleString(undefined, { style: 'currency', currency: 'USD' })
+  const s = formatCurrency(lang, abs / MICRO)
   return neg ? '-' + s : s
 }
 

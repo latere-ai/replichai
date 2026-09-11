@@ -2,7 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from 'bun:test'
-import { creditedMicro, parseUSD, stepDollars, typedDollars } from './money'
+import { creditedMicro, formatUSD, parseUSD, stepDollars, typedDollars } from './money'
+
+// An amount is written in the app's language, not the browser's: the same
+// balance used to read "$12.34" in one OS and "12,34 $" in another, beside copy
+// that had not changed. The fraction of a cent keeps its own mark.
+describe('formatUSD', () => {
+  it('writes dollars and cents in the app’s language', () => {
+    expect(formatUSD('en', 12_340_000)).toBe('$12.34')
+    expect(formatUSD('en', -12_340_000)).toBe('-$12.34')
+    expect(formatUSD('en', 0)).toBe('$0.00')
+  })
+
+  it('says a fraction of a cent cost something', () => {
+    expect(formatUSD('en', 4_000)).toBe('<$0.01')
+    expect(formatUSD('en', -4_000)).toBe('-<$0.01')
+  })
+})
 
 describe('creditedMicro', () => {
   it('applies the percentage and fixed spread, matching the server', () => {

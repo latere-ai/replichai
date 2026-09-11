@@ -73,7 +73,7 @@ export function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsC
           <div className="card card-pad" data-tip={t('solvencyTitle')}>
             <div className="usage-line">
               {t('solvency')}
-              <span className="v tabular">{formatUSD(solvency)}</span>
+              <span className="v tabular">{formatUSD(i18n.lang, solvency)}</span>
             </div>
           </div>
         )}
@@ -270,11 +270,11 @@ function RateCardTable({ i18n, card }: { i18n: I18n; card: RateCard }) {
         {card.models.map((m) => (
           <div className="rate-row" key={m.model}>
             <span className="mono">{m.model}</span>
-            <span className="tabular">{formatUSD(m.input)}</span>
-            <span className="tabular">{formatUSD(m.output)}</span>
-            <span className="tabular">{formatUSD(m.cache_read)}</span>
+            <span className="tabular">{formatUSD(i18n.lang, m.input)}</span>
+            <span className="tabular">{formatUSD(i18n.lang, m.output)}</span>
+            <span className="tabular">{formatUSD(i18n.lang, m.cache_read)}</span>
             <span className="tabular">
-              {formatUSD(m.cache_write_5m)} / {formatUSD(m.cache_write_1h)}
+              {formatUSD(i18n.lang, m.cache_write_5m)} / {formatUSD(i18n.lang, m.cache_write_1h)}
             </span>
           </div>
         ))}
@@ -350,7 +350,7 @@ function PeopleCard({
               </Pill>
             )}
             <Tip text={t('walletOf', { email: p.email })}>
-              <span className="muted small mono tabular member-wallet">{formatUSD(p.wallet)}</span>
+              <span className="muted small mono tabular member-wallet">{formatUSD(i18n.lang, p.wallet)}</span>
             </Tip>
             {/* The controls travel together. Loose in the row they were sized
                 one by one, so a phone broke them across two lines and each row

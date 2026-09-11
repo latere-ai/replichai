@@ -8,6 +8,8 @@
 // record is silent — an event with no timestamp, a session with no usage
 // anywhere — the answer is an explicit absence, never a filled-in zero.
 import type { Event, Usage } from './api'
+import type { Lang, T } from './i18n'
+import { clockTime } from './locale'
 import { duration } from './when'
 
 // A run's real elapsed span, in milliseconds since the epoch. Null when no event
@@ -226,16 +228,16 @@ export function compactTokens(n: number): string {
 
 // clockOf is an event's wall-clock time in the reader's own zone, to the minute
 // — the granularity the gutter has room for.
-export function clockOf(e: Event): string {
-  const t = timeOf(e)
-  if (Number.isNaN(t)) return ''
-  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+export function clockOf(lang: Lang, e: Event): string {
+  const at = timeOf(e)
+  if (Number.isNaN(at)) return ''
+  return clockTime(lang, at)
 }
 
 // offsetOf is how far into the run an event happened, which is what makes two
 // events comparable when the absolute clock means nothing to the reader.
-export function offsetOf(e: Event, span: Span): string {
-  const t = timeOf(e)
-  if (Number.isNaN(t)) return ''
-  return '+' + duration(Math.max(0, Math.round((t - span.from) / 1000)), { seconds: true })
+export function offsetOf(t: T, e: Event, span: Span): string {
+  const at = timeOf(e)
+  if (Number.isNaN(at)) return ''
+  return '+' + duration(t, Math.max(0, Math.round((at - span.from) / 1000)), { seconds: true })
 }

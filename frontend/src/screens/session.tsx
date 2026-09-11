@@ -25,6 +25,7 @@ import {
 } from '../findings'
 import { artifactUrl, getArtifact, getFindings, getJob, getReproduction, type Job, listArtifacts, type Reproduction } from '../api'
 import { type I18n } from '../i18n'
+import { dateOnly } from '../locale'
 import { Ico, type IconName } from '../icons'
 import { type SessionTab } from '../routes'
 import { Pill, RowButton, Tip } from '../ui'
@@ -134,7 +135,7 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
           <div className="usage-line">
             <Ico name="clock" size={13} style={{ color: 'var(--fg-3)' }} />
             {t('graded')}
-            <span className="v">{new Date(repro.created).toLocaleDateString()}</span>
+            <span className="v">{dateOnly(i18n.lang, repro.created)}</span>
           </div>
         )}
         <div className="usage-line">
@@ -222,7 +223,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
             {verdictLabel(f.verdict)}
           </div>
           <div className="mono small muted">
-            {t('graded')} {new Date(f.graded_at).toLocaleDateString()}
+            {t('graded')} {dateOnly(i18n.lang, f.graded_at)}
           </div>
         </div>
         <div className="stack" style={{ gap: 12, minWidth: 0 }}>
