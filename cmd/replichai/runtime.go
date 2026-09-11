@@ -18,6 +18,27 @@ import (
 
 const defaultCLIRuntime = "anthropic-managed"
 
+// runtimeEnv is the variable README.md promises selects the runtime, with
+// --runtime overriding it per command. The server reads the same name.
+const runtimeEnv = "REPLICHAI_RUNTIME"
+
+// runtimeFlag registers -runtime on a subcommand's flag set. The flag defaults
+// to empty so an unset flag can be told apart from one typed; the value is
+// settled after parsing by resolveRuntime, and the help text says where it
+// comes from. fallback is the subcommand's own default when neither the flag
+// nor the environment names one.
+func runtimeFlag(fs *flag.FlagSet, fallback string) *string {
+	return fs.String("runtime", "",
+		"managed runtime to use (default $"+runtimeEnv+", then \""+fallback+"\")")
+}
+
+// resolveRuntime is the one rule every subcommand shares: the flag, then
+// REPLICHAI_RUNTIME, then the subcommand's own default. It is pure so a test
+// can drive each step; the CLI hands it os.Getenv.
+func resolveRuntime(flagValue string, getenv func(string) string, fallback string) string {
+	return firstNonEmpty(flagValue, getenv(runtimeEnv), fallback)
+}
+
 // localOptions are the choices the local runtime takes, none of which belong
 // in its name: the sandbox mechanism, the harness, and where sessions live.
 // They are flags with environment defaults, so a batch file and a terminal

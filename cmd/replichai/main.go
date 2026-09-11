@@ -73,13 +73,16 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return runRates(ctx, args[1:], stdout, stderr)
 
 	case "providers":
+		// The listing is of everything installed, so it is built from the
+		// compiled-in default; the marker follows what the environment selects.
+		selected := resolveRuntime("", os.Getenv, defaultCLIRuntime)
 		catalog, _, err := runtimeCatalog(defaultCLIRuntime, localOptions{})
 		if err != nil {
 			return err
 		}
 		for _, name := range catalog.Names() {
 			suffix := ""
-			if name == "anthropic-managed" {
+			if string(name) == selected {
 				suffix = " (default)"
 			}
 			_, _ = fmt.Fprintf(stdout, "%s%s\n", name, suffix)
@@ -138,7 +141,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	fs.SetOutput(stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
-		runtimeName  = fs.String("runtime", defaultCLIRuntime, "managed runtime to use")
+		runtimeName  = runtimeFlag(fs, defaultCLIRuntime)
 		methodDir    = fs.String("method", "", "path to a method directory")
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long a run may take")
@@ -177,7 +180,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	if err != nil {
 		return err
 	}
-	controller, runtime, err := controllerFor(ctx, *runtimeName, *interval, local)
+	controller, runtime, err := controllerFor(ctx, resolveRuntime(*runtimeName, os.Getenv, defaultCLIRuntime), *interval, local)
 	if err != nil {
 		return err
 	}
@@ -708,7 +711,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 	var (
 		session     = fs.String("session", "", "legacy session id to reattach to")
 		sessionRef  = fs.String("session-ref", "", "complete session reference printed by audit --detach")
-		runtimeName = fs.String("runtime", defaultCLIRuntime, "managed runtime for a legacy --session id")
+		runtimeName = runtimeFlag(fs, defaultCLIRuntime)
 		methodDir   = fs.String("method", "", "the method directory the audit used")
 		invite      = fs.String("invite", "", "GitHub login to invite as a collaborator")
 		verdictFlag = fs.String("verdict", "", "override the recorded verdict when no session is polled")
@@ -774,7 +777,7 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 			return errors.New("set only one of --session-ref or legacy --session")
 		}
 		var ref managed.SessionRef
-		rawRuntime := *runtimeName
+		rawRuntime := resolveRuntime(*runtimeName, os.Getenv, defaultCLIRuntime)
 		if *sessionRef != "" {
 			ref, err = decodeSessionRef(*sessionRef)
 			rawRuntime = string(ref.Runtime)

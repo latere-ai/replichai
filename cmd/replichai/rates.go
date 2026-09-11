@@ -38,16 +38,17 @@ import (
 func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flag.NewFlagSet("rates", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	runtimeName := fs.String("runtime", defaultCLIRuntime, "managed runtime to ask")
+	runtimeFlagValue := runtimeFlag(fs, defaultCLIRuntime)
 	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "read the live rate card from this database instead of the compiled-in seed")
 	asJSON := fs.Bool("json", false, "emit machine-readable output")
 	if err := fs.Parse(args); err != nil {
 		return errExitQuiet
 	}
 
-	_, runtime, err := controllerFor(ctx, *runtimeName, 0, localOptions{})
+	runtimeName := resolveRuntime(*runtimeFlagValue, os.Getenv, defaultCLIRuntime)
+	_, runtime, err := controllerFor(ctx, runtimeName, 0, localOptions{})
 	if err != nil {
-		return fmt.Errorf("runtime %q: %w", *runtimeName, err)
+		return fmt.Errorf("runtime %q: %w", runtimeName, err)
 	}
 
 	card, source, err := rateCard(ctx, *dbURL)
