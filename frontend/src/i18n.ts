@@ -32,51 +32,51 @@ const en = {
     // boundary in the hero legend, which is shown to readers before they have
     // an account. The card promises only what 006q made true: signing in is
     // open and a session is what spends.
-    landingClaim: 'Does the paper|actually reproduce?',
+    landingClaim: 'Does the paper|reproduce?',
     landingLead:
-      'Give it a paper. replichai finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper left unwritten, and returns a verdict you can take apart.',
+      'Give replichai a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence.',
     landingInnerTitle: 'The inner loop',
     landingInnerBody:
-      'The algorithm, model, or analysis pipeline. Implemented, run, and published as its own repository with the agent’s own commit history.',
+      'The algorithm, model or analysis pipeline. replichai implements it, runs it, and publishes it as a repository with the agent’s commit history.',
     landingOuterTitle: 'The outer loop',
     landingOuterBody:
-      'The study that validates it with people. Named, bounded, and never simulated — pretending otherwise is the most common way reproducibility claims go wrong.',
+      'The study that tests it with people. replichai names it, marks it out of scope, and never simulates it. Simulating a human study is a common way reproducibility claims go wrong.',
     landingVerdictTitle: 'The verdict',
     landingVerdictBody:
-      'Authored by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning instead of taking the number.',
+      'Written by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning rather than only the number.',
     // The landing as a place (029): the section headings, the figure captions,
     // and the close. The claim, the lead, and the three points above are 017's
     // and are reused verbatim; the argument did not change, only the space it
     // has.
-    lpLoopsTitle: 'One loop closes.|One never will.',
+    lpLoopsTitle: 'One loop re-runs.|The other cannot.',
     lpLoopsCaption:
-      'The algorithm re-runs, so it is drawn closed. The study with people does not, so it is drawn open — and nothing here pretends otherwise.',
-    lpPipelineTitle: 'What a session|actually does',
+      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people cannot, so it is drawn open. replichai never simulates it.',
+    lpPipelineTitle: 'What a session|does',
     lpPipelineCaption:
-      'Four steps, each leaving something you can open afterwards: the release it found, the repository it wrote, the transcript of how it got there.',
+      'Four steps. Each leaves something you can open afterwards: the release it found, the repository it wrote, and the transcript of how it got there.',
     lpStepPaper: 'The paper',
-    lpStepPaperBody: 'Resolved to one identity, so two people auditing the same work are auditing the same thing.',
+    lpStepPaperBody: 'The link is resolved to one paper key, so two people auditing the same paper audit the same record.',
     lpStepPaperArtifact: 'A paper key',
     lpStepRelease: 'What the authors released',
-    lpStepReleaseBody: 'Code, data, licences, preregistration — found and recorded, including what is missing.',
+    lpStepReleaseBody: 'Code, data, licences and preregistration are looked up and recorded, including what is missing.',
     lpStepReleaseArtifact: 'A release record',
     lpStepRerun: 'The re-run',
-    lpStepRerunBody: 'The machine-runnable half implemented and executed, with every decision the paper left unwritten written down.',
-    lpStepRerunArtifact: 'A repository, committed live',
+    lpStepRerunBody: 'The part a machine can run is implemented and executed. Every decision the paper does not state is written down.',
+    lpStepRerunArtifact: 'A repository, committed as it runs',
     lpStepVerdict: 'The verdict',
-    lpStepVerdictBody: 'What reproduced, what did not, and what could not be judged — component by component.',
+    lpStepVerdictBody: 'What reproduced, what did not, and what could not be judged, listed component by component.',
     lpStepVerdictArtifact: 'A manifest and a transcript',
-    lpAnatomyTitle: 'A verdict you can|take apart',
+    lpAnatomyTitle: 'A verdict you can|check',
     lpAnatomyCaption:
-      'Three things, kept separate on purpose. Fuse them and you get a number to trust; keep them apart and you get a result to check.',
+      'Three parts, kept separate on purpose. A single number would have to be trusted. Kept apart, the claim, the evidence and the verdict can each be checked.',
     lpPartClaim: 'The claim',
     lpPartClaimBody: 'What the agent says it reproduced, and how.',
     lpPartClaimBy: 'the agent',
     lpPartEvidence: 'The evidence',
-    lpPartEvidenceBody: 'The full session transcript, committed beside the work rather than summarised away.',
+    lpPartEvidenceBody: 'The full session transcript, committed next to the work rather than summarised.',
     lpPartEvidenceBy: 'the record',
     lpPartVerdict: 'The verdict',
-    lpPartVerdictBody: 'Authored over both by the system, and signed by a named researcher who stands behind it.',
+    lpPartVerdictBody: 'Written by the system from the claim and the evidence, and signed by a named researcher.',
     lpPartVerdictBy: 'the system, signed',
     // Who signed the reproduction, said as that. A bare name under a paper's
     // title is read as the paper's byline, and the person here is the opposite
@@ -84,37 +84,37 @@ const en = {
     // their name to what came back.
     lpCardSigner: 'Reproduction signed by {name}',
     lpStripTitle: 'Published reproductions',
-    lpStripCaption: 'Signed, opened, and readable without an account. Open one before you decide whether this is for you.',
+    lpStripCaption: 'Signed, public, and readable without an account. Open one to see what a finished audit looks like.',
     lpCloseTitle: 'Read one|before you sign up.',
-    lpCloseBody: 'Everything published here is open — the verdict, the repository, and the transcript that produced them.',
+    lpCloseBody: 'Everything published here is public: the verdict, the repository, and the transcript that produced them.',
     // The rebuild (033). 029's copy above is the argument and is reused
     // untouched; everything here belongs to a band 029 did not have. The
     // eyebrows name what a band is about. A reader scanning the page reads
     // only those, so each one is a noun, not a verb.
-    lpEyebrowAudited: 'Reproducibility, audited',
+    lpEyebrowAudited: 'Reproducibility audits',
     lpStepN: 'Step {n}',
     lpStripEyebrow: 'The registry',
-    lpHeroAside: 'The inner loop closes. The outer loop never will.',
+    lpHeroAside: 'The inner loop is re-run. The outer loop is not.',
     lpLoopsEyebrow: 'The boundary',
     lpPipelineEyebrow: 'A session, step by step',
     lpAnatomyEyebrow: 'In the app',
     // What comes back. The five names are the five paths `internal/publish`
     // treats as worker-written, so this list and the gate cannot disagree; they
     // are filenames and are not translated.
-    lpShipsEyebrow: 'What comes back',
-    lpShipsTitle: 'A repository,|not a rating.',
+    lpShipsEyebrow: 'What you get',
+    lpShipsTitle: 'A repository|you can clone.',
     lpShipsCaption:
-      'An audit writes a reproduction repository you can clone. Five files, each answering one question, and one of them is a list of everything that could not be confirmed.',
-    lpShipsReadme: 'What the paper is, what the reproduction is, how to run it.',
-    lpShipsRepro: 'The verdict and its rate, the inner/outer boundary table, the hidden decisions, the open-science scorecard.',
-    lpShipsSrc: 'A best-effort implementation of the inner loop, runnable.',
-    lpShipsUnverified: 'Everything that could not be confirmed, each with its specific blocker.',
-    lpShipsSources: 'The paper’s identity and every artifact search performed, with its result.',
+      'An audit writes a reproduction repository you can clone. It holds five files. Each answers one question, and one of them lists everything that could not be confirmed.',
+    lpShipsReadme: 'What the paper is, what the reproduction is, and how to run it.',
+    lpShipsRepro: 'The verdict and its rate, the inner/outer boundary table, the unstated decisions, and the open-science scorecard.',
+    lpShipsSrc: 'A runnable best-effort implementation of the inner loop.',
+    lpShipsUnverified: 'Everything that could not be confirmed, each with what blocked it.',
+    lpShipsSources: 'The paper’s key and every artifact search performed, with its result.',
     // The walkthrough's plates: the artifact each step leaves, drawn as the app
     // draws it. The paper key is deliberately unresolvable; see lpDemoExample.
     lpPlateKey: 'Paper key',
     lpPlateKeyValue: '10.0000/replichai.example',
-    lpPlateKeyNote: 'One identity, one slug, one thing to audit.',
+    lpPlateKeyNote: 'One paper, one key, one record to audit.',
     lpPlateRelease: 'Release record',
     lpPlateCode: 'Code',
     lpPlateData: 'Data',
@@ -122,13 +122,13 @@ const en = {
     lpPlateFound: 'Found',
     lpPlatePartial: 'Partial',
     lpPlateNone: 'None',
-    lpPlateCommitted: 'Committed live',
+    lpPlateCommitted: 'Committed as it runs',
     lpPlateCommit1: 'implement inner loop from §4.2',
     lpPlateCommit2: 'record unstated seed and tolerance',
     lpPlateCommit3: 'add UNVERIFIED.md with 3 blockers',
     lpPlateManifest: 'Manifest',
     lpPlateInnerLoop: 'inner loop',
-    lpPlateSigned: 'Signed by a named researcher. Transcript committed beside the work.',
+    lpPlateSigned: 'Signed by a named researcher. Transcript committed next to the work.',
     // The verdict panel. It is the strongest thing this product has to show and
     // it is also a fabrication, so it says so: an Example marker, and a paper key
     // under the unregistered 10.0000 prefix that resolves to nothing. A made-up
@@ -141,7 +141,7 @@ const en = {
     lpDemoRate: '72%',
     lpDemoTally: '5 verified · 2 partial · 2 blocked, of 9',
     lpDemoSummary:
-      'The inner loop reproduces on the released code path, with one numeric mismatch in Table 3 that the run recorded rather than reconciled. The outer loop is out of scope by construction: the effect rests on 84 participants, and nothing here simulates them.',
+      'The inner loop reproduces on the released code, with one numeric mismatch in Table 3 that the run recorded and did not adjust. The outer loop is out of scope: the effect rests on 84 participants, and the run does not simulate them.',
     lpDemoColClaim: 'Claim',
     lpDemoColLoop: 'Loop',
     lpDemoColOutcome: 'Outcome',
@@ -154,39 +154,39 @@ const en = {
     lpDemoRow1: 'Ranking model beats the BM25 baseline',
     lpDemoRow1Evidence: 'Re-ran on the released split; nDCG@10 within tolerance.',
     lpDemoRow2: 'Reported ablation gain of 4.1 points',
-    lpDemoRow2Evidence: 'Observed 2.6. Number differs; paper 4.1, run 2.6.',
+    lpDemoRow2Evidence: 'Observed 2.6. The paper reports 4.1, the run gives 2.6.',
     lpDemoRow3: 'Participants preferred the assisted condition',
-    lpDemoRow3Evidence: 'Rests on 84 participants. Never simulated.',
+    lpDemoRow3Evidence: 'Rests on 84 participants. Not simulated.',
     // Who it is for. Named as fields rather than as job titles: the thing that
     // decides whether this product fits is the shape of the paper, not the
     // department it came from.
     lpWhoEyebrow: 'Who it is for',
-    lpWhoTitle: 'Where a finding rests on|what people did.',
+    lpWhoTitle: 'Papers whose evidence|comes from people.',
     lpWhoCaption:
-      'Built for research with human participants. A paper of that kind almost always contains two loops, and placing the boundary between them precisely — and defending it — is the point.',
+      'Built for research with human participants. A paper of that kind almost always contains two loops, and the audit’s job is to place the boundary between them precisely and keep to it.',
     lpWhoHci: 'Human–computer interaction',
     lpWhoHciBody: 'A system paper whose contribution is the system and whose evidence is a user study.',
     lpWhoPsych: 'Psychology',
-    lpWhoPsychBody: 'An analysis pipeline a machine can re-run over data a cohort produced once.',
+    lpWhoPsychBody: 'An analysis pipeline a machine can re-run on data a cohort produced once.',
     lpWhoSocial: 'Social science',
-    lpWhoSocialBody: 'A model and a survey instrument, published together and reproducible apart.',
+    lpWhoSocialBody: 'A model and a survey instrument, published together and checked separately.',
     lpWhoElse: 'And anywhere else',
-    lpWhoElseBody: 'a finding rests on what people did — where the outer loop is named and left open.',
+    lpWhoElseBody: 'a finding rests on what people did, and the outer loop is named and left open.',
     // What it costs. What 006q and 011 made true and nothing more: no prices.
     // The rate card is a database row behind an admin endpoint, and a number
     // typed here would be a number that drifts.
     lpCostEyebrow: 'What it costs',
-    lpCostTitle: 'A session is|what spends.',
+    lpCostTitle: 'You pay|per session.',
     lpCostCaption:
-      'Not a seat, not a plan. A session is charged for the tokens it burned, and what it does not spend comes back.',
+      'There is no seat or plan. A session is charged for the tokens it used, and whatever it does not spend is returned.',
     lpCostSignIn: 'Sign in',
-    lpCostSignInBody: 'An account is a workspace: your papers, the sessions you run on them, and the verdicts you sign.',
+    lpCostSignInBody: 'An account holds your papers, the sessions you run on them, and the verdicts you sign.',
     lpCostFund: 'Fund a project',
-    lpCostFundBody: 'Credits you buy sit in your wallet. A session draws on the project you allocate to, not on the wallet directly.',
+    lpCostFundBody: 'Credits you buy go into your wallet. You allocate them to a project, and sessions spend from the project.',
     lpCostRun: 'Run',
-    lpCostRunBody: 'A reserve is held while a session runs. What it does not spend comes back when it settles.',
+    lpCostRunBody: 'A reserve is held while a session runs. Whatever it does not spend is returned when it finishes.',
     signInTitle: 'Sign in',
-    signInBody: 'Sign in to give it a paper, watch the audit run, and sign the verdict that comes back.',
+    signInBody: 'Sign in to submit a paper, watch the audit run, and sign the verdict.',
     signInNote: 'Built for research with human participants.',
     signInWith: 'Sign in with latere',
     authUnavailableTitle: 'ReplicHAI|is unavailable',
