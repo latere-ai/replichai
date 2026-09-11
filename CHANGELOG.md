@@ -10,15 +10,6 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
-## v0.28.4 - 2026-09-11
-
-- **A session row says which run it is.** Under a paper, every row printed
-  that paper's own reference — the same string on each, in the one view a
-  repeat study produces. The row now carries the model the session ran on,
-  and names the repository it made rather than labelling the link "GitHub".
-- **A paper's runs take less room.** Five runs at a paper's own row height
-  pushed the next paper off the screen; the nested rows are tighter, and the
-  transcript link drops to its icon where the word repeated down a column.
 - **A session from before session references were kept can no longer take
   the server down.** Cancelling one, or restarting with one left in
   publishing, reached for an engine that was never wired and panicked; with
@@ -102,6 +93,16 @@ committed: the commit log already holds that.
   client id and admin list; `example.env` names every variable the server and
   the CLI read, and a test keeps it that way. The docs describe the CLI, the
   rubric, the method files and the release pipeline as they are.
+
+## v0.28.4 - 2026-09-11
+
+- **A session row says which run it is.** Under a paper, every row printed
+  that paper's own reference — the same string on each, in the one view a
+  repeat study produces. The row now carries the model the session ran on,
+  and names the repository it made rather than labelling the link "GitHub".
+- **A paper's runs take less room.** Five runs at a paper's own row height
+  pushed the next paper off the screen; the nested rows are tighter, and the
+  transcript link drops to its icon where the word repeated down a column.
 
 ## v0.28.3 - 2026-09-11
 
