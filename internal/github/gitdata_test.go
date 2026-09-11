@@ -17,7 +17,7 @@ func TestCommitFilesAtomic(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/contents/"):
-			w.WriteHeader(http.StatusNotFound) // absent → files are changed
+			w.WriteHeader(http.StatusNotFound) // absent, so the files are changed
 		case r.URL.Path == "/repos/open-hai/x":
 			_ = json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
 		case r.URL.Path == "/repos/open-hai/x/git/ref/heads/main":
@@ -79,10 +79,11 @@ func TestCommitFilesIdempotent(t *testing.T) {
 	}
 }
 
-// The branch moved between reading its head and updating it, which GitHub
-// answers with 422. This is the second commit of a finalize landing on a head
-// its own first commit just moved, and GitHub's ref reads lagging a Contents API
-// write. One retry on the new head is enough; two failures are a real error.
+// TestCommitFilesRetriesAStaleParent covers a branch that moved between
+// reading its head and updating it, which GitHub answers with 422. This
+// happens when the second commit of a finalize lands on a head its own first
+// commit just moved, and when GitHub's ref reads lag a Contents API write. One
+// retry on the new head is enough; two failures are a real error.
 func TestCommitFilesRetriesAStaleParent(t *testing.T) {
 	head, patches, blobs := "basecommit", 0, 0
 	var parents []any
@@ -144,8 +145,9 @@ func TestCommitFilesRetriesAStaleParent(t *testing.T) {
 	}
 }
 
-// Twice is not a retry loop. A branch that keeps moving is a real failure, and
-// the caller gets the error rather than an unbounded retry.
+// TestCommitFilesGivesUpOnAPersistentlyMovingBranch checks that there is one
+// retry and not a loop. A branch that keeps moving is a real failure, and the
+// caller gets the error rather than an unbounded retry.
 func TestCommitFilesGivesUpOnAPersistentlyMovingBranch(t *testing.T) {
 	patches := 0
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {

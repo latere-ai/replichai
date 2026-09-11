@@ -18,11 +18,11 @@ import (
 	"time"
 )
 
-// fakeApp is a minimal GitHub App backend: it resolves one installation, mints
-// installation tokens on demand (numbered, with a settable expiry), and serves a
-// couple of REST endpoints that record which credential authenticated them — so
-// a test can prove App calls carry the JWT and REST calls carry the minted
-// installation token, never the other way round.
+// fakeApp is a minimal GitHub App backend. It resolves one installation, mints
+// numbered installation tokens on demand with a settable expiry, and serves a
+// few REST endpoints that record which credential authenticated them, so a
+// test can check that App calls carry the JWT and REST calls carry the minted
+// installation token, and never the reverse.
 type fakeApp struct {
 	mints       int              // installation-token mints
 	resolves    int              // installation lookups
@@ -59,7 +59,7 @@ func (f *fakeApp) handler() http.Handler {
 			"expires_at": f.tokenExp.Format(time.RFC3339),
 		})
 	})
-	// REST endpoints — these must be reached with the installation token.
+	// REST endpoints, which must be reached with the installation token.
 	mux.HandleFunc("POST /orgs/{owner}/repos", func(w http.ResponseWriter, r *http.Request) {
 		f.restBearers = append(f.restBearers, bearer(r))
 		writeJSON(w, http.StatusCreated, map[string]any{"name": "r", "html_url": "u", "private": true})
@@ -82,9 +82,10 @@ func (f *fakeApp) handler() http.Handler {
 	return mux
 }
 
-// AC3: the App client mints, caches, and refreshes an installation token; every
-// REST call carries that token, never the App JWT; and a call after expiry
-// re-mints rather than reusing a stale token.
+// TestAppClientMintsAndRefreshes checks AC3: the App client mints, caches, and
+// refreshes an installation token; every REST call carries that token and
+// never the App JWT; and a call after expiry re-mints rather than reusing a
+// stale token.
 func TestAppClientMintsAndRefreshes(t *testing.T) {
 	base := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
 	fa := &fakeApp{tokenExp: base.Add(time.Hour)}
@@ -97,7 +98,7 @@ func TestAppClientMintsAndRefreshes(t *testing.T) {
 	if _, err := c.CreateRepo(context.Background(), "open-hai", "r", true); err != nil {
 		t.Fatalf("CreateRepo: %v", err)
 	}
-	// A second call inside the token's life reuses it — no re-mint.
+	// A second call within the token's lifetime reuses it without re-minting.
 	if _, err := c.ListRepos(context.Background(), "open-hai"); err != nil {
 		t.Fatalf("ListRepos: %v", err)
 	}
@@ -125,8 +126,9 @@ func TestAppClientMintsAndRefreshes(t *testing.T) {
 	}
 }
 
-// AC4: with no App configured the client authenticates with the static PAT and
-// touches none of the App endpoints, so a deploy before the App exists is safe.
+// TestPATClientNeverMints checks AC4: with no App configured the client
+// authenticates with the static PAT and calls none of the App endpoints, so a
+// deploy before the App exists is safe.
 func TestPATClientNeverMints(t *testing.T) {
 	fa := &fakeApp{tokenExp: time.Now().Add(time.Hour)}
 	srv := httptest.NewServer(fa.handler())
@@ -171,8 +173,8 @@ func bearer(r *http.Request) string {
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 
-// isJWT reports whether a bearer looks like a signed JWT (three base64 segments)
-// rather than an installation token (ghs_...).
+// isJWT reports whether a bearer looks like a signed JWT, with three base64
+// segments, rather than an installation token, which starts with ghs_.
 func isJWT(b string) bool {
 	return strings.Count(b, ".") == 2 && !strings.HasPrefix(b, "ghs_")
 }
@@ -197,9 +199,10 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-// 045l AC1–AC3. The minted credential can write to one repository and to
-// nothing else, it is not the client's own installation token, and revoking it
-// is authenticated by the token itself.
+// TestMintRepoTokenIsScopedToOneRepositoryAndRevocable checks 045l AC1 to AC3:
+// the minted credential can write to one repository and to nothing else, it is
+// not the client's own installation token, and revoking it is authenticated by
+// the token itself.
 func TestMintRepoTokenIsScopedToOneRepositoryAndRevocable(t *testing.T) {
 	base := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	fa := &fakeApp{tokenExp: base.Add(time.Hour)}
@@ -207,7 +210,8 @@ func TestMintRepoTokenIsScopedToOneRepositoryAndRevocable(t *testing.T) {
 	defer srv.Close()
 	c := appClientForTest(t, srv.URL, base)
 
-	// The client's own broad token, so the minted one can be told from it.
+	// The client's own broad token, so the minted one can be distinguished
+	// from it.
 	server, err := c.app.serverToken(context.Background())
 	if err != nil {
 		t.Fatalf("serverToken: %v", err)
@@ -243,14 +247,14 @@ func TestMintRepoTokenIsScopedToOneRepositoryAndRevocable(t *testing.T) {
 	if len(fa.revoked) != 1 || fa.revoked[0] != minted.Value {
 		t.Errorf("revoked %v, want the minted token to authenticate its own revocation", fa.revoked)
 	}
-	// Revoking again is the outcome already reached, not a failure.
+	// Revoking again reports the outcome already reached rather than a failure.
 	if err := c.RevokeToken(context.Background(), minted.Value); err != nil {
 		t.Errorf("revoking an already-revoked token = %v, want nil", err)
 	}
 }
 
-// A deployment with no App cannot mint, and says so rather than handing back
-// the credential it does have.
+// TestAPATClientCannotMint checks that a deployment with no App cannot mint,
+// and reports that rather than returning the credential it does have.
 func TestAPATClientCannotMint(t *testing.T) {
 	c := New("ghp_static_pat", WithBaseURL("http://127.0.0.1:1"))
 	minted, err := c.MintRepoToken(context.Background(), "a-paper-a3f9")

@@ -11,11 +11,12 @@ import (
 )
 
 // CommitFiles writes a set of files in a single commit on the default branch,
-// using the Git Data API (blob → tree → commit → ref). Unlike the Contents API
-// it is atomic across many files and has no per-file inline limit, so a chunked,
-// multi-megabyte transcript lands as one commit rather than a dozen.
+// using the Git Data API: blob, then tree, then commit, then ref. Unlike the
+// Contents API it is atomic across many files and has no per-file inline
+// limit, so a chunked, multi-megabyte transcript is committed as one commit
+// rather than many.
 //
-// It is idempotent: if every file already matches (by blob sha), it commits
+// It is idempotent: if every file already matches by blob sha, it commits
 // nothing and returns false.
 func (c *Client) CommitFiles(ctx context.Context, owner, name, message string, files map[string][]byte) (bool, error) {
 	if len(files) == 0 {
@@ -64,13 +65,14 @@ func (c *Client) CommitFiles(ctx context.Context, owner, name, message string, f
 		entries = append(entries, treeEntry{Path: path, Mode: "100644", Type: "blob", SHA: blob.SHA})
 	}
 
-	// Read the head, build a commit on it, move the branch — and if the branch
-	// moved underneath us, do it again on the new head. GitHub answers a ref
-	// update that is not a fast-forward with 422, which happens for two ordinary
-	// reasons: its ref reads can lag a Contents API write by a moment, and this
-	// repository writes the manifest immediately before the transcript. One
-	// retry covers both. It does not make concurrent drivers safe — two of them
-	// would simply both commit — and the job lease is what prevents that (044c).
+	// Read the head, build a commit on it, and move the branch. If the branch
+	// moved in the meantime, do it again on the new head. GitHub answers a ref
+	// update that is not a fast-forward with 422, which happens for two
+	// ordinary reasons: its ref reads can lag a Contents API write by a
+	// moment, and this repository writes the manifest immediately before the
+	// transcript. One retry covers both. It does not make concurrent drivers
+	// safe, since two of them would both commit; the job lease is what
+	// prevents that (044c).
 	for attempt := 0; ; attempt++ {
 		var ref struct {
 			Object struct {

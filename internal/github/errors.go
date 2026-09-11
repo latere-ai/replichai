@@ -26,14 +26,15 @@ type APIError struct {
 	// GitHub's JSON error shape.
 	Message string
 	// Details are the per-field messages GitHub attaches to a 422, which
-	// carry the reason a validation failed ("name already exists on this
-	// account").
+	// carry the reason a validation failed, such as "name already exists on
+	// this account".
 	Details []string
 	// wait is how long GitHub asked the caller to wait before retrying, on a
 	// rate limit. Zero where it did not say.
 	wait time.Duration
-	// rateLimited says the refusal was a rate limit rather than a denial,
-	// which is the difference between a retry and a mistake.
+	// rateLimited reports that the refusal was a rate limit rather than a
+	// denial, which is the difference between a request worth retrying and
+	// one that is not.
 	rateLimited bool
 }
 
@@ -66,9 +67,9 @@ func (e *APIError) Temporary() bool { return e.rateLimited }
 func (e *APIError) RetryAfter() time.Duration { return e.wait }
 
 // saysAlreadyExists reports whether a 422 is GitHub refusing to create a
-// repository whose name is taken, as opposed to any other validation failure
-// — an invalid name, a blocked organisation, a plan limit — which all answer
-// 422 as well and none of which means the repository is there to reuse.
+// repository whose name is taken, as opposed to any other validation failure.
+// An invalid name, a blocked organisation and a plan limit all answer 422 as
+// well, and none of them means the repository exists to be reused.
 func (e *APIError) saysAlreadyExists() bool {
 	if e.Status != http.StatusUnprocessableEntity {
 		return false
@@ -110,9 +111,9 @@ func failure(method, path string, resp *http.Response, payload []byte, now time.
 	return e
 }
 
-// rateLimit reads GitHub's two ways of saying "not now": a 429, or a 403 that
-// carries Retry-After (a secondary limit) or X-RateLimit-Remaining: 0 (the
-// primary one). The wait comes from Retry-After in seconds, else from the
+// rateLimit recognises GitHub's two rate-limit responses: a 429, or a 403 that
+// carries Retry-After, for a secondary limit, or X-RateLimit-Remaining: 0, for
+// the primary one. The wait comes from Retry-After in seconds, else from the
 // reset epoch; a rate limit with neither is temporary with no figure.
 func rateLimit(resp *http.Response, now time.Time) (limited bool, wait time.Duration) {
 	retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
