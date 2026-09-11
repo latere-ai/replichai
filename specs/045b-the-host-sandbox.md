@@ -7,7 +7,7 @@ status: built
 
 **Status:** built.
 
-**Scope:** the default `Sandbox` driver — the harness already installed on the machine, confined by `srt` (Seatbelt on macOS, bubblewrap with seccomp on Linux) to the session's workspace and an allow-only network. The path policy, the deny list, the network policy, detached process lifetime, the readiness preflight and the message it prints, and `environment.json` — the answer to what an unpinned environment is allowed to leave unrecorded.
+**Scope:** the default `Sandbox` driver: the harness already installed on the machine, confined by `srt` (Seatbelt on macOS, bubblewrap with seccomp on Linux) to the session's workspace and an allow-only network. The path policy, the deny list, the network policy, detached process lifetime, the readiness preflight and the message it prints, and `environment.json`, which records what an unpinned environment would otherwise leave unrecorded.
 
 **Depends on:** [045a](045a-the-sandbox-is-a-seam.md), and [`anthropic-experimental/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) (`srt`).
 
@@ -15,7 +15,7 @@ status: built
 
 A container gives a boundary and a pinned toolchain together, and charges for both: an image to pull, a virtual machine on macOS, a raw API key instead of the login the operator already has, and a per-session cost that makes twenty papers at once expensive. Most of that is paid for the pinning, and pinning is not what a first local run needs.
 
-What a local run needs is that the agent cannot read the operator's SSH keys, cannot write outside the folder it was given, and cannot reach the network except where it was allowed. `srt` provides exactly that at the OS level, in milliseconds, around a process that is otherwise an ordinary host process — which means the harness's own installation and its own login work unchanged.
+What a local run needs is that the agent cannot read the operator's SSH keys, cannot write outside the folder it was given, and cannot reach the network except where it was allowed. `srt` provides exactly that at the OS level, in milliseconds, around a process that is otherwise an ordinary host process, which means the harness's own installation and its own login work unchanged.
 
 The cost is real and is what the rest of this leaf is about: the toolchain is the host's, and the harness's configuration has to be readable for its login to be usable.
 
@@ -36,13 +36,13 @@ One writable root, one readable root, and everything else denied.
 
 The deny list is explicit and independent of the default, because a default that widens by accident is how a rule like this fails: `~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.netrc`, `~/.gnupg`, `~/.docker/config.json`, `~/.config/replichai` (the cloud token, [045i](045i-signing-in-from-the-terminal.md)), `~/.git-credentials`, and any `.env` anywhere. It is a table with a test that asserts each entry is unreadable from inside a real sandbox, not a comment in a profile generator.
 
-Two consequences worth stating plainly:
+Two consequences, stated plainly:
 
-**The harness config is readable, and that is the hole.** A model told to read `~/.claude` can read all of it, including other projects' local settings and any history the harness keeps there. That is the price of using the login already on the machine, and the alternative — snapshotting the config into the sandbox — breaks refreshed OAuth tokens on long runs, which is worse. The allowance is narrowed to the harness's own directory and is stated in the run's `environment.json`, so it is a disclosed property of a local run rather than a surprise.
+**The harness config is readable, and that is the gap.** A model told to read `~/.claude` can read all of it, including other projects' local settings and any history the harness keeps there. That is the price of using the login already on the machine, and the alternative, snapshotting the config into the sandbox, breaks refreshed OAuth tokens on long runs, which is worse. The allowance is narrowed to the harness's own directory and is stated in the run's `environment.json`, so it is a disclosed property of a local run rather than a surprise.
 
 **Global installs fail, and should.** `pip install` outside a virtualenv writes to a denied path. The runtime therefore creates a virtual environment before the first stage and puts it first on `PATH`, so the method's declared packages install somewhere the agent can use.
 
-It goes at `<session>/venv`, **outside the workspace**, not at `workspace/.venv`. The agent is told to commit its work, and one `git add -A` would put a few hundred megabytes of interpreter into the repository's history before any gate saw it — and `VerifyTree` would then flag the archives inside it and bar the repository from ever being made public ([045g](045g-the-host-pushes.md)). Keeping the environment out of the repository is a path choice, which is free; keeping it out by filtering is a rule that has to keep working. The sandbox grants that path read-write already, so nothing about installing changes.
+It goes at `<session>/venv`, **outside the workspace**, not at `workspace/.venv`. The agent is told to commit its work, and one `git add -A` would put a few hundred megabytes of interpreter into the repository's history before any gate saw it, and `VerifyTree` would then flag the archives inside it and bar the repository from ever being made public ([045g](045g-the-host-pushes.md)). Keeping the environment out of the repository is a path choice, which is free; keeping it out by filtering is a rule that has to keep working. The sandbox grants that path read-write already, so nothing about installing changes.
 
 `apt` is not a supported package manager under this driver, and `ValidateCapabilities` refuses a specification that asks for one.
 
@@ -56,15 +56,15 @@ It goes at `<session>/venv`, **outside the workspace**, not at `workspace/.venv`
 | `allowlist` | `allowedDomains` from the specification, plus the model endpoint's host |
 | `open` | all domains allowed, still through the proxy so the transcript records what was reached |
 
-This is the capability the container driver cannot honestly declare ([045c](045c-the-container-sandbox.md)), and it is the more interesting one for this product: an audit's artifact hunt is a defensible activity precisely when a reader can see where it went. Under `open` the proxy's access log is written to `session/network.log` and summarised in `environment.json`; it is host-owned, so the agent cannot edit it.
+This is the capability the container driver cannot declare ([045c](045c-the-container-sandbox.md)), and it is the more useful one for this product: an audit's artifact hunt is defensible when a reader can see where it went. Under `open` the proxy's access log is written to `session/network.log` and summarised in `environment.json`; it is host-owned, so the agent cannot edit it.
 
-The caveats `srt` states are inherited and are not papered over: filtering is by domain and not by content, so a broad allowance like `github.com` permits exfiltration to any repository on it, and domain fronting can evade the filter. The threat model here is a model that makes mistakes, not a model that is trying to escape; a run that needs the stronger claim uses the container driver on a machine that is itself isolated.
+The caveats `srt` states are inherited and disclosed: filtering is by domain and not by content, so a broad allowance like `github.com` permits exfiltration to any repository on it, and domain fronting can evade the filter. The threat model here is a model that makes mistakes, not a model that is trying to escape; a run that needs the stronger claim uses the container driver on a machine that is itself isolated.
 
 ## Detached lifetime
 
-The harness is a child process, and `--detach` means it must outlive the CLI that started it. The driver `setsid`s the stage, writes `session/raw/<stage>.log` from its stdout, and records `pid:<pid>@<start-time>` as the handle. Liveness is the pid *and* its start time, because a pid alone is reused and a session that adopted an unrelated process would report a live run that is not there.
+The harness is a child process, and `--detach` means it must outlive the CLI that started it. The driver `setsid`s the stage, writes `session/raw/<stage>.log` from its stdout, and records `pid:<pid>@<start-time>` as the handle. Liveness is the pid and its start time, because a pid alone is reused and a session that adopted an unrelated process would report a live run that is not there.
 
-`Observe` reads the exit status from a `session/raw/<stage>.status` file the driver's small wrapper writes on exit, so a status is recoverable after the parent is gone — a reaped child tells nobody anything.
+`Observe` reads the exit status from a `session/raw/<stage>.status` file the driver's small wrapper writes on exit, so a status is recoverable after the parent is gone; a reaped child reports nothing.
 
 ## The preflight
 
@@ -110,9 +110,9 @@ Or select another harness:  --harness codex
 Or run in a container, which brings its own:  --sandbox container
 ```
 
-Windows is refused outright, naming WSL2, because `srt` marks it alpha and a boundary that is alpha is not a boundary.
+Windows is refused outright, naming WSL2, because `srt` marks it alpha and an alpha boundary is not reliable enough to count as a boundary.
 
-Every message names the container escape hatch, because the second driver exists and an operator stuck on the first one should be told.
+Every message names the container alternative, because the second driver exists and an operator blocked on the first one should be told.
 
 ## `environment.json`
 
@@ -131,7 +131,7 @@ The container driver pins the environment. This one records it, and the record i
 }
 ```
 
-It is written by the host before the first stage and completed after the last, never by the agent, and finalize commits it as system-authored evidence beside the transcript and `replication.json`. `auth` records *which kind* of credential was used and never the credential.
+It is written by the host before the first stage and completed after the last, never by the agent, and finalize commits it as system-authored evidence beside the transcript and `replication.json`. `auth` records which kind of credential was used and never the credential.
 
 Two reproductions of one paper that disagree are a finding. Two reproductions on different Python minors that disagree are a finding about Python, and without this file nobody can tell them apart.
 
@@ -157,65 +157,24 @@ Two reproductions of one paper that disagree are a finding. Two reproductions on
 
 ## Outcome
 
-Built as `internal/runtimes/local/host`, and then rewritten in the places a
-real `srt` and a real Claude Code disagreed with it. A session now runs end to
-end on an operator's own machine with their existing login and no API key. What
-that took is worth recording, because none of it was visible from a fixture.
+Built as `internal/runtimes/local/host`, and then rewritten in the places a real `srt` and a real Claude Code disagreed with it. A session now runs end to end on an operator's own machine with their existing login and no API key. What that took is recorded here, because none of it was visible from a fixture.
 
-**There is no open network mode, and there cannot be.** srt is allow-only and
-refuses a wildcard outright — *"Overly broad patterns like `*.com` or `*` are
-not allowed"*. This spec's `open` mapping emitted exactly that, so every
-open-network run failed to start. The driver no longer declares the mode, and
-`internal/audit` asks for what the runtime can enforce: a declared list of the
-places an artifact hunt goes ([`domains.go`](../internal/audit/domains.go)),
-recorded in the run's environment record. A bounded hunt finds less than an
-unbounded one; the record is how a reader tells the two apart.
+**There is no open network mode, and there cannot be.** srt is allow-only and refuses a wildcard outright: *"Overly broad patterns like `*.com` or `*` are not allowed"*. This spec's `open` mapping emitted exactly that, so every open-network run failed to start. The driver no longer declares the mode, and `internal/audit` asks for what the runtime can enforce: a declared list of the places an artifact hunt goes ([`domains.go`](../internal/audit/domains.go)), recorded in the run's environment record. A bounded hunt finds less than an unbounded one; the record is how a reader tells the two apart.
 
-**The login is in a keychain, not a file.** The read allowance this spec
-designed reaches `~/.claude` and the credential is not there: on macOS it is in
-the login Keychain. So a harness declares what it needs of the machine
-(`harness.Needs`) and the runtime grants exactly that, read-only, and only to a
-session actually using that login. Codex needs nothing extra — its token is a
-file — and instead needs its own directory writable, because it writes state
-back and will not start otherwise.
+**The login is in a keychain, not a file.** The read allowance this spec designed reaches `~/.claude` and the credential is not there: on macOS it is in the login Keychain. So a harness declares what it needs of the machine (`harness.Needs`) and the runtime grants exactly that, read-only, and only to a session using that login. Codex needs nothing extra, because its token is a file, and instead needs its own directory writable, because it writes state back and will not start otherwise.
 
-**A harness needs a scratch area.** Claude Code creates one per working
-directory under the shared temporary root, and without it every shell command
-fails before it runs — an agent that can write a file but cannot run one, which
-for a reproduction is fatal. It is a declared need now.
+**A harness needs a scratch area.** Claude Code creates one per working directory under the shared temporary root, and without it every shell command fails before it runs: an agent that can write a file but cannot run one, which for a reproduction is fatal. It is a declared need now.
 
-**The operator's own instructions are withheld.** `~/.claude/CLAUDE.md`,
-`~/.claude/settings.json`, `~/.claude/plugins` and `~/.codex/AGENTS.md` are
-denied to every run. They are not the method, and a reproduction that silently
-inherits the habits of whoever ran it is not reproducing the paper. This spec
-did not think of it; granting the configuration directory for the login is what
-raised it.
+**The operator's own instructions are withheld.** `~/.claude/CLAUDE.md`, `~/.claude/settings.json`, `~/.claude/plugins` and `~/.codex/AGENTS.md` are denied to every run. They are not the method, and a reproduction that silently inherits the habits of whoever ran it is not reproducing the paper. This spec did not anticipate it; granting the configuration directory for the login is what raised it.
 
-**TLS termination has to be declared to be usable.** srt publishes its
-certificate authority to the standard per-tool trust variables only when
-termination is configured, so an undeclared block left every HTTPS client
-rejecting the proxy. It is always declared now. pip is the exception that
-survives: on macOS it verifies against the system trust store and ignores every
-certificate variable, so the package indexes are tunnelled rather than
-inspected.
+**TLS termination has to be declared to be usable.** srt publishes its certificate authority to the standard per-tool trust variables only when termination is configured, so an undeclared block left every HTTPS client rejecting the proxy. It is always declared now. pip is the exception that remains: on macOS it verifies against the system trust store and ignores every certificate variable, so the package indexes are tunnelled rather than inspected.
 
-**Two things about the stage itself.** srt parses its own options anywhere in
-what it is handed, so the command is separated by `--`; and a stage with no
-`PATH` resolves nothing — not even srt, whose shebang needs node — which failed
-as an exit 127 with an empty log and is now refused with a reason.
+**Two things about the stage itself.** srt parses its own options anywhere in what it is handed, so the command is separated by `--`; and a stage with no `PATH` resolves nothing, not even srt, whose shebang needs node. That failed as an exit 127 with an empty log and is now refused with a reason.
 
 ### Still short
 
-**`environment.json` records where a run was *allowed* to go, not where it
-went.** The allowlist is in the record; nothing reads srt's proxy log, so
-`domains_reached` stays empty.
+**`environment.json` records where a run was allowed to go, not where it went.** The allowlist is in the record; nothing reads srt's proxy log, so `domains_reached` stays empty.
 
-**The read posture is srt's default, not the tighter one this spec implies.**
-Reads are allowed everywhere except the home directory and the named deny list.
-A run can read `/usr`, `/etc`, or a checkout outside `$HOME`. Denying `/` and
-allowing back a toolchain is a real hardening and a spec of its own.
+**The read posture is srt's default, not the tighter one this spec implies.** Reads are allowed everywhere except the home directory and the named deny list. A run can read `/usr`, `/etc`, or a checkout outside `$HOME`. Denying `/` and allowing back a toolchain is a real hardening and a spec of its own.
 
-**The deny list is asserted against the profile, and separately against a real
-sandbox for a sample.** Every entry is checked to reach the settings file; a
-per-entry test inside a live sandbox is what the driver contract suite would
-grow into on a machine that has one.
+**The deny list is asserted against the profile, and separately against a real sandbox for a sample.** Every entry is checked to reach the settings file; a per-entry test inside a live sandbox is what the driver contract suite would grow into on a machine that has one.

@@ -7,7 +7,7 @@ status: built
 
 **Status:** built.
 
-**Scope:** how a local session picks and reaches a model — the operator-declared catalogue that `Models()` answers from, the three credential sources (the harness's own login, a vendor key, a gateway key), how a key reaches a stage without landing in `ps` or in a specification, and what a session records about the model when nobody is billing for it. Adds `--model` to `replichai audit`.
+**Scope:** how a local session picks and reaches a model: the operator-declared catalogue that `Models()` answers from, the three credential sources (the harness's own login, a vendor key, a gateway key), how a key reaches a stage without appearing in `ps` or in a specification, and what a session records about the model when nobody is billing for it. Adds `--model` to `replichai audit`.
 
 **Depends on:** [045a](045a-the-sandbox-is-a-seam.md), [045d](045d-the-harness-inside-the-sandbox.md), [041d](041d-models-and-meters-name-their-source.md), [031](031-the-model-is-a-choice.md), [011](011-what-a-session-costs.md).
 
@@ -17,7 +17,7 @@ Three things stand between the operator and a model of their choosing.
 
 **`Models()` has nothing to enumerate.** The contract requires a runtime to report a catalogue, and `runtimes.ModelResolver` resolves `best`/`balanced`/`fast` against it, erroring rather than guessing when a preference maps to two models. A hosted vendor has a catalogue endpoint. A gateway in front of an open-weights model may serve one model and expose no catalogue at all, or expose a hundred with names that mean nothing to a preference tier.
 
-**The credential cannot travel in the specification.** The audit sets `NetworkOpen`, and `SessionSpec.Validate` refuses network mode `open` carrying `SecretRefs` — deliberately, because a host-bound secret is meaningless when every host is allowed. So the model credential is not a spec field. It is runtime configuration, resolved at composition, exactly as `builtin.AnthropicConfig` already is.
+**The credential cannot travel in the specification.** The audit sets `NetworkOpen`, and `SessionSpec.Validate` refuses network mode `open` carrying `SecretRefs`, deliberately, because a host-bound secret is meaningless when every host is allowed. So the model credential is not a spec field. It is runtime configuration, resolved at composition, exactly as `builtin.AnthropicConfig` already is.
 
 **`replichai audit` has no `--model`.** `WithSessionModel` exists and nothing on the CLI reaches it. Every audit runs on `DefaultModelPreference`.
 
@@ -59,7 +59,7 @@ Validation at construction, not at first use:
 - Within one harness, each preference resolves to at most one model. Two `best` rows is an error, mirroring `ModelResolver`'s own refusal to pick arbitrarily.
 - `Provider` and `ID` are both non-empty, because `ModelRef.Valid()` requires both.
 
-`Models()` returns the rows for the selected harness. Where no file exists, a built-in default declares the `harness-login` rows above, so a first run on a machine where `claude login` has already happened needs no configuration and no API key at all.
+`Models()` returns the rows for the selected harness. Where no file exists, a built-in default declares the `harness-login` rows above, so a first run on a machine where `claude login` has already happened needs no configuration and no API key.
 
 ## Three credential sources, one rule
 
@@ -71,9 +71,9 @@ flowchart LR
   R -.->|never| SP["SessionSpec<br/>(NetworkOpen forbids secrets)"]
 ```
 
-`auth: harness` is the interesting one and the reason the host sandbox is the default: the operator has already logged in, the credential is refreshed by the harness itself, and nothing about it passes through this program. `environment.json` records `auth: subscription` or `auth: api-key` — which kind, never the value.
+`auth: harness` is the important one and the reason the host sandbox is the default: the operator has already logged in, the credential is refreshed by the harness itself, and nothing about it passes through this program. `environment.json` records `auth: subscription` or `auth: api-key`: which kind, never the value.
 
-Where a key is configured, it is resolved from the environment at composition and delivered through a `0600` file in the session directory, passed as an env file and unlinked once the stage is running. Not as an inline argument: process arguments are visible to every user on the machine. Under the container driver, `engine inspect` still shows the value to whoever can talk to the engine, which is the same person who owns the key — stated rather than papered over.
+Where a key is configured, it is resolved from the environment at composition and delivered through a `0600` file in the session directory, passed as an env file and unlinked once the stage is running. Not as an inline argument: process arguments are visible to every user on the machine. Under the container driver, `engine inspect` still shows the value to whoever can talk to the engine, which is the same person who owns the key; this is stated rather than concealed.
 
 Where `key_env` names a variable that is unset, construction fails naming the variable, before a paper is resolved.
 
@@ -98,7 +98,7 @@ The vendor was paid by the operator, with the operator's credential, outside thi
 - **Usage is still recorded.** `Status.Usage` carries the buckets the harness reported and `Status.Model` the exact reference, because a reader of a published reproduction is entitled to know what produced it whether or not anybody was billed.
 - **`internal/credit` is not in the path.** No reserve, no settle. [045k](045k-a-local-session-reaches-the-cloud.md) states what that means once the session reaches the app.
 
-Where the harness reports a cost of its own — Claude Code's `result` line carries `total_cost_usd` — it is recorded in `Usage.Details` as the vendor's figure, clearly not the platform's price for it.
+Where the harness reports a cost of its own (Claude Code's `result` line carries `total_cost_usd`), it is recorded in `Usage.Details` as the vendor's figure, clearly not the platform's price for it.
 
 ## Acceptance criteria
 
@@ -122,27 +122,10 @@ Where the harness reports a cost of its own — Claude Code's `result` line carr
 
 ## Outcome
 
-Built as `internal/runtimes/local/catalog.go`. The declared catalogue, the
-dialect-and-harness agreement check, the one-model-per-preference rule, the
-credential resolution at construction and the redaction of every configured
-credential from the transcript are as specced. `--model` reaches
-`WithSessionModel` from both `audit` and `run`.
+Built as `internal/runtimes/local/catalog.go`. The declared catalogue, the dialect-and-harness agreement check, the one-model-per-preference rule, the credential resolution at construction and the redaction of every configured credential from the transcript are as specced. `--model` reaches `WithSessionModel` from both `audit` and `run`.
 
-**The credential file is written by the driver, not by this layer.** The host
-driver passes credentials through the launcher's environment and the container
-driver through a `0600` env file it removes once the container is running; the
-catalogue's job ends at resolving the value. The acceptance criterion asking
-that no stage invocation carry a credential in argv is met by both drivers'
-argv tests rather than by one test here.
+**The credential file is written by the driver, not by this layer.** The host driver passes credentials through the launcher's environment and the container driver through a `0600` env file it removes once the container is running; the catalogue's job ends at resolving the value. The acceptance criterion asking that no stage invocation carry a credential in argv is met by both drivers' argv tests rather than by one test here.
 
-The default catalogue is the harness's own login on three Anthropic models, so
-a first run on a machine where `claude login` has happened needs no
-configuration and no API key. That path is the one most likely to break
-silently, so it is the one the live end-to-end test drives.
+The default catalogue is the harness's own login on three Anthropic models, so a first run on a machine where `claude login` has happened needs no configuration and no API key. That path is the one most likely to break silently, so it is the one the live end-to-end test drives.
 
-**What "the harness's own login" costs was not knowable from here.** This spec
-treats `auth: harness` as the absence of a credential to manage. On macOS it is
-a credential in the operating system's keychain, which the sandbox has to be
-opened to — read-only, and only for a session using that login. 045b carries
-the argument; the catalogue's job ends at saying which kind of credential a
-model is reached with, and that turned out to be the important thing it says.
+**What "the harness's own login" costs was not knowable from here.** This spec treats `auth: harness` as the absence of a credential to manage. On macOS it is a credential in the operating system's keychain, which the sandbox has to be opened to, read-only, and only for a session using that login. 045b carries the argument; the catalogue's job ends at saying which kind of credential a model is reached with, and that turned out to be the important thing it says.

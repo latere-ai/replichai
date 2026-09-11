@@ -13,17 +13,17 @@ status: built
 
 ## Problem
 
-`internal/runtimes/builtin` installs two runtimes: `memory`, which answers without doing anything, and `anthropic-managed`, which needs a vendor account. There is nothing in between — no way to run the real method with real tool use on hardware the operator controls.
+`internal/runtimes/builtin` installs two runtimes: `memory`, which answers without doing anything, and `anthropic-managed`, which needs a vendor account. There is nothing in between: no way to run the real method with real tool use on hardware the operator controls.
 
-The contract to satisfy is not vague. `managed.Runtime` is ten methods; `Capabilities` must state what the backend can actually do so an unsupported specification is refused before anything is created; `SessionRef` must be enough, on its own, to recover a session after the process that started it has gone; evidence must stay readable until `Release`.
+The contract to satisfy is precise. `managed.Runtime` is ten methods; `Capabilities` must state what the backend can do so an unsupported specification is refused before anything is created; `SessionRef` must be enough, on its own, to recover a session after the process that started it has gone; evidence must stay readable until `Release`.
 
-Two mechanisms can provide the boundary — an OS-level sandbox around a host process, or a container — and they differ in exactly the ways that matter to a *reproduction*: how fast they start, what toolchain the work runs against, whether the harness's existing login is reachable, and how many can run at once. Choosing one and building the runtime around it would make the other a rewrite. So the choice is a driver.
+Two mechanisms can provide the boundary, an OS-level sandbox around a host process or a container, and they differ in exactly the ways that matter to a reproduction: how fast they start, what toolchain the work runs against, whether the harness's existing login is reachable, and how many can run at once. Choosing one and building the runtime around it would make the other a rewrite. So the choice is a driver.
 
 ## The runtime
 
 The canonical name is `local`. It takes no aliases: `podman`, `docker` and `srt` name sandbox mechanisms, and a name that conflates the runtime with one of its interchangeable backends is the mistake [041](041-the-runtime-is-not-the-model-vendor.md) removed when it deleted the `anthropic` alias.
 
-The driver is chosen at composition — `--sandbox host|container`, `REPLICHAI_SANDBOX`, defaulting to `host` — so one runtime instance has one driver and one capability declaration. That matters for restart: the locator records which driver started a session, and a `Poll` on an instance built with the other driver refuses the reference rather than inspecting a sandbox that was never there.
+The driver is chosen at composition (`--sandbox host|container`, `REPLICHAI_SANDBOX`, defaulting to `host`), so one runtime instance has one driver and one capability declaration. That matters for restart: the locator records which driver started a session, and a `Poll` on an instance built with the other driver refuses the reference rather than inspecting a sandbox that was never there.
 
 ## The driver interface
 
@@ -67,7 +67,7 @@ type Sandbox interface {
 
 `StageSpec` carries the argv, the environment, the paths to allow read-only and read-write, the network policy, and the working directory. Everything in it is data the runtime computes; the driver interprets it into a Seatbelt profile, a bubblewrap invocation, or engine arguments.
 
-The two rules that keep the seam honest, and that both drivers are tested against:
+The two rules that keep the seam sound, and that both drivers are tested against:
 
 - **The stage's raw output is written somewhere the stage cannot reach.** For the container driver that is the engine's log; for the host driver it is a file under `session/`, which the sandbox denies writes to. Same guarantee, different mechanism.
 - **A handle outlives the process that made it.** Detached mode is not an extra: it is how `--detach`, `replichai finish`, and a batch that survives a laptop lid closing all work.
@@ -90,7 +90,7 @@ Every session gets a fresh directory under `REPLICHAI_SESSION_ROOT` (default `~/
     raw/<stage>.log   the stage's own stream, byte-for-byte
 ```
 
-The split is the point. `workspace/` is what becomes the repository, and everything the agent needs but must not publish — downloads, the language environment — is writable and adjacent rather than inside it. `session/` is evidence, authored by the host, and no stage can write it. Anything that blurs those two turns the transcript into something the subject of the audit can edit.
+The split matters. `workspace/` is what becomes the repository, and everything the agent needs but must not publish (downloads, the language environment) is writable and adjacent rather than inside it. `session/` is evidence, authored by the host, and no stage can write it. Anything that blurs those two turns the transcript into something the subject of the audit can edit.
 
 `workspace/` is `git init`-ed by the host before the first stage, with `init.defaultBranch=main` and a committer identity already configured, so a run cannot stall on git refusing an empty `user.email`. There is no remote ([045g](045g-the-host-pushes.md)).
 
@@ -113,7 +113,7 @@ MaxLocatorBytes    managed.DefaultMaxLocatorBytes
 
 `rw: false` is a refusal, not a gap: the local path does not mount a writable remote, because the host pushes ([045g](045g-the-host-pushes.md)). A specification asking for a read-write repository is refused with a message naming that leaf, rather than being honoured by putting a forge token inside a sandbox.
 
-`allowlist` differing between the drivers is the honest consequence of what each can enforce, and `ValidateCapabilities` is what turns it into a refusal before anything is created rather than a silently ignored policy. The audit's `NetworkOpen` specification runs on both.
+`allowlist` differing between the drivers is the consequence of what each can enforce, and `ValidateCapabilities` is what turns it into a refusal before anything is created rather than a silently ignored policy. The audit's `NetworkOpen` specification runs on both.
 
 ## The locator, and what a restart recovers
 
@@ -129,7 +129,7 @@ MaxLocatorBytes    managed.DefaultMaxLocatorBytes
 }
 ```
 
-Nothing in it is a credential, and `SessionRef.Validate` rejects any locator key containing `secret`, `token`, `credential` or `api_key`, so these field names are chosen to survive that check rather than to be excused from it. Nothing in it is user content either.
+Nothing in it is a credential, and `SessionRef.Validate` rejects any locator key containing `secret`, `token`, `credential` or `api_key`, so these field names are chosen to pass that check rather than to be exempted from it. Nothing in it is user content either.
 
 A handle is opaque to the runtime and meaningful to its driver: a pid plus the process start time for the host driver (start time is what makes pid reuse detectable), a container name for the container driver.
 
@@ -167,7 +167,7 @@ sequenceDiagram
 
 **Cancel** stops the running stage with a grace period, marks the session cancelled in `status.json`, and leaves the directory intact so evidence stays readable until `Release`.
 
-**Release** discards what the driver created. What it does with the directory is policy: `REPLICHAI_SESSION_RETENTION` is `keep` (default), `on-failure`, or `discard`. The default is `keep` because the directory is the artifact — the workspace is the reproduction, and deleting it on success would destroy the only copy of anything the push has not yet taken. `replichai sessions ls` and `replichai sessions prune [--older-than 7d]` are how it gets cleaned up.
+**Release** discards what the driver created. What it does with the directory is policy: `REPLICHAI_SESSION_RETENTION` is `keep` (default), `on-failure`, or `discard`. The default is `keep` because the directory is the artifact: the workspace is the reproduction, and deleting it on success would destroy the only copy of anything the push has not yet taken. `replichai sessions ls` and `replichai sessions prune [--older-than 7d]` are how it gets cleaned up.
 
 Release must not run before the push. The ordering is stated in [045g](045g-the-host-pushes.md) and enforced by the `Retain` hook, where finalize already lives.
 
@@ -193,30 +193,12 @@ Release must not run before the push. The ordering is stated in [045g](045g-the-
 
 ## Outcome
 
-Built as `internal/runtimes/local`. The driver interface is what this spec
-describes, with one addition and one correction.
+Built as `internal/runtimes/local`. The driver interface is what this spec describes, with one addition and one correction.
 
-**`Capabilities` allocates the session the next `Start` will use.** The
-contract has a caller read the output directory and then start a session that
-writes to it, and on this runtime that directory is per-session — the workspace
-of a directory that does not exist until it is made. So `Capabilities` reserves
-one and `Start` consumes it, which is what makes the two calls agree. A
-`Capabilities` never followed by a `Start` leaves an empty directory for
-`sessions prune`. This is not in the spec above and is the one place the local
-runtime holds state between two contract calls.
+**`Capabilities` allocates the session the next `Start` will use.** The contract has a caller read the output directory and then start a session that writes to it, and on this runtime that directory is per-session: the workspace of a directory that does not exist until it is made. So `Capabilities` reserves one and `Start` consumes it, which is what makes the two calls agree. A `Capabilities` never followed by a `Start` leaves an empty directory for `sessions prune`. This is not in the spec above and is the one place the local runtime holds state between two contract calls.
 
-**The harness version is read through the driver, not the harness.** This spec
-and 045d put a `Detect` on the harness; what shipped is `VersionArgv` on the
-harness and an optional `Version` on the driver, because where the harness
-lives differs by driver — a binary on the host, a program inside an image — and
-only the driver knows which.
+**The harness version is read through the driver, not the harness.** This spec and 045d put a `Detect` on the harness; what shipped is `VersionArgv` on the harness and an optional `Version` on the driver, because where the harness lives differs by driver (a binary on the host, a program inside an image) and only the driver knows which.
 
-**`replichai sessions ls` and `sessions prune` shipped with it.** Retention
-defaults to keeping a directory, which makes them accumulate by design, so
-reclaiming the space had to be something other than `rm -rf`. A `Capabilities`
-never followed by a `Start` leaves an empty one, and prune takes those too.
+**`replichai sessions ls` and `sessions prune` shipped with it.** Retention defaults to keeping a directory, which makes them accumulate by design, so reclaiming the space had to be something other than `rm -rf`. A `Capabilities` never followed by a `Start` leaves an empty one, and prune takes those too.
 
-**A bootstrap stage runs first.** `internal/runtimes/local/bootstrap.go`
-prepares the language environment and installs the specification's declared
-packages before any agent runs, journalled and observable like every other
-stage. It is not in the sequence this spec drew.
+**A bootstrap stage runs first.** `internal/runtimes/local/bootstrap.go` prepares the language environment and installs the specification's declared packages before any agent runs, journalled and observable like every other stage. It is not in the sequence this spec drew.

@@ -7,13 +7,13 @@ status: built
 
 **Status:** built.
 
-**Scope:** the `Harness` seam inside `local` — how one agentic coding CLI becomes argv, environment, configuration files, and a decoder from its stream to `managed.Event` — and two adapters: Claude Code and Codex. Model endpoints and credentials are [045e](045e-the-model-is-an-endpoint.md); the judge stage is [045f](045f-the-grader-cannot-edit-what-it-grades.md).
+**Scope:** the `Harness` seam inside `local` (how one agentic coding CLI becomes argv, environment, configuration files, and a decoder from its stream to `managed.Event`) and two adapters, Claude Code and Codex. Model endpoints and credentials are [045e](045e-the-model-is-an-endpoint.md); the judge stage is [045f](045f-the-grader-cannot-edit-what-it-grades.md).
 
 **Depends on:** [045a](045a-the-sandbox-is-a-seam.md), [045b](045b-the-host-sandbox.md), [005](005-transcript.md) (what a transcript owes a reader).
 
 ## Problem
 
-A sandbox is not an agent. Something inside it has to read the task, use tools, edit files, and say what it did — and there are several such programs, each with its own flags, its own streaming format, its own idea of a system prompt, and its own usage accounting. The runtime needs exactly one of them per session and must not care which.
+A sandbox is not an agent. Something inside it has to read the task, use tools, edit files, and report what it did, and there are several such programs, each with its own flags, its own streaming format, its own idea of a system prompt, and its own usage accounting. The runtime needs exactly one of them per session and must not care which.
 
 The wrong answer is a `managed.Runtime` per harness. Runtime names are persisted in `SessionRef` and route every later poll; `local-claude-code` and `local-codex` would double again with the second sandbox driver, and each name would carry a capability declaration for capabilities that belong to the driver, not to the harness.
 
@@ -57,9 +57,9 @@ type Harness interface {
 
 `Stage` is `worker`, `revision`, or `judge`. `Paths` carries the workspace and, for the judge, the read-only evidence path and the grade path.
 
-Selection is `--harness` on the CLI, `REPLICHAI_HARNESS` in the environment, or a field in the batch file, defaulting to `claude-code`. An unknown name lists the installed ones, the way `runtimes.UnavailableError` does.
+Selection is `--harness` on the CLI, `REPLICHAI_HARNESS` in the environment, or a field in the batch file, defaulting to `claude-code`. An unknown name lists the installed ones, as `runtimes.UnavailableError` does.
 
-`Detect` is what makes the host driver honest: under it the harness is whatever the operator installed, so its version is discovered, recorded in `environment.json`, and a missing binary is a preflight failure with install instructions rather than an exec error forty seconds into a run.
+`Detect` is what keeps the host driver's declaration accurate: under it the harness is whatever the operator installed, so its version is discovered, recorded in `environment.json`, and a missing binary is a preflight failure with install instructions rather than an exec error forty seconds into a run.
 
 ## Instructions and task
 
@@ -67,7 +67,7 @@ Selection is `--harness` on the CLI, `REPLICHAI_HARNESS` in the environment, or 
 
 Every harness gets the instructions through its own system-prompt mechanism, never through a file inside the workspace. A `CLAUDE.md` or `AGENTS.md` written there would be committed by the agent and published as part of the reproduction, which makes the method's own text an artifact of the paper's reproduction. Where a harness has no system-prompt flag, the adapter prepends the instructions to the task under a fixed header and records that it did so in the transcript's first event, so a reader can see which form was used.
 
-Harness-level configuration — a model provider block, a permission mode — goes to the harness's own config directory, which under the host driver is a session-scoped copy on `HOME`-adjacent config paths the sandbox allows, and under the container driver is the image's home. Neither is the workspace.
+Harness-level configuration (a model provider block, a permission mode) goes to the harness's own config directory, which under the host driver is a session-scoped copy on `HOME`-adjacent config paths the sandbox allows, and under the container driver is the image's home. Neither is the workspace.
 
 ## Claude Code
 
@@ -81,7 +81,7 @@ claude --print
        -- <task>
 ```
 
-`bypassPermissions` is honest about where the boundary is: the sandbox is the boundary, and a permission prompt inside a non-interactive run only stalls it. That is why [045b](045b-the-host-sandbox.md)'s path and network rules are the ones that matter, and why the harness's own permission model is not asked to be a second, weaker copy of them.
+`bypassPermissions` reflects where the boundary is: the sandbox is the boundary, and a permission prompt inside a non-interactive run only stalls it. That is why [045b](045b-the-host-sandbox.md)'s path and network rules are the ones that matter, and why the harness's own permission model is not asked to be a second, weaker copy of them.
 
 The stream is one JSON object per line:
 
@@ -107,7 +107,7 @@ codex exec --json
      -- <task>
 ```
 
-`danger-full-access` says the same thing `bypassPermissions` does: the harness's own sandbox is switched off because it is nested inside a real one, and a second boundary that the model can be talked past adds nothing. The runtime refuses to run a harness in this mode outside a sandbox at all — there is no code path in which the flag is set and no driver is confining the process.
+`danger-full-access` says the same thing `bypassPermissions` does: the harness's own sandbox is switched off because it is nested inside a real one, and a second boundary that the model can be talked past adds nothing. The runtime refuses to run a harness in this mode outside a sandbox at all: there is no code path in which the flag is set and no driver is confining the process.
 
 Instructions and the provider block go to Codex's configuration file, outside the workspace:
 
@@ -132,7 +132,7 @@ ID = "<stage>-<sequence>"          sequence = the line's ordinal within that sta
 
 Position, not content: a hash of the line would give two identical tool results the same id, and the transcript is a sequence. `session/events.jsonl` is append-only and the pump records how far it has read, so a `Poll` after a restart resumes from the last id rather than re-decoding from the start.
 
-`Raw` keeps the harness's own line verbatim, per the contract's reason for that field: the transcript is the evidence for a run and must not be reduced to this package's vocabulary. A tool result larger than 256 KiB is truncated in `Content` with an explicit marker and kept whole in the raw stage log under `session/raw/`, so the normalized transcript stays readable and nothing is destroyed.
+`Raw` keeps the harness's own line verbatim, for the reason the contract gives for that field: the transcript is the evidence for a run and must not be reduced to this package's vocabulary. A tool result larger than 256 KiB is truncated in `Content` with an explicit marker and kept whole in the raw stage log under `session/raw/`, so the normalised transcript stays readable and nothing is destroyed.
 
 ## Where a harness must not reach
 
@@ -165,44 +165,14 @@ The model credential is the one that has to be inside, because without it the ha
 
 ## Outcome
 
-Built as `internal/runtimes/local/harness`, and then corrected against both
-real binaries. Event ids come from the stage's unique name rather than its
-role — a session that grades twice would otherwise issue one id twice — and
-every line of a recorded stream produces at least one event carrying its raw
-payload, asserted by counting.
+Built as `internal/runtimes/local/harness`, and then corrected against both real binaries. Event ids come from the stage's unique name rather than its role, because a session that grades twice would otherwise issue one id twice, and every line of a recorded stream produces at least one event carrying its raw payload, asserted by counting.
 
-**`Detect` became `VersionArgv`, and then `Needs`.** This spec put version
-detection on the harness; it belongs to the driver, because where the harness
-lives differs by driver. What the harness does own turned out to be larger and
-was not in this spec at all: a harness is a real installation with real
-requirements of the machine, and three of them are not guessable from outside.
-Where the operator's existing login lives — a file for Codex, the macOS
-Keychain for Claude Code. Where its own scratch area is, without which Claude
-Code's shell tool fails before running anything. And whether it will trust a
-certificate authority injected by the sandbox — Node does, the Rust binary does
-not. `harness.Needs` is where a harness says so, and the runtime grants exactly
-that.
+**`Detect` became `VersionArgv`, and then `Needs`.** This spec put version detection on the harness; it belongs to the driver, because where the harness lives differs by driver. What the harness does own turned out to be larger and was not in this spec at all: a harness is a real installation with real requirements of the machine, and three of them are not guessable from outside. Where the operator's existing login lives: a file for Codex, the macOS Keychain for Claude Code. Where its own scratch area is, without which Claude Code's shell tool fails before running anything. And whether it will trust a certificate authority injected by the sandbox: Node does, the Rust binary does not. `harness.Needs` is where a harness declares these, and the runtime grants exactly that.
 
-**Both adapters had the same bug.** Each redirected the harness's own
-configuration directory to a session-scoped one, which is how a session gets an
-isolated configuration and also how it loses the login: an empty directory
-holds no credential, and the harness answers "not logged in". The redirect
-happens only where a credential is supplied instead.
+**Both adapters had the same bug.** Each redirected the harness's own configuration directory to a session-scoped one, which is how a session gets an isolated configuration and also how it loses the login: an empty directory holds no credential, and the harness answers "not logged in". The redirect happens only where a credential is supplied instead.
 
-**The Codex decoder was written against a guessed format.** Its real stream is
-a flat envelope — `thread.started`, `turn.started`, `item.completed` carrying
-an item, `turn.completed` carrying the usage — and the guessed one read none of
-it, so every Codex session reported zero tokens. The fixture is a recorded run
-now, and the older envelope is still accepted.
+**The Codex decoder was written against a guessed format.** Its real stream is a flat envelope (`thread.started`, `turn.started`, `item.completed` carrying an item, `turn.completed` carrying the usage) and the guessed one read none of it, so every Codex session reported zero tokens. The fixture is a recorded run now, and the older envelope is still accepted.
 
-**Codex also refuses a directory it has not been told to trust.** A session's
-workspace is a repository it has never seen, so the trust check is skipped: the
-sandbox is the boundary, and a second one the model can be talked past adds
-nothing.
+**Codex also refuses a directory it has not been told to trust.** A session's workspace is a repository it has never seen, so the trust check is skipped: the sandbox is the boundary, and a second one the model can be talked past adds nothing.
 
-**And a harness's standing instructions are withheld.** `~/.claude/CLAUDE.md`
-and `~/.codex/AGENTS.md` are denied to every run. This spec was careful that
-the *method* never reach the workspace as a file; it did not consider that the
-operator's own instructions would reach the agent through its configuration
-directory. A reproduction that silently inherits the habits of whoever ran it
-is not reproducing the paper.
+**A harness's standing instructions are withheld.** `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` are denied to every run. This spec was careful that the method never reach the workspace as a file; it did not consider that the operator's own instructions would reach the agent through its configuration directory. A reproduction that silently inherits the habits of whoever ran it is not reproducing the paper.

@@ -7,13 +7,13 @@ status: built
 
 **Status:** built.
 
-**Scope:** how a local session's work reaches GitHub — no remote inside the sandbox, no forge credential inside the sandbox, and a push performed by the host after the run, through the same redistribution gate and the same finalize the hosted path uses. The workspace instruction protocol that replaces the mount protocol, and the ordering that keeps release from destroying what has not been pushed.
+**Scope:** how a local session's work reaches GitHub: no remote inside the sandbox, no forge credential inside the sandbox, and a push performed by the host after the run, through the same redistribution gate and the same finalize the hosted path uses. The workspace instruction protocol that replaces the mount protocol, and the ordering that keeps release from destroying what has not been pushed.
 
 **Depends on:** [045a](045a-the-sandbox-is-a-seam.md), [006f](006f-taking-a-reproduction-out.md), [044a](044a-the-mount-is-pushed.md), [044b](044b-the-server-harvests-the-session.md), [044d](044d-an-empty-repository-says-so.md), [009](009-secret-containment-when-the-agent-commits-live.md).
 
 ## Problem
 
-The hosted path clones a private repository into the sandbox with a token and asks the agent to push as it works. That design earned its place — the history is the agent's own — and it carries two costs the local path does not have to pay.
+The hosted path clones a private repository into the sandbox with a token and asks the agent to push as it works. That design is justified, because the history is the agent's own, and it carries two costs the local path does not have to pay.
 
 **A forge credential lives inside a sandbox with an open network and a shell.** [009](009-secret-containment-when-the-agent-commits-live.md) wanted a per-repository mount token instead of an organisation PAT and could not have it, because a GitHub App installation token lives at most an hour and a real run took fifty-three minutes. That third commit is still deferred.
 
@@ -42,15 +42,15 @@ machine running this session. It is not destroyed when this session ends.
   third-party data: the repository must contain only your own work.
 ```
 
-The push sentence is gone because there is nothing to push to, and inventing a remote so the instruction could stay would put a token back inside the sandbox to satisfy a sentence. What replaces it is a real check the agent can fail — uncommitted work is genuinely dropped — and a system check it cannot influence.
+The push sentence is gone because there is nothing to push to, and inventing a remote so the instruction could stay would put a token back inside the sandbox to satisfy a sentence. What replaces it is a real check the agent can fail (uncommitted work is dropped) and a system check it cannot influence.
 
-The protocol also says *no remote* in as many words, because that is the condition rubric criterion 9 keys on once [045f](045f-the-grader-cannot-edit-what-it-grades.md) corrects it. The two texts are read together by the judge, so they have to agree about what is present.
+The protocol also says *no remote* explicitly, because that is the condition rubric criterion 9 keys on once [045f](045f-the-grader-cannot-edit-what-it-grades.md) corrects it. The two texts are read together by the judge, so they have to agree about what is present.
 
 ## Who decides not to mount
 
-`runAudit` creates the repository and mounts it as one act: `newPublisher` allocates the name, creates the private repository, and returns a mount the auditor turns into a read-write `ResourceRepository`. Against `local`, whose `RepositoryModes` declares `rw: false` ([045a](045a-the-sandbox-is-a-seam.md)), that specification is refused by `ValidateCapabilities` — so `--runtime local --publish` fails at validation, before a paper is fetched, unless the two halves are separated.
+`runAudit` creates the repository and mounts it as one act: `newPublisher` allocates the name, creates the private repository, and returns a mount the auditor turns into a read-write `ResourceRepository`. Against `local`, whose `RepositoryModes` declares `rw: false` ([045a](045a-the-sandbox-is-a-seam.md)), that specification is refused by `ValidateCapabilities`, so `--runtime local --publish` fails at validation, before a paper is fetched, unless the two halves are separated.
 
-They are separated where they belong, in the composition root: **allocation and creation stay unconditional** — the local path needs the repository, because it is the push target — and **mounting becomes conditional on the runtime declaring read-write repositories**. A runtime that does not gets no repository resource, gets `workspaceProtocol` instead of `mountProtocol`, and gets its tree pushed by the host afterwards. One capability read decides all three, so a future runtime that can mount is handled by the same branch rather than by a runtime name test.
+They are separated in the composition root: **allocation and creation stay unconditional**, because the local path needs the repository as the push target, and **mounting becomes conditional on the runtime declaring read-write repositories**. A runtime that does not gets no repository resource, gets `workspaceProtocol` instead of `mountProtocol`, and gets its tree pushed by the host afterwards. One capability read decides all three, so a future runtime that can mount is handled by the same branch rather than by a runtime name test.
 
 ## What the host does
 
@@ -66,9 +66,9 @@ flowchart TB
   I --> R["release the session"]
 ```
 
-**The gate is the one that already exists, and it is the right half of it.** `internal/publish` has two, and they are not interchangeable. `Classify`/`PlanPublication` is an allowlist over a *harvested output directory* — the fixed report files plus `src/`, everything else third-party — and running an agent-authored repository through it would strip the `LICENSE`, the `requirements.txt`, the tests and the configs that make it a real project. `VerifyTree` is the backstop for exactly that case: a denylist over a committed tree, flagging the paper, a dataset, model weights, an archive or a leaked secret, and presuming everything else is the reproduction's own work.
+**The gate is the one that already exists, and it is the right half of it.** `internal/publish` has two, and they are not interchangeable. `Classify`/`PlanPublication` is an allowlist over a harvested output directory (the fixed report files plus `src/`, everything else third-party), and running an agent-authored repository through it would strip the `LICENSE`, the `requirements.txt`, the tests and the configs that make it a real project. `VerifyTree` is the backstop for exactly that case: a denylist over a committed tree, flagging the paper, a dataset, model weights, an archive or a leaked secret, and presuming everything else is the reproduction's own work.
 
-So the local path uses `VerifyTree`, which is what [006f](006f-taking-a-reproduction-out.md) and [044b](044b-the-server-harvests-the-session.md) already apply to committed trees — and applies it *before* the first push rather than after, which is strictly earlier than the hosted path can manage. A flagged path is not pushed and is named in the run's output, so the operator can fix it and retry rather than owning a repository that may never be made public.
+So the local path uses `VerifyTree`, which is what [006f](006f-taking-a-reproduction-out.md) and [044b](044b-the-server-harvests-the-session.md) already apply to committed trees, and applies it before the first push rather than after, which is strictly earlier than the hosted path can manage. A flagged path is not pushed and is named in the run's output, so the operator can fix it and retry rather than owning a repository that may never be made public.
 
 `environment.json` and `grade/verdict-<n>.json` are system-authored and pass `VerifyTree` on their face, which is the second reason not to route them through the allowlist: neither is in `workerReports`, and the environment record is this deck's whole answer to whether a run was clean.
 
@@ -76,11 +76,11 @@ So the local path uses `VerifyTree`, which is what [006f](006f-taking-a-reproduc
 
 **Finalize is the same code.** `publish.FinalizeLive` writes `replication.json`, commits the transcript and `TRANSCRIPT.md`, and invites the collaborator. The local path adds `environment.json` and `grade/verdict-<n>.json` to the same system-authored commit, and calls the same function, so the two paths cannot drift.
 
-**An empty repository says so.** If the workspace has no commits, or the verified tree is empty, the session records that instead of reporting success, exactly as [044d](044d-an-empty-repository-says-so.md) requires — and distinguishes "the agent produced nothing" from "the publish failed", because locally those are two different observations and both are available.
+**An empty repository says so.** If the workspace has no commits, or the verified tree is empty, the session records that instead of reporting success, exactly as [044d](044d-an-empty-repository-says-so.md) requires, and distinguishes "the agent produced nothing" from "the publish failed", because locally those are two different observations and both are available.
 
 ## Ordering
 
-Capture, then verify, then push, then release. Release is what discards the sandbox's leavings, and under the `discard` retention policy it removes the session directory — which holds the only copy of the work until the push has succeeded. The ordering lives in the `Retain` hook, where `finalizePublication` already runs, so it is the existing sequence with a push inserted rather than a second lifecycle.
+Capture, then verify, then push, then release. Release is what discards the sandbox's leftovers, and under the `discard` retention policy it removes the session directory, which holds the only copy of the work until the push has succeeded. The ordering lives in the `Retain` hook, where `finalizePublication` already runs, so it is the existing sequence with a push inserted rather than a second lifecycle.
 
 A push that fails leaves the session directory intact regardless of retention policy, and prints the command to retry it:
 
@@ -92,7 +92,7 @@ replichai finish <owner>/<repo> <paper> --session <session-id>
 
 ## What this does to 009
 
-[009](009-secret-containment-when-the-agent-commits-live.md)'s deferred third commit is a hosted-path problem: the agent needs write access for the length of the run, and the strongest available credential expires sooner than a run lasts. The local path does not need the credential to be inside for any length of time, so the constraint does not apply — not because it was solved, but because the requirement was removed. Where a hosted run and a local run of the same paper produce different containment properties, this is the difference, and it is worth saying rather than leaving a reader to infer that 009 was fixed.
+[009](009-secret-containment-when-the-agent-commits-live.md)'s deferred third commit is a hosted-path problem: the agent needs write access for the length of the run, and the strongest available credential expires sooner than a run lasts. The local path does not need the credential to be inside for any length of time, so the constraint does not apply: not because it was solved, but because the requirement was removed. Where a hosted run and a local run of the same paper produce different containment properties, this is the difference, and it is stated here so a reader does not infer that 009 was fixed.
 
 ## Acceptance criteria
 
@@ -110,34 +110,16 @@ replichai finish <owner>/<repo> <paper> --session <session-id>
 ## Not in scope
 
 - Pushing to anything but GitHub. `Forge` is the seam and a second forge is its own spec.
-- Signing commits. The agent's commits are the agent's; attributing them further is [006n](006n-who-signed-off.md)'s business, not the transport's.
-- Pushing during the run. It is possible — the host could push after each commit — and it buys nothing here, because nothing is at risk of being lost.
+- Signing commits. The agent's commits are the agent's; attributing them further is [006n](006n-who-signed-off.md)'s concern, not the transport's.
+- Pushing during the run. It is possible (the host could push after each commit) and it gains nothing here, because nothing is at risk of being lost.
 - Changing the hosted path. 006f, 044a and 044b stand as they are.
 
 ## Outcome
 
-Built as `internal/publish/pushlocal.go` and the `--publish` branch in
-`cmd/replichai`. `LocalPush` verifies the committed tree with `VerifyTree`,
-pushes it with a credential that reaches git through an askpass helper and
-never through argv or `.git/config`, and removes the remote afterwards — so a
-session directory kept under the retention policy carries neither a credential
-nor a push target. A workspace with no commits is [044d](044d-an-empty-repository-says-so.md)'s
-outcome reached before the push rather than found as an empty repository after
-it.
+Built as `internal/publish/pushlocal.go` and the `--publish` branch in `cmd/replichai`. `LocalPush` verifies the committed tree with `VerifyTree`, pushes it with a credential that reaches git through an askpass helper and never through argv or `.git/config`, and removes the remote afterwards, so a session directory kept under the retention policy carries neither a credential nor a push target. A workspace with no commits is [044d](044d-an-empty-repository-says-so.md)'s outcome reached before the push rather than found as an empty repository after it.
 
-`--publish` decides on the runtime's capability rather than its name: a runtime
-declaring read-write repositories is mounted, one that does not is pushed from
-here.
+`--publish` decides on the runtime's capability rather than its name: a runtime declaring read-write repositories is mounted, one that does not is pushed from here.
 
-**The retry path works, and it needed a runtime method to.** A failed push
-keeps the workspace and prints a `finish` command carrying the session
-reference. `finish` then pushes before it finalizes — without that it would
-have verified a repository nothing ever pushed to and recorded
-[044d](044d-an-empty-repository-says-so.md)'s outcome over a run that produced
-a reproduction. The workspace of a session a later process did not start is
-named by `local.Runtime.Workspace(ref)`, deliberately off the managed contract:
-a hosted runtime has no directory, and a caller asking for one is asking
-something only a local runtime can answer.
+**The retry path works, and it needed a runtime method.** A failed push keeps the workspace and prints a `finish` command carrying the session reference. `finish` then pushes before it finalizes; without that it would have verified a repository nothing ever pushed to and recorded [044d](044d-an-empty-repository-says-so.md)'s outcome over a run that produced a reproduction. The workspace of a session a later process did not start is named by `local.Runtime.Workspace(ref)`, deliberately off the managed contract: a hosted runtime has no directory, and a caller asking for one is asking something only a local runtime can answer.
 
-A run whose process died between capture and push has no reference to print,
-and for that case the workspace is on disk and there is no single command.
+A run whose process died between capture and push has no reference to print, and for that case the workspace is on disk and there is no single command.

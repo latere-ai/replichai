@@ -15,7 +15,7 @@ status: built
 
 A replication project is a list of papers. Today the only unit is one paper, one process, one terminal: twenty papers is twenty invocations, twenty terminals, and a person watching them. Nothing shares a report, nothing survives a laptop sleeping, and a failure in the fourth is discovered when someone scrolls back.
 
-The local runtime makes the batch cheap for the first time — the host sandbox starts in milliseconds and costs no virtual machine — so the thing standing between an operator and a whole project is a driver, not capacity.
+The local runtime makes the batch cheap for the first time (the host sandbox starts in milliseconds and costs no virtual machine), so what stands between an operator and a whole project is a driver, not capacity.
 
 ## The input
 
@@ -61,7 +61,7 @@ The pool refuses to start more concurrent sessions than the machine can carry, a
 
 ## The name race
 
-`internal/registry` derives the set of published reproductions by reading manifests and allocates `<canonical-slug>-<suffix>` for the next one. It is a read followed by a decision, and two concurrent sessions reproducing the same paper — or two papers whose canonical slugs collide — will read the same set and decide the same name.
+`internal/registry` derives the set of published reproductions by reading manifests and allocates `<canonical-slug>-<suffix>` for the next one. It is a read followed by a decision, and two concurrent sessions reproducing the same paper, or two papers whose canonical slugs collide, will read the same set and decide the same name.
 
 Two guards, because one is not enough:
 
@@ -83,7 +83,7 @@ Two guards, because one is not enough:
  ]}
 ```
 
-`replichai run papers.yaml --resume` skips terminal entries, reattaches `running` ones by their `SessionRef` — which is exactly what the locator was for — and starts the rest. A session whose sandbox is gone but whose workspace survived resumes at the verify-and-push step rather than re-running the agent, because the work is on disk and re-running it would cost the model twice for a result that already exists.
+`replichai run papers.yaml --resume` skips terminal entries, reattaches `running` ones by their `SessionRef` (which is what the locator is for), and starts the rest. A session whose sandbox is gone but whose workspace survived resumes at the verify-and-push step rather than re-running the agent, because the work is on disk and re-running it would cost the model twice for a result that already exists.
 
 Interrupting the batch cancels in-flight sessions through the controller, keeps every workspace, writes `batch.json`, and exits. Nothing is lost to a Ctrl-C.
 
@@ -96,7 +96,7 @@ One paper failing never fails the batch: the pool continues and the entry record
 | paper | verdict | rate | repository | model | usage | wall | state |
 |---|---|---|---|---|---|---|---|
 
-Plus the totals a person actually asks for: how many passed, how many produced an empty repository ([044d](044d-an-empty-repository-says-so.md)), total tokens by bucket, total wall-clock, and total vendor cost where the harness reported one. The report names what it could not do — an entry that failed to resolve, one whose push failed and is retryable — because a summary that shows only successes reads as completeness.
+Plus the totals a person asks for: how many passed, how many produced an empty repository ([044d](044d-an-empty-repository-says-so.md)), total tokens by bucket, total wall-clock, and total vendor cost where the harness reported one. The report names what it could not do (an entry that failed to resolve, one whose push failed and is retryable), because a summary that shows only successes reads as completeness.
 
 ## Acceptance criteria
 
@@ -115,28 +115,15 @@ Plus the totals a person actually asks for: how many passed, how many produced a
 
 - Distributing a batch across machines. One host, one batch.
 - Scheduling or retrying failed entries automatically. `--resume` is manual and deliberate.
-- Running a batch on the hosted runtime. Nothing prevents it — the driver is runtime-agnostic — but the concurrency and quota questions there are the platform's, not this leaf's.
-- Uploading the batch as it runs. Sync is [045k](045k-a-local-session-reaches-the-cloud.md) and happens after, on purpose: a run that needs the network to record its own progress is a run that fails when the network does.
+- Running a batch on the hosted runtime. Nothing prevents it, because the driver is runtime-agnostic, but the concurrency and quota questions there are the platform's, not this leaf's.
+- Uploading the batch as it runs. Sync is [045k](045k-a-local-session-reaches-the-cloud.md) and happens after, deliberately: a run that needs the network to record its own progress is a run that fails when the network does.
 
 ## Outcome
 
-Built as `internal/batch` and `replichai run`. Both input forms, the per-paper
-overrides, the concurrency cap, the state file rewritten atomically after every
-change, the report written continuously, and the non-zero exit on a partial
-failure are as specced.
+Built as `internal/batch` and `replichai run`. Both input forms, the per-paper overrides, the concurrency cap, the state file rewritten atomically after every change, the report written continuously, and the non-zero exit on a partial failure are as specced.
 
-**Resume skips only what finished.** This spec said terminal entries; what
-shipped retries failed ones, because retrying what failed is the reason to
-resume. A retried paper keeps its repository and its session reference, so it
-publishes into the repository the first attempt created rather than allocating
-a second.
+**Resume skips only what finished.** This spec said terminal entries; what shipped retries failed ones, because retrying what failed is the reason to resume. A retried paper keeps its repository and its session reference, so it publishes into the repository the first attempt created rather than allocating a second.
 
-**The name race is guarded within a batch and not across machines.** Preparation
-is serialised, so two papers in one batch cannot allocate one name. The
-cross-machine case — a creation refused for a name in use, retried with the next
-suffix — is not implemented: `newPublisher` still reuses an existing repository
-on `ErrRepoExists`, which is right for a re-run of one paper and wrong for a
-collision between two.
+**The name race is guarded within a batch and not across machines.** Preparation is serialised, so two papers in one batch cannot allocate one name. The cross-machine case (a creation refused for a name in use, retried with the next suffix) is not implemented: `newPublisher` still reuses an existing repository on `ErrRepoExists`, which is right for a re-run of one paper and wrong for a collision between two.
 
-**The pool does not refuse an oversized parallelism.** `--parallel` is honoured
-exactly; nothing compares it against what the machine or the engine can carry.
+**The pool does not refuse an oversized parallelism.** `--parallel` is honoured exactly; nothing compares it against what the machine or the engine can carry.
