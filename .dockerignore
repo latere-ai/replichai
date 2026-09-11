@@ -5,12 +5,13 @@ cmd/server/server
 evals
 docs
 specs
-# A local .env holds credentials (example.env tells you to make one). The build
-# stage does COPY . ., so without this it would land in the image layers and in
-# the GitHub Actions build cache. Only the example, which holds none, goes in.
+# A local .env holds credentials; example.env is the template for it. The build
+# stage runs COPY . ., so without this rule .env would land in the image layers
+# and in the GitHub Actions build cache. Only example.env, which holds no
+# credentials, enters the build context.
 .env
 *.env
 !example.env
-# The frontend is rebuilt in the image; don't ship local deps or build output.
+# The image rebuilds the frontend, so local dependencies and build output stay out.
 frontend/node_modules
 internal/spa/dist

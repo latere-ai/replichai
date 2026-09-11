@@ -2,7 +2,7 @@
 #
 #   docker compose up --build
 #
-# Then open http://localhost:8080 and work in the app, or drive it by hand:
+# Then open http://localhost:8080, or call the API directly:
 #   curl -s localhost:8080/healthz
 #   curl -s -XPOST localhost:8080/projects -H 'content-type: application/json' \
 #        -d '{"title":"scratch","papers":["10.1145/3544548.3580778"]}'
@@ -11,9 +11,9 @@
 #   curl -s localhost:8080/jobs/<job_id>
 #
 # It defaults to the in-process "memory" runtime, so jobs run in seconds with
-# no API key. Set REPLICHAI_RUNTIME=anthropic-managed and ANTHROPIC_API_KEY for real audits. The
-# --dev gate (DEV=true) admits every request as a synthetic principal — local
-# use only; production runs behind the real OIDC login and access gate.
+# no API key. Set REPLICHAI_RUNTIME=anthropic-managed and ANTHROPIC_API_KEY for
+# real audits. DEV=true admits every request as a synthetic principal. That is
+# for local use only; production runs behind the OIDC login and access gate.
 services:
   postgres:
     image: postgres:17-alpine
@@ -39,28 +39,28 @@ services:
       REPLICHAI_RUNTIME: ${REPLICHAI_RUNTIME:-memory}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
-      # Card payments (022b). Substituted from .env; unset selects a refusing
+      # Card payments (022b). Substituted from .env. Unset selects a refusing
       # adapter, so a clone without Stripe keys still boots and runs unmetered.
       # There is no publishable key: hosted Checkout redirects, so the browser
-      # never talks to Stripe directly, and nothing in the server reads one.
+      # never talks to Stripe directly and the server does not read one.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       DEV: "true"
-      # The container binds all interfaces (:8080), so the loopback-only dev
-      # bypass needs this explicit override; never set it in production.
+      # The container binds all interfaces on :8080, so the loopback-only dev
+      # bypass needs this override. Never set it in production.
       DEV_INSECURE: "true"
-      # The dev bypass authenticates as dev@local but grants nothing; seeding it
-      # as a platform admin is what lets it operate locally (like a real admin).
+      # The dev bypass authenticates as dev@local but grants nothing. Seeding
+      # that address as a platform admin gives the local user admin access.
       ADMIN_EMAILS: dev@local
       ADDR: ":8080"
-      # A per-phase pause so the SSE stream shows resolving -> running ->
-      # publishing -> done instead of finishing instantly. Dev only; set to 0
-      # (or override) for the memory provider's true speed.
+      # A pause per phase so the SSE stream shows resolving -> running ->
+      # publishing -> done instead of finishing instantly. Dev only. Set it to 0
+      # to run the memory provider at full speed.
       RUNNER_DELAY: ${RUNNER_DELAY:-1500ms}
       # Outbound mail (006p). Unset by default, which selects the log-only
       # transport: an invitation is printed in `docker compose logs server`
-      # instead of being sent, so a local run needs no credentials. Set a real
-      # MAILGUN_API_KEY + MAILGUN_DOMAIN, or SMTP_HOST, to actually deliver.
+      # instead of being sent, so a local run needs no credentials. Set
+      # MAILGUN_API_KEY and MAILGUN_DOMAIN, or SMTP_HOST, to deliver mail.
       MAILGUN_API_KEY: ${MAILGUN_API_KEY:-}
       MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-}
       MAILGUN_REGION: ${MAILGUN_REGION:-}
