@@ -5,8 +5,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,10 +67,11 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The body is bounded at registration (bodyLimits names this route), so a
+	// record past MaxImportBytes fails the decode with the error tooLarge knows.
 	var body importedSession
-	decoder := json.NewDecoder(io.LimitReader(r.Body, MaxImportBytes+1))
-	if err := decoder.Decode(&body); err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) || strings.Contains(err.Error(), "too large") {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if tooLarge(err) {
 			writeError(w, http.StatusRequestEntityTooLarge, "record_too_large")
 			return
 		}

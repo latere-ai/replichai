@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
@@ -63,7 +62,7 @@ func (rt *Router) provisionRepository(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		PaperKey string `json:"paper_key"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, MaxProvisionBytes)).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil { // bounded at registration to MaxProvisionBytes
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}

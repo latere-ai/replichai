@@ -87,6 +87,10 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, err := io.ReadAll(r.Body)
+	if tooLarge(err) {
+		writeError(w, http.StatusRequestEntityTooLarge, "request_too_large")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
