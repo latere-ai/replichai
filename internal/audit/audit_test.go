@@ -355,7 +355,7 @@ func TestRunEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !result.Passed() {
+	if !result.Status.Passed() {
 		t.Error("run should have passed")
 	}
 	if result.Grade() != provider.GradePassed {
@@ -424,7 +424,7 @@ func TestRunValidatesTheInstrument(t *testing.T) {
 		if !result.InstrumentPresent {
 			t.Error("instrument should be present")
 		}
-		if !result.InstrumentOK() {
+		if !instrumentOK(result.InstrumentPresent, result.InstrumentViolations) {
 			t.Errorf("instrument should validate, got %v", result.InstrumentViolations)
 		}
 	})
@@ -438,7 +438,7 @@ func TestRunValidatesTheInstrument(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run should not fail over a bad instrument: %v", err)
 		}
-		if result.InstrumentOK() {
+		if instrumentOK(result.InstrumentPresent, result.InstrumentViolations) {
 			t.Error("an unstated null should not validate")
 		}
 		if len(result.InstrumentViolations) < 2 {
@@ -453,7 +453,7 @@ func TestRunValidatesTheInstrument(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run should not fail over non-JSON: %v", err)
 		}
-		if result.InstrumentOK() || len(result.InstrumentViolations) != 1 {
+		if instrumentOK(result.InstrumentPresent, result.InstrumentViolations) || len(result.InstrumentViolations) != 1 {
 			t.Errorf("non-JSON should be one violation, got %v", result.InstrumentViolations)
 		}
 	})
@@ -468,7 +468,7 @@ func TestRunValidatesTheInstrument(t *testing.T) {
 		if result.InstrumentPresent {
 			t.Error("no instrument was written; present should be false")
 		}
-		if result.InstrumentOK() {
+		if instrumentOK(result.InstrumentPresent, result.InstrumentViolations) {
 			t.Error("an absent instrument is not OK")
 		}
 	})
@@ -522,7 +522,7 @@ func TestAFailingGradeIsNotAPass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if result.Passed() {
+	if result.Status.Passed() {
 		t.Error("needs_revision must not count as a pass")
 	}
 }
@@ -532,7 +532,7 @@ func TestResultWithoutAVerdictIsUnknownAndNotPassed(t *testing.T) {
 	if r.Grade() != provider.GradeUnknown {
 		t.Errorf("grade = %s, want unknown", r.Grade())
 	}
-	if r.Passed() {
+	if r.Status.Passed() {
 		t.Error("a result with no verdict must not pass")
 	}
 }
@@ -615,10 +615,10 @@ func TestWaitSurfacesAPollFailure(t *testing.T) {
 
 func TestDefaultPackagesAreIndependentCopies(t *testing.T) {
 	// Callers must not be able to mutate the shared default.
-	first := DefaultPackages()
+	first := defaultPackages()
 	first["pip"] = append(first["pip"], "mutated")
-	if second := DefaultPackages(); len(second["pip"]) != 2 {
-		t.Errorf("DefaultPackages leaked mutable state: %v", second)
+	if second := defaultPackages(); len(second["pip"]) != 2 {
+		t.Errorf("defaultPackages leaked mutable state: %v", second)
 	}
 }
 

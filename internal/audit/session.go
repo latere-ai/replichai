@@ -60,11 +60,6 @@ func (result SessionResult) Grade() managed.Grade {
 	return result.Status.Verdict.Grade
 }
 
-// InstrumentOK reports whether the run wrote a schema-valid instrument.json.
-func (result SessionResult) InstrumentOK() bool {
-	return result.InstrumentPresent && len(result.InstrumentViolations) == 0
-}
-
 // SessionAuditor runs the same audit as Auditor, but through
 // managed.Controller: the run is a durable session that can be started
 // detached and resumed later, and the controller owns waiting and release.
