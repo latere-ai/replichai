@@ -8,8 +8,8 @@ import (
 	"net"
 )
 
-// withResolver answers name lookups from a test's own table, so a test can
-// stand a hostname in front of a loopback server without touching DNS.
+// withResolver answers name lookups from a table the test supplies, so a test
+// can map a hostname to a loopback server without using DNS.
 func withResolver(table map[string][]net.IPAddr) Option {
 	return func(c *Client) {
 		c.resolve = func(_ context.Context, host string) ([]net.IPAddr, error) {

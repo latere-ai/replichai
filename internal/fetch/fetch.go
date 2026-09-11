@@ -1,25 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package fetch is the one outbound HTTP fetcher for a URL a person supplied.
+// Package fetch is the single outbound HTTP fetcher for user-supplied URLs.
 //
-// The server and the CLI both resolve a paper reference by fetching whatever
-// it points at, and a URL out of a request body is an instruction to this
-// process to open a connection somewhere. The fetcher therefore settles three
-// questions once, for every caller, rather than leaving each call site to
-// remember them:
+// The server and the CLI both resolve a paper reference by fetching the URL
+// it points at, and a URL taken from a request body makes this process open
+// a connection chosen by the caller. The fetcher therefore enforces three
+// limits once, for every caller, instead of leaving each call site to apply
+// them:
 //
 //   - where it may connect: public addresses only. A loopback, private,
 //     link-local, or cloud-metadata address is refused at dial time, after
-//     the name has resolved, so a hostname that resolves to one is caught as
-//     surely as a literal;
-//   - how far it may follow: a bounded number of redirects, each dialled
-//     through the same check;
-//   - how much it may read: a body over the cap is an error, never a
-//     truncated success.
+//     the name has resolved, so a hostname that resolves to one is refused
+//     the same as a literal address;
+//   - how many redirects it follows: a bounded number, each dialled through
+//     the same check;
+//   - how much it reads: a body over the cap is an error, never a truncated
+//     success.
 //
-// It carries no proxy. A proxy would be dialled in place of the target and
-// the check above would judge the proxy, not where the request ends up.
+// It uses no proxy. A proxy would be dialled in place of the target, and the
+// address check would then apply to the proxy rather than to the request's
+// destination.
 package fetch
 
 import (
@@ -36,21 +37,22 @@ import (
 )
 
 // DefaultMaxBytes bounds a fetched body. A paper landing page or a metadata
-// record is kilobytes; eight megabytes leaves room for a large PDF without
-// letting one URL fill the process.
+// record is a few kilobytes; eight megabytes leaves room for a large PDF
+// without letting one URL exhaust the process's memory.
 const DefaultMaxBytes int64 = 8 << 20
 
 // DefaultTimeout bounds one fetch, redirects included.
 const DefaultTimeout = 30 * time.Second
 
-// maxRedirects is how many hops a fetch follows before it gives up.
+// maxRedirects is the number of redirect hops a fetch follows before it
+// fails.
 const maxRedirects = 5
 
 var (
 	// ErrTooLarge reports a body over the cap.
 	ErrTooLarge = errors.New("fetch: body exceeds the size cap")
 	// ErrForbiddenAddress reports a URL that resolves to an address this
-	// process must not reach out to.
+	// process must not connect to.
 	ErrForbiddenAddress = errors.New("fetch: address is not public")
 	// ErrScheme reports a URL that is not http or https.
 	ErrScheme = errors.New("fetch: scheme is not http or https")
@@ -74,9 +76,10 @@ func (e *StatusError) Retryable() bool {
 	return e.Code == http.StatusTooManyRequests || e.Code >= 500
 }
 
-// Retryable reports whether err is the kind of failure a later attempt can
-// recover from: a timeout, a network error, or a 429 or 5xx status. A refused
-// address, a body over the cap, or a 4xx is not.
+// Retryable reports whether err is a failure a later attempt can recover
+// from: a timeout, a network error, or a 429 or 5xx status. A refused address,
+// a body over the cap, a bad scheme, too many redirects, or another 4xx is
+// not.
 func Retryable(err error) bool {
 	var status *StatusError
 	if errors.As(err, &status) {
@@ -99,10 +102,11 @@ type Client struct {
 	maxBytes  int64
 	timeout   time.Duration
 	userAgent string
-	// permit judges a resolved address. The default admits public addresses
-	// only; tests widen it to reach a server on loopback.
+	// permit decides whether a resolved address may be dialled. The default
+	// admits public addresses only; tests widen it to reach a server on
+	// loopback.
 	permit func(ip net.IP) bool
-	// resolve turns a host into addresses; swapped in tests.
+	// resolve turns a host into addresses. Tests replace it.
 	resolve func(ctx context.Context, host string) ([]net.IPAddr, error)
 }
 
@@ -116,11 +120,12 @@ func WithMaxBytes(n int64) Option { return func(c *Client) { c.maxBytes = n } }
 func WithTimeout(d time.Duration) Option { return func(c *Client) { c.timeout = d } }
 
 // AllowPrivate admits loopback and private addresses. A test reaching an
-// httptest server needs it; nothing serving people does.
+// httptest server needs it; production code must not use it.
 func AllowPrivate() Option { return func(c *Client) { c.permit = func(net.IP) bool { return true } } }
 
-// New builds a Client. The transport is instrumented like every other
-// outbound client in the process, over a dialler that checks each address.
+// New builds a Client. The transport carries the same tracing instrumentation
+// as every other outbound client in the process, over a dialler that checks
+// each address.
 func New(opts ...Option) *Client {
 	c := &Client{
 		maxBytes:  DefaultMaxBytes,
@@ -185,8 +190,8 @@ func (c *Client) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
 }
 
 // dial resolves the host, refuses any address the client may not reach, and
-// connects to a checked address by its literal, so the address judged is the
-// address dialled.
+// connects to a checked address by its literal IP, so the address that was
+// checked is the address that is dialled.
 func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -216,9 +221,10 @@ func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, erro
 	return nil, lastErr
 }
 
-// Public reports whether ip is one a process serving the internet may reach
-// out to: not loopback, not private, not link-local (which is where cloud
-// metadata services live), not multicast, not unspecified.
+// Public reports whether ip is an address a process serving the internet may
+// connect to: not loopback, not private, not link-local, not multicast, and
+// not unspecified. Cloud metadata services are served from link-local
+// addresses.
 func Public(ip net.IP) bool {
 	if ip == nil {
 		return false
@@ -228,8 +234,9 @@ func Public(ip net.IP) bool {
 		return false
 	}
 	if v4 := ip.To4(); v4 != nil {
-		// 0.0.0.0/8 (this network) and 100.64.0.0/10 (carrier NAT) are not
-		// public either, and net.IP has no predicate for them.
+		// 0.0.0.0/8, the "this network" range, and 100.64.0.0/10, the carrier
+		// NAT range, are not public either, and net.IP has no predicate for
+		// them.
 		if v4[0] == 0 || (v4[0] == 100 && v4[1]&0xc0 == 64) {
 			return false
 		}
