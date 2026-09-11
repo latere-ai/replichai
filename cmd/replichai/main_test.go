@@ -36,7 +36,7 @@ func TestHTTPFetcherRetriesTransientFailures(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	body, err := httpFetcher{timeout: 5 * time.Second}.Fetch(context.Background(), server.URL)
+	body, err := httpFetcher{timeout: 5 * time.Second, private: true}.Fetch(context.Background(), server.URL)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestHTTPFetcherDoesNotRetryNotFound(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	if _, err := (httpFetcher{timeout: 5 * time.Second}).Fetch(context.Background(), server.URL); err == nil {
+	if _, err := (httpFetcher{timeout: 5 * time.Second, private: true}).Fetch(context.Background(), server.URL); err == nil {
 		t.Error("a 404 should error")
 	}
 	if calls != 1 {

@@ -623,6 +623,9 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 	if !m.Reproduction.Created.IsZero() {
 		created = m.Reproduction.Created.Format(time.RFC3339)
 	}
+	// One rule decides the public flip, the same one the CLI and the manifest
+	// verifier apply; the reason is the caller's to show, not to re-derive.
+	eligible, _ := publish.EligibleForPublic(m)
 	return httpapi.Reproduction{
 		ID:           repo,
 		Repo:         full,
@@ -631,7 +634,7 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 		Created:      created,
 		MethodDigest: m.Reproduction.MethodDigest,
 		Review:       string(m.Redistribution.Review),
-		CanPublish:   m.Redistribution.Review == publish.ReviewClear,
+		CanPublish:   eligible,
 	}
 }
 

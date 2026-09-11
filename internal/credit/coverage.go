@@ -141,17 +141,6 @@ func resolveModelRef(ctx context.Context, resolver ModelResolver, preference str
 	return managed.ModelRef{Provider: "anthropic", ID: id}, err
 }
 
-// names reports whether the card can price this model on its own terms — an
-// entry for it, or an entry for the model it is a dated snapshot of — as
-// opposed to Card.For having fallen back to the dearest rates.
-//
-// It cannot compare names to find out. The fallback synthesises an entry
-// carrying the *requested* name, so a fallback and a real match are identical
-// by name, and a check comparing them would report every model as priced.
-func (c Card) names(model string) bool {
-	return c.namesRef(managed.ModelRef{Provider: "anthropic", ID: model})
-}
-
 func (c Card) namesRef(model managed.ModelRef) bool {
 	for _, r := range c.Models {
 		if r.Zero() {

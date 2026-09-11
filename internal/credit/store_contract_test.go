@@ -48,8 +48,9 @@ func testAuthority() (Authority, Members) {
 		mate.Sub:  access.TierUser,
 	}
 	members := fakeMembers{
-		"p1/" + lead.Sub: access.RoleLead,
-		"p1/" + mate.Sub: access.RoleCollaborator,
+		"p1/" + lead.Sub:         access.RoleLead,
+		"proj-spend/" + lead.Sub: access.RoleLead,
+		"p1/" + mate.Sub:         access.RoleCollaborator,
 	}
 	return auth, members
 }
@@ -134,38 +135,6 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Fatalf("reclaiming an empty pot: want ErrInsufficient, got %v", err)
 	}
 
-	// Fund is the create path's move: no membership, because the server has just
-	// made this project for this caller and has not written a membership row it
-	// would then have to read back. It still cannot conjure money.
-	if err := s.Fund(ctx, mate.Email, "fresh", "Fresh Project", 1*Dollar); !errors.Is(err, ErrInsufficient) {
-		t.Fatalf("funding from an empty wallet: want ErrInsufficient, got %v", err)
-	}
-	if err := s.Fund(ctx, lead.Email, "fresh", "Fresh Project", 3*Dollar); err != nil {
-		t.Fatalf("Fund: %v", err)
-	}
-	if n, _ := s.Balance(ctx, Pot("fresh")); n != 3*Dollar {
-		t.Fatalf("funded pot = %d, want %d", n, 3*Dollar)
-	}
-
-	// Unwind is its compensating move, for a create that was refused after its
-	// pot was funded. Without it the allocation would sit in a project that is
-	// about to be deleted, unreachable: the ledger has no foreign key to clean
-	// up after, and a reclaim needs a role in a project that no longer exists.
-	if err := s.Unwind(ctx, "fresh", lead.Email); err != nil {
-		t.Fatalf("Unwind: %v", err)
-	}
-	if n, _ := s.Balance(ctx, Pot("fresh")); n != 0 {
-		t.Fatalf("pot after unwinding = %d, want 0", n)
-	}
-	if n, _ := s.Balance(ctx, Wallet(lead.Email)); n != 12*Dollar {
-		t.Fatalf("wallet after unwinding = %d, want the %d it held before funding", n, 12*Dollar)
-	}
-	// And it is safe on every failure path, including one where nothing was
-	// funded at all.
-	if err := s.Unwind(ctx, "never-funded", lead.Email); err != nil {
-		t.Fatalf("unwinding an empty pot: %v", err)
-	}
-
 	// The statement explains the balance: every move is a row naming its actor.
 	entries, err := s.Entries(ctx, Pot("p1"), 0)
 	if err != nil {
@@ -229,11 +198,11 @@ func runStoreContract(t *testing.T, s Store) {
 	// A model call that is not a session still costs the project money (039).
 	// It is a charge with no job, made exactly-once by its own reference.
 	spendPot := Pot("proj-spend")
-	if err := s.Topup(ctx, admin, "payer@example.org", 5*Dollar); err != nil {
+	if err := s.Topup(ctx, admin, lead.Email, 5*Dollar); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
-	if err := s.Fund(ctx, "payer@example.org", "proj-spend", "Spending", 5*Dollar); err != nil {
-		t.Fatalf("Fund: %v", err)
+	if err := s.Allocate(ctx, lead, "proj-spend", "Spending", 5*Dollar); err != nil {
+		t.Fatalf("Allocate: %v", err)
 	}
 	before, _ := s.Balance(ctx, spendPot)
 	if err := s.Spend(ctx, spendPot, 1500, "draft:proj-spend:1", "system"); err != nil {

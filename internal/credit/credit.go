@@ -281,13 +281,6 @@ type Store interface {
 	// refund of one's own. An invitation to collaborate is not the ability to
 	// empty the funding. projectName is snapshotted onto both entries (024b).
 	Reclaim(ctx context.Context, by access.Principal, project, projectName string, amount int64) error
-
-	// Fund moves credits from an email's wallet into a project's pot in the
-	// request that creates that project.
-	Fund(ctx context.Context, email, project, projectName string, amount int64) error
-	// Unwind returns everything a project's pot can still commit to an email's
-	// wallet, as the system.
-	Unwind(ctx context.Context, project, email string) error
 }
 
 // normalizeEmail lowercases and trims, so a wallet funded one way matches a

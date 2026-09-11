@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/latere-ai/replichai/internal/access"
+
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/platform"
 
@@ -196,11 +198,21 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 		deliver(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: pi, Meta: map[string]string{"credited_micro": itoa(credited)}})
 	}
 
-	// $5 bought and committed to a project, so the wallet is back at 0 and the
-	// refund of that purchase will take it negative — the real crossing.
+	// $5 bought and committed to a project the payer leads, so the wallet is
+	// back at 0 and the refund of that purchase will take it negative — the
+	// real crossing. The project is made through the route, which seeds the
+	// payer's membership the way the app does.
 	purchase("pi_1", 5*credit.Dollar)
-	if err := ledger.Fund(ctx, payer.Email, "proj-1", "P", 5*credit.Dollar); err != nil {
-		t.Fatalf("Fund: %v", err)
+	created := do(t, rt.Handler(), "POST", "/projects", `{"title":"P","papers":["arxiv:2302.03714"]}`, payer.Sub)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create project: %d %s", created.Code, created.Body.String())
+	}
+	var proj struct {
+		ID string `json:"project_id"`
+	}
+	_ = json.Unmarshal(created.Body.Bytes(), &proj)
+	if err := ledger.Allocate(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, proj.ID, "P", 5*credit.Dollar); err != nil {
+		t.Fatalf("Allocate: %v", err)
 	}
 	deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"})
 	if got := nf.frozenSends(); len(got) != 1 || got[0] != payer.Email {

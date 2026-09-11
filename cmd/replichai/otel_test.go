@@ -23,7 +23,7 @@ func TestCLIPaperFetcherRecordsAClientSpanAndPropagates(t *testing.T) {
 		_, _ = w.Write([]byte("paper"))
 	})
 
-	body, err := httpFetcher{timeout: 5 * time.Second}.Fetch(context.Background(), peer.URL)
+	body, err := httpFetcher{timeout: 5 * time.Second, private: true}.Fetch(context.Background(), peer.URL)
 	if err != nil {
 		t.Fatalf("fetching: %v", err)
 	}

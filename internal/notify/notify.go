@@ -134,9 +134,9 @@ func renderProjectInvitation(projectName, inviter, projectURL string) (subject, 
 			`<p>You can open it here:</p>`+
 			`<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;`+
 			`text-decoration:none;border-radius:6px;font-weight:bold;">Open the project</a></p>`+
-			`<p>You already have access — there is nothing to accept. Running a replication `+
-			`session spends budget, so if you have none yet, ask the project's owner to sponsor `+
-			`sessions or a platform admin to grant you some.</p>`+
+			`<p>You already have access — there is nothing to accept. A replication session `+
+			`spends the project's own budget, which its owner funds, so you need nothing of `+
+			`your own to take part.</p>`+
 			`<p>If you were not expecting this, you can ignore this email.</p>`,
 		html.EscapeString(who), html.EscapeString(name), html.EscapeString(projectURL),
 	)

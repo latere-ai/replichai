@@ -271,21 +271,6 @@ func (s *MemStore) GrantsFor(ctx context.Context, byAdmin Principal, emails []st
 	return out, nil
 }
 
-// OverridesActiveFor reports which of a batch of emails carry an active override.
-// A missing email is absent from the map, not false — it simply has none.
-func (s *MemStore) OverridesActiveFor(_ context.Context, emails []string) (map[string]bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make(map[string]bool, len(emails))
-	for _, e := range emails {
-		ne := normalizeEmail(e)
-		if _, ok := s.overrides[ne]; ok {
-			out[ne] = true
-		}
-	}
-	return out, nil
-}
-
 // upsert writes a grant's tier while preserving any existing binding, and
 // clears any revocation: granting is how an admin re-admits somebody, so the
 // two cannot be true at once. Caller holds the lock.
