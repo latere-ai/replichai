@@ -61,6 +61,28 @@ committed: the commit log already holds that.
   an override that almost never existed.
 - **The public registry and the sitemap are built once every thirty
   seconds** for anonymous callers, and at once when a publication changes.
+- **A run on your own machine no longer sees your shell's environment.** A
+  stage started with everything the terminal had exported — every API key
+  and cloud credential — handed to an agent running with permissions
+  bypassed. It now starts from a short allowlist plus what the run sets, and
+  an exported Anthropic key can no longer silently override the login you
+  chose. The harness's own configuration is read only by a session running
+  on that login, the grant is written into the run's environment record, and
+  Claude Code's `agents`, `commands` and `skills` are withheld like the rest
+  of your standing instructions. A run no longer phones home to telemetry
+  hosts.
+- **Two sessions on one machine cannot share a workspace.** The server runs
+  several jobs against one local runtime; two asking at once were told about
+  the same directory. A session is named when asked about and created when
+  started, so each runs in its own.
+- **A local session's cost is no longer under-counted**, and its last lines
+  are no longer lost: the final event was read after the stage had been seen
+  to exit. A transcript line over eight megabytes no longer hides every line
+  after it. A finished stage is reaped rather than left as a zombie, and
+  stopping a run that ignores the first signal ends it. A rejected
+  evaluation ends `failed` on every runtime, where the local one said `done`.
+- **The paid end-to-end runtime tests are opt-in** (`REPLICHAI_E2E=1`); they
+  used to run whenever the tools happened to be installed.
 - **Deployment.** A local `.env` never enters the image; the pod runs as a
   numeric non-root user with every capability dropped; environment-specific
   values live in the overlays, so staging no longer inherits production's

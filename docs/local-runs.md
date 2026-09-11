@@ -103,11 +103,18 @@ they cleaned themselves up.
 Inside the sandbox it can write its own session directory and nothing else,
 read the system toolchain, and reach the network only where the policy allows.
 
+It does not see your shell's environment. A stage starts from a short,
+fixed allowlist — the path, the locale, the time zone, the temporary
+directory, the TLS certificate variables — plus what the run itself sets. An
+API key, a cloud credential or a GitHub token exported in the terminal you
+launched from is not in there, and a key you did not choose for the run
+cannot override the login you did.
+
 Your home directory is denied, with named exceptions:
 
 | Allowed | Why |
 |---|---|
-| the harness's own configuration (`~/.claude`, `~/.codex`) | it is where your existing login lives |
+| the harness's own configuration (`~/.claude` and `~/.claude.json`, or `~/.codex`) | it is where your existing login lives — so it is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
 | `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its login there rather than in a file, and only a session actually using that login is granted it |
 | the harness's scratch directory under `/tmp` | without it Claude Code's shell tool fails before running anything |
 | `~/.codex`, writable, for codex only | codex writes its own state back and will not start otherwise |
@@ -118,7 +125,8 @@ Explicitly denied, and tested: `~/.ssh`, `~/.aws`, `~/.config/gcloud`,
 
 Also denied, for a different reason: **your own standing instructions and
 plugins.** `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,
-`~/.claude/plugins` and `~/.codex/AGENTS.md` are withheld from every run. They
+`~/.claude/plugins`, `~/.claude/agents`, `~/.claude/commands`,
+`~/.claude/skills` and `~/.codex/AGENTS.md` are withheld from every run. They
 are not the method, and a reproduction that silently inherits the habits of
 whoever ran it is not reproducing the paper. Codex reports the denial as an
 error line in its transcript; that is cosmetic and the run continues.
@@ -282,7 +290,9 @@ replichai run papers.yaml --resume
 ```
 
 Resume skips what finished and retries what failed, into the repository the
-first attempt created.
+first attempt created. A retry whose recorded repository no longer exists is
+refused rather than given a new one: edit `repo` in `batch.json`, or run
+without `--resume`. A retry that fails early keeps the repository on record.
 
 ## Putting the results in the app
 
@@ -383,10 +393,12 @@ success. An empty repository is a real outcome, and the transcript in
 | `--parallel` | half the cores, capped at 4 | with `replichai run`: papers at once |
 | `--resume` | off | with `replichai run`: skip what finished |
 
-Every flag has an environment variable: `REPLICHAI_SANDBOX`,
-`REPLICHAI_HARNESS`, `REPLICHAI_MODELS_FILE`, `REPLICHAI_SESSION_ROOT`,
-`REPLICHAI_SESSION_RETENTION`, `REPLICHAI_CONTAINER_ENGINE`,
-`REPLICHAI_HARNESS_IMAGE`. Set them once for a machine.
+Every flag has an environment variable: `REPLICHAI_RUNTIME`,
+`REPLICHAI_SANDBOX`, `REPLICHAI_HARNESS`, `REPLICHAI_MODELS_FILE`,
+`REPLICHAI_SESSION_ROOT`, `REPLICHAI_SESSION_RETENTION`,
+`REPLICHAI_CONTAINER_ENGINE`, `REPLICHAI_HARNESS_IMAGE`, and
+`REPLICHAI_GITHUB_API_URL` for a GitHub Enterprise API root. Set them once for
+a machine. A flag given on the command line wins over the variable.
 
 How it is put together, and why, is in
 [`architecture.md`](architecture.md); the design record is
