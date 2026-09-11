@@ -60,9 +60,7 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 	// The sitemap is the same for every caller and costs a query per public
 	// project and one per its sessions; it is built once per publicTTL, and
 	// again as soon as a publication changes.
-	body, err := rt.sitemapBody.get(r.Context(), func(ctx context.Context) ([]byte, error) {
-		return rt.buildSitemap(ctx, r)
-	})
+	body, err := rt.sitemapBody.get(r.Context(), rt.buildSitemap)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
@@ -73,7 +71,7 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildSitemap renders the sitemap for the public zone as it stands.
-func (rt *Router) buildSitemap(ctx context.Context, r *http.Request) ([]byte, error) {
+func (rt *Router) buildSitemap(ctx context.Context) ([]byte, error) {
 	projects, err := rt.projects.ListPublic(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "sitemap: listing the public zone", "error", err)
@@ -87,7 +85,7 @@ func (rt *Router) buildSitemap(ctx context.Context, r *http.Request) ([]byte, er
 	// sessions. A read failure costs the dates, not the file.
 	modified, err := rt.projects.ModifiedAt(ctx, ids)
 	if err != nil {
-		slog.WarnContext(r.Context(), "sitemap: reading modified times", "error", err)
+		slog.WarnContext(ctx, "sitemap: reading modified times", "error", err)
 		modified = nil
 	}
 
@@ -98,7 +96,7 @@ func (rt *Router) buildSitemap(ctx context.Context, r *http.Request) ([]byte, er
 			Loc:     rt.site.Abs(seo.ProjectPath(p.ID)),
 			LastMod: stamp(later(p.CreatedAt, modified[p.ID])),
 		})
-		urls = append(urls, rt.sessionURLs(r, p)...)
+		urls = append(urls, rt.sessionURLs(ctx, p)...)
 		// The researchers worth listing are exactly those who signed public
 		// work, and signerHandle already returns nothing for a profile its owner
 		// has not made public — so there is no separate "list public profiles"
@@ -123,10 +121,10 @@ func (rt *Router) buildSitemap(ctx context.Context, r *http.Request) ([]byte, er
 // sessionURLs lists the sessions under a public project that have something
 // published to read — the same predicate the session page describes itself on,
 // so the sitemap cannot offer an address whose head says noindex.
-func (rt *Router) sessionURLs(r *http.Request, p project.Project) []sitemap {
-	sessions, err := rt.jobs.ListByProject(r.Context(), p.ID)
+func (rt *Router) sessionURLs(ctx context.Context, p project.Project) []sitemap {
+	sessions, err := rt.jobs.ListByProject(ctx, p.ID)
 	if err != nil {
-		slog.WarnContext(r.Context(), "sitemap: listing sessions", "project", p.ID, "error", err)
+		slog.WarnContext(ctx, "sitemap: listing sessions", "project", p.ID, "error", err)
 		return nil
 	}
 	out := make([]sitemap, 0, len(sessions))
