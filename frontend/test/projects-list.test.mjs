@@ -159,7 +159,7 @@ try {
   if (!/of 5 sessions/.test(band.evidence)) fail(`the evidence card does not give its denominator: ${band.evidence}`)
   if (!/across 2 projects/.test(band.evidence)) fail(`the evidence card does not say what it is across: ${band.evidence}`)
   // The remainder is stated, not left to be inferred from a bar.
-  if (!/3 with nothing to hand over/.test(band.evidence)) fail(`the evidence card does not name the remainder: ${band.evidence}`)
+  if (!/3 without a repository/.test(band.evidence)) fail(`the evidence card does not name the remainder: ${band.evidence}`)
   if (!/\$10\.00/.test(band.credits)) fail(`the credits card shows no wallet balance: ${band.credits}`)
 
   // A project that has published says what it handed over; one that has not says

@@ -154,7 +154,7 @@ try {
   // The dialog states what does not go. That is the reason it is a dialog and
   // not a bare button.
   if (!/ledger/i.test(dialog)) fail(`the dialog does not say the cost survives: ${dialog}`)
-  if (!/closed, not destroyed/i.test(dialog)) fail(`the dialog does not say the repository survives: ${dialog}`)
+  if (!/made private, not deleted/i.test(dialog)) fail(`the dialog does not say the repository survives: ${dialog}`)
 
   // Escape out: a dialog that cannot be declined is not a confirmation.
   await page.keyboard.press('Escape')
