@@ -31,11 +31,11 @@ import (
 
 // Identity is the authenticated caller as the auth middleware (006c) resolved
 // it: the stable subject and the IdP-authenticated email. The gate consumes
-// these and nothing else. This package only reads the identity off the request;
-// who a principal *is* and what they may do stays 006c's concern.
+// these and nothing else. This package only reads the identity from the
+// request; who a principal is and what they may do remain 006c's concern.
 //
-// Name and Picture are display claims (006m), rendered and never consulted by
-// any authorisation decision. Both may be empty.
+// Name and Picture are display claims (006m). They are rendered and never
+// consulted by any authorisation decision. Both may be empty.
 type Identity struct {
 	Sub     string
 	Email   string
@@ -43,7 +43,8 @@ type Identity struct {
 	Picture string
 }
 
-// identityKey carries the Identity on the request context.
+// ctxKey is the type of this package's context keys. identityKey carries the
+// Identity on the request context.
 type ctxKey int
 
 const identityKey ctxKey = iota
@@ -66,24 +67,26 @@ func principal(r *http.Request) string {
 }
 
 // routes registers every endpoint through the two registration helpers, so the
-// gated and open sets come from one place and cannot drift. The open routes
-// (sign-in, /me) are 006c's to add; this spec owns the operator set.
+// gated and open sets come from one place and cannot drift. The sign-in and /me
+// open routes are added by 006c; this package owns the operator set.
 func (rt *Router) routes() {
 	// A health check sits outside the gate so a load balancer can reach it; the
 	// sign-in and /me routes join the open set with 006c.
 	rt.openHandle("GET", "/healthz", rt.health)
-	// A researcher's page is readable by anyone, signed in or not (006r) — the
-	// same openness the public zone has, for the person behind it.
+	// A researcher's page is readable by anyone, signed in or not (006r), with
+	// the same openness as the public zone.
 	rt.openHandle("GET", "/profiles/{handle}", rt.publicProfile)
 	// The public zone, and everything a public project already permits anyone to
 	// read (028). mayViewProject has admitted any caller to a public project
-	// since 006f; until now the gate refused the request before it could. A
-	// reader with no stake gets a Redacted copy — see redaction, below.
+	// since 006f; before 028 the gate refused the request before it could. A
+	// reader with no stake gets a redacted copy; see the redaction section
+	// below.
 	//
-	// Deliberately still gated: GET /jobs (caller-scoped by construction),
-	// /jobs/{id}/events (a live stream nobody published needs), the member list
-	// (people who did not publish themselves), and the archive (a whole
-	// repository, streamed to an unauthenticated caller).
+	// The following stay gated deliberately: GET /jobs, which is scoped to the
+	// caller by construction; /jobs/{id}/events, a live stream that no published
+	// record needs; the member list, which names people who did not publish
+	// themselves; and the archive, which would stream a whole repository to an
+	// unauthenticated caller.
 	rt.openHandle("GET", "/public", rt.listPublic)
 	rt.openHandle("GET", "/projects/{id}", rt.getProject)
 	rt.openHandle("GET", "/projects/{id}/papers", rt.listProjectPapers)
@@ -94,8 +97,8 @@ func (rt *Router) routes() {
 	rt.openHandle("GET", "/jobs/{id}/artifacts", rt.listSessionArtifacts)
 	rt.openHandle("GET", "/jobs/{id}/artifact", rt.getSessionArtifact)
 	// The payment processor's webhook carries no session cookie; its signature is
-	// its authentication (022b). It sits outside the operator gate deliberately —
-	// still enumerated in OpenRoutes, so the choice is visible, not accidental.
+	// its authentication (022b). It sits outside the operator gate deliberately,
+	// and is still enumerated in OpenRoutes so the choice is visible.
 	rt.openHandle("POST", "/stripe/webhook", rt.stripeWebhook)
 	rt.gatedHandle("GET", "/me/profile", rt.getProfile)
 	rt.gatedHandle("PATCH", "/me/profile", rt.saveProfile)
@@ -134,14 +137,14 @@ func (rt *Router) routes() {
 	rt.gatedHandle("DELETE", "/jobs/{id}", rt.deleteSession)
 	rt.gatedHandle("GET", "/jobs/{id}/events", rt.jobEvents)
 
-	// What is worth reading, for a crawler that has not followed a link to it
-	// (042b). Registered ahead of the SPA fallback, which would otherwise answer
-	// a request for it with the app.
+	// The sitemap lists the public zone for a crawler that has not followed a
+	// link to it (042b). It is registered ahead of the SPA fallback, which would
+	// otherwise answer the request with the app.
 	rt.openHandle("GET", "/sitemap.xml", rt.sitemapXML)
 
-	// The public app addresses, each resolving what it is about before the shell
-	// goes out (042a) — registered ahead of the fallback below, which they end
-	// in. seo.go holds the rules.
+	// The public app addresses each resolve their subject before the shell is
+	// served (042a). They are registered ahead of the fallback below, which they
+	// end in. seo.go holds the rules.
 	rt.spaRoutes()
 
 	// The frontend shell is public and serves any GET path not matched above,
@@ -152,9 +155,9 @@ func (rt *Router) routes() {
 	}
 }
 
-// writeReadError maps a ReproReader error to a status: a genuine miss is 404, a
-// transport or backend failure is 500, so a canceled request is never disguised
-// as not-found.
+// writeReadError maps a ReproReader error to a status: a genuine miss is 404
+// and a transport or backend failure is 500, so a cancelled request is never
+// reported as not found.
 func writeReadError(w http.ResponseWriter, err error) {
 	if errors.Is(err, ErrReproNotFound) {
 		writeError(w, http.StatusNotFound, "not_found")
@@ -168,12 +171,12 @@ func (rt *Router) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-/* ─── The papers a project holds, and starting a session on one (012) ─── */
+// The papers a project holds, and starting a session on one (012).
 
-// PaperView is a paper as the project screen reads it: the record, plus what has
-// happened to it. The session count and latest phase are the join to the job
-// store through the paper key both sides already carry — a paper with no
-// sessions is the ordinary state of one nobody has started yet.
+// PaperView is a paper as the project screen reads it: the record, plus what
+// has happened to it. The session count and latest phase are joined from the
+// job store through the paper key both sides carry. A paper with no sessions is
+// the ordinary state of one nobody has started yet.
 type PaperView struct {
 	project.Paper
 	Sessions    int    `json:"sessions"`
@@ -222,8 +225,9 @@ func paperViews(papers []project.Paper, sessions []job.Job) []PaperView {
 	return out
 }
 
-// addProjectPaper records another paper on a project. It starts nothing: adding
-// a paper and running it are two acts since 012, and this is the first.
+// addProjectPaper records another paper on a project. It starts nothing: since
+// 012, adding a paper and running it are two separate actions, and this is the
+// first.
 func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
@@ -255,23 +259,23 @@ func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	added := PaperResult{Ref: body.URL, Key: key}
-	// No placeholder: adding a paper to a project that already exists fills in
-	// that paper's title and never touches the project's own name.
+	// No placeholder is passed: adding a paper to an existing project fills in
+	// that paper's title and never changes the project's own name.
 	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, "", []PaperResult{added}) }) //nolint:contextcheck // background hands the closure a fresh context on purpose: r.Context() is cancelled when this response is written, which is when the enrichment starts.
 	writeJSON(w, http.StatusCreated, added)
 }
 
 // editProjectPaper records a correction to a paper's bibliography (037).
 //
-// It is the first route that writes a paper field at all: until now the only
-// writer was the background enrichment, and a source that got an author's name
-// wrong had nobody to hear about it. A correction is a member's act — the same
-// people who may add a paper — and it is permanent, which the store enforces by
+// It is the first route that writes a paper field. Before it, the only writer
+// was the background enrichment, and a source that got an author's name wrong
+// could not be corrected. A correction may be made by any member, the same
+// people who may add a paper, and it is permanent, which the store enforces by
 // marking every field it writes.
 //
 // The key travels as a query parameter rather than a path segment, as it does
-// for removing and moving: a paper key is `doi:10.1145/3772318.3791265`, and the
-// slash in it is not a path separator.
+// for removing and moving: a paper key is `doi:10.1145/3772318.3791265`, and
+// the slash in it is not a path separator.
 func (rt *Router) editProjectPaper(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
@@ -303,9 +307,9 @@ func (rt *Router) editProjectPaper(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, PaperView{Paper: p})
 }
 
-// The caps a correction is held to. A bibliography is short by nature; these
-// exist so a field nobody validates upstream cannot become a place to store
-// arbitrary text.
+// The limits a correction is held to. A bibliography is short by nature; these
+// exist so a field nobody validates upstream cannot be used to store arbitrary
+// text.
 const (
 	maxPaperField = 500
 	maxAuthors    = 100
@@ -335,7 +339,7 @@ func tidyPaperEdit(e *project.PaperEdit) error {
 		for _, a := range *e.Authors {
 			a = strings.TrimSpace(a)
 			if a == "" {
-				continue // an empty row in the editor is not an author
+				continue // An empty row in the editor is not an author.
 			}
 			if len(a) > maxPaperField {
 				return errors.New("field_too_long")
@@ -361,12 +365,12 @@ func tidyPaperEdit(e *project.PaperEdit) error {
 // refreshProjectPapers fills in the details of every paper in the project whose
 // record is incomplete (037), and reports how many it completed.
 //
-// It is what an owner clicks for a project that predates the bibliography, and
-// it is the same enrichment a fresh add runs — one path, so what a refresh may
-// overwrite (nothing a person edited, nothing already filled) is decided in one
-// place. Requests to the metadata services are serialised: they are courteous
-// free services, and a project with twenty papers must not open twenty
-// connections to Crossref at once.
+// An owner uses it for a project that predates the bibliography. It runs the
+// same enrichment a fresh add runs, so what a refresh may overwrite, which is
+// nothing a person edited and nothing already filled, is decided in one place.
+// Requests to the metadata services are serialised: they are free services,
+// and a project with twenty papers must not open twenty connections to
+// Crossref at once.
 func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
@@ -388,7 +392,7 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 		}
 		got, err := rt.resolver.Resolve(r.Context(), p.Ref)
 		if err != nil {
-			continue // a source that cannot answer today is not this request's failure
+			continue // A source that cannot answer now does not fail this request.
 		}
 		changed, err := rt.projects.EnrichPaper(r.Context(), proj.ID, p.Key, got.Title, got.Record)
 		if err != nil {
@@ -415,17 +419,17 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 	}{filled, paperViews(papers, sessions)})
 }
 
-// draftDescription writes a project a description with one model call (039),
-// charges the project for it, and returns the text without storing it.
+// draftDescription writes a description for a project with one model call
+// (039), charges the project for it, and returns the text without storing it.
 //
-// The draft is a suggestion. It lands in the editor for the owner to read,
-// change and save, which is what keeps 038's field a human one — and a draft
-// they discard is still charged, because the tokens were spent either way.
+// The draft is a suggestion. It is placed in the editor for the owner to read,
+// change and save, which keeps 038's field human-written. A draft they discard
+// is still charged, because the tokens were spent either way.
 //
-// The order is: may they, can it be priced, does the project have the money,
-// then the call, then the charge. Pricing before the call is what makes "an
-// unpriced model does not draft" true rather than aspirational: a model nobody
-// can price would otherwise be found out after the tokens were burned.
+// The order is: authorisation, pricing, the project's balance, the model call,
+// then the charge. Pricing before the call is what guarantees that an unpriced
+// model does not draft; otherwise a model with no price would be discovered
+// only after the tokens were spent.
 func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
@@ -437,8 +441,8 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	}
 	rates, err := rt.draftRates(r.Context())
 	if err != nil {
-		// An operator's mistake, reported to an operator: the owner is told the
-		// deployment cannot draft, and the log says which model has no price.
+		// This is a deployment error. The owner is told the deployment cannot
+		// draft, and the log records which model has no price for the operator.
 		slog.WarnContext(r.Context(), "draft failed", "error", err)
 		writeError(w, http.StatusServiceUnavailable, "drafting_unpriced")
 		return
@@ -456,12 +460,13 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	}
 	// One draft at a time per project.
 	//
-	// The balance check above is read-then-spend, and the spend lands after the
-	// model has answered: a hundred requests fired at once all read the same
-	// healthy balance and all buy tokens. A session cannot do this — 011 holds
-	// the money before the work — but a draft has no job to hold against, so the
-	// bound is on the work instead. Sequential drafts still stop at the balance,
-	// because each one reads it after the last was charged.
+	// The balance check above is read-then-spend, and the spend is recorded
+	// after the model has answered, so a hundred concurrent requests would all
+	// read the same positive balance and all buy tokens. A session cannot do
+	// this, because 011 holds the money before the work, but a draft has no job
+	// to hold against, so the bound is on the work instead. Sequential drafts
+	// still stop at the balance, because each one reads it after the last was
+	// charged.
 	if !rt.beginDraft(proj.ID) {
 		writeError(w, http.StatusTooManyRequests, "draft_in_flight")
 		return
@@ -480,10 +485,10 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.WarnContext(r.Context(), "draft failed", "project", proj.ID, "error", err)
-		// A model that answered with nothing burned tokens to do it, so the
-		// project pays before the request is refused — the alternative leaves
-		// the deployment funding compute nobody is billed for. Every other
-		// failure produced no usage to charge for.
+		// A model that answered with nothing still spent tokens, so the project
+		// is charged before the request is refused; otherwise the deployment
+		// would fund compute nobody is billed for. Every other failure produced
+		// no usage to charge for.
 		if errors.Is(err, draft.ErrEmptyDraft) {
 			if _, ok := rt.chargeDraft(w, r, proj.ID, rates, got.Usage); !ok {
 				return
@@ -499,9 +504,9 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// A Model that hands back a blank with no error is still refused rather
-	// than stored: the interface is exported, and only the models in this
-	// repository promise ErrEmptyDraft.
+	// A Drafter that returns an empty text with no error is still refused
+	// rather than stored: the interface is exported, and only the models in
+	// this repository promise ErrEmptyDraft.
 	if strings.TrimSpace(got.Text) == "" {
 		writeError(w, http.StatusBadGateway, "drafting_empty")
 		return
@@ -513,14 +518,14 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	}{got.Text, got.Model, cost})
 }
 
-// chargeDraft bills a project for the tokens one drafting call spent, reporting
-// the cost and whether the request may go on. It runs on the way out of every
-// call the model actually answered — with prose or with nothing — because what
-// is charged for is the tokens, not the usefulness of what came back.
+// chargeDraft bills a project for the tokens one drafting call spent, and
+// reports the cost and whether the request may continue. It runs after every
+// call the model answered, whether with text or with nothing, because the
+// charge is for the tokens, not for the usefulness of the result.
 //
 // The charge is idempotent per call: the reference is minted here, so a client
-// that retries a *request* pays twice (it was two calls) while a retried write
-// of one call pays once.
+// that retries a request pays twice, because there were two calls, while a
+// retried write of one call pays once.
 func (rt *Router) chargeDraft(w http.ResponseWriter, r *http.Request, projectID string, rates credit.Rates, usage provider.Usage) (int64, bool) {
 	cost := rates.Price(usage)
 	if rt.credits == nil || cost <= 0 {
@@ -532,19 +537,20 @@ func (rt *Router) chargeDraft(w http.ResponseWriter, r *http.Request, projectID 
 		return 0, false
 	}
 	if err := rt.credits.Spend(r.Context(), credit.Pot(projectID), cost, ref, principal(r)); err != nil {
-		// The tokens are spent and unaccounted for. That is a fault worth
-		// hearing about, but it does not change the answer: refusing a draft
-		// that was written would charge the project nothing and give it
-		// nothing, and refusing one that was not is already happening.
+		// The tokens are spent and unaccounted for. That is logged, but it
+		// does not change the response: refusing a draft that was written
+		// would charge the project nothing and give it nothing, and a draft
+		// that was not written is already being refused.
 		slog.WarnContext(r.Context(), "draft: charging the project", "project", projectID, "micro_usd", cost, "error", err)
 	}
 	return cost, true
 }
 
-// beginDraft claims the one drafting slot a project has, reporting whether it
-// got it. Per process, which in a deployment of N replicas bounds concurrent
-// drafts per project to N rather than to one — a bound, not a lock, and the
-// difference between "a few cents" and "as many cents as a loop is long".
+// beginDraft claims the one drafting slot a project has, and reports whether
+// it succeeded. The slot is per process, so in a deployment of N replicas it
+// bounds concurrent drafts per project to N rather than to one. It is a bound
+// rather than a lock, and it limits the cost of a burst to a few cents rather
+// than to however many requests the burst contains.
 func (rt *Router) beginDraft(projectID string) bool {
 	rt.drafting.mu.Lock()
 	defer rt.drafting.mu.Unlock()
@@ -565,17 +571,19 @@ func (rt *Router) endDraft(projectID string) {
 	delete(rt.drafting.inFlight, projectID)
 }
 
-// draftMaxTokens bounds a draft. A description is a paragraph; this is what
-// keeps a fraction of a cent a fraction of a cent.
+// draftMaxTokens bounds a draft. A description is a paragraph, and the bound
+// keeps the cost of one draft to a fraction of a cent.
 const draftMaxTokens = 400
 
-// draftRates is what the configured drafting model is priced at, or an error.
+// draftRates returns the rates the configured drafting model is priced at, or
+// an error.
 //
-// An *exact* entry in the rate card, never the card's fail-expensive fallback:
-// that fallback exists so an unrecognised session model is charged the dearest
-// rates rather than nothing, which is right for a run somebody chose and wrong
-// for a local model an operator pointed us at — it would bill Opus rates for a
-// model that costs pennies. No exact price, no draft.
+// It requires an exact entry in the rate card and never uses the card's
+// fail-expensive fallback. That fallback exists so an unrecognised session
+// model is charged the dearest rates rather than nothing, which is right for a
+// run somebody chose and wrong for a local model an operator configured, since
+// it would bill Opus rates for a model that costs very little. Without an exact
+// price there is no draft.
 func (rt *Router) draftRates(ctx context.Context) (credit.Rates, error) {
 	if rt.policy == nil {
 		return credit.Rates{}, errors.New("no platform settings to price a draft from")
@@ -601,9 +609,9 @@ func draftRef(projectID string) (string, error) {
 	return "draft:" + projectID + ":" + hex.EncodeToString(b[:]), nil
 }
 
-// draftPapers projects the store's papers onto the little a prompt needs. It is
+// draftPapers projects the store's papers onto the fields a prompt needs. It is
 // a projection rather than a pass-through so the drafting package never sees a
-// project's internals — and so what reaches a third-party endpoint is exactly
+// project's internals, and so what reaches a third-party endpoint is exactly
 // this list and nothing else.
 func draftPapers(papers []project.Paper) []draft.Paper {
 	out := make([]draft.Paper, 0, len(papers))
@@ -620,17 +628,18 @@ func draftPapers(papers []project.Paper) []draft.Paper {
 }
 
 // SweepPapers fills in the bibliography of every paper in every project whose
-// record is incomplete (037 AC8), and reports how many projects it looked at and
+// record is incomplete (037 AC8), and reports how many projects it examined and
 // how many papers it completed.
 //
-// It is the platform's own fill-in, for the projects nobody opens: the same
+// It is the platform's own enrichment, for the projects nobody opens: the same
 // enrichment the owner's button runs, over every project rather than one. It is
-// not an HTTP handler — the admin router owns who may ask, and this owns what
-// happens — and it is safe to run again, because enrichment is.
+// not an HTTP handler, because the admin router decides who may call it and
+// this method decides what happens. It is safe to run again, because enrichment
+// is idempotent.
 //
-// Requests to the metadata services are strictly serialised. These are free,
-// courteous services and a sweep is the one place in this codebase that could
-// ask them a thousand questions in a second.
+// Requests to the metadata services are strictly serialised. They are free
+// services, and a sweep is the one place in this codebase that could send them
+// a thousand requests in a second.
 func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err error) {
 	if rt.resolver == nil {
 		return 0, 0, errors.New("no paper resolver is configured")
@@ -645,7 +654,7 @@ func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err er
 		}
 		papers, err := rt.projects.ListPapers(ctx, proj.ID)
 		if err != nil {
-			continue // a project that vanished mid-sweep is not the sweep's problem
+			continue // A project removed during the sweep is skipped.
 		}
 		projects++
 		for _, p := range papers {
@@ -665,12 +674,12 @@ func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err er
 	return projects, filled, nil
 }
 
-// removeProjectPaper drops a paper a project has never run.
+// removeProjectPaper removes a paper a project has never run.
 //
-// Once a paper has a session it stays: the record of what was actually
-// reproduced is not editable, and every paper the 012 migration backfilled has a
-// session by definition — so nothing that predates this endpoint can be removed
-// through it. Removing is the lead's, matching who may move credits out.
+// Once a paper has a session it stays: the record of what was reproduced is not
+// editable, and every paper the 012 migration backfilled has a session by
+// definition, so nothing that predates this endpoint can be removed through it.
+// Only a lead may remove, matching who may move credits out.
 func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
@@ -706,16 +715,16 @@ func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
 // moveProjectPaper refiles a paper, and its finished sessions, under another
 // project (035).
 //
-// It is a remove from one project and an add to the other, so it is authorised
-// like both: lead-or-owner on each end, which is stricter than the "any member"
-// rule adding follows and exactly the rule removing follows. `projectForWork`
-// resolves the one project in the path, so the destination is resolved beside
-// it and put through the same three gates — stake, trash, and (new here) the
-// public flip.
+// It is a removal from one project and an addition to the other, so it is
+// authorised like both: lead or owner on each end, which is stricter than the
+// any-member rule adding follows and the same as the rule removing follows.
+// projectForWork resolves the one project in the path, so the destination is
+// resolved separately and put through the same three checks: stake, trash, and,
+// new here, whether the project is public.
 //
-// The sessions travel because a session whose project no longer holds its paper
-// is the orphan 015 was written to fix. They travel only when every one of them
-// is finished: a live session rewritten into another project moves *inside*
+// The sessions move because a session whose project no longer holds its paper
+// is the orphan 015 was written to fix. They move only when every one of them
+// is finished: a live session rewritten into another project would move inside
 // jobs_active_paper_project, the partial unique index the destination's paper
 // row cannot see, and the worker driving it holds the old project id in memory.
 // That is 032's terminal-only rule, for 032's reason.
@@ -750,19 +759,20 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Authorisation before state, both ends. The other order answers "is that
-	// project published?" to somebody who is not allowed to move anything into
-	// it — a caller can name any id they have a stake in, so the refusals below
-	// would otherwise report its openness before reporting that they may not act.
+	// Authorisation is checked before state, on both ends. The other order
+	// would tell a caller who may not move anything into a project whether it
+	// is published: a caller can name any id they have a stake in, so the
+	// refusals below would otherwise report its visibility before reporting
+	// that they may not act.
 	if !rt.leads(r, from) || !rt.leads(r, to) {
 		writeError(w, http.StatusForbidden, "not_lead")
 		return
 	}
-	// Published on either end and the move is refused. Read off Visibility, never
-	// off the presence of a sign-off: 006o leaves the sign-off standing on a
-	// withdrawn project, so a sign-off proves nothing about current openness.
-	// Moving a paper out of a published project would change what a signed
-	// attestation covers; the owner withdraws first.
+	// The move is refused if either project is published. This is read from
+	// Visibility, never from the presence of a sign-off: 006o leaves the sign-off
+	// on a withdrawn project, so a sign-off proves nothing about current
+	// visibility. Moving a paper out of a published project would change what a
+	// signed attestation covers; the owner must withdraw first.
 	if from.Visibility == project.VisibilityPublic || to.Visibility == project.VisibilityPublic {
 		writeError(w, http.StatusConflict, "project_public")
 		return
@@ -790,9 +800,9 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// moveTarget resolves a move's destination — projectForWork's job for a project
-// named in the body rather than the path, with its own not-found code so the
-// app can say which end of the move was missing.
+// moveTarget resolves a move's destination. It does projectForWork's job for a
+// project named in the body rather than the path, with its own not-found code
+// so the app can say which end of the move was missing.
 func (rt *Router) moveTarget(w http.ResponseWriter, r *http.Request, id string) (project.Project, bool) {
 	return rt.resolveProject(w, r, id, needWork, false, "target_not_found")
 }
@@ -805,15 +815,16 @@ func (rt *Router) leads(r *http.Request, p project.Project) bool {
 
 // startSession runs one paper the project already holds.
 //
-// This is where every refusal a create used to report per paper now lives,
-// singly: the double-trigger guard (409), the project pot (402), and a key the
-// project does not hold (404). One act, one answer — and the caller is looking at
-// the project whose credits are being spent, which is the one screen where "this
-// project is out of credits" names something they can act on.
+// Every refusal a create used to report per paper is now reported here, for one
+// paper at a time: the double-trigger guard (409), an empty project pot (402),
+// and a key the project does not hold (404). One action gets one answer, and
+// the caller is looking at the project whose credits are being spent, which is
+// the one screen where an out-of-credits message names something they can act
+// on.
 //
-// The paper key travels in the body, never the path: paper.Key returns
-// "doi:10.1145/3544548.3581433" and "url:https://…", so a key spans several path
-// segments and would route nowhere.
+// The paper key travels in the body, never the path: paper.Key returns values
+// such as "doi:10.1145/3544548.3581433" and "url:https://...", so a key spans
+// several path segments and would not route.
 func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
@@ -821,19 +832,19 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		PaperKey string `json:"paper_key"`
-		// The model tier to run on (031). A plain string on the wire, as every
-		// wire DTO here projects a domain enum; omitted means the caller did not
-		// choose and the engine's default applies.
+		// Tier is the model tier to run on (031). It is a plain string on the
+		// wire, as every wire type here represents a domain enum. When omitted,
+		// the caller did not choose and the engine's default applies.
 		Tier string `json:"tier"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	// The set is closed here, at the only boundary a person's choice crosses.
-	// The provider adapter passes a preference it does not recognise straight
+	// The set of tiers is validated here, at the only boundary a person's choice
+	// crosses. The provider adapter passes a preference it does not recognise
 	// through as a literal model id, and a model the card cannot name is priced
-	// at the dearest rates it holds — so an unchecked string would be both a
+	// at the dearest rates it holds, so an unchecked string would be both a
 	// request for a model that may not exist and a bill at the top of the card.
 	tier := credit.Preference(strings.TrimSpace(body.Tier))
 	if tier != "" && !tier.Valid() {
@@ -878,30 +889,31 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 type need int
 
 const (
-	// needView: the caller may see the project — it is public, or they own
-	// it or are a member of it.
+	// needView means the caller may see the project: it is public, or they
+	// own it or are a member of it.
 	needView need = iota
-	// needWork: the caller may work in it — owner, or a member with a working
-	// role (mayWorkInProject).
+	// needWork means the caller may work in it: they are the owner, or a
+	// member with a working role, as mayWorkInProject decides.
 	needWork
-	// needOwner: the caller owns it.
+	// needOwner means the caller owns it.
 	needOwner
 )
 
-// resolveProject is the one gate every project-scoped route passes, so the
-// rules live in one place and no route can hold a different one:
+// resolveProject is the one check every project-scoped route passes, so the
+// rules live in one place and no route can apply a different one:
 //
-//   - a project that does not exist and a project the caller may not view
-//     answer the same 404, with the same body. Whether a stranger's project is
-//     there is not a stranger's business, and a 403 would tell them;
-//   - a project the caller may view but not at the level the route needs is
-//     refused with 403 not_owner — they are inside, and the explanation is
-//     theirs to have;
-//   - a project in the trash is readable by its owner and writable by nobody
-//     (019). A route that works on one asks for allowTrashed; every other route
-//     is refused with 409 project_trashed here, once, rather than in each.
+//   - A project that does not exist and a project the caller may not view
+//     answer the same 404 with the same body. A caller who may not view a
+//     project must not learn whether it exists, and a 403 would tell them.
+//   - A project the caller may view but not at the level the route needs is
+//     refused with 403 not_owner. They already have access to the project, so
+//     the reason may be disclosed.
+//   - A project in the trash is readable by its owner and writable by nobody
+//     (019). A route that works on a trashed project passes allowTrashed;
+//     every other route is refused with 409 project_trashed here, once,
+//     rather than in each handler.
 //
-// notFound is the code the route answers a hidden project with; the codes
+// notFound is the code the route answers a hidden project with. The codes
 // differ by route history and the app keys on them.
 func (rt *Router) resolveProject(w http.ResponseWriter, r *http.Request, id string, n need, allowTrashed bool, notFound string) (project.Project, bool) {
 	proj, err := rt.projects.Get(r.Context(), id)
@@ -938,10 +950,10 @@ func (rt *Router) resolveProject(w http.ResponseWriter, r *http.Request, id stri
 }
 
 // projectForWork loads the project named in the path and refuses a caller who
-// may not work in it — the one gate every paper and session write shares, so no
-// route can forget it. A project in the trash is refused too: starting a
-// session, adding a paper, moving credits and publishing are all closed by one
-// check rather than five that have to be remembered.
+// may not work in it. It is the one check every paper and session write shares,
+// so no route can omit it. A project in the trash is refused too: starting a
+// session, adding a paper, moving credits and publishing are all closed by this
+// one check rather than by a separate check in each handler.
 func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
 	return rt.resolveProject(w, r, r.PathValue("id"), needWork, false, "project_not_found")
 }
@@ -953,24 +965,24 @@ func (rt *Router) projectForRead(w http.ResponseWriter, r *http.Request) (projec
 	return rt.resolveProject(w, r, r.PathValue("id"), needView, true, "project_not_found")
 }
 
-// stakeIn reports whether this caller has a stake in a project — its owner or a
-// collaborator it was shared with. It is the one predicate every redaction keys
-// on (028), and the same one that already withholds the credit balance, so
-// "inside this project" has a single answer per request rather than one per
-// field. Note what it is not: reading a public project confers no stake, so a
-// signed-in stranger browsing the registry sees exactly what a signed-out one
-// does.
+// stakeIn reports whether this caller has a stake in a project, meaning they
+// are its owner or a collaborator it was shared with. It is the one predicate
+// every redaction keys on (028), and the same one that already withholds the
+// credit balance, so membership has a single answer per request rather than one
+// per field. Reading a public project confers no stake, so a signed-in caller
+// with no relation to a project sees exactly what a signed-out one does.
 func (rt *Router) stakeIn(r *http.Request, p project.Project) bool {
 	return rt.mayWorkInProject(r, p, principal(r))
 }
 
 // mayWorkInProject reports whether a caller may open a session in a project:
 // its owner, or a collaborator it was shared with. Reading a public project
-// does not confer this — spending a project's credits is not a read.
+// does not confer this, because spending a project's credits is not a read.
 func (rt *Router) mayWorkInProject(r *http.Request, p project.Project, sub string) bool {
-	// Nobody is not an owner and not a member. The read routes are open since
-	// 028, so this predicate now answers for unauthenticated callers too — and
-	// it decides both what may be written and what may be read of the money.
+	// An unauthenticated caller is neither an owner nor a member. The read
+	// routes are open since 028, so this predicate now answers for
+	// unauthenticated callers too, and it decides both what may be written and
+	// what may be read of the credits.
 	if sub == "" {
 		return false
 	}
@@ -1000,15 +1012,16 @@ func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 	}
 }
 
-// defaultTitle is the offline placeholder a new project is born with — the paper
-// reference itself. The worker enriches it with the resolved paper title once
-// its Resolve phase has run.
+// defaultTitle is the offline placeholder title a new project starts with,
+// which is the paper reference itself. The worker replaces it with the resolved
+// paper title once its Resolve phase has run.
 func defaultTitle(url string) string { return strings.TrimSpace(url) }
 
 // resolvePaper previews a reference against the source (006j): it returns the
-// resolved identity so the New-project screen shows the real title before
-// anything is created. A bad reference is a 400; an unreachable source is a 502,
-// kept distinct so the UI can say "couldn't reach the source".
+// resolved identity so the new-project screen shows the real title before
+// anything is created. A bad reference answers 400; an unreachable source
+// answers 502. The two are kept distinct so the UI can report an unreachable
+// source.
 func (rt *Router) resolvePaper(w http.ResponseWriter, r *http.Request) {
 	if rt.resolver == nil {
 		writeError(w, http.StatusNotImplemented, "resolve_unavailable")
@@ -1031,17 +1044,17 @@ func (rt *Router) resolvePaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "resolve_failed") // the source could not be reached
+		writeError(w, http.StatusBadGateway, "resolve_failed") // The source could not be reached.
 		return
 	}
 	writeJSON(w, http.StatusOK, got)
 }
 
-// PaperResult reports one reference's fate in a create: the paper it was
-// recorded as, or why it was not recorded at all. Since 012 a create records
+// PaperResult reports the outcome of one reference in a create: the paper it
+// was recorded as, or why it was not recorded. Since 012 a create records
 // papers and starts nothing, so the only thing that can go wrong per reference
-// is the reference itself — there is no enqueue here to fail, and no credits to
-// run out of.
+// is the reference itself; there is no enqueue to fail and no credits to run
+// out of.
 type PaperResult struct {
 	Ref   string `json:"ref"`
 	Key   string `json:"key,omitempty"`
@@ -1049,20 +1062,19 @@ type PaperResult struct {
 	Error string `json:"error,omitempty"`
 }
 
-// createProject opens a project with a chosen title, the papers it is about, and
-// seeded collaborators (006j, reshaped by 012).
+// createProject creates a project with a chosen title, the papers it is about,
+// and seeded collaborators (006j, reshaped by 012).
 //
-// It records; it does not run. Nothing is enqueued and nothing is spent, which
-// is what lets an account with an empty wallet name a project, write down what it
-// intends to reproduce, and invite people to it — all of which the funding-at-
-// create rule used to refuse with a 402 at the door. The credit question is asked
-// once, later, by startSession, where there is a project pot on screen to answer
-// it with.
+// It records and does not run. Nothing is enqueued and nothing is spent, so an
+// account with an empty wallet can name a project, record what it intends to
+// reproduce, and invite people to it. The funding-at-create rule used to refuse
+// all of this with a 402. The credit check happens once, later, in
+// startSession, where there is a project pot on screen to answer it with.
 //
-// Because nothing is spent there is nothing to compensate for: 006j's "never
-// leave an empty project" rule, its 422, and the undo delete all go with the
-// enqueue that needed them. A project with no papers is simply a project nobody
-// has added a paper to yet.
+// Because nothing is spent there is nothing to compensate for: 006j's rule
+// against leaving an empty project, its 422, and the compensating delete were
+// all tied to the enqueue and were removed with it. A project with no papers is
+// a project nobody has added a paper to yet.
 func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	id, ok := IdentityFrom(r)
 	if !ok {
@@ -1078,21 +1090,21 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	// A project may start empty (036): creating one records papers and enqueues
-	// nothing (012), so a paper is not what a create is *for* — it is contents,
-	// and the container is useful before it has any. What a project cannot start
-	// without is a name.
+	// A project may start empty (036). Creating one records papers and enqueues
+	// nothing (012), so a paper is content rather than the purpose of a create,
+	// and the project is useful before it has any. A project cannot start
+	// without a name.
 	papers := nonEmpty(body.Papers)
 	if len(papers) > MaxPapersPerRequest {
 		writeError(w, http.StatusBadRequest, "too_many_papers")
 		return
 	}
-	// placeholder is the stand-in a project gets when nobody names it — and the
-	// only title enrichment may replace. A project somebody named is theirs.
+	// placeholder is the title a project gets when nobody names it, and the
+	// only title enrichment may replace. A title somebody typed is kept.
 	title, placeholder := strings.TrimSpace(body.Title), ""
 	if title == "" {
-		// With no paper there is nothing to name it after, so the requirement
-		// moves here rather than disappearing.
+		// With no paper there is nothing to name the project after, so a title
+		// is required in that case.
 		if len(papers) == 0 {
 			writeError(w, http.StatusBadRequest, "missing_title")
 			return
@@ -1111,8 +1123,8 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	for _, ref := range papers {
 		results = append(results, rt.recordPaper(r, proj.ID, id.Sub, ref))
 	}
-	// Titles land after the answer: a create must not wait on somebody else's
-	// web server, and the papers are already recorded without them.
+	// Titles are written after the response: a create must not wait on an
+	// external web server, and the papers are already recorded without them.
 	rt.background(func(ctx context.Context) { rt.enrichTitles(ctx, proj.ID, placeholder, results) }) //nolint:contextcheck // background hands the closure a fresh context on purpose: r.Context() is cancelled when this response is written, which is when the enrichment starts.
 
 	members := rt.seedCollaborators(r.Context(), proj.ID, id, body.Collaborators)
@@ -1125,10 +1137,10 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// recordPaper writes one reference onto a project, reporting what became of it.
-// paper.Key is offline, so a create costs no network and cannot half-fail on a
-// slow source — a reference that is not a DOI, arXiv ID, or URL is the only
-// thing that can be refused here.
+// recordPaper writes one reference onto a project and reports the outcome.
+// paper.Key works offline, so a create makes no network calls and cannot
+// partly fail on a slow source. A reference that is not a DOI, arXiv ID, or URL
+// is the only thing that can be refused here.
 func (rt *Router) recordPaper(r *http.Request, projectID, principal, ref string) PaperResult {
 	res := PaperResult{Ref: ref}
 	key, err := paper.Key(ref)
@@ -1151,16 +1163,16 @@ func (rt *Router) recordPaper(r *http.Request, projectID, principal, ref string)
 // what it learns: the paper's own title, and the project's title while that is
 // still the placeholder it was created with.
 //
-// It runs *after* the response, on a context of its own. Blocking a create on N
-// network fetches is exactly the half-failure paper.Key was chosen to avoid — a
+// It runs after the response, on a context of its own. Blocking a create on N
+// network fetches is the partial failure paper.Key was chosen to avoid: a
 // four-paper create would wait on the slowest source, and a client that timed
-// out would be left with the papers recorded and nothing to show for it.
-// Nothing here is essential: every title it writes, the first session's
-// Resolve phase would write anyway.
+// out would be left with the papers recorded and no response. Nothing here is
+// essential, because every title it writes would be written by the first
+// session's Resolve phase anyway.
 //
-// The client's own preview is never trusted onto the record. The New-project
-// screen has already resolved these papers for its display, but a title stored
-// against a project is a record, and records are the server's to write.
+// The client's own preview is never written to the record. The new-project
+// screen has already resolved these papers for display, but a title stored
+// against a project is a record, and only the server writes records.
 func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder string, papers []PaperResult) {
 	if rt.resolver == nil {
 		return
@@ -1217,9 +1229,9 @@ func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder strin
 	}
 }
 
-// background runs work that outlives the request which scheduled it, on a
-// context of its own so a client hanging up cannot cancel a write that is
-// already half done. The WaitGroup is what lets a test wait for it.
+// background runs work that outlives the request that scheduled it, on a
+// context of its own so a client disconnecting cannot cancel a write that is
+// already in progress. The WaitGroup lets a test wait for it.
 func (rt *Router) background(f func(context.Context)) {
 	rt.bg.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), backgroundWork)
@@ -1243,13 +1255,13 @@ const backgroundWork = 30 * time.Second
 const maxConcurrentResolves = 4
 
 // MaxPapersPerRequest bounds how many papers one request may add. A project
-// grows one reading list at a time; a request past this is not a reading list.
+// grows one reading list at a time, and a request beyond this is not one.
 const MaxPapersPerRequest = 50
 
-// seedCollaborators seeds the owner as lead (idempotent) and adds each
-// collaborator email as a member, best-effort. It returns the emails that were
-// added — a failure to seed one collaborator is reported by omission, never
-// fatal to the create.
+// seedCollaborators seeds the owner as lead, which is idempotent, and adds each
+// collaborator email as a member on a best-effort basis. It returns the emails
+// that were added. A failure to add one collaborator is reported by omission
+// and never fails the create.
 func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner Identity, emails []string) []string {
 	if rt.members == nil {
 		return nil
@@ -1262,7 +1274,7 @@ func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner
 	for _, email := range emails {
 		email = strings.TrimSpace(email)
 		if email == "" || strings.EqualFold(email, owner.Email) {
-			continue // skip blanks and the owner (already the lead)
+			continue // Blanks and the owner, who is already the lead, are skipped.
 		}
 		if err := rt.members.Add(ctx, p, projectID, email, access.RoleCollaborator); err == nil {
 			added = append(added, email)
@@ -1271,34 +1283,36 @@ func (rt *Router) seedCollaborators(ctx context.Context, projectID string, owner
 	return added
 }
 
-// Wallet is one person's own money and the statement that explains it (011).
-// The statement is the point: a balance nobody can account for is the thing the
-// ledger exists to prevent, so the surface that shows a number also shows the
+// Wallet is one person's own credits and the statement that explains them
+// (011). The statement matters because the ledger exists to prevent a balance
+// nobody can account for, so the response that shows a number also shows the
 // entries that produced it.
 type Wallet struct {
 	Balance int64         `json:"balance"`
 	Entries []walletEntry `json:"entries"`
-	// The purchase policy the top-up modal reads (022b): the spread it applies to
-	// show "you'll get $Y", and the floor below which it refuses before the
-	// processor is ever called. Zero when this deployment sells no credits.
+	// SpreadBps, SpreadFixedMicro and MinTopupMicro are the purchase policy the
+	// top-up modal reads (022b): the spread it applies to show the credited
+	// amount, and the floor below which it refuses before the processor is
+	// called. They are zero when this deployment sells no credits.
 	SpreadBps        int64 `json:"spread_bps"`
 	SpreadFixedMicro int64 `json:"spread_fixed_micro"`
 	MinTopupMicro    int64 `json:"min_topup_micro"`
 }
 
 // walletEntry is a ledger entry as the statement reads it: the durable row, plus
-// whether the project it names still exists (024b). project_alive is the
-// server's answer, not the ledger's — the ledger keeps no foreign key to a
-// project, so only a surface that can see the projects table can say whether a
-// trashed row still exists to link to or a purged one is gone. Absent (false)
-// on every entry that names no project, and on one whose project was purged.
+// whether the project it names still exists (024b). project_alive is answered
+// by the server rather than the ledger, because the ledger keeps no foreign key
+// to a project, so only code that can read the projects table can say whether
+// a trashed project still exists to link to or a purged one is gone. It is
+// false on every entry that names no project, and on one whose project was
+// purged.
 type walletEntry struct {
 	credit.Entry
 	ProjectAlive bool `json:"project_alive,omitempty"`
 }
 
-// myCredits reports the caller's own wallet. Always their own — there is no
-// path here to read somebody else's, and no id to pass.
+// myCredits reports the caller's own wallet. It is always their own: there is
+// no way to read somebody else's, and no id to pass.
 func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 	if rt.credits == nil {
 		writeError(w, http.StatusNotImplemented, "credits_unavailable")
@@ -1316,13 +1330,13 @@ func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "credits_read_failed")
 		return
 	}
-	// A row that names a project gets a liveness bit so the client can link a
-	// project that still exists and show a purged one as plain text. "Alive"
-	// means the caller can actually open it — a project they were removed from,
-	// or one whose owner is not them and has been trashed, would 404 or 403 at
-	// /p/{id}, so it reads as plain text rather than a link that dead-ends.
-	// Resolved once per distinct project — a statement names few — and never
-	// fatal: a read that fails leaves the row unlinked, not the wallet unread.
+	// A row that names a project gets a liveness flag so the client can link a
+	// project that still exists and show a purged one as plain text. Alive
+	// means the caller can open it: a project they were removed from, or one
+	// they do not own that has been trashed, would answer 404 or 403 at
+	// /p/{id}, so it is shown as plain text rather than a broken link. It is
+	// resolved once per distinct project, since a statement names few, and a
+	// failed read leaves the row unlinked rather than failing the wallet.
 	alive := map[string]bool{}
 	out := make([]walletEntry, len(entries))
 	for i, e := range entries {
@@ -1339,9 +1353,9 @@ func (rt *Router) myCredits(w http.ResponseWriter, r *http.Request) {
 		out[i] = we
 	}
 	wallet := Wallet{Balance: balance, Entries: out}
-	// The purchase policy rides along so the top-up modal can quote a credit and
+	// The purchase policy is included so the top-up modal can quote a credit and
 	// enforce the floor client-side. A failed read leaves it zero rather than
-	// failing the wallet, which is about the balance, not the sale.
+	// failing the wallet, which reports the balance rather than the sale.
 	if rt.policy != nil {
 		if set, err := rt.policy.Settings(r.Context()); err == nil {
 			wallet.SpreadBps, wallet.SpreadFixedMicro, wallet.MinTopupMicro = set.SpreadBps, set.SpreadFixedMicro, set.MinTopupMicro
@@ -1359,21 +1373,22 @@ func (rt *Router) allocateCredits(w http.ResponseWriter, r *http.Request) {
 }
 
 // reclaimCredits moves credits from a project's pot back to the caller's
-// wallet. Leads only, enforced in the ledger: the pot is fungible and does not
-// remember who filled it, so taking from it is authority over the project's
-// money rather than a refund of one's own.
+// wallet. Only leads may do this, and the ledger enforces it: the pot is
+// fungible and does not record who filled it, so taking from it is an exercise
+// of authority over the project's credits rather than a refund of one's own.
 func (rt *Router) reclaimCredits(w http.ResponseWriter, r *http.Request) {
 	rt.moveCredits(w, r, true)
 }
 
-// moveCredits is the shared half of the two directions: decode, refuse a
-// nonsense amount, move, and answer with the balances the client would
+// moveCredits is the shared implementation of both directions: decode, refuse
+// an invalid amount, move, and answer with the balances the client would
 // otherwise have to re-read.
 func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool) {
-	// Resolved before anything about this deployment is disclosed: a stranger
-	// learns neither that the project exists nor whether credits are wired.
-	// Somebody who can see the project still gets the honest 403 below from
-	// the ledger's own membership rule, which is the authority over its money.
+	// The project is resolved before anything about this deployment is
+	// disclosed: a caller who may not view the project learns neither that it
+	// exists nor whether credits are configured. A caller who can see the
+	// project still gets the 403 below from the ledger's own membership rule,
+	// which is the authority over its credits.
 	proj, ok := rt.resolveProject(w, r, r.PathValue("id"), needView, true, "not_found")
 	if !ok {
 		return
@@ -1415,12 +1430,12 @@ func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool)
 		writeError(w, http.StatusInternalServerError, "credits_move_failed")
 		return
 	}
-	// Both sides come back, because both moved and a client that re-read them
-	// separately could show a moment where the money is in neither.
+	// Both balances are returned, because both changed and a client that re-read
+	// them separately could show a moment where the credits are in neither.
 	wallet, err := rt.credits.Balance(r.Context(), credit.Wallet(id.Email))
 	if err != nil {
-		// The move landed. A wallet of zero here would be a false zero — the one
-		// number this API promises never to emit — so the read failure is said.
+		// The move succeeded. Reporting a wallet of zero here would be a false
+		// zero, which this API must never emit, so the read failure is reported.
 		writeError(w, http.StatusInternalServerError, "credits_read_failed")
 		return
 	}
@@ -1438,8 +1453,9 @@ func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
 	}
 	// Both fields are optional and independent: renaming and describing are two
 	// edits made from the same screen, and a client sending one must not have to
-	// resend the other. Pointers rather than strings, so "not sent" and "cleared"
-	// stay different — clearing a description is something an owner may do.
+	// resend the other. They are pointers rather than strings so that an omitted
+	// field and a cleared one stay distinct, because an owner may clear a
+	// description.
 	var body struct {
 		Title       *string `json:"title,omitempty"`
 		Description *string `json:"description,omitempty"`
@@ -1491,8 +1507,8 @@ func nonEmpty(in []string) []string {
 }
 
 // SpendWindowDays is how far back the projects screen's spend tile looks. A
-// window needs a stated edge or the number means nothing; thirty days is the
-// one the tile is labelled with, so the two cannot drift.
+// window needs a stated length or the number means nothing. Thirty days is the
+// length the tile is labelled with, so the two cannot drift.
 const SpendWindowDays = 30
 
 // ProjectView is a project in a list, carrying a session summary so the list
@@ -1502,67 +1518,68 @@ type ProjectView struct {
 	project.Project
 	SessionCount int `json:"session_count"`
 	Running      int `json:"running"`
-	// PublishedSessions is how many of them committed a repository — the exact
-	// condition GET /projects/{id}/archive answers 409 no_artifacts on (020). The
-	// client cannot work it out: a session count says nothing about whether any
-	// of them published, so without this the download offers itself on a project
-	// that has nothing to hand over.
+	// PublishedSessions is how many of them committed a repository, which is the
+	// exact condition GET /projects/{id}/archive answers 409 no_artifacts on
+	// (020). The client cannot derive it: a session count says nothing about
+	// whether any of them published, so without this the download would be
+	// offered on a project that has nothing to archive.
 	PublishedSessions int    `json:"published_sessions"`
 	LatestPhase       string `json:"latest_phase,omitempty"`
 	// Spend30d is what this project's sessions cost in the last thirty days, in
 	// micro-USD (021e). The window is on when a session last changed, not when
-	// it started, so a run that began five weeks ago and settled yesterday spent
-	// yesterday's money; a session still running counts what it has burned so
-	// far, because the wallet has already committed it.
+	// it started, so a run that began five weeks ago and settled yesterday
+	// counts as yesterday's spend. A session still running counts what it has
+	// spent so far, because the wallet has already committed it.
 	//
-	// It is a pointer because a reader with no stake in the project does not get
-	// it at all (028), and an absent figure must not read as a project that spent
-	// nothing. Nil is "not yours to know"; a zero is a fact.
+	// It is a pointer because a reader with no stake in the project does not
+	// receive it (028), and an absent figure must not read as a project that
+	// spent nothing. Nil means the figure is withheld; zero is a fact.
 	Spend30d *int64 `json:"spend_30d,omitempty"`
 	// SignerHandle is where the signer's name links (006r). It is resolved on
-	// every read from the signer's profile as it is *now*, and deliberately not
+	// every read from the signer's profile as it is now, and deliberately not
 	// snapshotted onto the project: a stored handle would be a second, staler
-	// copy of the same person, and 006n's whole position is that a published
+	// copy of the same person, and 006n's position is that a published
 	// attestation reports what was signed, not what a profile says later.
 	//
-	// So the link comes and goes with the profile. Somebody who makes theirs
-	// private after publishing keeps their attestation intact and loses the
-	// link, which is correct — the record was never the profile.
+	// The link therefore follows the profile. Somebody who makes theirs private
+	// after publishing keeps their attestation intact and loses the link, which
+	// is correct because the record was never the profile.
 	SignerHandle string `json:"signer_handle,omitempty"`
-	// Papers is what this project is a reproduction of (043) — every paper it
-	// holds, trimmed to a citation. A list is what the store holds and what the
-	// card must be able to say: a project of two papers with one citation line
-	// under it attributes the second paper's work to the first.
+	// Papers is what this project is a reproduction of (043): every paper it
+	// holds, trimmed to a citation. It is a list because the store holds a list
+	// and the card must show one; a project of two papers with one citation line
+	// under it would attribute the second paper's work to the first.
 	//
-	// It is not gated on a stake in the project, unlike Spend30d. A published
-	// project's bibliography is the thing publishing published, and the reader
+	// Unlike Spend30d, it is not gated on a stake in the project. A published
+	// project's bibliography is part of what publishing published, and the reader
 	// this exists for is the anonymous one on the landing page.
 	Papers []PaperCitation `json:"papers,omitempty"`
-	// The owner, as a reader can read them (018). Project.Owner is an opaque OIDC
-	// subject, which named nobody in a list that now has an Owner column.
+	// OwnerName and OwnerHandle identify the owner in a readable form (018).
+	// Project.Owner is an opaque OIDC subject, which identified nobody in a list
+	// that now has an Owner column.
 	//
 	// Both are resolved per read from the owner's profile, for the same reason
 	// SignerHandle is: they are a view of who somebody is now, and a stored copy
 	// would go stale against the profile that is the actual record. OwnerHandle
 	// is set only when that profile is public, so it is safe to link.
 	//
-	// Neither is ever the owner's address. A project stores its signer's email
-	// already redacted so a full one never reaches a client; putting the owner's
-	// on every row a collaborator can read would undo that on a wider surface.
+	// Neither is ever the owner's e-mail address. A project stores its signer's
+	// e-mail already redacted so a full one never reaches a client; putting the
+	// owner's on every row a collaborator can read would undo that more widely.
 	OwnerName   string `json:"owner_name,omitempty"`
 	OwnerHandle string `json:"owner_handle,omitempty"`
 	// ModifiedAt is when this project last changed: the newest of its creation,
-	// its papers' additions, and its sessions' updates (018). Derived on every
-	// read — see project.Store.ModifiedAt for why it is not a column.
+	// its papers' additions, and its sessions' updates (018). It is derived on
+	// every read; see project.Store.ModifiedAt for why it is not a column.
 	ModifiedAt time.Time `json:"modified_at"`
 }
 
-// listProjects reports every project the caller may work in — their own and the
-// ones they were invited to — as one list, newest-modified first (018).
+// listProjects reports every project the caller may work in, their own and the
+// ones they were invited to, as one list, most recently modified first (018).
 //
-// It is one list because ownership is a column, not a place: a project used to
-// move between two tabs when somebody else happened to create it, so finding
-// work meant first remembering who had.
+// It is one list because ownership is a column rather than a location. A
+// project used to appear in a different tab when somebody else had created it,
+// so finding work meant first remembering who had created it.
 func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 	id, _ := IdentityFrom(r)
 	projects, err := rt.projects.ListByOwner(r.Context(), id.Sub)
@@ -1588,7 +1605,7 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 			}
 			p, err := rt.projects.Get(r.Context(), pid)
 			if err != nil {
-				continue // a membership whose project is gone is skipped, not fatal
+				continue // A membership whose project is gone is skipped.
 			}
 			seen[pid] = true
 			if p.Trashed() {
@@ -1608,9 +1625,9 @@ func (rt *Router) listProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, views)
 }
 
-// PaperCitation is one paper as a list reads it: what it is called, and the
-// three fields a citation line is made of. It is a projection of paper.Record
-// rather than the record itself — the abstract is paragraphs, and `ref`,
+// PaperCitation is one paper as a list reads it: its title and the three fields
+// a citation line is made of. It is a projection of paper.Record rather than
+// the record itself, because the abstract is paragraphs long and `ref`,
 // `added_by` and `edited` are the owner screen's bookkeeping. Six cards on a
 // landing page must not carry six abstracts to print six citations.
 type PaperCitation struct {
@@ -1637,22 +1654,22 @@ func citations(papers []project.Paper) []PaperCitation {
 	return out
 }
 
-// projectViews decorates a set of projects for a list: the session summary, the
-// modified time, and who owns them — three reads for the whole page rather than
-// three per row.
+// projectViews decorates a set of projects for a list with the session summary,
+// the modified time, and the owner. It makes three reads for the whole page
+// rather than three per row.
 //
-// The result is newest-modified first, because that is the column the list is
-// now sorted by and a displayed order nobody can see is one the reader has to
-// sort by eye.
+// The result is most recently modified first, because that is the column the
+// list is sorted by, and an order the reader cannot see is one they have to
+// work out by eye.
 //
 // A summary that could not be read fails the list rather than rendering a zero.
-// "0 sessions" is a claim about the project, and a list quietly making a false
-// one is worse than a list that says it could not load.
+// A count of zero sessions is a claim about the project, and a list that
+// silently makes a false one is worse than a list that says it could not load.
 //
-// It takes the request, not just its context, because the row a reader gets
-// depends on whether they have a stake in the project (028): the public zone
-// lists other people's work, and the owner's principal and the project's spend
-// are not part of what was published.
+// It takes the request rather than only its context, because the row a reader
+// gets depends on whether they have a stake in the project (028): the public
+// zone lists other people's work, and the owner's principal and the project's
+// spend are not part of what was published.
 func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]ProjectView, error) {
 	ctx := r.Context()
 	ids := make([]string, 0, len(projects))
@@ -1669,19 +1686,21 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 		slog.WarnContext(r.Context(), "projects: reading modified times", "error", err)
 		return nil, err
 	}
-	// Spend is the one summary that may fail softly. A missing session count is
-	// a false claim about the project; a missing spend figure renders as a dash,
-	// which claims nothing, and refusing the whole list because a cost could not
-	// be summed would take the reader's projects away over a number.
+	// Spend is the one summary that may fail without failing the list. A missing
+	// session count would be a false claim about the project; a missing spend
+	// figure renders as a dash, which claims nothing, and refusing the whole list
+	// because a cost could not be summed would hide the reader's projects over a
+	// number.
 	spend, err := rt.jobs.SpendSince(ctx, ids, time.Now().AddDate(0, 0, -SpendWindowDays))
 	if err != nil {
 		slog.WarnContext(r.Context(), "projects: summing spend", "error", err)
 		spend = nil
 	}
-	// The bibliography, in one call for the whole list (043). It fails as softly
-	// as the spend does and for the same reason: a row that cannot say which
-	// paper it reproduces is still a row, and a registry that refuses to render
-	// because a citation could not be read shows the reader nothing at all.
+	// The bibliography is read in one call for the whole list (043). It fails
+	// without failing the list, as the spend does and for the same reason: a row
+	// that cannot say which paper it reproduces is still a row, and a registry
+	// that refuses to render because a citation could not be read shows the
+	// reader nothing.
 	papers, err := rt.projects.PapersByProjects(ctx, ids)
 	if err != nil {
 		slog.WarnContext(r.Context(), "projects: reading papers", "error", err)
@@ -1712,16 +1731,15 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 			n := spend[p.ID]
 			v.Spend30d = &n
 		}
-		// The owner's name and handle are resolved from p, not from the redacted
-		// row — a public reader still reads who published this, by the name they
-		// chose to publish under. It is the opaque subject that is withheld.
+		// The owner's name and handle are resolved from p rather than from the
+		// redacted row, so a public reader still reads who published this, by the
+		// name they chose to publish under. Only the opaque subject is withheld.
 		//
-		// To a reader with no stake the name comes only with a public profile.
-		// rt.owner gates the handle on that already and the display name on
-		// nothing, which was right while every reader was a collaborator and is
-		// not right for the internet: a name somebody kept private stays private,
-		// and the signer of a published project is named by the sign-off block
-		// regardless.
+		// A reader with no stake gets the name only with a public profile. rt.owner
+		// already gates the handle on that and the display name on nothing, which
+		// was right while every reader was a collaborator and is not right for
+		// anonymous readers: a name somebody kept private stays private, and the
+		// signer of a published project is named by the sign-off block regardless.
 		v.OwnerName, v.OwnerHandle = rt.owner(ctx, p.Owner)
 		if !stake && v.OwnerHandle == "" {
 			v.OwnerName = ""
@@ -1741,9 +1759,9 @@ func later(a, b time.Time) time.Time {
 }
 
 // owner names a project's owner for a list: their profile's display name, and
-// their handle when that profile is public. Both empty for somebody who has
-// saved no profile — the client renders that as a dash rather than an opaque
-// subject, which named nobody anyway.
+// their handle when that profile is public. Both are empty for somebody who has
+// saved no profile; the client renders that as a dash rather than an opaque
+// subject, which would identify nobody.
 func (rt *Router) owner(ctx context.Context, principal string) (name, handle string) {
 	if rt.profiles == nil || principal == "" {
 		return "", ""
@@ -1760,11 +1778,11 @@ func (rt *Router) owner(ctx context.Context, principal string) (name, handle str
 	return name, handle
 }
 
-// listPublic is the public zone: every public project, newest-modified first,
-// each carrying its initiator, so any signed-in user can browse what others have
-// published (006f). It decorates through the same path the caller's own list
-// does — the zone lists other people's projects and had the identical problem of
-// naming an owner nobody could read.
+// listPublic is the public zone: every public project, most recently modified
+// first, each carrying its owner, so any signed-in user can browse what others
+// have published (006f). It decorates through the same path the caller's own
+// list does, because the zone lists other people's projects and had the same
+// problem of naming an owner by an unreadable subject.
 func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 	build := func(ctx context.Context) ([]ProjectView, error) {
 		projects, err := rt.projects.ListPublic(ctx)
@@ -1775,8 +1793,8 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 	}
 	// An anonymous caller has no stake in any project, so every anonymous
 	// caller is shown the same list; it is built once per publicTTL rather
-	// than once per crawler hit. A signed-in caller's list carries their own
-	// stake in each row and is built for them.
+	// than once per crawler request. A signed-in caller's list carries their
+	// own stake in each row and is built for them.
 	var views []ProjectView
 	var err error
 	if _, signedIn := IdentityFrom(r); signedIn {
@@ -1791,9 +1809,9 @@ func (rt *Router) listPublic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, views)
 }
 
-// getProfile returns the caller's researcher profile (006n) — the zero profile
-// before they have ever saved one, so the settings screen and the publish wizard
-// render the same way on first use as on every other.
+// getProfile returns the caller's researcher profile (006n). Before they have
+// saved one it returns the zero profile, so the settings screen and the publish
+// wizard render the same way on first use as on every other.
 func (rt *Router) getProfile(w http.ResponseWriter, r *http.Request) {
 	p, err := rt.profiles.Get(r.Context(), principal(r))
 	if err != nil {
@@ -1803,14 +1821,14 @@ func (rt *Router) getProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
-// saveProfile writes the caller's researcher profile. The principal comes off
-// the session, never the body, so a profile is always its owner's; a malformed
-// identifier is refused by its own code, so the UI can point at the field.
-// It is a real PATCH: a field absent from the body is left as it was. That was
-// harmless while every field was one the settings form always sent, and stopped
-// being harmless when 006r added `public` — a client that saved a display name
-// without echoing it back would have silently taken somebody's page down, and
-// with it every link a published attestation made to them.
+// saveProfile writes the caller's researcher profile. The principal comes from
+// the session, never the body, so a profile is always its owner's. A malformed
+// identifier is refused with its own code, so the UI can point at the field.
+// It is a true PATCH: a field absent from the body is left as it was. That did
+// not matter while every field was one the settings form always sent, and
+// started to matter when 006r added `public`: a client that saved a display
+// name without echoing it back would have silently made somebody's page
+// private, and with it removed every link a published attestation made to them.
 func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		DisplayName *string `json:"display_name"`
@@ -1841,9 +1859,9 @@ func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	current.Principal = principal(r)
 	saved, err := rt.profiles.Save(r.Context(), current)
-	// A handle somebody else holds is a conflict, not a malformed field: the
-	// value is fine, the world disagrees. The UI points at the same input either
-	// way, but the status says which kind of problem it is.
+	// A handle somebody else holds is a conflict rather than a malformed field:
+	// the value is valid but already taken. The UI points at the same input
+	// either way, but the status says which kind of problem it is.
 	if errors.Is(err, profile.ErrHandleTaken) {
 		writeError(w, http.StatusConflict, "handle_taken")
 		return
@@ -1867,9 +1885,9 @@ func setString(dst *string, v *string) {
 	}
 }
 
-// profileErrorCode maps a profile validation error to its wire code, reporting
-// false for anything that is not one — so a storage failure is never disguised
-// as a bad field.
+// profileErrorCode maps a profile validation error to its wire code, and reports
+// false for any other error, so a storage failure is never reported as a bad
+// field.
 func profileErrorCode(err error) (string, bool) {
 	switch {
 	case errors.Is(err, profile.ErrInvalidContact):
@@ -1890,10 +1908,10 @@ func profileErrorCode(err error) (string, bool) {
 // publicProfile serves a researcher's page: who they say they are, and the
 // public work signed under that name (006r).
 //
-// It is open — no sign-in — matching the public zone: a reproduction anyone can
-// read, signed by somebody anyone can look up. An unknown handle, a private
-// profile, and a profile with no handle are one 404, so the endpoint cannot be
-// walked to learn who holds which name.
+// It is open, with no sign-in, matching the public zone: a reproduction anyone
+// can read, signed by somebody anyone can look up. An unknown handle, a private
+// profile, and a profile with no handle all answer the same 404, so the endpoint
+// cannot be enumerated to learn who holds which name.
 func (rt *Router) publicProfile(w http.ResponseWriter, r *http.Request) {
 	if rt.profiles == nil {
 		writeError(w, http.StatusNotFound, "not_found")
@@ -1922,7 +1940,8 @@ func (rt *Router) publicProfile(w http.ResponseWriter, r *http.Request) {
 
 // signedPublicProjects lists the public projects this principal signed. It reads
 // the public zone and filters by signer, so a withdrawn project leaves the page
-// the moment it leaves the zone — one source of truth for what is public.
+// as soon as it leaves the zone, and there is one source of truth for what is
+// public.
 func (rt *Router) signedPublicProjects(ctx context.Context, principal string) []profile.PublicSigned {
 	out := []profile.PublicSigned{}
 	if rt.projects == nil || principal == "" {
@@ -1941,16 +1960,17 @@ func (rt *Router) signedPublicProjects(ctx context.Context, principal string) []
 	return out
 }
 
-// maxWithdrawReason caps the owner's stated reason. It is their own record, not
-// a published notice, so the limit only has to keep a runaway body out of the
-// column.
+// maxWithdrawReason bounds the owner's stated reason. It is their own record
+// rather than a published notice, so the limit only has to keep an oversized
+// body out of the column.
 const maxWithdrawReason = 2000
 
 // withdrawProject ends a publication (006o): the project returns to private, the
 // retraction is recorded beside the sign-off it retracts rather than erasing it,
-// and — best-effort — every repository the project owns is set private on the
-// forge. Owner-only. Withdrawing an already-private project is a success that
-// changes nothing, so a double-click cannot rewrite when the publication ended.
+// and, on a best-effort basis, every repository the project owns is set private
+// on the forge. Only the owner may withdraw. Withdrawing an already private
+// project succeeds and changes nothing, so a double-click cannot rewrite when
+// the publication ended.
 func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	proj, _, ok := rt.ownedProject(w, r)
 	if !ok {
@@ -1971,7 +1991,7 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "withdraw_failed")
 		return
 	}
-	// The forge follows, best-effort.
+	// The forge repositories are closed on a best-effort basis.
 	if sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID); err != nil {
 		slog.WarnContext(r.Context(), "withdraw: sessions unreadable, repositories left as they are", "project", proj.ID, "error", err)
 	} else {
@@ -1986,13 +2006,14 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
-// makeProjectPublic is the owner's public flip, gated by a responsibility
-// sign-off (006f). It resolves through ownedProject, so a stranger sees no
-// project, a collaborator is refused, and a project in the trash cannot be
-// published (019). It refuses a project none of whose
-// published sessions cleared 002's redistribution gate (409 not_clear), records
-// the sign-off with its signer snapshot (006n), marks the project public, and —
-// best-effort — flips the forge repository public when a publisher is wired.
+// makeProjectPublic makes a project public, gated by a responsibility sign-off
+// (006f). It resolves through ownedProject, so a caller who may not view the
+// project gets 404, a collaborator is refused, and a project in the trash
+// cannot be published (019). It refuses a project none of whose published
+// sessions cleared 002's redistribution gate (409 not_clear), records the
+// sign-off with its signer snapshot (006n), marks the project public, and, on
+// a best-effort basis, makes the forge repository public when a publisher is
+// wired.
 func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	proj, _, ok := rt.ownedProject(w, r)
 	if !ok {
@@ -2000,32 +2021,33 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		AttestationVersion string `json:"attestation_version"`
-		// The signer, as the wizard confirmed them (006n). Prefilled from the
-		// owner's profile in the UI, but recorded from this body: what is published
-		// is what they signed, not what their profile says later.
+		// Name, Institution, Contact, ORCID and Scholar describe the signer as
+		// the wizard confirmed them (006n). They are prefilled from the owner's
+		// profile in the UI but recorded from this body: what is published is
+		// what they signed, not what their profile says later.
 		Name        string `json:"signed_off_name"`
 		Institution string `json:"signed_off_institution"`
 		Contact     string `json:"signed_off_contact"`
 		ORCID       string `json:"signed_off_orcid"`
 		Scholar     string `json:"signed_off_scholar"`
-		// FlipRepo opts the forge repository into the public flip. Absent means
-		// yes (the common intent — publish the reproduction), so a GitHub-connected
-		// owner opts out by sending false: the in-app artifacts still go public,
-		// but the repository stays private.
+		// FlipRepo says whether the forge repository is also made public. Absent
+		// means yes, which is the common intent of publishing the reproduction, so
+		// a GitHub-connected owner opts out by sending false: the in-app artifacts
+		// still go public, but the repository stays private.
 		FlipRepo *bool `json:"flip_repo"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	if strings.TrimSpace(body.AttestationVersion) == "" {
-		// The sign-off is the whole point — a flip with no recorded attestation
-		// changes nothing.
+		// The sign-off is required: a publish with no recorded attestation is
+		// refused.
 		writeError(w, http.StatusBadRequest, "missing_attestation")
 		return
 	}
-	// The signer snapshot is validated with the same rules the profile is, so a
-	// malformed identifier cannot reach a public page by taking the publish path
-	// instead of the settings one. Contact is required here and only here: a
-	// result published with no way to ask about it is the case this spec exists
-	// to close.
+	// The signer snapshot is validated with the same rules as the profile, so a
+	// malformed identifier cannot reach a public page through the publish path
+	// instead of the settings path. Contact is required here and only here,
+	// because a result published with no way to ask about it is the case this
+	// spec exists to close.
 	signer := profile.Profile{
 		DisplayName: body.Name,
 		Institution: body.Institution,
@@ -2042,22 +2064,22 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Publishing puts a name on a result, and 006r's position is that the name
-	// must resolve to something: the signer needs a public profile with a
-	// handle. Checked before anything is recorded, so a refusal leaves no
-	// half-written sign-off behind.
+	// Publishing puts a name on a result, and 006r requires that the name
+	// resolve to a page: the signer needs a public profile with a handle. This
+	// is checked before anything is recorded, so a refusal leaves no partial
+	// sign-off behind.
 	if !rt.signerIsPublic(r.Context(), proj.Owner) {
 		writeError(w, http.StatusConflict, "profile_not_public")
 		return
 	}
 
 	// The project must have a published session whose manifest cleared the gate,
-	// and none that did not — a flagged tree bars the project from going public.
+	// and none that did not; a flagged tree bars the project from going public.
 	//
-	// A refusal names the sessions in the way and why, because every one of these
-	// has a different remedy and the owner cannot guess which they are looking
-	// at. They all share the 409: each is a statement about the state of the
-	// project, not about the request.
+	// A refusal names the blocking sessions and the reason for each, because each
+	// reason has a different remedy and the owner cannot guess which applies.
+	// They all share the 409, because each is a statement about the state of the
+	// project rather than about the request.
 	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
@@ -2069,8 +2091,8 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(repos) == 0 {
-		// Nothing ever reached the forge, so there is nothing to open. Not a
-		// redistribution verdict — no reproduction has been published yet.
+		// Nothing reached the forge, so there is nothing to make public. This is
+		// not a redistribution verdict; no reproduction has been published yet.
 		writeBlockedError(w, http.StatusConflict, "nothing_published", nil)
 		return
 	}
@@ -2093,9 +2115,9 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "publish_failed")
 		return
 	}
-	// Best-effort forge flip, unless the owner opted the repository out: the
-	// project is already public in-app either way, and a repo flip failure must
-	// not fail the request, only be reported.
+	// The forge repository is made public on a best-effort basis unless the
+	// owner opted out. The project is already public in-app either way, and a
+	// failure here is logged rather than failing the request.
 	flipRepo := body.FlipRepo == nil || *body.FlipRepo
 	if flipRepo && rt.repoPub != nil {
 		for _, repo := range repos {
@@ -2107,8 +2129,9 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	rt.publicChanged()
 	updated, err := rt.projects.Get(r.Context(), proj.ID)
 	if err != nil {
-		// The flip landed; what failed is reading it back. Say so rather than
-		// answering with an empty project that reads as "nothing changed".
+		// The publish succeeded and only the read-back failed. That is reported
+		// rather than answering with an empty project that suggests nothing
+		// changed.
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
@@ -2129,12 +2152,12 @@ func (rt *Router) signerHandle(ctx context.Context, p project.Project) string {
 	return handle
 }
 
-// signerIsPublic reports whether a principal has a public profile with a handle
-// — the precondition for publishing (006r).
+// signerIsPublic reports whether a principal has a public profile with a
+// handle, which is the precondition for publishing (006r).
 //
-// A deployment with no profile store wired does not block publishing: the
-// requirement is about attribution, and a missing store is not a reason to
-// refuse an owner their own decision.
+// A deployment with no profile store does not block publishing: the requirement
+// is about attribution, and a missing store is not a reason to refuse an owner
+// their own decision.
 func (rt *Router) signerIsPublic(ctx context.Context, principal string) bool {
 	if rt.profiles == nil {
 		return true
@@ -2143,43 +2166,44 @@ func (rt *Router) signerIsPublic(ctx context.Context, principal string) bool {
 	return err == nil && ok
 }
 
-// BlockReason is why one session stops its project from going public. A closed
-// set: each value is a different fact about the session, with a different thing
-// the owner does about it.
+// BlockReason is why one session stops its project from going public. It is a
+// closed set: each value is a different fact about the session, with a
+// different remedy for the owner.
 type BlockReason string
 
 const (
 	// BlockUnfinished means the session has a repository but no manifest. The run
-	// never finalized — it failed, was cancelled, or is still going. Nothing is
+	// never finalized: it failed, was cancelled, or is still running. Nothing is
 	// wrong with its content; there is no content yet.
 	BlockUnfinished BlockReason = "unfinished"
-	// BlockUnreadable means the manifest could not be read at all. A forge that
-	// did not answer is our problem, not the owner's, and it is temporary.
+	// BlockUnreadable means the manifest could not be read. A forge that did not
+	// answer is the platform's problem rather than the owner's, and it is
+	// temporary.
 	BlockUnreadable BlockReason = "unreadable"
 	// BlockNotClear means the manifest was read and 002's redistribution review
-	// is not clear. The only reason that is genuinely about what the reproduction
-	// contains; PublishBlocker.Review carries which review state it was.
+	// is not clear. It is the only reason that concerns what the reproduction
+	// contains; PublishBlocker.Review carries the review state.
 	BlockNotClear BlockReason = "not_clear"
 )
 
-// PublishBlocker names one session standing between a project and the public
-// flip, so the owner can be sent to it rather than told to go looking.
+// PublishBlocker names one session that prevents a project from going public,
+// so the owner can be directed to it rather than left to search.
 //
 // Reason and Review are plain strings on the wire, projected from the typed
-// enums behind them — the wire is a boundary, not a place to re-declare a
-// domain.
+// enums behind them, because the wire is a boundary and does not redeclare the
+// domain types.
 type PublishBlocker struct {
 	SessionID string `json:"session_id"`
 	Repo      string `json:"repo,omitempty"`
-	Ref       string `json:"ref,omitempty"` // the paper the session is a run of, for naming it on screen
+	Ref       string `json:"ref,omitempty"` // The paper the session is a run of, for naming it on screen.
 	Reason    string `json:"reason"`
-	Review    string `json:"review,omitempty"` // the manifest's redistribution review, when there was one to read
+	Review    string `json:"review,omitempty"` // The manifest's redistribution review, when one was read.
 }
 
 // headlineBlock picks the code for a refusal that lists several blockers: the
-// one the owner has to act on wins over the one they can only wait out. A
-// flagged tree needs a decision, an unfinished run needs time, and an unreadable
-// manifest needs nothing but a retry — so they rank in that order.
+// one the owner has to act on takes precedence over one they can only wait
+// out. A flagged tree needs a decision, an unfinished run needs time, and an
+// unreadable manifest needs only a retry, so they rank in that order.
 func headlineBlock(blockers []PublishBlocker) string {
 	seen := map[BlockReason]bool{}
 	for _, b := range blockers {
@@ -2196,16 +2220,16 @@ func headlineBlock(blockers []PublishBlocker) string {
 }
 
 // publishBlockers reports what stops a project going public, and the
-// repositories to flip when nothing does.
+// repositories to make public when nothing does.
 //
-// It reads every session rather than stopping at the first bad one. A project
-// with three blocked sessions used to refuse three times, naming nothing, so
-// fixing one bought the owner the identical refusal.
+// It reads every session rather than stopping at the first blocked one. A
+// project with three blocked sessions used to refuse three times without naming
+// any, so fixing one produced the identical refusal.
 //
-// A session with no repository is not a blocker — it never began publishing, so
-// there is nothing of it to make public. A project where *no* session has one
-// yields no blockers and no repositories, which is the caller's signal that
-// there is nothing to publish at all.
+// A session with no repository is not a blocker: it never began publishing, so
+// there is nothing of it to make public. A project where no session has one
+// yields no blockers and no repositories, which tells the caller there is
+// nothing to publish.
 func (rt *Router) publishBlockers(ctx context.Context, sessions []job.Job) ([]PublishBlocker, []string) {
 	var blockers []PublishBlocker
 	var repos []string
@@ -2228,8 +2252,8 @@ func (rt *Router) publishBlockers(ctx context.Context, sessions []job.Job) ([]Pu
 			continue
 		}
 		if err != nil {
-			// Fail closed, as before — but say that we could not read it, rather
-			// than reporting an unread manifest as a flagged one.
+			// This fails closed, as before, but reports that the manifest could not
+			// be read rather than reporting it as flagged.
 			slog.WarnContext(ctx, "publish gate: manifest unreadable", "repo", s.RepoName, "error", err)
 			block(BlockUnreadable, "")
 			continue
@@ -2244,10 +2268,11 @@ func (rt *Router) publishBlockers(ctx context.Context, sessions []job.Job) ([]Pu
 }
 
 // ownedProject resolves the project named in the path for a route only its
-// owner may take — the authority behind every member route (006f): membership
-// is owner-driven. Nothing about a project in the trash changes (019) — not
-// its name, not its members, not its visibility — so a trashed one is refused;
-// the trash routes resolve through trashableProject instead.
+// owner may use. Ownership is the authority behind every member route (006f),
+// because membership is owner-driven. Nothing about a project in the trash
+// changes (019), neither its name, its members nor its visibility, so a trashed
+// project is refused; the trash routes resolve through trashableProject
+// instead.
 func (rt *Router) ownedProject(w http.ResponseWriter, r *http.Request) (project.Project, Identity, bool) {
 	id, _ := IdentityFrom(r)
 	proj, ok := rt.resolveProject(w, r, r.PathValue("id"), needOwner, false, "not_found")
@@ -2263,11 +2288,11 @@ func (rt *Router) trashableProject(w http.ResponseWriter, r *http.Request) (proj
 	return proj, id, ok
 }
 
-// trashProject moves a project to the trash, or — with ?purge=1 — removes it for
-// good (019).
+// trashProject moves a project to the trash, or, with ?purge=1, removes it
+// permanently (019).
 //
-// The two are one verb at different depths because that is what they are, and
-// because the depth is what carries the order: a purge is refused on a project
+// The two share one route because they are the same operation at different
+// depths, and the depth enforces the order: a purge is refused on a project
 // that is not in the trash, so the reversible step cannot be skipped.
 func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 	proj, id, ok := rt.trashableProject(w, r)
@@ -2278,8 +2303,8 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 		rt.purgeProject(w, r, proj)
 		return
 	}
-	// A running session spends this project's credits into a container its owner
-	// is about to stop looking at. Stop it first.
+	// A running session would keep spending this project's credits after its
+	// owner stopped watching it, so running sessions must be stopped first.
 	sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
@@ -2291,9 +2316,9 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A publication ends with a recorded retraction or it does not end (006o).
-	// Deleting is not a licence to skip the record, so the withdrawal happens
-	// first and through the same path an ordinary withdrawal takes.
+	// A publication ends only with a recorded retraction (006o). Deleting does
+	// not skip the record, so the withdrawal happens first and through the same
+	// path an ordinary withdrawal takes.
 	if proj.Visibility == project.VisibilityPublic {
 		if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{By: id.Sub, Reason: withdrawnByDeletion}); err != nil {
 			writeError(w, http.StatusInternalServerError, "withdraw_failed")
@@ -2310,25 +2335,25 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 }
 
 // withdrawnByDeletion is the reason recorded against a publication that ended
-// because its project was thrown away. It is the owner's record of why, and the
-// one case where the reason is not in their own words.
+// because its project was deleted. It is the owner's record of why, and the one
+// case where the reason is not in their own words.
 const withdrawnByDeletion = "the project was deleted"
 
-// purgeProject removes a trashed project for good: its sessions, its papers, and
-// the row itself.
+// purgeProject removes a trashed project permanently: its sessions, its papers,
+// and the row itself.
 //
-// What it does not remove is the repositories those sessions published. They are
-// closed on the forge, exactly as a withdrawal closes them — a repository the
-// agent authored is evidence, and this product does not destroy evidence on a
-// click. What a purge ends is the app's claim on it.
+// It does not remove the repositories those sessions published. They are closed
+// on the forge, exactly as a withdrawal closes them, because a repository the
+// agent authored is evidence, and this product does not destroy evidence. A
+// purge ends the app's claim on it.
 func (rt *Router) purgeProject(w http.ResponseWriter, r *http.Request, proj project.Project) {
 	if !proj.Trashed() {
 		writeError(w, http.StatusConflict, "not_trashed")
 		return
 	}
-	// Money outlives the project that held it unless somebody takes it back. A
-	// purge that dropped a funded pot would leave a balance nobody can account
-	// for, which is the one thing the ledger exists to prevent.
+	// Credits outlive the project that held them unless somebody reclaims them.
+	// A purge that dropped a funded pot would leave a balance nobody can account
+	// for, which is what the ledger exists to prevent.
 	if rt.credits != nil {
 		balance, err := rt.credits.Balance(r.Context(), credit.Pot(proj.ID))
 		if err != nil {
@@ -2361,17 +2386,17 @@ func (rt *Router) purgeProject(w http.ResponseWriter, r *http.Request, proj proj
 
 // closeRepos makes every repository a project's sessions published private.
 //
-// Best-effort on purpose: the project is already private in this app, and a
-// forge outage must not strand an owner mid-withdrawal. Every repository the
-// project owns is closed, not only those a publish flipped — nothing records
-// which those were, and closing an already-closed repository costs nothing. The
-// repositories come from the sessions directly rather than from
-// clearedForPublish, because a project is often withdrawn precisely because its
-// tree stopped being clear, and that must not be what keeps the repository open.
+// It is best-effort by design: the project is already private in this app, and
+// a forge outage must not leave an owner unable to withdraw. Every repository
+// the project owns is closed, not only those a publish made public, because
+// nothing records which those were and closing an already private repository
+// costs nothing. The repositories come from the sessions directly rather than
+// from publishBlockers, because a project is often withdrawn precisely because
+// its tree stopped being clear, and that must not keep the repository open.
 //
-// One helper for both ways a publication ends — a withdrawal (006o) and a
-// delete (019) — because they close exactly the same set for exactly the same
-// reasons, and two copies would drift.
+// One helper serves both ways a publication ends, a withdrawal (006o) and a
+// delete (019), because they close exactly the same set for the same reasons,
+// and two copies would drift.
 func (rt *Router) closeRepos(ctx context.Context, sessions []job.Job) {
 	if rt.repoPub == nil {
 		return
@@ -2386,8 +2411,8 @@ func (rt *Router) closeRepos(ctx context.Context, sessions []job.Job) {
 	}
 }
 
-// restoreProject takes a project back out of the trash. Owner-only, and a
-// success on one that was never in it.
+// restoreProject takes a project back out of the trash. Only the owner may
+// restore, and restoring a project that was never in the trash succeeds.
 func (rt *Router) restoreProject(w http.ResponseWriter, r *http.Request) {
 	proj, _, ok := rt.trashableProject(w, r)
 	if !ok {
@@ -2401,8 +2426,9 @@ func (rt *Router) restoreProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// listTrash is the trash screen: the caller's own trashed projects, newest-
-// trashed first. Only an owner's own, because only an owner can put one here.
+// listTrash serves the trash screen: the caller's own trashed projects, most
+// recently trashed first. Only the caller's own, because only an owner can
+// trash a project.
 func (rt *Router) listTrash(w http.ResponseWriter, r *http.Request) {
 	projects, err := rt.projects.ListTrashed(r.Context(), principal(r))
 	if err != nil {
@@ -2447,16 +2473,17 @@ func (rt *Router) listMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, members)
 }
 
-// addMember invites a collaborator into a project by email, owner-only. The
-// owner is seeded as the project's lead (idempotent) so the membership store's
-// own lead-check is satisfied — one authority, project ownership. Inviting an
-// email admits nobody to the platform: they still need a platform grant.
+// addMember invites a collaborator into a project by email. Only the owner may
+// invite. The owner is seeded as the project's lead, which is idempotent, so the
+// membership store's own lead check is satisfied and project ownership remains
+// the single authority. Inviting an email admits nobody to the platform: they
+// still need a platform grant.
 //
-// It then tells them (006p). The mail is best-effort and deliberately so: the
-// membership is the durable thing, created and authorised here, and an outage
-// at a mail provider must not read to the owner as a failure to share their
-// work. A message that did not go out is logged and can be sent again by
-// inviting the same person once more.
+// It then notifies them (006p). The mail is deliberately best-effort: the
+// membership is the durable record, created and authorised here, and an outage
+// at a mail provider must not appear to the owner as a failure to share their
+// work. A message that was not sent is logged and can be sent again by inviting
+// the same person once more.
 func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 	proj, id, ok := rt.ownedProject(w, r)
 	if !ok {
@@ -2482,10 +2509,10 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "member_add_failed")
 		return
 	}
-	// Asked before the add, so "already there" is distinguishable from "just
-	// added": re-inviting an existing member is a no-op the person should not
-	// hear about twice, while re-inviting somebody who was removed is a real
-	// invitation and gets one.
+	// Membership is checked before the add, so an existing member can be told
+	// apart from a new one: re-inviting an existing member is a no-op the person
+	// should not be notified of twice, while re-inviting somebody who was
+	// removed is a real invitation and gets one.
 	already := rt.isMember(r.Context(), proj.ID, body.Email)
 	if err := rt.members.Add(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, proj.ID, body.Email, role); err != nil {
 		writeError(w, http.StatusInternalServerError, "member_add_failed")
@@ -2499,9 +2526,10 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// isMember reports whether an email is already on a project. A store that
-// cannot be read answers false: the cost of being wrong is one extra message,
-// against a silent non-invitation the other way.
+// isMember reports whether an email is already a member of a project. A store
+// that cannot be read answers false, because the cost of being wrong is one
+// extra message, whereas the other way it would be a silently missing
+// invitation.
 func (rt *Router) isMember(ctx context.Context, projectID, email string) bool {
 	members, err := rt.members.List(ctx, projectID)
 	if err != nil {
@@ -2515,9 +2543,9 @@ func (rt *Router) isMember(ctx context.Context, projectID, email string) bool {
 	return false
 }
 
-// inviterName is how the invitation names the person who sent it: their display
-// name when the identity provider gave one, their address otherwise. Never the
-// opaque subject, which would tell a reader nothing.
+// inviterName is the name the invitation gives the person who sent it: their
+// display name when the identity provider gave one, their address otherwise. It
+// is never the opaque subject, which would mean nothing to a reader.
 func inviterName(id Identity) string {
 	if n := strings.TrimSpace(id.Name); n != "" {
 		return n
@@ -2544,14 +2572,14 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 
 // SessionView is a session as this reader may read it (028).
 //
-// The two fields shadow job.Job's own, at a shallower depth, so encoding/json
+// The two fields shadow job.Job's own at a shallower depth, so encoding/json
 // takes these and the embedded ones never reach the wire. Both are empty for a
-// reader with no stake in the session's project, and omitted rather than sent as
-// zero: a public reader is entitled to the evidence a published reproduction
-// rests on, and `"cost": 0` on a session that cost three dollars would be a
-// number this codebase does not put on a wire. For the owner and a collaborator
-// they carry what job.Job holds, including a genuine zero — a session that has
-// spent nothing yet says so.
+// reader with no stake in the session's project, and omitted rather than sent
+// as zero: a public reader is entitled to the evidence a published reproduction
+// rests on, but `"cost": 0` on a session that cost three dollars would be a
+// false number, which this codebase does not put on the wire. For the owner and
+// a collaborator they carry what job.Job holds, including a genuine zero for a
+// session that has spent nothing yet.
 type SessionView struct {
 	job.Job
 	Principal string `json:"principal,omitempty"`
@@ -2582,40 +2610,40 @@ func sessionViews(js []job.Job, stake bool) []SessionView {
 type ProjectDetail struct {
 	Project  project.Project `json:"project"`
 	Sessions []SessionView   `json:"sessions"`
-	// MaySubmit reports whether this caller may open a session here — its owner
-	// or a collaborator, never a stranger who reached it through the public zone
-	// (006l). The client cannot work this out: it does not know membership, and a
-	// public project is readable by everyone.
+	// MaySubmit reports whether this caller may open a session here: its owner
+	// or a collaborator, never a reader who reached it through the public zone
+	// (006l). The client cannot derive this, because it does not know membership
+	// and a public project is readable by everyone.
 	MaySubmit bool `json:"may_submit"`
 	// SignerHandle is where the signer's name links; see ProjectView.
 	SignerHandle string `json:"signer_handle,omitempty"`
-	// Credits is what this project holds and what it may still commit (011).
-	// Reported only to somebody who may work here: a stranger reading a public
-	// project is looking at the research, not at whose money paid for it.
+	// Credits is what this project holds and what it may still commit (011). It
+	// is reported only to somebody who may work here: a reader of a public
+	// project sees the research, not who paid for it.
 	Credits *ProjectCredits `json:"credits,omitempty"`
 }
 
-// ProjectCredits is a project's money as a member reads it: what the pot holds,
-// what is still free to commit, and how much a session needs to start.
+// ProjectCredits is a project's credits as a member reads them: what the pot
+// holds, what is still free to commit, and how much a session needs to start.
 //
-// Balance and Available differ by the sessions running right now — each holds
-// the reserve — which is exactly the thing a member needs to see before
-// wondering why a submit was refused on a project that "has credits".
+// Balance and Available differ by the sessions running now, each of which holds
+// the reserve. That difference is what a member needs to see when a submit is
+// refused on a project that appears to have credits.
 //
-// The overdraft floor is not here, and that is the point: an allowance somebody
-// can read is an allowance they plan around.
+// The overdraft floor is deliberately not included, because an allowance
+// somebody can read is one they plan around.
 type ProjectCredits struct {
 	Balance      int64 `json:"balance"`
 	Available    int64 `json:"available"`
 	StartReserve int64 `json:"start_reserve"`
 	// MayReclaim reports whether this caller may take credits back out. Only a
-	// lead may: the pot is fungible and does not remember who filled it, so
-	// reclaiming is authority over the project's money rather than a refund of
-	// one's own. The client cannot work this out — it does not know roles.
+	// lead may: the pot is fungible and does not record who filled it, so
+	// reclaiming is authority over the project's credits rather than a refund of
+	// one's own. The client cannot derive this, because it does not know roles.
 	MayReclaim bool `json:"may_reclaim"`
 }
 
-// projectCredits reads a project's money for a caller who may work in it, and
+// projectCredits reads a project's credits for a caller who may work in it, and
 // reports nothing for anyone else. A read failure is not fatal: the project
 // still renders, without its balance.
 func (rt *Router) projectCredits(r *http.Request, proj project.Project) *ProjectCredits {
@@ -2642,8 +2670,8 @@ func (rt *Router) projectCredits(r *http.Request, proj project.Project) *Project
 	return &out
 }
 
-// isLead reports whether the caller leads this project — the role a reclaim
-// needs. An owner is seeded as its lead, so this covers them too.
+// isLead reports whether the caller leads this project, which is the role a
+// reclaim needs. An owner is seeded as its lead, so this covers them too.
 func (rt *Router) isLead(r *http.Request, projectID string) bool {
 	if rt.members == nil {
 		return false
@@ -2653,30 +2681,28 @@ func (rt *Router) isLead(r *http.Request, projectID string) bool {
 	return err == nil && ok && role >= access.RoleLead
 }
 
-// getProject returns a project and its sessions, refusing a project the caller
-// does not own.
 // mayViewProject is the one predicate every project- and session-scoped read
-// consults (006f): a public project is open to anyone signed in, an owner sees
-// their own, and a collaborator sees one they were invited to. Visibility lives
-// on the project, so everything under it (sessions, transcripts, history)
-// inherits this decision — there is no second, unscoped "published" surface.
+// consults (006f): a public project is open to anyone, an owner sees their own,
+// and a collaborator sees one they were invited to. Visibility lives on the
+// project, so everything under it, including sessions, transcripts and history,
+// inherits this decision; there is no second, unscoped published surface.
 func (rt *Router) mayViewProject(r *http.Request, p project.Project) bool {
 	id, _ := IdentityFrom(r)
-	// A trashed project is its owner's alone (019), whatever its visibility column
-	// still says. Putting it here rather than in each read is what closes the
-	// sessions, transcripts and artifacts underneath it in one edit — this
-	// predicate is documented as the decision everything below a project
-	// inherits, and a delete that left those readable would be a delete in name.
+	// A trashed project is visible to its owner alone (019), whatever its
+	// visibility column still says. Checking it here rather than in each read
+	// closes the sessions, transcripts and artifacts underneath it in one place.
+	// This predicate is the decision everything below a project inherits, and a
+	// delete that left those readable would not be a delete.
 	if p.Trashed() {
 		return id.Sub != "" && p.Owner == id.Sub
 	}
 	if p.Visibility == project.VisibilityPublic {
 		return true
 	}
-	// An unauthenticated caller is nobody, and nobody owns nothing. Without this
-	// an anonymous read of a project whose owner column is empty would match on
-	// "" == "", and the reads this route set opened (028) are exactly where that
-	// would first be reachable from the internet.
+	// An unauthenticated caller owns nothing. Without this check, an anonymous
+	// read of a project whose owner column is empty would match on "" == "", and
+	// the reads 028 opened are exactly where that would be reachable from the
+	// internet.
 	if id.Sub == "" {
 		return false
 	}
@@ -2690,18 +2716,18 @@ func (rt *Router) mayViewProject(r *http.Request, p project.Project) bool {
 	return ok
 }
 
-// viewableSession resolves a session and the project it belongs to, and asserts
-// the caller may view that project — so a session read is scoped exactly like
-// its project. It writes 404 and returns ok=false otherwise, hiding a session
-// the caller may not see rather than revealing that it exists.
+// viewableSession resolves a session and the project it belongs to, and checks
+// that the caller may view that project, so a session read is scoped exactly
+// like its project. Otherwise it writes 404 and returns ok=false, hiding a
+// session the caller may not see rather than revealing that it exists.
 func (rt *Router) viewableSession(w http.ResponseWriter, r *http.Request, id string) (job.Job, bool) {
 	j, _, ok := rt.viewableSessionIn(w, r, id)
 	return j, ok
 }
 
-// viewableSessionIn is viewableSession, handing back the project as well — for
-// the one caller that has to decide what the reader may see of the session, not
-// just whether they may see it (028).
+// viewableSessionIn is viewableSession returning the project as well, for
+// callers that must decide what the reader may see of the session and not only
+// whether they may see it (028).
 func (rt *Router) viewableSessionIn(w http.ResponseWriter, r *http.Request, id string) (job.Job, project.Project, bool) {
 	j, err := rt.jobs.Get(r.Context(), id)
 	if err != nil {
@@ -2716,6 +2742,8 @@ func (rt *Router) viewableSessionIn(w http.ResponseWriter, r *http.Request, id s
 	return j, p, true
 }
 
+// getProject returns a project and its sessions. A project the caller may not
+// view answers 404.
 func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, project.ErrNotFound) {
@@ -2726,8 +2754,8 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	// A project the caller may not view is hidden, not merely refused — a private
-	// project reads as not-found to anyone but its owner and collaborators.
+	// A project the caller may not view answers 404 rather than 403: a private
+	// project reads as not found to anyone but its owner and collaborators.
 	if !rt.mayViewProject(r, proj) {
 		writeError(w, http.StatusNotFound, "not_found")
 		return
@@ -2740,11 +2768,10 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	if sessions == nil {
 		sessions = []job.Job{}
 	}
-	// A reader with no stake reads the reproduction, not the wallet behind it
+	// A reader with no stake reads the reproduction and not the wallet behind it
 	// (028): the project without its owning principal, and each session without
-	// who submitted it or what it cost. The redacted copy is the payload alone —
-	// every predicate below still runs against `proj`, which is the project as it
-	// actually is.
+	// who submitted it or what it cost. Only the payload is redacted; every
+	// predicate below still runs against `proj`, the unredacted project.
 	stake := rt.stakeIn(r, proj)
 	shown := proj
 	if !stake {
@@ -2759,10 +2786,10 @@ func (rt *Router) getProject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// listJobs reports the caller's own jobs, newest first — the projects they
-// submitted. The scope is the authenticated principal alone; a caller never sees
-// another principal's jobs. The gate guarantees the request is authenticated, so
-// an empty principal (which cannot occur past the gate) simply lists nothing.
+// listJobs reports the caller's own jobs, newest first. The scope is the
+// authenticated principal alone; a caller never sees another principal's jobs.
+// The gate guarantees the request is authenticated, so an empty principal,
+// which cannot occur past the gate, lists nothing.
 func (rt *Router) listJobs(w http.ResponseWriter, r *http.Request) {
 	jobs, err := rt.jobs.ListByPrincipal(r.Context(), principal(r))
 	if err != nil {
@@ -2777,8 +2804,8 @@ func (rt *Router) listJobs(w http.ResponseWriter, r *http.Request) {
 
 // Transcript is a session's trajectory and token usage (006h): the parsed
 // provider.Event sequence the agent produced, and what the run consumed. Usage
-// is nil when it was never recorded (a historical backfill), never a fabricated
-// zero.
+// is nil when it was never recorded, as for a historical backfill, and never a
+// fabricated zero.
 type Transcript struct {
 	Events []TranscriptEvent `json:"events"`
 	Usage  *provider.Usage   `json:"usage"`
@@ -2791,11 +2818,12 @@ type Transcript struct {
 // the token usage the backend recorded against that one request (006s).
 //
 // Usage is derived on the read path from the event's backend-original payload
-// and is nil for an event that carried none — most events carry none, and an
-// absent number is a fact about the run rather than a gap to fill (the 006h
-// honesty rule, one level down). It is deliberately *not* a field on
-// provider.Event: that type is the schema of the committed transcript.jsonl
-// (005), and a published artifact's shape does not change to serve a viewer.
+// and is nil for an event that carried none. Most events carry none, and an
+// absent number is a fact about the run rather than a gap to fill, which is
+// 006h's rule applied per event. It is deliberately not a field on
+// provider.Event, because that type is the schema of the committed
+// transcript.jsonl (005), and a published artifact's shape does not change to
+// serve a viewer.
 type TranscriptEvent struct {
 	provider.Event
 	Usage *provider.Usage `json:"usage,omitempty"`
@@ -2804,9 +2832,9 @@ type TranscriptEvent struct {
 // getSessionTranscript serves a session's transcript as structured events plus
 // its usage (006h). A finished session reads its committed transcript.jsonl
 // through the forge; a session still in flight reads the backend's live event
-// stream directly, so its trajectory is inspectable in real time — not only
+// stream directly, so its trajectory can be inspected in real time and not only
 // after it publishes. Only a session with neither a repository nor a live run
-// answers 409 not_ready, and its `live` flag tells the client to keep polling.
+// answers 409 not_ready, and the `live` flag tells the client to keep polling.
 func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
 	if !ok {
@@ -2816,11 +2844,12 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 	live := false
 	switch {
 	case !j.Phase.Terminal():
-		// The session is still in flight — its committed transcript does not exist
-		// yet (it is written at publish), and a repository created up front for the
-		// live mount (006i) must NOT be mistaken for one. Read the backend's live
-		// event stream by the observed run id; until that id lands, it is not a
-		// miss, just not ready (the client keeps polling).
+		// The session is still in flight. Its committed transcript does not exist
+		// yet, because it is written at publish, and a repository created up front
+		// for the live mount (006i) must not be mistaken for one. The backend's
+		// live event stream is read by the observed run id; until that id is
+		// recorded the session is not ready rather than missing, and the client
+		// keeps polling.
 		if j.Status.RunID == "" || rt.live == nil {
 			writeError(w, http.StatusConflict, "not_ready")
 			return
@@ -2836,7 +2865,7 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 		// A finished session reads its committed transcript.jsonl through the forge.
 		raw, err := rt.repro.Transcript(r.Context(), repoName(j.RepoName))
 		if err != nil {
-			writeReadError(w, err) // 404 for a genuine miss, 500 for a transport failure
+			writeReadError(w, err) // 404 for a genuine miss, 500 for a transport failure.
 			return
 		}
 		events, err = parseTranscriptEvents(raw)
@@ -2845,8 +2874,9 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case j.Status.RunID != "" && rt.live != nil:
-		// A finished session with no committed repository (a server run that never
-		// published) still shows its trajectory via the backend session's events.
+		// A finished session with no committed repository, such as a server run
+		// that never published, still shows its trajectory through the backend
+		// session's events.
 		evs, err := rt.live.Events(r.Context(), j.Status)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
@@ -2854,16 +2884,18 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 		}
 		events = evs
 	default:
-		// No live run, no committed transcript — not a miss, not ready.
+		// There is no live run and no committed transcript, so the session is
+		// not ready rather than missing.
 		writeError(w, http.StatusConflict, "not_ready")
 		return
 	}
-	// Pair each event with its own usage and take the session total from the same
-	// pass (006s); this also drops the raw payloads, which are the bulk of a
-	// transcript. The session's *recorded* usage still wins for the total when it
-	// has one — it is what the run itself observed — and the derived sum stands in
-	// for a historical backfill that never recorded any. Only when neither exists
-	// is usage nil ("not recorded"), never a fabricated zero.
+	// Each event is paired with its own usage and the session total is taken
+	// from the same pass (006s); this also drops the raw payloads, which are the
+	// bulk of a transcript. The session's recorded usage still takes precedence
+	// for the total when it has one, because it is what the run itself observed,
+	// and the derived sum stands in for a historical backfill that never recorded
+	// any. Only when neither exists is usage nil, meaning not recorded, and it
+	// is never a fabricated zero.
 	shown, derived, ok := attachUsage(events)
 	var usage *provider.Usage
 	switch {
@@ -2905,16 +2937,17 @@ func (rt *Router) getSessionReproduction(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, repro)
 }
 
-// getSessionFindings serves the session's verdict.json — the boundary table, the
+// getSessionFindings serves the session's verdict.json: the boundary table, the
 // hidden decisions, the scorecard, and what the authors released (021a).
 //
-// It is deliberately not folded into /jobs/{id}/reproduction. That route is the
-// manifest, the manifest is the system's word, and these are the agent's claims;
-// mixing them would blur the line the attestation model rests on.
+// It is deliberately not folded into /jobs/{id}/reproduction. That route serves
+// the manifest, which is the system's statement, whereas these are the agent's
+// claims; mixing them would blur the distinction the attestation model rests
+// on.
 //
-// A session with no findings is a 404 with a reason, not an empty body: a run
-// that predates the file and a run whose file failed validation are different
-// facts, and a reader is told which.
+// A session with no findings answers 404 with a reason rather than an empty
+// body: a run that predates the file and a run whose file failed validation are
+// different facts, and the reader is told which.
 func (rt *Router) getSessionFindings(w http.ResponseWriter, r *http.Request) {
 	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
 	if !ok {
@@ -2939,9 +2972,9 @@ func (rt *Router) getSessionFindings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(problems) > 0 {
-		// The same refusal finalize made, made again on read: a file that does
-		// not validate is not served as if it did, and the reason travels so the
-		// pane can say which rule it broke rather than "unavailable".
+		// This repeats the refusal finalize made: a file that does not validate is
+		// not served as if it did, and the reasons are included so the pane can
+		// say which rule it broke rather than only that it is unavailable.
 		msgs := make([]string, 0, len(problems))
 		for _, p := range problems {
 			msgs = append(msgs, p.String())
@@ -2957,9 +2990,9 @@ func (rt *Router) getSessionFindings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// listSessionArtifacts serves the session's repository file tree — the in-app
-// artifact browser (006f), an OSF-style pass-through that works even when the
-// forge repository stays private.
+// listSessionArtifacts serves the session's repository file tree for the in-app
+// artifact browser (006f). It is a pass-through to the forge, in the style of
+// OSF, that works even when the forge repository stays private.
 func (rt *Router) listSessionArtifacts(w http.ResponseWriter, r *http.Request) {
 	j, ok := rt.viewableSession(w, r, r.PathValue("id"))
 	if !ok {
@@ -2999,10 +3032,10 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The path names a file inside one repository, and the reader builds a forge
-	// URL out of it. Anything that could climb out of that repository is refused
-	// here, at the edge where the string arrives (028): the route is open now, so
-	// this is a URL an anonymous caller composes and the forge read runs under
-	// the platform's own credential.
+	// URL from it. Anything that could escape that repository is refused here,
+	// where the string arrives (028): the route is open, so this is a URL an
+	// anonymous caller composes, and the forge read runs under the platform's
+	// own credential.
 	if !repoRelative(path) {
 		writeError(w, http.StatusBadRequest, "bad_path")
 		return
@@ -3012,27 +3045,29 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 		writeReadError(w, err)
 		return
 	}
-	// Serve images with a real image type so the browser renders them; serve
-	// everything else as plain text (never text/html — a committed .html must not
-	// execute on our origin). nosniff stops the browser from re-sniffing it.
+	// Images are served with a real image type so the browser renders them;
+	// everything else is served as plain text, and never as text/html, because a
+	// committed .html file must not execute on this origin. nosniff stops the
+	// browser from re-sniffing the type.
 	//
-	// The content type is not enough on its own. An SVG is a document, not just a
-	// picture: opened directly in a tab it runs whatever <script> it carries, on
-	// this origin, against whoever opened the link — and nosniff cannot help,
-	// because image/svg+xml is what we declared, not what was guessed. These
-	// bytes are an agent's commit in a repository, so they are as untrusted as
-	// the markdown the client already scrubs. The sandbox directive answers it:
-	// with no allow-scripts the document cannot execute, and with no
-	// allow-same-origin it lands in an opaque origin with no access to ours.
-	// default-src 'none' stops it fetching anything of its own — including its
-	// stylesheets, so an SVG opened directly renders unstyled. That is the
-	// hostile path, not the one the app uses, and it is the right trade.
+	// The content type is not enough on its own. An SVG is a document as well as
+	// a picture: opened directly in a tab it runs any <script> it carries, on
+	// this origin, against whoever opened the link, and nosniff cannot help
+	// because image/svg+xml is the declared type rather than a guessed one.
+	// These bytes are an agent's commit in a repository, so they are as
+	// untrusted as the markdown the client already sanitises. The sandbox
+	// directive addresses this: with no allow-scripts the document cannot
+	// execute, and with no allow-same-origin it is placed in an opaque origin
+	// with no access to this one. default-src 'none' stops it fetching anything
+	// of its own, including its stylesheets, so an SVG opened directly renders
+	// unstyled. That is the hostile path rather than the one the app uses, and
+	// the trade is acceptable.
 	//
-	// The header goes on every artifact response rather than on the svg branch,
-	// so a type added to artifactContentType later inherits the guard instead of
-	// having to remember it. It does not affect the app's own rendering: a
-	// response CSP is not applied as a document policy when the bytes arrive
-	// through <img src>, which is how the client shows a committed image.
+	// The header goes on every artifact response rather than only on the svg
+	// branch, so a type added to artifactContentType later inherits the guard.
+	// It does not affect the app's own rendering: a response CSP is not applied
+	// as a document policy when the bytes arrive through <img src>, which is how
+	// the client shows a committed image.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Type", artifactContentType(path))
@@ -3046,15 +3081,15 @@ func (rt *Router) getSessionArtifact(w http.ResponseWriter, r *http.Request) {
 // repoRelative reports whether a path names a file inside a repository and
 // nothing else.
 //
-// It is deliberately strict rather than clever: no absolute path, no `.` or `..`
-// segment, no backslash, no percent sign, and no `?` or `#`. The percent is what
-// stops a double-encoded `%252e%252e` — the query decoder unescapes once, so a
-// surviving `%2e%2e` would be handed on and decoded again by whoever reads it.
-// The `?` and `#` are there because the reader pastes this string into a forge
-// URL: a `?` would start a query on the contents API, where `ref` picks which
-// branch or commit to read, and a `#` would truncate the URL to the repository
-// root. Neither is a character in a committed filename. A committed
-// artifact with a percent in its name is not worth the ambiguity.
+// It is deliberately strict: no absolute path, no `.` or `..` segment, no
+// backslash, no percent sign, and no `?` or `#`. The percent rule stops a
+// double-encoded `%252e%252e`: the query decoder unescapes once, so a surviving
+// `%2e%2e` would be passed on and decoded again by whoever reads it. The `?`
+// and `#` rules exist because the reader inserts this string into a forge URL:
+// a `?` would start a query on the contents API, where `ref` picks which branch
+// or commit to read, and a `#` would truncate the URL to the repository root.
+// Neither is a character in a committed filename. A committed artifact with a
+// percent in its name is not worth the ambiguity.
 func repoRelative(p string) bool {
 	if p == "" || strings.HasPrefix(p, "/") || strings.ContainsAny(p, `\%?#`) {
 		return false
@@ -3088,7 +3123,8 @@ func artifactContentType(path string) string {
 
 // parseTranscriptEvents parses the newline-delimited provider.Event stream
 // committed as transcript.jsonl (005). A blank line is skipped; a malformed
-// line fails the parse, so a corrupt transcript is a 500, not a silent gap.
+// line fails the parse, so a corrupt transcript answers 500 rather than leaving
+// a silent gap.
 func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	events := []provider.Event{}
 	for line := range strings.SplitSeq(string(raw), "\n") {
@@ -3104,8 +3140,8 @@ func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	return events, nil
 }
 
-// eventUsage reads only the adapter-normalized field. Vendor wire payloads are
-// evidence, not an application protocol.
+// eventUsage reads only the adapter-normalised Usage field. Vendor wire payloads
+// are evidence rather than an application protocol, so they are not parsed here.
 func eventUsage(e provider.Event) (provider.Usage, bool) {
 	if e.Usage == nil {
 		return provider.Usage{}, false
@@ -3115,10 +3151,10 @@ func eventUsage(e provider.Event) (provider.Usage, bool) {
 
 // attachUsage pairs every event with its own usage and returns the session total
 // beside it, so a session whose usage was never recorded still shows real
-// numbers. ok is false when no event carries usage — then the caller shows "not
-// recorded" rather than a fabricated zero.
+// numbers. ok is false when no event carries usage, in which case the caller
+// reports the usage as not recorded rather than a fabricated zero.
 //
-// Both come out of one pass on purpose: the total is the sum of exactly the
+// Both come from one pass by design: the total is the sum of exactly the
 // per-event numbers the viewer displays, so the two can never disagree (006s).
 // It also drops each event's raw payload, which is the bulk of a transcript and
 // which nothing downstream of this function reads.
@@ -3152,12 +3188,12 @@ func (rt *Router) getJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // cancelSession stops a running session. Only the owner of the session's project
-// may stop it: a collaborator is refused with 403, a stranger is told nothing
-// exists, as every session route tells them. It returns the resulting job;
-// stopping an already-finished session is a no-op.
+// may stop it: a collaborator is refused with 403, and a caller who may not view
+// the project gets 404, as on every session route. It returns the resulting job;
+// stopping an already finished session is a no-op.
 func (rt *Router) cancelSession(w http.ResponseWriter, r *http.Request) {
-	// Resolved like every other session route: a session the caller may not
-	// view does not exist to them, and a store failure is a store failure.
+	// The session is resolved as on every other session route: a session the
+	// caller may not view answers 404.
 	j, proj, ok := rt.viewableSessionIn(w, r, r.PathValue("id"))
 	if !ok {
 		return
@@ -3185,13 +3221,14 @@ func (rt *Router) cancelSession(w http.ResponseWriter, r *http.Request) {
 // deleteSession removes one session from the app (032).
 //
 // It exists because a session that began publishing and never finished holds a
-// repository with no manifest, and publishBlockers blocks on exactly that — so
-// until now a cancelled or failed run made its project unpublishable forever,
-// with no action anywhere in the product to clear it. This is that action.
+// repository with no manifest, and publishBlockers blocks on exactly that, so
+// before 032 a cancelled or failed run made its project permanently
+// unpublishable, with no action in the product to clear it. This is that
+// action.
 //
-// It is a soft delete and it closes the repository rather than destroying it:
+// It is a soft delete, and it closes the repository rather than destroying it:
 // 019's rule, unchanged here, is that a repository the agent authored is
-// evidence. What goes away is the project's claim on the run, not the run.
+// evidence. What is removed is the project's claim on the run, not the run.
 func (rt *Router) deleteSession(w http.ResponseWriter, r *http.Request) {
 	j, err := rt.jobs.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -3209,9 +3246,9 @@ func (rt *Router) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	// The 019 rule, at session scale: a collaborator is refused, and whether a
-	// stranger's session exists is not a stranger's business. cancelSession
-	// answers 403 to both; a route added now does not inherit that leak.
+	// This is the 019 rule applied to a session: a collaborator is refused with
+	// 403, and a caller who may not view the project gets 404, so the session's
+	// existence is not disclosed.
 	if proj.Owner != principal(r) {
 		if !rt.mayViewProject(r, proj) {
 			writeError(w, http.StatusNotFound, "not_found")
@@ -3224,16 +3261,18 @@ func (rt *Router) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "project_trashed")
 		return
 	}
-	// A session in flight is not a corpse. This is what keeps the delete button
-	// on a blocker row from killing a publish that is merely slow: a session
-	// legitimately in the publishing phase raises the *identical* unfinished
-	// blocker as one that died there. Stop it first — POST /jobs/{id}/cancel.
+	// A session still in flight cannot be deleted. This keeps the delete button
+	// on a blocker row from ending a publish that is merely slow: a session
+	// legitimately in the publishing phase raises the identical unfinished
+	// blocker as one that failed there. It must be stopped first with POST
+	// /jobs/{id}/cancel.
 	if !j.Phase.Terminal() {
 		writeError(w, http.StatusConflict, "session_running")
 		return
 	}
-	// Close before deleting. The other order loses the repository name to a
-	// failed write and leaves an open repository nothing points at any more.
+	// The repository is closed before the delete. The other order could lose
+	// the repository name to a failed write and leave an open repository that
+	// nothing references.
 	rt.closeRepos(r.Context(), []job.Job{j})
 	if err := rt.jobs.Delete(r.Context(), j.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "delete_failed")
