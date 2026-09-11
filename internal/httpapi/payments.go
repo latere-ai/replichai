@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -69,7 +69,7 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.Printf("checkout: create session for %s: %v", id.Email, err)
+		slog.WarnContext(r.Context(), "checkout: creating the session", "email", id.Email, "error", err)
 		writeError(w, http.StatusBadGateway, "checkout_failed")
 		return
 	}
@@ -126,14 +126,14 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 func (rt *Router) creditPurchase(r *http.Request, ev pay.Event) int {
 	credited, perr := strconv.ParseInt(ev.Meta["credited_micro"], 10, 64)
 	if ev.Email == "" || perr != nil || credited <= 0 {
-		log.Printf("stripe webhook: unusable checkout metadata (email=%q credited=%q)", ev.Email, ev.Meta["credited_micro"])
+		slog.WarnContext(r.Context(), "stripe webhook: unusable checkout metadata", "email", ev.Email, "credited", ev.Meta["credited_micro"])
 		return http.StatusOK
 	}
 	if rt.credits == nil {
 		return http.StatusOK
 	}
 	if err := rt.credits.TopupPaid(r.Context(), ev.Email, credited, ev.Ref, "stripe:"+ev.Ref); err != nil {
-		log.Printf("stripe webhook: topup for %s: %v", ev.Email, err)
+		slog.ErrorContext(r.Context(), "stripe webhook: top-up not credited", "email", ev.Email, "error", err)
 		return http.StatusInternalServerError
 	}
 	return http.StatusOK
@@ -150,12 +150,12 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	}
 	orig, ok, err := rt.credits.EntryByExternalRef(r.Context(), ev.Ref)
 	if err != nil {
-		log.Printf("stripe webhook: look up purchase %q: %v", ev.Ref, err)
+		slog.ErrorContext(r.Context(), "stripe webhook: looking up the purchase", "ref", ev.Ref, "error", err)
 		return http.StatusInternalServerError
 	}
 	email, isWallet := credit.WalletEmail(orig.Holder)
 	if !ok || !isWallet || orig.Amount <= 0 || ev.ReversalRef == "" {
-		log.Printf("stripe webhook: refund for an unknown or unreversable purchase (pi=%q ref=%q)", ev.Ref, ev.ReversalRef)
+		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusOK
 	}
 	// Whether this reversal is the one that puts the account in the red: read the
@@ -163,7 +163,7 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	// again on a further refund of an already-negative wallet.
 	before, _ := rt.credits.Balance(r.Context(), orig.Holder)
 	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.ReversalRef, "stripe:refund:"+ev.ReversalRef); err != nil {
-		log.Printf("stripe webhook: refund for %s: %v", email, err)
+		slog.ErrorContext(r.Context(), "stripe webhook: refund not recorded", "email", email, "error", err)
 		return http.StatusInternalServerError
 	}
 	if before >= 0 && rt.notifier != nil {

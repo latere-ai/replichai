@@ -5,7 +5,7 @@ package httpapi
 
 import (
 	"encoding/xml"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -58,7 +58,7 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	projects, err := rt.projects.ListPublic(ctx)
 	if err != nil {
-		log.Printf("sitemap: listing the public zone: %v", err)
+		slog.WarnContext(r.Context(), "sitemap: listing the public zone", "error", err)
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
@@ -70,7 +70,7 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 	// sessions. A read failure costs the dates, not the file.
 	modified, err := rt.projects.ModifiedAt(ctx, ids)
 	if err != nil {
-		log.Printf("sitemap: reading modified times: %v", err)
+		slog.WarnContext(r.Context(), "sitemap: reading modified times", "error", err)
 		modified = nil
 	}
 
@@ -100,7 +100,7 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 	enc := xml.NewEncoder(w)
 	enc.Indent("", "  ")
 	if err := enc.Encode(urlset{NS: sitemapNS, URLs: urls}); err != nil {
-		log.Printf("sitemap: encoding: %v", err)
+		slog.ErrorContext(r.Context(), "sitemap: encoding", "error", err)
 	}
 }
 
@@ -110,7 +110,7 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 func (rt *Router) sessionURLs(r *http.Request, p project.Project) []sitemap {
 	sessions, err := rt.jobs.ListByProject(r.Context(), p.ID)
 	if err != nil {
-		log.Printf("sitemap: listing sessions of %s: %v", p.ID, err)
+		slog.WarnContext(r.Context(), "sitemap: listing sessions", "project", p.ID, "error", err)
 		return nil
 	}
 	out := make([]sitemap, 0, len(sessions))

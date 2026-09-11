@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -153,7 +153,7 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 			if n, err := a.credits.Balance(r.Context(), credit.Wallet(g.Email)); err == nil {
 				v.Wallet = n
 			} else {
-				log.Printf("admin: reading the wallet for %s: %v", g.Email, err)
+				slog.WarnContext(r.Context(), "admin: reading the wallet", "email", g.Email, "error", err)
 			}
 		}
 		if negativeOnly && v.Wallet >= 0 {
@@ -212,7 +212,7 @@ func (a *Admin) Settings(w http.ResponseWriter, r *http.Request) {
 	// rather than nothing at all.
 	s, err := a.platform.Settings(r.Context())
 	if err != nil {
-		log.Printf("admin: read platform settings: %v", err)
+		slog.WarnContext(r.Context(), "admin: reading platform settings", "error", err)
 	}
 	writeJSON(w, s)
 }
@@ -298,7 +298,7 @@ func (a *Admin) Solvency(w http.ResponseWriter, r *http.Request) {
 	}
 	total, err := a.credits.TotalOutstanding(r.Context())
 	if err != nil {
-		log.Printf("admin: read solvency: %v", err)
+		slog.WarnContext(r.Context(), "admin: reading solvency", "error", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "solvency_read_failed")
 		return
 	}
@@ -443,7 +443,7 @@ func (a *Admin) RefreshPapers(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, filled, err := a.sweep(r.Context())
 	if err != nil {
-		log.Printf("admin: paper sweep: %v", err)
+		slog.WarnContext(r.Context(), "admin: paper sweep", "error", err)
 		httpapi.WriteError(w, http.StatusBadGateway, "sweep_failed")
 		return
 	}

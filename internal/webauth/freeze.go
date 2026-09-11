@@ -5,7 +5,7 @@ package webauth
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -84,7 +84,7 @@ func FreezeGate(credits credit.Store, ov access.FreezeOverrides) func(http.Handl
 			}
 			frozen, err := Frozen(r.Context(), credits, ov, id.Email)
 			if err != nil {
-				log.Printf("freeze gate: %s: %v", id.Email, err)
+				slog.WarnContext(r.Context(), "freeze gate: failing open", "email", id.Email, "error", err)
 				next.ServeHTTP(w, r) // fail open; the ledger still guards spend
 				return
 			}

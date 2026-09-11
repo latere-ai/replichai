@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 
 	"github.com/latere-ai/replichai/internal/instrument"
@@ -87,7 +87,7 @@ func (g Generated) Collect(_ context.Context, decl instrument.Instrument) (Cohor
 		header[i] = c.Name
 	}
 
-	rng := rand.New(rand.NewSource(g.Seed)) //nolint:gosec // G404: synthetic data, not security
+	rng := rand.New(rand.NewPCG(uint64(g.Seed), uint64(g.Seed))) //nolint:gosec // G404: synthetic data, not security
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	if err := w.Write(header); err != nil {

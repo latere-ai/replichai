@@ -9,7 +9,8 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -177,7 +178,7 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// demotes, and never re-admits a revoked address, so a seeded admin stays an
 	// admin through their first login and a ban survives one.
 	if _, _, err := l.access.SelfGrant(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
-		log.Printf("login: admitting %s: %v", sess.Sub, err)
+		slog.WarnContext(r.Context(), "login: admitting", "principal", sess.Sub, "error", err)
 	}
 
 	// Sign-in is the one moment that always happens, so it is where a project
@@ -189,9 +190,9 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// sign-in itself, and the next one retries it.
 	if l.members != nil && sess.Email != "" {
 		if n, err := l.members.BindAll(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
-			log.Printf("login: binding memberships for %s: %v", sess.Sub, err)
+			slog.WarnContext(r.Context(), "login: binding memberships", "principal", sess.Sub, "error", err)
 		} else if n > 0 {
-			log.Printf("login: bound %d project membership(s) for %s", n, sess.Sub)
+			slog.InfoContext(r.Context(), "login: bound project memberships", "count", n, "principal", sess.Sub)
 		}
 	}
 
@@ -296,7 +297,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 			// A store that cannot answer is not a person who was not invited.
 			// Say so, so the app shows an outage rather than the not-invited
 			// screen to somebody who is.
-			log.Printf("me: resolving %s: %v", id.Sub, err)
+			slog.WarnContext(r.Context(), "me: resolving", "principal", id.Sub, "error", err)
 			httpapi.WriteError(w, http.StatusServiceUnavailable, "access_unavailable")
 			return
 		}
@@ -320,7 +321,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 			if c, err := credits(r.Context(), id.Sub, id.Email); err == nil {
 				body["credits"] = c
 			} else {
-				log.Printf("me: reading credits for %s: %v", id.Sub, err)
+				slog.WarnContext(r.Context(), "me: reading credits", "principal", id.Sub, "error", err)
 			}
 		}
 		// Frozen rides along so the frontend can render the view-only banner and
@@ -329,7 +330,7 @@ func Me(acc access.Access, credits CreditsFunc, frozen FrozenFunc) http.HandlerF
 			if f, err := frozen(r.Context(), id.Email); err == nil {
 				body["frozen"] = f
 			} else {
-				log.Printf("me: reading frozen for %s: %v", id.Sub, err)
+				slog.WarnContext(r.Context(), "me: reading frozen", "principal", id.Sub, "error", err)
 			}
 		}
 		writeJSON(w, body)
@@ -382,7 +383,7 @@ func randToken() string {
 func writeJSON(w http.ResponseWriter, v any) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		log.Printf("writeJSON: encoding a %T response: %v", v, err)
+		slog.Error("writeJSON: encoding a response", "type", fmt.Sprintf("%T", v), "error", err)
 		http.Error(w, "response encoding failed", http.StatusInternalServerError)
 		return
 	}

@@ -42,14 +42,16 @@ func (f fakeMembers) Role(_ context.Context, p access.Principal, project string)
 }
 
 func testAuthority() (Authority, Members) {
-	return fakeAuth{
-			admin.Sub: access.TierAdmin,
-			lead.Sub:  access.TierUser,
-			mate.Sub:  access.TierUser,
-		}, fakeMembers{
-			"p1/" + lead.Sub: access.RoleLead,
-			"p1/" + mate.Sub: access.RoleCollaborator,
-		}
+	auth := fakeAuth{
+		admin.Sub: access.TierAdmin,
+		lead.Sub:  access.TierUser,
+		mate.Sub:  access.TierUser,
+	}
+	members := fakeMembers{
+		"p1/" + lead.Sub: access.RoleLead,
+		"p1/" + mate.Sub: access.RoleCollaborator,
+	}
+	return auth, members
 }
 
 // runStoreContract asserts the invariants every credit Store must hold, so the

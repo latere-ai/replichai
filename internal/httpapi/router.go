@@ -13,7 +13,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -500,7 +501,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err != nil {
 		// writeError's own body is a map[string]string, which always encodes, so
 		// this cannot come back round.
-		log.Printf("httpapi: encoding a %T response: %v", v, err)
+		slog.Error("httpapi: encoding a response", "type", fmt.Sprintf("%T", v), "error", err)
 		writeError(w, http.StatusInternalServerError, "response_encoding_failed")
 		return
 	}

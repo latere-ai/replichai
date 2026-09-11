@@ -96,7 +96,8 @@ type MemStore struct {
 // is not about permissions wants.
 func NewMemStore(auth Authority, members Members, opts ...Option) *MemStore {
 	mem := ledger.NewMemStore()
-	s := &MemStore{store: store{led: mem, auth: auth, members: members}, mem: mem}
+	s := &MemStore{mem: mem}
+	s.store = store{led: mem, auth: auth, members: members}
 	for _, opt := range opts {
 		opt(&s.store)
 	}
@@ -113,7 +114,8 @@ type PGStore struct {
 // NewPGStore builds a ledger over a pgx pool.
 func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members, opts ...Option) *PGStore {
 	pg := pgledger.New(pool)
-	s := &PGStore{store: store{led: pg, auth: auth, members: members}, pg: pg, dbpool: pool}
+	s := &PGStore{pg: pg, dbpool: pool}
+	s.store = store{led: pg, auth: auth, members: members}
 	for _, opt := range opts {
 		opt(&s.store)
 	}

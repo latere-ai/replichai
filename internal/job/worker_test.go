@@ -7,8 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log"
-	"os"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -784,8 +783,9 @@ func TestADriverYieldsASessionItHasLost(t *testing.T) {
 // yield: the one time that line matters is during an incident.
 func TestAFinishedRunIsNotAnnouncedAsAYield(t *testing.T) {
 	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	s := NewMemStore()
 	ctx := context.Background()

@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -82,7 +82,7 @@ func (s *MemStore) settleLocked(ctx context.Context, j Job) {
 		// A settlement that could not be written must not fail the transition:
 		// a session stuck non-terminal is worse than one whose charge has to be
 		// reconciled. The hold stays open until it is.
-		log.Printf("settle session %s: %v", j.ID, err)
+		slog.WarnContext(ctx, "settle session", "session", j.ID, "error", err)
 	}
 }
 

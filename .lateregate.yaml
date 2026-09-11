@@ -108,6 +108,7 @@ golangci:
             - behaviours
             - cancelled
             - cancelling
+            - dialled
             - catalogue
             - catalogues
             - centre
@@ -181,13 +182,6 @@ license:
 # Gates this repository does not run yet. Each entry is temporary by
 # construction: after the date the gate runs and fails on its own terms.
 waive:
-  lint:
-    reason: >-
-      the shared config denies the log package in favour of log/slog and
-      math/rand in favour of math/rand/v2; thirteen files here log through
-      the log package and one draws from math/rand. Moving them is a change
-      to how this service logs, made in one commit, not a rule to turn off
-    until: 2026-10-31
   cover:
     reason: >-
       twenty packages sit under the 90% floor, from cmd/server (29.2%) and

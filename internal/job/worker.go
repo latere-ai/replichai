@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"runtime/debug"
 	"sync"
@@ -144,7 +144,7 @@ func (w *Worker) watch(pool context.Context, id string) {
 	}
 	stop, why, err := w.budget(pool, j)
 	if err != nil {
-		log.Printf("budget: checking session %s: %v", id, err)
+		slog.WarnContext(pool, "budget: checking session", "session", id, "error", err)
 		return
 	}
 	if !stop {
@@ -152,9 +152,9 @@ func (w *Worker) watch(pool context.Context, id string) {
 	}
 	// Logged here and nowhere a member can read: the row records only that the
 	// session did not complete.
-	log.Printf("budget: stopping session %s in project %s: %s", j.ID, j.ProjectID, why)
+	slog.InfoContext(pool, "budget: stopping session", "session", j.ID, "project", j.ProjectID, "why", why)
 	if err := w.fail(id, errors.New(GenericFailure)); err != nil { //nolint:contextcheck // fail must use a fresh context on purpose: the terminal write goes in before interrupt cancels the run, and the pool context is dead on a shutdown
-		log.Printf("budget: recording stopped session %s: %v", id, err)
+		slog.WarnContext(pool, "budget: recording stopped session", "session", id, "error", err)
 		return
 	}
 	w.interrupt(id)
@@ -270,7 +270,7 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 			for ctx.Err() == nil {
 				did, err := w.Process(ctx)
 				if err != nil {
-					log.Printf("worker: process: %v", err)
+					slog.WarnContext(ctx, "worker: process", "error", err)
 				}
 				if err != nil || !did {
 					if w.sleep(ctx, w.poll) != nil {
@@ -306,10 +306,10 @@ func (w *Worker) sweep(ctx context.Context) {
 		}
 		resumed, _, err := w.reconcile(ctx, false)
 		if err != nil {
-			log.Printf("worker: sweep: %v", err)
+			slog.WarnContext(ctx, "worker: sweep", "error", err)
 		}
 		if resumed > 0 {
-			log.Printf("worker: sweep adopted %d stranded run(s)", resumed)
+			slog.InfoContext(ctx, "worker: sweep adopted stranded runs", "count", resumed)
 		}
 	}
 }
@@ -362,7 +362,7 @@ func (w *Worker) beat(ctx context.Context) {
 	for _, id := range w.drivingIDs() {
 		held, err := w.store.Touch(ctx, id, w.id)
 		if err != nil {
-			log.Printf("worker: heartbeat %s: %v", id, err)
+			slog.WarnContext(ctx, "worker: heartbeat", "session", id, "error", err)
 			continue
 		}
 		if held {
@@ -371,7 +371,7 @@ func (w *Worker) beat(ctx context.Context) {
 		if j, err := w.store.Get(ctx, id); err == nil && j.Phase.Terminal() {
 			continue // finished under us; drive is already unwinding
 		}
-		log.Printf("worker: yielding session %s: its lease is held elsewhere", id)
+		slog.InfoContext(ctx, "worker: yielding session; its lease is held elsewhere", "session", id)
 		w.interrupt(id)
 	}
 }
@@ -498,7 +498,7 @@ func (w *Worker) spawn(id string, fn func() error) {
 	go func() {
 		err := w.call("background drive", fn)
 		if err != nil {
-			log.Printf("worker: session %s: %v", id, err)
+			slog.Warn("worker: background drive", "session", id, "error", err)
 		}
 	}()
 }

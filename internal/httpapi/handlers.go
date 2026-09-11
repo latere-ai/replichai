@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -445,7 +445,7 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// An operator's mistake, reported to an operator: the owner is told the
 		// deployment cannot draft, and the log says which model has no price.
-		log.Printf("draft: %v", err)
+		slog.WarnContext(r.Context(), "draft failed", "error", err)
 		writeError(w, http.StatusServiceUnavailable, "drafting_unpriced")
 		return
 	}
@@ -485,7 +485,7 @@ func (rt *Router) draftDescription(w http.ResponseWriter, r *http.Request) {
 		MaxTokens: draftMaxTokens,
 	})
 	if err != nil {
-		log.Printf("draft: project %s: %v", proj.ID, err)
+		slog.WarnContext(r.Context(), "draft failed", "project", proj.ID, "error", err)
 		// A model that answered with nothing burned tokens to do it, so the
 		// project pays before the request is refused — the alternative leaves
 		// the deployment funding compute nobody is billed for. Every other
@@ -542,7 +542,7 @@ func (rt *Router) chargeDraft(w http.ResponseWriter, r *http.Request, projectID 
 		// hearing about, but it does not change the answer: refusing a draft
 		// that was written would charge the project nothing and give it
 		// nothing, and refusing one that was not is already happening.
-		log.Printf("draft: charging project %s %d micro-USD: %v", projectID, cost, err)
+		slog.WarnContext(r.Context(), "draft: charging the project", "project", projectID, "micro_usd", cost, "error", err)
 	}
 	return cost, true
 }
@@ -1667,12 +1667,12 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 	}
 	status, err := rt.jobs.StatusByProjects(ctx, ids)
 	if err != nil {
-		log.Printf("projects: summarising sessions: %v", err)
+		slog.WarnContext(r.Context(), "projects: summarising sessions", "error", err)
 		return nil, err
 	}
 	modified, err := rt.projects.ModifiedAt(ctx, ids)
 	if err != nil {
-		log.Printf("projects: reading modified times: %v", err)
+		slog.WarnContext(r.Context(), "projects: reading modified times", "error", err)
 		return nil, err
 	}
 	// Spend is the one summary that may fail softly. A missing session count is
@@ -1681,7 +1681,7 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 	// be summed would take the reader's projects away over a number.
 	spend, err := rt.jobs.SpendSince(ctx, ids, time.Now().AddDate(0, 0, -SpendWindowDays))
 	if err != nil {
-		log.Printf("projects: summing spend: %v", err)
+		slog.WarnContext(r.Context(), "projects: summing spend", "error", err)
 		spend = nil
 	}
 	// The bibliography, in one call for the whole list (043). It fails as softly
@@ -1690,7 +1690,7 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 	// because a citation could not be read shows the reader nothing at all.
 	papers, err := rt.projects.PapersByProjects(ctx, ids)
 	if err != nil {
-		log.Printf("projects: reading papers: %v", err)
+		slog.WarnContext(r.Context(), "projects: reading papers", "error", err)
 		papers = nil
 	}
 	out := make([]ProjectView, 0, len(projects))
@@ -1967,7 +1967,7 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	}
 	// The forge follows, best-effort.
 	if sessions, err := rt.jobs.ListByProject(r.Context(), proj.ID); err != nil {
-		log.Printf("withdraw: project %s sessions unreadable, repositories left as they are: %v", proj.ID, err)
+		slog.WarnContext(r.Context(), "withdraw: sessions unreadable, repositories left as they are", "project", proj.ID, "error", err)
 	} else {
 		rt.closeRepos(r.Context(), sessions)
 	}
@@ -2093,7 +2093,7 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	if flipRepo && rt.repoPub != nil {
 		for _, repo := range repos {
 			if err := rt.repoPub.SetPublic(r.Context(), repo); err != nil {
-				log.Printf("public flip: repo %s not flipped: %v", repo, err)
+				slog.WarnContext(r.Context(), "public flip: repository not flipped", "repo", repo, "error", err)
 			}
 		}
 	}
@@ -2222,7 +2222,7 @@ func (rt *Router) publishBlockers(ctx context.Context, sessions []job.Job) ([]Pu
 		if err != nil {
 			// Fail closed, as before — but say that we could not read it, rather
 			// than reporting an unread manifest as a flagged one.
-			log.Printf("publish gate: manifest for %s unreadable: %v", s.RepoName, err)
+			slog.WarnContext(ctx, "publish gate: manifest unreadable", "repo", s.RepoName, "error", err)
 			block(BlockUnreadable, "")
 			continue
 		}
@@ -2372,7 +2372,7 @@ func (rt *Router) closeRepos(ctx context.Context, sessions []job.Job) {
 			continue
 		}
 		if err := rt.repoPub.SetPrivate(ctx, repoName(s.RepoName)); err != nil {
-			log.Printf("delete: repo %s not closed: %v", s.RepoName, err)
+			slog.WarnContext(ctx, "delete: repository not closed", "repo", s.RepoName, "error", err)
 		}
 	}
 }
@@ -2615,12 +2615,12 @@ func (rt *Router) projectCredits(r *http.Request, proj project.Project) *Project
 	out := ProjectCredits{MayReclaim: rt.isLead(r, proj.ID)}
 	balance, err := rt.credits.Balance(r.Context(), credit.Pot(proj.ID))
 	if err != nil {
-		log.Printf("credits: reading the balance of %s: %v", proj.ID, err)
+		slog.WarnContext(r.Context(), "credits: reading the balance", "project", proj.ID, "error", err)
 		return nil
 	}
 	available, err := rt.credits.Available(r.Context(), credit.Pot(proj.ID))
 	if err != nil {
-		log.Printf("credits: reading the available balance of %s: %v", proj.ID, err)
+		slog.WarnContext(r.Context(), "credits: reading the available balance", "project", proj.ID, "error", err)
 		return nil
 	}
 	out.Balance, out.Available = balance, available

@@ -45,11 +45,9 @@ func runBindContract(t *testing.T, acc seedableAccess, email string) {
 	results := make([]bool, 8)
 	errs := make([]error, 8)
 	for i := range results {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, results[i], errs[i] = acc.Resolve(ctx, me)
-		}()
+		})
 	}
 	wg.Wait()
 	for i := range results {
