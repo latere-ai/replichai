@@ -8,9 +8,10 @@ import (
 	"testing"
 )
 
-// Money entering a wallet announces solvency once the wallet stands at or
-// above zero, and stays quiet while it is still in debt. The freeze override
-// is retired on that announcement, so a read never has to write.
+// TestATopupAnnouncesSolvencyOnlyWhenTheDebtIsPaid checks that money entering
+// a wallet reports solvency once the wallet is at or above zero, and reports
+// nothing while it is still in debt. The freeze override is retired on that
+// report, so a read never has to write.
 func TestATopupAnnouncesSolvencyOnlyWhenTheDebtIsPaid(t *testing.T) {
 	ctx := context.Background()
 	var told []string

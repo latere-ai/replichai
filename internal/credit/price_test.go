@@ -13,8 +13,8 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// A published rate card, in micro-USD per million tokens: $3 in, $15 out, $0.30
-// cached, $3.75 to write a 5-minute entry and $6 to write an hour's.
+// opus is a published rate card, in micro-USD per million tokens: $3 in, $15
+// out, $0.30 cached, $3.75 to write a 5-minute entry and $6 to write an hour's.
 var opus = Rates{
 	Model:        "claude-opus-5",
 	Input:        3 * Dollar,
@@ -146,10 +146,11 @@ var haiku = Rates{
 	CacheWrite1h: 2 * Dollar,
 }
 
-// Every class is priced at its own rate. Collapsing them into one input rate
-// mis-charges a long agent session by more than the session costs: a real run
-// is overwhelmingly cache reads, which are a tenth of fresh input, and its
-// cache writes are more than fresh input.
+// TestPriceChargesEachClassAtItsOwnRate checks that every class is priced at
+// its own rate. Collapsing them into one input rate misprices a long agent
+// session by more than the session costs: a real run is mostly cache reads,
+// which are a tenth of fresh input, and its cache writes cost more than fresh
+// input.
 func TestPriceChargesEachClassAtItsOwnRate(t *testing.T) {
 	u := provider.Usage{
 		InputTokens:        1_000_000,
@@ -162,31 +163,34 @@ func TestPriceChargesEachClassAtItsOwnRate(t *testing.T) {
 	if got, want := opus.Price(u), int64(10_200_000); got != want {
 		t.Errorf("price = %d, want %d", got, want)
 	}
-	// The classes really are independent: doubling only the cache reads moves
-	// the bill by exactly the cache-read rate.
+	// The classes are independent: doubling only the cache reads moves the bill
+	// by exactly the cache-read rate.
 	u.CachedInputTokens *= 2
 	if got, want := opus.Price(u), int64(13_200_000); got != want {
 		t.Errorf("price with doubled cache reads = %d, want %d", got, want)
 	}
 }
 
-// A cache write whose lifetime the backend did not report — what a per-request
-// span carries — is charged at the dearer of the two lifetimes. Guessing cheap
-// would turn an unreported field into a discount nobody granted.
+// TestPriceChargesAnUnattributedCacheWriteAtTheDearerRate checks that a cache
+// write whose lifetime the backend did not report, which is what a per-request
+// span carries, is charged at the dearer of the two lifetimes. Assuming the
+// cheaper rate would turn an unreported field into an unintended discount.
 func TestPriceChargesAnUnattributedCacheWriteAtTheDearerRate(t *testing.T) {
 	u := provider.Usage{CacheWriteTokens: 1_000_000}
 	if got, want := opus.Price(u), opus.CacheWrite1h; got != want {
 		t.Errorf("unattributed write priced at %d, want the 1h rate %d", got, want)
 	}
-	// And it is the dearer of the two whichever way round they are.
+	// It is the dearer of the two whichever way round they are.
 	cheap1h := Rates{CacheWrite5m: 9 * Dollar, CacheWrite1h: 1 * Dollar}
 	if got, want := cheap1h.Price(u), int64(9*Dollar); got != want {
 		t.Errorf("unattributed write priced at %d, want %d", got, want)
 	}
 }
 
-// Rounding goes against the platform, by one micro-dollar at most. The opposite
-// bias, repeated over every session, is the platform quietly paying.
+// TestPriceRoundsUpRatherThanAway checks that rounding is up, by one
+// micro-dollar at most, so a fraction is charged rather than dropped. The
+// opposite bias, repeated over every session, would have the platform pay the
+// difference.
 func TestPriceRoundsUpRatherThanAway(t *testing.T) {
 	// One token at $3/Mtok is 3 micro-USD exactly.
 	if got := opus.Price(provider.Usage{InputTokens: 1}); got != 3 {
@@ -202,8 +206,9 @@ func TestPriceRoundsUpRatherThanAway(t *testing.T) {
 	}
 }
 
-// An exact match wins; anything else is charged at the dearest rates on the
-// card, class by class. A vendor shipping a model id we have not priced must
+// TestForFailsExpensiveOnAnUnknownModel checks that an exact match takes
+// precedence and anything else is charged at the dearest rates on the card,
+// class by class. A vendor shipping a model id the card does not price must
 // not become free compute, and must not become an outage either.
 func TestForFailsExpensiveOnAnUnknownModel(t *testing.T) {
 	card := Card{Models: []Rates{haiku, opus}}
@@ -224,8 +229,8 @@ func TestForFailsExpensiveOnAnUnknownModel(t *testing.T) {
 		unknown.CacheRead != opus.CacheRead || unknown.CacheWrite1h != opus.CacheWrite1h {
 		t.Errorf("unknown model priced at %+v, want the dearest of each class", unknown)
 	}
-	// Dearest is per class, not "the dearest model": a card whose cheapest model
-	// happens to have the priciest cache still cannot be undercharged.
+	// Dearest is per class, not the dearest model: a card whose cheapest model
+	// has the priciest cache still cannot be undercharged.
 	odd := Card{Models: []Rates{
 		{Model: "a", Input: 1, Output: 9, CacheRead: 1, CacheWrite5m: 1, CacheWrite1h: 1},
 		{Model: "b", Input: 9, Output: 1, CacheRead: 9, CacheWrite5m: 9, CacheWrite1h: 9},
@@ -236,27 +241,27 @@ func TestForFailsExpensiveOnAnUnknownModel(t *testing.T) {
 	}
 }
 
-// Fail-closed: tokens nobody can price are not free tokens, so a deployment
-// with no card cannot start a session at all.
+// TestForRefusesWithNoCard checks the fail-closed rule: tokens that cannot be
+// priced are not free, so a deployment with no card cannot start a session.
 func TestForRefusesWithNoCard(t *testing.T) {
 	if _, err := (Card{}).For("claude-opus-5"); !errors.Is(err, ErrNoRates) {
 		t.Errorf("empty card: want ErrNoRates, got %v", err)
 	}
-	// A card holding only a free row is an empty card: a zero row would price a
-	// session at nothing, which is the one answer that must never be reached by
-	// accident.
+	// A card holding only a row of zero rates is an empty card: a zero row would
+	// price a session at nothing, which must never happen by accident.
 	free := Card{Models: []Rates{{Model: "claude-opus-5"}}}
 	if _, err := free.For("claude-opus-5"); !errors.Is(err, ErrNoRates) {
 		t.Errorf("card of zero rates: want ErrNoRates, got %v", err)
 	}
 }
 
-// A dated snapshot is the model it is a snapshot of, and must be billed as one.
+// TestASnapshotIsPricedAsTheModelItIs checks that a dated snapshot is billed
+// as the model it is a snapshot of.
 //
-// This is not hypothetical: the first production boot of 011 resolved the
-// "fast" preference to claude-haiku-4-5-20251001 against a card naming
-// claude-haiku-4-5, and charged it the dearest rates on the card — $5/$25
-// instead of $1/$5, five times over, on the tier chosen for being cheap.
+// This happened in production: the first boot of 011 resolved the "fast"
+// preference to claude-haiku-4-5-20251001 against a card naming
+// claude-haiku-4-5, and charged it the dearest rates on the card, $5/$25
+// instead of $1/$5, five times the price, on the tier chosen for being cheap.
 func TestASnapshotIsPricedAsTheModelItIs(t *testing.T) {
 	card := Card{Models: []Rates{haiku, opus}}
 
@@ -272,15 +277,16 @@ func TestASnapshotIsPricedAsTheModelItIs(t *testing.T) {
 	if got.Model != "claude-haiku-4-5-20251001" {
 		t.Errorf("the entry names %q; it must record what was asked for", got.Model)
 	}
-	// An exact match is still exact, and still wins.
+	// An exact match is still exact, and still takes precedence.
 	if exact, _ := card.For("claude-haiku-4-5"); exact.Model != "claude-haiku-4-5" {
 		t.Errorf("an exact match was rewritten: %+v", exact)
 	}
 }
 
-// The suffix has to be a date and nothing else. A bare prefix test would be
-// wrong in the expensive direction and look correct doing it: a card naming a
-// shorter id would swallow a longer, different, differently-priced model.
+// TestASnapshotMatchDoesNotSwallowADifferentModel checks that the suffix has
+// to be a date and nothing else. A plain prefix test would misprice silently:
+// a card naming a shorter id would match a longer, different, differently
+// priced model.
 func TestASnapshotMatchDoesNotSwallowADifferentModel(t *testing.T) {
 	// `claude-opus-4` is a prefix of `claude-opus-4-8`, which is another model.
 	card := Card{Models: []Rates{
@@ -298,7 +304,7 @@ func TestASnapshotMatchDoesNotSwallowADifferentModel(t *testing.T) {
 		t.Errorf("input = %d, want the dearest rate %d — an unrecognised model fails expensive", got.Input, 90*Dollar)
 	}
 
-	// Nor does a version fragment count as a date.
+	// A version fragment does not count as a date.
 	for _, id := range []string{"claude-opus-4-8", "claude-opus-4-x", "claude-opus-4-", "claude-opus-4-2026"} {
 		if isSnapshotOf("claude-opus-4", id) {
 			t.Errorf("%q was treated as a dated snapshot", id)

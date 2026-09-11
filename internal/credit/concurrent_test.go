@@ -10,14 +10,15 @@ import (
 	"testing"
 )
 
-// A wallet cannot be spent twice. Two allocations reading the same balance and
-// both committing would create money out of nothing — the balance and the debit
-// are the same table, so the read has to be authoritative for the rest of the
-// writing transaction, which is what the advisory lock buys.
+// TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds checks that a wallet
+// cannot be spent twice. Two allocations reading the same balance and both
+// committing would create money from nothing. The balance and the debit are
+// the same table, so the read has to remain authoritative for the rest of the
+// writing transaction, which the advisory lock provides.
 //
-// Confirmed to fail without the lock in the Postgres store: under READ
-// COMMITTED both transactions see the other's uncommitted row as absent, and
-// both are admitted.
+// The test fails without the lock in the Postgres store: under READ COMMITTED
+// both transactions see the other's uncommitted row as absent, and both are
+// admitted.
 func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 	const (
 		funded  = 10 * Dollar
@@ -77,8 +78,8 @@ func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 			if ok != wantOK || over != tries-wantOK {
 				t.Errorf("admitted %d and refused %d; want %d and %d", ok, over, wantOK, tries-wantOK)
 			}
-			// The arithmetic has to agree with the count, not merely look close:
-			// a wallet that ended negative is money the platform invented.
+			// The arithmetic has to agree with the count exactly: a wallet that
+			// ended negative is money the platform invented.
 			wallet, _ := s.Balance(ctx, Wallet(lead.Email))
 			pot, _ := s.Balance(ctx, Pot("p1"))
 			if wallet != wantEnd || pot != int64(wantOK)*each {
@@ -91,8 +92,9 @@ func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 	}
 }
 
-// Two settlements of one session, racing in separate transactions, produce one
-// charge. Exactly one reports that it settled; the other says it did not.
+// TestPGStoreSettlesOnceUnderConcurrency checks that two settlements of one
+// session, racing in separate transactions, produce one charge. Exactly one
+// reports that it settled; the others report that they did not.
 //
 // This is the concurrent half of the exactly-once guarantee, and it is asserted
 // here rather than through the job store: there the phase machine serialises
@@ -132,8 +134,8 @@ func TestPGStoreSettlesOnceUnderConcurrency(t *testing.T) {
 			defer func() { _ = tx.Rollback(ctx) }()
 			ok, err := s.SettleTx(ctx, tx, Pot("p1"), "job-1", 2*Dollar)
 			if err != nil {
-				// A loser may surface the unique violation instead of a clean
-				// false; both are "somebody else settled", never a second charge.
+				// A loser may return the unique violation instead of false; both
+				// mean another racer settled, and neither is a second charge.
 				return
 			}
 			if err := tx.Commit(ctx); err != nil {

@@ -19,18 +19,18 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 )
 
-// The ledger itself is latere.ai/x/pay/ledger. What lives here is everything
-// that ledger deliberately has no opinion about: who may move money, what a
-// move is called on a statement, and this product's two holder namespaces.
+// The ledger itself is latere.ai/x/pay/ledger. This file holds everything that
+// ledger deliberately leaves to the product: who may move money, what a move
+// is called on a statement, and this product's two holder namespaces.
 //
-// The split is the whole reason the ledger could be shared. Its Store takes a
-// holder and an amount and checks nothing; the moment it took an
-// access.Principal it would belong to this product forever.
+// This split is what allows the ledger to be shared. Its Store takes a holder
+// and an amount and checks nothing; if it took an access.Principal it would be
+// specific to this product.
 
-// reasons are the product's names for why an entry exists. They are what the
-// shared ledger records in Reason, and what this package reconstructs the
-// historical Kind from, so the statement a browser reads is byte-identical to
-// the one it read before the ledger moved out.
+// The reasons are the product's names for why an entry exists. The shared
+// ledger records them in Reason, and this package reconstructs the historical
+// Kind from them, so the statement a browser reads is byte-identical to the
+// one it read before the ledger moved out.
 const (
 	reasonTopup    ledger.Reason = "topup"
 	reasonAllocate ledger.Reason = "allocate"
@@ -43,8 +43,8 @@ const (
 )
 
 // labelProjectID and labelProjectName are the snapshotted project dimensions.
-// The shared ledger stores labels and never interprets them, which is exactly
-// what a snapshot needs: a purged project still reads correctly here.
+// The shared ledger stores labels and never interprets them, which is what a
+// snapshot needs: a purged project still reads correctly here.
 const (
 	labelProjectID   = "project_id"
 	labelProjectName = "project_name"
@@ -57,25 +57,25 @@ type store struct {
 	led     ledger.Store
 	auth    Authority
 	members Members
-	// onSolvent is told when money entering a wallet leaves it at or above
-	// zero. It is how the account freeze is lifted at the moment the debt is
-	// paid rather than by a write on every later read.
+	// onSolvent is called when money entering a wallet leaves it at or above
+	// zero. It lifts the account freeze at the moment the debt is paid, rather
+	// than by a write on every later read.
 	onSolvent func(ctx context.Context, email string)
 }
 
 // Option configures a store.
 type Option func(*store)
 
-// WithOnSolvent registers fn to be told the moment a top-up leaves a wallet
-// solvent. The composition root wires it to retire the freeze override, so
-// "the top-up that brought the wallet back" is the one event that clears it.
+// WithOnSolvent registers fn to be called the moment a top-up leaves a wallet
+// solvent. The composition root uses it to retire the freeze override, so the
+// top-up that made the wallet solvent is the single event that clears it.
 func WithOnSolvent(fn func(ctx context.Context, email string)) Option {
 	return func(s *store) { s.onSolvent = fn }
 }
 
-// solvent tells onSolvent about a wallet that just received money, when it
-// stands at or above zero. Best-effort: a read failure here leaves the
-// override for the next top-up to retire.
+// solvent calls onSolvent for a wallet that just received money, when its
+// balance is at or above zero. It is best-effort: a read failure here leaves
+// the override for the next top-up to retire.
 func (s *store) solvent(ctx context.Context, email string) {
 	if s.onSolvent == nil {
 		return
@@ -92,8 +92,8 @@ type MemStore struct {
 }
 
 // NewMemStore builds an empty in-memory ledger. A nil Authority or Members
-// means the check it would perform is skipped, which is what a unit test that
-// is not about permissions wants.
+// means the check it would perform is skipped, which is the mode for a unit
+// test that is not about permissions.
 func NewMemStore(auth Authority, members Members, opts ...Option) *MemStore {
 	mem := ledger.NewMemStore()
 	s := &MemStore{mem: mem}
@@ -178,9 +178,9 @@ func (s *store) BalancesFor(ctx context.Context, holders []Holder) (map[Holder]i
 	return out, nil
 }
 
-// NegativeWallets returns every wallet in the red, most-owed first. Pots are
-// excluded: a project pot may sit negative legitimately, which is not a debt an
-// account holder owes.
+// NegativeWallets returns every wallet with a negative balance, most-owed
+// first. Pots are excluded: a project pot may legitimately be negative, which
+// is not a debt an account holder owes.
 func (s *store) NegativeWallets(ctx context.Context) ([]WalletBalance, error) {
 	rows, err := s.led.NegativeHolders(ctx, walletNamespace)
 	if err != nil {
@@ -204,8 +204,9 @@ func (s *store) TotalOutstanding(ctx context.Context) (int64, error) {
 	return int64(v), err
 }
 
-// Topup creates credits in one email's wallet. Platform admin only, which is
-// how money exists at all until a payment provider posts the same entry.
+// Topup creates credits in one email's wallet. Only a platform admin may call
+// it; until a payment provider posts the same entry, this is the only way
+// money enters.
 func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error {
 	if normalizeEmail(email) == "" {
 		return ErrNoEmail
@@ -221,10 +222,10 @@ func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email strin
 		return err
 	}
 	// An admin grant is money entering from inside, so it has no processor
-	// reference of its own. The ledger requires one for a credit, so a minted
-	// id carries the idempotency; grantRef marks it as internal, and the
-	// statement mapping keeps it out of ExternalRef so the wire shape is what
-	// it always was.
+	// reference of its own. The ledger requires one for a credit, so a generated
+	// id carries the idempotency. grantRefPrefix marks it as internal, and the
+	// statement mapping keeps it out of ExternalRef so the wire shape is
+	// unchanged.
 	if err := s.led.Credit(ctx, ledger.Posting{
 		Holder: ledger.Holder(Wallet(email)),
 		Amount: money.Micro(amount),
@@ -259,8 +260,8 @@ func (s *store) TopupPaid(ctx context.Context, email string, credited int64, ref
 }
 
 // RefundPaid reverses a purchase by the exact micro-USD it credited, keyed on
-// its own reference so it dedupes independently. The wallet may go negative;
-// that is the debt a clawed-back purchase leaves.
+// its own reference so it deduplicates independently. The wallet may go
+// negative; that is the debt a reversed purchase leaves.
 func (s *store) RefundPaid(ctx context.Context, email string, amount int64, ref, actor string) error {
 	if err := checkPaid(email, amount, ref); err != nil {
 		return err
@@ -275,9 +276,9 @@ func (s *store) RefundPaid(ctx context.Context, email string, amount int64, ref,
 }
 
 // Spend charges a pot for work that is not a session. It is idempotent on ref,
-// and it never refuses for want of balance: the tokens were spent before this
-// is called, and a project that has just gone under is one that owes rather
-// than one that got the work free.
+// and it never refuses for lack of balance: the tokens were spent before this
+// is called, and a project that has just gone negative owes the amount rather
+// than getting the work free.
 func (s *store) Spend(ctx context.Context, pot Holder, amount int64, ref, actor string) error {
 	// The order and the zero case are the historical contract: a missing
 	// reference is refused first, a negative is a programming error, and a
@@ -316,10 +317,10 @@ func (s *store) Allocate(ctx context.Context, by access.Principal, project, proj
 	return s.move(ctx, Wallet(by.Email), Pot(project), amount, reasonAllocate, by.Email, project, projectName)
 }
 
-// Reclaim moves credits from a project's pot back to the caller's wallet. Leads
-// only: the pot is fungible and does not remember who funded it, so reclaiming
-// is a lead's authority over the project's money rather than a refund of one's
-// own.
+// Reclaim moves credits from a project's pot back to the caller's wallet. Only
+// a lead may call it: the pot is fungible and does not record who funded it,
+// so reclaiming is a lead's authority over the project's money rather than a
+// refund of the caller's own.
 func (s *store) Reclaim(ctx context.Context, by access.Principal, project, projectName string, amount int64) error {
 	if err := checkMove(by.Email, project, amount); err != nil {
 		return err
@@ -393,8 +394,8 @@ func settlement(h Holder, jobID string, cost int64) ledger.Settlement {
 	}
 }
 
-// holdErr maps the shared ledger's refusal onto this package's, so callers keep
-// comparing against credit.ErrInsufficient.
+// holdErr maps the shared ledger's refusals onto this package's errors, so
+// callers keep comparing against credit.ErrInsufficient.
 func holdErr(err error) error {
 	switch {
 	case errors.Is(err, ledger.ErrInsufficient):
@@ -406,15 +407,15 @@ func holdErr(err error) error {
 	}
 }
 
-// grantRefPrefix marks a reference this package minted for an admin grant
+// grantRefPrefix marks a reference this package generated for an admin grant
 // rather than one a processor issued.
 const grantRefPrefix = "grant:"
 
-// fromLedger projects a shared ledger entry back into this product's shape.
+// fromLedger converts a shared ledger entry back into this product's shape.
 //
 // The historical Kind is reconstructed from Reason, so a statement a browser
-// reads is what it always was: the ledger's vocabulary is mechanical (does this
-// commit, what sign is it) and this product's is editorial.
+// reads is unchanged. The ledger's vocabulary is mechanical, recording whether
+// an entry commits and what sign it has, and this product's is descriptive.
 func fromLedger(e ledger.Entry) Entry {
 	out := Entry{
 		ID:        e.ID,
@@ -440,8 +441,8 @@ func fromLedger(e ledger.Entry) Entry {
 }
 
 // kindFor reconstructs the historical kind. Reason carries it for every entry
-// this package wrote; anything else falls back to the ledger's own name, which
-// is what an entry written by some other writer would honestly read as.
+// this package wrote; anything else falls back to the ledger's own kind name,
+// which is the accurate description of an entry written by another writer.
 func kindFor(e ledger.Entry) Kind {
 	switch e.Reason {
 	case reasonTopup:
@@ -471,8 +472,8 @@ func kindFor(e ledger.Entry) Kind {
 	}
 }
 
-// requireAdmin refuses a caller who is not a platform admin: the shared rule,
-// reported in this package's words.
+// requireAdmin refuses a caller who is not a platform admin. It applies the
+// shared rule and reports the refusal with this package's error.
 func (s *store) requireAdmin(ctx context.Context, p access.Principal) error {
 	err := access.RequireAdmin(ctx, s.auth, p)
 	if errors.Is(err, access.ErrNotAdmin) {

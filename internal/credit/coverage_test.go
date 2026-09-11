@@ -43,11 +43,12 @@ func TestCoverageUsesQualifiedResolverIdentity(t *testing.T) {
 	}
 }
 
-// The finding this check exists for: a backend that lists a dated id where the
-// card cannot price on its own terms. The session is still priced — never free
-// — but at the dearest rates on the card, and an operator should learn that
-// before the first invoice rather than after. A *dated snapshot* of a model the
-// card names is not that case: it is that model, and is priced as it.
+// TestCoversFlagsAModelTheCardDoesNotName checks the case this check exists
+// for: a backend that lists an id the card cannot price on its own terms. The
+// session is still priced, never free, but at the dearest rates on the card,
+// and an operator should learn that before the first invoice rather than
+// after. A dated snapshot of a model the card names is not that case: it is
+// that model, and is priced as that model.
 func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 	card := DefaultCard()
 	cov := card.Covers(context.Background(), stubResolver{
@@ -71,9 +72,9 @@ func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 	if best.Rates.Input != 5*Dollar {
 		t.Errorf("the unnamed model was priced at %d, want the dearest input rate %d", best.Rates.Input, 5*Dollar)
 	}
-	// "fast" resolved to a *dated snapshot* of a model the card names, which is
-	// that model and is priced as it — the production finding that made the
-	// snapshot rule exist. It must not read as a warning.
+	// "fast" resolved to a dated snapshot of a model the card names, which is
+	// that model and is priced as that model. This was the production finding
+	// behind the snapshot rule. It must not be reported as a warning.
 	for _, pref := range []Preference{PrefBalanced, PrefFast} {
 		if !byPref[pref].Named {
 			t.Errorf("%s resolved to %q and was reported unpriceable by a card that covers it", pref, byPref[pref].Model)
@@ -87,10 +88,11 @@ func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 	}
 }
 
-// The subtlety that matters: Card.For synthesises a fallback entry carrying the
-// *requested* model's name, so an exact match and a fallback are identical by
-// name. A check comparing names would call every model named, and the whole
-// report would be silently useless.
+// TestCoverageDoesNotTrustTheSynthesisedName checks that names does not compare
+// names. Card.For synthesises a fallback entry carrying the requested model's
+// name, so an exact match and a fallback are identical by name. A check
+// comparing names would report every model as named, and the whole report
+// would be silently useless.
 func TestCoverageDoesNotTrustTheSynthesisedName(t *testing.T) {
 	card := DefaultCard()
 	rates, err := card.For("claude-something-6")
@@ -109,7 +111,7 @@ func TestCoverageDoesNotTrustTheSynthesisedName(t *testing.T) {
 	if !card.names("claude-opus-5") {
 		t.Error("names() missed a model the card really carries")
 	}
-	// A zero row prices nothing, so it cannot count as naming a model either —
+	// A zero row prices nothing, so it cannot count as naming a model either;
 	// otherwise a placeholder entry would report a session as properly priced
 	// while charging it the dearest rates.
 	placeholder := Card{Models: []Rates{{Model: "claude-opus-5"}, DefaultCard().Models[0]}}
@@ -122,9 +124,10 @@ func TestCoverageDoesNotTrustTheSynthesisedName(t *testing.T) {
 	}
 }
 
-// A backend that will not answer is reported per preference rather than
-// failing the check: the question is about the card, and a resolution failure
-// is a different problem that must not read as a pricing finding.
+// TestCoversReportsAResolutionFailureWithoutClaimingAFinding checks that a
+// backend that does not answer is reported per preference rather than failing
+// the check: the question is about the card, and a resolution failure is a
+// different problem that must not be reported as a pricing finding.
 func TestCoversReportsAResolutionFailureWithoutClaimingAFinding(t *testing.T) {
 	cov := DefaultCard().Covers(context.Background(), stubResolver{})
 	for _, c := range cov {
@@ -140,13 +143,14 @@ func TestCoversReportsAResolutionFailureWithoutClaimingAFinding(t *testing.T) {
 	}
 }
 
-// names is the by-id form of namesRef, kept for these tests alone.
-// entry for it, or an entry for the model it is a dated snapshot of — as
-// opposed to Card.For having fallen back to the dearest rates.
+// names is the by-id form of namesRef, kept for these tests alone. It reports
+// whether the card holds an entry for the model, or an entry for the model it
+// is a dated snapshot of, as opposed to Card.For having fallen back to the
+// dearest rates.
 //
 // It cannot compare names to find out. The fallback synthesises an entry
-// carrying the *requested* name, so a fallback and a real match are identical
-// by name, and a check comparing them would report every model as priced.
+// carrying the requested name, so a fallback and a real match are identical by
+// name, and a check comparing them would report every model as priced.
 func (c Card) names(model string) bool {
 	return c.namesRef(managed.ModelRef{Provider: "anthropic", ID: model})
 }

@@ -13,20 +13,20 @@ import (
 	"latere.ai/x/pay/ledger/pgledger"
 )
 
-// Migrate applies the shared ledger's schema and then carries this product's
+// Migrate applies the shared ledger's schema and then copies this product's
 // existing rows into it.
 //
-// The ledger moved to latere.ai/x/pay, and its table is `ledger_entries` with a
-// vocabulary split in two: Kind is mechanical (does this commit, what sign is
-// it) and Reason is editorial. `credit_entries` holds live balances, so the
-// rows have to come along, and a balance that is a fold cannot survive losing
-// one of them.
+// The ledger moved to latere.ai/x/pay, and its table is `ledger_entries`, with
+// a vocabulary split in two: Kind is mechanical, recording whether an entry
+// commits and what sign it has, and Reason is descriptive. `credit_entries`
+// holds live balances, so the rows have to be copied, and a balance that is a
+// sum is wrong if a single row is lost.
 //
-// Forward-only and idempotent. `credit_entries` is left in place: it is the
-// only way back if the fold does not reconcile, and dropping it in the same
-// release as the copy would remove the evidence at exactly the moment somebody
-// needs it. A later release drops it, once the balances have been read from the
-// new table in production for long enough to trust them.
+// Migrate is forward-only and idempotent. `credit_entries` is left in place: it
+// is the only way back if the sums do not reconcile, and dropping it in the
+// same release as the copy would remove the evidence at exactly the moment it
+// is needed. A later release drops it, once the balances have been read from
+// the new table in production for long enough to trust them.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := pgledger.Migrate(ctx, pool); err != nil {
 		return err
@@ -41,9 +41,9 @@ const backfillLock int64 = 0x1ED6E5
 
 // backfill copies credit_entries into ledger_entries, once.
 //
-// The kind mapping is the whole of it. Every historical kind becomes a
-// mechanical Kind plus the Reason that names it, so a statement rendered from
-// the new table reads exactly as it did from the old one.
+// The work is the kind mapping. Every historical kind becomes a mechanical
+// Kind plus the Reason that names it, so a statement rendered from the new
+// table reads exactly as it did from the old one.
 func backfill(ctx context.Context, pool *pgxpool.Pool) error {
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, backfillLock); err != nil {
@@ -54,7 +54,7 @@ func backfill(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("look for the legacy ledger: %w", err)
 		}
 		if !legacy {
-			return nil // a fresh database has nothing to carry
+			return nil // a fresh database has nothing to copy
 		}
 		var done bool
 		if err := tx.QueryRow(ctx,
@@ -67,9 +67,9 @@ func backfill(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := tx.Exec(ctx, backfillSQL); err != nil {
 			return fmt.Errorf("carry the ledger across: %w", err)
 		}
-		// A zero-amount marker row records that the copy happened. It is inert
-		// in every fold: the balance of its holder is unchanged, and its own
-		// holder namespace belongs to nobody.
+		// A zero-amount marker row records that the copy happened. It affects no
+		// sum: the balance of its holder is unchanged, and its holder namespace
+		// is used by no account.
 		_, err := tx.Exec(ctx, `
 			INSERT INTO ledger_entries (id, holder, amount, kind, reason, actor, created_at)
 			VALUES ($1, 'system:migration', 0, 'adjust', 'backfill', $2, now())`,
@@ -81,12 +81,12 @@ func backfill(ctx context.Context, pool *pgxpool.Pool) error {
 // backfillMarker is the actor on the row that records the copy.
 const backfillMarker = "credit-to-ledger-backfill"
 
-// backfillSQL carries every legacy row across.
+// backfillSQL copies every legacy row across.
 //
 // The id is preserved, so the copy is idempotent under its primary key and an
-// operator can match a row in one table to its twin in the other. `external_ref`
-// becomes `ref` and `job_id` becomes `grp`; the two project columns become
-// labels, which is what the shared ledger stores and never interprets.
+// operator can match a row in one table to its copy in the other.
+// `external_ref` becomes `ref` and `job_id` becomes `grp`; the two project
+// columns become labels, which the shared ledger stores and never interprets.
 const backfillSQL = `
 INSERT INTO ledger_entries (id, holder, amount, kind, reason, ref, grp, actor, labels, created_at)
 SELECT
@@ -118,12 +118,12 @@ SELECT
 FROM credit_entries c
 ON CONFLICT (id) DO NOTHING`
 
-// Reconcile reports whether the copied ledger folds to the same outstanding
-// total as the legacy one.
+// Reconcile returns the outstanding total of the legacy ledger and of the
+// copied ledger, so an operator can check that they agree.
 //
-// It exists because "the balances came across" is a claim, and the only honest
-// form of it is a number compared against a number. An operator runs this after
-// deploying and before anyone trusts the new table.
+// It exists because the claim that the balances were copied correctly can only
+// be verified by comparing the two totals. An operator runs it after deploying
+// and before trusting the new table.
 func Reconcile(ctx context.Context, pool *pgxpool.Pool) (legacy, carried int64, err error) {
 	const settled = `kind NOT IN ('hold','release')`
 	if err = pool.QueryRow(ctx,
