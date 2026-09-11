@@ -51,11 +51,13 @@ type Config struct {
 	// order to say what it needs of it: the platform, the operator's home,
 	// the temporary root, and the user id.
 	Machine harness.Machine
-	// Environ is the environment stages and git inherit. It arrives from
-	// the composition root rather than being read here: a second, unscoped
-	// source of configuration inside the seam is how a credential meant for
-	// one runtime reaches another.
-	Environ []string
+	// Lookup reads one variable of the process environment, os.LookupEnv at
+	// the composition root. The git this runtime runs inherits only what
+	// sandbox.HostEnvironment admits through it; nothing inside the seam
+	// reads the environment itself, because a second, unscoped source of
+	// configuration is how a credential meant for one runtime reaches
+	// another.
+	Lookup LookupEnv
 	// Clock is the time source, so a test does not depend on wall time.
 	Clock func() time.Time
 }
@@ -812,7 +814,7 @@ func (r *Runtime) reserve() (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	session, err := CreateSession(r.config.Root, id, r.config.Environ)
+	session, err := CreateSession(r.config.Root, id, r.config.Lookup)
 	if err != nil {
 		return nil, err
 	}

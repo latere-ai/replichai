@@ -408,7 +408,7 @@ func serverLocalConfig() builtin.LocalConfig {
 		ModelsFile: os.Getenv("REPLICHAI_MODELS_FILE"),
 		Retention:  os.Getenv("REPLICHAI_SESSION_RETENTION"),
 		Root:       root, Home: home,
-		Lookup: os.LookupEnv, Environ: os.Environ(),
+		Lookup: os.LookupEnv,
 	}
 }
 

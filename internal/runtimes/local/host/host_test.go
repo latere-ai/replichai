@@ -186,7 +186,7 @@ func TestCredentialsDoNotReachTheCommandLine(t *testing.T) {
 		Env:     map[string]string{"ANTHROPIC_API_KEY": "sk-secret", "TMPDIR": "/s/tmp"},
 		EnvFile: []string{"ANTHROPIC_API_KEY"},
 	}
-	for _, entry := range driver.environment(spec) {
+	for _, entry := range driver.environment(sandbox.HostEnvironment(os.LookupEnv), spec) {
 		if strings.HasPrefix(entry, "ANTHROPIC_API_KEY=") && strings.Contains(entry, "sk-secret") {
 			// The environment is the intended channel; the command line
 			// is not.
@@ -212,7 +212,7 @@ func TestHostDriverMeetsTheSandboxContract(t *testing.T) {
 		return &sandboxtest.Subject{
 			// The environment is the composition root's, here as anywhere:
 			// a stage with no PATH resolves nothing, not even the sandbox.
-			Driver: New(Config{Home: os.Getenv("HOME"), Environ: os.Environ()}),
+			Driver: New(Config{Home: os.Getenv("HOME"), Lookup: os.LookupEnv}),
 			Dir:    t.TempDir(),
 			Print: func(text string, code int) []string {
 				return []string{"/bin/sh", "-c", fmt.Sprintf("printf %%s %q; exit %d", text, code)}
@@ -238,7 +238,7 @@ func TestAStageOutlivesItsLauncher(t *testing.T) {
 		}
 		return "/bin/echo", nil
 	}
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: stub, Environ: os.Environ()})
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: stub, Lookup: os.LookupEnv})
 	if err := driver.Preflight(context.Background()); err != nil {
 		t.Fatalf("preflight: %v", err)
 	}
@@ -325,7 +325,7 @@ func readScript(t *testing.T, spec sandbox.StageSpec) string {
 // driver never launched, are both fine: the controller cancels and releases
 // without knowing the state.
 func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: os.Environ(),
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv,
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
 	dir := t.TempDir()
 	handle := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:999999:worker-9:" + filepath.Join(dir, "worker-9.log")}
@@ -357,7 +357,7 @@ func TestStopAndDiscardTolerateAGoneStage(t *testing.T) {
 // The stage's own output is readable from an offset, out of a file the stage
 // has no write access to.
 func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: os.Environ(),
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv,
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "worker-0.log")
@@ -392,7 +392,7 @@ func TestOutputReadsTheStageLogFromAnOffset(t *testing.T) {
 // sandbox went missing between construction and the launch.
 func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
 	ready := func(string) (string, error) { return "/bin/echo", nil }
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: ready, Environ: os.Environ()})
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Look: ready, Lookup: os.LookupEnv})
 	dir := t.TempDir()
 	spec := sandbox.StageSpec{Name: "worker-0", Workdir: dir, LogPath: filepath.Join(dir, "worker-0.log")}
 	if _, err := driver.Launch(context.Background(), spec); err == nil {
@@ -409,7 +409,7 @@ func TestLaunchRefusesAnEmptyStageAndAnUnreadyMachine(t *testing.T) {
 // the sandbox: it is this program's question about its own dependency, not
 // the agent's work.
 func TestVersionRunsTheHarnessVersionCommand(t *testing.T) {
-	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: os.Environ(),
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Lookup: os.LookupEnv,
 		Look: func(string) (string, error) { return "/bin/echo", nil }})
 	version, err := driver.Version(context.Background(), []string{"echo", "2.1.4"})
 	if err != nil || version != "2.1.4" {
@@ -431,7 +431,7 @@ func TestAStageReadsTheNullDevice(t *testing.T) {
 		t.Fatalf("write shim: %v", err)
 	}
 	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
-		Environ: os.Environ(),
+		Lookup: os.LookupEnv,
 		Look: func(name string) (string, error) {
 			if name == "srt" {
 				return shim, nil
@@ -512,13 +512,79 @@ func TestAStageWithNoEnvironmentIsRefused(t *testing.T) {
 		t.Fatalf("Launch with no environment = %v", err)
 	}
 	// One with an environment carrying no PATH is the same thing.
-	driver = New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(), Environ: []string{"HOME=/x"},
-		Look: func(string) (string, error) { return "/bin/echo", nil }})
+	driver = New(Config{Platform: sandbox.CurrentPlatform(), Home: t.TempDir(),
+		Lookup: func(name string) (string, bool) { return "/x", name == "HOME" },
+		Look:   func(string) (string, error) { return "/bin/echo", nil }})
 	if _, err := driver.Launch(context.Background(), sandbox.StageSpec{
 		Name: "worker-0", Argv: []string{"/bin/sh"}, Workdir: dir,
 		LogPath: filepath.Join(dir, "worker-0.log"),
 	}); !errors.Is(err, sandbox.ErrNotReady) {
 		t.Fatalf("Launch with a PATH-less environment = %v", err)
+	}
+}
+
+// A stage inherits the allowlist and nothing else. The operator's shell may
+// export an ANTHROPIC_API_KEY, a GITHUB_TOKEN or an AWS secret, and an agent
+// running with its permission prompts bypassed must see none of them — while
+// PATH, without which nothing runs, and the HOME and TERM the driver sets all
+// arrive. This runs the real driver with srt stood in by a shim that executes
+// the command, so what is asserted is the environment a stage actually gets.
+func TestAStageInheritsOnlyTheAllowlistedEnvironment(t *testing.T) {
+	t.Setenv("REPLICHAI_TEST_CANARY", "leaked-into-the-sandbox")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-leaked")
+	shim := filepath.Join(t.TempDir(), "srt")
+	// Stands in for srt: drop `--settings <file> --` and run the command.
+	if err := os.WriteFile(shim, []byte("#!/bin/sh\nshift 3\nexec \"$@\"\n"), 0o700); err != nil {
+		t.Fatalf("write shim: %v", err)
+	}
+	home := t.TempDir()
+	driver := New(Config{Platform: sandbox.CurrentPlatform(), Home: home, Lookup: os.LookupEnv,
+		Look: func(name string) (string, error) {
+			if name == "srt" {
+				return shim, nil
+			}
+			return "/bin/echo", nil
+		}})
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, "session", "raw")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	spec := sandbox.StageSpec{
+		Name: "worker-0", Argv: []string{"/usr/bin/env"}, Workdir: dir,
+		Env:     map[string]string{"REPLICHAI_WS": dir},
+		Network: sandbox.Network{Mode: sandbox.NetworkNone},
+		LogPath: filepath.Join(logDir, "worker-0.log"),
+	}
+	handle, err := driver.Launch(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := driver.Observe(context.Background(), handle)
+		if err != nil {
+			t.Fatalf("Observe: %v", err)
+		}
+		if !status.Running {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	body, err := os.ReadFile(spec.LogPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	seen := string(body)
+	for _, leaked := range []string{"REPLICHAI_TEST_CANARY", "ANTHROPIC_API_KEY"} {
+		if strings.Contains(seen, leaked) {
+			t.Errorf("%s reached the stage:\n%s", leaked, seen)
+		}
+	}
+	for _, want := range []string{"PATH=", "HOME=" + home, "TERM=dumb", "REPLICHAI_WS=" + dir} {
+		if !strings.Contains(seen, want) {
+			t.Errorf("the stage did not get %s:\n%s", want, seen)
+		}
 	}
 }
 
