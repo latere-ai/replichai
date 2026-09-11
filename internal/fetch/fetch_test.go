@@ -36,8 +36,8 @@ func TestANameResolvingToAForbiddenAddressIsRefused(t *testing.T) {
 	defer srv.Close()
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
 
-	// The name looks harmless; the address it resolves to is the loopback
-	// server, standing in for a metadata service.
+	// The name is a public-looking hostname that resolves to the loopback
+	// server, which stands in for a metadata service.
 	c := New(withResolver(map[string][]net.IPAddr{"public.example": {{IP: net.ParseIP("127.0.0.1")}}}))
 	_, err := c.Fetch(context.Background(), "http://public.example:"+port+"/")
 	if !errors.Is(err, ErrForbiddenAddress) {
@@ -71,7 +71,7 @@ func TestEveryRedirectHopIsChecked(t *testing.T) {
 	}))
 	defer hop.Close()
 
-	// Redirect to a non-http scheme is refused at the redirect check.
+	// A redirect to a non-HTTP scheme is refused at the redirect check.
 	fileHop := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "file:///etc/passwd", http.StatusFound)
 	}))
