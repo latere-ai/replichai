@@ -362,6 +362,33 @@ func TestTheLocatorSurvivesTheContractsSecretCheck(t *testing.T) {
 	}
 }
 
+// A configured credential is removed from an event's content and its raw
+// payload before it is written, so a harness that echoes its own environment
+// into a tool result does not put a live credential into the published
+// evidence. An empty credential is ignored rather than replacing everything.
+func TestRedactEventRemovesConfiguredCredentials(t *testing.T) {
+	event := managed.Event{
+		Content: "export ANTHROPIC_API_KEY=sk-secret-123 && run",
+		Raw:     json.RawMessage(`"the key sk-secret-123 leaked here"`),
+	}
+	redactEvent(&event, []string{"", "sk-secret-123"})
+	if strings.Contains(event.Content, "sk-secret-123") {
+		t.Errorf("the credential survived in the content: %q", event.Content)
+	}
+	if strings.Contains(string(event.Raw), "sk-secret-123") {
+		t.Errorf("the credential survived in the raw payload: %s", event.Raw)
+	}
+	if !strings.Contains(event.Content, "[redacted]") {
+		t.Errorf("the redaction left no marker: %q", event.Content)
+	}
+	// An event holding no credential is untouched.
+	clean := managed.Event{Content: "nothing secret here"}
+	redactEvent(&clean, []string{"sk-secret-123"})
+	if clean.Content != "nothing secret here" {
+		t.Errorf("a clean event was altered: %q", clean.Content)
+	}
+}
+
 // The environment record carries no credential, only which kind was used.
 func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 	session := newSession(t)
