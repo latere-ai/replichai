@@ -91,9 +91,9 @@ make db-contract
 ```
 
 **Point `TEST_DATABASE_URL` at `replichai_test`, never at `replichai`.** The
-`job`, `access`, and `platform` contracts migrate and truncate whatever database
-they are handed, so aiming them at the dev database silently destroys the rows
-you were working with. `make db-contract` pins the scratch database and creates
+`job` and `access` contracts migrate and truncate whatever database they are
+handed, so aiming them at the dev database silently destroys the rows you were
+working with. `make db-contract` pins the scratch database and creates
 it on first use; the hazard is real only when you set the variable by hand:
 
 ```bash
@@ -106,12 +106,16 @@ TEST_DATABASE_URL=postgres://replichai:replichai@localhost:5432/replichai \
 Two details worth knowing if you run them yourself rather than through the
 target:
 
-- `-p 1` is required. Go runs packages in parallel, and the `access` and
-  `platform` contracts both truncate `access_grants`; sharing one database they
-  race into failures that look like real bugs.
-- The `project` and `profile` contracts are exempt from all of this. They cut
-  their own scratch database from whatever URL you give them, which is why
-  `make db-contract` leaves them out.
+- `-p 1` is required. Go runs packages in parallel, and `job` and `access` both
+  migrate and truncate the one database in the URL; sharing it they race into
+  failures that look like real bugs.
+- `platform`, `credit`, `project` and `profile` never touch that database's
+  tables. Each cuts itself a private database on the same server
+  (`replichai_platform_test` and so on) and drops and recreates it per run, so
+  they share a `-p 1` run safely; the URL's user only has to be allowed to
+  `CREATE DATABASE`. `make db-contract` runs the first three beside `job` and
+  `access`; `profile` has the same shape and runs with
+  `make db-contract DB_CONTRACT_PKGS=./internal/profile/`.
 
 ## What the linter is configured for
 
