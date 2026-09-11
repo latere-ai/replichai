@@ -28,7 +28,7 @@ const PROJECT = 'proj-1'
 const GRADED = 'job-graded' // has findings
 const BARE = 'job-bare' // published, no findings
 const DIED = 'job-died' // reached publishing and then failed: has a repo, was never graded
-const REFUSED = 'job-refused' // wrote findings the system refused: a 422, not a 404
+const REFUSED = 'job-refused' // findings file was rejected: a 422, not a 404
 
 const project = { id: PROJECT, owner: 'p', title: 'Posture-Aware Pen+Touch', visibility: 'private', created_at: at(0) }
 const paper = { key: 'doi:10.1145/3654777.3676417', ref: '10.1145/3654777.3676417', title: 'Sensing Posture-Aware Pen+Touch Interaction on Tablets', sessions: 2 }
@@ -228,18 +228,18 @@ try {
   /* ── The verdict pane, without findings ── */
 
   await page.open(`/p/${PROJECT}/s/${BARE}/verdict`)
-  await waitForText(page, 'body', 'recorded no findings as data', { timeout: 5000 }).catch(() => {})
+  await waitForText(page, 'body', 'did not record its findings as data', { timeout: 5000 }).catch(() => {})
   const bare = await page.evaluate(() => ({
     table: !!document.querySelector('.grid-table'),
     body: document.body.textContent.replace(/\s+/g, ' '),
   }))
   if (bare.table) fail('a session with no findings rendered a boundary table')
-  if (!/recorded no findings as data/i.test(bare.body)) fail('a session with no findings does not say why')
+  if (!/did not record its findings as data/i.test(bare.body)) fail('a session with no findings does not say why')
 
   /* ── The verdict pane, with findings the system refused ── */
 
   await page.open(`/p/${PROJECT}/s/${REFUSED}/verdict`)
-  await waitForText(page, 'body', 'wrote findings the system refused', { timeout: 5000 }).catch(() => {})
+  await waitForText(page, 'body', 'findings file was rejected', { timeout: 5000 }).catch(() => {})
   const refused = await page.evaluate(() => ({
     table: !!document.querySelector('.grid-table'),
     body: document.body.textContent.replace(/\s+/g, ' '),
@@ -247,7 +247,7 @@ try {
   if (refused.table) fail('a session whose findings were refused rendered a boundary table')
   // A refusal and an absence are different facts about the run, and the pane
   // must not report the second when the first happened.
-  if (!/wrote findings the system refused/i.test(refused.body)) {
+  if (!/findings file was rejected/i.test(refused.body)) {
     fail('a refused findings file is reported as if the run had written nothing')
   }
 
