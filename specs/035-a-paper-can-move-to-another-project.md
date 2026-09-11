@@ -11,9 +11,9 @@ Five guards were verified to fail with their fix reverted: the running-session r
 
 Two things came out of the build.
 
-**The column the design started with was not needed, and the terminal-only rule is why.** The first draft added `jobs.pot_project_id` so a moved session's charge kept naming the project that paid — because `Hold`/`Settle` key on `credit.Pot(j.ProjectID)` and would follow the row. But a move is refused while any session is non-terminal, so every session that moves is already settled and neither is ever called on it again. The ledger keeps the charge under the pot that made it with no help from a column. What remained was the rail's 30-day figure, and that is answered by argument rather than schema — see the decision below.
+**The column the design started with was not needed, and the terminal-only rule is why.** The first draft added `jobs.pot_project_id` so a moved session's charge kept naming the project that paid, because `Hold`/`Settle` key on `credit.Pot(j.ProjectID)` and would follow the row. But a move is refused while any session is non-terminal, so every session that moves is already settled and neither is ever called on it again. The ledger keeps the charge under the pot that made it with no help from a column. What remained was the rail's 30-day figure, and that is answered by argument rather than schema; see the decision below.
 
-**`removeProjectPaper`'s lead check became `rt.leads`.** The move needs the same rule twice, on two projects, and leaving the original inline would have been the third copy of `proj.Owner != principal(r) && !rt.isLead(...)` — three places for one rule to drift in.
+**`removeProjectPaper`'s lead check became `rt.leads`.** The move needs the same rule twice, on two projects, and leaving the original inline would have been the third copy of `proj.Owner != principal(r) && !rt.isLead(...)`, three places for one rule to drift in.
 
 **Scope:** moving one paper, and every session that is a run of it, from one project to another. A lead of both projects picks the destination from the paper's row; the paper record and its runs land there together, and the money stays where it was spent.
 
@@ -25,7 +25,7 @@ A paper is filed under a project once and can never be filed anywhere else.
 
 `project_papers` is keyed `(project_id, paper_key)` (`internal/project/migrate.go:102`), and the only writes against it are an insert, a title update, and a delete (`internal/project/pgstore.go:232-292`). There is no `UPDATE project_papers SET project_id`, and nothing in the HTTP surface, the frontend, or the CLI offers one.
 
-What exists instead is a removal that refuses the moment the paper has been run:
+What exists instead is a removal that refuses as soon as the paper has been run:
 
 ```go
 for _, j := range sessions {
@@ -35,7 +35,7 @@ for _, j := range sessions {
 }
 ```
 
-So the only correction available — delete the paper, add it to the right project — stops working exactly when somebody notices the mistake, which is after a run has produced something worth reading. The result is a project that permanently contains work that does not belong to it, and no way to gather one paper's runs beside the papers they belong with. A re-run under the correct project does not fix it: it opens a *second* session and leaves the first where it was, so the reproduction record splits across two containers.
+So the only correction available (delete the paper, add it to the right project) stops working exactly when somebody notices the mistake, which is after a run has produced something worth reading. The result is a project that permanently contains work that does not belong to it, and no way to gather one paper's runs beside the papers they belong with. A re-run under the correct project does not fix it: it opens a *second* session and leaves the first where it was, so the reproduction record splits across two containers.
 
 ## The sessions move too
 
@@ -48,11 +48,11 @@ UPDATE jobs           SET project_id = $to WHERE project_id = $from AND paper_ke
 
 ## Decisions
 
-**No column records which pot paid, because the ledger already does.** `Hold` and `Settle` key on `credit.Pot(j.ProjectID)` (`internal/job/pgstore.go:67,188`), which would follow a session to its new project — except that a move is refused while any session is non-terminal, so every session that moves is already settled and neither is ever called on it again. The charge sits in `credit_entries` under the pot that made it, permanently and correctly. `Advance` is the only writer of `project_id` after insert, and it writes back the value it just read under `FOR UPDATE`, so a transition cannot revert a move with a stale copy.
+**No column records which pot paid, because the ledger already does.** `Hold` and `Settle` key on `credit.Pot(j.ProjectID)` (`internal/job/pgstore.go:67,188`), which would follow a session to its new project, except that a move is refused while any session is non-terminal, so every session that moves is already settled and neither is ever called on it again. The charge sits in `credit_entries` under the pot that made it, permanently and correctly. `Advance` is the only writer of `project_id` after insert, and it writes back the value it just read under `FOR UPDATE`, so a transition cannot revert a move with a stale copy.
 
-What does follow the paper is `SpendSince` — the project rail's 30-day figure, which sums `jobs` by `project_id` (`internal/job/pgstore.go:377`). After a move the source project reads as having spent less and the destination as having spent more, while neither pot balance changed. That is deliberate, and it is the honest reading of the tile: the rail answers *what has this project been costing lately*, and after a reorganisation those runs are the destination's work. The number that does not move is the authoritative one — the pot's own ledger still shows the charge under the project that paid it, which is where an owner looks when a balance and a rolling estimate disagree.
+What does follow the paper is `SpendSince`, the project rail's 30-day figure, which sums `jobs` by `project_id` (`internal/job/pgstore.go:377`). After a move the source project reads as having spent less and the destination as having spent more, while neither pot balance changed. That is deliberate, and it is the correct reading of the tile: the rail answers *what has this project been costing lately*, and after a reorganisation those runs are the destination's work. The number that does not move is the authoritative one: the pot's own ledger still shows the charge under the project that paid it, which is where an owner looks when a balance and a rolling estimate disagree.
 
-The alternative was a `pot_project_id` column and a `SpendSince` grouped on it. It was rejected as a second answer to a question the ledger already answers once — which is migration 4's own argument for dropping `charged_to` (`internal/job/migrate.go:63-66`), and it survives here because the money never moves.
+The alternative was a `pot_project_id` column and a `SpendSince` grouped on it. It was rejected as a second answer to a question the ledger already answers once, which is migration 4's own argument for dropping `charged_to` (`internal/job/migrate.go:63-66`), and it survives here because the money never moves.
 
 **Terminal sessions only.** A move refuses with `409 paper_running` while any of the paper's sessions is non-terminal. Three reasons, and each alone is enough:
 
@@ -62,7 +62,7 @@ The alternative was a `pot_project_id` column and a `SpendSince` grouped on it. 
 
 Deleted sessions *do* move. They are hidden from every read but one, and `SpendSince` deliberately still counts them; leaving them behind would strand a charge under a container that no longer holds the paper.
 
-**Lead or owner, on both projects.** `removeProjectPaper` is already the lead's, tied to who may move credits out (`handlers.go:251-256`), and a move is a remove plus an add. Owner-only would be *stricter* than the removal it composes, so a promoted lead who may delete a paper outright could not move it. The destination is checked by the same rule, from the request body rather than the path — `projectForWork` resolves exactly one project, so the move needs a second resolution beside it.
+**Lead or owner, on both projects.** `removeProjectPaper` is already the lead's, tied to who may move credits out (`handlers.go:251-256`), and a move is a remove plus an add. Owner-only would be *stricter* than the removal it composes, so a promoted lead who may delete a paper outright could not move it. The destination is checked by the same rule, from the request body rather than the path: `projectForWork` resolves exactly one project, so the move needs a second resolution beside it.
 
 **Refused while either project is public.** Tested on `Visibility`, never on the presence of a sign-off: [006o](006o-withdrawing-a-publication.md) leaves the sign-off standing on a withdrawn project, so a sign-off proves nothing about current openness, and `Visibility` is the only field a read path may ask (`project.go:26-27`). Moving a paper out of a published project would change what a signed attestation covers. The owner withdraws first, moves, and publishes again.
 
@@ -76,7 +76,7 @@ Deleted sessions *do* move. They are hidden from every read but one, and `SpendS
 MovePaper(ctx context.Context, fromID, toID, key string) error
 ```
 
-`project.PGStore` opens the transaction, updates `project_papers`, and calls the session mover inside it — exactly as `job.PGStore` passes its own transaction into `credit.SettleTx`. The mover is a locally-declared interface so `project` never imports `job`; the composition root wires `*job.PGStore` into `project.NewPGStore` and `*job.MemStore` into the memory store. The two implementations carry different method names (`MovePaperSessionsTx` takes a `pgx.Tx`, `MovePaperSessions` does not), which is the same asymmetry job/credit already lives with and is why they are not one interface on `job.Store`.
+`project.PGStore` opens the transaction, updates `project_papers`, and calls the session mover inside it, exactly as `job.PGStore` passes its own transaction into `credit.SettleTx`. The mover is a locally declared interface so `project` never imports `job`; the composition root wires `*job.PGStore` into `project.NewPGStore` and `*job.MemStore` into the memory store. The two implementations carry different method names (`MovePaperSessionsTx` takes a `pgx.Tx`, `MovePaperSessions` does not), which is the same asymmetry job/credit already has and is why they are not one interface on `job.Store`.
 
 A store with no mover wired **fails loudly** rather than moving the paper and stranding its sessions: a composition-root mistake has to surface in a test, not in production data.
 
@@ -112,29 +112,29 @@ The key travels in the body, not the path, for `startSession`'s reason: `paper.K
 
 ## The screen
 
-`PapersCard` (`App.tsx:3263`) gains a **Move** action on each paper row, beside Remove and under the same lead-or-owner condition. It opens an in-app dialog — not a native `<select>`, per the standing rule that browser widgets are rebuilt in-app and overlays portal to `<body>` — listing the caller's other projects that are private and not trashed. The picker offers **owned** projects only, which is the plain reading of the request; the server's rule stays lead-or-owner so a lead is not locked out of an API the product does not yet surface to them.
+`PapersCard` (`App.tsx:3263`) gains a **Move** action on each paper row, beside Remove and under the same lead-or-owner condition. It opens an in-app dialog (not a native `<select>`, per the standing rule that browser widgets are rebuilt in-app and overlays portal to `<body>`) listing the caller's other projects that are private and not trashed. The picker offers **owned** projects only, which is the plain reading of the request; the server's rule stays lead-or-owner so a lead is not locked out of an API the product does not yet surface to them.
 
 On success the project screen refreshes its papers and sessions, so the moved row and its runs leave the list in place rather than after a reload. Every refusal maps through `errors.ts` to a sentence, in `en` and `zh` together.
 
 ## Acceptance criteria
 
 1. A lead of two private projects moves a paper with two finished sessions; the paper row and both sessions read under the destination afterwards, and neither reads under the source.
-2. Both pot balances and every ledger entry are unchanged by the move: the charge stays under the pot that paid it. The 30-day spend figure follows the paper — down on the source, up on the destination, by the same amount.
+2. Both pot balances and every ledger entry are unchanged by the move: the charge stays under the pot that paid it. The 30-day spend figure follows the paper: down on the source, up on the destination, by the same amount.
 3. A move is refused while any session for that paper is running, with `409 paper_running`.
 4. A move into a project that already holds that paper key is refused with `409 paper_exists`, and nothing has moved.
 5. A move is refused when either project is trashed or public.
 6. A caller who is neither lead nor owner of the destination gets `403 not_lead`, and the paper stays put.
-7. A failure inside the move leaves both tables as they were — the paper is never in two projects, nor in neither.
+7. A failure inside the move leaves both tables as they were: the paper is never in two projects, nor in neither.
 8. A deleted session belonging to the moved paper moves with it, stays hidden from every read that hides it, and counts in the destination's spend figure the way it counted in the source's.
 9. The frontend moves a paper from the project screen and the row disappears from the source and appears in the destination without a reload.
 
 ## Test plan
 
-- **`internal/project/store_contract_test.go`** — `runMovePaperContract`, run against both stores with a recording fake mover: the happy move, `ErrPaperNotFound`, `ErrPaperExists` at the destination with the source untouched, idempotence of a repeated move, and the loud failure when no mover is wired. The Postgres half runs under `make` with `TEST_DATABASE_URL`.
-- **`internal/job`** — the real movers, both stores: `project_id` rewritten for exactly the matching `(project_id, paper_key)` rows including deleted ones, `updated_at` untouched, and every other column — `repo_name`, `rate_card`, `phase_at` — left alone.
-- **`internal/httpapi/paper_move_test.go`** — every row of the status table, plus the two-project authorisation, against the in-memory fakes.
-- **`cmd/server/e2e_test.go`** — a real server: two projects, a paper run to `done` in the first, moved to the second, then read back through `GET /projects/{id}/papers` on both.
-- **`frontend/src/`** — the error mapping under bun; **`frontend/test/paper-move.test.mjs`** drives the dialog in a browser and is registered in `package.json`'s `test:browser`.
+- **`internal/project/store_contract_test.go`**: `runMovePaperContract`, run against both stores with a recording fake mover: the happy move, `ErrPaperNotFound`, `ErrPaperExists` at the destination with the source untouched, idempotence of a repeated move, and the loud failure when no mover is wired. The Postgres half runs under `make` with `TEST_DATABASE_URL`.
+- **`internal/job`**: the real movers, both stores: `project_id` rewritten for exactly the matching `(project_id, paper_key)` rows including deleted ones, `updated_at` untouched, and every other column (`repo_name`, `rate_card`, `phase_at`) left alone.
+- **`internal/httpapi/paper_move_test.go`**: every row of the status table, plus the two-project authorisation, against the in-memory fakes.
+- **`cmd/server/e2e_test.go`**: a real server: two projects, a paper run to `done` in the first, moved to the second, then read back through `GET /projects/{id}/papers` on both.
+- **`frontend/src/`**: the error mapping under bun; **`frontend/test/paper-move.test.mjs`** drives the dialog in a browser and is registered in `package.json`'s `test:browser`.
 
 Each suite is verified to fail with the change reverted.
 
