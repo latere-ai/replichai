@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// Every refusal this program can print is reachable with nothing installed:
-// the message is a pure function of platform, driver and condition, so the
-// operator-facing text is testable rather than only observable on a broken
-// machine.
+// TestEveryRefusalNamesItsRemedy checks that every refusal this program can
+// print is reachable with nothing installed. The message is a pure function of
+// platform, driver and condition, so the operator-facing text can be tested
+// rather than only observed on a broken machine.
 func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 	cases := []struct {
 		platform   Platform
@@ -22,8 +22,9 @@ func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 		want       []string
 	}{
 		{Darwin, Host, ConditionMissing, []string{"srt"},
-			// A bare command, not a string: srt takes a string only behind -c, so
-			// `srt "echo ok"` fails with "command not found: echo ok".
+			// The verify command is bare words, not a quoted string. srt accepts
+			// a string only after -c, so `srt "echo ok"` fails with "command not
+			// found: echo ok".
 			[]string{"npm install -g @anthropic-ai/sandbox-runtime", "brew install ripgrep", "srt echo ok", "--sandbox container"}},
 		{Linux, Host, ConditionMissing, []string{"bubblewrap", "socat"},
 			[]string{"apt-get install -y bubblewrap", "apt-get install -y socat", "--sandbox container"}},
@@ -54,24 +55,26 @@ func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 	}
 }
 
-// A component nobody wrote an install row for still gets an actionable line.
-// A silent gap in the table would produce a refusal that says nothing, which
-// is worse than the exec failure it replaced.
+// TestAnUntabulatedComponentStillSaysSomething checks that a component with
+// no install row still gets an actionable line. A silent gap in the table
+// would produce a refusal with no instructions, which is worse than the exec
+// failure it replaced.
 func TestAnUntabulatedComponentStillSaysSomething(t *testing.T) {
 	message := NotReady(Linux, Host, ConditionMissing, "some-new-tool").Error()
 	if !strings.Contains(message, "some-new-tool") || !strings.Contains(message, "PATH") {
 		t.Fatalf("no fallback instruction:\n%s", message)
 	}
-	// A component packaged for another platform names that, rather than
-	// pretending there is nothing to install.
+	// A component packaged for another platform names that platform, rather
+	// than implying there is nothing to install.
 	message = NotReady(Darwin, Host, ConditionMissing, "bubblewrap").Error()
 	if !strings.Contains(message, "linux") {
 		t.Fatalf("cross-platform fallback lost the platform it is packaged for:\n%s", message)
 	}
 }
 
-// Windows is refused whatever was asked for, and the refusal names WSL2
-// instead of offering the other driver, which is equally unavailable.
+// TestWindowsIsRefusedWithAReason checks that Windows is refused for either
+// driver, and that the refusal names WSL2 instead of offering the other
+// driver, which is equally unavailable.
 func TestWindowsIsRefusedWithAReason(t *testing.T) {
 	for _, driver := range []DriverName{Host, Container} {
 		err := NotReady(Windows, driver, ConditionMissing, "srt")
@@ -84,8 +87,9 @@ func TestWindowsIsRefusedWithAReason(t *testing.T) {
 	}
 }
 
-// A handle from one driver must not be looked up by the other: both are opaque
-// strings, so nothing but this check stops a pid being read as a container.
+// TestHandlesDoNotCrossDrivers checks that a handle from one driver is not
+// looked up by the other. Both are opaque strings, so only this check stops a
+// pid from being read as a container name.
 func TestHandlesDoNotCrossDrivers(t *testing.T) {
 	handle := StageHandle{Driver: Host, ID: "pid:1@2"}
 	if err := MatchHandle(Host, handle); err != nil {
@@ -103,8 +107,9 @@ func TestHandlesDoNotCrossDrivers(t *testing.T) {
 	}
 }
 
-// A path with no guest destination is used as-is, which is the host driver's
-// normal case; one with a guest is remapped, which is the container's.
+// TestPathDestination checks that a path with no guest destination is used
+// as-is, which is the host driver's normal case, and that one with a guest is
+// remapped, which is the container driver's.
 func TestPathDestination(t *testing.T) {
 	if got := (Path{Host: "/a/b", Access: ReadWrite}).Destination(); got != "/a/b" {
 		t.Errorf("unmapped destination = %q", got)

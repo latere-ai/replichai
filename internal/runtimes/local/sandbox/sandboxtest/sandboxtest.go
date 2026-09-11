@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package sandboxtest is the contract suite every sandbox driver is held to.
-// The runtime above the seam assumes four things of any driver: a stage that
-// outlives the process that launched it, an exit status recoverable after that
-// process is gone, output readable from an offset out of somewhere the stage
-// cannot write, and a handle that does not answer to another driver.
+// The runtime assumes four things of any driver: a stage outlives the process
+// that launched it, its exit status is recoverable after that process is gone,
+// its output is readable from an offset out of a location the stage cannot
+// write, and its handle is refused by any other driver.
 package sandboxtest
 
 import (
@@ -20,9 +20,10 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// Subject is one driver under test, with the argv shapes it can run. The
-// commands differ per driver — one runs on the host's shell, another inside an
-// image — so the suite asks for them rather than assuming.
+// Subject is one driver under test, together with the commands it can run.
+// The commands differ per driver, because one runs in the host's shell and
+// another inside an image, so the suite asks for them rather than assuming
+// them.
 type Subject struct {
 	// Driver is the implementation under test.
 	Driver sandbox.Sandbox
@@ -99,8 +100,8 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 		if status.Running {
 			t.Fatalf("a stopped stage is still running: %+v", status)
 		}
-		// Stopping twice, and stopping something already finished, are
-		// both fine: the controller cancels without knowing the state.
+		// Stopping twice, and stopping a stage that has already finished,
+		// both succeed. The controller cancels without knowing the state.
 		if err := subject.Driver.Stop(context.Background(), handle); err != nil {
 			t.Fatalf("repeated Stop: %v", err)
 		}
@@ -156,10 +157,11 @@ func Run(t *testing.T, newSubject func(t *testing.T) *Subject) {
 	})
 }
 
-// spec builds a stage whose log lives where the runtime would put it: inside
-// the session's evidence directory, which no stage may write.
+// stageName is the name of the stage every contract test launches.
 const stageName = "worker-0"
 
+// spec builds a stage whose log is where the runtime would put it: inside the
+// session's evidence directory, which no stage may write.
 func (s *Subject) spec(t *testing.T, argv []string) sandbox.StageSpec {
 	t.Helper()
 	name := stageName
