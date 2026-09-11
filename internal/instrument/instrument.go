@@ -1,20 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package instrument is the schema for instrument.json — the declared,
-// machine-readable half of what an audit's reports state in prose: the paper's
-// study protocol, the analysis entrypoint contract for src/, and a per-component
+// Package instrument is the schema for instrument.json, the machine-readable
+// counterpart of what an audit's reports state in prose: the paper's study
+// protocol, the analysis entrypoint contract for src/, and a per-component
 // servability assessment.
 //
 // It holds the schema and its validation and nothing else. Executing the
-// analysis (007b), driving a cohort (007c), and serving the page (007d) live in
-// later specs and behind later packages, so nothing downstream depends on how
-// the audit produced the file.
+// analysis (007b), driving a cohort (007c), and serving the page (007d) belong
+// to later specs and packages, so nothing downstream depends on how the audit
+// produced the file.
 //
-// Refusal is a first-class answer. A paper too vague to extract a protocol from
-// yields a null protocol with a stated reason, and that passes: the wall is the
-// finding. What does not pass is an invented protocol or an unstated null, which
-// is what Validate is built to catch.
+// Refusal is a valid answer. A paper too vague to extract a protocol from
+// yields a null protocol with a stated reason, and that passes validation. An
+// invented protocol or a null without a reason does not, and Validate exists
+// to catch both.
 package instrument
 
 import (
@@ -26,7 +26,7 @@ import (
 
 // InputPlaceholder marks where the input data path is substituted into an
 // analysis command, so the same pipeline runs over a new dataset without
-// editing (007b). A command that bakes its input path in is not an instrument.
+// editing (007b). A command with a fixed input path is not an instrument.
 const InputPlaceholder = "{{INPUT}}"
 
 // Instrument is the whole of instrument.json. Protocol and Analysis are each
@@ -40,8 +40,8 @@ type Instrument struct {
 }
 
 // Protocol is the extracted study design. Design and Trials are prose rather
-// than a study-design DSL on purpose: this schema covers only what the
-// servability criteria admit, not every design a study with people can take.
+// than a study-design DSL: the schema covers only what the servability
+// criteria admit, not every design a study with people can take.
 type Protocol struct {
 	Design   string     `json:"design"`   // between/within, factors and levels, counterbalancing
 	Trials   string     `json:"trials"`   // structure, counts, stimuli, timing
@@ -78,7 +78,7 @@ type Reported struct {
 	Value    string `json:"value,omitempty"`    // the statistic and p-value
 	Interval string `json:"interval,omitempty"` // confidence or credible interval
 	N        string `json:"n,omitempty"`        // the sample size
-	Citation string `json:"citation"`           // the table, figure, or section — required
+	Citation string `json:"citation"`           // the table, figure, or section; required
 }
 
 // Analysis is the entrypoint contract for src/: how to run the analysis on new
@@ -91,9 +91,9 @@ type Analysis struct {
 	Outputs []string `json:"outputs"` // what it produces, and where
 }
 
-// CommandFor substitutes an input data path into the command, so a caller runs
-// the recovered analysis over a new dataset. It errors rather than silently
-// running the wrong file when the command does not name its input.
+// CommandFor substitutes an input data path into the command, so a caller can
+// run the recovered analysis over a new dataset. When the command does not
+// name its input it returns an error rather than running the wrong file.
 func (a Analysis) CommandFor(path string) (string, error) {
 	if !strings.Contains(a.Command, InputPlaceholder) {
 		return "", fmt.Errorf("analysis command does not parameterise its input with %s", InputPlaceholder)
@@ -146,8 +146,8 @@ func (s Schema) Check(present []string) error {
 }
 
 // Servability answers, per outer-loop component, whether a machine can serve
-// the protocol to participants. The roll-up is derived from the components,
-// never asserted on its own — see DeriveAllServable.
+// the protocol to participants. The roll-up is derived from the components by
+// DeriveAllServable and is never asserted on its own.
 type Servability struct {
 	Components  []ComponentServability `json:"components"`
 	AllServable bool                   `json:"all_servable"`
@@ -217,25 +217,24 @@ var knownCriterion = func() map[Criterion]bool {
 	return m
 }()
 
-// Validate reports every way raw departs from the schema, in one pass, so a
-// worker's revision receives all of them together. A nil, empty result means
-// the instrument is well-formed. The returned error is non-nil only when raw is
-// not JSON at all — a structural problem the caller cannot fix by revising
-// content.
+// Validate reports every way raw departs from the schema in one pass, so a
+// worker's revision receives all of them together. An empty result means the
+// instrument is well-formed. The returned error is non-nil only when raw is
+// not JSON at all, which the caller cannot fix by revising content.
 //
-// What it enforces is invariants, not study design: a null protocol or analysis
-// carries a reason; every reported statistic carries a citation; an analysis
-// command parameterises its input; servability answers each component against
-// the closed criteria list and the roll-up matches its components. Judging
-// whether an extracted protocol is faithful to the paper is the grader's honesty
-// criterion, not this function's.
+// It enforces invariants only: a null protocol or analysis carries a reason;
+// every reported statistic carries a citation; an analysis command
+// parameterises its input; servability answers each component against the
+// closed criteria list and the roll-up matches its components. Whether an
+// extracted protocol is faithful to the paper is judged by the grader's
+// honesty criterion, not here.
 func Validate(raw []byte) ([]Violation, error) {
 	var inst Instrument
 	if err := json.Unmarshal(raw, &inst); err != nil {
-		// A field of the wrong shape is not a syntax error, and saying so
-		// sends the reader hunting for a missing comma. It is also the one
-		// failure a revision can act on, so it is a violation naming the
-		// field rather than a refusal to read the document at all.
+		// A field of the wrong shape is not a syntax error; reporting it as
+		// one sends the reader looking for a missing comma. A revision can
+		// fix it, so it is reported as a violation naming the field rather
+		// than as a refusal to read the document.
 		var mismatch *json.UnmarshalTypeError
 		if errors.As(err, &mismatch) {
 			return []Violation{{

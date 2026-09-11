@@ -229,8 +229,8 @@ func TestDeriveAllServable(t *testing.T) {
 	}
 }
 
-// AC10 (salvaged): Validate reports every violation in one pass, so a single
-// revision can fix them all.
+// AC10: Validate reports every violation in one pass, so a single revision can
+// fix them all.
 func TestValidateIsExhaustive(t *testing.T) {
 	inst := validInstrument()
 	inst.Protocol.Reported[0].Citation = ""                             // one
@@ -247,8 +247,8 @@ func TestValidateIsExhaustive(t *testing.T) {
 	}
 }
 
-// The criteria list is closed and every constant is in it — a guard against a
-// new criterion constant being added without joining Criteria.
+// Every criterion constant is in the closed Criteria list, so a new constant
+// cannot be added without joining it.
 func TestCriteriaClosed(t *testing.T) {
 	for _, c := range []Criterion{
 		CriterionSingleSession, CriterionScreenBased, CriterionNoExperimenter,
@@ -263,10 +263,10 @@ func TestCriteriaClosed(t *testing.T) {
 	}
 }
 
-// A field of the wrong shape is the failure a real run produced: the model
-// wrote prose where the schema wants a list. Reporting it as invalid JSON sends
-// the reader looking for a missing comma, and refusing to read the document at
-// all denies the revision the one thing it could have fixed.
+// A real run produced a field of the wrong shape: the model wrote prose where
+// the schema wants a list. Reporting it as invalid JSON sends the reader
+// looking for a missing comma, and refusing to read the document withholds the
+// one violation a revision could fix.
 func TestAFieldOfTheWrongShapeIsAViolationNamingIt(t *testing.T) {
 	raw := []byte(`{
 	  "protocol": {"design": "within", "trials": "5 tasks", "measures": [],
