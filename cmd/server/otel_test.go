@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"github.com/latere-ai/replichai/internal/fetch"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -70,7 +71,9 @@ func TestPaperFetcherRecordsAClientSpanAndPropagates(t *testing.T) {
 		_, _ = w.Write([]byte("paper"))
 	})
 
-	body, err := newHTTPFetcher(5*time.Second).Fetch(context.Background(), peer.URL)
+	// The peer is on loopback, which the production fetcher refuses; the trace
+	// is what this test is about, so loopback is admitted here alone.
+	body, err := newHTTPFetcher(5*time.Second, fetch.AllowPrivate()).Fetch(context.Background(), peer.URL)
 	if err != nil {
 		t.Fatalf("fetching: %v", err)
 	}
