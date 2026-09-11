@@ -30,9 +30,9 @@ func NewPGStore(pool *pgxpool.Pool, auth Authority) *PGStore {
 	return &PGStore{pool: pool, auth: auth, clock: time.Now}
 }
 
-// Settings reads the platform row, fail-closed: a missing row or a failing
-// query yields the conservative default rather than unlimited, and returns the
-// error alongside so the caller can log it.
+// Settings reads the platform row. It fails closed: a missing row or a
+// failing query yields the conservative default rather than an unlimited
+// one, and the error is returned with it so the caller can log it.
 func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
 	fallback := Settings{
 		StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard(),
@@ -49,21 +49,22 @@ func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return fallback, err
 	}
-	// An unreadable drafting config is a deployment that does not draft, which
+	// An unreadable drafting config is treated as no drafting model, which
 	// is a state everything downstream already handles.
 	if err := json.Unmarshal(drafting, &out.Draft); err != nil {
 		out.Draft = draft.Config{}
 	}
 	if err := json.Unmarshal(card, &out.Rates); err != nil || len(out.Rates.Models) == 0 {
-		// An unreadable or empty card is the one value that would price a
-		// session at nothing. Fall back to the compiled-in list.
+		// An unreadable or empty card would price a session at nothing.
+		// Fall back to the compiled-in list.
 		out.Rates = credit.DefaultCard()
 	}
 	return out, nil
 }
 
-// SetSettings writes the platform row, recording the admin who did it. The row
-// is pinned to id 1, so this is an upsert and never a second row.
+// SetSettings writes the platform row, recording the admin who did it. The
+// row is pinned to id 1, so the write is an upsert and never creates a second
+// row.
 func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, next Settings) error {
 	if err := next.validate(); err != nil {
 		return err

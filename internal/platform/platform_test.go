@@ -24,8 +24,8 @@ var (
 	user  = access.Principal{Sub: "user-sub", Email: "user@example.com"}
 )
 
-// newAuthority builds an access store with one admin and one plain user bound,
-// so the platform store's tier re-check has something real to resolve against.
+// newAuthority builds an access store with one admin and one plain user
+// bound, so the platform store's tier re-check has real principals to resolve.
 func newAuthority(t *testing.T) *access.MemStore {
 	t.Helper()
 	acc := access.NewMemStore()
@@ -43,12 +43,12 @@ func newAuthority(t *testing.T) *access.MemStore {
 	return acc
 }
 
-// contract is every invariant a Store must satisfy, run against both
+// contract checks every invariant a Store must satisfy. It runs against both
 // implementations so the two cannot drift.
 func contract(t *testing.T, s Store) {
 	t.Helper()
 
-	// The seeded value is the compiled-in default, and it is one number rather
+	// The seeded value is the compiled-in default. It is one constant rather
 	// than two that could drift.
 	got, err := s.Settings(ctx)
 	if err != nil {
@@ -57,25 +57,26 @@ func contract(t *testing.T, s Store) {
 	if got.StartReserve != DefaultStartReserve {
 		t.Errorf("seeded reserve = %d, want %d", got.StartReserve, DefaultStartReserve)
 	}
-	// The purchase spread and floor are seeded with their defaults too, so a
-	// fresh deployment can price a top-up before an admin touches anything.
+	// The purchase spread and the minimum top-up are seeded with their
+	// defaults too, so a fresh deployment can price a top-up before an admin
+	// changes anything.
 	if got.SpreadBps != DefaultSpreadBps || got.SpreadFixedMicro != DefaultSpreadFixedMicro || got.MinTopupMicro != DefaultMinTopupMicro {
 		t.Errorf("seeded spread = {bps:%d fixed:%d min:%d}, want the defaults", got.SpreadBps, got.SpreadFixedMicro, got.MinTopupMicro)
 	}
 
-	// A fresh deployment drafts nothing: no model is configured, which is the
-	// state that leaves a description something people type (039).
+	// A fresh deployment has no drafting model configured, so descriptions
+	// are typed by people (039).
 	if got.Draft.Configured() {
 		t.Errorf("a fresh deployment came with a drafting model: %+v", got.Draft)
 	}
 
-	// Policy is admin-only, re-checked in the store rather than trusted to the
-	// route guard.
+	// Policy writes are admin-only, re-checked in the store rather than left
+	// to the route guard.
 	if err := s.SetSettings(ctx, user, Settings{StartReserve: 999}); !errors.Is(err, ErrNotAdmin) {
 		t.Errorf("SetSettings by a user: want ErrNotAdmin, got %v", err)
 	}
 
-	// An admin's number sticks, and is recorded against them.
+	// An admin's value persists and is recorded against them.
 	if err := s.SetSettings(ctx, admin, Settings{StartReserve: 7 * credit.Dollar}); err != nil {
 		t.Fatalf("SetSettings: %v", err)
 	}
@@ -86,9 +87,9 @@ func contract(t *testing.T, s Store) {
 	if got.StartReserve != 7*credit.Dollar {
 		t.Errorf("reserve = %d, want %d", got.StartReserve, 7*credit.Dollar)
 	}
-	// The drafting model an admin configures is durable, and the row carries no
-	// credential to be durable *with*: the key is the deployment's, from its
-	// environment, and this struct has nowhere to put one.
+	// The drafting model an admin configures persists. The row carries no
+	// credential: the key belongs to the deployment, is read from its
+	// environment, and this struct has no field for one.
 	if err := s.SetSettings(ctx, admin, Settings{
 		StartReserve: 7 * credit.Dollar,
 		Draft:        draft.Config{Provider: "openai", BaseURL: "https://models.example/v1", Model: "small-1"},
@@ -111,7 +112,8 @@ func contract(t *testing.T, s Store) {
 		t.Errorf("negative reserve: want ErrNegative, got %v", err)
 	}
 
-	// The purchase spread and floor round-trip, and a negative one is refused.
+	// The purchase spread and the minimum top-up round-trip, and a negative
+	// value is refused.
 	if err := s.SetSettings(ctx, admin, Settings{
 		StartReserve: DefaultStartReserve, SpreadBps: 400, SpreadFixedMicro: 250_000, MinTopupMicro: 3 * credit.Dollar,
 	}); err != nil {
@@ -128,7 +130,8 @@ func contract(t *testing.T, s Store) {
 		t.Errorf("negative spread: want ErrNegative, got %v", err)
 	}
 
-	// Restore, so a shared database is left as the next test expects it.
+	// Restore the defaults, so a shared database is left as the next test
+	// expects it.
 	if err := s.SetSettings(ctx, admin, Settings{
 		StartReserve: DefaultStartReserve, SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
 	}); err != nil {
@@ -136,15 +139,16 @@ func contract(t *testing.T, s Store) {
 	}
 }
 
-// Credited applies the purchase spread — the percentage cut and the fixed cut —
-// and never returns less than zero.
+// TestCreditedAppliesTheSpread checks that Credited applies the percentage
+// cut and the fixed cut, and never returns less than zero.
 func TestCreditedAppliesTheSpread(t *testing.T) {
-	// $20.00 gross, 5% + $0.30 → $1.00 + $0.30 off → $18.70 credited.
+	// $20.00 gross at 5% + $0.30 takes $1.00 + $0.30 off, crediting $18.70.
 	s := Settings{SpreadBps: 500, SpreadFixedMicro: 300_000}
 	if got, want := s.Credited(20*credit.Dollar), int64(20*credit.Dollar-1*credit.Dollar-300_000); got != want {
 		t.Errorf("Credited($20) = %d, want %d", got, want)
 	}
-	// A gross the fixed cut exceeds credits zero, never a negative wallet from a purchase.
+	// A gross smaller than the fixed cut credits zero. A purchase never
+	// produces a negative wallet.
 	if got := (Settings{SpreadFixedMicro: 1 * credit.Dollar}).Credited(100_000); got != 0 {
 		t.Errorf("Credited below the fixed cut = %d, want 0", got)
 	}
@@ -158,10 +162,11 @@ func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	contract(t, NewMemStore(newAuthority(t)))
 }
 
-// The reserve fails **high**, and this is the direction that matters. A reserve
-// resolving to zero when the settings read fails would let any project start a
-// session on an empty pot — the unbounded spend 011 exists to prevent — so the
-// seeded value and the fallback are one constant, and neither is zero.
+// TestTheReserveFailsHigh checks the failure direction of the reserve. A
+// reserve resolving to zero when the settings read fails would let any
+// project start a session with no funds, which is the unbounded spend 011
+// exists to prevent. The seeded value and the fallback are therefore one
+// constant, and it is not zero.
 func TestTheReserveFailsHigh(t *testing.T) {
 	if DefaultStartReserve <= 0 {
 		t.Fatalf("DefaultStartReserve = %d; a zero reserve admits a session on an empty pot", DefaultStartReserve)
@@ -173,8 +178,9 @@ func TestTheReserveFailsHigh(t *testing.T) {
 	if got.StartReserve != DefaultStartReserve {
 		t.Errorf("fresh store reserve = %d, want the compiled-in %d", got.StartReserve, DefaultStartReserve)
 	}
-	// And the adapter the enqueue gate reads through resolves the same way when
-	// the store itself is broken: the gate never sees "no reserve".
+	// The adapter the enqueue gate reads through resolves to the same
+	// constant when the store itself fails, so the gate never sees a zero
+	// reserve.
 	n, err := StartReserve(brokenStore{})(ctx)
 	if err != nil {
 		t.Fatalf("StartReserve on a failing store returned an error the gate would have to interpret: %v", err)
@@ -184,7 +190,7 @@ func TestTheReserveFailsHigh(t *testing.T) {
 	}
 }
 
-// brokenStore stands in for a database that is not answering.
+// brokenStore is a Store whose database is not answering.
 type brokenStore struct{}
 
 func (brokenStore) Settings(context.Context) (Settings, error) {
@@ -194,14 +200,15 @@ func (brokenStore) SetSettings(context.Context, access.Principal, Settings) erro
 	return errors.New("postgres is not answering")
 }
 
-// The contract against a real Postgres, including the single-row constraint.
+// TestPGStoreSatisfiesTheContract runs the contract against a real Postgres
+// and checks the single-row constraint.
 func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	pool := testPool(t)
 	defer pool.Close()
 	contract(t, NewPGStore(pool, newAuthority(t)))
 
-	// A second settings row is a constraint violation rather than an ambiguity
-	// about which row is the policy.
+	// A second settings row is a constraint violation, so there is never
+	// any ambiguity about which row is the policy.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO platform_settings (id, start_reserve, updated_by, updated_at) VALUES (2, 1, 'x', now())`,
 	); err == nil {
@@ -209,8 +216,9 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	}
 }
 
-// The read is fail-closed at the store, not just at the constant: a missing row
-// yields the conservative default rather than nothing.
+// TestAMissingRowStillYieldsAReserve checks that the read fails closed at the
+// store, not only at the constant: a missing row yields the conservative
+// default rather than zero.
 func TestAMissingRowStillYieldsAReserve(t *testing.T) {
 	pool := testPool(t)
 	defer pool.Close()
@@ -226,10 +234,11 @@ func TestAMissingRowStillYieldsAReserve(t *testing.T) {
 	}
 }
 
-// The cutover to money is a schema change, not a conversion. 011 keeps no
-// session counter and no quota top-up table: the two hold counts, and what
-// replaces them holds money, so there is nothing to carry across — the rule
-// 006q set when it refused to grandfather anybody.
+// TestTheMigrationLeavesNoCounterBehind checks that the cutover to money is a
+// schema change and not a conversion. 011 keeps no session counter and no
+// quota top-up table. Both hold counts and what replaces them holds money, so
+// there is nothing to carry across. 006q set the same rule when it refused to
+// grandfather anybody.
 func TestTheMigrationLeavesNoCounterBehind(t *testing.T) {
 	pool := testPool(t)
 	defer pool.Close()
@@ -253,9 +262,9 @@ func TestTheMigrationLeavesNoCounterBehind(t *testing.T) {
 	}
 }
 
-// platformTestDB is this package's own database: its tests delete and rewrite
-// the single settings row, which cannot be shared with a package running in
-// parallel against the same server.
+// platformTestDB is this package's own database. Its tests delete and
+// rewrite the single settings row, which cannot be shared with a package
+// running in parallel against the same server.
 const platformTestDB = "replichai_platform_test"
 
 func testPool(t *testing.T) *pgxpool.Pool {
