@@ -64,7 +64,7 @@ The audit writes a reproduction repository into `runs/<paper>/`:
 | `verdict.json` | The same findings as data — boundary rows, hidden decisions, scorecard, what was released |
 | `instrument.json` | The declared study protocol, the analysis entrypoint, and whether the outer loop could be hosted |
 
-The two JSON files are what the app reads to render a verdict without anyone opening a markdown file.
+`verdict.json` is what the app reads to render a session's findings without anyone opening a markdown file. `instrument.json` is graded and published beside it, but no screen renders it yet.
 
 Reproduction output is never committed to this repository. See [`docs/architecture.md`](docs/architecture.md).
 
