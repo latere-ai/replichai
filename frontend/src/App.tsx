@@ -253,10 +253,20 @@ function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: string }) {
   const [p, setP] = useState<PublicProfile | null>(null)
   const [missing, setMissing] = useState(false)
 
+  // Each handle starts from nothing: the previous one's "not found" cleared,
+  // its answer — however late — ignored. Without both, /u/a answering 404 left
+  // "No such profile" standing over /u/b, and a slow 404 for a handle the reader
+  // had already left could land on the page they had moved to.
   useEffect(() => {
+    let live = true
+    setP(null)
+    setMissing(false)
     getPublicProfile(handle)
-      .then(setP)
-      .catch(() => setMissing(true))
+      .then((v) => live && setP(v))
+      .catch(() => live && setMissing(true))
+    return () => {
+      live = false
+    }
   }, [handle])
 
   if (missing) {
