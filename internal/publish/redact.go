@@ -65,10 +65,6 @@ func RedactSecrets(value string) string {
 	return value
 }
 
-// RedactedSomething reports whether a sweep changed anything, so a finalize can
-// say so rather than leaving a reader to notice the marker.
-func RedactedSomething(before, after string) bool { return before != after }
-
 // redactEvents returns the events with every credential-shaped string removed
 // from their content and their raw payload. The events themselves are copied:
 // the caller's slice is evidence it may still be holding.
