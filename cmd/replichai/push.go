@@ -51,6 +51,41 @@ func runProject(ctx context.Context, args []string, stdout, stderr *os.File) err
 			_, _ = fmt.Fprintf(stdout, "%s\t%s\n", p.ID, p.Title)
 		}
 		return nil
+	case "sessions":
+		if len(args) < 2 {
+			_, _ = fmt.Fprintln(stderr, "usage: replichai project sessions <project-id>")
+			return errExitQuiet
+		}
+		sessions, err := client.ListSessions(ctx, args[1])
+		if err != nil {
+			return err
+		}
+		for _, s := range sessions {
+			_, _ = fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", s.ID, s.Phase, s.Repo, s.Ref)
+		}
+		return nil
+	case "rm-session":
+		if len(args) < 2 {
+			_, _ = fmt.Fprintln(stderr, "usage: replichai project rm-session <session-id>...")
+			return errExitQuiet
+		}
+		// Each id is its own act: one refusal — a session still running, a
+		// session somebody else owns — must not strand the rest, because the
+		// reason to delete several at once is that a run went wrong in a way
+		// that produced several.
+		failed := 0
+		for _, id := range args[1:] {
+			if err := client.DeleteSession(ctx, id); err != nil {
+				_, _ = fmt.Fprintf(stderr, "  ! %s: %v\n", id, err)
+				failed++
+				continue
+			}
+			_, _ = fmt.Fprintf(stdout, "%s\tdeleted\n", id)
+		}
+		if failed > 0 {
+			return errExitQuiet
+		}
+		return nil
 	default:
 		_, _ = fmt.Fprintf(stderr, "unknown project command %q\n", args[0])
 		return errExitQuiet
