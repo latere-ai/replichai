@@ -305,14 +305,18 @@ func TestEventsAreStampedWithTheRuntimeClock(t *testing.T) {
 
 // The output directory a caller reads before starting is the workspace the
 // session it then starts actually writes to. On this runtime that path is
-// per-session, so the two calls have to agree.
+// per-session: Capabilities names a session, the caller templates that path
+// into its instructions (as the audit does), and Start runs the session so
+// named.
 func TestTheOutputDirectoryIsTheSessionsOwnWorkspace(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{})
 	capabilities, err := runtime.Capabilities(context.Background())
 	if err != nil {
 		t.Fatalf("Capabilities: %v", err)
 	}
-	ref, err := runtime.Start(context.Background(), spec(false))
+	named := spec(false)
+	named.Instructions += "\nWrite everything to " + capabilities.OutputDir + "."
+	ref, err := runtime.Start(context.Background(), named)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1177,4 +1181,53 @@ func TestEveryPipInTheSessionCanReachTheIndex(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A pool of workers shares one Runtime. Two callers asking at once must be
+// told about two different sessions, each must run in the one it was told
+// about, and a name nobody starts must leave nothing on disk — before this a
+// shared pending slot handed one workspace to every concurrent caller, so a
+// job templated its instructions against a directory another job then ran
+// in.
+func TestConcurrentCallersGetTheirOwnSessions(t *testing.T) {
+	runtime, driver := build(t, localtest.Script{})
+	ctx := context.Background()
+
+	first, err := runtime.Capabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runtime.Capabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.OutputDir == second.OutputDir {
+		t.Fatalf("two callers were told about one workspace: %s", first.OutputDir)
+	}
+	unstarted, err := runtime.Capabilities(ctx) // asked, never started
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Started in the opposite order they asked, each spec naming its own.
+	for _, workspace := range []string{second.OutputDir, first.OutputDir} {
+		named := spec(false)
+		named.Instructions += "\nWrite everything to " + workspace + "."
+		ref, err := runtime.Start(ctx, named)
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		got, err := runtime.Workspace(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != workspace {
+			t.Fatalf("a session started for %s ran in %s", workspace, got)
+		}
+		runToTerminal(t, runtime, ref)
+	}
+	if _, err := os.Stat(filepath.Dir(unstarted.OutputDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a session nobody started left a directory behind: %v", err)
+	}
+	_ = driver
 }

@@ -251,7 +251,11 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		opts = append(opts, audit.WithSessionHooks(managed.Hooks{
 			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
 				if !mounts {
-					if err := pushWorkspace(ctx, pub, capabilities.OutputDir, entry.Reference(), evidence.Status.Ref, r.stdout, r.stderr); err != nil {
+					workspace, err := workspaceOf(runtime, evidence.Status.Ref)
+					if err != nil {
+						return err
+					}
+					if err := pushWorkspace(ctx, pub, workspace, entry.Reference(), evidence.Status.Ref, r.stdout, r.stderr); err != nil {
 						return err
 					}
 					// The remote's history now descends from the workspace, so
