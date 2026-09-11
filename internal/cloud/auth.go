@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package cloud is the terminal's side of the platform: signing in against
-// auth.latere.ai with the device-code flow, keeping the credential, and
-// presenting it to replichai's own API (045i).
+// Package cloud is the CLI's client for the platform: it signs in against
+// auth.latere.ai with the device-code flow, stores the credential, and
+// presents it to replichai's own API (045i).
 //
-// Authorisation is not here. The token says who the caller is; what they may
-// do is decided by the deployment's own table, against a record and never read
-// out of a token.
+// Authorisation is not decided here. The token says who the caller is. What
+// they may do is decided by the deployment's own access table, against a
+// stored record, and never read out of a token.
 package cloud
 
 import (
@@ -30,13 +30,14 @@ import (
 // DefaultAuthURL is the identity provider the CLI signs in against.
 const DefaultAuthURL = "https://auth.latere.ai"
 
-// ClientID is replichai's own OAuth client. It is deliberately not the
-// latere CLI's: two programs sharing one client would share one token file,
-// and a refresh that narrowed scopes in either would strand the other.
+// ClientID is replichai's own OAuth client. It is deliberately distinct from
+// the latere CLI's: two programs sharing one client would share one token
+// file, and a refresh that narrowed scopes in either would leave the other
+// without a usable credential.
 const ClientID = "replichai-cli"
 
-// Audience is what an actor token is minted for, so a credential captured in
-// transit or in a shell history is bounded to one service.
+// Audience is the service an actor token is minted for, so a credential
+// captured in transit or in a shell history is valid for one service only.
 const Audience = "replichai.latere.ai"
 
 // Scopes are identity only. Nothing product-specific is requested, because
@@ -44,8 +45,8 @@ const Audience = "replichai.latere.ai"
 var Scopes = []string{"openid", "email", "profile", "offline_access"}
 
 // ErrSignedOut reports that there is no usable credential and a sign-in is
-// needed. It is deliberately distinct from a transport failure: an auth outage
-// is not a sign-out.
+// needed. It is deliberately distinct from a transport failure, because an
+// auth outage must not be treated as a sign-out.
 var ErrSignedOut = errors.New("not signed in")
 
 // Token is the stored credential.
@@ -60,15 +61,15 @@ type Token struct {
 	Org          string    `json:"org,omitempty"`
 }
 
-// Expired reports whether the access token is at or past its life, with a
-// minute of margin so a call does not start with a credential that dies in
-// flight.
+// Expired reports whether the access token is at or past its expiry, with a
+// minute of margin so a call does not start with a credential that expires
+// while the call is in flight.
 func (t Token) Expired(now time.Time) bool {
 	return !t.Expiry.IsZero() && !now.Add(time.Minute).Before(t.Expiry)
 }
 
-// Store is where the credential is kept: one file, private to the operator,
-// in replichai's own configuration directory and not the latere CLI's.
+// Store holds the credential in one file, readable only by the operator, in
+// replichai's own configuration directory rather than the latere CLI's.
 type Store struct{ Dir string }
 
 // DefaultStore is the store under the operator's configuration directory.
@@ -76,10 +77,10 @@ func DefaultStore(home string) Store {
 	return Store{Dir: filepath.Join(home, ".config", "replichai")}
 }
 
-// Path is the credential file.
+// Path returns the credential file's path.
 func (s Store) Path() string { return filepath.Join(s.Dir, "auth.json") }
 
-// Save writes the credential, private to the operator.
+// Save writes the credential with mode 0600.
 func (s Store) Save(token Token) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
@@ -93,8 +94,9 @@ func (s Store) Save(token Token) error {
 	return os.WriteFile(s.Path(), append(body, '\n'), 0o600)
 }
 
-// Load reads the credential. A missing file is ErrSignedOut rather than an
-// I/O error, because "you are not signed in" is what the caller acts on.
+// Load reads the credential. A missing file returns ErrSignedOut rather than
+// an I/O error, because not being signed in is the condition the caller acts
+// on.
 func (s Store) Load() (Token, error) {
 	body, err := os.ReadFile(s.Path())
 	if os.IsNotExist(err) {
@@ -113,8 +115,8 @@ func (s Store) Load() (Token, error) {
 	return token, nil
 }
 
-// Clear removes the credential. Removing one that is not there is not an
-// error: signing out twice is not a failure.
+// Clear removes the credential. A credential that is already absent is not an
+// error, so signing out twice succeeds.
 func (s Store) Clear() error {
 	err := os.Remove(s.Path())
 	if os.IsNotExist(err) {
@@ -123,7 +125,7 @@ func (s Store) Clear() error {
 	return err
 }
 
-// Session is a signed-in identity, and the thing that presents it.
+// Session holds a signed-in identity and presents it to the API.
 type Session struct {
 	// AuthURL is the identity provider.
 	AuthURL string
@@ -154,15 +156,16 @@ func (s *Session) now() time.Time {
 	return s.Now()
 }
 
-// Prompt is what the operator has to do to finish signing in.
+// Prompt describes what the operator must do to finish signing in.
 type Prompt struct {
 	VerificationURI string
 	UserCode        string
 	Interval        time.Duration
 }
 
-// Login runs the device-code flow. show is called once with what the operator
-// must do; the call then blocks until they have done it or the code expires.
+// Login runs the device-code flow. show is called once with the prompt the
+// operator must act on; the call then blocks until they have done so or the
+// code expires.
 func (s *Session) Login(ctx context.Context, show func(Prompt)) (Token, error) {
 	client := s.client()
 	if client == nil {
@@ -190,9 +193,10 @@ func (s *Session) Login(ctx context.Context, show func(Prompt)) (Token, error) {
 	return token, nil
 }
 
-// tokenFrom folds an OAuth grant into the stored shape, keeping the previous
-// refresh token where the response omits a new one — ordinary OAuth behaviour,
-// and a common way a working client signs itself out after a day.
+// tokenFrom converts an OAuth grant into the stored shape. Where the response
+// omits a new refresh token it keeps the previous one. Omitting it is ordinary
+// OAuth behaviour, and dropping the old one is a common cause of a working
+// client signing itself out after a day.
 func (s *Session) tokenFrom(granted *oauth2.Token, previous Token) Token {
 	token := Token{
 		AccessToken:  granted.AccessToken,
@@ -213,14 +217,13 @@ func (s *Session) tokenFrom(granted *oauth2.Token, previous Token) Token {
 	return token
 }
 
-// Current returns a usable credential, refreshing it where it is due.
+// Current returns a usable credential, refreshing it when it has expired.
 //
 // A refresh that fails because the network is down, or because auth answered
 // with a server error, leaves the stored credential in place and reports the
-// failure. Only an explicit invalid_grant — the credential is genuinely
-// revoked or expired — clears it. A CLI that signs itself out whenever a
-// coffee-shop network hiccups is one people stop trusting with an hour-long
-// batch.
+// failure. Only an explicit invalid_grant, meaning the credential is revoked
+// or expired, clears it. A CLI that signed itself out on every transient
+// network failure could not be trusted with a long batch run.
 func (s *Session) Current(ctx context.Context) (Token, error) {
 	token, err := s.Store.Load()
 	if err != nil {
@@ -271,9 +274,9 @@ func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
 }
 
 func (s *Session) refreshWithOrg(ctx context.Context, refresh, org string) (*oauth2.Token, error) {
-	// The body is a form, so it is built as one: a refresh token or an
-	// organisation id carrying a reserved character must reach the provider
-	// as one value, not as extra fields.
+	// The body is built with url.Values so a refresh token or an
+	// organisation id containing a reserved character reaches the provider
+	// as one value rather than as extra fields.
 	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "client_id": {ClientID}}
 	if org != "" {
 		form.Set("organization_id", org)
@@ -306,12 +309,12 @@ func (s *Session) refreshWithOrg(ctx context.Context, refresh, org string) (*oau
 	return token, nil
 }
 
-// Bearer is the credential to present to replichai's API. It prefers a
-// short-lived actor token minted for this service, so a credential captured in
-// transit is bounded to minutes and to one audience, and falls back to the
-// stored access token where the provider does not mint one — the fallback is
-// reported rather than silent, because a security property that quietly stops
-// holding is worse than one never claimed.
+// Bearer returns the credential to present to replichai's API. It prefers a
+// short-lived actor token minted for this service, so a credential captured
+// in transit is valid for minutes and for one audience only. Where the
+// provider does not mint one it falls back to the stored access token and
+// reports the fallback in the second return value, so a caller can tell when
+// the short-lived credential was not obtained.
 func (s *Session) Bearer(ctx context.Context, ttl time.Duration) (string, bool, error) {
 	token, err := s.Current(ctx)
 	if err != nil {
@@ -319,8 +322,8 @@ func (s *Session) Bearer(ctx context.Context, ttl time.Duration) (string, bool, 
 	}
 	actor, err := s.mintActor(ctx, token.AccessToken, ttl)
 	if err != nil {
-		// A provider that will not mint an audience-scoped token is not a
-		// failure to sign in: the stored credential still authenticates, and
+		// A provider that does not mint an audience-scoped token has not
+		// failed the sign-in. The stored credential still authenticates, and
 		// the caller is told the short-lived one was not obtained.
 		//nolint:nilerr // the fallback is the documented behaviour, and it is reported
 		return token.AccessToken, false, nil
@@ -376,9 +379,10 @@ func isInvalidGrant(err error) bool {
 	return strings.Contains(err.Error(), "invalid_grant")
 }
 
-// identityFrom reads the subject and email out of a JWT's payload without
-// verifying it. The CLI is not a resource server: it is reading its own
-// credential to print who is signed in, and the server verifies for real.
+// identityFrom reads the subject and email from a JWT's payload without
+// verifying the signature. The CLI is not a resource server. It reads its
+// own credential to print who is signed in, and the server verifies the
+// token.
 func identityFrom(raw string) (subject, email string) {
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {

@@ -69,8 +69,8 @@ func TestEveryCallPresentsAnActorToken(t *testing.T) {
 	}
 }
 
-// A refusal carries the server's own machine-readable reason, not only a
-// status line: an operator whose push is refused needs to know why.
+// An error carries the server's own machine-readable reason as well as the
+// status line, because an operator whose push is refused needs to know why.
 func TestARefusalCarriesTheServersReason(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -86,10 +86,11 @@ func TestARefusalCarriesTheServersReason(t *testing.T) {
 	}
 }
 
-// Filing a paper that is already there is not an error: a batch pushed twice
-// must not fail on the second attempt, which is the whole point of a push
-// being resumable. The reason is the app's own — a stub that invents one tests
-// nothing, which is how this client shipped speaking an API nobody serves.
+// Filing a paper that is already present is not an error. A batch pushed
+// twice must not fail on the second attempt, which is what makes a push
+// resumable. The reason string is the one the app writes, because a stub
+// that invents its own tests nothing. This client once shipped speaking an
+// API the server did not serve for that reason.
 func TestFilingAPaperTwiceIsNotAFailure(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)
@@ -104,8 +105,9 @@ func TestFilingAPaperTwiceIsNotAFailure(t *testing.T) {
 	}
 }
 
-// The record carries no locator: it holds a host path and a process handle,
-// which mean nothing on the server and leak the operator's home directory.
+// The record carries no locator, because a locator holds a host path and a
+// process handle, which mean nothing on the server and would leak the
+// operator's home directory.
 func TestTheRecordCarriesNoHostPath(t *testing.T) {
 	encoded, err := json.Marshal(ImportRecord{
 		PaperKey: "doi:10.1145/3654777.3676417", Runtime: "local", SessionID: "7f3a91c2",
