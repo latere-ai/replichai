@@ -55,7 +55,7 @@ The expectation is the per-component conclusion, not a single number: accuracy p
 - **`analysis`** is the released-data pipeline the run recovered in `src/` (§4), its command parameterising the input path so it runs on a new dataset.
 - **`servability`** splits by component. The **PM task apparatus is servable** — trial-level RT and accuracy are exactly what a browser captures, it is screen-based, single-session, and needs no experimenter. The **feed manipulation is not**: assignment sends participants to spend ten minutes on their own feeds in software the page neither controls nor can verify (§3), which fails `page_administrable`. So `all_servable` is `false` and the per-component answer is the informative one — *this task we can host; this manipulation you must administer*.
 
-A run **passes** criterion 7 by reaching that per-component split. A run **fails** if it marks the whole protocol servable (missing that the manipulation is unadministrable) or the whole protocol unservable (throwing away that the PM task itself is hostable). Neither the roll-up nor any component is asserted `true` end to end.
+A run **passes** the rubric's *Instrument* criterion by reaching that per-component split. A run **fails** if it marks the whole protocol servable (missing that the manipulation is unadministrable) or the whole protocol unservable (throwing away that the PM task itself is hostable). Neither the roll-up nor any component is asserted `true` end to end.
 
 ## Open items for the author to confirm
 

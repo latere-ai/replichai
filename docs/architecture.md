@@ -124,7 +124,7 @@ managed session ────┼─ worker stage      the harness, confined to on
 | File | Role |
 |---|---|
 | `instructions.md` | The worker's standing instructions: the inner/outer doctrine, the search procedure, the never-dos, the two JSON schemas |
-| `rubric.md` | Eight binary criteria. The grader scores every run against these |
+| `rubric.md` | The binary criteria the grader scores every run against; the file is the source for how many there are and in what order |
 | `task-template.md` | The per-run task, with `{{PAPER}}` substituted |
 
 Keeping the rubric out of the worker definition is deliberate: the rubric travels with each run, so sharpening it costs a text edit rather than a redefinition of the worker. Iterating on the bar is the cheapest operation in the system, and it should stay that way.
