@@ -44,9 +44,9 @@ func TestRecordsWhatItWasAskedToDo(t *testing.T) {
 	}
 }
 
-// The seam carries an experiment's shape (007b): a read-only mount and a
+// The contract carries an experiment's shape (007b): a read-only mount and a
 // dataset attached outside it. The provider records the RunSpec verbatim, so a
-// runner's choices are observable without a backend.
+// runner's choices can be checked without a backend.
 func TestRecordsReadOnlyMountAndAttachments(t *testing.T) {
 	p := New()
 	ctx := context.Background()
@@ -75,7 +75,8 @@ func TestRecordsReadOnlyMountAndAttachments(t *testing.T) {
 	if len(got.Attachments) != 1 || got.Attachments[0].Path != "/workspace/input/data.csv" {
 		t.Errorf("attachment not recorded: %+v", got.Attachments)
 	}
-	// The attachment path is outside the mount — the structural guarantee.
+	// The attachment path is outside the mount, which is the structural
+	// guarantee.
 	if strings.HasPrefix(got.Attachments[0].Path, got.Mount.MountPath) {
 		t.Error("the dataset must land outside the mount")
 	}

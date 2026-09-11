@@ -379,10 +379,10 @@ func TestPollTranslatesStatesAndGrades(t *testing.T) {
 }
 
 func TestARunThatHasNotStartedIsNotReportedAsFinished(t *testing.T) {
-	// Regression: the backend parks a run in the same resting state both
-	// before work begins and after it ends. Observed against the live
-	// backend — treating that as terminal aborts healthy runs whose first
-	// poll lands between kickoff and pickup.
+	// Regression: the backend reports the same resting state both before
+	// work begins and after it ends. This was observed against the live
+	// backend; treating it as terminal aborts healthy runs whose first poll
+	// lands between kickoff and pickup.
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session", "status": "idle"})
 	})
@@ -458,9 +458,10 @@ func TestCloseRunToleratesAnAlreadyClosedRun(t *testing.T) {
 	}
 }
 
-// A session already archived by an earlier close (a cancel, say) rejects the
-// interrupt with 400, not 404/409. That is the requested end state, so it must
-// not be reported as a failed close and turn a finished run into a failed one.
+// A session already archived by an earlier close, such as a cancel, rejects the
+// interrupt with 400 rather than 404 or 409. That is the requested end state,
+// so it must not be reported as a failed close and turn a finished run into a
+// failed one.
 func TestCloseRunToleratesAnAlreadyArchivedSession(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -769,10 +770,10 @@ func TestATerminatedRunIsTerminal(t *testing.T) {
 	// Regression: "terminated" is irreversible, so a run that reaches it
 	// without a grader record will never produce one. Reporting it as
 	// pending made the auditor poll a dead run until its deadline expired.
-	// State is lifecycle, grade is outcome. A run the grader failed still
-	// *completed*, so it is Done and not passed; only a run that died without
-	// ever being graded is Failed. Collapsing the two is the conflation this
-	// translation exists to avoid.
+	// State is the lifecycle and grade is the outcome. A run the grader
+	// failed still completed, so it is Done and not passed; only a run that
+	// died without being graded is Failed. The translation exists to keep
+	// the two apart.
 	cases := []struct {
 		name      string
 		grade     string

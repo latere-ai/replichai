@@ -72,8 +72,8 @@ func translateGrade(name string) provider.Grade {
 // The backend's status and the grader's record are read together, because
 // neither answers the question alone: the backend rests in "idle" both before
 // a run is picked up and after it finishes, and it reaches "terminated" both
-// by completing and by dying. Deciding from the status alone gets one of
-// those two cases wrong every time.
+// by completing and by dying. A decision from the status alone gets one of
+// those cases wrong.
 func translateState(status string, verdict *provider.Verdict) provider.RunState {
 	graded := verdict != nil && verdict.Grade.Decided()
 
@@ -105,10 +105,11 @@ func translateState(status string, verdict *provider.Verdict) provider.RunState 
 		return provider.StateFailed
 
 	default:
-		// An unfamiliar status is treated as still working: the run may yet
-		// reach a state this adapter recognizes. Nothing here declares it dead,
-		// because the caller may be waiting without a deadline — a session that
-		// really is finished reaches "terminated", which is handled above.
+		// An unknown status is treated as still running: the run may yet
+		// reach a state this adapter recognises. It is not declared dead,
+		// even though the caller may be waiting without a deadline, because
+		// a session that has finished reaches "terminated", which is handled
+		// above.
 		return provider.StateRunning
 	}
 }
@@ -269,8 +270,9 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 			repo.MountPath = param.NewOpt(spec.Mount.MountPath)
 		}
 		// A read-only mount is expressed by the token's GitHub scope, not by this
-		// resource — the SDK's github_repository has no read-only field. Handing a
-		// read-only-scoped token is what makes spec.Mount.ReadOnly real (006f).
+		// resource; the SDK's github_repository has no read-only field.
+		// spec.Mount.ReadOnly is enforced only when the token is
+		// read-only-scoped (006f).
 		params.Resources = []anthropic.BetaSessionNewParamsResourceUnion{
 			{OfGitHubRepository: &repo},
 		}
@@ -378,16 +380,16 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 		State:   state,
 		Verdict: verdict,
 		RunID:   h.ID, // persist the session id so a restart can close this run
-		// What the backend resolved our model *preference* to, so a session is
-		// priced at the rates of the model that actually ran it (011).
+		// The model the backend resolved the preference to, so a session is
+		// priced at the rates of the model that ran it (011).
 		Model: session.Agent.Model.ID, ModelProvider: "anthropic",
 		Usage: provider.Usage{
 			InputTokens:       session.Usage.InputTokens,
 			OutputTokens:      session.Usage.OutputTokens,
 			CachedInputTokens: session.Usage.CacheReadInputTokens,
-			// Cache writes arrive already split by lifetime here, so they are
-			// carried split — the session total is what a charge is computed
-			// from (011), and the two lifetimes are priced differently.
+			// Cache writes arrive split by lifetime and are carried split:
+			// the charge is computed from the session total (011), and the
+			// two lifetimes are priced differently.
 			CacheWrite5mTokens: session.Usage.CacheCreation.Ephemeral5mInputTokens,
 			CacheWrite1hTokens: session.Usage.CacheCreation.Ephemeral1hInputTokens,
 		},
@@ -427,9 +429,9 @@ func (p *Provider) FetchArtifact(ctx context.Context, h provider.RunHandle, a pr
 }
 
 // Transcript returns the run's full event stream, translated to neutral events.
-// Each event is translated generically from its raw JSON — a type, a timestamp,
-// best-effort text — with the original preserved in Raw, so the many event
-// shapes need no per-variant mapping and nothing is lost.
+// Each event is translated generically from its raw JSON into a type, a
+// timestamp and best-effort text, with the original preserved in Raw, so the
+// many event shapes need no per-variant mapping and nothing is lost.
 func (p *Provider) Transcript(ctx context.Context, h provider.RunHandle) ([]provider.Event, error) {
 	iter := p.client.Beta.Sessions.Events.ListAutoPaging(ctx, h.ID, anthropic.BetaSessionEventListParams{
 		Betas: []anthropic.AnthropicBeta{anthropic.AnthropicBetaManagedAgents2026_04_01},
@@ -445,9 +447,10 @@ func (p *Provider) Transcript(ctx context.Context, h provider.RunHandle) ([]prov
 }
 
 // translateEvent maps one backend event's raw JSON to a neutral Event. It reads
-// the fields that carry meaning across the event types — text content, a tool
-// name and input, a tool result, a grade — and picks by what is present, so no
-// per-variant type switch is needed and Raw still preserves everything.
+// the fields that carry meaning across the event types, namely text content, a
+// tool name and input, a tool result, and a grade, and fills the Event from
+// whichever are present, so no per-variant type switch is needed and Raw
+// preserves everything.
 func translateEvent(raw []byte) provider.Event {
 	var head struct {
 		Type          string          `json:"type"`
@@ -512,8 +515,8 @@ func eventUsage(raw []byte) (provider.Usage, bool) {
 	}, true
 }
 
-// blocksText concatenates the text of an event's content blocks (or a plain
-// string), best-effort.
+// blocksText concatenates the text of an event's content blocks, or returns the
+// content when it is a plain string. It is best-effort.
 func blocksText(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -582,9 +585,9 @@ func firstNonZeroTime(ts ...time.Time) time.Time {
 }
 
 // CloseRun stops any live work before releasing the session. Archiving alone
-// only hides a managed-agent session; user.interrupt is what actually pauses
-// every active thread. Both operations are best-effort so closing an already
-// terminal or archived session remains idempotent.
+// only hides a managed-agent session; user.interrupt pauses every active
+// thread. Both operations are best-effort so closing an already terminal or
+// archived session remains idempotent.
 func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 	_, interruptErr := p.client.Beta.Sessions.Events.Send(ctx, h.ID, anthropic.BetaSessionEventSendParams{
 		Events: []anthropic.BetaManagedAgentsEventParamsUnion{
@@ -632,8 +635,8 @@ func releaseError(operation string, err error) error {
 // failures. The managed-agents API uses not-found/conflict when work is already
 // terminal or archived, and rejects an interrupt sent to an already archived
 // session with 400; all of those are the requested end state. Other 400s are
-// real — a malformed event would stop live sessions being interrupted at all —
-// so only the archived message is tolerated.
+// real failures, since a malformed event would stop live sessions being
+// interrupted, so only the archived message is tolerated.
 func closeRunError(operation string, err error) error {
 	if err == nil {
 		return nil

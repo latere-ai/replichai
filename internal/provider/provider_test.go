@@ -24,8 +24,7 @@ func TestRunStateTerminal(t *testing.T) {
 }
 
 func TestZeroValuesAreNotMeaningful(t *testing.T) {
-	// A struct field that was never set must not masquerade as a real state
-	// or as a passing grade.
+	// An unset field must not read as a real state or as a passing grade.
 	var state RunState
 	if state != StateUnknown || state.Valid() || state.Terminal() {
 		t.Errorf("zero RunState must be an invalid, non-terminal unknown, got %s", state)
@@ -127,8 +126,8 @@ func TestUnmarshalRejectsUnknownNames(t *testing.T) {
 }
 
 func TestNetworkZeroValueIsOpen(t *testing.T) {
-	// An audit's first phase is hunting artifacts across the public web, so
-	// open is the working default and restricting is the deliberate act.
+	// An audit's first phase searches the public web for artifacts, so open
+	// is the default and limiting is an explicit choice.
 	var network Network
 	if network != NetworkOpen {
 		t.Errorf("zero Network = %s, want open", network)
