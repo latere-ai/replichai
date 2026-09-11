@@ -60,9 +60,9 @@ const card = `<body style="margin:0">
       <div style="width:52px;height:52px">${mark(52)}</div>
       <div style="font-size:38px;font-weight:600;letter-spacing:-0.035em">replic<span style="margin-left:0.055em">hai</span></div>
     </div>
-    <div style="font-size:78px;font-weight:600;letter-spacing:-0.04em;line-height:1.04;max-width:15ch">Does the paper actually reproduce?</div>
+    <div style="font-size:78px;font-weight:600;letter-spacing:-0.04em;line-height:1.04;max-width:15ch">Does the paper reproduce?</div>
     <div style="margin-top:38px;font-size:27px;line-height:1.5;color:#5c5b58;max-width:44ch">
-      It runs the paper. The inner loop is implemented and re-run; the outer loop — the study with people — is named, bounded, and never simulated.
+      replichai re-runs the part of a paper a machine can run. The study with people is named, marked out of scope, and never simulated.
     </div>
   </div>
 </body>`
