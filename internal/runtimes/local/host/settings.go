@@ -78,6 +78,7 @@ var AlwaysDenyRead = []string{
 	"~/.config/replichai",
 	"~/.npmrc",
 	"~/.pypirc",
+	"~/.env",
 }
 
 // Profile is what one stage may touch, before it is rendered into srt's file.

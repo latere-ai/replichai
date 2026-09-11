@@ -6,7 +6,6 @@ package local_test
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,13 +40,7 @@ func TestRealEndToEndWithCodex(t *testing.T) {
 func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	t.Helper()
 	home, _ := os.UserHomeDir()
-	driver := host.New(host.Config{
-		Home: home, HarnessBinary: binary, Lookup: os.LookupEnv,
-		ConfigDirs: []string{
-			filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json"),
-			filepath.Join(home, ".codex"),
-		},
-	})
+	driver := host.New(host.Config{Home: home, HarnessBinary: binary, Lookup: os.LookupEnv})
 	if err := driver.Preflight(context.Background()); err != nil {
 		t.Skipf("not ready: %v", err)
 	}

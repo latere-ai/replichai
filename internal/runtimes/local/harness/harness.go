@@ -158,13 +158,18 @@ type File struct {
 // creates one per working directory under the temporary root, and without it
 // every shell command fails before it runs.
 type Needs struct {
-	// Reads are paths granted read-only so the operator's existing login
-	// works. They are granted only where a session uses that login: one
-	// carrying its own credential gets none of them.
-	Reads []string
+	// Login is what the operator's existing sign-in takes: the paths it
+	// lives in, and whether the harness must also write them to run on it.
+	// They are granted only where a session uses that login — one carrying
+	// its own credential gets none of them — and every one granted is
+	// disclosed in the run's environment record, because on Linux the
+	// credential file and the operator's whole conversation history sit in
+	// the same directory.
+	Login []Grant
 	// Writes are paths the harness needs to write to work at all, outside
-	// the session's own directories. They are granted to every stage,
-	// because a harness that cannot run a command is not a harness.
+	// the session's own directories and outside its login. They are
+	// granted to every stage, because a harness that cannot run a command
+	// is not a harness.
 	Writes []string
 	// TLSPassthrough are domains this harness must reach without the
 	// sandbox terminating TLS. A sandbox that inspects egress does it by
@@ -178,6 +183,25 @@ type Needs struct {
 	// otherwise be loaded into every reproduction as if they were the
 	// method, and their plugins would run code the method never asked for.
 	Denies []string
+}
+
+// Grant is one path outside the session a harness's login needs. It is
+// read-only unless Write says otherwise, and Write is said only where the
+// harness refuses to start without it.
+type Grant struct {
+	Path  string
+	Write bool
+}
+
+// LoginPaths is the paths a set of needs would open for the login, sorted, so
+// the environment record lists exactly what was granted in a stable order.
+func LoginPaths(needs Needs) []string {
+	paths := make([]string, 0, len(needs.Login))
+	for _, grant := range needs.Login {
+		paths = append(paths, grant.Path)
+	}
+	slices.Sort(paths)
+	return paths
 }
 
 // Machine is the little a harness needs to know about where it is running in

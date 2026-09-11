@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -143,28 +142,15 @@ func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness
 			Engine: container.Engine(config.Engine), Image: config.Image,
 		})
 	case sandbox.Host, "":
+		// The harness's own configuration is not granted here. Where its
+		// login lives is the harness's to say, through Needs, and whether
+		// a session is opened it is the runtime's to decide — only one on
+		// the operator's own sign-in is.
 		return host.New(host.Config{
 			Home: config.Home, HarnessBinary: agent.Binary(), Lookup: config.Lookup,
-			ConfigDirs: harnessConfigDirs(config.Home, agent.Name()),
 		}), nil
 	default:
 		return nil, fmt.Errorf("unknown sandbox %q; available: host, container", config.Sandbox)
-	}
-}
-
-// harnessConfigDirs is the one read allowance inside the operator's home
-// directory: the harness's own configuration, which is what makes its existing
-// login usable. It is narrowed to that directory and disclosed in the run's
-// environment record rather than left implicit.
-func harnessConfigDirs(home string, name harness.Name) []string {
-	if home == "" {
-		return nil
-	}
-	switch name {
-	case harness.Codex:
-		return []string{filepath.Join(home, ".codex")}
-	default:
-		return []string{filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json")}
 	}
 }
 

@@ -229,15 +229,28 @@ func TestClaudeCodeCredentialChannels(t *testing.T) {
 // reproducing the paper, and a plugin is code the method never asked for.
 func TestClaudeCodesLoginProfile(t *testing.T) {
 	login := NewClaudeCode().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
-	if len(login.Reads) != 1 || !strings.Contains(login.Reads[0], "Keychains") {
-		t.Fatalf("macOS reads = %v, want the keychain: the credential is not in a file there", login.Reads)
+	// The login is its configuration directory and file, and on macOS the
+	// keychain as well, because the credential is not in a file there. All
+	// of it read-only: nothing of the operator's account is written.
+	want := []string{"/Users/x/.claude", "/Users/x/.claude.json", "/Users/x/Library/Keychains"}
+	if got := LoginPaths(login); !slices.Equal(got, want) {
+		t.Fatalf("macOS login = %v, want %v", got, want)
 	}
-	// Elsewhere the credential is in a file the configuration grant already
-	// covers, so nothing further is opened.
-	if reads := NewClaudeCode().Needs(Machine{Platform: "linux", Home: "/home/x"}).Reads; len(reads) != 0 {
-		t.Errorf("linux opened %v", reads)
+	for _, grant := range login.Login {
+		if grant.Write {
+			t.Errorf("%s is writable: the login is read, never written", grant.Path)
+		}
 	}
-	for _, want := range []string{"CLAUDE.md", "plugins", "settings.json"} {
+	// Elsewhere the credential is a file inside the configuration directory,
+	// so that is all that is opened.
+	linux := LoginPaths(NewClaudeCode().Needs(Machine{Platform: "linux", Home: "/home/x"}))
+	if !slices.Equal(linux, []string{"/home/x/.claude", "/home/x/.claude.json"}) {
+		t.Errorf("linux login = %v", linux)
+	}
+	// Everything Claude Code loads at startup that is the operator's and
+	// not the method is withheld from the directory that has to be readable
+	// for the login.
+	for _, want := range []string{"CLAUDE.md", "plugins", "settings.json", "agents", "commands", "skills"} {
 		found := false
 		for _, deny := range login.Denies {
 			if strings.Contains(deny, want) {
@@ -255,7 +268,7 @@ func TestClaudeCodesLoginProfile(t *testing.T) {
 		t.Errorf("the harness was granted a path outside the session: %v", login.Writes)
 	}
 	// With no home there is nothing to grant and nothing to withhold.
-	if empty := NewClaudeCode().Needs(Machine{Platform: "darwin"}); len(empty.Reads) != 0 || len(empty.Denies) != 0 {
+	if empty := NewClaudeCode().Needs(Machine{Platform: "darwin"}); len(empty.Login) != 0 || len(empty.Denies) != 0 {
 		t.Errorf("a homeless machine granted %+v", empty)
 	}
 }

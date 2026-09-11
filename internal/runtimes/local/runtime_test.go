@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,23 +23,119 @@ import (
 
 func build(t *testing.T, script localtest.Script) (*local.Runtime, *localtest.Sandbox) {
 	t.Helper()
+	return buildWith(t, script, local.DefaultCatalogFile(), noCredentials, harness.Machine{})
+}
+
+// noCredentials is a lookup with nothing in it, for a catalogue on the
+// harness's own login.
+func noCredentials(string) (string, bool) { return "", false }
+
+// buildWith composes a runtime over the scripted driver with the given
+// catalogue, credential lookup and machine, so a test can put the runtime on an
+// API key or on a machine with a home directory.
+func buildWith(t *testing.T, script localtest.Script, file local.CatalogFile, lookup local.LookupEnv,
+	machine harness.Machine) (*local.Runtime, *localtest.Sandbox) {
+	t.Helper()
 	driver := localtest.New(script)
 	registry, err := harness.NewRegistry(harness.NewClaudeCode(), harness.NewCodex())
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
 	}
-	catalog, err := local.NewCatalog(local.DefaultCatalogFile(), registry, func(string) (string, bool) { return "", false })
+	catalog, err := local.NewCatalog(file, registry, lookup)
 	if err != nil {
 		t.Fatalf("NewCatalog: %v", err)
 	}
 	runtime, err := local.New(local.Config{
 		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
-		Root: t.TempDir(), Lookup: os.LookupEnv,
+		Root: t.TempDir(), Lookup: os.LookupEnv, Machine: machine,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return runtime, driver
+}
+
+// keyedCatalog declares one Claude Code model behind a gateway that carries
+// its own API key, read from the named variable.
+func keyedCatalog(keyEnv string) local.CatalogFile {
+	return local.CatalogFile{
+		Gateways: map[string]local.GatewayConfig{
+			"keyed": {Dialect: string(harness.DialectAnthropic), Auth: string(harness.AuthAPIKey), KeyEnv: keyEnv},
+		},
+		Models: []local.ModelConfig{{
+			Provider: "anthropic", ID: "claude-opus-5", Gateway: "keyed",
+			Harness: string(harness.ClaudeCode), Preferences: []string{"best"},
+		}},
+	}
+}
+
+// readEnvironment is the run's environment record, read back from the session
+// directory the reference names.
+func readEnvironment(t *testing.T, ref managed.SessionRef) local.Environment {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(sessionDir(t, ref), "session", "environment.json"))
+	if err != nil {
+		t.Fatalf("read the environment record: %v", err)
+	}
+	var record local.Environment
+	if err := json.Unmarshal(body, &record); err != nil {
+		t.Fatalf("decode the environment record: %v", err)
+	}
+	return record
+}
+
+// The operator's own sign-in — the harness's configuration directory, and on
+// macOS the keychain — reaches a session that runs on it and no other, and the
+// environment record lists exactly what was opened. A session carrying its own
+// credential is granted nothing under the operator's home: on Linux the login
+// and the operator's whole conversation history live in the same directory.
+func TestTheLoginGrantReachesOnlyASessionOnTheOperatorsLogin(t *testing.T) {
+	machine := harness.Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501}
+	login := harness.LoginPaths(harness.NewClaudeCode().Needs(machine))
+	if len(login) == 0 {
+		t.Fatal("the harness declares no login paths, so there is nothing to gate")
+	}
+
+	// On the harness's own login every agentic stage is granted the login,
+	// read-only, and the bootstrap — which talks to no model — is not.
+	runtime, driver := buildWith(t, localtest.Script{}, local.DefaultCatalogFile(), noCredentials, machine)
+	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	for _, stage := range driver.Stages() {
+		granted := map[string]sandbox.Access{}
+		for _, path := range stage.Paths {
+			granted[path.Host] = path.Access
+		}
+		for _, path := range login {
+			access, ok := granted[path]
+			switch {
+			case strings.HasPrefix(stage.Name, "bootstrap") && ok:
+				t.Errorf("the bootstrap was handed the login at %s", path)
+			case !strings.HasPrefix(stage.Name, "bootstrap") && !ok:
+				t.Errorf("stage %s cannot reach the login at %s: %+v", stage.Name, path, stage.Paths)
+			case ok && access != sandbox.ReadOnly:
+				t.Errorf("stage %s can write the login at %s", stage.Name, path)
+			}
+		}
+	}
+	if got := readEnvironment(t, status.Ref).Sandbox.ConfigRead; !slices.Equal(got, login) {
+		t.Errorf("the record discloses %v, the run was granted %v", got, login)
+	}
+
+	// On an API key nothing under the operator's home is opened, and the
+	// record says so by listing nothing.
+	credential := func(name string) (string, bool) { return "sk-test", name == "TEST_MODEL_KEY" }
+	runtime, driver = buildWith(t, localtest.Script{}, keyedCatalog("TEST_MODEL_KEY"), credential, machine)
+	status = runToTerminal(t, runtime, start(t, runtime, spec(true)))
+	for _, stage := range driver.Stages() {
+		for _, path := range stage.Paths {
+			if strings.HasPrefix(path.Host, machine.Home) {
+				t.Errorf("a session on its own credential was handed %s in stage %s", path.Host, stage.Name)
+			}
+		}
+	}
+	if got := readEnvironment(t, status.Ref).Sandbox.ConfigRead; len(got) != 0 {
+		t.Errorf("the record discloses %v for a session that was granted nothing", got)
+	}
 }
 
 // The runtime is held to the same black-box suite as every other adapter.

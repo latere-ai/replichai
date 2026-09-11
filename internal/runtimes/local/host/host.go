@@ -30,10 +30,6 @@ type Config struct {
 	// preflight so a missing harness is a refusal with instructions rather
 	// than an exec failure a minute in.
 	HarnessBinary string
-	// ConfigDirs are the harness's own configuration directories, read-only
-	// and the one allowance inside the home directory. This is the hole in
-	// the boundary, and it is disclosed in the environment record.
-	ConfigDirs []string
 	// Look resolves an executable, defaulting to exec.LookPath.
 	Look func(string) (string, error)
 	// Lookup reads one variable of the process environment, os.LookupEnv at
@@ -230,10 +226,12 @@ func hasPath(environ []string) bool {
 	return false
 }
 
-// profile is the whole access decision for one stage.
+// profile is the whole access decision for one stage. Inside the operator's
+// home directory it grants what the StageSpec carries and nothing of its own:
+// the harness's configuration reaches a run only where the runtime put it in
+// Paths, which it does for a session on the operator's sign-in alone.
 func (s *Sandbox) profile(spec sandbox.StageSpec) Profile {
 	profile := Profile{Home: s.config.Home, Network: spec.Network}
-	profile.Reads = append(profile.Reads, s.config.ConfigDirs...)
 	if binary := strings.TrimSpace(s.config.HarnessBinary); binary != "" {
 		if resolved, err := s.config.Look(binary); err == nil {
 			profile.Reads = append(profile.Reads, filepath.Dir(resolved))
