@@ -5,39 +5,39 @@ status: built
 
 # 029 — The landing is a place
 
-**Rebuilt by [033](033-the-landing-rebuilt-from-the-design.md) and redressed by [040](040-the-landing-in-light.md).** The guarantees below still hold and are still tested — the sticky header, the reduced-motion resting state, the registry link, the landing as its own module. The page around them does not: its structure was rebuilt from a design, its third figure became a concrete example verdict rather than an abstract triple, and its one-line closing strip is now the shared Latere footer.
+**Rebuilt by [033](033-the-landing-rebuilt-from-the-design.md) and restyled by [040](040-the-landing-in-light.md).** The guarantees below still hold and are still tested: the sticky header, the reduced-motion resting state, the registry link, the landing as its own module. The page around them does not: its structure was rebuilt from a design, its third figure became a concrete example verdict rather than an abstract triple, and its one-line closing strip is now the shared Latere footer.
 
-**Status:** built. Every acceptance criterion holds. The landing lives in its own `frontend/src/landing.tsx` — a page this long has no business inside `App.tsx`, which now imports it and renders it for a signed-out reader at any address 028 does not open. `frontend/test/landing.test.mjs` was rewritten against the sticky-header guarantee and drives it at 1440×900 and 390×844, at the top of the page *and* scrolled to the bottom, plus the three figures, the reduced-motion resting state, and the registry link; it was verified to fail against the old landing.
+**Status:** built. Every acceptance criterion holds. The landing lives in its own `frontend/src/landing.tsx`; a page this long does not belong inside `App.tsx`, which now imports it and renders it for a signed-out reader at any address 028 does not open. `frontend/test/landing.test.mjs` was rewritten against the sticky-header guarantee and drives it at 1440×900 and 390×844, at the top of the page *and* scrolled to the bottom, plus the three figures, the reduced-motion resting state, and the registry link; it was verified to fail against the old landing.
 
-Three things came out of the build. Figures 2 and 3 are HTML and CSS with drawn connectors rather than one inline SVG each: every part of them is a sentence, and a sentence in an SVG does not wrap, translate, or select. Figure 1 stays SVG, because there the geometry *is* the argument. And 017's deep-link criterion moved rather than survived: a public `/p/{id}` renders the app signed out now (028), so the landing's own `next` round trip is asserted from an address that still needs an account, and the public deep link is `public-shell.test.mjs`'s to guard.
+Three things came out of the build. Figures 2 and 3 are HTML and CSS with drawn connectors rather than one inline SVG each: every part of them is a sentence, and a sentence in an SVG does not wrap, translate, or select. Figure 1 stays SVG, because there the geometry *is* the argument. And 017's deep-link criterion moved rather than survived: a public `/p/{id}` renders the app signed out now (028), so the landing's own `next` round trip is asserted from an address that still needs an account, and the public deep link is guarded by `public-shell.test.mjs`.
 
-**Scope:** the signed-out landing stops being a door and becomes a page a researcher can read: a sticky header that carries the way in, the claim, three drawn figures that show what the product does rather than assert it, a strip of real reproductions pulled from the now-open registry, and a close. Frontend only — no route, no API, no schema. Supersedes 017's two-column fold.
+**Scope:** the signed-out landing stops being only a sign-in door and becomes a page a researcher can read: a sticky header that carries the way in, the claim, three drawn figures that show what the product does rather than assert it, a strip of real reproductions pulled from the now-open registry, and a close. Frontend only: no route, no API, no schema. Supersedes 017's two-column fold.
 
 **Depends on:** [028](028-the-registry-opens.md) (without it there is nothing to link to and no data to show), [017](017-the-first-screen.md) (the mark, the lockup, the copy, and the fold this replaces), [013](013-the-address-bar-is-the-state.md), [006q](006q-sign-in-is-open-budget-is-not.md) (what the copy may promise).
 
 ## Problem
 
-017 built the landing as a fold: two columns, sign-in guaranteed above 900px, and — by its own decision — no link anywhere, because the registry was closed. It says what the product is in six sentences and then stops. That is the right shape for a door and the wrong shape for the audience: a researcher deciding whether to trust a reproducibility claim wants to see one, and the strongest thing this product has to show is a verdict somebody signed and a transcript anybody can take apart.
+017 built the landing as a fold: two columns, sign-in guaranteed above 900px, and, by its own decision, no link anywhere, because the registry was closed. It says what the product is in six sentences and then stops. That is the right shape for a sign-in door and the wrong shape for the audience: a researcher deciding whether to trust a reproducibility claim wants to see one, and the strongest thing this product has to show is a verdict somebody signed and a transcript anybody can take apart.
 
-028 makes those readable. This spec spends that.
+028 makes those readable. This spec uses that.
 
 ## Decisions
 
-**The fold goes, and the sign-in moves into a sticky header.** 017's criteria 3 and 4 assert the sign-in button's bounding box lies above 900px and 844px, and `frontend/test/landing.test.mjs` drives exactly that in Chrome. A page that scrolls cannot hold them. The replacement guarantee is stronger and survives any page length: a sticky header carrying the lockup and the **Sign in** button is visible at every scroll position, on both viewports. 017's fold criteria are recorded as superseded rather than quietly deleted, and the landing test is rewritten against the new guarantee.
+**The fold goes, and the sign-in moves into a sticky header.** 017's criteria 3 and 4 assert the sign-in button's bounding box lies above 900px and 844px, and `frontend/test/landing.test.mjs` drives exactly that in Chrome. A page that scrolls cannot hold them. The replacement guarantee is stronger and survives any page length: a sticky header carrying the lockup and the **Sign in** button is visible at every scroll position, on both viewports. 017's fold criteria are recorded as superseded rather than deleted, and the landing test is rewritten against the new guarantee.
 
-**The figures show the mechanism; they do not decorate it.** Three, each earning its place by explaining something the copy can only assert:
+**The figures show the mechanism; they do not decorate it.** Three, each explaining something the copy can only assert:
 
-1. **The two loops.** The mark, at figure scale, animated: the inner ring closes and traces a full cycle — implement, run, record — while the outer dashed ring stays open and never completes. The product's one boundary, drawn. It is the same geometry as the mark in the header, so the identity and the argument are one thing.
-2. **What a session does.** A four-step walk — the paper, what the authors released, the re-run, the verdict and its transcript — advancing on scroll, each step naming the artifact it produces rather than the verb it performs.
+1. **The two loops.** The mark, at figure scale, animated: the inner ring closes and traces a full cycle (implement, run, record) while the outer dashed ring stays open and never completes. The product's one boundary, drawn. It is the same geometry as the mark in the header, so the identity and the argument are one thing.
+2. **What a session does.** A four-step walk (the paper, what the authors released, the re-run, the verdict and its transcript), advancing on scroll, each step naming the artifact it produces rather than the verb it performs.
 3. **Anatomy of a verdict.** The claim / evidence / verdict triple pulled apart: the agent's claim, the transcript that evidences it, and the manifest the system authored over both, with the signer's name beside it. This is the figure that says why a number here is checkable and a number in a paper often is not.
 
 All three are inline SVG built from the design tokens, so they hold in light and dark, need no image asset, and cannot go stale against the palette. No animation library: CSS transitions, SVG `stroke-dasharray`, and one `IntersectionObserver` for the scroll-driven steps.
 
-**Motion is opt-out at the system level.** Every animation is inside a `@media (prefers-reduced-motion: no-preference)` block, and the reduced-motion rendering is the finished state of each figure — not a still frame of an unstarted one. A reader who has asked for less motion gets the whole argument, statically.
+**Motion is opt-out at the system level.** Every animation is inside a `@media (prefers-reduced-motion: no-preference)` block, and the reduced-motion rendering is the finished state of each figure, not a still frame of an unstarted one. A reader who has asked for less motion gets the whole argument, statically.
 
-**The brand hue stays spent on what an operator can act on.** `styles.css:1-9` reserves it, and 017 kept it off the wordmark for that reason. The figures are drawn in the neutral ramp with the publish green (`--pub`) marking published state where they show it. The one brand-coloured thing on the page is the mark and the sign-in button — which is exactly the thing to act on.
+**The brand hue stays spent on what an operator can act on.** `styles.css:1-9` reserves it, and 017 kept it off the wordmark for that reason. The figures are drawn in the neutral ramp with the publish green (`--pub`) marking published state where they show it. The only brand-coloured things on the page are the mark and the sign-in button, which is the thing to act on.
 
-**The live strip is progressive enhancement, and the page is complete without it.** Below the figures, up to six recent public reproductions read from `GET /public`: title, signer (linking to their `/u/{handle}` page), and verdict state, each linking into the project. The call fails or returns nothing → the section is not rendered at all, and the page reads as designed. No skeletons that never fill, no "0 reproductions" claiming the community is empty. A **Browse the registry** link sits under it, and — because 028 opened it — is also present when the strip is absent.
+**The live strip is progressive enhancement, and the page is complete without it.** Below the figures, up to six recent public reproductions read from `GET /public`: title, signer (linking to their `/u/{handle}` page), and verdict state, each linking into the project. If the call fails or returns nothing, the section is not rendered at all, and the page reads as designed. No skeletons that never fill, no "0 reproductions" claiming the community is empty. A **Browse the registry** link sits under it, and, because 028 opened it, is also present when the strip is absent.
 
 **Copy stays the copy.** 017's claim, lead, and three points are the argument and are reused verbatim; this spec adds section headings, the figure captions, the strip heading, and the closing line. Every string is in `i18n.ts` under `auth`; `Lang` is `'en'` only, so there is no second locale.
 
@@ -63,7 +63,7 @@ All three are inline SVG built from the design tokens, so they hold in light and
 
 ## Acceptance criteria
 
-1. At 1440×900 and 390×844, signed out, the sign-in button is visible at scroll top *and* after scrolling to the bottom of the page — the sticky-header guarantee, replacing 017's criteria 3 and 4.
+1. At 1440×900 and 390×844, signed out, the sign-in button is visible at scroll top *and* after scrolling to the bottom of the page; this is the sticky-header guarantee, replacing 017's criteria 3 and 4.
 2. All three figures render as SVG that paints, in light and dark, at both viewports.
 3. With `prefers-reduced-motion: reduce`, every figure is in its finished state and no transition runs.
 4. With `GET /public` answering six projects, the strip renders six links; with an empty answer or a failure, the section is absent and the registry link is still on the page.
