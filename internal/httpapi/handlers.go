@@ -1079,6 +1079,10 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 	// and the container is useful before it has any. What a project cannot start
 	// without is a name.
 	papers := nonEmpty(body.Papers)
+	if len(papers) > MaxPapersPerRequest {
+		writeError(w, http.StatusBadRequest, "too_many_papers")
+		return
+	}
 	// placeholder is the stand-in a project gets when nobody names it — and the
 	// only title enrichment may replace. A project somebody named is theirs.
 	title, placeholder := strings.TrimSpace(body.Title), ""
@@ -1159,6 +1163,10 @@ func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder strin
 	}
 	titles := make([]string, len(papers))
 	var wg sync.WaitGroup
+	// The sources are shared, rate-limited services and this is best-effort
+	// work: a project with many papers is resolved a few at a time, never all
+	// at once. The bound is here, at the one place enrichment fans out.
+	slots := make(chan struct{}, maxConcurrentResolves)
 	for i := range papers {
 		if papers[i].Error != "" {
 			continue
@@ -1166,6 +1174,12 @@ func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder strin
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				return
+			}
 			got, err := rt.resolver.Resolve(ctx, papers[i].Ref)
 			if err != nil {
 				return
@@ -1217,6 +1231,16 @@ func (rt *Router) WaitBackground() { rt.bg.Wait() }
 // backgroundWork bounds any after-the-response work. It is generous: the only
 // thing running under it is best-effort enrichment nobody is waiting on.
 const backgroundWork = 30 * time.Second
+
+// maxConcurrentResolves is how many paper sources enrichment asks at once. The
+// sources are Crossref, arXiv and publishers' pages, all shared and all
+// rate-limited; a project with a hundred papers must not open a hundred
+// connections to them on one request.
+const maxConcurrentResolves = 4
+
+// MaxPapersPerRequest bounds how many papers one request may add. A project
+// grows one reading list at a time; a request past this is not a reading list.
+const MaxPapersPerRequest = 50
 
 // seedCollaborators seeds the owner as lead (idempotent) and adds each
 // collaborator email as a member, best-effort. It returns the emails that were
