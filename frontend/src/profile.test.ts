@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { expect, test } from 'bun:test'
-import { isAdmin, isMine, showsPicture } from './App'
+import { isAdmin, isMine, showsPicture } from './account'
 
 // 006k AC7: the Platform group renders only for an admin. Hiding it is a
 // courtesy — the routes are refused server-side either way.
