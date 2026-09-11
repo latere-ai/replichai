@@ -17,10 +17,10 @@ import (
 	"testing"
 )
 
-// readElsewhere names the variables example.env documents that no non-test
-// code reads through os.Getenv, os.LookupEnv, or a helper over them, each with
-// the reason it is read another way. Everything else example.env names has to
-// be read by the code, or the line is stale.
+// readElsewhere lists the variables documented in example.env that no
+// non-test code reads through os.Getenv, os.LookupEnv, or a helper over them,
+// with the reason each is read another way. Every other variable example.env
+// names must be read by the code, or the line is stale.
 var readElsewhere = map[string]string{
 	"ANTHROPIC_API_KEY":  "read through the runtimes.LookupEnv seam, so a test can hand it a fixed map",
 	"ANTHROPIC_BASE_URL": "read through the runtimes.LookupEnv seam",
@@ -28,9 +28,9 @@ var readElsewhere = map[string]string{
 	"REPLICHAI_E2E":      "read only by the opt-in end-to-end tests",
 }
 
-// TestEveryEnvironmentVariableIsInExampleEnv holds example.env to the code in
-// both directions: a name the code reads is documented, and a name documented
-// is read.
+// TestEveryEnvironmentVariableIsInExampleEnv checks example.env against the
+// code in both directions: every name the code reads is documented, and every
+// name documented is read.
 func TestEveryEnvironmentVariableIsInExampleEnv(t *testing.T) {
 	root := repoRoot(t)
 	read := environmentReads(t, root)
@@ -66,8 +66,8 @@ func TestEveryEnvironmentVariableIsInExampleEnv(t *testing.T) {
 	}
 }
 
-// TestEverySubcommandIsDocumented takes the CLI's subcommands from the
-// registry that dispatch and help are generated from, and asserts each is
+// TestEverySubcommandIsDocumented reads the CLI's subcommands from the
+// registry that dispatch and help are generated from, and checks that each is
 // named as a command in README.md and docs/architecture.md.
 func TestEverySubcommandIsDocumented(t *testing.T) {
 	root := repoRoot(t)
@@ -86,7 +86,8 @@ func TestEverySubcommandIsDocumented(t *testing.T) {
 	}
 }
 
-// repoRoot is two directories above this package, and has to hold go.mod.
+// repoRoot returns the directory two levels above this package and checks
+// that it holds go.mod.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -129,17 +130,18 @@ func sourceFiles(t *testing.T, root string) []string {
 	return files
 }
 
-// reader is a function that hands one of its parameters to os.Getenv,
-// os.LookupEnv, or another reader in its package: a string literal at that
-// position names a variable as surely as the os call itself would. envOr and
-// envBool in the composition roots are the ones today; the set is discovered,
-// not listed, so a new helper is covered the day it is written.
+// reader identifies a function that passes one of its parameters to
+// os.Getenv, os.LookupEnv, or another reader in its package. A string literal
+// at that parameter position names an environment variable, just as an
+// argument to the os call does. envOr and envBool in the composition roots
+// are the current readers. The set is discovered by analysis rather than
+// listed, so a new helper is covered as soon as it is written.
 type reader struct{ pkg, name string }
 
 // environmentReads returns every environment variable named by a string
 // literal at a read site, with the position of one such site. A read site
-// whose name is not a literal fails the test: it is exactly the read this
-// guard would otherwise not see.
+// whose name is not a literal fails the test, because this check cannot see
+// which variable it reads.
 func environmentReads(t *testing.T, root string) map[string]string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -152,8 +154,8 @@ func environmentReads(t *testing.T, root string) map[string]string {
 		files[path] = f
 	}
 
-	// Readers, to a fixed point: a helper may forward its parameter to a
-	// helper rather than to the os call.
+	// Collect readers until no new one is found. A helper may forward its
+	// parameter to another helper rather than to the os call.
 	readers := map[reader]int{}
 	for changed := true; changed; {
 		changed = false
@@ -180,8 +182,8 @@ func environmentReads(t *testing.T, root string) map[string]string {
 	for path, f := range files {
 		pkg := filepath.Dir(path)
 		for _, decl := range f.Decls {
-			// Inside a reader, its own parameters are legitimate dynamic
-			// names: that is the forwarding the reader exists for.
+			// Inside a reader, its own parameters are allowed as dynamic
+			// names, because forwarding them is what makes it a reader.
 			var forwarding []string
 			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
 				if _, isReader := readers[reader{pkg, fn.Name.Name}]; isReader {
@@ -280,11 +282,12 @@ func paramNames(ft *ast.FuncType) []string {
 	return names
 }
 
-// envLine is a variable in example.env: NAME=..., set or commented out.
+// envLine matches a variable line in example.env, NAME=..., whether set or
+// commented out.
 var envLine = regexp.MustCompile(`^\s*#?\s*([A-Z][A-Z0-9_]*)=`)
 
 // exampleEnvNames returns every variable example.env names, whether the line
-// is set or commented out — a commented line is documentation too.
+// is set or commented out. A commented line is documentation too.
 func exampleEnvNames(t *testing.T, root string) map[string]bool {
 	t.Helper()
 	text, err := os.ReadFile(filepath.Join(root, "example.env"))
@@ -303,10 +306,10 @@ func exampleEnvNames(t *testing.T, root string) map[string]bool {
 	return names
 }
 
-// subcommands returns the names the CLI dispatches on: the string cases of
-// the `switch args[0]` in func run of main.go. The flag spellings of help
-// (-h, --help) are not subcommands and are reported, not counted. A dispatch
-// that cannot be found is a failure with a reason, never an empty pass.
+// subcommands returns the names the CLI dispatches on: the name field of each
+// command literal in the registry returned by func commands in commandsGo. A
+// registry that cannot be found fails the test with a reason rather than
+// passing with no names.
 func subcommands(t *testing.T, commandsGo string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -314,10 +317,10 @@ func subcommands(t *testing.T, commandsGo string) []string {
 	if err != nil {
 		t.Fatalf("parse %s: %v", commandsGo, err)
 	}
-	// The registry is `func commands() []command` returning one composite
+	// The registry is func commands() []command, which returns one composite
 	// literal whose elements are command literals; the first field of each is
-	// the name. Dispatch and help are both generated from it, so it is the
-	// one place a subcommand is born.
+	// the name. Dispatch and help are both generated from it, so every
+	// subcommand is declared there.
 	var registry *ast.CompositeLit
 	for _, decl := range f.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -372,14 +375,14 @@ var codeSpan = regexp.MustCompile("`([^`]+)`")
 
 // commandSpans returns the words a document names as commands: the first word
 // of each code span, or the second where the first is `replichai`, and the
-// same for each line of a fenced block. So `replichai audit <paper>`, `audit`,
-// and `replichai sessions ls` name audit, audit, and sessions — and a mention
-// in running prose, where `run` is also an English word, does not count.
+// same for each line of a fenced block. `replichai audit <paper>`, `audit`,
+// and `replichai sessions ls` name audit, audit, and sessions. A mention in
+// running prose does not count, since a word such as run is also English.
 //
-// It works a line at a time: a fence is a whole line, and an inline span never
-// crosses one. Matching spans across the whole document would pair the odd
-// backticks of a fence with the next span and read the prose between spans as
-// code from there on.
+// It works a line at a time, because a fence is a whole line and an inline
+// span never crosses one. Matching spans across the whole document would pair
+// the odd backticks of a fence with the next span and read the prose between
+// spans as code from there on.
 func commandSpans(text string) map[string]bool {
 	found := map[string]bool{}
 	name := func(span string) {
