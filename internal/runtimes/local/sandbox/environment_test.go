@@ -9,9 +9,10 @@ import (
 	"testing"
 )
 
-// The environment a stage inherits is built from an allowlist, never copied: a
+// TestHostEnvironmentAdmitsOnlyTheAllowlist checks that the environment a
+// stage inherits is built from the allowlist and never copied, so that a
 // credential exported in the operator's shell does not reach an agent running
-// with its permission prompts bypassed, however it is named.
+// with its permission prompts bypassed, whatever the credential is named.
 func TestHostEnvironmentAdmitsOnlyTheAllowlist(t *testing.T) {
 	operator := map[string]string{
 		"PATH":                  "/usr/bin:/bin",
@@ -39,19 +40,19 @@ func TestHostEnvironmentAdmitsOnlyTheAllowlist(t *testing.T) {
 		if strings.Contains(value, "secret") {
 			t.Errorf("a credential reached the stage: %s", entry)
 		}
-		// HOME and TERM are the driver's to set, so the operator's are not
+		// The driver sets HOME and TERM, so the operator's values are not
 		// copied even though a stage will have both.
 		if name == "HOME" || name == "TERM" {
 			t.Errorf("the operator's %s was inherited rather than set by the driver", entry)
 		}
-		// A variable that is unset is absent rather than present and
-		// empty, so a stage cannot tell an unset locale from an empty one.
+		// An unset variable is absent rather than present and empty, so a
+		// stage sees the same thing for an unset locale as for an empty one.
 		if name == "TZ" {
 			t.Errorf("an unset variable was materialised: %s", entry)
 		}
 	}
-	// No lookup is no environment, which the host driver refuses to launch
-	// with rather than guessing.
+	// A nil lookup yields no environment, and the host driver refuses to
+	// launch with one rather than guessing.
 	if HostEnvironment(nil) != nil {
 		t.Error("a nil lookup produced an environment")
 	}

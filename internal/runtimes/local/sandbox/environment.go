@@ -3,18 +3,18 @@
 
 package sandbox
 
-// HostAllowedEnvironment is every variable a stage on the operator's own
-// machine may inherit from the process that launched it. It is a table with a
-// test behind it rather than a comment, because the alternative — handing a
-// stage the whole process environment — is how an exported ANTHROPIC_API_KEY,
-// GITHUB_TOKEN or AWS_SECRET_ACCESS_KEY reaches an agent running with its
-// permission prompts bypassed, and how an inherited vendor key silently
-// overrides the harness login the operator meant to use.
+// HostAllowedEnvironment lists every variable a stage on the operator's own
+// machine may inherit from the process that launched it. It is a table checked
+// by a test rather than a comment, because the alternative of passing a stage
+// the whole process environment is how an exported ANTHROPIC_API_KEY,
+// GITHUB_TOKEN or AWS_SECRET_ACCESS_KEY would reach an agent running with its
+// permission prompts bypassed, and how an inherited vendor key would silently
+// override the harness login the operator meant to use.
 //
-// What is here is what a shell, a package manager and a harness need to run at
-// all: where executables are (PATH), what locale and time zone to speak, where
-// scratch goes, who the user is, and which trust store to verify TLS against.
-// HOME and TERM are not listed because the driver sets them itself.
+// The list holds what a shell, a package manager and a harness need in order
+// to run at all: where executables are (PATH), the locale and time zone, where
+// scratch files go, who the user is, and which trust store to verify TLS
+// against. HOME and TERM are not listed because the driver sets them itself.
 var HostAllowedEnvironment = []string{
 	"PATH",
 	"LANG", "LANGUAGE",
@@ -27,9 +27,9 @@ var HostAllowedEnvironment = []string{
 }
 
 // HostEnvironment builds the environment a host stage starts from. It is
-// constructed through a lookup over HostAllowedEnvironment rather than copied
-// from a slice, so there is no way to hand a driver the raw process
-// environment: a composition root passes os.LookupEnv, and only the named
+// constructed by looking up each name in HostAllowedEnvironment rather than by
+// copying a slice, so there is no way to pass a driver the raw process
+// environment. A composition root passes os.LookupEnv, and only the listed
 // variables come through. A nil lookup yields an empty environment, which the
 // host driver refuses to launch a stage with.
 func HostEnvironment(lookup func(string) (string, bool)) []string {

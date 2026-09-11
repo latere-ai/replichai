@@ -14,7 +14,7 @@ import (
 // Errors this package returns.
 var (
 	// ErrNotReady reports a machine that cannot run a driver. It is a
-	// refusal with instructions attached, never a partial start.
+	// refusal with instructions attached; the driver never starts partially.
 	ErrNotReady = errors.New("local sandbox is not ready")
 	// ErrMismatch reports a stage handle routed to the driver that did not
 	// launch it.
@@ -23,8 +23,8 @@ var (
 	ErrGone = errors.New("stage is gone")
 )
 
-// MismatchError names both sides of a misrouted handle, because the useful
-// question is which pairing went wrong rather than that one did.
+// MismatchError names both drivers of a misrouted handle, because knowing
+// which pairing went wrong is more useful than knowing only that one did.
 type MismatchError struct {
 	Expected DriverName
 	Actual   DriverName
@@ -35,17 +35,18 @@ func (e *MismatchError) Error() string {
 }
 func (e *MismatchError) Unwrap() error { return ErrMismatch }
 
-// Condition is why a machine is not ready. Each one needs a different sentence
-// — "install it", "start it", "pull it" — so the set is closed and the message
-// is chosen from it rather than assembled from an exec failure.
+// Condition is the reason a machine is not ready. Each condition needs a
+// different instruction (install it, start it, or pull it), so the set is
+// closed and the message is chosen from it rather than assembled from an exec
+// failure.
 type Condition string
 
 // The not-ready conditions.
 const (
 	// ConditionMissing is a component that is not installed.
 	ConditionMissing Condition = "missing"
-	// ConditionStopped is a component installed but not running, which on
-	// macOS is almost always a podman machine that was never started.
+	// ConditionStopped is a component that is installed but not running. On
+	// macOS this is almost always a podman machine that was never started.
 	ConditionStopped Condition = "stopped"
 	// ConditionImage is an engine that runs but cannot supply the image.
 	ConditionImage Condition = "image"
@@ -53,23 +54,24 @@ const (
 	ConditionUnsupported Condition = "unsupported"
 )
 
-// NotReadyError is a refusal carrying its own remedy. The remediation is data
-// on the error rather than text a caller assembles, so the CLI, the batch
-// driver and a test all read the same thing.
+// NotReadyError is a refusal that carries its own remedy. The remediation is
+// data on the error rather than text a caller assembles, so the CLI, the batch
+// driver and a test all read the same message.
 type NotReadyError struct {
-	// Driver is which driver could not start.
+	// Driver is the driver that could not start.
 	Driver DriverName
-	// Condition is why.
+	// Condition is the reason it could not start.
 	Condition Condition
-	// Components are what is missing, in the order they should be fixed.
+	// Components are the missing components, in the order they should be
+	// fixed.
 	Components []string
-	// Detail is the underlying output, kept for the operator and never
+	// Detail is the underlying output. It is kept for the operator and never
 	// parsed.
 	Detail string
-	// Remediation is the ready-to-print instructions.
+	// Remediation is the instructions, ready to print.
 	Remediation string
-	// Alternative names the other driver, so an operator stuck on one is
-	// told there is another.
+	// Alternative names the other driver, so that an operator who cannot use
+	// one driver is told there is another.
 	Alternative string
 }
 
@@ -96,12 +98,12 @@ func (e *NotReadyError) Error() string {
 
 func (e *NotReadyError) Unwrap() error { return ErrNotReady }
 
-// Platform is an operating system the remediation text is written for. It is a
-// parameter rather than a call to runtime.GOOS so the messages are testable on
-// one machine.
+// Platform is an operating system the remediation text is written for. It is
+// a parameter rather than a call to runtime.GOOS so that the messages can be
+// tested on one machine.
 type Platform string
 
-// The platforms. Windows is present so it can be refused with a reason.
+// The platforms. Windows is present so that it can be refused with a reason.
 const (
 	Darwin  Platform = "darwin"
 	Linux   Platform = "linux"
@@ -114,7 +116,7 @@ func CurrentPlatform() Platform { return Platform(runtime.GOOS) }
 // installs maps one component, on one platform, to the commands that install
 // it. A component with no entry for a platform gets a generic line rather than
 // an empty message, because a missing table row must not produce a refusal
-// that says nothing.
+// with no instructions.
 var installs = map[string]map[Platform][]string{
 	"srt": {
 		Darwin: {"npm install -g @anthropic-ai/sandbox-runtime", "brew install ripgrep"},
@@ -148,11 +150,13 @@ var installs = map[string]map[Platform][]string{
 	},
 }
 
-// verify is the command that proves a component now works, printed after the
-// install lines so an operator can check rather than re-run the whole audit.
+// verify maps a component to the command that confirms it works. It is
+// printed after the install lines so that an operator can check the install
+// without re-running the whole audit.
 var verify = map[string]string{
-	// A bare command, not a string: srt takes a string only behind -c, so
-	// `srt "echo ok"` fails with "command not found: echo ok".
+	// The command is given as bare words, not a quoted string. srt accepts a
+	// string only after -c, so `srt "echo ok"` fails with "command not
+	// found: echo ok".
 	"srt":    "srt echo ok",
 	"podman": "podman info",
 	"docker": "docker info",
@@ -160,15 +164,17 @@ var verify = map[string]string{
 	"codex":  "codex --version",
 }
 
-// alternatives is what to say when one driver cannot start: the other one.
+// alternatives maps a driver that cannot start to the text that names the
+// other driver.
 var alternatives = map[DriverName]string{
 	Host:      "Or run in a container instead:  replichai audit … --sandbox container",
 	Container: "Or use the host sandbox, which needs no engine:  replichai audit … --sandbox host",
 }
 
-// NotReady builds the refusal for one condition, on one platform, over one or
-// more components. It is pure, so every message this program can print is
-// reachable from a test on a machine with none of them installed.
+// NotReady builds the refusal for one condition, on one platform, for one or
+// more components. It is a pure function, so every message this program can
+// print is reachable from a test on a machine with none of the components
+// installed.
 func NotReady(platform Platform, driver DriverName, condition Condition, components ...string) *NotReadyError {
 	err := &NotReadyError{
 		Driver:      driver,
@@ -246,8 +252,9 @@ The image is public. Behind a proxy, set REPLICHAI_HARNESS_IMAGE to a
 mirror holding the same digest.`, image)
 }
 
-// installLines is the table lookup, with a generic fallback so a component
-// nobody wrote a row for still produces an actionable sentence.
+// installLines looks up the install commands for a component, with a generic
+// fallback so that a component with no table row still produces an
+// actionable instruction.
 func installLines(platform Platform, component string) []string {
 	if byPlatform, ok := installs[component]; ok {
 		if lines, ok := byPlatform[platform]; ok {
