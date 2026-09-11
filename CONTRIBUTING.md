@@ -2,17 +2,27 @@
 
 ## Checks
 
+The bar is one command, and it is the one CI runs:
+
 ```bash
-go build ./...
-make test
-go vet ./...
-golangci-lint run ./...
+make check                # go tool lateregate: every gate that applies, in order
+go tool lateregate list   # the plan — which gates run, which are skipped, and why
+make lint                 # one gate on its own: golangci-lint against the shared config
 ```
 
-All four must be clean. Install the linter with:
+`make check` formats, vets and tests (plain, under the race detector, with only
+the toolchain on PATH, and watching that nothing is left under `TMPDIR`),
+lints, runs `govulncheck`, and checks the licence headers, the spec tree, and
+that every outbound HTTP client carries a tracing transport. Every gate lives
+in lateregate, pinned as a tool in `go.mod`, and it runs golangci-lint itself
+through `go run` at a pinned version — so beyond the Go toolchain there is
+nothing to install.
+
+Install the hooks once per clone:
 
 ```bash
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+make hooks   # pre-commit: the cheap gates over the staged Go files;
+             # pre-push: golangci-lint over the packages the push changes
 ```
 
 Beyond the unit suite there are four targets, each covering something the
@@ -98,8 +108,12 @@ target:
 
 ## What the linter is configured for
 
-`.golangci.yml` turns on correctness and clarity checks beyond the defaults.
-Two deliberate relaxations, both documented in the file:
+`.golangci.yml` is generated, not written: `go tool lateregate golangci` (also
+`make lint-config`) renders it from the shared config plus the `golangci:`
+section of `.lateregate.yaml`, and the rendered file is gitignored. Change the
+linting in `.lateregate.yaml`, never in the file it produces. That section
+turns on correctness and clarity checks beyond the shared defaults, and carries
+two deliberate relaxations, each with its reason beside it:
 
 - `gosec` G301/G306 are off. A reproduction repository is meant to be read,
   committed, and browsed, so `0755` directories and `0644` files are right
@@ -107,8 +121,10 @@ Two deliberate relaxations, both documented in the file:
 - `errcheck` ignores writes to stdout and stderr. A failed write to the
   terminal is not actionable — there is nowhere left to report it.
 
-Spelling is US English, matching the Go standard library (`context.Canceled`).
-"Artifact" is the domain term and is spelled that way throughout.
+Go identifiers follow the standard library's US spelling (`context.Canceled`).
+Prose — comments, documents, the UI's strings — is British English, and
+`misspell` is told in `.lateregate.yaml` which British forms to accept.
+"Artifact" is the domain term and keeps its US spelling throughout.
 
 Every `//nolint` must name the specific check and say why; `nolintlint`
 enforces this.

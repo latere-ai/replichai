@@ -28,10 +28,13 @@ fmt:
 fmt-check:
 	@go tool lateregate fmt-check
 
-# hooks installs the repository git hooks: the pre-commit guard rejects
-# unformatted Go files and code a standard library call already covers. It also
-# restores the local CLAUDE.md -> AGENTS.md symlink, which is gitignored and so
-# absent in a fresh clone.
+# hooks installs the repository git hooks: pre-commit runs the cheap gates over
+# the staged Go files (gofmt, and code a standard library call already covers);
+# pre-push runs golangci-lint over the packages the push changes. Both call
+# lateregate, which runs the linter through `go run` at a pinned version, so
+# nothing beyond the Go toolchain needs installing. It also restores the local
+# CLAUDE.md -> AGENTS.md symlink, which is gitignored and so absent in a fresh
+# clone.
 .PHONY: hooks
 hooks:
 	git config core.hooksPath .githooks
@@ -62,8 +65,9 @@ license:
 test-hermetic:
 	@go tool lateregate hermetic
 
-# Declares that this repo's .golangci.yml is its own rather than generated,
-# and fails if the file it claims to keep has gone missing.
+# Renders .golangci.yml from the shared config plus the golangci: section of
+# .lateregate.yaml. The file is generated and gitignored: change the linting
+# there, never in the rendered file.
 .PHONY: lint-config
 lint-config:
 	@go tool lateregate golangci

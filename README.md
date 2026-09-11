@@ -218,12 +218,14 @@ Compare against `evals/case-01/expected.md`. The two cases are chosen to fail in
 ## Development
 
 ```bash
+make check       # the whole bar, the one CI runs: format, vet, test, race, lint, vuln, licence, specs
+make lint        # one gate on its own: golangci-lint against the shared config
 make test        # the whole Go suite, offline against fakes
 make cover-pg    # the number to quote — runs the Postgres contracts rather than skipping them
 make e2e         # submit → run → done through the real server, no Docker
 make web-e2e     # the frontend's browser regressions, in headless Chrome
 make smoke       # the compose stack, end to end
-go vet ./... && gofmt -l .
+make hooks       # once per clone: pre-commit runs the cheap gates, pre-push lints what changed
 ```
 
 `make test` needs no network and no credential: the backend adapter is exercised against a local HTTP server, and an in-process provider stands in for the backend everywhere else. The store contracts that need a real Postgres skip themselves when `TEST_DATABASE_URL` is unset — [`CONTRIBUTING.md`](CONTRIBUTING.md) explains how to run them safely.
