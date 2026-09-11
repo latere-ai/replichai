@@ -4,6 +4,8 @@
 package httpapi
 
 import (
+	"bytes"
+	"context"
 	"encoding/xml"
 	"log/slog"
 	"net/http"
@@ -55,12 +57,27 @@ const sitemapNS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 // A store failure answers 500 rather than an empty urlset — an empty one is a
 // statement that there is nothing to index, and a crawler will believe it.
 func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	projects, err := rt.projects.ListPublic(ctx)
+	// The sitemap is the same for every caller and costs a query per public
+	// project and one per its sessions; it is built once per publicTTL, and
+	// again as soon as a publication changes.
+	body, err := rt.sitemapBody.get(r.Context(), func(ctx context.Context) ([]byte, error) {
+		return rt.buildSitemap(ctx, r)
+	})
 	if err != nil {
-		slog.WarnContext(r.Context(), "sitemap: listing the public zone", "error", err)
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
+	}
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", sitemapTTL)
+	_, _ = w.Write(body)
+}
+
+// buildSitemap renders the sitemap for the public zone as it stands.
+func (rt *Router) buildSitemap(ctx context.Context, r *http.Request) ([]byte, error) {
+	projects, err := rt.projects.ListPublic(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "sitemap: listing the public zone", "error", err)
+		return nil, err
 	}
 	ids := make([]string, 0, len(projects))
 	for _, p := range projects {
@@ -92,16 +109,15 @@ func (rt *Router) sitemapXML(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.Header().Set("Cache-Control", sitemapTTL)
-	if _, err := w.Write([]byte(xml.Header)); err != nil {
-		return
-	}
-	enc := xml.NewEncoder(w)
+	var out bytes.Buffer
+	out.WriteString(xml.Header)
+	enc := xml.NewEncoder(&out)
 	enc.Indent("", "  ")
 	if err := enc.Encode(urlset{NS: sitemapNS, URLs: urls}); err != nil {
-		slog.ErrorContext(r.Context(), "sitemap: encoding", "error", err)
+		slog.ErrorContext(ctx, "sitemap: encoding", "error", err)
+		return nil, err
 	}
+	return out.Bytes(), nil
 }
 
 // sessionURLs lists the sessions under a public project that have something

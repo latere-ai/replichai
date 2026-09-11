@@ -372,6 +372,10 @@ type Router struct {
 	// bg tracks work scheduled to outlive the request that started it — title
 	// enrichment today. Nothing in the serving path waits on it; tests do.
 	bg sync.WaitGroup
+	// The two answers the internet asks for without signing in, held between
+	// rebuilds (see memo). A publication changing drops both at once.
+	anonRegistry memo[[]ProjectView]
+	sitemapBody  memo[[]byte]
 }
 
 // defaultSSEInterval is how often the event stream re-reads a job when the
@@ -389,8 +393,17 @@ func NewRouter(d Deps) *Router {
 		interval = defaultSSEInterval
 	}
 	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
+	rt.anonRegistry.ttl, rt.sitemapBody.ttl = publicTTL, publicTTL
 	rt.routes()
 	return rt
+}
+
+// publicChanged is called after any write that changes what the internet is
+// shown: a project made public or private, trashed or restored. The held
+// anonymous answers are dropped so the next request rebuilds them.
+func (rt *Router) publicChanged() {
+	rt.anonRegistry.invalidate()
+	rt.sitemapBody.invalidate()
 }
 
 // Handler returns the wired handler, gate mounted.
