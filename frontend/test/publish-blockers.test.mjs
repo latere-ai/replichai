@@ -15,33 +15,7 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5251
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, json, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const PROJECT = 'proj-1'
@@ -76,90 +50,66 @@ const refusal = {
 const profile = { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true }
 
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
-  [/^\/me\/profile$/, profile],
-  [/^\/projects$/, [{ ...project, session_count: 2, running: 0, latest_phase: 'done', published_sessions: 2 }]],
+  ['POST', /^\/projects\/[^/]+\/public$/, json(refusal, 409)],
+  ['PATCH /me/profile', profile],
+  // The flagged session's manifest: the review is what the verdict pane has
+  // to say out loud, not just colour a pill with.
+  [
+    /^\/jobs\/([^/]+)\/reproduction$/,
+    ({ params: [id] }) => (id === UNFINISHED ? json({ error: 'not_found' }, 404) : { id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'excluded', can_publish: false }),
+  ],
+  [/^\/jobs\/[^/]+\/verdict$/, json({ error: 'no_findings' }, 404)],
+  [/\/artifacts$/, { files: [] }],
+  ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
+  ['/me/profile', profile],
+  ['/projects', [{ ...project, session_count: 2, running: 0, latest_phase: 'done', published_sessions: 2 }]],
   [/^\/projects\/[^/]+$/, { project, sessions: [sessionOf(FLAGGED), sessionOf(UNFINISHED)], papers: [paper], may_submit: true, role: 'owner' }],
   [/^\/projects\/[^/]+\/papers$/, [paper]],
   [/^\/projects\/[^/]+\/members$/, []],
   [/^\/projects\/[^/]+\/credits$/, { wallet: 20, start_reserve: 5 }],
-  [/^\/jobs\/([^/]+)$/, (id) => sessionOf(id)],
+  [/^\/jobs\/([^/]+)$/, ({ params: [id] }) => sessionOf(id)],
   [/^\/jobs\/[^/]+\/transcript$/, { events: [], usage: null, live: false }],
   [/^\/(public|shared)$/, []],
 ]
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
+  const page = await h.page({ viewport: { width: 1440, height: 1000 }, routes })
+  const read = (sel) => page.$eval(sel, (el) => el.textContent.replace(/\s+/g, ' ').trim())
+
+  // press clicks the wizard button whose label matches, once it is live: step
+  // 2's Continue is disabled until the profile it shows has been read, and the
+  // sign-off until the affirmation is ticked. A click on a disabled button is
+  // swallowed, and the walk would stall where it stood.
+  const press = async (label) => {
+    const btn = await page.waitForFunction(
+      (re) => {
+        const b = [...document.querySelectorAll('.modal button')].find((b) => new RegExp(re, 'i').test(b.textContent))
+        return b && !b.disabled ? b : null
+      },
+      { timeout: 5000 },
+      label,
+    )
+    await btn.evaluate((el) => el.click())
   }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 1000 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      if (u.pathname.endsWith('/public') && req.method() === 'POST') {
-        return req.respond({ status: 409, contentType: 'application/json', body: JSON.stringify(refusal) })
-      }
-      if (u.pathname === '/me/profile' && req.method() === 'PATCH') {
-        return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(profile) })
-      }
-      // The flagged session's manifest: the review is what the verdict pane has
-      // to say out loud, not just colour a pill with.
-      if (/^\/jobs\/[^/]+\/reproduction$/.test(u.pathname)) {
-        const id = u.pathname.split('/')[2]
-        if (id === UNFINISHED) return req.respond({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) })
-        return req.respond({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'excluded', can_publish: false }),
-        })
-      }
-      if (/^\/jobs\/[^/]+\/verdict$/.test(u.pathname)) {
-        return req.respond({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'no_findings' }) })
-      }
-      if (u.pathname.endsWith('/artifacts')) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [] }) })
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) {
-        const m = u.pathname.match(hit[0])
-        const body = typeof hit[1] === 'function' ? hit[1](m[1]) : hit[1]
-        return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-      }
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  const text = (sel) => page.$eval(sel, (el) => el.textContent.replace(/\s+/g, ' ').trim())
 
   /* ── Walk the wizard to the refusal ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('[data-test="publish-project"]', { timeout: 15000 })
   await page.click('[data-test="publish-project"]')
   await page.waitForSelector('.modal', { timeout: 5000 })
   // Three steps: what becomes public, who stands behind it, responsibility. The
-  // profile is prefilled and publishable, so both Continues are live.
-  for (let i = 0; i < 2; i++) {
-    await page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /Continue/i.test(b.textContent))?.click())
-    await new Promise((r) => setTimeout(r, 200))
+  // profile is prefilled and publishable, so both Continues come live; each
+  // step is waited for by the dot it lights.
+  for (let step = 2; step <= 3; step++) {
+    await press('Continue')
+    await page.waitForFunction((n) => document.querySelectorAll('.modal .step-dot.on').length === n, { timeout: 5000 }, step)
   }
   await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
-  await new Promise((r) => setTimeout(r, 150))
-  await page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /Sign off/i.test(b.textContent))?.click())
+  await press('Sign off')
 
   await page.waitForSelector('[data-test="publish-blockers"]', { timeout: 8000 })
-  await new Promise((r) => setTimeout(r, 200))
 
   const refused = await page.evaluate(() => ({
     message: document.querySelector('.modal .err')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
@@ -178,23 +128,24 @@ try {
 
   await page.evaluate(() => document.querySelectorAll('[data-test="open-blocker"]')[0]?.click())
   await page.waitForSelector('[data-test="run-record"]', { timeout: 8000 })
-  await new Promise((r) => setTimeout(r, 200))
+  // The notice is what is measured next, so its absence falls through to the
+  // assertion rather than ending the run here.
+  await page.waitForSelector('[data-test="blocks-publishing"]', { timeout: 5000 }).catch(() => {})
 
   const landed = page.url()
   if (!landed.includes(`/s/${FLAGGED}/verdict`)) fail(`opening the flagged blocker landed at ${landed}`)
 
   // The place it landed says what is wrong, in words. A pill reading "excluded"
   // beside "Redistribution" is a field name, not an explanation.
-  const blocks = await text('[data-test="blocks-publishing"]').catch(() => '')
+  const blocks = await read('[data-test="blocks-publishing"]').catch(() => '')
   if (!/blocks publishing/i.test(blocks)) fail(`the flagged session does not say it blocks publishing: ${blocks}`)
   if (!/third-party data/i.test(blocks)) fail(`the flagged session does not say what was found: ${blocks}`)
   const warn = await page.$eval('[data-test="blocks-publishing"]', (el) => getComputedStyle(el).color)
   if (!warn || warn === 'rgb(0, 0, 0)') fail(`the blocking notice is not toned: ${warn}`)
 
-  if (!process.exitCode) console.log('PASS: a refused publish names its blockers and opens them')
-} catch (err) {
-  fail(err.message)
+  h.ok('a refused publish names its blockers and opens them')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
