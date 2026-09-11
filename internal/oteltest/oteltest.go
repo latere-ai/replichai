@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package oteltest installs a recording tracer provider so a test can assert
-// what instrumentation does rather than what type it is.
+// Package oteltest installs a recording tracer provider so a test can check
+// the spans instrumentation produces rather than the type of a Transport.
 //
-// A type assertion on a client's Transport is not evidence. It holds in a
-// process where no TracerProvider is registered at all, where no span is ever
-// started and no traceparent is ever injected, which is exactly the state a
-// client that is wrapped but inert is in. What the recorder here holds is the
-// spans that were actually produced, so that client fails.
+// A type assertion on a client's Transport does not show that tracing works.
+// It passes in a process where no TracerProvider is registered, no span is
+// started and no traceparent header is injected, which is the state of a
+// client that is wrapped but inactive. The recorder here holds the spans that
+// were produced, so such a client fails the test.
 package oteltest
 
 import (
@@ -30,7 +30,7 @@ import (
 // are process-global, so the previous values are restored when the test ends.
 //
 // Sampling is unconditional. The library's default ratio drops four spans in
-// five, which would make every assertion below a coin toss.
+// five, which would make the assertions non-deterministic.
 func Record(t *testing.T) *tracetest.SpanRecorder {
 	t.Helper()
 	recorder := tracetest.NewSpanRecorder()
@@ -65,10 +65,10 @@ func SpansOfKind(recorder *tracetest.SpanRecorder, kind trace.SpanKind) []sdktra
 	return out
 }
 
-// Peer is a test server that remembers the trace context header of every
-// request it served. The header is the other half of a client span: a span the
-// caller records but does not propagate leaves the far side unable to join the
-// trace, and only the receiving end can tell the difference.
+// Peer is a test server that records the trace context header of every
+// request it serves. A client span that is recorded but not propagated leaves
+// the server unable to join the trace, and only the receiving side can
+// observe whether the header arrived.
 type Peer struct {
 	*httptest.Server
 
@@ -91,8 +91,8 @@ func NewPeer(t *testing.T, h http.HandlerFunc) *Peer {
 	return p
 }
 
-// Traceparent is the header of the most recent request the peer served, empty
-// when the caller sent none.
+// Traceparent returns the traceparent header of the most recent request the
+// peer served, or the empty string when the caller sent none.
 func (p *Peer) Traceparent() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
