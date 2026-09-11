@@ -7,24 +7,24 @@ status: superseded
 
 **Status:** superseded by [011](../011-what-a-session-costs.md), which replaces the session counter with money. Nothing described below is in the build: the counter, `jobs.charged_to`, `projects.sponsored`, the `charge_to` picker and the `quota_exceeded` code are all removed, and what limits a run is now what it costs.
 
-It stays in the archive because it is the record of *why* the counter was built the way it was — and 011 inherits most of that argument rather than overturning it. The check that lives inside `Enqueue` rather than in a handler, serialised in the writing transaction because a read-then-insert races; the refusal that is a 402 rather than a 500; the derived count rather than a stored one. 011 changes the unit and the payer, not those. What it does overturn is stated there and stated plainly: the payer moves from a person to the project, which deletes sponsorship outright, and "failed is refunded" dies because a run that burned real tokens has to be paid for.
+It stays in the archive because it records why the counter was built the way it was, and 011 inherits most of that argument rather than overturning it: the check that lives inside `Enqueue` rather than in a handler, serialised in the writing transaction because a read-then-insert races; the refusal that is a 402 rather than a 500; the derived count rather than a stored one. 011 changes the unit and the payer, not those. What it does overturn is stated there plainly: the payer moves from a person to the project, which deletes sponsorship outright, and "failed is refunded" is dropped because a run that consumed real tokens has to be paid for.
 
-**Built beyond the original scope, and still standing:** submitting into a project was owner-only before this spec, which left sponsorship with no consumer. A project's collaborators may open sessions in it (`mayWorkInProject`); a stranger still cannot, and viewing a public project confers nothing. `GET /projects/{id}` reports `may_submit` so the client can hide the form it would be refused for. Sponsorship is gone; this outlived it, and 011 leans on it — the project pays, so anyone who may work in a project spends its credits.
+**Built beyond the original scope, and still standing:** submitting into a project was owner-only before this spec, which left sponsorship with no consumer. A project's collaborators may open sessions in it (`mayWorkInProject`); a stranger still cannot, and viewing a public project confers nothing. `GET /projects/{id}` reports `may_submit` so the client can hide the form it would be refused for. Sponsorship is gone; this outlived it, and 011 relies on it: the project pays, so anyone who may work in a project spends its credits.
 
 **Scope (as built, now superseded):** how many replication sessions an invited person may run, who pays for a session started in someone else's project, and where the remaining allowance is shown. One structural check inside `Enqueue`, in the transaction that inserts the row. A child of [006](../006-web-application.md).
 **Depends on:** [006k](../006k-the-platform-admin-console.md) (the allowance an admin sets), [006b](../006b-job-model-and-persistence.md) (the job store and its enqueue guard), [006g](../006g-projects-and-replication-sessions.md) (projects own sessions), [006c](../006c-identity-and-access.md) (the tier, project membership).
 
 ## Problem
 
-One shared credential pays for every run. 006c closed the door on *who* may run, and nothing bounds *how much* they run once through it: the only per-user constraint in the system is the double-trigger guard, which forbids two live sessions on the same paper and says nothing about a hundred sessions on a hundred papers.
+One shared credential pays for every run. 006c decided *who* may run, and nothing bounds *how much* they run once admitted: the only per-user constraint in the system is the double-trigger guard, which forbids two live sessions on the same paper and says nothing about a hundred sessions on a hundred papers.
 
-The seed phase needs a number. It also needs the number to survive the two ways a session is born — `POST /projects` starting several papers at once (006j) and `POST /papers` appending one — and the fact that a collaborator can submit into a project they do not own, spending an allowance that is not obviously theirs.
+The seed phase needs a number. It also needs the number to survive the two ways a session is created (`POST /projects` starting several papers at once (006j) and `POST /papers` appending one) and the fact that a collaborator can submit into a project they do not own, spending an allowance that is not obviously theirs.
 
 ## Decisions
 
 **The check lives inside `Enqueue`, in the same transaction as the insert.** Not in a handler, not in a middleware. Two reasons, and the second is the stronger one:
 
-- A handler check is bypassable. `Enqueue` is the single narrowest point every session passes through — the two HTTP doors and any third one added later — so a new submit path inherits the cap instead of quietly escaping it. This is the same structural argument 006c makes for the gate.
+- A handler check is bypassable. `Enqueue` is the single narrowest point every session passes through (the two HTTP doors and any third one added later), so a new submit path inherits the cap instead of escaping it. This is the same structural argument 006c makes for the gate.
 - A read-then-insert check races. Two concurrent submits both read "4 of 5 used" and both insert. Counting inside the writing transaction, next to the double-trigger guard that already lives there, makes the cap exact rather than approximate.
 
 The store learns the allowance through a function field, so `internal/job` does not import `internal/platform`:
@@ -37,7 +37,7 @@ type Allowance func(ctx context.Context, principal string) (n int, unlimited boo
 
 An over-quota enqueue returns `job.ErrQuotaExceeded`, mapped to `402` with code `quota_exceeded`, mirroring how `ErrActiveSession` is already surfaced.
 
-**Consumed = sessions that finished `done`, plus sessions currently in flight.** The literal reading — count only `done` — is exploitable, because nothing is `done` at submit time and a hundred simultaneous submits would all pass. So a running session *holds* a unit of allowance, and the hold is released when the session ends in `failed` or cancelled. The user pays for work that worked, is refunded for work that broke, and cannot burst past the cap while nothing has finished yet.
+**Consumed = sessions that finished `done`, plus sessions currently in flight.** The literal reading, counting only `done`, is exploitable, because nothing is `done` at submit time and a hundred simultaneous submits would all pass. So a running session *holds* a unit of allowance, and the hold is released when the session ends in `failed` or cancelled. The user pays for work that worked, is refunded for work that broke, and cannot burst past the cap while nothing has finished yet.
 
 | Phase | Counts |
 |---|---|
@@ -51,11 +51,11 @@ This is a *derived* count over `jobs`, never a stored counter: a materialised ba
 
 **Sponsorship is standing consent, granted once, revocable, and never implicit.** `projects` gains `sponsored BOOLEAN NOT NULL DEFAULT false`, set by the owner alone. When it is on, a member submitting into that project may choose to charge the owner; when it is off, the choice is not offered and a request asking for it is refused. The submit carries `charge_to: "me" | "project"`, defaulting to `"me"`, and the server validates rather than trusts: `"project"` requires the project to be sponsored, and the payer resolved from it is the project owner and nobody the client named.
 
-Rejected: **per-request approval** — a session that stalls until a sponsor wakes up needs a new job state and an approval inbox, and buys nothing that a revocable standing consent does not. Rejected: **the owner always pays** — a collaborator could drain an allowance nobody offered.
+Rejected: **per-request approval**. A session that stalls until a sponsor wakes up needs a new job state and an approval inbox, and gains nothing that a revocable standing consent does not. Rejected: **the owner always pays**. A collaborator could drain an allowance nobody offered.
 
 **A platform admin is unlimited, and pays for nothing.** Admins own the whole platform budget; metering them against a number they set themselves is friction with no safety value. `Allowance` reports `unlimited`, `Enqueue` skips the count entirely, and an admin's sessions are still recorded with `charged_to` set, so usage remains readable even where it is uncapped.
 
-**Batch submits need no batch arithmetic.** 006j already enqueues each paper independently and reports `{url, error}` per paper, keeping the project if at least one started. A five-paper submit by someone with three left therefore starts three and reports `quota_exceeded` on the other two — no separate batch-size pre-check, and no path where a batch slips through a per-request check.
+**Batch submits need no batch arithmetic.** 006j already enqueues each paper independently and reports `{url, error}` per paper, keeping the project if at least one started. A five-paper submit by someone with three left therefore starts three and reports `quota_exceeded` on the other two: no separate batch-size pre-check, and no path where a batch slips through a per-request check.
 
 **The remaining allowance is visible where the spending happens.** `GET /me` gains `quota: {used, limit, unlimited}`, so the app shell renders a pill beside the "New project" button, and the submit screen's payer picker shows what is left on each side of the choice. The value is refetched after any submit, so it never shows a stale surplus. The admin's grant table (006k) gains the same used/limit column, which is where an admin decides who needs a top-up.
 
