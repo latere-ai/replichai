@@ -135,10 +135,16 @@ export function Select<T extends string>({
       setAt({ left: b.left, top, width: b.width })
     }
     place()
-    window.addEventListener('resize', place)
     // A scroll moves the anchor out from under a fixed list, so it dismisses.
-    window.addEventListener('scroll', () => close(false), { capture: true, once: true })
-    return () => window.removeEventListener('resize', place)
+    // Named so the cleanup can take it back: a list closed any other way used
+    // to leave its listener armed on window, one per open.
+    const dismiss = () => close(false)
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', dismiss, { capture: true, once: true })
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', dismiss, { capture: true })
+    }
   }, [open, options.length, close])
 
   useEffect(() => {
