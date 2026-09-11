@@ -695,6 +695,10 @@ func (r *Runtime) drain(ctx context.Context, session *Session, harnessName harne
 			}
 			record.Lines++
 			for index := range decoded {
+				// The runtime times what the harness decoded, from its own
+				// injectable clock, so an event's time is deterministic under
+				// test rather than whatever wall clock the decode happened on.
+				decoded[index].Time = r.config.Clock()
 				redactEvent(&decoded[index], r.config.Catalog.Credentials())
 				if decoded[index].Usage != nil {
 					usage = harness.Fold(usage, *decoded[index].Usage)

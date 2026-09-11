@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -224,7 +223,9 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 	if trimmed == "" {
 		return nil, nil
 	}
-	base := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: Raw(line)}
+	// Time is left for the runtime to stamp from its own clock: the harness
+	// decodes, the runtime times, so a test drives both deterministically.
+	base := managed.Event{ID: EventID(stream, index), Raw: Raw(line)}
 	var parsed claudeLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
 		// A line this build cannot parse becomes a raw event rather than an

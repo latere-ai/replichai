@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -252,7 +251,9 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 	if trimmed == "" {
 		return nil, nil
 	}
-	event := managed.Event{ID: EventID(stream, index), Time: time.Now().UTC(), Raw: Raw(line)}
+	// Time is left for the runtime to stamp from its own clock: the harness
+	// decodes, the runtime times, so a test drives both deterministically.
+	event := managed.Event{ID: EventID(stream, index), Raw: Raw(line)}
 	raw := func() []managed.Event {
 		event.Role, event.Kind, event.Content = managed.RoleSystem, KindRaw, Truncate(trimmed)
 		return []managed.Event{event}
