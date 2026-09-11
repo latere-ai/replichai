@@ -427,7 +427,7 @@ func newPlatformPublisher(ctx context.Context, projectID, paperRef string, timeo
 		return nil, err
 	}
 	owner, name, _ := strings.Cut(allocated.Repo, "/")
-	gh := github.New(allocated.Token)
+	gh := githubClient(allocated.Token)
 	_, _ = fmt.Fprintf(stderr, "  repository %s, credential expires %s\n",
 		allocated.Repo, allocated.Expires.Format(time.RFC3339))
 	return &publisher{
@@ -446,7 +446,7 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		return nil, err
 	}
 
-	gh := github.New(token)
+	gh := githubClient(token)
 	reg := registry.New(registry.NewGitHubSource(gh, owner),
 		registry.WithWarner(func(m string) { _, _ = fmt.Fprintf(stderr, "  %s\n", m) }))
 
@@ -504,7 +504,7 @@ func reattachPublisher(ctx context.Context, repo, paperRef string, timeout time.
 	if !ok || owner == "" || name == "" {
 		return nil, fmt.Errorf("the recorded repository %q is not <owner>/<repo>", repo)
 	}
-	gh := github.New(token)
+	gh := githubClient(token)
 	found, err := gh.GetRepo(ctx, owner, name)
 	if err != nil {
 		return nil, fmt.Errorf("return to %s: %w", repo, err)
@@ -752,12 +752,24 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 			return fmt.Errorf("invalid --verdict %q: %w", *verdictFlag, err)
 		}
 	}
+	// What was typed is checked before anything is fetched: a malformed
+	// reference is refused here, not after a round trip to the forge.
+	if *sessionRef != "" && *session != "" {
+		return errors.New("set only one of --session-ref or legacy --session")
+	}
+	var ref managed.SessionRef
+	if *sessionRef != "" {
+		var err error
+		if ref, err = decodeSessionRef(*sessionRef); err != nil {
+			return err
+		}
+	}
 
 	token := os.Getenv("REPLICHAI_GITHUB_TOKEN")
 	if token == "" {
 		return fmt.Errorf("finish needs REPLICHAI_GITHUB_TOKEN set")
 	}
-	gh := github.New(token)
+	gh := githubClient(token)
 
 	// Prefer the identity the publisher recorded in the repository; only fall
 	// back to re-resolving (which hits the paper source) when it is absent.
@@ -778,17 +790,9 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 
 	verdict := provider.GradeUnknown
 	if *sessionRef != "" || *session != "" {
-		if *sessionRef != "" && *session != "" {
-			return errors.New("set only one of --session-ref or legacy --session")
-		}
-		var ref managed.SessionRef
 		rawRuntime := resolveRuntime(*runtimeName, os.Getenv, defaultCLIRuntime)
 		if *sessionRef != "" {
-			ref, err = decodeSessionRef(*sessionRef)
 			rawRuntime = string(ref.Runtime)
-			if err != nil {
-				return err
-			}
 		}
 		controller, runtime, err := controllerFor(ctx, rawRuntime, *interval, local)
 		if err != nil {
@@ -816,11 +820,15 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 				return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, providerEventsFromManaged(evidence.Events), *invite, stdout)
 			},
 		}
-		destination := filepath.Join(os.TempDir(), "replichai-finish-"+ref.ID)
-		_, err = audit.NewSessionAuditor(controller, m,
+		destination := finishDestination(ref)
+		result, err := audit.NewSessionAuditor(controller, m,
 			audit.WithSessionHooks(hooks), audit.WithSessionTimeout(*timeout),
 		).Resume(ctx, ref, paperRef, destination)
-		return err
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(stdout, "artifacts: %d -> %s\n", len(result.Artifacts), destination)
+		return nil
 	} else if *verdictFlag != "" {
 		verdict = verdictOverride
 	}
@@ -834,6 +842,24 @@ func inviteFlag(login string) string {
 		return ""
 	}
 	return " --invite " + login
+}
+
+// githubClient builds the forge client over token. REPLICHAI_GITHUB_API_URL
+// points it at another API root — a GitHub Enterprise host, or a test's local
+// server — and is unset for github.com.
+func githubClient(token string) *github.Client {
+	if base := os.Getenv("REPLICHAI_GITHUB_API_URL"); base != "" {
+		return github.New(token, github.WithBaseURL(base))
+	}
+	return github.New(token)
+}
+
+// finishDestination is where finish keeps the artifacts of the session it
+// reattaches to. The session id is an identifier from another system, so it
+// is reduced to a path segment first: an id of "../../x" must not name a
+// directory outside the temporary root.
+func finishDestination(ref managed.SessionRef) string {
+	return filepath.Join(os.TempDir(), "replichai-finish-"+slugify(ref.ID))
 }
 
 // envOr returns the environment value for key, or fallback when it is unset.

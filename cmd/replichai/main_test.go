@@ -430,6 +430,71 @@ func TestFinishRejectsAnInvalidVerdictBeforePublishing(t *testing.T) {
 	}
 }
 
+// A malformed session reference is refused before anything is fetched: with
+// no token in the environment the error is about the reference, not the
+// token, because the reference was read first. It also used to be used
+// before its decode error was checked.
+func TestFinishRejectsABadSessionReferenceBeforeReachingTheForge(t *testing.T) {
+	t.Setenv("REPLICHAI_GITHUB_TOKEN", "")
+	_, _, err := capture(t, "finish", "owner/repo", "doi:10.1234/a", "--session-ref", "not base64!")
+	if err == nil || !strings.Contains(err.Error(), "--session-ref") {
+		t.Fatalf("finish error = %v, want the reference refused", err)
+	}
+	if strings.Contains(err.Error(), "REPLICHAI_GITHUB_TOKEN") {
+		t.Fatalf("the token was asked for before the reference was read: %v", err)
+	}
+	_, _, err = capture(t, "finish", "owner/repo", "doi:10.1234/a", "--session-ref", "eyJ9", "--session", "legacy")
+	if err == nil || !strings.Contains(err.Error(), "only one of") {
+		t.Fatalf("two references were accepted: %v", err)
+	}
+}
+
+// The directory finish keeps a session's artifacts in is named from an id
+// another system minted, reduced to one path segment: "../../x" stays under
+// the temporary root, and the destination is printed so the operator can find
+// what landed there.
+func TestFinishDestinationStaysUnderTheTemporaryRoot(t *testing.T) {
+	root := filepath.Clean(os.TempDir())
+	for _, id := range []string{"../../x", "/etc/passwd", "a/b", "s-1"} {
+		got := finishDestination(managed.SessionRef{ID: id})
+		if filepath.Dir(got) != root {
+			t.Errorf("finishDestination(%q) = %s, escapes %s", id, got, root)
+		}
+		if strings.Contains(filepath.Base(got), "..") {
+			t.Errorf("finishDestination(%q) = %s carries a traversal", id, got)
+		}
+	}
+}
+
+// finish with no session finalizes a repository the agent already committed
+// into: it reads the identity the publisher recorded there, verifies the
+// tree, writes the manifest, and reports what it did — without resolving the
+// paper over the network, and without a session to reattach to.
+func TestFinishFinalizesAnAlreadyPublishedRepository(t *testing.T) {
+	recorded, _ := json.Marshal(paper.Identity{
+		Key: "10.1145/3654777.3676417", Scheme: paper.SchemeDOI, Slug: "a-paper", Title: "A Paper",
+	})
+	forge := fakeForgeWith(t, map[string][]byte{".replichai/paper.json": recorded})
+	t.Setenv("REPLICHAI_GITHUB_TOKEN", "t")
+	t.Setenv("REPLICHAI_GITHUB_API_URL", forge.URL)
+
+	stdout, stderr, err := capture(t, "finish", "open-hai/a-paper-a3f9", "10.1145/3654777.3676417",
+		"--verdict", "passed", "--method", writeMethod(t))
+	if err != nil {
+		t.Fatalf("finish: %v\n%s", err, stderr)
+	}
+	for _, want := range []string{
+		"repo:      https://github.com/open-hai/a-paper-a3f9",
+		"commit:    deadbeef",
+		"committed: clean",
+		"instrument: none written",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("finish did not report %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestPublishRequiresTwoPositionals(t *testing.T) {
 	for _, args := range [][]string{{"publish"}, {"publish", "only-one-arg"}} {
 		_, stderr, err := capture(t, args...)

@@ -32,7 +32,8 @@ func (p *identityProvider) serve(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/device/code", func(w http.ResponseWriter, _ *http.Request) {
 		write(w, http.StatusOK, map[string]any{
 			"device_code": "dev-1", "user_code": "WXYZ-1234",
-			"verification_uri": "https://auth.example/device", "expires_in": 300, "interval": 0,
+			// One second: the OAuth library treats a zero interval as five.
+			"verification_uri": "https://auth.example/device", "expires_in": 300, "interval": 1,
 		})
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
