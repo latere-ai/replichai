@@ -1,12 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Environment-neutral base for the replichai web app. Overlays inject the
-# namespace and patch env-specific values (public host, BASE_URL, TLS secret).
-# The image tag is intentionally NOT pinned here — build and push
-# ghcr.io/latere-ai/replichai:<tag> and either `kustomize edit set image` in the
-# overlay or `kubectl -n latere set image deploy/replichai replichai=...`. The
-# :latest placeholder in deployment.yaml is only a default.
+# What every environment shares. Overlays add the namespace and the values that
+# are theirs alone (deploy/prod, deploy/staging).
+# The image tag is intentionally NOT pinned here: the release pipeline
+# (.github/workflows/release.yml) builds ghcr.io/latere-ai/replichai:<tag> from
+# the pushed tag and sets it on the Deployment after applying the overlay. The
+# :latest placeholder in deployment.yaml is only a default, so by hand an apply
+# is followed by `kubectl -n latere set image deploy/replichai replichai=...`.
 resources:
   - deployment.yaml
   - pdb.yaml
