@@ -21,15 +21,15 @@ import (
 // there has to be a way to reclaim the space that is not `rm -rf`.
 func runSessions(_ context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("sessions", stderr)
-	root := fs.String("session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()), "where session directories are made")
+	root := fs.String("session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()), "directory where session directories are created")
 	olderThan := fs.Duration("older-than", 7*24*time.Hour, "with prune: only remove sessions older than this")
-	dryRun := fs.Bool("dry-run", false, "with prune: say what would go, and remove nothing")
+	dryRun := fs.Bool("dry-run", false, "with prune: list what would be removed and remove nothing")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(positional) != 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: replichai sessions ls | replichai sessions prune [--older-than 7d] [--dry-run]")
+		_, _ = fmt.Fprintln(stderr, "usage: replichai sessions ls | replichai sessions prune [--older-than 168h] [--dry-run]")
 		return errExitQuiet
 	}
 
@@ -66,7 +66,11 @@ func runSessions(_ context.Context, args []string, stdout, stderr *os.File) erro
 			_, _ = fmt.Fprintf(stdout, "removed %s\n", entry.name)
 			removed++
 		}
-		_, _ = fmt.Fprintf(stderr, "%d of %d session(s) older than %s\n", removed, len(found), *olderThan)
+		verb := "removed"
+		if *dryRun {
+			verb = "would be removed"
+		}
+		_, _ = fmt.Fprintf(stderr, "%d of %d session(s) %s (older than %s)\n", removed, len(found), verb, *olderThan)
 		return nil
 	default:
 		_, _ = fmt.Fprintf(stderr, "unknown sessions command %q\n", positional[0])

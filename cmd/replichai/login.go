@@ -21,7 +21,7 @@ import (
 // code and waits (045i).
 func runLogin(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("login", stderr)
-	authURL := fs.String("auth-url", envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL), "identity provider")
+	authURL := fs.String("auth-url", envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL), "identity provider URL")
 	noBrowser := fs.Bool("no-browser", false, "print the URL instead of opening it")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
@@ -139,7 +139,7 @@ func identityOf(token cloud.Token) string {
 	if strings.TrimSpace(token.Subject) != "" {
 		return token.Subject
 	}
-	return "an unnamed principal"
+	return "an unnamed account"
 }
 
 func homeDir() string {

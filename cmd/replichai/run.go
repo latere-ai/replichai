@@ -32,14 +32,14 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		out          = fs.String("out", "runs", "directory for artifacts")
 		runtimeName  = runtimeFlag(fs, "local")
 		methodDir    = fs.String("method", "", "path to a method directory")
-		parallel     = fs.Int("parallel", 0, fmt.Sprintf("how many papers to run at once (default %d here: half the cores, capped at 4)", batch.DefaultParallel()))
-		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
-		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "how long one paper may take")
-		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "revision budget per paper")
+		parallel     = fs.Int("parallel", 0, fmt.Sprintf("how many papers to run at once (default %d on this machine: half the cores, at most 4)", batch.DefaultParallel()))
+		interval     = fs.Duration("interval", audit.DefaultPollInterval, "time between status checks")
+		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "maximum time for one paper")
+		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions per paper")
 		doPublish    = fs.Bool("publish", false, "publish each reproduction to its own repository")
 		ownerFlag    = fs.String("owner", "", "GitHub owner for --publish (default $REPLICHAI_GITHUB_OWNER, then the project file, then \""+publish.DefaultOrg+"\")")
 		inviteFlag   = fs.String("invite", "", "GitHub login to invite as a collaborator (default the project file's publish.invite)")
-		resume       = fs.Bool("resume", false, "skip the papers that already finished")
+		resume       = fs.Bool("resume", false, "skip papers that have already finished")
 		local        localOptions
 	)
 	local.bind(fs)
@@ -186,7 +186,7 @@ func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved, prior
 		err error
 	)
 	if prior.Repo != "" {
-		_, _ = fmt.Fprintf(r.stderr, "  returning to %s\n", prior.Repo)
+		_, _ = fmt.Fprintf(r.stderr, "  reusing repository %s\n", prior.Repo)
 		pub, err = source.Reattach(ctx, prior.Repo, entry.Reference())
 	} else {
 		pub, err = source.Allocate(ctx, entry.Reference())

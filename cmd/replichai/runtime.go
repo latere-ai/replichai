@@ -29,7 +29,7 @@ const runtimeEnv = "REPLICHAI_RUNTIME"
 // nor the environment names one.
 func runtimeFlag(fs *flag.FlagSet, fallback string) *string {
 	return fs.String("runtime", "",
-		"managed runtime to use (default $"+runtimeEnv+", then \""+fallback+"\")")
+		"runtime to use (default $"+runtimeEnv+", then \""+fallback+"\")")
 }
 
 // resolveRuntime is the one rule every subcommand shares: the flag, then
@@ -59,17 +59,17 @@ func (options *localOptions) bind(fs *flag.FlagSet) {
 	fs.StringVar(&options.sandbox, "sandbox", envOr("REPLICHAI_SANDBOX", string(sandbox.Host)),
 		"with --runtime local: host (srt) or container (podman, docker)")
 	fs.StringVar(&options.harness, "harness", envOr("REPLICHAI_HARNESS", "claude-code"),
-		"with --runtime local: the agentic CLI to run — claude-code or codex")
+		"with --runtime local: the agent CLI to run, claude-code or codex")
 	fs.StringVar(&options.engine, "engine", envOr("REPLICHAI_CONTAINER_ENGINE", ""),
 		"with --sandbox container: podman or docker")
 	fs.StringVar(&options.image, "image", envOr("REPLICHAI_HARNESS_IMAGE", ""),
-		"with --sandbox container: the harness image")
+		"with --sandbox container: the container image for the harness")
 	fs.StringVar(&options.models, "models", envOr("REPLICHAI_MODELS_FILE", defaultModelsFile()),
-		"with --runtime local: the model catalogue")
+		"with --runtime local: path to the model catalogue file")
 	fs.StringVar(&options.root, "session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()),
-		"with --runtime local: where session directories are made")
+		"with --runtime local: directory where session directories are created")
 	fs.StringVar(&options.retention, "retention", envOr("REPLICHAI_SESSION_RETENTION", "keep"),
-		"with --runtime local: keep, on-failure, or discard a session directory after release")
+		"with --runtime local: what happens to a session directory after release: keep, on-failure or discard")
 }
 
 // config is where the process environment is read and handed down as values.
