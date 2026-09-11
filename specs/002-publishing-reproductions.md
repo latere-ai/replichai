@@ -15,7 +15,7 @@ An audit currently ends with files in a local directory. They should end up as a
 
 ## Decisions
 
-**One reproduction, one repository.** Named `<slug>-<suffix>`, where `slug` comes from 001 and `suffix` is four lowercase base-32 characters. Every repository carries a suffix — including the first — so no reproduction is privileged and adding a second never requires renaming the first.
+**One reproduction, one repository.** Named `<slug>-<suffix>`, where `slug` comes from 001 and `suffix` is four lowercase base-32 characters. Every repository carries a suffix, including the first, so no reproduction is privileged and adding a second never requires renaming the first.
 
 **Visibility: private.** All published repositories are created private. Making them public is a deliberate, separate decision per repository, taken by a human, and is gated on the licence check below. This spec never makes anything public; [006](006-web-application.md) gives that human decision a surface, restricted to trusted users and refused for any repository whose manifest does not show it was published under this gate.
 
@@ -43,37 +43,37 @@ An audit currently ends with files in a local directory. They should end up as a
 
 The manifest is what makes 003 possible without a separate database: the registry is derived by reading manifests.
 
-**`method_digest`** pins which version of the method produced the reproduction. Two reproductions of one paper are only comparable if they were produced by the same method, and the digest is how you tell.
+**`method_digest`** pins which version of the method produced the reproduction. Two reproductions of one paper are only comparable if they were produced by the same method, and the digest is how that is checked.
 
-**How the manifest maps onto the port.** `paper.{key, scheme, title, slug}` comes straight from the `paper.Identity` of 001. `verdict` is `provider.Grade` — it already marshals to `"passed"`, so `audit.Result.Grade()` fills it directly, with no translation. `rate` is the one field the port does not produce as a value: the reproducibility rate is prose the worker writes into `REPRODUCIBILITY.md`, and it is deliberately run-dependent (a re-decomposed inner loop scored 40% over 5 components where the reference scored 79% over 7 — [004](004-go-port.md), commit `8aedf19`). The port checks conformance on the verdict, not the rate. So `rate` in the manifest is an **open mapping**: the publisher either parses the decomposed rate out of `REPRODUCIBILITY.md` and records it, or omits the field when it cannot. It is therefore modelled as a nil-able `*Rate`, never a fabricated zero. Deciding the parse is left to implementation; the manifest schema tolerates its absence.
+**How the manifest maps onto the port.** `paper.{key, scheme, title, slug}` comes straight from the `paper.Identity` of 001. `verdict` is `provider.Grade`; it already marshals to `"passed"`, so `audit.Result.Grade()` fills it directly, with no translation. `rate` is the one field the port does not produce as a value: the reproducibility rate is prose the worker writes into `REPRODUCIBILITY.md`, and it is deliberately run-dependent (a re-decomposed inner loop scored 40% over 5 components where the reference scored 79% over 7; see [004](004-go-port.md), commit `8aedf19`). The port checks conformance on the verdict, not the rate. So `rate` in the manifest is an **open mapping**: the publisher either parses the decomposed rate out of `REPRODUCIBILITY.md` and records it, or omits the field when it cannot. It is therefore modelled as a nil-able `*Rate`, never a fabricated zero. Deciding the parse is left to implementation; the manifest schema tolerates its absence.
 
 ## The redistribution gate — mandatory, blocking
 
-Publishing artifacts can republish data the reproduction was not licensed to redistribute. This is not hypothetical. Two findings from the first two audits:
+Publishing artifacts can republish data the reproduction was not licensed to redistribute. This has already come close to happening. Two findings from the first two audits:
 
 - One paper's benchmark is password-gated and its terms say, verbatim, *"do not upload to GitHub."* The audit correctly recorded this; an automatic publisher would have violated it.
 - The second audit copied third-party research data into its own output tree. That data happened to be openly licensed. The next one may not be.
 
-The method writes a fixed set of outputs — `README.md`, `REPRODUCIBILITY.md`, `src/`, `UNVERIFIED.md`, `SOURCES.md`. Everything in that set is worker-written; anything *else* in the output tree is third-party data that arrived by download, which is exactly how the second audit's mistake happened. And `SOURCES.md` records the paper's identity and the searches performed — not a per-file redistribution clearance — so there is no structured provenance to read.
+The method writes a fixed set of outputs: `README.md`, `REPRODUCIBILITY.md`, `src/`, `UNVERIFIED.md`, `SOURCES.md`. Everything in that set is worker-written; anything else in the output tree is third-party data that arrived by download, which is how the second audit's mistake happened. `SOURCES.md` records the paper's identity and the searches performed, not a per-file redistribution clearance, so there is no structured provenance to read.
 
 The gate is therefore **structural and fails closed**:
 
-1. Classify every collected file by origin: **worker-written** — the fixed report files and everything under `src/` — or **third-party** — everything else.
+1. Classify every collected file by origin: **worker-written** (the fixed report files and everything under `src/`) or **third-party** (everything else).
 2. Only worker-written files are included. Every third-party file is quarantined, *always*: there is no auto-clearance path, because the structured provenance that would justify one does not exist yet.
-3. Compiled residue and files with known-secret names never enter the plan at all — neither included nor quarantined. A content sweep at publish time is the backstop for a secret that slips through under an innocent name.
+3. Compiled residue and files with known-secret names never enter the plan at all, neither included nor quarantined. A content sweep at publish time is the backstop for a secret that slips through under an innocent name.
 4. Quarantined files are listed in `EXCLUDED.md` in the published repository, with the reason, so the gap is documented rather than silent.
 
-Failing open means publishing someone else's gated data under your organisation's name. The gate fails closed: the gated benchmark of the motivating case is third-party, so it is quarantined **by origin**, with no term-reading required.
+Failing open would mean publishing someone else's gated data under the organisation's name. The gate fails closed: the gated benchmark of the motivating case is third-party, so it is quarantined **by origin**, with no term-reading required.
 
-**Deferred to a later spec:** clearing a specific third-party file for redistribution, and catching a no-redistribution term on a file that *is* worker-written, both need per-artifact provenance the method does not emit. Until that exists, third-party is never published — the safe default.
+**Deferred to a later spec:** clearing a specific third-party file for redistribution, and catching a no-redistribution term on a file that *is* worker-written, both need per-artifact provenance the method does not emit. Until that exists, third-party is never published, which is the safe default.
 
 ## Interface
 
 Package `internal/publish`. The manifest serialises to exactly the JSON above;
 `Rate` is a pointer because it may be absent (see the open mapping), and
 `Created` is stamped at publish time, so a plan's manifest carries a zero time
-until then. `PlanPublication` is pure and does no I/O — classification is by
-path, never by content — so `Publish` alone reads files and touches the forge.
+until then. `PlanPublication` is pure and does no I/O (classification is by
+path, never by content), so `Publish` alone reads files and touches the forge.
 
 ```go
 // Manifest is replication.json — the record every published repository carries
@@ -171,28 +171,28 @@ type Forge interface {
 
 ## Acceptance criteria
 
-1. `PlanPublication` is pure: no network, no repository, no clock. Every test of naming, quarantine, and manifest content runs against it — asserting all manifest fields except the publish-stamped `created`.
+1. `PlanPublication` is pure: no network, no repository, no clock. Every test of naming, quarantine, and manifest content runs against it, asserting all manifest fields except the publish-stamped `created`.
 2. `Publish` previews by default and creates nothing; publishing for real requires passing `Live()`.
 3. Created repositories are private, and a test asserts visibility is never `public`.
-4. Compiled residue and known-secret filenames never appear in a plan — asserted directly, and named honestly as a filename check, not a proof of secret-freedom. A publish-time content sweep is the backstop.
-5. Every file not written by the worker is quarantined and named, with a reason, in the `EXCLUDED.md` of the published repository — asserted with the gated-benchmark case, which is quarantined *by origin*.
+4. Compiled residue and known-secret filenames never appear in a plan. This is asserted directly and described as a filename check, not as proof that no secret is present. A publish-time content sweep is the backstop.
+5. Every file not written by the worker is quarantined and named, with a reason, in the `EXCLUDED.md` of the published repository. This is asserted with the gated-benchmark case, which is quarantined *by origin*.
 6. The include set is exactly the worker-written files (the fixed reports and `src/`); the classifier is fail-closed, and a test asserts nothing outside that set is ever included. Clearing a third-party file, or catching a term on a worker-written one, needs structured provenance and is out of scope here.
-7. Publication is idempotent *for the same plan*: re-publishing it does not create a second repository, and completes a push that failed partway. The name carries a random suffix, so re-*planning* yields a new name — cross-run "same paper, one repository" is 003's job, not this.
+7. Publication is idempotent *for the same plan*: re-publishing it does not create a second repository, and completes a push that failed partway. The name carries a random suffix, so re-*planning* yields a new name; cross-run "same paper, one repository" is 003's job, not this spec's.
 8. A failure partway through leaves nothing public: repositories are private, and a re-publish of the same plan converges rather than forking.
 
 ## Out of scope
 
-Conflict detection across reproductions — that is 003. Making anything public.
+Conflict detection across reproductions; that is 003. Making anything public.
 
 ## Outcome
 
 Implemented in `internal/publish` across three commits (`5da951a` core, `3acfda5` plan, `2670d1a` forge and publish), all eight acceptance criteria covered by tests that run entirely offline against the filesystem forge; 91% statement coverage.
 
-Built as specified after the redistribution gate was rebased onto reality:
+Built as specified after the redistribution gate was revised to match what the method emits:
 
-- **The gate became fail-closed structural** (`b07ee8d`). `SOURCES.md` records the paper's identity and artifact searches, not per-file redistribution clearance, so the original "read `SOURCES.md` for clearance" premise did not hold. Classification is now by origin (worker-written reports + `src/` are included, everything else is quarantined, always), and the old AC6 — a term quarantining an otherwise-included file — collapsed into AC5, because the gated benchmark is third-party and quarantined by origin. Per-item clearance is deferred to a spec with structured provenance.
-- **`Classify` is a pure, reusable gate** — 005's transcript gate will reuse it rather than re-deriving the rule.
-- **The composability nudges landed**: `PlanPublication` takes an injected suffix and stays pure and deterministic (naming *allocation* is 003's); `Publish` returns a `Published{Repo}` handle so 006c's collaborator invitation bolts on; the `Forge` gained `Exists` for idempotency, and `Publish` pushes even when the repo already existed so a failed mid-push converges on retry.
-- **`method_digest` needed a source**: `method.Method.Digest()` (length-framed sha256 of the three documents) was added and carried on `audit.Result`, set by the `Auditor` — the natural home for "which method produced this run."
+- **The gate became fail-closed structural** (`b07ee8d`). `SOURCES.md` records the paper's identity and artifact searches, not per-file redistribution clearance, so the original "read `SOURCES.md` for clearance" premise did not hold. Classification is now by origin (worker-written reports and `src/` are included, everything else is quarantined, always), and the old AC6 (a term quarantining an otherwise-included file) collapsed into AC5, because the gated benchmark is third-party and quarantined by origin. Per-item clearance is deferred to a spec with structured provenance.
+- **`Classify` is a pure, reusable gate.** 005's transcript gate will reuse it rather than re-deriving the rule.
+- **The composability changes landed**: `PlanPublication` takes an injected suffix and stays pure and deterministic (naming *allocation* is 003's); `Publish` returns a `Published{Repo}` handle so 006c's collaborator invitation can build on it; the `Forge` gained `Exists` for idempotency, and `Publish` pushes even when the repo already existed so a failed mid-push converges on retry.
+- **`method_digest` needed a source**: `method.Method.Digest()` (length-framed sha256 of the three documents) was added and carried on `audit.Result`, set by the `Auditor`, which is the component that knows which method produced a run.
 
 Deferred, as designed: a GitHub `Forge` (the real host adapter belongs with 006c, which needs the org admin token anyway); parsing the decomposed `rate` out of `REPRODUCIBILITY.md` (the manifest tolerates its absence); and any clearance path for third-party data.

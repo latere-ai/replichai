@@ -11,34 +11,34 @@ status: implemented
 
 ## Problem
 
-A paper may be reproduced more than once — a sharpened method, a second opinion, a later attempt once data became available. The system needs to notice, and to relate the attempts rather than silently duplicating them.
+A paper may be reproduced more than once: with a sharpened method, for a second opinion, or in a later attempt once data became available. The system needs to notice, and to relate the attempts rather than silently duplicating them.
 
 ## What "conflict" means here
 
-Not a collision to prevent. A **prior reproduction to link to**.
+Not a collision to prevent, but a **prior reproduction to link to**.
 
 Repeat reproductions are legitimate and often the point: re-running an audit after the method changes is how you tell whether the method improved. So the rule is:
 
 - **Same paper identity → same canonical slug**, always. The first slug ever assigned to an identity wins, even if the paper's title later changes.
-- **Every repository still gets its own random suffix**, so reproductions of one paper are siblings — `pleasqlarify-visual-pragmatic-repair-a3f9`, `…-7c21` — grouped by a shared prefix and by identity in their manifests.
+- **Every repository still gets its own random suffix**, so reproductions of one paper are siblings (`pleasqlarify-visual-pragmatic-repair-a3f9`, `…-7c21`), grouped by a shared prefix and by identity in their manifests.
 - **The operator is told** before a repeat is created: what exists, when, under which method digest, with what verdict.
 
 ## Where the registry lives
 
-**Derived, not stored.** Enumerate the organisation's repositories and read each `replication.json`. No second source of truth, so nothing can drift out of sync with reality; a repository deleted by hand simply disappears from the registry.
+**Derived, not stored.** Enumerate the organisation's repositories and read each `replication.json`. There is no second source of truth, so nothing can drift out of sync with the organisation; a repository deleted by hand disappears from the registry.
 
 Cached locally with a short TTL for speed. The cache is disposable and never authoritative.
 
-Rejected: a registry file inside `replichai`. It would need a commit per publication, would race between concurrent runs, and would silently disagree with the organisation the moment anyone acted outside the tool.
+Rejected: a registry file inside `replichai`. It would need a commit per publication, would race between concurrent runs, and would silently disagree with the organisation as soon as anyone acted outside the tool.
 
 ## Suffix collisions
 
-Four base-32 characters is ~1M values. With a few thousand reproductions the birthday-collision probability is small but not zero, and the failure is user-visible. So: generate, check against the registry, regenerate on collision, up to five attempts, then widen to six characters. Deterministic, tested, no reliance on luck.
+Four base-32 characters is about 1M values. With a few thousand reproductions the birthday-collision probability is small but not zero, and the failure is user-visible. So: generate, check against the registry, regenerate on collision, up to five attempts, then widen to six characters. Deterministic, tested, and not dependent on luck.
 
 ## Interface
 
 Package `internal/registry`. The registry reads through a narrow `Source` seam
-(below) — enumerate the organisation, read one repository's manifest. Because
+(below): enumerate the organisation, read one repository's manifest. Because
 the registry is derived, `Registry` holds no state of its own beyond the source
 and its cache; every method takes a context and is safe to call concurrently.
 
@@ -76,8 +76,8 @@ func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string,
 write-side `Forge`: 006f's real GitHub access went through `internal/github`
 (list, read a file), not `publish.Forge`, so the registry wraps that. A GitHub
 source enumerates the `open-hai` organisation and reads each manifest via
-`internal/github`; a **filesystem source — a directory of `replication.json`
-files — is the local implementation, so the full audit→publish→registry loop
+`internal/github`; a **filesystem source (a directory of `replication.json`
+files) is the local implementation, so the full audit→publish→registry loop
 runs offline** with no organisation and no network (acceptance criterion 7).
 
 ```go
@@ -93,13 +93,13 @@ the record it reads.
 
 ## Acceptance criteria
 
-1. `Lookup` matches on identity key, never on slug or title — asserted with the two-title PleaSQLarify case.
+1. `Lookup` matches on identity key, never on slug or title, asserted with the two-title PleaSQLarify case.
 2. A paper whose title changed between reproductions still resolves to its canonical slug, taken from the earliest reproduction.
 3. `AllocateName` returns `<canonical-slug>-<suffix>` and never returns a name that already exists.
 4. An injected collision is retried and resolved; exhausting the retries widens the suffix rather than failing.
-5. A repository with a missing or malformed `replication.json` is skipped with a warning, not a crash — the registry survives hand-edited repositories.
+5. A repository with a missing or malformed `replication.json` is skipped with a warning, not a crash, so the registry survives hand-edited repositories.
 6. `Lookup` is read-only and safe to call concurrently.
-7. The registry runs against the filesystem `Forge` with no network access — the same seam that makes the local loop possible.
+7. The registry runs against the filesystem `Forge` with no network access, the same seam that makes the local loop possible.
 
 ## Operator flow
 
@@ -115,7 +115,7 @@ $ replichai audit https://arxiv.org/abs/2603.01795 --publish
   continue and create a sibling reproduction? [y/N]
 ```
 
-A repeat under an *unchanged* method digest is the suspicious case — it means re-running the same method on the same paper — and the prompt says so.
+A repeat under an *unchanged* method digest is the suspicious case, because it means re-running the same method on the same paper, and the prompt says so.
 
 ## Out of scope
 
@@ -125,6 +125,6 @@ Comparing two reproductions of one paper (diffing rates, verdicts, hidden-decisi
 
 Implemented in `internal/registry` across five commits (`064a24b` the Source reconciliation, `a0b0038` `github.ListRepos`, `3deab5f` the registry core, `ef56dc5` the GitHub source, `413a635` the `audit --publish` wiring). All seven acceptance criteria covered by tests that run offline against a fake source and the filesystem source; 87% coverage, race-clean.
 
-Built as specified, with one reconciliation folded back into the Interface: the registry reads through its own narrow `Source` (list + read a manifest, returning `publish.Manifest`), **not** 002's write-side `Forge`. 006f's real GitHub access went through `internal/github`, so the registry wraps that (`GitHubSource`) rather than a `GitHubForge` that never existed; a `FSSource` reads FSForge's directory layout for the offline loop.
+Built as specified, with one reconciliation folded back into the Interface: the registry reads through its own narrow `Source` (list, and read a manifest, returning `publish.Manifest`), **not** 002's write-side `Forge`. 006f's real GitHub access went through `internal/github`, so the registry wraps that (`GitHubSource`) rather than a `GitHubForge` that never existed; a `FSSource` reads FSForge's directory layout for the offline loop.
 
-The operator flow landed in `audit --publish`: before a sibling is created, it warns about every prior reproduction (date, method digest, verdict, flagging a same-method re-run) and allocates the name through `AllocateName` — the canonical slug from the earliest reproduction plus a collision-checked suffix that widens 4→6 characters — so repeats of one paper share a slug and never collide. The non-interactive `--detach` flow prints the warning rather than prompting; a blocking `[y/N]` prompt would not fit the async model.
+The operator flow landed in `audit --publish`: before a sibling is created, it warns about every prior reproduction (date, method digest, verdict, flagging a same-method re-run) and allocates the name through `AllocateName`, which combines the canonical slug from the earliest reproduction with a collision-checked suffix that widens from 4 to 6 characters, so repeats of one paper share a slug and never collide. The non-interactive `--detach` flow prints the warning rather than prompting, because a blocking `[y/N]` prompt would not fit the async model.
