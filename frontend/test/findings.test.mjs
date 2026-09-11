@@ -21,33 +21,7 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5201
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, json, settled, start, text, waitForText } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const PROJECT = 'proj-1'
@@ -111,77 +85,49 @@ const findings = {
 }
 
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
-  [/^\/me\/profile$/, {}],
-  [/^\/projects$/, [{ ...project, session_count: 2, running: 0, latest_phase: 'done', published_sessions: 2, spend_30d: 4_210_000 }]],
+  ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
+  ['/me/profile', {}],
+  ['/projects', [{ ...project, session_count: 2, running: 0, latest_phase: 'done', published_sessions: 2, spend_30d: 4_210_000 }]],
   // Newest first, as the job store returns them: the failed publish is the most
   // recent session of this paper.
   [/^\/projects\/[^/]+$/, { project, sessions: [sessionOf(DIED), sessionOf(GRADED), sessionOf(BARE)], papers: [paper], may_submit: true, role: 'owner' }],
   [/^\/projects\/[^/]+\/papers$/, [paper]],
   [/^\/projects\/[^/]+\/members$/, []],
   [/^\/projects\/[^/]+\/credits$/, { wallet: 20, start_reserve: 5 }],
-  [/^\/jobs\/([^/]+)$/, (id) => sessionOf(id)],
+  [/^\/jobs\/([^/]+)$/, ({ params: [id] }) => sessionOf(id)],
+  // Only the graded session has findings; the others answer 404, which is the
+  // case the panes have to state rather than render as emptiness. A run whose
+  // file failed validation is a different fact from one that never wrote a
+  // file, and the pane has to say which.
+  [
+    /^\/jobs\/([^/]+)\/verdict$/,
+    ({ params: [id] }) => {
+      if (id === REFUSED) return json({ error: 'findings_invalid', problems: ['boundary[2].outcome: an outer-loop claim is verified'] }, 422)
+      return id === GRADED ? findings : json({ error: 'no_findings' }, 404)
+    },
+  ],
   [/^\/jobs\/[^/]+\/transcript$/, { events: [], usage: null, live: false }],
-  [/^\/jobs\/([^/]+)\/reproduction$/, (id) => ({ id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'clear', can_publish: true })],
-  [/^\/jobs\/([^/]+)\/artifacts$/, () => ({ files: ['README.md', 'REPRODUCIBILITY.md'] })],
+  [/^\/jobs\/([^/]+)\/reproduction$/, ({ params: [id] }) => ({ id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'clear', can_publish: true })],
+  [/^\/jobs\/[^/]+\/artifacts$/, { files: ['README.md', 'REPRODUCIBILITY.md'] }],
+  [/\/artifact$/, text('# readme')],
   [/^\/(public|shared)$/, []],
 ]
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 1000 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      // Only the graded session has findings; the other answers 404, which is
-      // the case the panes have to state rather than render as emptiness.
-      if (/^\/jobs\/[^/]+\/verdict$/.test(u.pathname)) {
-        const id = u.pathname.split('/')[2]
-        // A run whose file failed validation is a different fact from one that
-        // never wrote a file, and the pane has to say which.
-        if (id === REFUSED) {
-          return req.respond({
-            status: 422,
-            contentType: 'application/json',
-            body: JSON.stringify({ error: 'findings_invalid', problems: ['boundary[2].outcome: an outer-loop claim is verified'] }),
-          })
-        }
-        if (id !== GRADED) return req.respond({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'no_findings' }) })
-        return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(findings) })
-      }
-      if (u.pathname.endsWith('/artifact')) {
-        return req.respond({ status: 200, contentType: 'text/plain', body: '# readme' })
-      }
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) {
-        const m = u.pathname.match(hit[0])
-        const body = typeof hit[1] === 'function' ? hit[1](m[1]) : hit[1]
-        return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-      }
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
+  const page = await h.page({ viewport: { width: 1440, height: 1000 }, routes })
+  // landed resolves once the browser holds the answer to `path`. Armed before a
+  // screen opens, it is how a pane that must render nothing for an answer is
+  // known to have received it.
+  const landed = (path) => page.waitForResponse((r) => new URL(r.url()).pathname === path, { timeout: 10000 })
 
   /* ── The verdict pane, with findings ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}/s/${GRADED}/verdict`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${PROJECT}/s/${GRADED}/verdict`)
   await page.waitForSelector('.grid-table', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 300))
+  // The run record fills in from its own read of the reproduction.
+  await page.waitForSelector('[data-test="run-record"]', { timeout: 5000 }).catch(() => {})
+  await settled(page)
 
   const read = await page.evaluate(() => {
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
@@ -281,8 +227,8 @@ try {
 
   /* ── The verdict pane, without findings ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}/s/${BARE}/verdict`, { waitUntil: 'networkidle0' })
-  await new Promise((r) => setTimeout(r, 500))
+  await page.open(`/p/${PROJECT}/s/${BARE}/verdict`)
+  await waitForText(page, 'body', 'recorded no findings as data', { timeout: 5000 }).catch(() => {})
   const bare = await page.evaluate(() => ({
     table: !!document.querySelector('.grid-table'),
     body: document.body.textContent.replace(/\s+/g, ' '),
@@ -292,8 +238,8 @@ try {
 
   /* ── The verdict pane, with findings the system refused ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}/s/${REFUSED}/verdict`, { waitUntil: 'networkidle0' })
-  await new Promise((r) => setTimeout(r, 500))
+  await page.open(`/p/${PROJECT}/s/${REFUSED}/verdict`)
+  await waitForText(page, 'body', 'wrote findings the system refused', { timeout: 5000 }).catch(() => {})
   const refused = await page.evaluate(() => ({
     table: !!document.querySelector('.grid-table'),
     body: document.body.textContent.replace(/\s+/g, ' '),
@@ -307,9 +253,11 @@ try {
 
   /* ── The artifacts pane ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}/s/${GRADED}/artifacts`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${PROJECT}/s/${GRADED}/artifacts`)
   await page.waitForSelector('.release-row', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 300))
+  // The file browser fills in from its own read of the artifacts.
+  await page.waitForSelector('.detail-grid .card .rows', { timeout: 5000 }).catch(() => {})
+  await settled(page)
 
   const art = await page.evaluate(() => {
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
@@ -346,8 +294,11 @@ try {
 
   /* ── The artifacts pane, without findings ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}/s/${BARE}/artifacts`, { waitUntil: 'networkidle0' })
-  await new Promise((r) => setTimeout(r, 500))
+  // Nothing marks the absence on screen, so the pane is given the 404 first.
+  const noFindings = landed(`/jobs/${BARE}/verdict`)
+  await page.open(`/p/${PROJECT}/s/${BARE}/artifacts`)
+  await page.waitForSelector('.detail-grid .card .rows', { timeout: 5000 }).catch(() => {})
+  await noFindings
   const bareArt = await page.evaluate(() => ({
     released: !!document.querySelector('.release-row'),
     browser: !!document.querySelector('.detail-grid .card .rows'),
@@ -357,18 +308,16 @@ try {
 
   /* ── The sessions tab's rail, and Publish… on the header (021e) ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('.findings-rail', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 400))
+  // A card fills in from the verdict it reads.
+  await waitForText(page, '.findings-rail > .card', 'components', { timeout: 5000 }).catch(() => {})
 
   const rail = await page.evaluate(() => {
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
-    const cards = [...document.querySelectorAll('.findings-rail > .card')].map((c) => txt(c))
-    const buttons = [...document.querySelectorAll('.detail-head button')].map((b) => txt(b))
     return {
-      cards,
+      cards: [...document.querySelectorAll('.findings-rail > .card')].map((c) => txt(c)),
       publish: !!document.querySelector('.detail-head [data-test="publish-project"]'),
-      elapsed: [...document.querySelectorAll('.row .tabular')].map((e) => txt(e)),
     }
   })
 
@@ -391,9 +340,10 @@ try {
   // 034 folded the three counters into two cards; the spend kept its own ruled
   // row on the credits card. Where it sits changed, what it must say did not: a
   // figure whose period is not stated is not a figure.
-  await page.goto(`${BASE}/`, { waitUntil: 'networkidle0' })
+  await page.open('/')
   await page.waitForSelector('[data-test="spend-30d"]', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 300))
+  // A dash stands in until the list has landed and the sum is known.
+  await waitForText(page, '[data-test="spend-30d"]', '$', { timeout: 5000 }).catch(() => {})
   const spend = await page.evaluate(
     () => document.querySelector('[data-test="spend-30d"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
   )
@@ -404,10 +354,9 @@ try {
     if (!/\$4\.21/.test(spend)) fail(`the spend reads ${spend}, want the server's windowed sum`)
   }
 
-  if (!process.exitCode) console.log('PASS: findings panes, rail, and the windowed spend')
-} catch (err) {
-  fail(err.message)
+  h.ok('findings panes, rail, and the windowed spend')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
