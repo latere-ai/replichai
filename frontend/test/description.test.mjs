@@ -27,33 +27,7 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5259
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const ME = 'p'
@@ -67,62 +41,45 @@ let drafts = true
 const DRAFTED = 'A model wrote this sentence about the project.'
 
 const project = () => ({ id: PROJECT, owner: ME, title: 'Trust in automation', description, visibility: 'private', created_at: at(0) })
-const json = (req, body, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
-const serve = (page, { me = ME } = {}) => {
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin !== BASE) return req.continue()
-    const path = u.pathname
-    const method = req.method()
-
-    if (/^\/projects\/[^/]+$/.test(path) && method === 'PATCH') {
-      const body = JSON.parse(req.postData() || '{}')
+// serve is the mocked API with `me` as the identity. The project is read afresh
+// on every answer, so a description once saved is what the head re-reads.
+const serve = (me = ME) => [
+  [
+    'PATCH',
+    /^\/projects\/[^/]+$/,
+    ({ body = {} }) => {
       patches.push(body)
       if (body.description !== undefined) description = body.description
-      return json(req, project())
-    }
-    if (path === '/me') return json(req, { authenticated: true, principal: me, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } })
-    if (path === '/me/profile') return json(req, { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true })
-    if (path === '/projects') return json(req, [{ ...project(), session_count: 0, running: 0, modified_at: at(0) }])
-    if (/^\/projects\/[^/]+$/.test(path)) return json(req, { project: project(), sessions: [], papers: [], may_submit: me === ME, role: me === ME ? 'owner' : 'member' })
-    if (/^\/projects\/[^/]+\/papers$/.test(path)) return json(req, [])
-    if (/^\/projects\/[^/]+\/members$/.test(path)) return json(req, [])
-    if (/^\/projects\/[^/]+\/credits$/.test(path)) return json(req, { wallet: 20, start_reserve: 5, available: 20 })
-    if (path === '/models') return json(req, { tiers: [], drafting: drafts })
-    if (/^\/projects\/[^/]+\/description\/draft$/.test(path) && method === 'POST') {
+      return project()
+    },
+  ],
+  ['/me', { authenticated: true, principal: me, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
+  ['/me/profile', { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true }],
+  ['/projects', () => [{ ...project(), session_count: 0, running: 0, modified_at: at(0) }]],
+  [/^\/projects\/[^/]+$/, () => ({ project: project(), sessions: [], papers: [], may_submit: me === ME, role: me === ME ? 'owner' : 'member' })],
+  [/^\/projects\/[^/]+\/papers$/, []],
+  [/^\/projects\/[^/]+\/members$/, []],
+  [/^\/projects\/[^/]+\/credits$/, { wallet: 20, start_reserve: 5, available: 20 }],
+  ['/models', () => ({ tiers: [], drafting: drafts })],
+  [
+    'POST',
+    /^\/projects\/[^/]+\/description\/draft$/,
+    () => {
       drafted++
-      return json(req, { description: DRAFTED, model: 'small-1', cost_micro: 1200 })
-    }
-    if (path === '/public' || path === '/shared') return json(req, [])
-    if (path.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    req.continue()
-  })
-}
+      return { description: DRAFTED, model: 'small-1', cost_micro: 1200 }
+    },
+  ],
+  [/^\/(public|shared)$/, []],
+]
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
+const open = (me) => h.page({ viewport: { width: 1440, height: 1000 }, routes: serve(me) })
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-
   /* ── 1, 2, 3. The owner writes one, in place ── */
 
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 1000 })
-  await page.setRequestInterception(true)
-  serve(page)
-
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  const page = await open()
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('[data-test="describe-add"]', { timeout: 15000 })
   if (await page.$('[data-test="description"]')) fail('a project with no description rendered one')
 
@@ -145,7 +102,7 @@ try {
 
   /* ── 4. On the list, under the title ── */
 
-  await page.goto(`${BASE}/`, { waitUntil: 'networkidle0' })
+  await page.open('/')
   await page.waitForSelector('[data-test="row-description"]', { timeout: 10000 })
   const row = await page.$eval('[data-test="row-description"]', (e) => ({
     text: e.textContent.trim(),
@@ -160,13 +117,10 @@ try {
   /* ── 5. A draft is a suggestion, not a save (039) ── */
 
   {
-    const p = await browser.newPage()
-    await p.setViewport({ width: 1440, height: 1000 })
-    await p.setRequestInterception(true)
-    serve(p)
+    const p = await open()
     description = ''
     patches = []
-    await p.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+    await p.open(`/p/${PROJECT}`)
     await p.waitForSelector('[data-test="describe-add"]', { timeout: 15000 })
     await p.click('[data-test="describe-add"]')
     await p.waitForSelector('[data-test="describe-draft"]', { timeout: 5000 })
@@ -190,15 +144,15 @@ try {
   {
     drafts = false
     description = ''
-    const p = await browser.newPage()
-    await p.setViewport({ width: 1440, height: 1000 })
-    await p.setRequestInterception(true)
-    serve(p)
-    await p.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+    const p = await open()
+    // The control appears only once /models has said there is a model to draft
+    // with; the measurement is taken after that answer has landed and said no.
+    const models = p.waitForResponse((r) => new URL(r.url()).pathname === '/models', { timeout: 15000 })
+    await p.open(`/p/${PROJECT}`)
     await p.waitForSelector('[data-test="describe-add"]', { timeout: 15000 })
     await p.click('[data-test="describe-add"]')
     await p.waitForSelector('[data-test="describe-input"]', { timeout: 5000 })
-    await new Promise((r) => setTimeout(r, 300))
+    await models
     if (await p.$('[data-test="describe-draft"]')) fail('a deployment with no drafting model offered a control that can only fail')
     // And the field still works, which is the whole point of the fallback.
     await p.type('[data-test="describe-input"]', 'Typed by hand.')
@@ -210,21 +164,17 @@ try {
 
   /* ── 1, the other half. A reader is shown nothing to fill in ── */
 
-  const reader = await browser.newPage()
-  await reader.setViewport({ width: 1440, height: 1000 })
-  await reader.setRequestInterception(true)
-  serve(reader, { me: 'somebody-else' })
+  const reader = await open('somebody-else')
   description = ''
-  await reader.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await reader.open(`/p/${PROJECT}`)
+  // The head renders once the project — and with it the reader's role — is known.
   await reader.waitForSelector('.detail-head', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 400))
   if (await reader.$('[data-test="describe-add"]')) fail('a reader who cannot edit was invited to write a description')
   if (await reader.$('[data-test="description"]')) fail('an empty description rendered as an empty paragraph')
 
-  if (!process.exitCode) console.log('ok: a project says what it is about, written in place and read in the list')
-} catch (err) {
-  fail(err.message)
+  h.ok('a project says what it is about, written in place and read in the list')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
