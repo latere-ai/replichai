@@ -23,33 +23,7 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5252
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, json, noContent, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const ME = 'p'
@@ -61,7 +35,6 @@ const STUCK = 'job-stuck' // a repository, and no manifest it will ever gain
 // real delete → publish round trip rather than two static fixtures.
 const deleted = new Set()
 let visibility = 'private'
-const calls = []
 
 const project = () => ({ id: PROJECT, owner: ME, title: 'Posture-Aware Pen+Touch', visibility, created_at: at(0) })
 const paper = { key: 'doi:10.1145/3544548.3581433', ref: '10.1145/3544548.3581433', title: 'Sensing Posture-Aware Pen+Touch Interaction', sessions: 2 }
@@ -90,74 +63,83 @@ const refusal = () => ({
 })
 
 const profile = { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true }
+const notFound = json({ error: 'not_found' }, 404)
 
-const json = (req, body, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(body) })
+const routes = [
+  // The route under test.
+  [
+    'DELETE',
+    /^\/jobs\/([^/]+)$/,
+    ({ params: [id] }) => {
+      if (deleted.has(id)) return notFound
+      deleted.add(id)
+      return noContent()
+    },
+  ],
+  [
+    'POST',
+    /^\/projects\/[^/]+\/public$/,
+    () => {
+      const r = refusal()
+      if (r.blockers.length) return json(r, 409)
+      visibility = 'public'
+      return project()
+    },
+  ],
+  ['PATCH /me/profile', profile],
+  ['/me', { authenticated: true, principal: ME, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
+  ['/me/profile', profile],
+  ['/projects', () => [{ ...project(), session_count: live().length, running: 0, latest_phase: 'done', published_sessions: live().length }]],
+  [`/projects/${PROJECT}`, () => ({ project: project(), sessions: live(), papers: [paper], may_submit: true, role: 'owner' })],
+  [`/projects/${PROJECT}/papers`, [paper]],
+  [`/projects/${PROJECT}/members`, []],
+  [`/projects/${PROJECT}/credits`, { wallet: 20, start_reserve: 5 }],
+  [/^\/jobs\/([^/]+)$/, ({ params: [id] }) => (deleted.has(id) ? notFound : sessionOf(id))],
+  [/^\/jobs\/[^/]+\/transcript$/, { events: [], usage: null, live: false }],
+  [/^\/jobs\/([^/]+)\/reproduction$/, ({ params: [id] }) => (id === STUCK ? notFound : { id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'clear', can_publish: true })],
+  [/^\/jobs\/[^/]+\/verdict$/, json({ error: 'no_findings' }, 404)],
+  [/\/artifacts$/, { files: [] }],
+  [/^\/(public|shared)$/, []],
+]
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
+  const page = await h.page({ viewport: { width: 1440, height: 1000 }, routes })
+  const rows = () => page.$$eval('.blocker-row', (els) => els.map((r) => r.textContent.replace(/\s+/g, ' ').trim()))
+
+  // press clicks the wizard button whose label matches, once it is live: step
+  // 2's Continue is disabled until the profile it shows has been read, and the
+  // sign-off until the affirmation is ticked. A click on a disabled button is
+  // swallowed, and the walk would stall where it stood.
+  const press = async (label) => {
+    const btn = await page.waitForFunction(
+      (re) => {
+        const b = [...document.querySelectorAll('.modal button')].find((b) => new RegExp(re, 'i').test(b.textContent))
+        return b && !b.disabled ? b : null
+      },
+      { timeout: 5000 },
+      label,
+    )
+    await btn.evaluate((el) => el.click())
   }
 
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 1000 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin !== BASE) return req.continue()
-    const path = u.pathname
-    const method = req.method()
-    calls.push(`${method} ${path}`)
-
-    // The route under test.
-    const one = path.match(/^\/jobs\/([^/]+)$/)
-    if (one && method === 'DELETE') {
-      if (deleted.has(one[1])) return json(req, { error: 'not_found' }, 404)
-      deleted.add(one[1])
-      return req.respond({ status: 204, body: '' })
+  // The wizard, walked to its sign-off: three steps — what becomes public, who
+  // stands behind it, responsibility. The profile is prefilled and publishable,
+  // so both Continues come live; each step is waited for by the dot it lights.
+  const walkToSignOff = async () => {
+    await page.click('[data-test="publish-project"]')
+    await page.waitForSelector('.modal', { timeout: 5000 })
+    for (let step = 2; step <= 3; step++) {
+      await press('Continue')
+      await page.waitForFunction((n) => document.querySelectorAll('.modal .step-dot.on').length === n, { timeout: 5000 }, step)
     }
-    if (path.endsWith('/public') && method === 'POST') {
-      const r = refusal()
-      if (r.blockers.length) return json(req, r, 409)
-      visibility = 'public'
-      return json(req, project())
-    }
-    if (path === '/me/profile' && method === 'PATCH') return json(req, profile)
-
-    if (path === '/me') return json(req, { authenticated: true, principal: ME, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } })
-    if (path === '/me/profile') return json(req, profile)
-    if (path === '/projects') return json(req, [{ ...project(), session_count: live().length, running: 0, latest_phase: 'done', published_sessions: live().length }])
-    if (path === `/projects/${PROJECT}`) return json(req, { project: project(), sessions: live(), papers: [paper], may_submit: true, role: 'owner' })
-    if (path === `/projects/${PROJECT}/papers`) return json(req, [paper])
-    if (path === `/projects/${PROJECT}/members`) return json(req, [])
-    if (path === `/projects/${PROJECT}/credits`) return json(req, { wallet: 20, start_reserve: 5 })
-    if (one) return deleted.has(one[1]) ? json(req, { error: 'not_found' }, 404) : json(req, sessionOf(one[1]))
-    if (/^\/jobs\/[^/]+\/transcript$/.test(path)) return json(req, { events: [], usage: null, live: false })
-    if (/^\/jobs\/[^/]+\/reproduction$/.test(path)) {
-      const id = path.split('/')[2]
-      if (id === STUCK) return json(req, { error: 'not_found' }, 404)
-      return json(req, { id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'clear', can_publish: true })
-    }
-    if (/^\/jobs\/[^/]+\/verdict$/.test(path)) return json(req, { error: 'no_findings' }, 404)
-    if (path.endsWith('/artifacts')) return json(req, { files: [] })
-    if (path === '/public' || path === '/shared') return json(req, [])
-    if (path.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    req.continue()
-  })
-
-  const rows = () => page.$$eval('.blocker-row', (els) => els.map((r) => r.textContent.replace(/\s+/g, ' ').trim()))
+    await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
+  }
+  const signOff = () => press('Sign off')
 
   /* ── 1. The row action, behind the app's own dialog ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('[data-test="delete-session"]', { timeout: 15000 })
 
   // Both finished sessions offer it, and it is not a native confirm: clicking it
@@ -175,26 +157,16 @@ try {
 
   // Escape out: a dialog that cannot be declined is not a confirmation.
   await page.keyboard.press('Escape')
-  await new Promise((r) => setTimeout(r, 250))
+  await page.waitForFunction(() => !document.querySelector('[data-test="delete-session-confirm"]'), { timeout: 2000 }).catch(() => {})
   if (await page.$('[data-test="delete-session-confirm"]')) fail('the delete dialog would not close')
   if (deleted.size) fail('a cancelled dialog deleted the session anyway')
 
   /* ── 2. The blocker row, and through to a published project ── */
 
   await page.waitForSelector('[data-test="publish-project"]', { timeout: 8000 })
-  await page.click('[data-test="publish-project"]')
-  await page.waitForSelector('.modal', { timeout: 5000 })
-  for (let i = 0; i < 2; i++) {
-    await page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /Continue/i.test(b.textContent))?.click())
-    await new Promise((r) => setTimeout(r, 200))
-  }
-  await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
-  await new Promise((r) => setTimeout(r, 150))
-  const signOff = () => page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /Sign off/i.test(b.textContent))?.click())
-
+  await walkToSignOff()
   await signOff()
   await page.waitForSelector('[data-test="publish-blockers"]', { timeout: 8000 })
-  await new Promise((r) => setTimeout(r, 250))
 
   const blocked = await rows()
   if (blocked.length !== 1) fail(`the refusal named ${blocked.length} sessions, want the one unfinished run`)
@@ -221,31 +193,24 @@ try {
   // in place — a page.goto here would pass whether or not anything refetched.
   await page.evaluate(() => document.querySelector('.modal-backdrop')?.click())
   await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
-  await new Promise((r) => setTimeout(r, 500))
+  // The refetch is given time to land; a row that is still there after it is
+  // the bug, so the wait falls through to the count rather than failing on it.
+  await page.waitForFunction(() => document.querySelectorAll('[data-test="delete-session"]').length === 1, { timeout: 3000 }).catch(() => {})
   const stillShown = await page.$$eval('[data-test="delete-session"]', (b) => b.length)
   if (stillShown !== 1) fail(`${stillShown} sessions on the project screen after closing the wizard, want only the one kept`)
 
   // The end state, which is the point: a sign-off now publishes. Asserting only
   // that the blocker row went away would pass on a list that never refetched.
-  await page.click('[data-test="publish-project"]')
-  await page.waitForSelector('.modal', { timeout: 5000 })
-  for (let i = 0; i < 2; i++) {
-    await page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /Continue/i.test(b.textContent))?.click())
-    await new Promise((r) => setTimeout(r, 200))
-  }
-  await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
-  await new Promise((r) => setTimeout(r, 150))
+  await walkToSignOff()
   await signOff()
   await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
-  await new Promise((r) => setTimeout(r, 400))
 
   if (visibility !== 'public') fail(`the project is ${visibility} after the blocker was removed, want public`)
-  if (!calls.includes(`DELETE /jobs/${STUCK}`)) fail(`no DELETE reached the server: ${JSON.stringify(calls.slice(-8))}`)
+  if (!page.calls.includes(`DELETE /jobs/${STUCK}`)) fail(`no DELETE reached the server: ${JSON.stringify(page.calls.slice(-8))}`)
 
-  if (!process.exitCode) console.log('PASS: an unfinished session can be deleted, and its project then publishes')
-} catch (err) {
-  fail(err.message)
+  h.ok('an unfinished session can be deleted, and its project then publishes')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
