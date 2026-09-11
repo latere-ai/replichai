@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package container is the opt-in sandbox driver: an OCI container, Podman by
-// default and Docker supported, giving a toolchain pinned identically on every
-// machine (045c).
+// Package container is the opt-in sandbox driver. It runs a stage in an OCI
+// container, Podman by default with Docker also supported, which gives a
+// toolchain pinned identically on every machine (045c).
 //
-// It is the second driver, not the first. Pinning is what CI and cross-operator
-// comparison need; it is not what a first local run needs, and it costs an
-// image, a virtual machine on macOS, and a raw API key instead of the login the
-// operator already has.
+// It is the second driver, not the default. Pinning is what CI and
+// cross-operator comparison need. A first local run does not need it, and it
+// costs an image, a virtual machine on macOS, and a raw API key instead of the
+// login the operator already has.
 package container
 
 import (
@@ -31,9 +31,9 @@ import (
 const DefaultImage = "ghcr.io/latere-ai/replichai-harness:latest"
 
 // Labels the image declares about itself. Capabilities are read from the image
-// rather than repeated in this code, so a custom image with a different
-// toolchain declares its own and a specification naming a manager it lacks is
-// refused rather than failing mid-run.
+// rather than repeated in this code, so that a custom image with a different
+// toolchain declares its own, and a specification naming a manager the image
+// lacks is refused rather than failing mid-run.
 const (
 	ManagersLabel  = "org.replichai.managers"
 	HarnessesLabel = "org.replichai.harnesses"
@@ -49,23 +49,24 @@ const (
 	Docker Engine = "docker"
 )
 
-// Runner executes an engine command. It is a seam so the driver is testable
-// without an engine, and so both engines go through one place.
+// Runner executes an engine command. It is an interface so that the driver
+// can be tested without an engine, and so that both engines go through one
+// function.
 type Runner func(ctx context.Context, argv []string, stdin io.Reader) ([]byte, error)
 
-// Config is what a composition root hands this driver.
+// Config is the configuration a composition root passes to this driver.
 type Config struct {
 	// Engine names the engine to use. Empty selects podman, then docker.
-	// A named engine that is unusable is an error, never a fallback: an
-	// operator who named one gets that one or a message.
+	// A named engine that is unusable is an error, never a fallback. An
+	// operator who named an engine gets that engine or an error message.
 	Engine Engine
 	// Image is the harness image.
 	Image string
-	// Platform is the operating system, a parameter so refusals are
-	// testable on one machine.
+	// Platform is the operating system. It is a parameter so that refusals
+	// can be tested on one machine.
 	Platform sandbox.Platform
-	// UID and GID are the ownership a stage writes with, so the operator
-	// can read and push what the run produced.
+	// UID and GID are the ownership a stage writes with, so that the
+	// operator can read and push what the run produced.
 	UID, GID int
 	// Look resolves an executable, defaulting to exec.LookPath.
 	Look func(string) (string, error)
@@ -81,8 +82,8 @@ type Sandbox struct {
 	toolchain    string
 }
 
-// New probes the machine and the image, and returns a driver only once both
-// answer. Probing at construction is what lets an operator learn their
+// New probes the machine and the image, and returns a driver only when both
+// respond. Probing at construction lets an operator learn that their
 // environment is wrong before a paper is fetched or a repository created.
 func New(ctx context.Context, config Config) (*Sandbox, error) {
 	if config.Platform == "" {
@@ -118,19 +119,20 @@ func New(ctx context.Context, config Config) (*Sandbox, error) {
 // Name is the driver's canonical name.
 func (s *Sandbox) Name() sandbox.DriverName { return sandbox.Container }
 
-// Engine is the engine this driver settled on.
+// Engine is the engine this driver selected.
 func (s *Sandbox) Engine() Engine { return s.engine }
 
-// Toolchain is what the image says it holds, recorded in the environment
-// record so two runs on different machines can be compared.
+// Toolchain is the toolchain the image declares. It is recorded in the
+// environment record so that two runs on different machines can be compared.
 func (s *Sandbox) Toolchain() string { return s.toolchain }
 
-// Image is the reference the stage runs from, recorded in the environment
-// record: under this driver the image is the whole of what was pinned, and a
-// reader comparing two reproductions needs to know they ran the same one.
+// Image is the image reference the stage runs from. It is recorded in the
+// environment record because under this driver the image is everything that
+// was pinned, and a reader comparing two reproductions needs to know they ran
+// the same one.
 func (s *Sandbox) Image() string { return s.config.Image }
 
-// selectEngine picks the engine and proves it works. A named engine that
+// selectEngine picks the engine and checks that it works. A named engine that
 // cannot run is an error rather than a silent fallback to the other one.
 func (s *Sandbox) selectEngine(ctx context.Context) (Engine, error) {
 	if named := Engine(strings.TrimSpace(string(s.config.Engine))); named != "" {
@@ -152,9 +154,9 @@ func (s *Sandbox) selectEngine(ctx context.Context) (Engine, error) {
 	return "", first
 }
 
-// probe distinguishes the three ordinary failures, because they need three
-// different sentences: not installed, installed but not running, and running
-// but unable to supply the image.
+// probe distinguishes the three common failures, because each needs a
+// different instruction: not installed, installed but not running, and
+// running but unable to supply the image.
 func (s *Sandbox) probe(ctx context.Context, engine Engine) error {
 	if _, err := s.config.Look(string(engine)); err != nil {
 		return sandbox.NotReady(s.config.Platform, sandbox.Container, sandbox.ConditionMissing, string(engine))
@@ -167,7 +169,7 @@ func (s *Sandbox) probe(ctx context.Context, engine Engine) error {
 	return nil
 }
 
-// readImage reads what the image declares about itself, pulling it first where
+// readImage reads what the image declares about itself, pulling it first if
 // it is absent.
 func (s *Sandbox) readImage(ctx context.Context) error {
 	format := fmt.Sprintf(`{{index .Config.Labels "%s"}}|{{index .Config.Labels "%s"}}`, ManagersLabel, ToolchainLabel)
@@ -194,33 +196,34 @@ func (s *Sandbox) readImage(ctx context.Context) error {
 	s.toolchain = strings.TrimSpace(toolchain)
 	s.capabilities = sandbox.Capabilities{
 		PackageManagers: declared,
-		// Neither engine filters egress by domain natively; doing it
-		// properly needs a proxy the container is forced through, which
-		// is what srt already provides on the host. Declaring a mode this
-		// driver cannot enforce would be a lie a specification is
-		// validated against.
+		// Neither engine filters egress by domain natively. Doing so
+		// requires a proxy the container is forced through, which is what
+		// srt already provides on the host. Declaring a mode this driver
+		// cannot enforce would make the capability declaration, which
+		// specifications are validated against, incorrect.
 		NetworkModes:       map[string]bool{sandbox.NetworkNone: true, sandbox.NetworkOpen: true},
 		MaxAttachmentBytes: 64 << 20,
 	}
 	return nil
 }
 
-// CarriesHarnessLogin is false: a container has neither the operator's
-// configuration directory nor their credential store, which is the price of
-// the pinned toolchain. A session here is supplied a credential instead.
+// CarriesHarnessLogin returns false. A container has neither the operator's
+// configuration directory nor their credential store, which is the cost of
+// the pinned toolchain. A session under this driver is supplied a credential
+// instead.
 func (s *Sandbox) CarriesHarnessLogin() bool { return false }
 
 // Preflight re-checks the engine, because a machine can be stopped between
 // construction and a launch.
 func (s *Sandbox) Preflight(ctx context.Context) error { return s.probe(ctx, s.engine) }
 
-// Capabilities is what the image declares plus what the engine enforces.
+// Capabilities reports what the image declares and what the engine enforces.
 func (s *Sandbox) Capabilities() sandbox.Capabilities { return s.capabilities }
 
-// Launch starts one stage as a detached container. Ownership is mapped so the
-// operator can read and push what the run produced: a rootless container
-// writing the workspace as root leaves a directory the push cannot use, and
-// that failure would surface later and somewhere else.
+// Launch starts one stage as a detached container. Ownership is mapped so
+// that the operator can read and push what the run produced. A rootless
+// container writing the workspace as root would leave a directory the push
+// cannot use, and that failure would appear later and elsewhere.
 func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.StageHandle, error) {
 	if err := s.Preflight(ctx); err != nil {
 		return sandbox.StageHandle{}, err
@@ -230,9 +233,9 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	}
 	name := containerName(spec.Name)
 	argv := []string{string(s.engine), "run", "--detach", "--name", name,
-		// Retention is pinned rather than inherited from the host's
-		// default, so a transcript's availability does not depend on how
-		// somebody configured their engine.
+		// Log retention is pinned rather than inherited from the host's
+		// default, so that a transcript's availability does not depend on
+		// how the engine was configured.
 		"--log-driver=json-file", "--log-opt", "max-size=0",
 		"--workdir", guestOf(spec, spec.Workdir)}
 	argv = append(argv, s.ownership()...)
@@ -272,8 +275,9 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	return sandbox.StageHandle{Driver: sandbox.Container, ID: name}, nil
 }
 
-// ownership is the uid mapping, which differs by engine: rootless Podman maps
-// the container user onto the invoking one, and Docker is told the uid.
+// ownership returns the uid mapping arguments, which differ by engine.
+// Rootless Podman maps the container user onto the invoking user, and Docker
+// is given the uid explicitly.
 func (s *Sandbox) ownership() []string {
 	if s.engine == Podman {
 		return []string{"--userns=keep-id"}
@@ -281,10 +285,10 @@ func (s *Sandbox) ownership() []string {
 	return []string{"--user", fmt.Sprintf("%d:%d", s.config.UID, s.config.GID)}
 }
 
-// writeEnvFile puts the stage's credentials in a private file, which is
-// removed as soon as the container is running. `inspect` still shows the value
-// to whoever can talk to the engine, which is the same person who owns the
-// credential — stated rather than papered over.
+// writeEnvFile writes the stage's credentials to a private file, which is
+// removed as soon as the container is running. Note that `inspect` still
+// shows the value to anyone who can talk to the engine, which is the same
+// person who owns the credential.
 func (s *Sandbox) writeEnvFile(spec sandbox.StageSpec) (string, error) {
 	if len(spec.EnvFile) == 0 {
 		return "", nil
@@ -312,7 +316,8 @@ func (s *Sandbox) writeEnvFile(spec sandbox.StageSpec) (string, error) {
 }
 
 // Observe reads the container's state. A container the engine no longer holds
-// is gone, not finished: an unknowable exit must not read as success.
+// is reported as gone, not finished, because an unknown exit must not be
+// reported as success.
 func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sandbox.StageStatus, error) {
 	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return sandbox.StageStatus{}, err
@@ -320,9 +325,9 @@ func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sand
 	output, err := s.config.Run(ctx, []string{string(s.engine), "inspect", "--format",
 		"{{.State.Running}}|{{.State.ExitCode}}", handle.ID}, nil)
 	if err != nil {
-		// A container the engine no longer holds is gone, which is an
-		// observation rather than a failure to make one — and gone is not
-		// finished, so it never reads as success.
+		// A container the engine no longer holds is gone. That is an
+		// observation rather than a failure to observe, and gone is not
+		// finished, so it is never reported as success.
 		//nolint:nilerr // a missing container is an observation
 		return sandbox.StageStatus{Gone: true}, nil
 	}
@@ -332,26 +337,27 @@ func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sand
 	}
 	exit, err := strconv.Atoi(strings.TrimSpace(code))
 	if err != nil {
-		// An exit code the engine did not report is unknowable, and an
-		// unknowable exit must not read as success.
+		// An exit code the engine did not report is unknown, and an unknown
+		// exit must not be reported as success.
 		//nolint:nilerr // an unreadable exit code is gone, not zero
 		return sandbox.StageStatus{Gone: true}, nil
 	}
 	return sandbox.StageStatus{ExitCode: exit}, nil
 }
 
-// Output reads the container's log from an offset. The log is written by the
-// engine, outside the container's filesystem, so a stage cannot rewrite its
-// own transcript — the same guarantee the host driver gets from a denied path.
+// Output reads the container's log from an offset. The engine writes the log
+// outside the container's filesystem, so a stage cannot rewrite its own
+// transcript. This is the same guarantee the host driver gets from a denied
+// path.
 func (s *Sandbox) Output(ctx context.Context, handle sandbox.StageHandle, offset int64) (io.ReadCloser, error) {
 	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return nil, err
 	}
 	body, err := s.config.Run(ctx, []string{string(s.engine), "logs", handle.ID}, nil)
 	if err != nil {
-		// A container with no log yet, or one already removed, has nothing
-		// to say rather than something to fail about: the caller polls, and
-		// an error here would fail a session over an empty transcript.
+		// A container with no log yet, or one already removed, yields an
+		// empty read rather than an error. The caller polls, and an error
+		// here would fail a session over an empty transcript.
 		//nolint:nilerr // an unreadable log is an empty read, not a failure
 		return io.NopCloser(strings.NewReader("")), nil
 	}
@@ -362,7 +368,7 @@ func (s *Sandbox) Output(ctx context.Context, handle sandbox.StageHandle, offset
 }
 
 // Stop ends a running container. Stopping one that has already exited is not
-// an error: the controller cancels without knowing the state.
+// an error, because the controller cancels without knowing the state.
 func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return err
@@ -371,8 +377,8 @@ func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 	return nil
 }
 
-// Discard removes the container. It never touches the session directory: that
-// belongs to the runtime, and the push may not have happened yet.
+// Discard removes the container. It never touches the session directory,
+// which belongs to the runtime and may not have been pushed yet.
 func (s *Sandbox) Discard(ctx context.Context, handle sandbox.StageHandle) error {
 	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return err
@@ -408,8 +414,9 @@ func containerName(stage string) string {
 	return "replichai-" + safe
 }
 
-// guestOf maps a host path to what the stage sees, so a working directory
-// stated as a host path reaches the container as its mount destination.
+// guestOf maps a host path to the path the stage sees, so that a working
+// directory given as a host path reaches the container as its mount
+// destination.
 func guestOf(spec sandbox.StageSpec, host string) string {
 	for _, path := range spec.Paths {
 		if path.Host == host {
