@@ -9,17 +9,17 @@ import (
 	"testing"
 )
 
-// A project may be created with no papers (036).
+// These tests cover creating a project with no papers (036).
 //
-// The requirement it replaces was left over from 006j, when creating a project
-// *was* starting work. 012 unfused those: a create records papers and enqueues
-// nothing, and papers are added from inside the project afterwards — so a paper
-// at creation time guards nothing, and can be removed a second later from the
-// project it just gated.
+// The requirement they replace was left over from 006j, when creating a
+// project also started work. 012 separated the two: a create records papers
+// and enqueues nothing, and papers are added from inside the project
+// afterwards. A paper required at creation time therefore guards nothing, and
+// can be removed a moment later from the project it gated.
 //
-// What a project genuinely cannot do without is a name, because the title falls
-// back to the first paper's reference. So the refusal moves rather than
-// disappearing, and these three cases are the whole of the rule.
+// What a project cannot do without is a name, because the title falls back to
+// the first paper's reference. The refusal therefore moves rather than
+// disappearing, and these three cases are the whole rule.
 
 func createdID(t *testing.T, body []byte) string {
 	t.Helper()
@@ -44,7 +44,7 @@ func TestAProjectMayBeCreatedWithNoPapers(t *testing.T) {
 		t.Fatalf("create returned no project id: %s", w.Body)
 	}
 
-	// It is a real project: readable, named as asked, and holding nothing.
+	// The project is readable, has the title it was given, and holds no papers.
 	r := do(t, h, "GET", "/projects/"+id, "", "sub-1")
 	if r.Code != http.StatusOK {
 		t.Fatalf("reading the empty project = %d %s", r.Code, r.Body)
@@ -84,7 +84,7 @@ func TestAProjectWithNeitherTitleNorPaperIsRefused(t *testing.T) {
 	if got := errorCode(w.Body.Bytes()); got != "missing_title" {
 		t.Fatalf("refused with %q, want missing_title — with no paper there is nothing to name it after", got)
 	}
-	// Refused means nothing was made. A create that half-happened would leave an
+	// A refusal creates nothing. A create that partly succeeded would leave an
 	// unnamed project the owner never asked for.
 	list := do(t, h, "GET", "/projects", "", "sub-1")
 	var out []map[string]any
@@ -99,8 +99,9 @@ func TestAProjectWithNeitherTitleNorPaperIsRefused(t *testing.T) {
 func TestAPaperStillNamesAnUntitledProject(t *testing.T) {
 	h := NewRouter(testDeps(allowAll)).Handler()
 
-	// 006j's behaviour, unchanged: with a paper and no title, the first
-	// reference is the placeholder name (which enrichment may later replace).
+	// This is the behaviour from 006j, unchanged: with a paper and no title,
+	// the first reference is the placeholder name, which enrichment may later
+	// replace.
 	const ref = "https://arxiv.org/abs/2302.03714"
 	w := do(t, h, "POST", "/projects", `{"papers":["`+ref+`"]}`, "sub-1")
 	if w.Code != http.StatusCreated {

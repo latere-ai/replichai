@@ -24,10 +24,11 @@ import (
 const microPerCent = 10_000
 
 // startCheckout opens a hosted USD checkout for the credit a signed-in person is
-// buying. The credited amount — gross less the current spread — is computed here
-// and carried on the session, so the webhook posts it without recomputing and an
-// admin editing the spread mid-flight cannot change what this purchase credits
-// (022b). EUR presentment is the processor's Adaptive Pricing, not this handler.
+// buying. The credited amount, the gross less the current spread, is computed
+// here and carried on the checkout session, so the webhook posts it without
+// recomputing, and an admin editing the spread during the purchase cannot
+// change what it credits (022b). EUR presentment is done by the processor's
+// Adaptive Pricing, not by this handler.
 func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 	id, _ := IdentityFrom(r)
 	var body struct {
@@ -37,8 +38,9 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	// Snap to whole cents (the processor's unit) and price from the policy in
-	// force. A failed read resolves to the seeded defaults inside the store.
+	// The amount is rounded down to whole cents, the processor's unit, and
+	// priced from the policy in force. A failed read yields the seeded
+	// defaults inside the store.
 	cents := body.AmountMicro / microPerCent
 	gross := cents * microPerCent
 	var set platform.Settings
@@ -76,14 +78,15 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"url": out.URL})
 }
 
-// stripeWebhook is the one thing that credits a purchase (022b). It is off the
-// operator gate because the processor carries no session; the signature is its
-// authentication, and the credited amount comes from the verified event's
-// metadata, never a redirect parameter. Idempotent by the ledger: a retried
-// delivery posts the same external reference and moves the balance once.
+// stripeWebhook is the only handler that credits a purchase (022b). It is
+// outside the operator gate because the processor carries no session; the
+// signature is its authentication, and the credited amount comes from the
+// verified event's metadata, never from a redirect parameter. The ledger makes
+// it idempotent: a retried delivery posts the same external reference and moves
+// the balance once.
 func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if rt.payments == nil {
-		w.WriteHeader(http.StatusOK) // nothing configured; acknowledge and drop
+		w.WriteHeader(http.StatusOK) // Nothing is configured, so the event is acknowledged and dropped.
 		return
 	}
 	body, err := io.ReadAll(r.Body)
@@ -107,12 +110,12 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	switch ev.Kind {
 	case pay.KindPaid:
 		if code := rt.creditPurchase(r, ev); code != http.StatusOK {
-			writeError(w, code, "topup_failed") // let Stripe retry
+			writeError(w, code, "topup_failed") // Stripe retries on a non-2xx status.
 			return
 		}
 	case pay.KindRefunded, pay.KindDisputed:
 		if code := rt.reversePurchase(r, ev); code != http.StatusOK {
-			writeError(w, code, "refund_failed") // let Stripe retry
+			writeError(w, code, "refund_failed") // Stripe retries on a non-2xx status.
 			return
 		}
 	}
@@ -120,9 +123,9 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 // creditPurchase posts the wallet credit a paid checkout earned, from the
-// verified event's metadata. Returns 200 when there is nothing to post (so a
-// malformed event is acknowledged, not retried) or when the post succeeds, and
-// 500 only on a store error worth retrying.
+// verified event's metadata. It returns 200 when there is nothing to post, so
+// a malformed event is acknowledged rather than retried, or when the post
+// succeeds, and 500 only on a store error worth retrying.
 func (rt *Router) creditPurchase(r *http.Request, ev pay.Event) int {
 	credited, perr := strconv.ParseInt(ev.Meta["credited_micro"], 10, 64)
 	if ev.Email == "" || perr != nil || credited <= 0 {
@@ -139,11 +142,12 @@ func (rt *Router) creditPurchase(r *http.Request, ev pay.Event) int {
 	return http.StatusOK
 }
 
-// reversePurchase claws back a refunded or disputed purchase: a negative adjust
-// of the *exact micro-USD the purchase credited* (the FX-drift rule — the USD
-// credited, not the euros paid), keyed on the reversal's own id so it dedupes
-// independently. A refund of a purchase this ledger never recorded is
-// acknowledged and dropped, not retried.
+// reversePurchase reverses a refunded or disputed purchase with a negative
+// adjustment of the exact micro-USD the purchase credited. This is the FX-drift
+// rule: the USD credited is reversed, not the euros paid. The adjustment is
+// keyed on the reversal's own id so it is deduplicated independently. A refund
+// of a purchase this ledger never recorded is acknowledged and dropped rather
+// than retried.
 func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	if rt.credits == nil {
 		return http.StatusOK
@@ -158,9 +162,10 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusOK
 	}
-	// Whether this reversal is the one that puts the account in the red: read the
-	// balance before, so the freeze email is sent once, on the crossing, and not
-	// again on a further refund of an already-negative wallet.
+	// The balance is read before the refund to detect whether this reversal
+	// makes it negative, so the freeze e-mail is sent once, when the balance
+	// crosses zero, and not again on a further refund of an already negative
+	// wallet.
 	before, _ := rt.credits.Balance(r.Context(), orig.Holder)
 	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.ReversalRef, "stripe:refund:"+ev.ReversalRef); err != nil {
 		slog.ErrorContext(r.Context(), "stripe webhook: refund not recorded", "email", email, "error", err)

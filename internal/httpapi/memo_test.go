@@ -12,8 +12,8 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// publicListings counts how often the public zone is listed, which is the
-// query every anonymous registry and sitemap hit used to cost.
+// publicListings counts how often the public zone is listed. This is the
+// query that every anonymous registry and sitemap request used to run.
 type publicListings struct {
 	ProjectStore
 	listed atomic.Int32
@@ -24,10 +24,11 @@ func (c *publicListings) ListPublic(ctx context.Context) ([]project.Project, err
 	return c.ProjectStore.ListPublic(ctx)
 }
 
-// The anonymous registry and the sitemap are the same for every caller who
-// is not signed in, and are built once between rebuilds rather than on each
-// hit — and rebuilt the moment a publication changes, so a flip is visible
-// to the internet at once.
+// TestTheAnonymousRegistryAndSitemapAreBuiltOncePerChange checks that the
+// anonymous registry and the sitemap, which are the same for every caller who
+// is not signed in, are built once and reused rather than built on each
+// request, and that they are rebuilt as soon as a publication changes, so a
+// change in visibility is visible to anonymous callers at once.
 func TestTheAnonymousRegistryAndSitemapAreBuiltOncePerChange(t *testing.T) {
 	d := testDeps(allowAll)
 	store := &publicListings{ProjectStore: d.Projects}
@@ -61,8 +62,8 @@ func TestTheAnonymousRegistryAndSitemapAreBuiltOncePerChange(t *testing.T) {
 		t.Fatalf("three sitemap hits listed the public zone %d more times, want once", got-1)
 	}
 
-	// A signed-in caller's list carries their own stake in each row and is
-	// built for them, so it is not the held one.
+	// A signed-in caller's list carries their own relation to each row and is
+	// built for them, so the memoised answer is not used.
 	if w := do(t, h, "GET", "/public", "", "someone"); w.Code != http.StatusOK {
 		t.Fatalf("signed-in /public: %d", w.Code)
 	}
@@ -70,7 +71,7 @@ func TestTheAnonymousRegistryAndSitemapAreBuiltOncePerChange(t *testing.T) {
 		t.Fatalf("a signed-in list must be built for the caller; listed %d times, want 3", got)
 	}
 
-	// A publication changing drops both held answers.
+	// A change to a publication drops both memoised answers.
 	rt.publicChanged()
 	_ = do(t, h, "GET", "/public", "", "")
 	_ = do(t, h, "GET", "/sitemap.xml", "", "")

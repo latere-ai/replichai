@@ -39,8 +39,9 @@ func (c *countingResolver) Resolve(ctx context.Context, ref string) (ResolvedPap
 	return ResolvedPaper{Key: ref, Title: "Title of " + ref}, nil
 }
 
-// One request with many papers must not open as many connections to the paper
-// sources: enrichment resolves a few at a time.
+// TestTitleEnrichmentIsBounded checks that one request with many papers does
+// not open as many connections to the paper sources. Enrichment resolves a
+// bounded number of papers at a time.
 func TestTitleEnrichmentIsBounded(t *testing.T) {
 	resolver := &countingResolver{}
 	d := testDeps(allowAll)
@@ -66,7 +67,8 @@ func TestTitleEnrichmentIsBounded(t *testing.T) {
 	}
 }
 
-// A request past the paper bound is refused before anything is recorded.
+// TestTooManyPapersInOneRequestIsRefused checks that a request with more
+// papers than MaxPapersPerRequest is refused before anything is recorded.
 func TestTooManyPapersInOneRequestIsRefused(t *testing.T) {
 	d := testDeps(allowAll)
 	rt := NewRouter(d)

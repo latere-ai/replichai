@@ -29,7 +29,8 @@ func projectOf(t *testing.T, h http.Handler, id, sub string) project.Project {
 	return out.Project
 }
 
-// AC1 and AC2: an owner describes their project, and it reads back.
+// TestDescribingAProject covers AC1 and AC2: an owner describes their project,
+// and the description reads back.
 func TestDescribingAProject(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -62,13 +63,14 @@ func TestDescribingAProject(t *testing.T) {
 	if got := projectOf(t, h, p.ID, "me"); got.Description != "" {
 		t.Errorf("description after clearing = %q", got.Description)
 	}
-	// A body that changes nothing is a mistake worth naming.
+	// A body that changes nothing is refused.
 	if w := do(t, h, "PATCH", "/projects/"+p.ID, `{}`, "me"); w.Code != http.StatusBadRequest {
 		t.Errorf("an empty edit = %d, want 400", w.Code)
 	}
 }
 
-// AC1, the refusals: too long, and not yours.
+// TestADescriptionIsBoundedAndOwned covers the AC1 refusals: a description
+// that is too long, and a project the caller does not own.
 func TestADescriptionIsBoundedAndOwned(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -86,9 +88,10 @@ func TestADescriptionIsBoundedAndOwned(t *testing.T) {
 	}
 }
 
-// AC3: the description's visibility is the project's. A stranger reading a
-// private project gets no description, by the same redaction that hides the
-// owner — and gets it on a public one, because that is what publishing means.
+// TestADescriptionIsAsVisibleAsItsProject covers AC3: the description has the
+// project's visibility. A caller with no relation to a private project gets no
+// description, by the same redaction that hides the owner, and gets it on a
+// public one, because publishing discloses it.
 func TestADescriptionIsAsVisibleAsItsProject(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -97,8 +100,8 @@ func TestADescriptionIsAsVisibleAsItsProject(t *testing.T) {
 		t.Fatalf("describe = %d", w.Code)
 	}
 
-	// A private project is hidden from a stranger outright — there is no
-	// description to leak because there is no project to read.
+	// A private project is hidden from a caller with no relation to it, so
+	// there is no project to read and no description to disclose.
 	if w := do(t, h, "GET", "/projects/"+p.ID, "", "stranger"); w.Code != http.StatusNotFound {
 		t.Errorf("a stranger reading a private project = %d, want 404", w.Code)
 	}
@@ -106,8 +109,9 @@ func TestADescriptionIsAsVisibleAsItsProject(t *testing.T) {
 	if err := d.Projects.SetPublic(context.Background(), p.ID, project.SignOff{By: "me", Name: "Ada Lovelace", Contact: "ada@example.org"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	// Public, and read by somebody with no stake in it: the description travels
-	// with what publishing discloses, while the redaction still strips the owner.
+	// Once public and read by somebody with no relation to it, the description
+	// is disclosed with the rest of the publication, while the redaction still
+	// strips the owner.
 	got := projectOf(t, h, p.ID, "stranger")
 	if got.Description != "what this is about" {
 		t.Errorf("a public project's description = %q, want it readable", got.Description)

@@ -9,12 +9,13 @@ import (
 	"testing"
 )
 
-// Every project-scoped and session-scoped route resolves through one gate,
-// and the gate tells a stranger nothing: a private project they may not view
-// answers exactly as a project that does not exist. This walks the registered
-// routes rather than a hand-kept list, so a route added tomorrow is held to
-// the rule the day it is registered. A route that reads its body before
-// resolving would leak through a 400, so the bodies here are valid JSON.
+// TestAStrangerCannotTellAPrivateProjectFromNone checks that every
+// project-scoped and session-scoped route resolves the project through one
+// function, and that a private project the caller may not view answers exactly
+// as a project that does not exist. The test walks the registered routes rather
+// than a hand-kept list, so a route added later is checked as soon as it is
+// registered. A route that reads its body before resolving the project would
+// reveal the project through a 400, so the bodies here are valid JSON.
 func TestAStrangerCannotTellAPrivateProjectFromNone(t *testing.T) {
 	d := testDeps(allowAll)
 	rt := NewRouter(d)

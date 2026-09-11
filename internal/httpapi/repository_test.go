@@ -14,8 +14,8 @@ import (
 	"github.com/latere-ai/replichai/internal/paper"
 )
 
-// fakeProvisioner records what it was asked for and answers with a credential
-// no wider than one repository.
+// fakeProvisioner records the identities it was asked for and answers with a
+// credential scoped to one repository.
 type fakeProvisioner struct {
 	asked []paper.Identity
 	fail  error
@@ -32,8 +32,9 @@ func (f *fakeProvisioner) Provision(_ context.Context, id paper.Identity) (Provi
 	}, nil
 }
 
-// 045l AC5–AC6: a member gets a repository and a credential to push it, and the
-// terminal never names the repository — it names a paper the project holds.
+// TestProvisioningNamesTheRepositoryFromThePaperTheProjectHolds covers 045l
+// AC5 and AC6: a member gets a repository and a credential to push to it, and
+// the terminal never names the repository. It names a paper the project holds.
 func TestProvisioningNamesTheRepositoryFromThePaperTheProjectHolds(t *testing.T) {
 	d := testDeps(allowAll)
 	repos := &fakeProvisioner{}
@@ -59,14 +60,16 @@ func TestProvisioningNamesTheRepositoryFromThePaperTheProjectHolds(t *testing.T)
 	if len(repos.asked) != 1 || repos.asked[0].Key != "doi:10.1145/3654777.3676417" {
 		t.Fatalf("provisioner was asked for %+v", repos.asked)
 	}
-	// The repo name in the request body reached nothing: the platform decides.
+	// The repo name in the request body was ignored. The platform decides the
+	// name.
 	if strings.Contains(response.Body.String(), "anything-i-like") {
 		t.Error("the terminal named its own repository")
 	}
 }
 
-// A paper the project does not hold gets nothing, on the same terms as every
-// other route that works against a project's papers.
+// TestProvisioningRefusesAPaperTheProjectDoesNotHold checks that a paper the
+// project does not hold is refused, on the same terms as every other route
+// that works against a project's papers.
 func TestProvisioningRefusesAPaperTheProjectDoesNotHold(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Repos = &fakeProvisioner{}
@@ -80,7 +83,8 @@ func TestProvisioningRefusesAPaperTheProjectDoesNotHold(t *testing.T) {
 	}
 }
 
-// 045l AC5: a non-member is refused by the same gate every project write uses.
+// TestProvisioningIsAProjectWrite covers 045l AC5: a non-member is refused by
+// the same check every project write uses.
 func TestProvisioningIsAProjectWrite(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Repos = &fakeProvisioner{}
@@ -94,9 +98,10 @@ func TestProvisioningIsAProjectWrite(t *testing.T) {
 	}
 }
 
-// 045l AC4: a deployment whose forge credential cannot mint says so, and never
-// answers with a credential of its own. This test fails if the handler ever
-// starts returning the server's token as a consolation.
+// TestADeploymentThatCannotMintSaysSo covers 045l AC4: a deployment whose
+// forge credential cannot mint reports that, and never answers with a
+// credential of its own. This test fails if the handler ever returns the
+// server's token as a fallback.
 func TestADeploymentThatCannotMintSaysSo(t *testing.T) {
 	for name, deps := range map[string]func(Deps) Deps{
 		"no provisioner wired": func(d Deps) Deps { return d },

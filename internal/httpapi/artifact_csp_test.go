@@ -10,16 +10,16 @@ import (
 	"testing"
 )
 
-// TestArtifactSVGCannotScript pins the guard that keeps a committed file from
-// running as script on this origin.
+// TestArtifactSVGCannotScript checks the header that keeps a committed file
+// from running as script on this origin.
 //
 // GET /jobs/{id}/artifact is an open route serving bytes an agent committed to a
 // repository, and a .svg is served as image/svg+xml so the app can render it in
-// an <img>. An SVG opened directly in a tab is a document, not a picture: it
-// runs any <script> it carries, on our origin, against the reader's session.
-// nosniff does not help — the type is declared, not sniffed — so the response
-// carries a Content-Security-Policy that sandboxes it into an opaque origin with
-// scripts off.
+// an <img>. An SVG opened directly in a tab is a document rather than an image:
+// it runs any <script> it carries, on this origin, against the reader's
+// session. nosniff does not help, because the type is declared rather than
+// sniffed, so the response carries a Content-Security-Policy that sandboxes
+// it into an opaque origin with scripts disabled.
 func TestArtifactSVGCannotScript(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -29,9 +29,9 @@ func TestArtifactSVGCannotScript(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("artifact = %d, want 200", w.Code)
 	}
-	// The type stays image/svg+xml: the app renders a committed SVG through
-	// <img src=…> (frontend/src/artifact.ts treats svg as an image), and text/plain
-	// would silently stop it rendering at all.
+	// The type stays image/svg+xml. The app renders a committed SVG through an
+	// <img> element, since frontend/src/artifact.ts treats svg as an image, and
+	// text/plain would stop it rendering without any error.
 	if ct := w.Header().Get("Content-Type"); ct != "image/svg+xml" {
 		t.Errorf("Content-Type = %q, want image/svg+xml", ct)
 	}
@@ -39,8 +39,8 @@ func TestArtifactSVGCannotScript(t *testing.T) {
 	if csp == "" {
 		t.Fatal("no Content-Security-Policy: a committed .svg opened in a tab would run its own script on this origin")
 	}
-	// sandbox with no allow-scripts is what disables script; an allow-scripts
-	// token anywhere would hand it straight back.
+	// A sandbox directive with no allow-scripts token is what disables script.
+	// An allow-scripts token anywhere would enable it again.
 	if !cspHasToken(csp, "sandbox") {
 		t.Errorf("CSP = %q, want a sandbox directive", csp)
 	}
@@ -52,9 +52,9 @@ func TestArtifactSVGCannotScript(t *testing.T) {
 	}
 }
 
-// TestArtifactTextIsSandboxedToo pins that the header is unconditional rather
-// than an svg special case: a type added to artifactContentType later inherits
-// the guard instead of having to remember it.
+// TestArtifactTextIsSandboxedToo checks that the header is unconditional
+// rather than an svg special case, so a type added to artifactContentType
+// later is covered without a further change.
 func TestArtifactTextIsSandboxedToo(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -80,27 +80,28 @@ func cspHasToken(csp, token string) bool {
 	return false
 }
 
-// TestArtifactPathCannotInjectForgeQuery pins the other half of the path rule.
+// TestArtifactPathCannotInjectForgeQuery checks the other half of the path
+// rule.
 //
-// The artifact path is pasted straight into the forge URL
-// (github.Client.GetFileRaw concatenates ".../contents/" + path), so a `?` in
-// the path is not a character in a filename — it starts a query string on the
+// The artifact path is concatenated directly into the forge URL, because
+// github.Client.GetFileRaw builds ".../contents/" + path. A `?` in the path is
+// therefore not a character in a filename: it starts a query string on the
 // contents API, where `ref` chooses which branch, tag or commit to read. An
-// anonymous caller could therefore ask for a tree the project never published
+// anonymous caller could otherwise ask for a tree the project never published
 // but the platform credential can still see. A `#` truncates the URL to the
 // repository root for the same reason. Both are refused at the edge, alongside
-// `..` and the rest.
+// `..` and the other refused characters.
 //
 // The query decoder unescapes once, so `%3F` arrives here as a bare `?` and
-// slips past the existing percent check — which is why this needs its own rule.
+// passes the existing percent check, which is why this needs its own rule.
 func TestArtifactPathCannotInjectForgeQuery(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
 	j := publishedSession(t, d, "me", "r1", nil)
 
 	for _, path := range []string{
-		"README.md%3Fref=secret-branch", // ?ref= — a different tree of the same repo
-		"README.md%23fragment",          // # — truncates the forge URL
+		"README.md%3Fref=secret-branch", // ?ref= selects a different tree of the same repository.
+		"README.md%23fragment",          // # truncates the forge URL.
 	} {
 		w := do(t, h, "GET", "/jobs/"+j.ID+"/artifact?path="+path, "", "me")
 		if w.Code != http.StatusBadRequest {

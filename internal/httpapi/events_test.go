@@ -20,8 +20,9 @@ import (
 )
 
 // publicSession enqueues a session in a fresh public project, so the SSE tests'
-// unauthenticated client may view it (the stream is scoped like every session
-// read). It returns the project store to wire into Deps and the session.
+// unauthenticated client may view it. The stream is scoped like every other
+// session read. It returns the project store to wire into Deps and the
+// session.
 func publicSession(t *testing.T, store *job.MemStore) (*project.MemStore, job.Job) {
 	t.Helper()
 	ctx := context.Background()
@@ -40,9 +41,10 @@ func publicSession(t *testing.T, store *job.MemStore) (*project.MemStore, job.Jo
 	return projects, j
 }
 
-// AC2: the SSE stream snapshots current state first (a late viewer sees where
-// the run is, not a blank screen), flushes each event, and streams subsequent
-// transitions until the run finishes.
+// TestSSESnapshotThenStream covers AC2: the SSE stream sends a snapshot of the
+// current state first, so a late viewer sees where the run is rather than a
+// blank screen, flushes each event, and streams subsequent transitions until
+// the run finishes.
 func TestSSESnapshotThenStream(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := context.Background()
@@ -55,9 +57,10 @@ func TestSSESnapshotThenStream(t *testing.T) {
 	srv := httptest.NewServer(rt.Handler())
 	defer srv.Close()
 
-	// The run is driven to completion once the client has its snapshot — on
-	// the first frame read below, not after a guessed pause — so the snapshot
-	// is always the running phase and the stream always has the rest to show.
+	// The run is driven to completion once the client has its snapshot, on the
+	// first frame read below rather than after a fixed pause, so the snapshot
+	// is always the running phase and the stream always has later phases to
+	// show.
 	advanced := false
 	finish := func() {
 		if advanced {
@@ -91,9 +94,9 @@ func TestSSESnapshotThenStream(t *testing.T) {
 		case strings.HasPrefix(line, "data: "):
 			d := strings.TrimPrefix(line, "data: ")
 			datas = append(datas, d)
-			finish() // the snapshot has arrived; now the run moves on
+			finish() // The snapshot has arrived, so the run moves on.
 			if strings.Contains(d, `"phase":"done"`) {
-				resp.Body.Close() // got the terminal event; stop reading
+				resp.Body.Close() // The terminal event arrived, so stop reading.
 			}
 		}
 	}
@@ -101,7 +104,8 @@ func TestSSESnapshotThenStream(t *testing.T) {
 	if len(datas) == 0 {
 		t.Fatal("no events received")
 	}
-	// The snapshot shows the phase the run was already in — running, not submitted.
+	// The snapshot shows the phase the run was already in, which is running,
+	// not submitted.
 	if !strings.Contains(datas[0], `"phase":"running"`) {
 		t.Errorf("first event should snapshot the current phase (running), got %s", datas[0])
 	}
@@ -116,8 +120,9 @@ func TestSSESnapshotThenStream(t *testing.T) {
 	}
 }
 
-// progressRunner drives a job through the phases and reports usage several times
-// during the running phase (an Observe-only update, no phase change).
+// progressRunner drives a job through the phases and reports usage several
+// times during the running phase, as Observe-only updates with no phase
+// change.
 type progressRunner struct{ step time.Duration }
 
 func (progressRunner) Resolve(context.Context, *job.Job) error { return nil }
@@ -134,8 +139,9 @@ func (progressRunner) Resume(context.Context, *job.Job, func(provider.RunStatus)
 	return nil
 }
 
-// AC2+AC5 through the HTTP surface: a real worker's Observe-only progress (usage
-// with no phase change) reaches the SSE stream — not just phase transitions.
+// TestSSEStreamsWorkerProgress covers AC2 and AC5 through HTTP: a real
+// worker's Observe-only progress, meaning usage with no phase change, reaches
+// the SSE stream, not only phase transitions.
 func TestSSEStreamsWorkerProgress(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := t.Context()
@@ -145,7 +151,8 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 	srv := httptest.NewServer(rt.Handler())
 	defer srv.Close()
 
-	// Connect first (snapshot: submitted), then let the worker drive the job.
+	// Connect first, so the snapshot is the submitted phase, then let the
+	// worker drive the job.
 	reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer reqCancel()
 	req, _ := http.NewRequestWithContext(reqCtx, "GET", srv.URL+"/jobs/"+j.ID+"/events", nil)
@@ -181,12 +188,13 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 	}
 }
 
-// A reconnect with Last-Event-ID resumes the id sequence rather than restarting.
+// TestSSEResumesFromLastEventID checks that a reconnect with Last-Event-ID
+// resumes the id sequence rather than restarting it.
 func TestSSEResumesFromLastEventID(t *testing.T) {
 	store := job.NewMemStore()
 	ctx := context.Background()
 	projects, j := publicSession(t, store)
-	// A terminal job: the handler sends one snapshot and returns.
+	// For a terminal job the handler sends one snapshot and returns.
 	_ = store.Advance(ctx, j.ID, job.PhaseResolving, nil)
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
 	_ = store.Advance(ctx, j.ID, job.PhasePublishing, nil)
@@ -210,7 +218,8 @@ func TestSSEResumesFromLastEventID(t *testing.T) {
 	}
 }
 
-// A stream for a missing job is a 404, not an empty stream.
+// TestSSEMissingJob checks that a stream for a missing job answers 404, not
+// an empty stream.
 func TestSSEMissingJob(t *testing.T) {
 	rt := NewRouter(Deps{Jobs: job.NewMemStore(), Reproductions: &fakeRepro{}, Gate: allowAll})
 	srv := httptest.NewServer(rt.Handler())
@@ -225,10 +234,10 @@ func TestSSEMissingJob(t *testing.T) {
 	}
 }
 
-// readAllString drains r and returns what arrived. A stream cut off mid-flight
-// is the thing under test, so a read error is not a failure here: the partial
-// body is the observation. io.ReadAll returns exactly that — what it read, plus
-// the error we are choosing to ignore.
+// readAllString drains r and returns what arrived. A stream cut off before it
+// ends is what is under test, so a read error is not a failure here; the
+// partial body is the observation. io.ReadAll returns what it read together
+// with the error, and the error is ignored.
 func readAllString(r io.Reader) string {
 	b, _ := io.ReadAll(r)
 	return string(b)

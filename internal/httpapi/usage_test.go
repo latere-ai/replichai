@@ -9,10 +9,12 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// A cache write is billed above fresh input, so a derived figure that drops it
-// under-reports the run by its most expensive input class (011). A span reports
-// creation as one number with no lifetime, unlike the session total, so it is
-// carried unattributed rather than assigned to a bucket it may not belong to.
+// TestEventUsageCarriesCacheCreationUnattributed checks that a span's cache
+// creation is kept. A cache write is billed above fresh input, so a derived
+// figure that drops it under-reports the run by its most expensive input class
+// (011). Unlike the session total, a span reports creation as one number with
+// no lifetime, so it is carried unattributed rather than assigned to a
+// lifetime bucket it may not belong to.
 func TestEventUsageCarriesCacheCreationUnattributed(t *testing.T) {
 	e := provider.Event{Usage: &provider.Usage{InputTokens: 100, OutputTokens: 50, CachedInputTokens: 10, CacheWriteTokens: 400}}
 
@@ -32,9 +34,10 @@ func TestEventUsageCarriesCacheCreationUnattributed(t *testing.T) {
 	}
 }
 
-// The session total is the sum of exactly the per-event figures the viewer
-// shows (006s), and that has to keep holding for a class added later — which is
-// why the sum goes through Usage.Add rather than a hand-written field list.
+// TestAttachUsageSumsEveryClass checks that the session total is the sum of
+// exactly the per-event figures the viewer shows (006s). This must still hold
+// for a class added later, which is why the sum goes through Usage.Add rather
+// than a hand-written field list.
 func TestAttachUsageSumsEveryClass(t *testing.T) {
 	events := []provider.Event{
 		{Usage: &provider.Usage{InputTokens: 10, OutputTokens: 1, CachedInputTokens: 2, CacheWriteTokens: 3}},
@@ -64,8 +67,9 @@ func TestAttachUsageSumsEveryClass(t *testing.T) {
 	}
 }
 
-// Add is the one place a sum over usages lives, so a class added to the struct
-// cannot be forgotten by a caller summing fields by hand.
+// TestUsageAddCoversEveryClass checks that Usage.Add sums every class. Add is
+// the only place usages are summed, so a class added to the struct cannot be
+// omitted by a caller summing fields by hand.
 func TestUsageAddCoversEveryClass(t *testing.T) {
 	one := provider.Usage{
 		InputTokens: 1, OutputTokens: 2, CachedInputTokens: 3,

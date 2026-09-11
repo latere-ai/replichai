@@ -13,8 +13,8 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// filed makes a project holding one paper, which is what a session — imported
-// or run here — must be filed against.
+// filed creates a project holding one paper, which every session, imported or
+// run here, must be filed against.
 func filed(t *testing.T, d Deps, owner, key string) string {
 	t.Helper()
 	p, err := d.Projects.Create(context.Background(), owner, "Local work")
@@ -39,8 +39,9 @@ const importedBody = `{
   "started_at": "2026-08-25T10:00:00Z", "finished_at": "2026-08-25T10:42:00Z"
 }`
 
-// A session run on somebody's machine lands as an ordinary session with an
-// origin, and every read path renders it with no special case.
+// TestAnImportedSessionIsAnOrdinarySession checks that a session run on a
+// user's own machine is stored as an ordinary session with an origin, and that
+// every read path renders it without a special case.
 func TestAnImportedSessionIsAnOrdinarySession(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -73,8 +74,8 @@ func TestAnImportedSessionIsAnOrdinarySession(t *testing.T) {
 	if stored.Status.Verdict == nil || !stored.Status.Verdict.Passed() {
 		t.Fatalf("verdict = %+v", stored.Status.Verdict)
 	}
-	// The session reads back through the ordinary project listing, with no
-	// handler asking what its origin is.
+	// The session reads back through the ordinary project listing, and no
+	// handler checks its origin.
 	listing := do(t, h, http.MethodGet, "/projects/"+id, "", "me")
 	if listing.Code != http.StatusOK {
 		t.Fatalf("project read = %d: %s", listing.Code, listing.Body)
@@ -84,8 +85,9 @@ func TestAnImportedSessionIsAnOrdinarySession(t *testing.T) {
 	}
 }
 
-// Re-pushing the same session updates one row, which is what makes an
-// interrupted upload resumable by running it again.
+// TestReimportingIsIdempotentOverHTTP checks that pushing the same session
+// again updates one row, which makes an interrupted upload resumable by
+// running it again.
 func TestReimportingIsIdempotentOverHTTP(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -108,8 +110,8 @@ func TestReimportingIsIdempotentOverHTTP(t *testing.T) {
 	}
 }
 
-// The record must be about a paper the project holds, and about a session that
-// has actually ended.
+// TestTheImportIsRefusedWhenItIsNotARecord checks that the record must name a
+// paper the project holds and a session that has ended.
 func TestTheImportIsRefusedWhenItIsNotARecord(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -129,8 +131,9 @@ func TestTheImportIsRefusedWhenItIsNotARecord(t *testing.T) {
 	}
 }
 
-// The route is gated like every other operator route: it is registered through
-// the gated helper, so the enumerable-routes test covers it too.
+// TestTheImportRouteIsGated checks that the route is gated like every other
+// operator route. It is registered through the gated helper, so the test that
+// enumerates gated routes covers it too.
 func TestTheImportRouteIsGated(t *testing.T) {
 	d := testDeps(GateFunc(func(*http.Request) (bool, string) { return false, "not_granted" }))
 	h := NewRouter(d).Handler()

@@ -14,16 +14,16 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// moveBody is the one request shape this route takes. The key travels in the
-// body for startSession's reason: paper.Key returns "doi:10.1145/…", which spans
-// several path segments and would route nowhere.
+// moveBody builds the request body this route takes. The key travels in the
+// body for the same reason as in startSession: paper.Key returns
+// "doi:10.1145/…", which spans several path segments and would not route.
 func moveBody(key, to string) string {
 	return `{"paper_key":"` + key + `","to_project":"` + to + `"}`
 }
 
-// finish drives a session to a terminal phase, which is the only state a paper
-// may be moved in. Deps.Jobs is the read seam, so the store is reached through
-// the concrete type the test built.
+// finish advances a session to a terminal phase, which is the only state a
+// paper may be moved in. Deps.Jobs is a read-only interface, so the store is
+// reached through the concrete type the test built.
 func finish(t *testing.T, d Deps, id string) {
 	t.Helper()
 	store, ok := d.Jobs.(*job.MemStore)
@@ -35,8 +35,8 @@ func finish(t *testing.T, d Deps, id string) {
 	}
 }
 
-// twoProjects gives one owner a source holding a paper and an empty
-// destination — the setup nearly every move test starts from.
+// twoProjects creates, for one owner, a source project holding a paper and an
+// empty destination project. Nearly every move test starts from this setup.
 func twoProjects(t *testing.T, d Deps, owner, key, ref string) (from, to project.Project) {
 	t.Helper()
 	ctx := context.Background()
@@ -54,9 +54,10 @@ func twoProjects(t *testing.T, d Deps, owner, key, ref string) (from, to project
 	return from, to
 }
 
-// 035 AC1: a paper filed under the wrong project is refiled under the right
-// one, and the sessions that are runs of it go with it. A session under a
-// project that is not about its paper is the orphan 015 exists to prevent.
+// TestMovingAPaperTakesItsSessions covers 035 AC1: a paper filed under the
+// wrong project is refiled under the right one, and the sessions that ran it
+// move with it. A session under a project that does not hold its paper is the
+// orphan that 015 exists to prevent.
 func TestMovingAPaperTakesItsSessions(t *testing.T) {
 	ctx := context.Background()
 	d := testDeps(allowAll)
@@ -95,8 +96,8 @@ func TestMovingAPaperTakesItsSessions(t *testing.T) {
 	if sessions, _ := d.Jobs.ListByProject(ctx, from.ID); len(sessions) != 0 {
 		t.Errorf("source still holds %d sessions", len(sessions))
 	}
-	// And the destination reads it as a paper with a session, which is the join
-	// the project screen makes: the paper row and its runs arrived together.
+	// The destination lists it as a paper with one session. This is the join
+	// the project screen makes, so the paper row and its runs arrived together.
 	w := do(t, h, "GET", "/projects/"+to.ID+"/papers", "", "sub-1")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list papers: status %d", w.Code)
@@ -110,10 +111,11 @@ func TestMovingAPaperTakesItsSessions(t *testing.T) {
 	}
 }
 
-// 035 AC3: a paper is not moved out from under a run. The worker holds the old
-// project id in memory, publishing may be in flight, and a live row rewritten
-// into another project moves inside jobs_active_paper_project — the partial
-// unique index the paper table cannot see. It is 032's terminal-only rule.
+// TestMovingAPaperIsRefusedWhileItRuns covers 035 AC3: a paper is not moved
+// while a session of it runs. The worker holds the old project id in memory,
+// publishing may be in flight, and rewriting a live row into another project
+// would move it inside jobs_active_paper_project, the partial unique index the
+// paper table cannot see. This is the terminal-only rule from 032.
 func TestMovingAPaperIsRefusedWhileItRuns(t *testing.T) {
 	ctx := context.Background()
 	d := testDeps(allowAll)
@@ -133,9 +135,10 @@ func TestMovingAPaperIsRefusedWhileItRuns(t *testing.T) {
 	}
 }
 
-// 035 AC4: two projects about the same paper is exactly when somebody
-// reorganises, so the collision is real. Merging two papers' session histories
-// is not a move, and a refusal must leave both projects untouched.
+// TestMovingOntoAPaperTheDestinationHolds covers 035 AC4: two projects holding
+// the same paper is the usual state when somebody reorganises, so the
+// collision happens in practice. Merging two papers' session histories is not
+// a move, so the request is refused and both projects are left unchanged.
 func TestMovingOntoAPaperTheDestinationHolds(t *testing.T) {
 	ctx := context.Background()
 	d := testDeps(allowAll)
@@ -155,9 +158,10 @@ func TestMovingOntoAPaperTheDestinationHolds(t *testing.T) {
 	}
 }
 
-// 035 AC5/AC6: every gate the route puts in front of a move, one request each.
-// They are asserted together because the bug this guards is a route that checks
-// three of them and forgets the fourth.
+// TestMovingAPaperIsRefused covers 035 AC5 and AC6: every check the route
+// applies before a move, one request each. They are asserted together because
+// the bug this guards against is a route that applies some checks and omits
+// one.
 func TestMovingAPaperIsRefused(t *testing.T) {
 	ctx := context.Background()
 	d := testDeps(allowAll)
@@ -183,16 +187,16 @@ func TestMovingAPaperIsRefused(t *testing.T) {
 		}
 	}
 
-	// Somebody else's project is not a destination, and is not confirmed to
-	// exist either: the id came from the caller, so a 403 would tell them they
-	// had guessed a real one.
+	// Another user's project is not a valid destination, and its existence is
+	// not confirmed either. The id came from the caller, so a 403 would tell
+	// them they had guessed a real one.
 	stranger, _ := d.Projects.Create(ctx, "sub-2", "Not yours")
 	w := do(t, h, "POST", path, moveBody(key, stranger.ID), "sub-1")
 	if w.Code != http.StatusNotFound || errorCode(w.Body.Bytes()) != "target_not_found" {
 		t.Errorf("a stranger's project as destination: status %d, body %s", w.Code, w.Body)
 	}
 
-	// A trashed project is writable by nobody, at either end.
+	// A trashed project cannot be written to, at either end of the move.
 	if err := d.Projects.Trash(ctx, to.ID); err != nil {
 		t.Fatalf("trash: %v", err)
 	}
@@ -204,9 +208,9 @@ func TestMovingAPaperIsRefused(t *testing.T) {
 		t.Fatalf("restore: %v", err)
 	}
 
-	// Published at either end and the move is refused: moving a paper out of a
-	// published project changes what a signed attestation covers. The owner
-	// withdraws first, which is 006o's whole point.
+	// A published project at either end refuses the move, because moving a
+	// paper out of a published project changes what a signed attestation
+	// covers. The owner must withdraw first, which is the purpose of 006o.
 	if err := d.Projects.SetPublic(ctx, to.ID, project.SignOff{By: "sub-1", AttestationVersion: "v2"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -214,8 +218,8 @@ func TestMovingAPaperIsRefused(t *testing.T) {
 		errorCode(w.Body.Bytes()) != "project_public" {
 		t.Errorf("a published destination: status %d, body %s", w.Code, w.Body)
 	}
-	// And a withdrawal makes it movable again — the sign-off is still on the
-	// row, which is exactly why the check reads Visibility and not the sign-off.
+	// A withdrawal makes it movable again. The sign-off is still on the row,
+	// which is why the check reads Visibility and not the sign-off.
 	if err := d.Projects.SetPrivate(ctx, to.ID, project.Withdrawal{By: "sub-1", Reason: "reorganising"}); err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
@@ -224,9 +228,10 @@ func TestMovingAPaperIsRefused(t *testing.T) {
 	}
 }
 
-// 035: a move is a remove from one project and an add to the other, so it is
-// authorised like removing — the lead's, matching who may move credits out —
-// and on both ends, not just the one in the path.
+// TestMovingAPaperIsTheLeads covers 035: a move is a removal from one project
+// and an addition to the other, so it is authorised like a removal. Only a
+// lead may do it, matching who may move credits out, and the check applies to
+// both projects, not only the one in the path.
 func TestMovingAPaperIsTheLeads(t *testing.T) {
 	ctx := context.Background()
 	d := testDeps(allowAll)
@@ -236,8 +241,8 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 	collab := Identity{Sub: "sub-2", Email: "collab@example.org"}
 	from, to := twoProjects(t, d, owner.Sub, key, "https://arxiv.org/abs/2302.03714")
 
-	// A collaborator in both projects may work in them — and still may not move
-	// a paper between them.
+	// A collaborator in both projects may work in them, but may not move a
+	// paper between them.
 	for _, p := range []project.Project{from, to} {
 		if err := d.Members.SeedLead(ctx, p.ID, access.Principal{Sub: owner.Sub, Email: owner.Email}); err != nil {
 			t.Fatalf("seed lead: %v", err)
@@ -256,10 +261,10 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 		t.Fatalf("a collaborator moving a paper: status %d, body %s", w.Code, w.Body)
 	}
 
-	// Authorisation is answered before state. A destination they may not move
-	// into must not first tell them it is published — the caller may name any
-	// project they have a stake in, so the order of these two checks is the
-	// difference between a refusal and a disclosure.
+	// Authorisation is checked before state. A destination the caller may not
+	// move into must not first report that it is published. The caller may
+	// name any project they are a member of, so the order of these two checks
+	// decides whether the response is a refusal or a disclosure.
 	if err := d.Projects.SetPublic(ctx, to.ID, project.SignOff{By: owner.Sub, AttestationVersion: "v2"}); err != nil {
 		t.Fatalf("publish the destination: %v", err)
 	}
@@ -270,8 +275,9 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 		t.Fatalf("withdraw: %v", err)
 	}
 
-	// Promoted to lead of the source alone, they still cannot: the destination
-	// is checked by the same rule, which is the half a one-project helper misses.
+	// Promoted to lead of the source alone, they still cannot move the paper.
+	// The destination is checked by the same rule, which a helper that checks
+	// only one project would miss.
 	if err := d.Members.Add(ctx, access.Principal{Sub: owner.Sub, Email: owner.Email},
 		from.ID, collab.Email, access.RoleLead); err != nil {
 		t.Fatalf("promote in the source: %v", err)
@@ -280,7 +286,7 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 		t.Fatalf("a lead of one end only: status %d, body %s", w.Code, w.Body)
 	}
 
-	// A lead of both may.
+	// A lead of both projects may move the paper.
 	if err := d.Members.Add(ctx, access.Principal{Sub: owner.Sub, Email: owner.Email},
 		to.ID, collab.Email, access.RoleLead); err != nil {
 		t.Fatalf("promote in the destination: %v", err)

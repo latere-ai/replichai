@@ -19,28 +19,29 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 )
 
-// The project archive (020): one download that hands a reader everything a
-// project produced.
+// This file serves the project archive (020): one download that gives a reader
+// everything a project produced.
 //
 // The app already proxies committed files one at a time, because the
 // repositories are usually private and a reader with legitimate access cannot
-// simply clone them. That left no way to get the work out: a project with three
-// sessions and forty files each is a hundred and twenty clicks and a hundred and
-// twenty loose files with no record of which session each came from. For a
-// product whose argument is that a verdict should be checkable, taking the
-// evidence away to check it should not be the hard part.
+// clone them. That left no convenient way to get the work out: a project with
+// three sessions of forty files each would take a hundred and twenty downloads
+// and leave a hundred and twenty loose files with no record of which session
+// each came from. Since the product's purpose is a checkable verdict, taking the
+// evidence away to check it should be easy.
 
 // archiveProject streams a project's committed trees as one zip.
 //
-// It is written straight to the ResponseWriter rather than built and then sent:
-// a project's repositories can be large, and buffering one in memory to learn
-// its size before sending buys nothing here — nobody needs a Content-Length on
-// this.
+// It is written straight to the ResponseWriter rather than built and then sent.
+// A project's repositories can be large, and buffering one in memory to learn
+// its size before sending gains nothing, because a Content-Length is not needed
+// here.
 //
-// Which means the status code is committed before the work is done. Once the
+// The status code is therefore committed before the work is done. Once the
 // first byte is out the response is a 200 whatever happens next, so a session
 // whose forge read fails is recorded in the archive's own MANIFEST.txt instead.
-// A truncated zip with a 200 is silently incomplete; a noted one is not.
+// A truncated zip with a 200 would be silently incomplete; one with a note in
+// the manifest is not.
 func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 	proj, err := rt.projects.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, project.ErrNotFound) {
@@ -51,11 +52,12 @@ func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "project_read_failed")
 		return
 	}
-	// Hidden, not refused — getProject's rule rather than the older member
-	// routes': whether a stranger's project exists is not a stranger's business,
-	// and a route added now should not inherit that leak. The predicate is the
-	// same one every other project-scoped read consults, so a public project is
-	// open to any reader and a private one to its members.
+	// A project the caller may not view answers 404 rather than 403. This is
+	// getProject's rule rather than the older member routes' rule: the
+	// existence of a project must not be disclosed to a caller who may not
+	// view it, and a route added now should not inherit that leak. The
+	// predicate is the same one every other project-scoped read consults, so
+	// a public project is open to any reader and a private one to its members.
 	if !rt.mayViewProject(r, proj) {
 		writeError(w, http.StatusNotFound, "not_found")
 		return
@@ -65,9 +67,9 @@ func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
 		return
 	}
-	// The one refusal that can be decided before the first byte, and worth a real
-	// status: "this project has produced nothing yet" is a different answer from
-	// an empty archive.
+	// This is the one refusal that can be decided before the first byte, and it
+	// gets a status code because a project that has produced nothing is a
+	// different answer from an empty archive.
 	if !anyPublished(sessions) {
 		writeError(w, http.StatusConflict, "no_artifacts")
 		return
@@ -79,11 +81,11 @@ func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	zw := zip.NewWriter(w)
-	// The manifest is written last (it reports what happened) but read first, so
-	// the notes accumulate while the tree is walked.
+	// The manifest is written last, because it reports what happened, but is
+	// meant to be read first. The notes accumulate while the trees are walked.
 	notes := &manifest{project: proj.Title, id: proj.ID}
-	// Oldest first: the archive reads in the order the work happened, which is the
-	// opposite of the order a list of sessions is useful in.
+	// Sessions are written oldest first, so the archive reads in the order the
+	// work happened, which is the reverse of the order the session list uses.
 	for _, session := range slices.Backward(sessions) {
 		rt.archiveSession(r, zw, session, notes)
 	}
@@ -91,8 +93,8 @@ func (rt *Router) archiveProject(w http.ResponseWriter, r *http.Request) {
 		slog.WarnContext(r.Context(), "archive: manifest not written", "project", proj.ID, "error", err)
 	}
 	if err := zw.Close(); err != nil {
-		// Nothing can be said to the client at this point — the body is already
-		// half-sent — so this is for us.
+		// The body is already partly sent, so the client cannot be told; the
+		// error is logged instead.
 		slog.WarnContext(r.Context(), "archive: closing the zip", "project", proj.ID, "error", err)
 	}
 }
@@ -130,8 +132,8 @@ func (rt *Router) archiveSession(r *http.Request, zw *zip.Writer, s job.Job, not
 	notes.session(s, repo, written)
 }
 
-// writeEntry puts one file in the archive. Deflate, because a reproduction is
-// mostly source and text.
+// writeEntry puts one file in the archive. It uses Deflate, because a
+// reproduction is mostly source and text.
 func writeEntry(zw *zip.Writer, name string, body []byte, at time.Time) error {
 	h := &zip.FileHeader{Name: name, Method: zip.Deflate}
 	if !at.IsZero() {
@@ -156,9 +158,9 @@ func anyPublished(sessions []job.Job) bool {
 	return false
 }
 
-// manifest is the archive's own account of itself: what this is, which sessions
-// are in it, and what could not be read. It is the only place a mid-stream
-// failure can be reported, since the status code is long gone by then.
+// manifest describes the archive: what it is, which sessions are in it, and
+// what could not be read. It is the only place a mid-stream failure can be
+// reported, since the status code has already been sent by then.
 type manifest struct {
 	project string
 	id      string
@@ -185,9 +187,8 @@ func (m *manifest) render() string {
 		b.WriteString("  " + l + "\n")
 	}
 	if len(m.errs) > 0 {
-		// The archive is complete except for these. Saying so is the whole reason
-		// this section exists: an incomplete download that looks complete is the
-		// failure worth engineering against.
+		// The archive is complete except for these entries. This section exists
+		// so that an incomplete download does not look complete.
 		b.WriteString("\nERRORS\n")
 		for _, e := range m.errs {
 			b.WriteString("  " + e + "\n")
@@ -196,13 +197,13 @@ func (m *manifest) render() string {
 	return b.String()
 }
 
-// unsafeInName is everything a downloaded filename should not carry: path
-// separators, quotes (the Content-Disposition header is quoted), and anything a
-// shell or a file manager would rather not meet.
+// unsafeInName matches everything a downloaded filename should not contain:
+// path separators, quotes, since the Content-Disposition header is quoted, and
+// anything else a shell or a file manager may mishandle.
 var unsafeInName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-// archiveName turns a project title into a filename, falling back to the id for
-// a title that survives none of it — an untitled project still downloads.
+// archiveName turns a project title into a filename, falling back to the id
+// when nothing of the title survives, so an untitled project still downloads.
 func archiveName(title, id string) string {
 	name := strings.Trim(unsafeInName.ReplaceAllString(title, "-"), "-")
 	if len(name) > 80 {

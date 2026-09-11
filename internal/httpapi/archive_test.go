@@ -18,9 +18,9 @@ import (
 	"github.com/latere-ai/replichai/internal/job"
 )
 
-// openZip reads a response body as a real archive. A byte-count assertion would
-// pass on something that only looks like a zip, which is exactly the failure a
-// streamed archive can produce.
+// openZip reads a response body as a zip archive. A byte-count assertion would
+// pass on output that only resembles a zip, which is the failure a streamed
+// archive can produce.
 func openZip(t *testing.T, body []byte) map[string]string {
 	t.Helper()
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
@@ -43,9 +43,9 @@ func openZip(t *testing.T, body []byte) map[string]string {
 	return out
 }
 
-// 020 AC1/AC2/AC7: the archive holds every session's committed tree under the
-// session that produced it, plus a manifest naming what is in it — and it opens
-// as a zip.
+// TestProjectArchive covers 020 AC1, AC2 and AC7: the archive holds every
+// session's committed tree under the session that produced it, plus a manifest
+// naming the contents, and it opens as a zip.
 func TestProjectArchive(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -54,8 +54,8 @@ func TestProjectArchive(t *testing.T) {
 
 	p, _ := d.Projects.Create(ctx, owner.Sub, "Point of no Undo")
 	published := publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
-	// A second session that never published: it has nothing committed, so it is
-	// a line in the manifest rather than an empty directory.
+	// A second session that never published has nothing committed, so it
+	// appears as a line in the manifest rather than as an empty directory.
 	unpublished, err := d.Jobs.Enqueue(ctx, job.Submission{
 		Principal: owner.Sub, Ref: "ref-2", Kind: job.KindAudit, Project: p.ID, PaperKey: "arxiv:2",
 	})
@@ -85,8 +85,8 @@ func TestProjectArchive(t *testing.T) {
 			t.Errorf("the archive has no %s; it holds %v", want, slices.Sorted(maps.Keys(files)))
 		}
 	}
-	// Organised by session, not merged: two sessions' REPRODUCIBILITY.md must not
-	// collide, which is the distinction 015 spent a spec restoring.
+	// Files are organised by session, not merged. Two sessions' REPRODUCIBILITY.md
+	// must not collide, which is the distinction 015 restored.
 	if body := files["sessions/"+published.ID+"/README.md"]; body != "content of README.md" {
 		t.Errorf("README.md = %q, want the committed bytes", body)
 	}
@@ -102,8 +102,8 @@ func TestProjectArchive(t *testing.T) {
 	}
 }
 
-// 020 AC3: a project that has produced nothing is a refusal with a reason, not
-// an empty archive.
+// TestArchiveRefusesAProjectWithNothingInIt covers 020 AC3: a project that has
+// produced nothing answers a refusal with a reason, not an empty archive.
 func TestArchiveRefusesAProjectWithNothingInIt(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -116,9 +116,10 @@ func TestArchiveRefusesAProjectWithNothingInIt(t *testing.T) {
 	}
 }
 
-// 020 AC4: the gate is view rights, not ownership. A collaborator downloads the
-// project they work in and a reader downloads what was published; a stranger on
-// a private project is told nothing exists.
+// TestArchiveFollowsViewRights covers 020 AC4: the check is view rights, not
+// ownership. A collaborator downloads the project they work in and a reader
+// downloads what was published. A non-member of a private project is answered
+// 404.
 func TestArchiveFollowsViewRights(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -139,12 +140,14 @@ func TestArchiveFollowsViewRights(t *testing.T) {
 	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/archive", "", collab); w.Code != http.StatusOK {
 		t.Errorf("a collaborator's download = %d, want 200", w.Code)
 	}
-	// Hidden rather than refused: a 403 tells a stranger the project exists.
+	// The project is hidden rather than refused, because a 403 would tell a
+	// non-member that the project exists.
 	if w := doAs(t, h, "GET", "/projects/"+p.ID+"/archive", "", stranger); w.Code != http.StatusNotFound {
 		t.Errorf("a stranger's download of a private project = %d, want 404", w.Code)
 	}
 
-	// Public: anyone signed in reads it, so anyone signed in may take it away.
+	// Once the project is public, anyone signed in may read it, so anyone signed
+	// in may download it.
 	publishable(t, d, owner.Sub, "ada")
 	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
 		t.Fatalf("publish: %d %s", w.Code, w.Body.String())
@@ -154,10 +157,12 @@ func TestArchiveFollowsViewRights(t *testing.T) {
 	}
 }
 
-// The download offers itself on exactly the projects the archive can serve. A
-// session count says nothing about whether any session published — repo_name
-// marks that publishing began, and a project whose every session failed before
-// that has sessions and no artifacts — so the list carries its own count.
+// TestPublishedSessionCountMatchesWhatTheArchiveServes checks that the
+// download is offered on exactly the projects the archive can serve. A session
+// count does not say whether any session published: repo_name marks that
+// publishing began, and a project whose every session failed before that has
+// sessions and no artifacts. The list therefore carries a separate published
+// count.
 func TestPublishedSessionCountMatchesWhatTheArchiveServes(t *testing.T) {
 	d := testDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -183,16 +188,17 @@ func TestPublishedSessionCountMatchesWhatTheArchiveServes(t *testing.T) {
 	if v := byID[full.ID]; v.PublishedSessions != 1 {
 		t.Errorf("a published project reports %d published sessions, want 1", v.PublishedSessions)
 	}
-	// And the count agrees with the endpoint: zero published is exactly what the
+	// The count agrees with the endpoint. Zero published sessions is what the
 	// archive refuses, so the button and the handler cannot disagree.
 	if w := doAs(t, h, "GET", "/projects/"+empty.ID+"/archive", "", owner); errorCode(w.Body.Bytes()) != "no_artifacts" {
 		t.Errorf("the archive of a project with no published session = %d/%q, want no_artifacts", w.Code, errorCode(w.Body.Bytes()))
 	}
 }
 
-// 020 AC5: a forge read that fails takes its session down, not the download. The
-// status code is already sent by then, so the failure goes inside the archive —
-// a truncated zip with a 200 is silently incomplete and a noted one is not.
+// TestArchiveRecordsWhatItCouldNotRead covers 020 AC5: a forge read that fails
+// loses its session, not the whole download. The status code has already been
+// sent by then, so the failure is recorded inside the archive. A truncated zip
+// with a 200 is silently incomplete; one with the failure noted is not.
 func TestArchiveRecordsWhatItCouldNotRead(t *testing.T) {
 	d := testDeps(allowAll)
 	d.Reproductions = &brokenRepro{fakeRepro: &fakeRepro{}, breakOn: "r2"}
@@ -218,9 +224,9 @@ func TestArchiveRecordsWhatItCouldNotRead(t *testing.T) {
 	}
 }
 
-// A project whose title survives no character of the filename rule still
-// downloads: the id is the fallback, because a nameless file is worse than an
-// ugly one.
+// TestArchiveNameFallsBackToTheID checks that a project whose title has no
+// character allowed in a filename still downloads. The id is the fallback,
+// because a file with no name is worse than one with an unreadable name.
 func TestArchiveNameFallsBackToTheID(t *testing.T) {
 	if got := archiveName("///", "abc123"); got != "project-abc123" {
 		t.Errorf("archiveName(%q) = %q, want the id fallback", "///", got)

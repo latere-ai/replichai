@@ -15,18 +15,19 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 )
 
-// errStore is the failure every store shares in these tests. It is deliberately
-// not one of the domain's sentinel errors: a backend that is simply down must
-// not be mistaken for a "not found" or a policy refusal.
+// errStore is the failure every store returns in these tests. It is
+// deliberately not one of the domain's sentinel errors, because a backend that
+// is down must not be mistaken for a not-found or a policy refusal.
 var errStore = errors.New("store is unavailable")
 
-// A read path that cannot reach its store must answer 500, never 200 with an
-// empty body and never 404. The distinction is the whole point: a 404 tells a
-// caller the thing does not exist, and a broken database does not know that.
+// failingProjects is a project store whose configured calls fail. A read path
+// that cannot reach its store must answer 500, never 200 with an empty body and
+// never 404. A 404 tells a caller the record does not exist, and a broken
+// database cannot know that.
 //
-// These paths were the largest untested surface in this package — every one of
-// them is a branch that only runs when persistence fails, which is exactly when
-// being wrong is most expensive.
+// These paths were the largest untested surface in this package. Every one of
+// them is a branch that only runs when persistence fails, which is when being
+// wrong is most expensive.
 type failingProjects struct {
 	project.Store
 	getErr, listErr, publicErr, setErr, titleErr error
@@ -159,7 +160,8 @@ func (f failingProfiles) Save(ctx context.Context, p profile.Profile) (profile.P
 	return f.Store.Save(ctx, p)
 }
 
-// A store that cannot be read is a 500 on every read surface.
+// TestReadsReportAStoreFailureAsFiveHundred checks that a store that cannot
+// be read answers 500 on every read route.
 func TestReadsReportAStoreFailureAsFiveHundred(t *testing.T) {
 	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
 
@@ -264,8 +266,9 @@ func replaceID(pattern, id string) string {
 	return out
 }
 
-// A project that cannot be read is a 500, distinct from one that is absent
-// (404) — hiding a broken database behind "not found" would send an owner
+// TestAReadableProjectIsDistinctFromAReachableStore checks that a project
+// that cannot be read answers 500, distinct from one that is absent, which
+// answers 404. Reporting a broken database as not found would send an owner
 // looking for a project they never lost.
 func TestAReadableProjectIsDistinctFromAReachableStore(t *testing.T) {
 	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
@@ -289,7 +292,8 @@ func TestAReadableProjectIsDistinctFromAReachableStore(t *testing.T) {
 	}
 }
 
-// The publish and withdraw writes fail loudly too: a sign-off that was not
+// TestPublishAndWithdrawReportAWriteFailure checks that the publish and
+// withdraw writes report a store failure, because a sign-off that was not
 // recorded must never be reported as recorded.
 func TestPublishAndWithdrawReportAWriteFailure(t *testing.T) {
 	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
@@ -310,8 +314,9 @@ func TestPublishAndWithdrawReportAWriteFailure(t *testing.T) {
 	}
 }
 
-// A project whose sessions cannot be listed cannot be cleared for publication:
-// the gate reads the manifests, and an unread manifest is not a clear one.
+// TestPublishRefusesWhenSessionsCannotBeRead checks that a project whose
+// sessions cannot be listed cannot be cleared for publication. The gate reads
+// the manifests, and a manifest that could not be read is not a clean one.
 func TestPublishRefusesWhenSessionsCannotBeRead(t *testing.T) {
 	owner := Identity{Sub: "owner-sub", Email: "owner@x.com"}
 	d := testDeps(allowAll)

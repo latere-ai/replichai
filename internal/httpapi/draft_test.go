@@ -22,7 +22,7 @@ import (
 )
 
 // fakeDrafter answers with a canned paragraph and records what it was asked, so
-// a test can assert both the money and what left the building.
+// a test can assert both the charge and what was sent to the model.
 type fakeDrafter struct {
 	model  string
 	text   string
@@ -38,7 +38,7 @@ func (f *fakeDrafter) Name() string { return f.model }
 func (f *fakeDrafter) Complete(_ context.Context, r draft.Request) (draft.Result, error) {
 	f.calls++
 	f.prompt, f.system = r.Prompt, r.System
-	// The usage travels with a failure too, as the real models do when they
+	// The usage is returned with a failure too, as the real models do when they
 	// answer with nothing: those tokens were spent and are still billable.
 	return draft.Result{Text: f.text, Model: f.model, Usage: f.usage}, f.err
 }
@@ -55,13 +55,13 @@ func pricedAt(input, output int64) platform.Settings {
 	return platform.Settings{Rates: credit.Card{Models: []credit.Rates{{Model: draftModel, Input: input, Output: output}}}}
 }
 
-// draftDeps wires a project with credits, a priced drafting model, and a paper
-// with a record — the ordinary case.
+// draftDeps wires the ordinary case: a project with credits, a priced drafting
+// model, and a paper with a record.
 func draftDeps(t *testing.T, d *fakeDrafter, set platform.Settings) (Deps, string) {
 	t.Helper()
 	deps := testDeps(allowAll)
-	// No Authority: these tests are about drafting, not about who may create
-	// credits, which the ledger's own contract covers.
+	// The ledger has no Authority. These tests cover drafting, not who may
+	// create credits, which the ledger's own contract covers.
 	ledger := credit.NewMemStore(nil, nil)
 	deps.Credits = ledger
 	deps.Reserve = func(context.Context) (int64, error) { return credit.Dollar, nil }
@@ -90,14 +90,15 @@ func draftDeps(t *testing.T, d *fakeDrafter, set platform.Settings) (Deps, strin
 	return deps, p.ID
 }
 
-// AC3 and AC4: a draft is written from what the project holds, charged to the
-// project at the configured price, and stored nowhere.
+// TestDraftingADescription checks AC3 and AC4: a draft is written from what
+// the project holds, charged to the project at the configured price, and
+// stored nowhere.
 func TestDraftingADescription(t *testing.T) {
 	d := &fakeDrafter{
 		model: draftModel,
 		text:  "Two papers on whether a segmentation overlay changes what a driver trusts.",
 		// A million input tokens at 1 and a million output at 5 would be 6 units;
-		// these are the fractions that actually occur.
+		// these are the fractions that occur in practice.
 		usage: provider.Usage{InputTokens: 1_000_000, OutputTokens: 200_000},
 	}
 	deps, id := draftDeps(t, d, pricedAt(1_000_000, 5_000_000))
@@ -128,8 +129,8 @@ func TestDraftingADescription(t *testing.T) {
 		t.Errorf("the project was charged %d, want %d", before-after, 2*credit.Dollar)
 	}
 
-	// Written from the project, and stored nowhere: the description is still
-	// empty until somebody saves what they read.
+	// The draft is written from the project and stored nowhere: the description
+	// is still empty until somebody saves it.
 	if p, _ := deps.Projects.Get(context.Background(), id); p.Description != "" {
 		t.Errorf("the draft was stored without anybody accepting it: %q", p.Description)
 	}
@@ -143,8 +144,9 @@ func TestDraftingADescription(t *testing.T) {
 	}
 }
 
-// AC4, the other half: the charge is one ledger line of its own kind, so a
-// project's statement accounts for what its drafts cost beside its sessions.
+// TestADraftAppearsInTheStatement checks the other half of AC4: the charge is
+// one ledger entry of its own kind, so a project's statement accounts for what
+// its drafts cost beside its sessions.
 func TestADraftAppearsInTheStatement(t *testing.T) {
 	d := &fakeDrafter{model: draftModel, text: "A paragraph.", usage: provider.Usage{InputTokens: 500_000}}
 	deps, id := draftDeps(t, d, pricedAt(1_000_000, 5_000_000))
@@ -170,14 +172,15 @@ func TestADraftAppearsInTheStatement(t *testing.T) {
 	}
 }
 
-// AC5, AC6, AC7 and AC9: every refusal, and which of them the owner is told
-// about versus the operator.
+// TestDraftingRefusals checks AC5, AC6, AC7 and AC9: every refusal, and which
+// of them is reported to the owner and which to the operator.
 func TestDraftingRefusals(t *testing.T) {
 	good := func() *fakeDrafter {
 		return &fakeDrafter{model: draftModel, text: "A paragraph.", usage: provider.Usage{InputTokens: 1000}}
 	}
 
-	// AC7: no model configured — the route says so, and 038 still works.
+	// AC7: with no model configured the route answers 503, and the 038 manual
+	// description still works.
 	deps, id := draftDeps(t, good(), pricedAt(1_000_000, 5_000_000))
 	deps.Drafter = nil
 	h := NewRouter(deps).Handler()
@@ -188,7 +191,8 @@ func TestDraftingRefusals(t *testing.T) {
 		t.Errorf("a deployment that cannot draft cannot describe either: %d", w.Code)
 	}
 
-	// AC6: configured but unpriced — refused, and the model is never called.
+	// AC6: a model that is configured but unpriced is refused, and the model is
+	// never called.
 	d := good()
 	deps, id = draftDeps(t, d, platform.Settings{Rates: credit.Card{Models: []credit.Rates{{Model: "some-other-model", Input: 1}}}})
 	h = NewRouter(deps).Handler()
@@ -199,7 +203,8 @@ func TestDraftingRefusals(t *testing.T) {
 		t.Error("an unpriced model was called anyway, and the tokens are unaccounted for")
 	}
 
-	// A card that prices it at nothing is not a price: free compute by typo.
+	// A card that prices the model at zero does not count as a price, because a
+	// typo would otherwise make compute free.
 	d = good()
 	deps, id = draftDeps(t, d, pricedAt(0, 0))
 	h = NewRouter(deps).Handler()
@@ -227,15 +232,15 @@ func TestDraftingRefusals(t *testing.T) {
 		t.Error("an unfunded project's draft was written and then not paid for")
 	}
 
-	// AC9: not a member, not your draft to ask for.
+	// AC9: a caller who is not a member may not request a draft.
 	deps, id = draftDeps(t, good(), pricedAt(1_000_000, 5_000_000))
 	h = NewRouter(deps).Handler()
 	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "stranger"); w.Code == http.StatusOK {
 		t.Error("a stranger drafted for somebody else's project")
 	}
 
-	// A model that fails is a bad gateway, not a 500: it is somebody else's
-	// endpoint, and the project was charged nothing.
+	// A model that fails is a 502, not a 500, because the failure is in an
+	// external endpoint. The project is charged nothing.
 	failing := &fakeDrafter{model: draftModel, err: errors.New("endpoint down")}
 	deps, id = draftDeps(t, failing, pricedAt(1_000_000, 5_000_000))
 	h = NewRouter(deps).Handler()
@@ -248,9 +253,9 @@ func TestDraftingRefusals(t *testing.T) {
 	}
 }
 
-// AC7, as the app sees it: the model list says whether this deployment drafts,
-// so the screen can offer the control or not rather than offering one that
-// answers 503.
+// TestTheModelListSaysWhetherItDrafts checks AC7 from the app's side: the
+// model list says whether this deployment drafts, so the screen can decide
+// whether to offer the control rather than offering one that answers 503.
 func TestTheModelListSaysWhetherItDrafts(t *testing.T) {
 	says := func(deps Deps) bool {
 		w := do(t, NewRouter(deps).Handler(), "GET", "/models", "", "me")
@@ -277,10 +282,12 @@ func TestTheModelListSaysWhetherItDrafts(t *testing.T) {
 	}
 }
 
-// The balance check is read-then-spend and the spend lands after the model has
-// answered, so a burst of requests would otherwise all read one healthy balance
-// and all buy tokens. A session cannot do that — 011 holds the money before the
-// work — and a draft has no job to hold against, so the bound is on the work.
+// TestOnlyOneDraftAtATimePerProject checks that a project runs one draft at a
+// time. The balance check is read-then-spend and the spend lands after the
+// model has answered, so a burst of requests would otherwise all read one
+// sufficient balance and all buy tokens. A session cannot do that, because 011
+// holds the credits before the work, but a draft has no job to hold against,
+// so the bound is on the concurrent work instead.
 func TestOnlyOneDraftAtATimePerProject(t *testing.T) {
 	release := make(chan struct{})
 	entered := make(chan struct{}, 1)
@@ -293,7 +300,7 @@ func TestOnlyOneDraftAtATimePerProject(t *testing.T) {
 	go func() {
 		done <- do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me").Code
 	}()
-	<-entered // the first draft is inside the model call
+	<-entered // The first draft is inside the model call.
 
 	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me"); w.Code != http.StatusTooManyRequests {
 		t.Errorf("a second concurrent draft = %d, want 429", w.Code)
@@ -305,14 +312,14 @@ func TestOnlyOneDraftAtATimePerProject(t *testing.T) {
 	if d.calls != 1 {
 		t.Errorf("the model was called %d times for two requests", d.calls)
 	}
-	// And the slot is released, so the next one goes through.
+	// The slot is released, so the next draft goes through.
 	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me"); w.Code != http.StatusOK {
 		t.Errorf("the draft after the first finished = %d, want 200", w.Code)
 	}
 }
 
-// blockingDrafter holds a call open until released, so a test can have two
-// requests genuinely overlap.
+// blockingDrafter holds a call open until released, so a test can make two
+// requests overlap.
 type blockingDrafter struct {
 	model   string
 	entered chan struct{}
@@ -335,10 +342,11 @@ func (b *blockingDrafter) Complete(_ context.Context, _ draft.Request) (draft.Re
 	return draft.Result{Text: "A paragraph.", Model: b.model, Usage: provider.Usage{InputTokens: 1000}}, nil
 }
 
-// A model that answered with nothing is refused, and the project is still
-// charged for the tokens the attempt burned. Refusing without charging would
-// leave the deployment paying for the compute, and answering 200 would let the
-// owner save a blank description over one they had.
+// TestAnEmptyDraftIsChargedAndRefused checks that a model that answered with
+// nothing is refused, and that the project is still charged for the tokens the
+// attempt spent. Refusing without charging would leave the deployment paying
+// for the compute, and answering 200 would let the owner save a blank
+// description over an existing one.
 func TestAnEmptyDraftIsChargedAndRefused(t *testing.T) {
 	d := &fakeDrafter{
 		model: draftModel,
@@ -360,8 +368,8 @@ func TestAnEmptyDraftIsChargedAndRefused(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	// The same code the blank answer has always been refused with, so the app
-	// keeps telling the person the same thing.
+	// The error code is the one a blank answer has always been refused with, so
+	// the app's message to the user is unchanged.
 	if got.Error != "drafting_empty" {
 		t.Errorf("error = %q, want drafting_empty", got.Error)
 	}
@@ -385,9 +393,10 @@ func TestAnEmptyDraftIsChargedAndRefused(t *testing.T) {
 	}
 }
 
-// The models in this repository refuse a blank with ErrEmptyDraft, but Drafter
-// is an interface anybody can satisfy, so a blank answered as a success is
-// refused here too rather than handed to the editor.
+// TestABlankAnsweredAsASuccessIsStillRefused checks that a blank answered as
+// a success is refused rather than handed to the editor. The models in this
+// repository refuse a blank with ErrEmptyDraft, but Drafter is an interface any
+// implementation can satisfy.
 func TestABlankAnsweredAsASuccessIsStillRefused(t *testing.T) {
 	d := &fakeDrafter{model: draftModel, text: "   ", usage: provider.Usage{InputTokens: 1_000_000}}
 	deps, id := draftDeps(t, d, pricedAt(1_000_000, 5_000_000))
@@ -395,7 +404,7 @@ func TestABlankAnsweredAsASuccessIsStillRefused(t *testing.T) {
 	if w := do(t, h, "POST", "/projects/"+id+"/description/draft", "", "me"); w.Code != http.StatusBadGateway {
 		t.Fatalf("a blank draft = %d, want 502: %s", w.Code, w.Body.String())
 	}
-	// Still charged, for the same reason the refusal above is.
+	// The project is still charged, for the same reason as in the test above.
 	if after, _ := deps.Credits.Balance(context.Background(), credit.Pot(id)); after != 4*credit.Dollar {
 		t.Errorf("balance = %d, want the dollar of tokens taken off 5", after)
 	}

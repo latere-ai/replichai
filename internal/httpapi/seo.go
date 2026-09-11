@@ -14,36 +14,36 @@ import (
 	"github.com/latere-ai/replichai/internal/seo"
 )
 
-// The head the server writes (042a).
+// This file writes the HTML head the server serves for public pages (042a).
 //
-// The app is client-rendered, so every address it serves arrives at a crawler
-// and a link unfurler as one fixed head: the same title, the same picture, the
-// same sentence, whatever was published there. The routes below resolve an
-// address to what it is *about* before the shell goes out, and hand the shell a
+// The app is client-rendered, so without this every address it serves would
+// reach a crawler or a link unfurler with the same fixed head: the same title,
+// picture and sentence, whatever was published there. The routes below resolve
+// an address to its subject before the shell is served, and hand the shell a
 // seo.Page to render in place of its default head.
 //
-// Two rules govern every builder here, and neither is optional.
+// Two rules govern every page builder here, and neither is optional.
 //
-// The first is that a page is described only when the thing at that address is
-// public — `Visibility == public && !Trashed()`, or a profile whose owner turned
-// their page on. Deliberately *not* mayViewProject, which admits an owner to
-// their own private project: an owner's browser has no use for injected
-// metadata, and keying on the caller would leave "does a private title reach
-// crawlable HTML" one identity away from being true. Everything else gets the
+// First, a page is described only when the record at that address is public:
+// `Visibility == public && !Trashed()`, or a profile whose owner made their page
+// public. The check is deliberately not mayViewProject, which admits an owner to
+// their own private project. An owner's browser has no use for injected
+// metadata, and keying on the caller would mean a private title reaching
+// crawlable HTML depends on a single identity check. Everything else gets the
 // default head and X-Robots-Tag: noindex.
 //
-// The second is that describing a page never leaves the database. A session's
+// Second, describing a page never reads beyond the database. A session's
 // verdict lives in a manifest behind a forge call, and a crawler walking the
-// public zone must not turn into one GitHub request per URL, so what a session
-// page says comes from the project, the paper row and the job row.
+// public zone must not cause one GitHub request per URL, so what a session page
+// says comes from the project, the paper row and the job row.
 
 // spaRoutes registers the public app addresses so each can describe itself. They
 // sit in front of the SPA fallback and end in it: the response is the same shell
-// with the same status, carrying a head that names what is actually there.
+// with the same status, carrying a head that names what is at the address.
 //
-// The paths cannot collide with the API's — 013 chose /registry and /p/… exactly
-// because /public, /projects and /profiles belong to the API, and routes.test.ts
-// holds that rule on the client side.
+// The paths cannot collide with the API's. 013 chose /registry and /p/ because
+// /public, /projects and /profiles belong to the API, and routes.test.ts holds
+// that rule on the client side.
 func (rt *Router) spaRoutes() {
 	if rt.spa == nil {
 		return
@@ -65,13 +65,13 @@ func (rt *Router) described(build func(*http.Request) seo.Page) http.HandlerFunc
 	}
 }
 
-// hidden is what an address gets when the record behind it is not public, or is
-// not there at all. The two are one answer on purpose: a head that differed
-// between "private" and "absent" would report the existence of every private
-// project to anybody walking ids, which is the leak 028 closed on the API.
+// hidden is the page for an address whose record is not public or does not
+// exist. The two cases share one answer deliberately: a head that differed
+// between private and absent would reveal the existence of every private
+// project to anybody enumerating ids, which is the leak 028 closed on the API.
 var hidden = seo.Page{NoIndex: true}
 
-/* ─── The four public screens ─── */
+// The four public screens.
 
 func (rt *Router) landingPage(*http.Request) seo.Page {
 	return rt.page(seo.Page{
@@ -86,12 +86,12 @@ func (rt *Router) landingPage(*http.Request) seo.Page {
 					"name":  seo.SiteName,
 					"url":   rt.site.Abs(seo.LandingPath),
 					// The site-level description says what the platform is for,
-					// not only what it does first. Reproduction is the act that
-					// can be automated and graded today, which is what earns the
-					// trust the rest of the roadmap needs; the sentence is
-					// written so it stays true as research on this platform
-					// becomes something a researcher runs rather than only
-					// something the platform re-runs for them.
+					// not only what it does today. Reproduction is the activity
+					// that can be automated and graded now, and it earns the trust
+					// the rest of the roadmap needs. The sentence is written so it
+					// stays true as research on this platform becomes something a
+					// researcher runs, rather than only something the platform
+					// re-runs for them.
 					"description": "A platform where research is implemented, run and published as evidence anyone can check, under the name of the researcher who signed it off.",
 					"publisher":   latere,
 				},
@@ -126,7 +126,7 @@ func (rt *Router) projectPage(r *http.Request) seo.Page {
 	}
 	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
 	if err != nil {
-		papers = nil // a description without its bibliography beats no description
+		papers = nil // A description without its bibliography is better than none.
 	}
 	url := rt.site.Abs(seo.ProjectPath(proj.ID))
 	return rt.page(seo.Page{
@@ -138,9 +138,9 @@ func (rt *Router) projectPage(r *http.Request) seo.Page {
 	})
 }
 
-// sessionPage describes one published session under a public project. It is the
-// address a shared link most often carries — the transcript and the verdict of a
-// single run — and it says which paper that run is of.
+// sessionPage describes one published session under a public project. This is
+// the address a shared link most often carries, since it holds the transcript
+// and the verdict of a single run, and it names the paper that run is of.
 func (rt *Router) sessionPage(r *http.Request) seo.Page {
 	proj, ok := rt.publicProject(r, r.PathValue("id"))
 	if !ok {
@@ -195,10 +195,10 @@ func (rt *Router) profilePage(r *http.Request) seo.Page {
 	})
 }
 
-/* ─── The reads, and the one predicate that gates them ─── */
+// The reads, and the predicate that gates them.
 
-// publicProject reads a project and admits it only if a stranger may. Nothing
-// here consults the caller: see the two rules at the top of this file.
+// publicProject reads a project and returns it only if it is public. Nothing
+// here consults the caller; see the two rules at the top of this file.
 func (rt *Router) publicProject(r *http.Request, id string) (project.Project, bool) {
 	if rt.projects == nil || id == "" {
 		return project.Project{}, false
@@ -210,14 +210,14 @@ func (rt *Router) publicProject(r *http.Request, id string) (project.Project, bo
 	return proj, true
 }
 
-// page fills in what every described page shares: the site's card, and the
-// canonical it was built from.
+// page fills in what every described page shares, which is the site's card
+// image.
 func (rt *Router) page(p seo.Page) seo.Page {
 	p.Image = rt.site.Abs(seo.CardImage)
 	return p
 }
 
-/* ─── The structured data, which is only what the page already says ─── */
+// The structured data, which repeats only what the page already says.
 
 const schemaOrg = "https://schema.org"
 
@@ -225,9 +225,9 @@ const schemaOrg = "https://schema.org"
 var latere = map[string]any{"@type": "Organization", "name": "Latere AI", "url": "https://latere.ai"}
 
 // reportLD renders a reproduction as a Report about the paper it audits. The
-// bibliography is the paper's own record (037) — authors, venue, year — and the
-// identifier resolves to the work itself, so a machine reading this page can
-// join it to the literature rather than to a title string.
+// bibliography is the paper's own record (037), with authors, venue and year,
+// and the identifier resolves to the work itself, so a machine reading this
+// page can join it to the literature rather than to a title string.
 func reportLD(site seo.Site, p project.Project, papers []project.Paper, url, name string) map[string]any {
 	ld := map[string]any{
 		"@context":  schemaOrg,
@@ -242,9 +242,9 @@ func reportLD(site seo.Site, p project.Project, papers []project.Paper, url, nam
 	if p.SignedOffAt != nil && !p.SignedOffAt.IsZero() {
 		ld["datePublished"] = p.SignedOffAt.UTC().Format(time.RFC3339)
 	}
-	// The signer, as they were when they signed (006n) — the snapshot on the
-	// project, never a profile read now, so this document says what the
-	// attestation says.
+	// The signer is described as they were when they signed (006n), from the
+	// snapshot on the project rather than a profile read now, so this document
+	// says what the attestation says.
 	if p.SignedOffName != "" {
 		ld["author"] = personLD(p.SignedOffName, p.SignedOffInstitution, p.SignedOffORCID, p.SignedOffScholar, "")
 	}
@@ -312,9 +312,9 @@ func personLD(name, institution, orcid, scholar, url string) map[string]any {
 	return person
 }
 
-// sourceURL resolves a paper key to where the work lives. The key's scheme is
-// the identity 001 settled — a DOI and an arXiv id each have exactly one
-// resolver — and a url-scheme key is already the address.
+// sourceURL resolves a paper key to the address of the work. The key's scheme
+// is the identity 001 defined: a DOI and an arXiv id each have exactly one
+// resolver, and a url-scheme key is already the address.
 func sourceURL(p project.Paper) string {
 	scheme, rest, ok := strings.Cut(p.Key, ":")
 	if ok {
@@ -335,10 +335,10 @@ func sourceURL(p project.Paper) string {
 	return ""
 }
 
-/* ─── Small text rules ─── */
+// Small text rules.
 
-// title picks the first non-empty of a value and its fallback, collapsed to one
-// line: a title pasted out of a PDF arrives with newlines in it.
+// title returns the first non-empty of value and fallback, collapsed to one
+// line, because a title pasted out of a PDF arrives with newlines in it.
 func title(value, fallback string) string {
 	v := strings.Join(strings.Fields(value), " ")
 	if v != "" {
@@ -347,9 +347,9 @@ func title(value, fallback string) string {
 	return strings.Join(strings.Fields(fallback), " ")
 }
 
-// describes is the sentence a project with no description of its own gets. It
+// describes returns the description for a project that has none of its own. It
 // says what the page is rather than what the project claims, which is the only
-// thing true of every project.
+// statement true of every project.
 func describes(name string) string {
 	name = title(name, "a paper")
 	return "An independent reproduction of " + name + " on ReplicHAI: what reproduced, what did not, and the full transcript behind the verdict."
@@ -361,7 +361,7 @@ func describes(name string) string {
 const maxDescription = 300
 
 // summarize collapses whitespace and cuts at a word boundary, adding an ellipsis
-// only when something was actually dropped.
+// only when something was dropped.
 func summarize(s, fallback string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if s == "" {

@@ -20,20 +20,20 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// 028: a reproduction is published so somebody can check it, and until now
-// nobody could without an account. These tests drive the reads with **no
-// identity at all** and behind a gate that refuses everyone, so passing them
-// means the route is genuinely outside the gate rather than merely reachable by
-// whoever the test happened to be.
+// 028: a reproduction is published so that somebody can check it, and before
+// 028 nobody could without an account. These tests drive the reads with no
+// identity at all and behind a gate that refuses everyone, so passing them
+// means the route is outside the gate rather than merely reachable by the
+// identity the test used.
 
-// denyAll refuses every gated request, which is what makes "this route is open"
-// a fact rather than an artifact of a permissive test gate.
+// denyAll refuses every gated request, so a route that answers 200 behind it
+// is open rather than admitted by a permissive test gate.
 var denyAll = GateFunc(func(*http.Request) (bool, string) { return false, "no_access" })
 
 // closedTo returns a second router over the same stores whose gate refuses
 // everyone. Publishing a project is a gated write, so the fixture is built
-// through a permissive router and then read through this one — which is what
-// makes a 200 here mean "outside the gate" and nothing else.
+// through a permissive router and then read through this one, which is what
+// makes a 200 here mean that the route is outside the gate.
 func closedTo(d Deps) http.Handler {
 	closed := d
 	closed.Gate = denyAll
@@ -41,8 +41,8 @@ func closedTo(d Deps) http.Handler {
 }
 
 // pricedDeps is testDeps with a rate card, so a session in these fixtures has a
-// cost that is a real number rather than an unpriced zero. A redaction test
-// against a zero-cost session proves nothing: the field would be absent either
+// non-zero cost rather than an unpriced zero. A redaction test against a
+// zero-cost session proves nothing, because the field would be absent either
 // way.
 func pricedDeps(gate Gate) Deps {
 	d := testDeps(gate)
@@ -52,9 +52,9 @@ func pricedDeps(gate Gate) Deps {
 	return d
 }
 
-// spend makes a finished session cost something, by recording usage against the
-// card it was admitted under. Cost is derived on read from the two, so this is
-// the whole of it.
+// spend gives a finished session a cost by recording usage against the card it
+// was admitted under. Cost is derived on read from the usage and the card, so
+// nothing else is needed.
 func spend(t *testing.T, s JobStore, id string) {
 	t.Helper()
 	model := credit.DefaultCard().Models[0].Model
@@ -71,8 +71,8 @@ func spend(t *testing.T, s JobStore, id string) {
 }
 
 // publicProject builds a published project with one finished session under it,
-// and returns both. The publish flip needs a public profile, exactly as 006r
-// requires of a real signer.
+// and returns both. Publishing needs a public profile, as 006r requires of a
+// real signer.
 func publicProject(t *testing.T, d Deps, h http.Handler, owner string) (project.Project, job.Job) {
 	t.Helper()
 	p, err := d.Projects.Create(context.Background(), owner, "A published reproduction")
@@ -89,9 +89,10 @@ func publicProject(t *testing.T, d Deps, h http.Handler, owner string) (project.
 	return got, sess
 }
 
-// AC6: the open set is exactly what 028 decided, asserted whole. A tenth open
-// route is then a line somebody adds to this list on purpose, not one that slips
-// past review inside a diff about something else.
+// TestTheOpenSetIsExactlyWhatWasDecided checks AC6: the open set is exactly
+// what 028 decided, asserted as a whole. Another open route then has to be
+// added to this list deliberately, rather than passing review inside a diff
+// about something else.
 func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 	rt := NewRouter(testDeps(denyAll))
 	want := map[string]bool{
@@ -107,8 +108,8 @@ func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 		"GET /jobs/{id}/verdict":      true,
 		"GET /jobs/{id}/artifacts":    true,
 		"GET /jobs/{id}/artifact":     true,
-		// The list of what is worth reading (042b). Open by definition: it is
-		// addressed to a crawler, which has no session.
+		// The sitemap lists what is worth reading (042b). It is open because it
+		// is addressed to a crawler, which has no session.
 		"GET /sitemap.xml": true,
 	}
 	got := map[string]bool{}
@@ -130,9 +131,9 @@ func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 	}
 }
 
-// AC1: signed out, every read a public project permits answers 200 — and the
-// same reads of a private project answer 404, which hides it rather than
-// confirming it exists.
+// TestASignedOutReaderReadsAPublicProject checks AC1: signed out, every read a
+// public project permits answers 200, and the same reads of a private project
+// answer 404, which hides it rather than confirming it exists.
 func TestASignedOutReaderReadsAPublicProject(t *testing.T) {
 	d := pricedDeps(allowAll)
 	d.Reproductions.(*fakeRepro).findings = validFindings(t)
@@ -176,10 +177,11 @@ func TestASignedOutReaderReadsAPublicProject(t *testing.T) {
 	}
 }
 
-// The artifact read takes a path from the query string and the reader builds a
-// forge URL out of it, under the platform's own credential. Open (028), that URL
-// is composed by anonymous callers, so the path may name a file in the
-// repository and nothing else.
+// TestAnArtifactPathCannotLeaveTheRepository checks the artifact read, which
+// takes a path from the query string and builds a forge URL from it under the
+// platform's own credential. The route is open (028), so anonymous callers
+// compose that URL, and the path may name a file in the repository and nothing
+// else.
 func TestAnArtifactPathCannotLeaveTheRepository(t *testing.T) {
 	d := pricedDeps(allowAll)
 	_, sess := publicProject(t, d, NewRouter(d).Handler(), "owner")
@@ -206,8 +208,9 @@ func TestAnArtifactPathCannotLeaveTheRepository(t *testing.T) {
 	}
 }
 
-// AC2: the four reads that stay behind the gate stay behind it — the caller's
-// own job list, the live stream, the member roll, and the archive.
+// TestTheGatedReadsStayGated checks AC2: the four reads that stay behind the
+// gate, which are the caller's own job list, the live stream, the member list,
+// and the archive, still require an identity.
 func TestTheGatedReadsStayGated(t *testing.T) {
 	d := pricedDeps(allowAll)
 	pub, sess := publicProject(t, d, NewRouter(d).Handler(), "owner")
@@ -225,24 +228,25 @@ func TestTheGatedReadsStayGated(t *testing.T) {
 	}
 }
 
-// AC3: an unauthenticated caller is nobody. The reads are open now, so the two
-// ways an empty principal could accidentally match somebody are reachable from
-// the internet: an owner column that is empty, and a membership row seeded
-// against an email nobody has claimed.
+// TestAnonymousIsNobody checks AC3: an unauthenticated caller matches no
+// principal. The reads are open, so the two ways an empty principal could
+// accidentally match somebody are reachable from the internet: an owner column
+// that is empty, and a membership row seeded against an email nobody has
+// claimed.
 func TestAnonymousIsNobody(t *testing.T) {
 	d := testDeps(allowAll)
 	h := closedTo(d)
 	ctx := context.Background()
 
-	// The store refuses an ownerless project outright, which is the first reason
-	// `"" == ""` can never be ownership.
+	// The store refuses an ownerless project, which is the first reason an
+	// empty principal can never match an owner.
 	if _, err := d.Projects.Create(ctx, "", "Owned by nobody"); err == nil {
 		t.Error("the store accepted a project with no owner")
 	}
-	// The guard in mayViewProject is the second, and the one that holds if such a
-	// row ever arrives from somewhere other than Create — a migration, a restore,
-	// a hand-edited database. The store cannot produce one, so the predicate is
-	// asked directly.
+	// The guard in mayViewProject is the second, and the one that holds if such
+	// a row ever arrives from somewhere other than Create, such as a migration, a
+	// restore, or a hand-edited database. The store cannot produce one, so the
+	// predicate is called directly.
 	rt := NewRouter(d)
 	anon := httptest.NewRequest("GET", "/projects/x", nil)
 	if rt.mayViewProject(anon, project.Project{ID: "x", Owner: "", Visibility: project.VisibilityPrivate}) {
@@ -252,8 +256,8 @@ func TestAnonymousIsNobody(t *testing.T) {
 		t.Error("an anonymous caller has a stake in a project with an empty owner")
 	}
 
-	// A membership seeded against an email, read by a caller with no sub and no
-	// email. An empty identity must match no row.
+	// A membership is seeded against an email and read by a caller with no sub
+	// and no email. An empty identity must match no row.
 	shared, _ := d.Projects.Create(ctx, "lead", "Shared, not published")
 	lead := access.Principal{Sub: "lead", Email: "lead@example.org"}
 	if err := d.Members.SeedLead(ctx, shared.ID, lead); err != nil {
@@ -265,23 +269,24 @@ func TestAnonymousIsNobody(t *testing.T) {
 	if w := do(t, h, "GET", "/projects/"+shared.ID, "", ""); w.Code != http.StatusNotFound {
 		t.Errorf("anonymous read of a shared project = %d, want 404", w.Code)
 	}
-	// And an empty-email membership row, if one is ever seeded, does not become
-	// everybody's.
+	// An empty-email membership row, if one is ever seeded, does not match
+	// every anonymous caller.
 	if err := d.Members.Add(ctx, lead, shared.ID, "", access.RoleCollaborator); err == nil {
 		if w := do(t, h, "GET", "/projects/"+shared.ID, "", ""); w.Code != http.StatusNotFound {
 			t.Errorf("anonymous read against an empty-email membership = %d, want 404", w.Code)
 		}
 	}
-	// The invitee, once bound, still reads it — the guard refuses nobody, not
-	// everybody.
+	// The invitee, once bound, still reads it. The guard refuses the empty
+	// identity only.
 	if w := doAs(t, h, "GET", "/projects/"+shared.ID, "", Identity{Sub: "invitee", Email: "invitee@example.org"}); w.Code != http.StatusOK {
 		t.Errorf("the invited collaborator = %d, want 200", w.Code)
 	}
 }
 
-// AC4/AC5: a reader with no stake gets the reproduction and not the wallet. The
-// assertions are on the bytes, because the point is what leaves the process —
-// a zeroed field that still serialises is still a field on the wire.
+// TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost checks AC4 and AC5: a reader
+// with no stake gets the reproduction and not the credits. The assertions are
+// on the bytes, because what matters is what leaves the process, and a zeroed
+// field that still serialises is still a field on the wire.
 func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
 	d := pricedDeps(allowAll)
 	h := NewRouter(d).Handler()
@@ -295,8 +300,8 @@ func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
 			}
 		}
 	}
-	// A private profile's display name does not travel with a public project: the
-	// row names its owner only when that person has a page to name them on.
+	// A private profile's display name is not sent with a public project. The
+	// row names its owner only when that person has a public page.
 	private := pricedDeps(allowAll)
 	quiet, _ := publicProject(t, private, NewRouter(private).Handler(), "quiet-owner")
 	if _, err := private.Profiles.Save(context.Background(), profile.Profile{
@@ -313,7 +318,8 @@ func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
 		t.Errorf("a private profile's name travels with the public project: %+v", zone[0])
 	}
 
-	// What was published is still published: the signer, by the name they chose.
+	// The signer is still named, by the name they chose, because that was
+	// published.
 	for _, path := range []string{"/public", "/projects/" + pub.ID} {
 		body := do(t, h, "GET", path, "", "").Body.String()
 		if !strings.Contains(body, "Ada Lovelace") || !strings.Contains(body, "ada@example.org") {
@@ -321,22 +327,22 @@ func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
 		}
 	}
 
-	// A signed-in stranger reads exactly what a signed-out one does: browsing the
-	// registry is not a stake in the project.
+	// A signed-in stranger reads exactly what a signed-out one does. Browsing
+	// the registry is not a stake in the project.
 	stranger := do(t, h, "GET", "/projects/"+pub.ID, "", "somebody-else").Body.String()
 	if strings.Contains(stranger, `"cost"`) || strings.Contains(stranger, `"owner"`) {
 		t.Errorf("a signed-in stranger reads the owner or the cost: %s", stranger)
 	}
 
-	// The owner reads all of it, including a genuine zero cost — a session that
-	// has spent nothing says so rather than saying nothing.
+	// The owner reads all of it, including a genuine zero cost. A session that
+	// has spent nothing reports zero rather than omitting the field.
 	owned := do(t, h, "GET", "/projects/"+pub.ID, "", "owner-principal-sub").Body.String()
 	for _, want := range []string{`"owner"`, `"principal"`, `"cost"`, `"signed_off_by"`} {
 		if !strings.Contains(owned, want) {
 			t.Errorf("the owner's read is missing %s: %s", want, owned)
 		}
 	}
-	// The spend lives on the list row, not the detail — so that is where the
+	// The spend is on the list row, not the detail, so that is where the
 	// owner's copy of it is asserted.
 	if list := do(t, h, "GET", "/public", "", "owner-principal-sub").Body.String(); !strings.Contains(list, `"spend_30d"`) {
 		t.Errorf("the owner's list row is missing the spend: %s", list)

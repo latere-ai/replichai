@@ -17,14 +17,14 @@ import (
 )
 
 // MaxImportBytes bounds one imported record. The evidence itself lives in the
-// pushed repository; what arrives here is the record, and a body larger than
-// this is refused with its size named rather than truncated to fit — a
-// silently shortened record is worse evidence than a refused import.
+// pushed repository; only the record arrives here. A body larger than this is
+// refused with 413 rather than truncated to fit, because a silently shortened
+// record is worse evidence than a refused import.
 const MaxImportBytes = 1 << 20
 
-// importedSession is what a terminal presents about a session it ran (045k).
+// importedSession is the record a terminal sends about a session it ran (045k).
 // The locator is deliberately absent: it holds a host path and a process
-// handle, which are meaningless here and a small leak of the operator's home
+// handle, which are meaningless here and would leak the operator's home
 // directory.
 type importedSession struct {
 	PaperKey   string        `json:"paper_key"`
@@ -58,18 +58,19 @@ type importedUsage struct {
 }
 
 // importSession files a session somebody ran on their own machine. It reaches
-// the store through ImportLocal, which has no path to the credit ledger: the
-// compute was bought from the vendor by whoever ran it.
+// the store through ImportLocal, which does not touch the credit ledger, because
+// the compute was bought from the vendor by whoever ran it.
 //
-// Importing is not publishing. An owner's deliberate sign-off is still what
+// Importing is not publishing. An owner's explicit sign-off is still what
 // publishes a session, imported or not.
 func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	proj, ok := rt.projectForWork(w, r)
 	if !ok {
 		return
 	}
-	// The body is bounded at registration (bodyLimits names this route), so a
-	// record past MaxImportBytes fails the decode with the error tooLarge knows.
+	// The body is bounded at registration, where bodyLimits names this route,
+	// so a record past MaxImportBytes fails the decode with the error tooLarge
+	// recognises.
 	var body importedSession
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		if tooLarge(err) {
@@ -113,9 +114,9 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// statusOf renders the operator's report as the observation shape every read
-// path already understands, so an imported session needs no special case in
-// any handler that displays one.
+// statusOf converts the operator's report into the RunStatus every read path
+// already understands, so an imported session needs no special case in any
+// handler that displays one.
 func statusOf(body importedSession) provider.RunStatus {
 	status := provider.RunStatus{
 		State:         provider.StateDone,
@@ -131,9 +132,9 @@ func statusOf(body importedSession) provider.RunStatus {
 			OutputTokens:       body.Usage.Output,
 		},
 	}
-	// The grade arrives as its stable name, which is the only spelling on
-	// the wire: Grade is a uint8 and a conversion would read the name as a
-	// code point.
+	// The grade arrives as its stable name, which is the only form used on
+	// the wire. Grade is a uint8, so a direct conversion would read the
+	// name as a code point.
 	if name := strings.TrimSpace(body.Grade); name != "" {
 		var grade provider.Grade
 		if err := grade.UnmarshalJSON([]byte(strconv.Quote(name))); err == nil {
@@ -145,7 +146,7 @@ func statusOf(body importedSession) provider.RunStatus {
 
 // paperHeldBy resolves the paper a record is filed against. A session may only
 // be filed against a paper the project holds, for the same reason a session may
-// only run one: without it a caller could attach anything at all to a project.
+// only run against one: otherwise a caller could attach anything to a project.
 func (rt *Router) paperHeldBy(w http.ResponseWriter, r *http.Request, proj project.Project, key string) (project.Paper, bool) {
 	key = strings.TrimSpace(key)
 	if key == "" {
