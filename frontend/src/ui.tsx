@@ -372,16 +372,52 @@ export function NumberField({
 
 /* ── Modal + prompt ── */
 
+// What the keyboard can land on inside a dialog.
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const focusable = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(FOCUSABLE)]
+
 // Modal is the one dialog shell: a backdrop that dismisses, Escape that
-// dismisses, and a body that does not scroll behind it.
+// dismisses, a body that does not scroll behind it, and the keyboard's place
+// while it is up. aria-modal alone told a screen reader the page behind was
+// inert and did nothing to make it so: focus stayed on the button that opened
+// the dialog, Tab walked the page underneath, and nothing brought the keyboard
+// back when the dialog closed. Every dialog is one Modal, so it is done here.
 export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title: string; eyebrow?: ReactNode; icon?: IconName; onClose: () => void; children: ReactNode; foot?: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  // In on open, back to the opener on close. A field that took focus itself
+  // (autoFocus) keeps it.
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    document.addEventListener('keydown', esc)
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const el = box.current
+    if (el && !el.contains(document.activeElement)) (focusable(el)[0] ?? el).focus()
+    return () => opener?.focus()
+  }, [])
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return onClose()
+      const el = box.current
+      if (e.key !== 'Tab' || !el) return
+      // Tab wraps within the dialog: past the last control to the first, and
+      // Shift+Tab from the first — or from the dialog itself — to the last.
+      const f = focusable(el)
+      const at = document.activeElement
+      const outside = !el.contains(at) || at === el
+      if (!f.length) {
+        e.preventDefault()
+        el.focus()
+      } else if (e.shiftKey && (at === f[0] || outside)) {
+        e.preventDefault()
+        f[f.length - 1].focus()
+      } else if (!e.shiftKey && (at === f[f.length - 1] || outside)) {
+        e.preventDefault()
+        f[0].focus()
+      }
+    }
+    document.addEventListener('keydown', key)
     const prior = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      document.removeEventListener('keydown', esc)
+      document.removeEventListener('keydown', key)
       document.body.style.overflow = prior
     }
   }, [onClose])
@@ -392,7 +428,7 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
   // wrong box.
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           {eyebrow && <span className="attestation">{eyebrow}</span>}
           <h2 className="modal-title">
