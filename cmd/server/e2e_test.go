@@ -14,9 +14,9 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
+	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/project"
-	"github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/webauth"
 )
@@ -36,11 +36,16 @@ func TestServerEndToEnd(t *testing.T) {
 	ctx := t.Context()
 
 	store := job.NewMemStore()
-	runner := &engineRunner{
-		provider: memory.New(), // the free, in-process engine — no real audit runs
-		method:   m,
-		fetch:    newHTTPFetcher(5 * time.Second),
-		workDir:  t.TempDir(),
+	// The free, in-process engine — no real audit runs — behind the same
+	// controller and router main wires.
+	controller, sessions := managedStack(t, "memory", managedmemory.New())
+	runner, err := newEngineRunner(engineDeps{
+		controller: controller, sessions: sessions, method: m, jobs: store,
+		fetch:   newHTTPFetcher(5 * time.Second),
+		workDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	go job.NewWorker(store, runner, job.WithPoll(5*time.Millisecond)).Start(ctx, 1)
 

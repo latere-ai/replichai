@@ -123,18 +123,27 @@ func TestLiveTranscriptRoutesByPersistedReference(t *testing.T) {
 
 func managedController(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) *managed.Controller {
 	t.Helper()
+	controller, _ := managedStack(t, defaultName, installed...)
+	return controller
+}
+
+// managedStack is the controller and the router behind it, as main wires
+// them: the runner needs both, the controller to drive sessions and the router
+// to read a legacy row's transcript.
+func managedStack(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) (*managed.Controller, *runtimes.Router) {
+	t.Helper()
 	router, err := runtimes.NewRouter(defaultName, installed...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return managed.NewController(router, managed.WithWaitPolicy(testWaitPolicy()))
+	return managed.NewController(router, managed.WithWaitPolicy(testWaitPolicy())), router
 }
 
 func testWaitPolicy() managed.WaitPolicy {
 	return managed.WaitPolicy{MaxTemporaryErrors: 2, MaxSilence: time.Millisecond, CleanupTimeout: time.Second}
 }
 
-func legacyRuntime(t *testing.T, name managed.RuntimeName, backend *providermemory.Provider) managed.Runtime {
+func legacyRuntime(t *testing.T, name managed.RuntimeName, backend provider.Provider) managed.Runtime {
 	t.Helper()
 	runtime, err := legacy.New(legacy.Config{Name: name, ModelProvider: "anthropic", Provider: backend})
 	if err != nil {

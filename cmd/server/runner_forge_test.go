@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -146,8 +147,8 @@ func TestResolveNoForgeLeavesNoRepo(t *testing.T) {
 // The mount carries the created repo's URL and the server token.
 func TestExecuteMountsTheRepo(t *testing.T) {
 	rec := &mountRecorder{Provider: memory.New()}
-	e := &engineRunner{provider: rec, method: runnerMethod, gh: newRunnerForge(nil), owner: "open-hai", token: "tok-secret", workDir: t.TempDir()}
-	j := &job.Job{ID: "j1", Ref: "doi:10.1234/foo", RepoName: "open-hai/a-paper-xyz"}
+	e, j := engineOver(t, rec, "open-hai/a-paper-xyz")
+	e.token = "tok-secret"
 
 	if err := e.Execute(context.Background(), j, func(provider.RunStatus) {}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -160,8 +161,7 @@ func TestExecuteMountsTheRepo(t *testing.T) {
 // A run with no repository mounts nothing — the mount stays unset.
 func TestExecuteWithoutRepoDoesNotMount(t *testing.T) {
 	rec := &mountRecorder{Provider: memory.New()}
-	e := &engineRunner{provider: rec, method: runnerMethod, gh: newRunnerForge(nil), owner: "open-hai", token: "tok", workDir: t.TempDir()}
-	j := &job.Job{ID: "j1", Ref: "doi:10.1234/foo"} // no RepoName
+	e, j := engineOver(t, rec, "") // no RepoName
 
 	if err := e.Execute(context.Background(), j, func(provider.RunStatus) {}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -171,13 +171,50 @@ func TestExecuteWithoutRepoDoesNotMount(t *testing.T) {
 	}
 }
 
+// engineOver builds a runner whose only runtime is the anthropic-managed
+// adapter over backend, with a claimed job in the running phase the way the
+// worker hands one over, so Execute can persist the session it starts.
+func engineOver(t *testing.T, backend provider.Provider, repo string) (*engineRunner, *job.Job) {
+	t.Helper()
+	controller, router := managedStack(t, job.LegacyRuntime, legacyRuntime(t, job.LegacyRuntime, backend))
+	store := job.NewMemStore()
+	ctx := context.Background()
+	j, _ := store.Enqueue(ctx, job.Submission{Principal: "p", Project: "project", Ref: "doi:10.1234/foo", Kind: job.KindAudit})
+	_, _, _ = store.Claim(ctx, "worker")
+	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
+	j, _ = store.Get(ctx, j.ID)
+	j.RepoName = repo
+	forge := newRunnerForge(nil)
+	if repo != "" {
+		// The resolving phase records the identity before a run mounts the
+		// repository; retention reads it back at the end of the session.
+		_, name := splitRepo(repo)
+		if err := publish.RecordIdentity(ctx, forge, "open-hai", name, paper.Identity{Key: "doi:10.1234/foo", Slug: "foo"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := &engineRunner{
+		controller: controller, sessions: router, method: runnerMethod, jobs: store, workDir: t.TempDir(),
+		gh: forge, owner: "open-hai", token: "tok",
+	}
+	return e, &j
+}
+
+// legacySessions is the router a runner reads a legacy row's transcript
+// through: one anthropic-managed adapter over backend.
+func legacySessions(t *testing.T, backend provider.Provider) managed.RuntimeRouter {
+	t.Helper()
+	_, router := managedStack(t, job.LegacyRuntime, legacyRuntime(t, job.LegacyRuntime, backend))
+	return router
+}
+
 // AC7: Publish finalizes through the shared publish.FinalizeLive — the manifest
 // (with the observed verdict) and the transcript are committed to the repo.
 func TestPublishFinalizesToTheRepo(t *testing.T) {
 	f := newRunnerForge([]string{"README.md", "src/run.py"}) // clean tree
 	prov := &transcriptProvider{Provider: memory.New(), events: []provider.Event{{Kind: "message", Content: "done"}}}
 	e := &engineRunner{
-		provider: prov,
+		sessions: legacySessions(t, prov),
 		method:   runnerMethod,
 		gh:       f,
 		owner:    "open-hai",
@@ -213,7 +250,7 @@ func TestPublishStopsWhenRecordedIdentityCannotBeRead(t *testing.T) {
 	f := newRunnerForge([]string{"README.md"})
 	f.getErr = readErr
 	e := &engineRunner{
-		provider: memory.New(), method: runnerMethod, gh: f, owner: "open-hai",
+		method: runnerMethod, gh: f, owner: "open-hai",
 		jobs: fakeJobs{j: job.Job{ID: "j1"}},
 	}
 
@@ -233,7 +270,7 @@ func TestPublishStopsWhenFallbackIdentityCannotResolve(t *testing.T) {
 	f := newRunnerForge([]string{"README.md"})
 	fetchErr := errors.New("paper source unavailable")
 	e := &engineRunner{
-		provider: memory.New(), method: runnerMethod, gh: f, owner: "open-hai",
+		method: runnerMethod, gh: f, owner: "open-hai",
 		fetch: paper.FetcherFunc(func(context.Context, string) ([]byte, error) { return nil, fetchErr }),
 		jobs:  fakeJobs{j: job.Job{ID: "j1"}},
 	}
@@ -252,7 +289,7 @@ func TestPublishStopsWhenTranscriptCannotBeRead(t *testing.T) {
 	transcriptErr := errors.New("transcript unavailable")
 	prov := &transcriptProvider{Provider: memory.New(), err: transcriptErr}
 	e := &engineRunner{
-		provider: prov, method: runnerMethod, gh: f, owner: "open-hai",
+		sessions: legacySessions(t, prov), method: runnerMethod, gh: f, owner: "open-hai",
 		jobs: fakeJobs{j: job.Job{ID: "j1", Status: provider.RunStatus{RunID: "run-1"}}},
 	}
 

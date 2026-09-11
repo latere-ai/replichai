@@ -208,8 +208,9 @@ func run() error {
 		}
 	}
 
-	runner := &engineRunner{
+	runner, err := newEngineRunner(engineDeps{
 		controller: controller,
+		sessions:   runtimeRouter,
 		method:     m,
 		fetch:      newHTTPFetcher(30 * time.Second),
 		projects:   projectStore,
@@ -219,6 +220,9 @@ func run() error {
 		owner:      forgeOwner,
 		token:      forgeToken,
 		delay:      delay,
+	})
+	if err != nil {
+		return err
 	}
 	worker := job.NewWorker(jobStore, runner, job.WithBudget(spendBackstop(st)))
 	if resumed, failed, err := worker.Reconcile(ctx); err != nil {
