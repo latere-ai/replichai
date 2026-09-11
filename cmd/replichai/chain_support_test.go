@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -221,12 +222,23 @@ func get(t *testing.T, url string) string {
 // follows the push is exercised rather than skipped.
 func fakeForge(t *testing.T) *httptest.Server {
 	t.Helper()
+	return fakeForgeWith(t, nil)
+}
+
+// fakeForgeWith is fakeForge over a repository that already holds files: a
+// contents read of one of them answers its bytes, and everything else is
+// absent.
+func fakeForgeWith(t *testing.T, files map[string][]byte) *httptest.Server {
+	t.Helper()
 	var committed []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case strings.Count(strings.Trim(path, "/"), "/") == 2 && r.Method == http.MethodGet:
 			write(w, http.StatusOK, map[string]any{"full_name": "open-hai/a-paper-a3f9", "private": true})
+		case strings.Contains(path, "/contents/") && r.Method == http.MethodGet && files[strings.SplitN(path, "/contents/", 2)[1]] != nil:
+			body := files[strings.SplitN(path, "/contents/", 2)[1]]
+			write(w, http.StatusOK, map[string]any{"content": base64.StdEncoding.EncodeToString(body), "encoding": "base64", "sha": "recorded"})
 		case strings.HasSuffix(path, "/commits") && r.Method == http.MethodGet:
 			write(w, http.StatusOK, []map[string]string{{"sha": "deadbeef"}})
 		case strings.Contains(path, "/git/trees/") && r.Method == http.MethodGet:
