@@ -59,21 +59,30 @@ there is invisible to a running server until you rebuild:
 ```bash
 cd frontend
 bun install
-bun run build      # vite writes ../internal/spa/dist, which the server embeds
-bun test src       # the unit tests
-bun run typecheck
-npm run test:browser   # the puppeteer regressions; skips cleanly with no Chrome
+bun run build          # vite writes ../internal/spa/dist, which the server embeds
+bun test src           # the unit tests
+bun run typecheck      # the app and, through tsconfig.test.json, the tests too
+bun run test:browser   # every test/*.test.mjs in headless Chrome; skips cleanly with no Chrome
 ```
 
 The browser tests are the only ones that can catch a layout bug, because layout
 needs a layout engine. They render a screen against a mocked API and measure it
 — which is how the mobile spill was found, in a pane that scrolled sideways
-while `documentElement.scrollWidth` read clean.
+while `documentElement.scrollWidth` read clean. They share one harness
+(`test/harness.mjs`: Chrome, one Vite server on a free port, a declarative
+route table whose event stream answers with a snapshot frame first, as the
+server does) and one runner (`test/run.mjs`) that runs every file and reports
+every failure; adding a test is adding a file. `node test/run.mjs <substring>`
+runs a subset, and `JOBS=1` serialises them.
 
 Every string the UI renders lives in `frontend/src/i18n.ts` — English only
 today. Adding a language is a code in the `Lang` union plus a matching
 block, and TypeScript then requires that block to translate every key, so a
-locale cannot ship half-done.
+locale cannot ship half-done. Dates, durations and amounts go through
+`frontend/src/locale.ts` with the app's language, never the browser's; a pure
+module or a test takes a translator from `translator(lang)`. The coverage test
+in `i18n-coverage.test.ts` scans `.ts` and `.tsx` for a literal phrase, a
+literal `aria-label`, or a `toLocale*String` without the app's language.
 
 ## The Postgres contracts
 

@@ -83,6 +83,19 @@ committed: the commit log already holds that.
   evaluation ends `failed` on every runtime, where the local one said `done`.
 - **The paid end-to-end runtime tests are opt-in** (`REPLICHAI_E2E=1`); they
   used to run whenever the tools happened to be installed.
+- **The session screen no longer reconnects its event stream on every
+  frame.** The stream is opened once per session and closed when the run
+  ends; before this a running session's page reopened it many times a
+  second for as long as it was open.
+- **The app is usable from the keyboard.** Project, registry, file, verdict
+  and session rows can be reached and opened with Tab and Enter; a dialog
+  takes focus, keeps Tab inside it, and gives focus back when it closes.
+- **A malformed profile address, a stale language setting, or a server that
+  answers with a page instead of data** no longer blank the app or report
+  your connection as down; a refused rename, restore or member removal is
+  shown rather than swallowed; an open transcript card stays on its event
+  when the filter changes. Dates and amounts follow the app's language, not
+  the browser's.
 - **Deployment.** A local `.env` never enters the image; the pod runs as a
   numeric non-root user with every capability dropped; environment-specific
   values live in the overlays, so staging no longer inherits production's
