@@ -59,7 +59,30 @@ func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 	if request.Model.ID != "" {
 		argv = append(argv, "--model", request.Model.ID)
 	}
-	return append(argv, "--", task), nil
+	return append(argv, "--", codexTask(request, task)), nil
+}
+
+// codexTask is the prompt, with the standing instructions in front of it where
+// no file carried them.
+//
+// Codex reads a role from AGENTS.md under CODEX_HOME and has no flag for one.
+// A run on the operator's own login keeps the operator's own CODEX_HOME, and
+// replichai will not write into it — so Files writes nothing, and the
+// instructions have no file to arrive in. Three runs found that out: with no
+// standing instructions the agent never learned the workspace protocol, wrote
+// its reproduction into a subdirectory, committed nothing, and left an empty
+// repository behind a session that the rubric had passed.
+//
+// Codex documents the prompt argument as the agent's initial instructions, so
+// that is where they go. The role is the same text either way; only the
+// channel differs, because the two harnesses read a role from different
+// places.
+func codexTask(request Request, task string) string {
+	instructions := strings.TrimSpace(request.Instructions)
+	if instructions == "" || request.Gateway.Auth != AuthHarness {
+		return task
+	}
+	return instructions + "\n\n" + task
 }
 
 // Env points Codex at its session-scoped configuration and supplies the
