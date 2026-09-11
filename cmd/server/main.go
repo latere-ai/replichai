@@ -613,7 +613,7 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		acc := access.NewMemStore()
 		plat := platform.NewMemStore(acc)
 		members := access.NewMemMembership()
-		ledger := credit.NewMemStore(acc, members)
+		ledger := credit.NewMemStore(acc, members, credit.WithOnSolvent(thawOnSolvent(acc)))
 		jobs := job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat)), job.WithRates(platform.RateSnapshot(plat)))
 		return stores{
 			jobs: jobs,
@@ -656,7 +656,7 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 	acc := access.NewPGAccess(pool)
 	plat := platform.NewPGStore(pool, acc)
 	members := access.NewPGMembership(pool)
-	ledger := credit.NewPGStore(pool, acc, members)
+	ledger := credit.NewPGStore(pool, acc, members, credit.WithOnSolvent(thawOnSolvent(acc)))
 	jobs := job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat)), job.WithPGRates(platform.RateSnapshot(plat)))
 	return stores{
 		jobs:     jobs,
@@ -668,6 +668,17 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		profiles: profile.NewPGStore(pool),
 		close:    pool.Close,
 	}, nil
+}
+
+// thawOnSolvent retires an account's freeze override the moment a top-up
+// leaves its wallet solvent (022d). The override is a waiver of a debt; paying
+// the debt ends it, and a fresh debt later is a fresh decision.
+func thawOnSolvent(ov access.FreezeOverrides) func(context.Context, string) {
+	return func(ctx context.Context, email string) {
+		if err := ov.ClearOverride(ctx, email); err != nil {
+			slog.WarnContext(ctx, "freeze override not retired after top-up", "email", email, "error", err)
+		}
+	}
 }
 
 // waitForDB retries until Postgres accepts a connection, so the app can start

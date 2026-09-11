@@ -57,6 +57,32 @@ type store struct {
 	led     ledger.Store
 	auth    Authority
 	members Members
+	// onSolvent is told when money entering a wallet leaves it at or above
+	// zero. It is how the account freeze is lifted at the moment the debt is
+	// paid rather than by a write on every later read.
+	onSolvent func(ctx context.Context, email string)
+}
+
+// Option configures a store.
+type Option func(*store)
+
+// WithOnSolvent registers fn to be told the moment a top-up leaves a wallet
+// solvent. The composition root wires it to retire the freeze override, so
+// "the top-up that brought the wallet back" is the one event that clears it.
+func WithOnSolvent(fn func(ctx context.Context, email string)) Option {
+	return func(s *store) { s.onSolvent = fn }
+}
+
+// solvent tells onSolvent about a wallet that just received money, when it
+// stands at or above zero. Best-effort: a read failure here leaves the
+// override for the next top-up to retire.
+func (s *store) solvent(ctx context.Context, email string) {
+	if s.onSolvent == nil {
+		return
+	}
+	if bal, err := s.Balance(ctx, Wallet(email)); err == nil && bal >= 0 {
+		s.onSolvent(ctx, email)
+	}
 }
 
 // MemStore is the in-memory ledger with this product's permission rules.
@@ -68,9 +94,13 @@ type MemStore struct {
 // NewMemStore builds an empty in-memory ledger. A nil Authority or Members
 // means the check it would perform is skipped, which is what a unit test that
 // is not about permissions wants.
-func NewMemStore(auth Authority, members Members) *MemStore {
+func NewMemStore(auth Authority, members Members, opts ...Option) *MemStore {
 	mem := ledger.NewMemStore()
-	return &MemStore{led: mem, auth: auth, members: members, mem: mem}
+	s := &MemStore{store: store{led: mem, auth: auth, members: members}, mem: mem}
+	for _, opt := range opts {
+		opt(&s.store)
+	}
+	return s
 }
 
 // PGStore is the Postgres ledger with this product's permission rules.
@@ -81,9 +111,13 @@ type PGStore struct {
 }
 
 // NewPGStore builds a ledger over a pgx pool.
-func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members) *PGStore {
+func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members, opts ...Option) *PGStore {
 	pg := pgledger.New(pool)
-	return &PGStore{led: pg, auth: auth, members: members, pg: pg, dbpool: pool}
+	s := &PGStore{store: store{led: pg, auth: auth, members: members}, pg: pg, dbpool: pool}
+	for _, opt := range opts {
+		opt(&s.store)
+	}
+	return s
 }
 
 // pool exposes the connection pool to this package's tests, which need to open
@@ -189,13 +223,17 @@ func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email strin
 	// id carries the idempotency; grantRef marks it as internal, and the
 	// statement mapping keeps it out of ExternalRef so the wire shape is what
 	// it always was.
-	return s.led.Credit(ctx, ledger.Posting{
+	if err := s.led.Credit(ctx, ledger.Posting{
 		Holder: ledger.Holder(Wallet(email)),
 		Amount: money.Micro(amount),
 		Reason: reasonTopup,
 		Ref:    grantRefPrefix + ref,
 		Actor:  byAdmin.Email,
-	})
+	}); err != nil {
+		return err
+	}
+	s.solvent(ctx, email)
+	return nil
 }
 
 // TopupPaid posts a purchased credit into a wallet, idempotent on ref. It has
@@ -205,13 +243,17 @@ func (s *store) TopupPaid(ctx context.Context, email string, credited int64, ref
 	if err := checkPaid(email, credited, ref); err != nil {
 		return err
 	}
-	return s.led.Credit(ctx, ledger.Posting{
+	if err := s.led.Credit(ctx, ledger.Posting{
 		Holder: ledger.Holder(Wallet(email)),
 		Amount: money.Micro(credited),
 		Reason: reasonTopup,
 		Ref:    ref,
 		Actor:  actor,
-	})
+	}); err != nil {
+		return err
+	}
+	s.solvent(ctx, email)
+	return nil
 }
 
 // RefundPaid reverses a purchase by the exact micro-USD it credited, keyed on
