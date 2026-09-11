@@ -1,36 +1,36 @@
 /* Latere v2 design system.
 
-   Ink carries the text; colour carries the meaning. One brand hue marks what
-   the operator can act on — the primary button, the current page, a focus
-   ring — and a five-tone semantic ramp marks what the system is telling them:
-   running, passed, needs attention, failed, published. Everything else stays
-   ink on paper, so the colour that is there always means something.
+   Text is set in ink; colour carries meaning. One brand hue marks what the
+   operator can act on: the primary button, the current page, a focus ring. A
+   five-tone semantic ramp marks what the system reports: running, passed,
+   needs attention, failed, published. Everything else stays ink on paper, so
+   any colour present has a meaning.
 
-   Retinting the product is a two-line change: --brand and its dark twin. */
+   Retinting the product is a two-line change: --brand and its dark variant. */
 
-/* Instrument Serif, self-hosted, the same two faces latere.ai serves from the
-   same paths — byte-identical files, so a reader who has been to either site
-   already has them.
+/* Instrument Serif, self-hosted. These are the same two faces latere.ai serves
+   from the same paths, as byte-identical files, so a reader who has visited
+   either site already has them cached.
 
-   Until 040 this app named the family and shipped nothing, so `--font-serif`
-   had always rendered in Georgia. That was invisible while the only use was one
-   `<em>`; the shared footer sets Latere's own logotype and all six product
-   wordmarks in it, and a logotype in the wrong face is not a fallback, it is a
-   different mark. 033 solved the same problem for *replichai's* identity by
-   drawing it instead — which is why the wordmark beside this still depends on
-   no font at all, and must not start.
+   Until 040 this app named the family and shipped no files, so `--font-serif`
+   always rendered in Georgia. That was invisible while the only use was one
+   `<em>`. The shared footer sets Latere's own logotype and all six product
+   wordmarks in it, and a logotype in the wrong face is a different mark, not a
+   fallback. 033 solved the same problem for replichai's own identity by drawing
+   the mark instead, which is why the wordmark beside this depends on no font and
+   must stay that way.
 
    `swap` rather than latere.ai's `block`, because this is an app and that is a
    marketing site: `block` blanks the text for up to three seconds, and one of
-   the two uses is an `<em>` above the fold inside the console. Paired with the
-   preload in index.html the swap does not happen — the face is in flight with
-   the document — so `swap` is what a reader gets only when that download is
-   slow or fails, which is the right thing to get.
+   the two uses is an `<em>` above the fold inside the console. With the preload
+   in index.html the face is in flight with the document, so no swap is visible;
+   `swap` only takes effect when that download is slow or fails, which is the
+   correct behaviour then.
 
    Both faces are declared and only the italic is preloaded. A declared face is
-   not a downloaded one: nothing sets this family upright today, so the regular
-   woff2 is never fetched, and it is here so that the first rule which does need
-   it is not a silent fallback to Georgia. */
+   not downloaded until a rule uses it: nothing sets this family upright today,
+   so the regular woff2 is never fetched. It is declared so that the first rule
+   which does need it does not silently fall back to Georgia. */
 @font-face {
   font-family: 'Instrument Serif';
   font-style: normal;
@@ -47,11 +47,11 @@
 }
 
 :root {
-  /* Row rhythm. Two gaps, and the distinction is the point: --gap-row separates
-     the *sides* of a list row (a label from its value), --gap-inline separates
-     things that sit together on one side (a number from the button beside it).
-     One shared value for both was the bug behind three screens where a
-     truncated title touched its date and a control touched the border. */
+  /* Row rhythm. Two distinct gaps: --gap-row separates the two sides of a list
+     row, such as a label from its value; --gap-inline separates items that sit
+     together on one side, such as a number from the button beside it. One
+     shared value for both caused the bug on three screens where a truncated
+     title touched its date and a control touched the border. */
   --gap-row: 18px;
   --gap-inline: 10px;
 
@@ -61,10 +61,10 @@
   --bg-raised: #f4f4f3;
   --bg-code: rgba(0, 0, 0, 0.045);
 
-  /* The brand hue: seaborn's vlag's cool pole — a clear azure. It carries what
-     the operator acts on (buttons, links, the current page). Its warm twin —
-     vlag's crimson — is spent on danger and failure through --err, so the two
-     poles split the work: blue is "go", red is "careful". */
+  /* The brand hue: the cool pole of seaborn's vlag palette, a clear azure. It
+     marks what the operator acts on: buttons, links, the current page. The warm
+     pole, vlag's crimson, is used for danger and failure through --err, so blue
+     means an action and red means a warning. */
   --brand: #2369bd;
   --brand-hover: #1d5aa1;
   --brand-fg: #ffffff;
@@ -83,10 +83,11 @@
      as body-sized text, not just as badge fills.
 
      Muted rather than saturated (021b). Five states appear together on one
-     screen — a running session beside a passed one beside a failed one — and at
-     full saturation they compete for the reader instead of ranking themselves.
-     The dark values are the operator design's; the light ones are the same hues
-     taken to a usable contrast on paper rather than the dark values reused. */
+     screen, for example a running session beside a passed one beside a failed
+     one, and at full saturation they compete for attention instead of ranking
+     themselves. The dark values are the operator design's; the light ones are
+     the same hues adjusted to a usable contrast on a light background rather
+     than the dark values reused. */
   --ok: #3f7a55;
   --warn: #96631f;
   --run: #0f766e;
@@ -109,19 +110,18 @@
 }
 
 :root[data-theme='dark'] {
-  /* Lifted off pure black. The old base was #0a0a0c with #fafafa text — near
-     the maximum contrast a screen can throw, which reads as glare in a dark
-     room rather than clarity. The surfaces rise into a soft charcoal and the
-     ink drops just below white, so the page carries the same hierarchy at a
-     contrast the eye can sit with. */
+  /* Lifted off pure black. The old base was #0a0a0c with #fafafa text, close to
+     the maximum contrast a screen can produce, which reads as glare in a dark
+     room. The surfaces are a soft charcoal and the text sits just below white,
+     so the page keeps the same hierarchy at a comfortable contrast. */
   --bg: #17171b;
   --bg-deep: #101013;
   --bg-surface: #1f1f25;
   --bg-raised: #2a2a32;
   --bg-code: rgba(255, 255, 255, 0.055);
 
-  /* The azure lifted to a lighter sky so it reads as the accent, not a bruise,
-     against the charcoal. */
+  /* The azure lightened so it reads as an accent against the charcoal rather
+     than as a dark patch. */
   --brand: #6fa3e6;
   --brand-hover: #8fb8ec;
   --brand-fg: #0a1524;
@@ -166,10 +166,10 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-/* Colour and decoration are both inherited-by-default here, so a link looks
-   like a link because it opted in (.link), never because an author forgot a
-   class. Without the second line the browser underlines every bare anchor, and
-   the app grows two kinds of link that nobody chose between. */
+/* Anchors inherit colour and carry no decoration by default, so a link looks
+   like a link only when it opts in with .link, never because an author forgot
+   a class. Without the second declaration the browser underlines every bare
+   anchor and the app ends up with two link styles nobody chose between. */
 a {
   color: inherit;
   text-decoration: none;
@@ -180,8 +180,8 @@ select,
 textarea {
   font-family: inherit;
 }
-/* One focus ring for every control, brand-coloured, so keyboard travel is
-   traceable across the app instead of each widget inventing its own. */
+/* One focus ring for every control, brand-coloured, so keyboard focus is
+   consistent across the app rather than styled per widget. */
 :where(input, button, select, a, [tabindex]):focus-visible {
   outline: 2px solid var(--brand-ring);
   outline-offset: 2px;
@@ -261,8 +261,9 @@ textarea {
 }
 .link:hover {
   text-decoration: underline;
-  /* Clear of descenders, and thin enough not to read as a strikethrough on
-     mono text — the default sits on the baseline and cuts g, y, p. */
+  /* Offset clear of descenders, and thin enough not to read as a strikethrough
+     on mono text. The default underline sits on the baseline and cuts through
+     g, y and p. */
   text-underline-offset: 0.18em;
   text-decoration-thickness: 1px;
 }
@@ -284,14 +285,15 @@ textarea {
 /* ── Shell ── */
 .shell {
   display: flex;
-  /* 100vh on a phone is the tall viewport measured behind the browser's own
+  /* On a phone 100vh is the tall viewport measured behind the browser's own
      chrome, so the rail's foot and the screen's last row sit under the address
-     bar. dvh is the one that shrinks with it; vh stays as the fallback for a
-     browser that does not know the unit. */
+     bar. dvh shrinks with the visible area; vh stays as the fallback for a
+     browser that does not support the unit. */
   height: 100vh;
   height: 100dvh;
-  /* The ground the rail sits on. The content is a sheet of paper laid on it, so
-     the seam between navigation and work is a depth rather than a line (034). */
+  /* The background the rail sits on. The content panel is a raised surface on
+     it, so the boundary between navigation and work is a change of depth rather
+     than a line (034). */
   background: var(--bg-deep);
 }
 .rail {
@@ -299,8 +301,8 @@ textarea {
   flex: none;
   display: flex;
   flex-direction: column;
-  /* No fill and no border: the rail *is* the desk. A surface here would draw a
-     second sheet of paper beside the one the reader is working on. */
+  /* No fill and no border: the rail is part of the background. A surface here
+     would draw a second panel beside the one the reader is working in. */
   background: transparent;
   transition: width 0.18s var(--ease-fluid);
 }
@@ -312,9 +314,9 @@ textarea {
   gap: 9px;
   padding: 0 18px;
 }
-/* The fold control. It keeps the head's right edge in both states, so the click
-   that folds the rail and the click that unfolds it are the same gesture in
-   nearly the same place. */
+/* The fold control. It stays at the head's right edge in both states, so the
+   click that folds the rail and the click that unfolds it land in nearly the
+   same place. */
 .rail-fold-btn {
   margin-left: auto;
   display: flex;
@@ -335,9 +337,9 @@ textarea {
   background: var(--bg-raised);
   color: var(--fg-1);
 }
-/* Folded, the fold control is the mark itself — the brand stays present in the
-   56px rail, and pointing at it swaps in the expand chevron so the click still
-   reads as "open the rail". */
+/* When folded, the fold control is the brand mark itself, so the brand stays
+   visible in the 56px rail. Hovering swaps in the expand chevron so the click
+   still reads as "open the rail". */
 .rail-fold .rail-fold-btn {
   width: 34px;
   height: 34px;
@@ -358,9 +360,8 @@ textarea {
   display: inline-flex;
 }
 /* The drawer's two controls (030). Both are in the markup at every width and
-   the phone block below is what shows them, so which one is on screen is
-   decided by the viewport alone and never by a piece of state that a resize
-   could leave pointing the wrong way. */
+   the phone block below shows them, so which one is on screen is decided by
+   the viewport alone and never by state that a resize could leave stale. */
 .rail-open-btn,
 .rail-close-btn {
   display: none;
@@ -385,8 +386,9 @@ textarea {
 .rail-close-btn {
   margin-left: auto;
 }
-/* Under the drawer and over the screen. It is inside `.shell`, which promotes
-   nothing, so a fixed box here covers the viewport rather than a column. */
+/* Under the drawer and over the screen. It is inside `.shell`, which creates no
+   containing block, so a fixed box here covers the viewport rather than a
+   column. */
 .rail-scrim {
   display: none;
   position: fixed;
@@ -397,9 +399,10 @@ textarea {
 }
 
 /* ── Folded rail ──
-   Every destination stays clickable at its icon; only the words go. The labels
-   are not `visibility: hidden` but `display: none`, so the 56px column never
-   reserves space for text it will not draw and the icons sit truly centred. */
+   Every destination stays clickable at its icon; only the labels are removed.
+   The labels use `display: none` rather than `visibility: hidden`, so the 56px
+   column reserves no space for text it does not draw and the icons are
+   centred. */
 .rail-fold {
   width: 64px;
 }
@@ -432,28 +435,29 @@ textarea {
 .rail-fold .rail-foot {
   padding: 10px 8px;
 }
-/* The identity. The mark owns its colour rather than inheriting currentColor:
-   it means the same thing in the rail, on the landing, and in a browser tab,
-   so it may not be restyled by whatever it sits inside. Two rings — the inner
-   loop closes because a machine can re-run it, the outer one does not because
-   the study it stands for is never simulated. */
+/* The identity. The mark sets its own colour rather than inheriting
+   currentColor: it means the same thing in the rail, on the landing and in a
+   browser tab, so its container must not restyle it. Two rings: the inner loop
+   is closed because a machine can re-run it; the outer loop is open because the
+   study it stands for is never simulated. */
 .mark {
   flex: 0 0 auto;
   display: block;
 }
-/* The mark reads vlag's two poles as its two loops. The outer ring — the study
-   with people, never simulated — takes the warm crimson (vlag's warm pole, which
-   --err also carries); the inner ring — the part a machine re-runs — takes the
-   cool azure (the brand pole). The colour is the meaning, so the two never swap. */
+/* The mark's two loops use vlag's two poles. The outer ring, the study with
+   people that is never simulated, takes the warm crimson, which is vlag's warm
+   pole and the hue --err also carries. The inner ring, the part a machine
+   re-runs, takes the cool azure, the brand pole. The colour carries the
+   meaning, so the two never swap. */
 .mark-outer {
   stroke: var(--err);
 }
 .mark-inner {
   stroke: var(--brand);
 }
-/* The name, with a hairline gap at its own seam: replic + hai. The tracking is
-   tightened and the seam gives a fraction of it back, so the break is felt at
-   any size without ever reading as a typo. */
+/* The name, with a hairline gap at the seam between replic and hai. The
+   tracking is tightened and the seam adds a fraction of it back, so the break
+   is visible at any size without reading as a typo. */
 .wordmark {
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -467,8 +471,8 @@ textarea {
   gap: 0.42em;
   line-height: 1;
 }
-/* Kept as a hook, not as a look: the fold rule hides it, and the SVG carries
-   its own size. */
+/* Kept as a selector hook only: the fold rule hides it, and the SVG carries its
+   own size. */
 .rail-logo {
   flex: 0 0 auto;
 }
@@ -520,9 +524,9 @@ textarea {
 .nav-btn svg {
   flex: none;
 }
-/* Each destination keeps its own hue on the icon, so the rail is scannable by
-   colour before the label is read. The tint is the icon's alone — the label
-   stays ink until the row is current. */
+/* Each destination has its own hue on the icon, so the rail can be scanned by
+   colour before the label is read. Only the icon is tinted; the label stays ink
+   until the row is current. */
 .nav-ico {
   display: flex;
   width: 22px;
@@ -538,9 +542,9 @@ textarea {
   background: color-mix(in srgb, var(--fg-1) 5%, transparent);
   color: var(--fg-1);
 }
-/* The current destination is the one sheet of paper in the rail — the same
-   material the content is, so "where you are" and "what you are looking at" are
-   the same thing. The brand hue stays on the icon and nowhere else. */
+/* The current destination is the one raised surface in the rail, the same
+   surface the content uses, so the current row and the content panel read as
+   one. The brand hue stays on the icon only. */
 .nav-btn.active {
   background: var(--bg-surface);
   color: var(--fg-1);
@@ -576,10 +580,10 @@ textarea {
 .user-btn:hover {
   background: var(--bg-raised);
 }
-/* The way in, where the account sits for everybody else (028). It fills the
-   rail's width unfolded and collapses to its mark when the rail does — the
-   label is the same `.nav-label` every destination uses, so one rule folds
-   them all. */
+/* The sign-in control, in the position the account occupies for a signed-in
+   reader (028). It fills the rail's width when unfolded and collapses to its
+   icon when the rail folds. The label is the same `.nav-label` every
+   destination uses, so one rule folds them all. */
 .rail-signin {
   width: 100%;
   justify-content: center;
@@ -588,7 +592,7 @@ textarea {
   padding-left: 0;
   padding-right: 0;
 }
-/* An avatar with no picture is not blank: the address seeds a hue, so the same
+/* An avatar with no picture takes a hue derived from the address, so the same
    person is the same colour in every list they appear in. */
 .user-avatar {
   width: 22px;
@@ -629,8 +633,8 @@ textarea {
   flex-direction: column;
   gap: 2px;
   overflow: hidden;
-  /* min-width:0 is what actually lets a long address ellipsis inside a flex
-     row; flex:1 alone leaves the column at its content width and pushes. */
+  /* min-width:0 is what lets a long address truncate inside a flex row;
+     flex:1 alone leaves the column at its content width and overflows. */
   min-width: 0;
   flex: 1;
 }
@@ -679,17 +683,18 @@ textarea {
   color: var(--fg-2);
 }
 /* The topbar is one 52px row, so every crumb segment stays on one line and
-   ellipsizes instead. A paper title is long enough to wrap on its own — that
-   wrap pushed the trail into a second line the bar had no height for, and the
-   unshrinkable text behind it scrolled the whole app sideways. */
+   truncates instead of wrapping. A paper title is long enough to wrap on its
+   own; that wrap pushed the trail onto a second line the bar had no height for,
+   and the unshrinkable text behind it scrolled the whole app sideways. */
 .crumb > * {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The root of the trail is a nav label of a word or two: it keeps its width so
-   the shrinking falls on the title and the reference, which have room to lose. */
+/* The root of the trail is a nav label of a word or two. It keeps its width so
+   the shrinking falls on the title and the reference, which are long enough to
+   truncate. */
 .crumb > :first-child,
 .crumb .sep {
   flex: none;
@@ -715,8 +720,8 @@ textarea {
 }
 .topbar-actions {
   margin-left: auto;
-  /* The trail yields, the controls do not: squeezing these is what put the
-     "new project" button past the right edge. */
+  /* The trail shrinks; the controls do not. Shrinking these is what pushed
+     the "new project" button past the right edge. */
   flex: none;
   display: flex;
   align-items: center;
@@ -729,16 +734,16 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Borderless and unfilled at rest (034): a list row can carry three of these
-     and three outlined boxes per row is a row made of chrome. The affordance
-     arrives on hover, where the pointer already is. */
+  /* Borderless and unfilled at rest (034): a list row can carry three of
+     these, and three outlined boxes per row would dominate the row. The
+     border and fill appear on hover. */
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
   color: var(--fg-3);
   cursor: pointer;
   /* The download is an anchor rather than a button, so the browser saves the
-     archive instead of the tab buffering it (020). It has to look like the
+     archive instead of the tab buffering it (020). It is styled to match the
      controls beside it. */
   text-decoration: none;
   transition: color var(--dur-hover), border-color var(--dur-hover), background var(--dur-hover);
@@ -748,8 +753,7 @@ textarea {
   background: var(--brand-soft);
   border-color: var(--brand-line);
 }
-/* A destructive icon button warms on hover rather than announcing itself in red
-   while it is only sitting there. */
+/* A destructive icon button turns red on hover only, not at rest. */
 .icon-btn.danger:hover {
   color: var(--err);
   background: color-mix(in srgb, var(--err) 12%, transparent);
@@ -767,10 +771,10 @@ textarea {
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  /* Ink, not brand (034). The brand hue marks what an operator acts on *within*
-     a screen; the one control that starts work should be the darkest thing on
-     the bar rather than compete with every link under it. It inverts correctly
-     in dark, because both halves are tokens that swap. */
+  /* Ink, not brand (034). The brand hue marks what an operator acts on within
+     a screen; the one control that starts work should be the darkest element
+     on the bar rather than compete with every link under it. It inverts
+     correctly in dark mode because both fill and text are tokens that swap. */
   background: var(--fg-1);
   color: var(--bg);
   font-size: 12.5px;
@@ -803,16 +807,16 @@ textarea {
   color: var(--brand);
   border-color: var(--brand-line);
 }
-/* Removing a collaborator, revoking a grant, stopping a run: named in the tone
-   of what they do, but only once the pointer is on them. */
+/* Removing a collaborator, revoking a grant, stopping a run: these take the
+   error tone, but only on hover. */
 .btn.danger:hover {
   background: color-mix(in srgb, var(--err) 12%, transparent);
   color: var(--err);
   border-color: color-mix(in srgb, var(--err) 35%, transparent);
 }
-/* A stop lasts as long as the run takes to come down. The control keeps its
-   place and breathes while it waits, so the wait reads as work in progress
-   rather than a button that went dead. */
+/* A stop takes as long as the run takes to shut down. The control keeps its
+   place and pulses while it waits, so the wait reads as work in progress rather
+   than a disabled button. */
 .btn.pending,
 .btn.pending:hover {
   cursor: progress;
@@ -854,10 +858,10 @@ textarea {
   gap: 20px;
   cursor: default;
 }
-/* A segment between two seams (see Seams in ui.tsx). The heading's copy says
-   where it may break; this is what makes everywhere else unbreakable. The
-   joining space lives between two of these, in the heading itself, because that
-   is the one place a line is allowed to end. */
+/* A segment between two seams (see Seams in ui.tsx). The heading's copy marks
+   where it may break; this rule makes every other point unbreakable. The
+   joining space sits between two of these, in the heading itself, because that
+   is the only place a line may end. */
 .seam {
   white-space: nowrap;
 }
@@ -882,17 +886,16 @@ h1.screen-title {
 
 /* ── Page measure ── */
 /* A screen that holds one column of cards used to pin that column to the left
-   edge and cap it narrow, so most of a wide display was empty and the content
-   that did fit was cramped — a statement's project titles wrapped over three
-   lines beside 900px of nothing. The column is centred and given a real width
-   here, once, so every single-column screen shares the same measure instead of
-   each carrying its own inline cap. Wide screens read their content; the ones
-   that hold a form keep a narrower measure, because a text field stretched to
-   1000px is worse than one at 700. */
-/* The measure is on the children, not on the scroll container: capping
-   .screen itself would pull its scrollbar in to the column's edge and leave it
-   floating in the middle of the panel on any platform that reserves space for
-   one. */
+   edge with a narrow cap, so most of a wide display was empty and the content
+   that did fit was cramped: a statement's project titles wrapped over three
+   lines beside 900px of empty space. The column is centred and given a usable
+   width here, once, so every single-column screen shares the same measure
+   instead of each carrying its own inline cap. Screens that hold a form keep a
+   narrower measure, because a text field stretched to 1000px is harder to use
+   than one at 700. */
+/* The measure is on the children, not on the scroll container. Capping .screen
+   itself would move its scrollbar in to the column's edge and leave it in the
+   middle of the panel on any platform that reserves space for one. */
 .screen.measured > * {
   max-width: var(--measure, 960px);
   margin-inline: auto;
@@ -903,8 +906,8 @@ h1.screen-title {
 }
 
 /* ── Stat cards ── */
-/* The boundary band (034). Two cards where three counters were: the one number
-   the product exists to produce, decomposed, and what the money buys. */
+/* The boundary band (034). Two cards replace three counters: the reproduction
+   count with its decomposition, and the spend. */
 .boundary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -978,15 +981,15 @@ h1.screen-title {
   flex: none;
   border-radius: 2px;
 }
-/* The remainder is drawn as the absence it is: the bar's own trough, not a
-   second colour competing with the one thing being counted. `-none`, not
-   `.empty`: that class is the app's own no-content state and carries padding. */
+/* The remainder is drawn as the bar's unfilled track, not as a second colour
+   competing with the quantity being counted. The class is `-none`, not
+   `.empty`: `.empty` is the app's no-content state and carries padding. */
 .legend-swatch-none {
   background: var(--bg-deep);
   box-shadow: inset 0 0 0 1px var(--border);
 }
-/* The card's own last line, ruled off: a different quantity from the one above
-   it, and one whose window has to be stated with it (021e). */
+/* The card's last line, separated by a rule: it is a different quantity from
+   the one above it, and its time window has to be stated with it (021e). */
 .boundary-foot {
   margin-top: auto;
   display: flex;
@@ -1004,8 +1007,8 @@ h1.screen-title {
   color: var(--fg-1);
 }
 
-/* A proportion, drawn. Never on its own — the count and its denominator are
-   always beside it in words. */
+/* A proportion as a bar. It never appears alone; the count and its denominator
+   are always beside it in words. */
 .meter {
   display: flex;
   width: 100%;
@@ -1117,8 +1120,8 @@ h1.screen-title {
   font-weight: 500;
 }
 /* A paper and the sessions that are runs of it (015). The group draws the top
-   border so its rows read as one block; the runs are indented and quieter, so
-   the paper stays the thing the eye lands on. */
+   border so its rows read as one block; the runs are indented and lower in
+   contrast, so the paper remains the primary row. */
 .paper-group {
   border-top: 1px solid var(--border);
 }
@@ -1128,11 +1131,11 @@ h1.screen-title {
 .paper-group > .row {
   border-top: none;
 }
-/* A run is denser than the paper it belongs to. A paper is read; its runs are
-   scanned as a column, and five of them at a paper's own height pushes the next
-   paper off the screen. Tighter rhythm, a narrower phase column — the pill sets
-   its own width — and less air between the cells, so what differs between the
-   runs sits closer together. */
+/* A run row is denser than its paper row. A paper is read; its runs are scanned
+   as a column, and five of them at a paper's height push the next paper off the
+   screen. Tighter spacing, a narrower phase column sized by the pill itself,
+   and less space between the cells, so the fields that differ between runs sit
+   closer together. */
 .row-nested {
   padding-left: 30px;
   padding-top: 7px;
@@ -1187,10 +1190,10 @@ h1.screen-title {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The merged project list's columns (018). The title takes the space left over;
-   Owner and Last modified are fixed so they line up down the page — a column
-   that wanders is one the eye has to re-find on every row. Both are quiet: they
-   are what you scan by, not what you read the row for. */
+/* The merged project list's columns (018). The title takes the remaining
+   space; Owner and Last modified have fixed widths so they align down the page,
+   because a column that shifts has to be located again on every row. Both are
+   low-contrast: they are for scanning, not the row's main content. */
 .row-main {
   flex: 1;
   min-width: 0;
@@ -1237,12 +1240,12 @@ h1.screen-title {
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(12, 10, 9, 0.08);
 }
-/* The theme switcher is the one segmented control whose choice is a *mode*
-   rather than a filter, and it keeps the brand hue for it. */
+/* The theme switcher is the one segmented control whose choice is a mode
+   rather than a filter, so it keeps the brand hue. */
 .segmented.compact .seg-btn.on {
   color: var(--brand);
 }
-/* The icon-only form (the appearance switcher) wants square hit targets. */
+/* The icon-only form, used by the appearance switcher, needs square hit targets. */
 .segmented.compact .seg-btn {
   width: 28px;
   height: 26px;
@@ -1301,7 +1304,7 @@ h1.screen-title {
   animation: om-pulse 1.6s ease-in-out infinite;
 }
 
-/* ── Pill: the rounded status mark (a tier, a role, a count) ── */
+/* ── Pill: the rounded status mark for a tier, a role or a count ── */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1376,9 +1379,9 @@ h1.screen-title {
      cannot fit on a line of its own. */
   overflow-wrap: break-word;
 }
-/* What the project is about, under its title (038). Measured rather than full
-   width: prose past about 70 characters a line is harder to read, and the head
-   is the one place in this app that holds a paragraph. */
+/* The project description, under its title (038). Capped to a measure rather
+   than full width: prose beyond about 70 characters a line is harder to read,
+   and the head is the one place in this app that holds a paragraph. */
 .detail-describe-text {
   margin: 8px 0 0;
   max-width: 68ch;
@@ -1390,8 +1393,8 @@ h1.screen-title {
   vertical-align: middle;
   margin-left: 6px;
 }
-/* The invitation, for an owner whose project has no description yet. Quiet: it
-   is an offer, not a warning that something is missing. */
+/* The prompt to add a description, for an owner whose project has none yet.
+   Low contrast: it is an offer, not a warning. */
 .detail-describe-add {
   display: inline-flex;
   align-items: center;
@@ -1426,9 +1429,9 @@ h1.screen-title {
    same size in the same place, so the field carries the heading's typography and
    the row's width rather than a 280px box in 15px type that clipped the name it
    was editing. */
-/* The title's column claims the row's spare width, so the field that replaces
-   the heading is as wide as the heading was. Content-sized, it was a 450px box
-   scrolling a name that had been reading in full one click earlier. */
+/* The title's column takes the row's spare width, so the field that replaces
+   the heading is as wide as the heading was. Sized to content, it was a 450px
+   box scrolling a name that had been fully visible one click earlier. */
 .detail-title-main {
   flex: 1;
   min-width: 0;
@@ -1455,9 +1458,9 @@ input.text.title-input {
   letter-spacing: -0.025em;
 }
 
-/* The rename control sits in the heading's own text flow, so it follows the
-   last word. Baseline-ish alignment rather than middle: it is punctuation on a
-   line of type, not a control in a toolbar. */
+/* The rename control sits in the heading's text flow, so it follows the last
+   word. Aligned near the baseline rather than the middle, so it sits on the
+   line of type like punctuation rather than like a toolbar control. */
 .detail-title .icon-btn {
   vertical-align: middle;
   margin-left: 7px;
@@ -1504,11 +1507,11 @@ input.text.title-input {
 .member-row {
   display: flex;
   align-items: center;
-  /* A crowded row wraps rather than squeezing: a pending, frozen account
+  /* A crowded row wraps rather than shrinking. A pending, frozen account
      carries three pills and a third control, and with the columns below fixed
-     the only thing left to give was the address — which is the one part of the
-     row that identifies who it is about. It went to zero width and the last
-     control still ran past the card's edge. */
+     the only element left to shrink was the address, which is the one part
+     of the row that identifies the person. It went to zero width and the last
+     control still overflowed the card's edge. */
   flex-wrap: wrap;
   gap: var(--gap-row);
   padding: 11px 14px;
@@ -1526,11 +1529,11 @@ input.text.title-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A list of people reads down its columns: what tier, how much, then the two
-   controls. Sized to their own content, a USER pill and an ADMIN one differ by
-   22px and every row below moved with them. Widths here are the column, and
-   `justify-content` keeps a shorter label centred in it rather than leaving the
-   difference at one end. */
+/* A list of people is read down its columns: tier, amount, then the two
+   controls. Sized to content, a USER pill and an ADMIN pill differ by 22px and
+   every cell to the right shifted with them. The widths here define the
+   column, and `justify-content` centres a shorter label in it rather than
+   leaving the difference at one end. */
 .member-row > .pill {
   min-width: 78px;
   justify-content: center;
@@ -1539,9 +1542,9 @@ input.text.title-input {
   min-width: 62px;
   text-align: right;
 }
-/* Grouped, and pushed to the far side. On a row that fits, `auto` takes the
-   slack the email has already claimed and this does nothing; on one that wraps,
-   it is what puts every row's controls under the same right edge. */
+/* Grouped and pushed to the far side. On a row that fits, the email already
+   takes the slack and `auto` does nothing; on a row that wraps, it aligns every
+   row's controls to the same right edge. */
 .row-actions {
   display: flex;
   align-items: center;
@@ -1560,8 +1563,7 @@ input.text.title-input {
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-/* Running low is a warning; empty is an error — the pill says which without a
-   sentence. */
+/* Running low is a warning and empty is an error; the pill's tone says which. */
 .quota-pill.low {
   color: var(--warn);
   border-color: transparent;
@@ -1692,7 +1694,7 @@ input.text.title-input {
   color: inherit;
 }
 /* Portalled to <body> and positioned from the button's rect: every card clips
-   its corners with overflow:hidden, which would slice the list off. */
+   its corners with overflow:hidden, which would clip the list. */
 .sel-list {
   position: fixed;
   z-index: 60;
@@ -1824,10 +1826,11 @@ input.text.title-input {
   overflow: auto;
 }
 
-/* The app's own tooltip: no delay the browser decides, no chrome we cannot
-   theme. `.tip` only marks a trigger — the bubble is one element portalled to
-   <body> by TipHost and placed from the trigger's rect, because a card that
-   rounds its corners with overflow:hidden clips anything positioned inside it. */
+/* The app's own tooltip, so the delay and the appearance are the app's rather
+   than the browser's. `.tip` only marks a trigger. The bubble is one element
+   portalled to <body> by TipHost and placed from the trigger's rect, because a
+   card that rounds its corners with overflow:hidden clips anything positioned
+   inside it. */
 .tip {
   display: inline-flex;
 }
@@ -1847,7 +1850,8 @@ input.text.title-input {
   max-width: 240px;
   white-space: normal;
   text-align: left;
-  /* A bubble that took the pointer would dismiss itself. */
+  /* A bubble that received the pointer would end the trigger's hover and
+     dismiss itself. */
   pointer-events: none;
   box-shadow: var(--shadow-pop);
   animation: om-fade-up 0.12s var(--ease-fluid) both;
@@ -1861,10 +1865,10 @@ input.text.title-input {
   flex: 1;
 }
 
-/* A policy setting is a control and the paragraph that explains it. Stacked,
+/* A policy setting is a control plus the paragraph that explains it. Stacked,
    every paragraph ran the card's full width and pushed the next control a
-   screen further down; beside its control the same words use width the card
-   already had, and the whole policy is readable in one view. */
+   screen further down. Beside its control, the same text uses width the card
+   already had, and the whole policy fits in one view. */
 .policy-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1901,9 +1905,10 @@ input.text.title-input {
   width: 300px;
   max-width: 100%;
 }
-/* Narrow: the control drops under its explanation rather than squeezing it.
-   900px, not 760: the rail is still in flow at 820, so the card itself is
-   already too narrow for two columns while the viewport looks wide. */
+/* Narrow viewports: the control drops under its explanation rather than
+   compressing it. The breakpoint is 900px, not 760, because the rail is still
+   in flow at 820, so the card is already too narrow for two columns while the
+   viewport is wide. */
 @media (max-width: 900px) {
   .policy-row {
     grid-template-columns: minmax(0, 1fr);
@@ -1917,15 +1922,16 @@ input.text.title-input {
   gap: 8px;
   padding: 12px 14px;
   border-top: 1px solid var(--border);
-  /* These rows live in a 340px rail as well as in a full-width card, and three
-     controls do not fit in the narrow one. Wrapping is what keeps the third
+  /* These rows appear in a 340px rail as well as in a full-width card, and
+     three controls do not fit in the narrow one. Wrapping keeps the third
      reachable instead of clipped at the card's edge. */
   flex-wrap: wrap;
   align-items: center;
 }
-/* One text control, whatever tag it is. `input.text` alone left every textarea
-   in the app with the browser's own box — a white fill in a dark theme, a native
-   resize grip, and none of the app's border, radius or focus behaviour. */
+/* One text control style, whatever the tag. `input.text` alone left every
+   textarea in the app with the browser's default box: a white fill in a dark
+   theme, a native resize grip, and none of the app's border, radius or focus
+   behaviour. */
 input.text,
 textarea.text {
   padding: 0 11px;
@@ -1940,8 +1946,8 @@ input.text {
   height: 32px;
 }
 textarea.text {
-  /* A paragraph, not a line: vertical padding and a readable measure, and it
-     grows downwards only — sideways it belongs to the layout. */
+  /* A paragraph field, not a single line: vertical padding and a readable
+     measure. It resizes vertically only; its width belongs to the layout. */
   padding: 9px 11px;
   line-height: 1.6;
   resize: vertical;
@@ -2024,14 +2030,14 @@ input.submit-input {
 
 /* ── A paper, as a block (037) ──
    It was a table row: a title, a citation, a reference, a state and four
-   controls, all competing for one line inside a card that is itself a column of
-   a two-column screen. The title — the thing you are looking for — is the item
-   that shrinks, so a paper read as "There is more to context than l…" beside a
-   URL printed in full.
+   controls, all on one line inside a card that is itself one column of a
+   two-column screen. The title, the element the reader is looking for, was the
+   one that shrank, so a paper read as "There is more to context than l…" beside
+   a URL printed in full.
    
-   As a block, the identity gets the width and the controls get their own line
-   under it. It costs vertical space, which is the trade: a project is a handful
-   of papers you read, not a hundred you scan. */
+   As a block, the title and citation get the width and the controls get their
+   own line under them. It costs vertical space, which is acceptable because a
+   project holds a handful of papers to read, not a hundred to scan. */
 .paper-head {
   display: flex;
   flex-direction: column;
@@ -2074,9 +2080,9 @@ input.submit-input {
   background: currentColor;
   opacity: 0.6;
 }
-/* Three lines, then the reader decides. `line-clamp` rather than a character
+/* Three lines, with a control to expand. `line-clamp` rather than a character
    count, so the cut lands at the end of a line at whatever the card's width
-   turns out to be. */
+   is. */
 .paper-abstract {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -2118,8 +2124,9 @@ input.submit-input {
 .paper-more:hover {
   text-decoration: underline;
 }
-/* The controls, on their own line, ending where the card ends. The reference
-   leads them: it is what the paper *is* on this platform, and it is a link. */
+/* The controls, on their own line, ending at the card's edge. The reference
+   comes first: it is the paper's identifier on this platform, and it is a
+   link. */
 .paper-actions {
   display: flex;
   align-items: center;
@@ -2139,7 +2146,7 @@ input.submit-input {
   text-decoration: underline;
 }
 /* Everything after the reference is pushed to the far side, so the control that
-   starts work sits where the eye ends. */
+   starts work sits at the end of the line. */
 .paper-state {
   margin-left: auto;
 }
@@ -2147,10 +2154,10 @@ input.submit-input {
 .paper-group .paper-head .tip {
   flex: none;
 }
-/* A form of short fields, two to a row where there is room for two (037's
-   correction dialog: a volume and an issue are both four characters, and a
-   column each is what makes them read as a pair). The title and the author list
-   take the full width, because they are the two that are actually long. */
+/* A form of short fields, two to a row where there is room. In 037's
+   correction dialog a volume and an issue are both four characters, and a
+   column each makes them read as a pair. The title and the author list take
+   the full width, because they are the two long fields. */
 .field-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -2201,8 +2208,9 @@ input.submit-input {
   flex-direction: column;
   animation: om-fade-up 0.3s var(--ease-fluid) both;
 }
-/* The session's own header — back, what it is a run of, and its three panes
-   (015). It sits in the .tx flex column, which grows its children by default. */
+/* The session's header: the back link, the paper it is a run of, and its three
+   pane tabs (015). It sits in the .tx flex column, which grows its children by
+   default. */
 .session-head {
   flex: none;
 }
@@ -2348,10 +2356,11 @@ input.submit-input {
 }
 
 /* ── The scrubber (006s) ──
-   The run drawn against its own clock: phases at the width they earned, a
-   histogram of where the run spent itself, and a cursor that seeks. It replaces
-   the lifecycle strip wherever the events carry timestamps, because a strip of
-   evenly-spaced labels tells you the order and hides the proportions. */
+   The run drawn against its own clock: phases at widths proportional to their
+   duration, a histogram of where the run spent its tokens or events, and a
+   cursor that seeks. It replaces the lifecycle strip wherever the events carry
+   timestamps, because a strip of evenly spaced labels shows the order and hides
+   the proportions. */
 .scrub {
   flex: none;
   display: flex;
@@ -2534,21 +2543,21 @@ input.submit-input {
   flex-direction: column;
   gap: 8px;
 }
-/* A scrolling flex column must not shrink what it scrolls. The moment the
-   content is taller than the box, flex-shrink squeezes every child toward its
-   minimum size — and a child whose own overflow is not `visible` has a minimum
-   of zero. A 771-event transcript hit exactly that: every card collapsed to its
-   padding and clipped the text inside it. Scrolling is the answer to overflow
-   here; shrinking never is. */
+/* A scrolling flex column must not shrink its children. Once the content is
+   taller than the box, flex-shrink compresses every child towards its minimum
+   size, and a child whose own overflow is not `visible` has a minimum of zero.
+   A 771-event transcript hit exactly that: every card collapsed to its padding
+   and clipped the text inside it. Overflow here is handled by scrolling, never
+   by shrinking. */
 .tx-stream > *,
 .tx-side > *,
 .rail-nav > *,
 .modal > * {
   flex: none;
 }
-/* Every event carries its kind's tone on the kind label — the stream is read by
-   scrolling, and a small tinted chip is what makes a tool call findable in it
-   without painting an edge down every card. */
+/* Every event carries its kind's tone on the kind label. The stream is read by
+   scrolling, and a small tinted chip makes a tool call findable in it without
+   drawing a coloured edge down every card. */
 .event {
   position: relative;
   display: grid;
@@ -2591,9 +2600,10 @@ input.submit-input {
   font: 400 9.5px/1 var(--font-mono);
   color: var(--fg-3);
 }
-/* The kind, as a soft chip in its own tone. The fill is the current colour at
-   low alpha, so setting the text colour per kind tints the whole chip — one
-   rule, five kinds. The default (an unclassified event) stays a neutral grey. */
+/* The kind, as a soft chip in its own tone. The fill is currentColor at low
+   alpha, so setting the text colour per kind tints the whole chip with one
+   rule for five kinds. The default, for an unclassified event, is a neutral
+   grey. */
 .event-kind {
   display: inline-flex;
   align-items: center;
@@ -2688,8 +2698,8 @@ input.submit-input {
   overflow: auto;
 }
 
-/* The selected event, in full. The cards can stay scannable because the detail
-   has somewhere to live — nothing here is folded or truncated. */
+/* The selected event, in full. Nothing here is folded or truncated, which is
+   what lets the cards stay compact. */
 .tx-search {
   width: 100%;
   height: 30px;
@@ -2778,9 +2788,9 @@ input.submit-input {
   border-bottom: none;
 }
 /* A tooltip wrapper is a <span>, and an inline box around a block row collapses
-   that row to its content — the value then sits against its label while the row
-   above it is flush right. Call sites use `data-tip` directly, and this keeps a
-   wrapper from reintroducing it. */
+   that row to its content, so the value sits against its label while the row
+   above it is flush right. Call sites use `data-tip` directly, and this rule
+   keeps a wrapper from reintroducing the collapse. */
 .usage-rows > .tip {
   display: block;
 }
@@ -2788,12 +2798,12 @@ input.submit-input {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  /* A value and a control beside it are two things, not one: 6px read as a
-     collision the moment this slot held a button rather than a number. */
+  /* A value and a control beside it need a visible gap: 6px read as a
+     collision once this slot held a button rather than a number. */
   gap: var(--gap-inline);
-  /* The value never shrinks and never wraps: a long label — a paper title on a
-     statement row — must push itself onto another line, not squeeze the amount
-     off the row until it clips to "$". */
+  /* The value never shrinks and never wraps. A long label, such as a paper
+     title on a statement row, must wrap onto another line rather than
+     compress the amount until it clips to "$". */
   flex: none;
   white-space: nowrap;
   font: 500 12px/1 var(--font-mono);
@@ -2808,7 +2818,7 @@ input.submit-input {
 }
 
 /* Top-up preset amounts (022e): pick a common amount as a card, or "Other" to
-   type one. A stepper alone made buying feel like filling a form. */
+   type one. A stepper alone made the purchase read as a form. */
 .topup-presets {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
@@ -2840,10 +2850,10 @@ input.submit-input {
   flex: none;
 }
 
-/* A statement line is three facts — what moved, when, and how much — and the
-   wallet is now wide enough to give each of them a column. Packed into one
-   flex row against a 560px cap, the "what" wrapped over three lines while the
-   date and the amount were crushed together on the right. */
+/* A statement line is three facts: what moved, when, and how much. The wallet
+   is now wide enough to give each a column. Packed into one flex row against a
+   560px cap, the description wrapped over three lines while the date and the
+   amount were pushed together on the right. */
 .usage-line.ledger {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content max-content;
@@ -2860,7 +2870,7 @@ input.submit-input {
   justify-self: end;
 }
 /* The token-usage rows are a breakdown, so each gets the swatch of the slice it
-   names — the same colours the totals are read against. */
+   names, in the same colours as the totals. */
 .usage-dot {
   width: 7px;
   height: 7px;
@@ -2958,32 +2968,34 @@ input.submit-input {
 }
 
 /* ── The landing (029, rebuilt by 033) ──────────────────────────────────────
-   A place, not a door. 017 built this as a fold — two columns, the sign-in
-   guaranteed above 900px — and that guarantee cannot survive a page that
-   scrolls. The replacement is stronger and length-independent: the header is
-   sticky, so the way in is on screen at every scroll position.
+   A full page rather than a sign-in screen. 017 built this as a single fold
+   with two columns and the sign-in guaranteed visible above 900px, and that
+   guarantee cannot survive a page that scrolls. The replacement does not
+   depend on page length: the header is sticky, so the sign-in is on screen at
+   every scroll position.
 
-   033 rebuilt the page from the design. Two things about how it is written:
+   033 rebuilt the page from the design. Two points about how it is written:
 
-   Every colour is a token, including the ones the design wrote as hex — they
-   were the tokens already (#2369bd is --brand, #3f7a55 is --ok), so writing
-   them as tokens is what makes the page hold in dark without a second palette.
+   Every colour is a token, including the ones the design wrote as hex. They
+   were the tokens already (#2369bd is --brand, #3f7a55 is --ok), and writing
+   them as tokens is what makes the page work in dark mode without a second
+   palette.
 
-   The four slabs — the hero, the boundary panel, the walkthrough's artifacts,
-   and the close — are a *material*, and 040 gave that material two states.
-   033 made it one: near-black in both appearances, on the argument that a
-   material is not a theme. That argument holds for one block and fails for
-   four, which is what a reader on paper actually meets — four holes down one
-   page. So the material keeps its own vocabulary, the --slab-* locals below,
-   and the vocabulary has a light half and a dark one. Light is written first
-   because it is the default, exactly as the page's own tokens are.
+   The four slabs, namely the hero, the boundary panel, the walkthrough's
+   artifacts and the close, share one material, and 040 gave that material two
+   states. 033 made it one, near-black in both appearances, on the argument
+   that a material is not a theme. That holds for one block and fails for four:
+   a reader in light mode met four dark holes down one page. So the material
+   keeps its own tokens, the --slab-* locals below, with a light half and a
+   dark half. Light is written first because it is the default, as with the
+   page's own tokens.
 
-   Nothing outside .landing reads these, and nothing inside it should reach
-   past them to a literal: a hex in a rule here is a colour that cannot follow
-   the appearance, which is the whole bug 040 fixed.
+   Nothing outside .landing reads these, and nothing inside it should bypass
+   them with a literal: a hex value in a rule here is a colour that cannot
+   follow the appearance, which is the bug 040 fixed.
 
    Motion here is opt-in at the system level. Every animation lives inside the
-   no-preference query, and the *base* state is the resting one — a reader who
+   no-preference query, and the base state is the resting one, so a reader who
    asked for less motion gets the finished page, not a frozen first frame. The
    walkthrough's dimming is motion by that definition and is driven from
    landing.tsx under the same query. */
@@ -2991,35 +3003,38 @@ input.submit-input {
   min-height: 100vh;
   background: var(--bg);
 
-  /* Paper. The hero ground sits a shade under the page so the slab reads as a
-     block rather than as the page continuing, and the panels sit above it. */
+  /* Light mode. The hero ground is a shade darker than the page so the slab
+     reads as a block rather than as the page continuing, and the panels sit
+     above it. */
   --slab: #eceae5;
   --slab-soft: var(--bg-surface);
-  /* The hero veil, as an rgb triple: it is the slab's own colour at varying
-     alpha, so it *lifts* the copy's ground on paper and drops it in the dark.
-     A triple rather than a colour because it is spent inside gradient stops. */
+  /* The hero veil, as an rgb triple. It is the slab's own colour at varying
+     alpha, so it lightens the copy's ground in light mode and darkens it in
+     dark mode. A triple rather than a colour because it is used inside gradient
+     stops. */
   --slab-veil: 236, 234, 229;
   --slab-ink: var(--fg-1);
   --slab-ink-2: var(--fg-2);
-  /* The quiet tier is a step darker on the material than --fg-3 is on the page.
-     The blocks are denser surfaces — a plate label sits at 10px inside a card
-     inside a panel — and the page's own quietest ink does not survive that. */
+  /* The quiet text tier is a step darker on the material than --fg-3 is on the
+     page. The blocks are denser surfaces, with a plate label at 10px inside a
+     card inside a panel, and the page's quietest ink is not legible there. */
   --slab-ink-3: #7d7b76;
   --slab-line: rgba(12, 10, 9, 0.14);
   --slab-fill: rgba(12, 10, 9, 0.035);
   --slab-fill-2: rgba(12, 10, 9, 0.07);
   --slab-edge: rgba(12, 10, 9, 0.09);
   --slab-shadow: 0 30px 70px -42px rgba(12, 10, 9, 0.3), 0 1px 3px rgba(12, 10, 9, 0.05);
-  /* How much of the brand/err wash the panels carry. On paper a strong wash
-     reads as a stain, so it is a fraction of the dark value. */
+  /* How much of the brand and err wash the panels carry. In light mode a strong
+     wash reads as a stain, so it is a fraction of the dark value. */
   --slab-wash: 9%;
-  /* The semantic pair as it appears *on the material* — on paper the page's
-     own, in the dark the lifted ones, because the plates sit on the block
-     rather than on the page. */
+  /* The semantic pair as it appears on the material: in light mode the page's
+     own values, in dark mode the lifted ones, because the plates sit on the
+     block rather than on the page. */
   --slab-ok: var(--ok);
   --slab-warn: var(--warn);
-  /* On the slab the primary control follows the ground. On paper the ground is
-     the page's, so the control is the page's too; in the dark it inverts. */
+  /* On the slab the primary control follows the ground. In light mode the
+     ground is the page's, so the control is the page's too; in dark mode it
+     inverts. */
   --slab-btn-bg: var(--brand);
   --slab-btn-fg: var(--brand-fg);
   --slab-btn-bg-hover: var(--brand-hover);
@@ -3027,9 +3042,9 @@ input.submit-input {
   --loop-cool: var(--brand);
   --loop-warm: var(--err);
 
-  /* The page's own margin. The hero's slab sits 12px off the viewport and the
-     bands stand further in, because a slab is an object with an edge of its own
-     and a band is the page. One token so the two never drift apart again. */
+  /* The page margin. The hero's slab sits 12px from the viewport edge and the
+     bands are inset further, because a slab is an object with its own edge and
+     a band is part of the page. One token so the two stay in step. */
   --lp-gutter: clamp(20px, 3vw, 56px);
 }
 
@@ -3058,7 +3073,7 @@ input.submit-input {
   --loop-warm: #db8385;
 }
 
-/* The way in, at every scroll position. */
+/* The header is sticky, so the sign-in is on screen at every scroll position. */
 .lp-bar {
   position: sticky;
   top: 0;
@@ -3087,15 +3102,16 @@ input.submit-input {
   font-size: 17px;
 }
 
-/* The page's controls are pills. Nothing else in the product is — this is the
-   one surface that is read rather than operated, and a pill says "an invitation"
-   where the app's square control says "a command". */
+/* The page's controls are pills. Nothing else in the product uses them: this
+   is the one surface that is read rather than operated, and a pill reads as an
+   invitation where the app's square control reads as a command. */
 .landing .btn {
   border-radius: var(--radius-pill);
 }
 /* The header's sign-in is ink, not brand. The brand hue is reserved for what an
-   operator acts on *inside* the product; out here the darkest thing on a pale
-   page is already the loudest, and it inverts correctly in dark. */
+   operator acts on inside the product; on the landing the darkest element on a
+   pale page is already the most prominent, and it inverts correctly in dark
+   mode. */
 .landing .lp-bar-actions .btn:not(.ghost) {
   background: var(--fg-1);
   color: var(--bg);
@@ -3117,8 +3133,8 @@ input.submit-input {
 .lp-hero {
   padding: 12px 12px 0;
 }
-/* The slab: a place the mark lives in, sized to the viewport rather than to its
-   contents, with the claim sitting on its floor. */
+/* The slab: the block that holds the mark, sized to the viewport rather than
+   to its contents, with the claim at its bottom edge. */
 .lp-slab {
   position: relative;
   display: grid;
@@ -3139,10 +3155,10 @@ input.submit-input {
   width: 100%;
   height: 100%;
 }
-/* The floor of the slab is pushed back towards the slab's own colour so the
-   copy has a ground, and the top edge with it so the header does not float on
-   a busy field. Which direction that is — down into the dark, up into the
-   paper — is the veil token's business, not this rule's. */
+/* The bottom of the slab is blended back towards the slab's own colour so the
+   copy has a ground, and the top edge likewise so the header does not sit on a
+   busy field. Whether that blend darkens or lightens is decided by the veil
+   token, not by this rule. */
 .lp-slab-veil {
   position: absolute;
   inset: 0;
@@ -3218,8 +3234,8 @@ input.submit-input {
   color: var(--slab-ink-3);
 }
 /* The secondary control is always the slab's own material. The primary one is
-   whatever contrasts with the ground, which the material's tokens decide: on
-   paper that is the page's brand button, in the dark it inverts to paper. */
+   whatever contrasts with the ground, which the material's tokens decide: in
+   light mode the page's brand button, in dark mode inverted to a light fill. */
 .lp-slab .btn:not(.ghost),
 .lp-close .btn:not(.ghost) {
   background: var(--slab-btn-bg);
@@ -3269,16 +3285,16 @@ input.submit-input {
 
 /* ── Each band ────────────────────────────────────────────────────────────── */
 
-/* The page has one edge, and the hero sets it. 033 capped every band under the
-   hero at 1180px while the slab stayed full-bleed, so a wide display got a
-   full-width first screen followed by a column with 400px of nothing on either
-   side — the same page, told twice, at two different widths.
+/* The page has one edge, set by the hero. 033 capped every band under the hero
+   at 1180px while the slab stayed full-bleed, so a wide display got a
+   full-width first screen followed by a column with 400px of empty space on
+   either side, two different widths on one page.
 
    So the bands are the width of the page too, and what stops the prose from
-   running to 2560px is the measure it already carries: the ch caps on
-   .lp-head h2 and p, on .landing-lead, on every paragraph here. Width bought
-   this way lands where it is worth having — one more card in a grid, a wider
-   evidence column — rather than on a line nobody can track back to. */
+   running to 2560px is the measure it already carries: the ch caps on .lp-head
+   h2 and p, on .landing-lead, and on every paragraph here. The extra width
+   goes where it is useful, such as one more card in a grid or a wider evidence
+   column, rather than into line lengths too long to read. */
 .lp-section {
   padding: 96px var(--lp-gutter) 0;
 }
@@ -3300,9 +3316,9 @@ input.submit-input {
 }
 /* A band whose heading sits beside its content rather than above it. */
 /* auto-fit with two children always splits the band in half. That was
-   invisible at 1180px and is 350px of dead space beside a 44ch paragraph at
-   full width, so the pair is written at the two sizes the two things are: the
-   heading column is a heading column, the content column takes what is left. */
+   invisible at 1180px and leaves 350px of empty space beside a 44ch paragraph
+   at full width, so the two columns are sized explicitly: the heading column
+   is fixed and the content column takes the remainder. */
 .lp-split {
   display: grid;
   grid-template-columns: minmax(260px, 26rem) minmax(0, 1fr);
@@ -3315,8 +3331,8 @@ input.submit-input {
 
 /* ── What comes back ──────────────────────────────────────────────────────── */
 
-/* The five files, stacked and tipped slightly toward the reader, so the answer
-   to "what do I get" is a thing with thickness rather than a list. */
+/* The five files, stacked and tilted slightly towards the reader, so the
+   deliverables read as a physical stack rather than a list. */
 .lp-stack {
   list-style: none;
   margin: 0;
@@ -3337,8 +3353,8 @@ input.submit-input {
   box-shadow: 0 18px 34px -22px rgba(12, 10, 9, 0.28), 0 1px 2px rgba(12, 10, 9, 0.05);
   transform: rotateX(calc((4 - var(--i, 0)) * 1deg));
 }
-/* The one file that lists what could not be confirmed is marked as such. It is
-   the file that makes the rest of them trustworthy. */
+/* The file that lists what could not be confirmed is marked as such, because
+   it is what makes the other files credible. */
 .lp-file.warn {
   border-color: color-mix(in srgb, var(--err) 24%, transparent);
 }
@@ -3360,18 +3376,18 @@ input.submit-input {
 
 /* ── The boundary ─────────────────────────────────────────────────────────── */
 
-/* A dark panel, because this is the argument and it should read as a statement
-   rather than as another card. */
+/* A dark panel, so the boundary argument reads as a statement rather than as
+   another card. */
 .lp-panel {
   position: relative;
   border-radius: 30px;
   overflow: hidden;
   padding: clamp(32px, 5vw, 76px) clamp(22px, 4vw, 56px);
 }
-/* The hairline carries the edge in both appearances, for opposite reasons: in
-   the dark the block and the page are within a few points of each other and
-   the shadow under it does nothing, and on paper a raised white panel on an
-   off-white page needs the line to say where it stops. */
+/* The hairline defines the edge in both appearances, for different reasons. In
+   dark mode the block and the page are within a few points of each other and
+   the shadow under it is invisible; in light mode a raised white panel on an
+   off-white page needs the line to mark where it stops. */
 .lp-block,
 .lp-slab,
 .lp-close {
@@ -3422,9 +3438,9 @@ input.submit-input {
   max-width: 58ch;
 }
 
-/* Three columns, each a claim the product actually makes. The rule on the left
-   is the mark's own boundary, restated at text scale: solid where the work is
-   mechanical, dashed where it is not. */
+/* Three columns, each a claim the product makes. The rule on the left restates
+   the mark's boundary at text scale: solid where the work is mechanical, dashed
+   where it is not. */
 .landing-points {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -3481,15 +3497,15 @@ input.submit-input {
   stroke: var(--loop-cool);
   stroke-width: 7;
   transform-origin: 120px 120px;
-  /* At rest the runner sits on the closed loop, which is a true picture of a run
-     that has finished. The animation below is what makes it one in progress. */
+  /* At rest the runner sits on the closed loop, which depicts a finished run.
+     The animation below turns it into a run in progress. */
   transform: rotate(-90deg);
 }
 
 /* ── A session, step by step ──────────────────────────────────────────────── */
 
-/* The steps read at a measure and the artifacts want the room, so this is the
-   same asymmetric pair as .lp-split rather than two halves. */
+/* The steps need a reading measure and the artifacts need the room, so this is
+   the same asymmetric pair as .lp-split rather than two equal halves. */
 .lp-walk-grid {
   display: grid;
   grid-template-columns: minmax(280px, 34rem) minmax(0, 1fr);
@@ -3556,21 +3572,21 @@ input.submit-input {
   display: grid;
   place-items: center;
   /* The stage is sticky and the steps scroll past it, so its height is what a
-     reader sees for the whole band. 560px read as a box with an artifact in it;
-     this reads as the panel the artifact belongs to. */
+     reader sees for the whole band. At 560px it read as a box with an artifact
+     in it; at this height it reads as the panel the artifact belongs to. */
   min-height: min(760px, 70vh);
   /* Ground, edge and shadow come from .lp-block, which this element also
-     carries. 033 restated all three here, and the restatement won — the panel
-     stayed #0f1113 whatever the material said. */
+     carries. 033 restated all three here, and the restatement took precedence,
+     so the panel stayed #0f1113 regardless of the material tokens. */
 }
 .lp-plates {
   position: relative;
   width: 100%;
-  /* The artifacts are the object on the panel's stage, so they grow with the
-     stage. A fixed 400px stack left a postage stamp in the middle of a
-     2000px-wide block once the bands stopped being capped, and 680px was still
-     a stamp: at full width the release record and the manifest are things to
-     read, not thumbnails of things to read. */
+  /* The artifacts are the content of the panel's stage, so they grow with the
+     stage. A fixed 400px stack was tiny in the middle of a 2000px-wide block
+     once the bands stopped being capped, and 680px was still too small: at
+     full width the release record and the manifest should be readable, not
+     thumbnails. */
   max-width: clamp(400px, 46vw, 980px);
   max-height: min(700px, 64vh);
   overflow-y: auto;
@@ -3660,8 +3676,8 @@ input.submit-input {
   font-size: 12px;
   color: var(--slab-ink-2);
 }
-/* The rate as a bar: what verified, what only partly did, and — as the gap that
-   is left — what neither. */
+/* The rate as a bar: what verified, what partly verified, and, as the unfilled
+   remainder, what did neither. */
 .lp-meter {
   display: flex;
   width: 110px;
@@ -3702,12 +3718,13 @@ input.submit-input {
   background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 100%);
   border: 1px solid var(--border);
 }
-/* Tipped away from the reader and lit from above: the product shown as an
-   object on a table rather than as a screenshot pasted on a page. */
+/* Tilted away from the reader with a shadow from above, so the product reads
+   as an object on a surface rather than a flat screenshot. */
 .lp-window {
-  /* Four columns of real content: the one element on the page that gains from
-     every pixel it is given, up to the point where a row stops being one
-     glance. A cap the band can no longer strand it inside. */
+  /* Four columns of content: the one element on the page that benefits from
+     every pixel of width, up to the point where a row no longer reads in one
+     glance. The cap is on the table itself now that the band no longer has
+     one to strand it inside. */
   max-width: min(1440px, 100%);
   margin: 0 auto;
   transform: perspective(2000px) rotateX(9deg);
@@ -3753,8 +3770,8 @@ input.submit-input {
   text-transform: uppercase;
   white-space: nowrap;
 }
-/* Said on the frame, because the verdict inside it is invented. The one thing
-   this page must never do is show a made-up result as a real one. */
+/* The example marker on the frame, because the verdict inside it is invented.
+   This page must never show a made-up result as a real one. */
 .lp-tag.example {
   margin-left: auto;
   background: color-mix(in srgb, var(--warn) 16%, transparent);
@@ -3864,7 +3881,7 @@ input.submit-input {
   color: var(--fg-2);
 }
 
-/* The verdict, pulled apart. Three bands, kept apart on purpose. */
+/* The verdict's three parts, as three separate bands. */
 .lp-anatomy {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -3893,8 +3910,8 @@ input.submit-input {
   border: 1px solid var(--border);
   color: var(--fg-2);
 }
-/* Only the signed verdict takes the publish hue: it is the one band that says
-   somebody put their name to this. */
+/* Only the signed verdict takes the publish hue: it is the one band that
+   records a person's attestation. */
 .lp-part:last-child {
   border-color: color-mix(in srgb, var(--pub) 28%, transparent);
 }
@@ -3934,8 +3951,8 @@ input.submit-input {
   background: var(--bg-surface);
   box-shadow: 0 14px 30px -24px rgba(12, 10, 9, 0.24);
 }
-/* The last one is the general case rather than a field, so it is drawn as the
-   open half of the boundary is. */
+/* The last item is the general case rather than a specific field, so it takes
+   the err tint, like the open half of the boundary. */
 .lp-field.accent {
   border-color: color-mix(in srgb, var(--err) 18%, transparent);
   background: color-mix(in srgb, var(--err) 4%, var(--bg));
@@ -4000,8 +4017,9 @@ input.submit-input {
 
 /* ── The registry ─────────────────────────────────────────────────────────── */
 
-/* Real published work, read from the open registry (028). Absent entirely when
-   there is none — a heading over nothing would be a claim about a community. */
+/* Published work, read from the open registry (028). Omitted entirely when
+   there is none, because a heading over an empty list would imply activity
+   that does not exist. */
 .lp-strip-head {
   display: flex;
   justify-content: space-between;
@@ -4010,8 +4028,8 @@ input.submit-input {
   flex-wrap: wrap;
   margin-bottom: 36px;
 }
-/* The track grows with the page, so extra width becomes wider cards for a
-   while and then one more card, rather than an eight-across strip of slivers. */
+/* The track grows with the page, so extra width first widens the cards and
+   then adds one more, rather than producing eight narrow cards across. */
 .lp-strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(clamp(280px, 22vw, 440px), 1fr));
@@ -4057,9 +4075,10 @@ input.submit-input {
   color: var(--fg-3);
 }
 /* The citation under a card's title (043): the paper this is a reproduction of,
-   set quieter than the title and above the facts about the reproduction. Two
-   lines at most — a fifteen-author paper is already cut to three names and an
-   "et al.", and what remains must not push the signer off the card. */
+   set lower in contrast than the title and above the facts about the
+   reproduction. Two lines at most: a fifteen-author paper is already cut to
+   three names and "et al.", and what remains must not push the signer off the
+   card. */
 .lp-card-cite {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -4112,8 +4131,8 @@ input.submit-input {
   display: block;
   margin: 0 auto 30px;
 }
-/* The mark owns its colour, and on the slab it takes the pair lifted for a dark
-   ground rather than the page's. */
+/* The mark sets its own colour, and on the slab it takes the pair adjusted for
+   a dark ground rather than the page's pair. */
 .lp-close-mark .mark-outer {
   stroke: var(--loop-warm);
 }
@@ -4147,12 +4166,14 @@ input.submit-input {
 
 /* ── The shared footer ────────────────────────────────────────────────────────
    latere-ui's SiteFooter ships its own stylesheet, written against the platform
-   palette (--text, --accent, …). This app has its own (--fg-1, --brand, …), so
-   the two are joined here by aliasing on the footer itself.
+   palette of --text, --accent and so on. This app has its own palette of
+   --fg-1, --brand and so on, so the two are joined here by aliasing on the
+   footer element itself.
 
-   Not by importing `latere-ui/tokens`: that sheet defines --bg, --bg-surface
-   and --bg-raised at :root, which this app also defines, and the import would
-   quietly reskin every screen in the product to make one footer work. */
+   The alternative, importing `latere-ui/tokens`, is not used: that sheet
+   defines --bg, --bg-surface and --bg-raised at :root, which this app also
+   defines, and the import would restyle every screen in the product to make
+   one footer work. */
 .site-footer {
   --text: var(--fg-1);
   --text-secondary: var(--fg-2);
@@ -4160,8 +4181,8 @@ input.submit-input {
   --accent: var(--brand);
   /* --shadow and --focus-outline are deliberately not aliased. The sheet's own
      fallbacks are a 1px chip shadow and a solid 2px --accent ring, which is
-     what those two are for; this app's nearest tokens are a 30px popover shadow
-     and a 30%-alpha spread ring, and both would land wrong at chip scale. */
+     what those two are for. This app's nearest tokens are a 30px popover shadow
+     and a 30%-alpha spread ring, and both are wrong at chip scale. */
 }
 .landing .site-footer {
   margin-top: 72px;
@@ -4201,8 +4222,8 @@ input.submit-input {
     margin-top: 32px;
   }
   /* One column: there is no second column for a plate to be sticky in, so the
-     artifacts sit under the steps and every one of them is open. The driver in
-     landing.tsx stands down at this width for the same reason. */
+     artifacts sit under the steps and every one of them is open. The scroll
+     driver in landing.tsx is disabled at this width for the same reason. */
   .lp-walk-steps {
     padding-bottom: 0;
   }
@@ -4230,17 +4251,17 @@ input.submit-input {
   .lp-bar {
     padding: 10px 16px;
   }
-  /* The registry link folds into the hero's own buttons on a phone; the bar
-     keeps the one action that must always be reachable. */
+  /* On a phone the registry link moves into the hero's own buttons; the bar
+     keeps only the sign-in, which must always be reachable. */
   .lp-bar-registry {
     display: none;
   }
 }
 
-/* With the driver stood down every artifact is open at once, which is taller
-   than the panel it sits in. The cap is there to keep the driven state from
+/* With the driver disabled every artifact is open at once, which is taller
+   than the panel it sits in. The cap exists to keep the driven state from
    growing the sticky panel; without motion there is nothing to cap, and a
-   reader who asked for less of it should not have to find a nested scroller. */
+   reader who asked for less motion should not have to use a nested scroller. */
 @media (prefers-reduced-motion: reduce) {
   .lp-walk-panel {
     min-height: 0;
@@ -4268,10 +4289,10 @@ input.submit-input {
     opacity: 1;
     transform: none;
   }
-  /* Inside a revealed band the parts arrive in reading order, one after the
-     next — the delay is the index the component set. The walkthrough's steps are
-     not in this list: their opacity belongs to the scroll driver, and two
-     writers on one property is how a step ends up stuck at a third of itself. */
+  /* Inside a revealed band the parts appear in reading order, one after the
+     next; the delay is the index the component set. The walkthrough's steps
+     are not in this list: their opacity belongs to the scroll driver, and two
+     writers on one property left a step stuck at a third of its opacity. */
   .lp-file,
   .lp-part,
   .lp-card {
@@ -4321,9 +4342,9 @@ input.submit-input {
   padding: 5px 9px;
   font-size: 12px;
 }
-/* A state a screen is in, said at the top of it with the way out on the same
-   line — a project in the trash keeps its address, so it has to explain itself
-   to whoever followed the link (019). */
+/* A screen-level state banner, at the top of the screen with the action on the
+   same line. A project in the trash keeps its address, so the screen has to
+   explain its state to whoever followed the link (019). */
 .banner {
   display: flex;
   align-items: center;
@@ -4347,8 +4368,8 @@ input.submit-input {
   align-items: flex-start;
   line-height: 1.5;
 }
-/* One session standing between a project and the public flip: what is wrong on
-   the left, the way to it on the right (006f's gate, said to the owner). */
+/* One session blocking a project's public flip: what is wrong on the left, the
+   link to it on the right. This is 006f's gate as shown to the owner. */
 .blocker-row {
   display: flex;
   align-items: center;
@@ -4364,8 +4385,8 @@ input.submit-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The trash is where work goes, not a place work is done, so it sits apart from
-   the destinations above it and is pushed to the foot of the rail. */
+/* The trash is not a working destination, so it sits apart from the
+   destinations above it, at the foot of the rail. */
 .rail-group-foot {
   margin-top: auto;
 }
@@ -4502,7 +4523,7 @@ input.submit-input {
   padding-left: 1.4em;
 }
 
-/* highlight.js — theme-aware palette on the design tokens */
+/* highlight.js: theme-aware palette on the design tokens */
 .hljs {
   color: var(--fg-1);
   background: transparent;
@@ -4563,9 +4584,9 @@ input.submit-input {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  /* --bg-base was never a token: the whole declaration was invalid, so the
-     backdrop rendered fully transparent and the page behind it stayed live to
-     the eye. It is --bg. */
+  /* --bg-base was never a token, so the whole declaration was invalid, the
+     backdrop rendered fully transparent and the page behind it looked active.
+     The token is --bg. */
   background: color-mix(in srgb, var(--bg) 68%, transparent);
   backdrop-filter: blur(3px);
   animation: om-fade-in 0.16s ease both;
@@ -4622,7 +4643,8 @@ input.submit-input {
   padding-top: 2px;
 }
 
-/* The signer line on a published project: the endorsement, not a data row. */
+/* The signer line on a published project, styled as an attestation rather than
+   a data row. */
 .signer {
   display: flex;
   flex-direction: column;
@@ -4641,8 +4663,8 @@ input.submit-input {
   color: var(--fg-3);
 }
 
-/* The admin's price list, and a wallet's statement: both are tables of numbers,
-   and pretending otherwise costs the reader alignment. */
+/* The admin's price list and a wallet's statement are both tables of numbers,
+   so they are laid out as tables with aligned columns. */
 .rate-card {
   display: flex;
   flex-direction: column;
@@ -4708,8 +4730,8 @@ input.submit-input {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
-/* Verified and partial are painted; blocked is the track left showing, so the
-   eye reads it as work not done rather than as a third result. */
+/* Verified and partial are filled; blocked is the unfilled track, so it reads
+   as work not done rather than as a third result. */
 .decomp-bar {
   display: flex;
   width: 96px;
@@ -4739,8 +4761,8 @@ input.submit-input {
   vertical-align: top;
   border-top: 1px solid var(--border);
 }
-/* An outer row is muted as well as labelled. The rule this product defends has
-   to be visible without reading the column. */
+/* An outer-loop row is muted as well as labelled, so the boundary is visible
+   without reading the column. */
 .grid-table tr.row-outer td,
 .grid-table tr.row-outer .claim-text {
   color: var(--fg-3);
@@ -4853,17 +4875,17 @@ input.submit-input {
 }
 
 /* ─── The projects list, as columns ────────────────────────────────────────
-   A flex row sizes every cell to its own content, so the trailing badges —
-   "1 RUNNING" against "DONE", "PUBLIC" against "PRIVATE" — set where the cells
-   to their left begin, and no two rows lined up. One grid template, shared by
-   the header and every row, is what makes a column a column.
+   A flex row sizes every cell to its own content, so the trailing badges, for
+   example "1 RUNNING" against "DONE" or "PUBLIC" against "PRIVATE", set where
+   the cells to their left begin, and no two rows lined up. One grid template,
+   shared by the header and every row, keeps the columns aligned.
 
    The two action slots are reserved rather than conditional: a row with nothing
    to download would otherwise pull the next control into the download column. */
 /* Fluid tracks, not fixed ones: the title never collapses because the columns
-   beside it are proportions of what is left rather than reservations taken off
-   the top. Owner and date are not here — they are on the title's own meta line
-   (034), which is what buys the Published column its room. */
+   beside it are proportions of the remaining width rather than fixed
+   reservations. Owner and date are not here; they are on the title's meta line
+   (034), which frees the room for the Published column. */
 .project-list {
   --project-cols: minmax(0, 2.4fr) minmax(0, 1.1fr) minmax(96px, 0.6fr) 34px 30px 30px 15px;
 }
@@ -4874,9 +4896,9 @@ input.submit-input {
   align-items: center;
   gap: var(--gap-row);
 }
-/* The header is deliberately not a `.row`: half the app's list behaviour hangs
-   off that class — the hover, the pointer, and every test that reads "the first
-   row" — and a heading is none of those things. */
+/* The header is deliberately not a `.row`. Much of the app's list behaviour
+   hangs off that class, including the hover, the pointer and every test that
+   reads "the first row", and a heading should have none of it. */
 .project-head {
   padding: 9px 14px;
   background: var(--bg-raised);
@@ -4893,8 +4915,8 @@ input.submit-input {
 }
 
 @media (max-width: 760px) {
-  /* What a project has handed over is context; what it *is* — its title and its
-     phase — is not. So Published is the column that leaves first. */
+  /* Published is context; the title and the phase are identity. So Published
+     is the first column dropped at narrow widths. */
   .project-list {
     --project-cols: minmax(0, 1fr) 96px 30px 30px 30px 15px;
   }
@@ -4987,9 +5009,9 @@ input.submit-input {
   color: var(--pub);
 }
 
-/* A card's own action, at its foot. A button parked beside one field reads as
-   that field's control — which is what put Save next to the overdraft floor
-   while it wrote the start reserve too. */
+/* A card's own action, at its foot. A button placed beside one field reads as
+   that field's control, which is how Save ended up next to the overdraft floor
+   while it also wrote the start reserve. */
 .card-foot {
   display: flex;
   align-items: center;
@@ -5003,11 +5025,11 @@ input.submit-input {
 
 /* ─── The phone (030) ──────────────────────────────────────────────────────
    One breakpoint for the whole app. Below it the rail leaves the flow and
-   becomes a drawer, the topbar sheds what is duplicated on another screen, and
-   every pane that is columns because it had the width becomes rows.
+   becomes a drawer, the topbar drops what is duplicated on another screen, and
+   every pane laid out as columns for width becomes rows.
 
-   760px, not a fourth number: the project list already folds here, and 768 — an
-   iPad held upright — keeps the rail it has room for. */
+   760px rather than a new number: the project list already folds here, and a
+   768px portrait iPad keeps the rail it has room for. */
 @media (max-width: 760px) {
   /* ── The rail as a drawer ── */
   /* Out of the flow entirely, so `.main` measures the whole viewport rather
@@ -5023,9 +5045,8 @@ input.submit-input {
     transform: translateX(-100%);
     box-shadow: var(--shadow-pop);
     transition: transform 0.22s var(--ease-fluid);
-    /* A drawer floats over the screen, so it needs a ground of its own — the
-       desk's fill, which is transparent in the flow, has nothing behind it
-       here. */
+    /* A drawer floats over the screen, so it needs its own background. The
+       rail's fill is transparent in the flow and has nothing behind it here. */
     background: var(--bg-deep);
   }
   /* No inset on a phone: 390px has no width to spend on a margin, and the
@@ -5042,9 +5063,9 @@ input.submit-input {
   .rail-scrim {
     display: block;
   }
-  /* A drawer has room for words, so the desktop fold is not what a phone gets.
-     Every `.rail-fold` rule is undone rather than avoided, because the fold is
-     a stored preference this width must not read and must not write. */
+  /* A drawer has room for labels, so a phone never shows the desktop fold.
+     Every `.rail-fold` rule is undone here rather than avoided, because the
+     fold is a stored preference this width must neither read nor write. */
   .rail-fold {
     width: 264px;
   }
@@ -5089,12 +5110,12 @@ input.submit-input {
     gap: 8px;
     padding: 0 12px;
   }
-  /* The controls stay `flex: none` — a shrunk box around children that cannot
-     shrink just moves the overflow inside it, which is what a first attempt
-     here did: the box measured 64px and its two controls still ran to 443. What
-     gives instead is what the bar is *carrying*: the appearance switcher leaves
-     (it is on /settings too) and the button drops its label, and the crumb —
-     which already ellipsizes — absorbs the rest. */
+  /* The controls stay `flex: none`. A shrunk box around children that cannot
+     shrink only moves the overflow inside it, which is what a first attempt
+     here did: the box measured 64px and its two controls still ran to 443px.
+     Instead the bar carries less: the appearance switcher is removed, since it
+     is also on /settings, the button drops its label, and the crumb, which
+     already truncates, absorbs the rest. */
   .topbar-actions .segmented {
     display: none;
   }
@@ -5118,8 +5139,8 @@ input.submit-input {
     grid-template-columns: minmax(0, 1fr);
   }
   /* The transcript's three panes become three stacked sections. Each scrolled
-     itself when it was a column of a full-height grid; stacked, the screen is
-     what scrolls, so they hand their overflow back. */
+     itself as a column of a full-height grid; stacked, the screen scrolls, so
+     the panes no longer scroll internally. */
   .tx-body {
     overflow-y: auto;
   }
@@ -5142,12 +5163,12 @@ input.submit-input {
     width: auto;
   }
   /* ── The list of projects ──
-     A grid stops being a grid at 390: five tracks less the fixed 171px of them
-     leaves ~120px for a paper title, and the column headings collide with each
-     other above it. So it stops pretending. The row becomes two lines — what
-     the project is, then its phase and what you can do to it — and the heading
-     goes with the columns it was naming. Owner, date and visibility are context
-     a phone reads on the project's own screen. */
+     The grid does not work at 390px: five tracks minus their fixed 171px
+     leaves about 120px for a paper title, and the column headings collide
+     above it. So the grid is dropped. The row becomes two lines, the project's
+     identity and then its phase and actions, and the heading goes with the
+     columns it named. Owner, date and visibility are shown on the project's
+     own screen instead. */
   .project-list > .project-head {
     display: none;
   }
@@ -5171,8 +5192,9 @@ input.submit-input {
   }
 
   /* A paper's controls do not fit on one line beside its identifier at 390px,
-     so the identifier takes its own line and the controls keep theirs together —
-     the control that starts a run must not end up alone under a stray ×. */
+     so the identifier takes its own line and the controls stay together on
+     theirs. The control that starts a run must not end up alone under a
+     separated ×. */
   .paper-ref {
     flex: 1 0 100%;
     max-width: none;
@@ -5184,10 +5206,10 @@ input.submit-input {
   /* ── The project's own head ──
      The title shared a flex row with the publish button, which does not shrink,
      so the title took what was left: an 80px column on a 390px phone, and a
-     header 582px tall on an 844px screen — the tabs, which are how you get
-     anywhere else on the project, started below the fold. The button takes its
-     own line here, which gives the title the width, and the title is capped so
-     a long paper name cannot push the tabs off the screen again. */
+     header 582px tall on an 844px screen, with the tabs, which are the only way
+     to the rest of the project, below the fold. The button takes its own line
+     here, which gives the title the width, and the title is capped so a long
+     paper name cannot push the tabs off the screen again. */
   .detail-head {
     padding: 14px 14px 0;
   }
@@ -5201,8 +5223,8 @@ input.submit-input {
   .detail-title {
     font-size: 17px;
     /* Three lines of a paper's name, then an ellipsis. The whole title is one
-       tap away — the pencil opens it in a field — and the phone's own crumb
-       carries it too, so what is spent here is recognition, not access. */
+       tap away, since the pencil opens it in a field, and the phone's crumb
+       carries it too, so the truncation costs only the tail of the name. */
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
@@ -5212,17 +5234,17 @@ input.submit-input {
 
   /* ── Rows that were one line ──
      A flex row of a title plus badges plus a control fits at desktop width
-     because the title is the only part that shrinks. At 390 the title has
-     nothing left to give and everything after it is pushed off the edge. These
-     rows wrap instead, with the title claiming its own line, which is what
-     `.field-row` already does for the same reason in a 340px rail. */
+     because the title is the only part that shrinks. At 390px the title cannot
+     shrink further and everything after it is pushed off the edge. These rows
+     wrap instead, with the title taking its own line, as `.field-row` already
+     does for the same reason in a 340px rail. */
   .row,
   .member-row {
     flex-wrap: wrap;
   }
-  /* The desk's 18px between columns is what a phone does not have: a tier, an
-     amount and two controls come to 340px of the 332 a card leaves. Ten is
-     enough to read them apart and buys the line back. */
+  /* A phone lacks the desktop's 18px between columns: a tier, an amount and
+     two controls come to 340px in the 332px a card leaves. 10px is enough to
+     separate them and fits the line. */
   .member-row {
     gap: 10px;
   }
@@ -5230,9 +5252,9 @@ input.submit-input {
   .member-row > .member-email {
     flex: 1 0 100%;
   }
-  /* An address is the identity in this list and it is already the line's whole
-     width; the initials beside it are the same letters again, in a circle, and
-     on a phone they cost a line of their own to say so. */
+  /* The address is the identity in this list and already fills the line. The
+     initials beside it repeat the same letters, and on a phone they cost a
+     line of their own, so they are hidden. */
   .member-row > .user-avatar {
     display: none;
   }
@@ -5243,32 +5265,32 @@ input.submit-input {
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  /* The icons go, not the words: a phone has 334px for a tier, an amount and
-     two controls, and the four glyphs are exactly what does not fit. The topbar
-     makes the same trade the other way round — there the label goes, because
-     the icon is what the control is known by. */
+  /* The icons are dropped, not the labels: a phone has 334px for a tier, an
+     amount and two controls, and the four glyphs are what does not fit. The
+     topbar makes the opposite trade and drops the label, because there the
+     icon identifies the control. */
   .member-row .row-actions .btn svg {
     display: none;
   }
-  /* A value that is a number must never wrap — a clipped amount is a wrong
-     amount, which is why `.v` is `flex: none` — but a value that is an address
+  /* A numeric value must never wrap, because a clipped amount is a wrong
+     amount, which is why `.v` is `flex: none`. But a value that is an address
      is a long unbreakable string, and on a public profile it ran 412px wide in
-     a 362px card. Numbers keep the rule; text gets to break.
+     a 362px card. Numbers keep the rule; text may break.
 
      `break-word`, not `anywhere`: `anywhere` lets the browser break a word to
-     make the *line box* narrower even when the word would have fitted, and the
-     statement's own rows are what caught that — a date and an amount on one
-     line came back as "8/3 /20 25" and "−$ 5. 00". `break-word` breaks only a
-     word that cannot fit by itself, which is the email and nothing else. */
+     make the line box narrower even when the word would have fitted, and the
+     statement's rows showed that: a date and an amount on one line came back
+     as "8/3 /20 25" and "−$ 5. 00". `break-word` breaks only a word that
+     cannot fit on its own, which is the email and nothing else. */
   .usage-line .v:not(.tabular) {
     flex: 0 1 auto;
     min-width: 0;
     white-space: normal;
     overflow-wrap: break-word;
     text-align: right;
-    /* The slot holds more than one thing on a statement row — a date and an
-       amount — and neither of them shrinks. Letting the slot itself wrap is
-       what puts the amount under the date instead of past the edge. */
+    /* On a statement row the slot holds a date and an amount, and neither
+       shrinks. Letting the slot itself wrap puts the amount under the date
+       instead of past the edge. */
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -5296,7 +5318,7 @@ input.submit-input {
     overflow-x: auto;
   }
   /* Wide enough that scrolling to a column shows a readable one. Sized to the
-     container would put four columns in 362px and hand back the clipping the
+     container, four columns would share 362px and clip again, which the
      scroll was meant to fix. */
   .grid-table {
     min-width: 620px;
