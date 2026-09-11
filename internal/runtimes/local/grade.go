@@ -77,21 +77,23 @@ func (v JudgeVerdict) Verdict() (managed.Verdict, error) {
 	return managed.Verdict{Grade: grade, Explanation: strings.TrimSpace(b.String())}, nil
 }
 
-// ReadVerdict reads and validates one grading round's output.
-func ReadVerdict(gradeDir string, round int) (JudgeVerdict, managed.Verdict, error) {
+// ReadVerdict reads and validates one grading round's output, returning the
+// normalized verdict. The judge's raw record is not returned: the one caller
+// wants the verdict, and a returned value nothing reads is a value a caller has
+// to discard.
+func ReadVerdict(gradeDir string, round int) (managed.Verdict, error) {
 	body, err := os.ReadFile(filepath.Join(gradeDir, VerdictFile(round))) //nolint:gosec // this package's own grade directory
 	if os.IsNotExist(err) {
-		return JudgeVerdict{}, managed.Verdict{}, fmt.Errorf("the judge wrote no %s", VerdictFile(round))
+		return managed.Verdict{}, fmt.Errorf("the judge wrote no %s", VerdictFile(round))
 	}
 	if err != nil {
-		return JudgeVerdict{}, managed.Verdict{}, err
+		return managed.Verdict{}, err
 	}
 	var file JudgeVerdict
 	if err := json.Unmarshal(body, &file); err != nil {
-		return JudgeVerdict{}, managed.Verdict{}, fmt.Errorf("the judge's %s is not valid JSON: %w", VerdictFile(round), err)
+		return managed.Verdict{}, fmt.Errorf("the judge's %s is not valid JSON: %w", VerdictFile(round), err)
 	}
-	verdict, err := file.Verdict()
-	return file, verdict, err
+	return file.Verdict()
 }
 
 // judgeTask is the runtime's own instruction to the grader. It is
