@@ -567,6 +567,11 @@ func pushWorkspace(ctx context.Context, pub *publisher, workspace, paperRef stri
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "  ! %v\n", err)
+		if errors.Is(err, publish.ErrNoWorkspace) {
+			// There is nothing kept to retry from, and saying otherwise
+			// would send the operator to a directory that is not there.
+			return err
+		}
 		_, _ = fmt.Fprintf(stderr, "    the workspace is kept at %s\n", workspace)
 		if encoded, encodeErr := encodeSessionRef(ref); encodeErr == nil && ref.ID != "" {
 			_, _ = fmt.Fprintf(stderr, "    retry with:\n      replichai finish %s %q --runtime local --session-ref %s\n",

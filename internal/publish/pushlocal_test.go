@@ -13,8 +13,18 @@ import (
 	"testing"
 )
 
+// requireGit skips a test that needs the git binary on a machine without one,
+// so the suite stays hermetic rather than failing on what is not installed.
+func requireGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+}
+
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
+	requireGit(t)
 	command := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
 	output, err := command.CombinedOutput()
@@ -50,6 +60,7 @@ func workspace(t *testing.T, files map[string]string) string {
 
 func bareRemote(t *testing.T) string {
 	t.Helper()
+	requireGit(t)
 	dir := t.TempDir()
 	if output, err := exec.Command("git", "init", "--bare", "--initial-branch=main", dir).CombinedOutput(); err != nil {
 		t.Fatalf("git init --bare: %v: %s", err, output)
@@ -121,6 +132,87 @@ func TestAWorkspaceWithNoCommitsSaysSo(t *testing.T) {
 	_, err := LocalPush{Workspace: dir, RemoteURL: "file://" + bareRemote(t)}.Run(context.Background())
 	if !errors.Is(err, ErrNothingCommitted) {
 		t.Fatalf("Run = %v", err)
+	}
+}
+
+// "Nothing committed" is a finding about the run, and the CLI records it as
+// the run's outcome. Every other reason HEAD cannot be read — the directory is
+// gone, it was never a repository, git itself is missing — is a failure of the
+// push, and reporting it as the run's outcome would record "produced nothing"
+// over a workspace that may hold the whole reproduction.
+func TestOnlyAnUnbornBranchIsNothingCommitted(t *testing.T) {
+	requireGit(t)
+	remote := "file://" + bareRemote(t)
+
+	t.Run("the workspace directory is gone", func(t *testing.T) {
+		_, err := LocalPush{Workspace: filepath.Join(t.TempDir(), "gone"), RemoteURL: remote}.Run(context.Background())
+		if errors.Is(err, ErrNothingCommitted) {
+			t.Fatalf("a missing workspace was reported as a run that committed nothing: %v", err)
+		}
+		if !errors.Is(err, ErrNoWorkspace) {
+			t.Fatalf("Run = %v, want ErrNoWorkspace", err)
+		}
+	})
+
+	t.Run("the directory is not a repository", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# not committed anywhere"), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		_, err := LocalPush{Workspace: dir, RemoteURL: remote}.Run(context.Background())
+		if errors.Is(err, ErrNothingCommitted) {
+			t.Fatalf("a plain directory was reported as a run that committed nothing: %v", err)
+		}
+		if !errors.Is(err, ErrNoWorkspace) {
+			t.Fatalf("Run = %v, want ErrNoWorkspace", err)
+		}
+	})
+
+	t.Run("git is not installed", func(t *testing.T) {
+		dir := workspace(t, map[string]string{"README.md": "# reproduction"})
+		t.Setenv("PATH", t.TempDir())
+		_, err := LocalPush{Workspace: dir, RemoteURL: remote}.Run(context.Background())
+		if errors.Is(err, ErrNothingCommitted) || errors.Is(err, ErrNoWorkspace) {
+			t.Fatalf("a missing git binary was blamed on the workspace: %v", err)
+		}
+		if !errors.Is(err, exec.ErrNotFound) {
+			t.Fatalf("Run = %v, want the missing executable", err)
+		}
+	})
+}
+
+// The gate reads the tree that is about to be pushed, not the index. A file
+// staged but never committed does not travel, so it cannot block the push; a
+// file committed and then unstaged does travel, so it must.
+func TestVerifyReadsTheCommittedTreeNotTheIndex(t *testing.T) {
+	dir := workspace(t, map[string]string{"README.md": "# reproduction"})
+	remote := bareRemote(t)
+
+	// Staged, never committed: not part of what is pushed.
+	if err := os.WriteFile(filepath.Join(dir, "paper.pdf"), []byte("%PDF-1.7"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	git(t, dir, "add", "paper.pdf")
+	push := LocalPush{Workspace: dir, RemoteURL: "file://" + remote}
+	if flagged, err := push.Verify(context.Background()); err != nil || len(flagged) != 0 {
+		t.Fatalf("a staged, uncommitted file blocked the push: flagged %v, err %v", flagged, err)
+	}
+	if _, err := push.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Committed, then removed from the index: it is in the tree being pushed.
+	git(t, dir, "commit", "-m", "the paper, by mistake")
+	git(t, dir, "rm", "--cached", "paper.pdf")
+	flagged, err := push.Verify(context.Background())
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if len(flagged) != 1 || flagged[0] != "paper.pdf" {
+		t.Fatalf("a committed third-party file hidden from the index was not flagged: %v", flagged)
+	}
+	if _, err := push.Run(context.Background()); !errors.Is(err, ErrRefusedContent) {
+		t.Fatalf("Run = %v, want the committed paper refused", err)
 	}
 }
 
