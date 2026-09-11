@@ -309,7 +309,7 @@ func collectManagedArtifacts(ctx context.Context, evidence managed.EvidenceReade
 		}
 		body, err := evidence.Fetch(ctx, artifact)
 		if err != nil {
-			return nil, fmt.Errorf("fetch %s: %w", artifact.Path, err)
+			return nil, fmt.Errorf("read artifact %s: %w", artifact.Path, err)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return nil, fmt.Errorf("create %s: %w", filepath.Dir(target), err)
