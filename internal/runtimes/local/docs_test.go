@@ -14,8 +14,8 @@ import (
 )
 
 // docGuide is the user-facing guide to running audits locally. Its model
-// catalogue is read from the document rather than copied here: an example that
-// stops working is a document that lies, and the only way to know is to run it.
+// catalogue is read from the document rather than copied here, so an example
+// that stops working fails this test rather than misleading a reader.
 const docGuide = "../../../docs/local-runs.md"
 
 // The catalogue the guide shows an operator validates, and resolves to the
@@ -71,8 +71,8 @@ func TestTheDocumentedCatalogueWorks(t *testing.T) {
 	}
 }
 
-// Every flag the guide's reference table names is a flag the CLI has. A table
-// of options that do not exist is worse than no table.
+// Every flag the guide's reference table names is a flag the CLI has, so the
+// table cannot list options that do not exist.
 func TestTheDocumentedFlagsExist(t *testing.T) {
 	body, err := os.ReadFile(docGuide)
 	if err != nil {

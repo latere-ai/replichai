@@ -31,8 +31,8 @@ func newSession(t *testing.T) *Session {
 
 // A session id whose directory already exists is refused rather than adopted.
 // The id is four random bytes, so two sessions can collide, and MkdirAll would
-// have silently re-initialised the first session's workspace as if it were the
-// second's — losing the first's evidence to a run that thought it started
+// have re-initialised the first session's workspace as if it were the
+// second's, losing the first's evidence to a run that believed it started
 // clean.
 func TestCreateSessionRefusesAnExistingID(t *testing.T) {
 	root := t.TempDir()
@@ -95,8 +95,8 @@ func TestTheWorkspaceIsARepositoryWithNoRemote(t *testing.T) {
 	}
 }
 
-// The evidence path is never the same as anything a stage may write. This is
-// the whole reason the directory is split the way it is.
+// The evidence path is never the same as any path a stage may write. This is
+// the reason the directory is split as it is.
 func TestEvidenceIsNotUnderTheWorkspace(t *testing.T) {
 	session := newSession(t)
 	for _, writable := range []string{session.Workspace(), session.Tmp(), session.Venv(), session.Grade(), session.Home()} {
@@ -428,7 +428,7 @@ func TestAnInstalledDependencyTreeIsNotHarvested(t *testing.T) {
 	session := newSession(t)
 	workspace := session.Workspace()
 
-	// A virtualenv under a name nothing predicts, recognised by the marker
+	// A virtualenv under an unpredictable name, recognised by the marker
 	// Python itself writes, and one recognised by name.
 	for _, dir := range []string{"pyenv-3.13/lib/python3.13/site-packages/numpy", "node_modules/left-pad"} {
 		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o700); err != nil {

@@ -27,7 +27,7 @@ func env(pairs map[string]string) LookupEnv {
 	}
 }
 
-// writeFile writes an ordinary file, the one caller of which is this test.
+// writeFile writes an ordinary file; this test is its only caller.
 func writeFile(path string, body []byte) error { return writeFileMode(path, body, 0o600) }
 
 func parse(t *testing.T, body string) CatalogFile {
@@ -89,7 +89,7 @@ func TestCatalogResolvesEachTierOnce(t *testing.T) {
 		}
 	}
 	// A gateway with no key_env is reached with no credential at all, which
-	// is how a local server that wants none is used.
+	// is how a local server that needs none is used.
 	_, gateway, err := catalog.Resolve(harness.Codex, managed.ModelSelector{Preference: "fast"})
 	if err != nil || gateway.Auth != harness.AuthNone || gateway.Key != "" {
 		t.Fatalf("keyless gateway = %+v, %v", gateway, err)
@@ -119,8 +119,8 @@ func TestCatalogRefusesAnUndeclaredExactModel(t *testing.T) {
 	}
 }
 
-// Every way a declaration can be wrong is refused at construction, naming both
-// halves of the disagreement.
+// Every invalid declaration is refused at construction, and the error names
+// both sides of the mismatch.
 func TestCatalogRefusesABadDeclaration(t *testing.T) {
 	cases := []struct {
 		name string
@@ -186,13 +186,14 @@ models:
 	}
 }
 
-// With no file written, the default declaration is the harness's own login —
-// so a first run on a machine where the harness is already signed in needs no
+// With no file written, the default declaration is the harness's own login, so
+// a first run on a machine where the harness is already signed in needs no
 // configuration and no API key.
-// The default anthropic egress a gateway with no base URL falls back to is the
-// model endpoint alone. The harness's telemetry service and error reporter are
-// not opened — a reproduction does not phone home, and the harness is told not
-// to reach them either.
+//
+// The default anthropic egress for a gateway with no base URL is the model
+// endpoint alone. The harness's telemetry service and error reporter are not
+// opened: a reproduction sends no telemetry, and the harness is told not to
+// reach them either.
 func TestTheDefaultAnthropicEgressIsTheModelEndpointOnly(t *testing.T) {
 	hosts := defaultVendorHosts(harness.DialectAnthropic)
 	if len(hosts) != 1 || hosts[0] != "api.anthropic.com" {
@@ -241,7 +242,7 @@ func TestCatalogReportsItsCredentialsForRedaction(t *testing.T) {
 	}
 }
 
-// A malformed file fails loudly; a missing one falls back to the default.
+// A malformed file is an error; a missing one falls back to the default.
 func TestAMalformedCatalogueFailsRatherThanDefaulting(t *testing.T) {
 	if _, err := ReadCatalogFile(parseTempFile(t, "gateways: [this is not a map\n")); err == nil {
 		t.Fatal("a malformed catalogue was accepted")

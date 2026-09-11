@@ -89,11 +89,12 @@ func readEnvironment(t *testing.T, ref managed.SessionRef) local.Environment {
 	return record
 }
 
-// The operator's own sign-in — the harness's configuration directory, and on
-// macOS the keychain — reaches a session that runs on it and no other, and the
-// environment record lists exactly what was opened. A session carrying its own
-// credential is granted nothing under the operator's home: on Linux the login
-// and the operator's whole conversation history live in the same directory.
+// The operator's own sign-in, which is the harness's configuration directory
+// and on macOS the keychain, is granted only to a session that runs on it, and
+// the environment record lists exactly what was granted. A session carrying
+// its own credential is granted nothing under the operator's home, because on
+// Linux the login and the operator's whole conversation history live in the
+// same directory.
 func TestTheLoginGrantReachesOnlyASessionOnTheOperatorsLogin(t *testing.T) {
 	machine := harness.Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501}
 	login := harness.LoginPaths(harness.NewClaudeCode().Needs(machine))
@@ -101,8 +102,8 @@ func TestTheLoginGrantReachesOnlyASessionOnTheOperatorsLogin(t *testing.T) {
 		t.Fatal("the harness declares no login paths, so there is nothing to gate")
 	}
 
-	// On the harness's own login every agentic stage is granted the login,
-	// read-only, and the bootstrap — which talks to no model — is not.
+	// On the harness's own login every agentic stage is granted the login
+	// read-only, and the bootstrap, which talks to no model, is not.
 	runtime, driver := buildWith(t, localtest.Script{}, local.DefaultCatalogFile(), noCredentials, machine)
 	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
 	for _, stage := range driver.Stages() {
@@ -151,9 +152,10 @@ func TestLocalMeetsTheManagedContract(t *testing.T) {
 	})
 }
 
-// And to the shared terminal state for a rejected evaluation: failed, not done.
-// Local reported done, and the job store maps state one to one, so the same
-// outcome settled as done here and failed on every other runtime.
+// The runtime also reports the shared terminal state for a rejected
+// evaluation: failed, not done. Local once reported done, and the job store
+// maps state one to one, so the same outcome was recorded as done here and
+// failed on every other runtime.
 func TestLocalFailingEvaluationMeetsTheContract(t *testing.T) {
 	contracttest.RunFailingEvaluation(t, func() managed.Runtime {
 		runtime, _ := build(t, localtest.Script{Grades: []string{"needs_revision", "needs_revision"}})
@@ -211,9 +213,9 @@ func start(t *testing.T, runtime *local.Runtime, s managed.SessionSpec) managed.
 }
 
 // A running session whose journal names no stage is refused rather than
-// crashing on the index. It cannot arise from a normal Start — the bootstrap is
-// launched before the reference returns — but a truncated locator on disk could
-// present it, and Poll must not panic on it.
+// crashing on the index. It cannot arise from a normal Start, because the
+// bootstrap is launched before the reference returns, but a truncated locator
+// on disk could present it, and Poll must not panic on it.
 func TestPollRefusesARunningSessionWithNoStages(t *testing.T) {
 	runtime, _ := build(t, localtest.Script{})
 	ref := start(t, runtime, spec(false))
@@ -306,7 +308,7 @@ func TestEventsAreStampedWithTheRuntimeClock(t *testing.T) {
 // The output directory a caller reads before starting is the workspace the
 // session it then starts actually writes to. On this runtime that path is
 // per-session: Capabilities names a session, the caller templates that path
-// into its instructions (as the audit does), and Start runs the session so
+// into its instructions, as the audit does, and Start runs the session so
 // named.
 func TestTheOutputDirectoryIsTheSessionsOwnWorkspace(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{})
@@ -376,7 +378,8 @@ func TestStartCleansUpTheSessionWhenLaunchFails(t *testing.T) {
 // A stage writes its last line and exits between two polls. That line is the
 // harness's result event, which carries the run's total cost, and a Poll that
 // drained before it observed left it for a next poll a finished stage never
-// gets — so the line was lost and the bill folded from a per-message maximum.
+// gets, so the line was lost and the bill was folded from a per-message
+// maximum.
 func TestPollKeepsTheFinalLineOfAStageThatExitsBetweenObservations(t *testing.T) {
 	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 1, FinalLineOnExit: true})
 	status := runToTerminal(t, runtime, start(t, runtime, spec(false)))
@@ -401,9 +404,9 @@ func TestPollKeepsTheFinalLineOfAStageThatExitsBetweenObservations(t *testing.T)
 	}
 }
 
-// The session total is folded onto the status, which is the one place it
-// lives. There is no per-stage usage field carrying a single poll's increment,
-// which each poll overwrote rather than accumulated.
+// The session total is folded onto the status, which is the only place it is
+// kept. There is no per-stage usage field carrying a single poll's increment;
+// such a field was overwritten by each poll rather than accumulated.
 func TestTheSessionTotalIsFoldedOntoTheStatus(t *testing.T) {
 	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 1})
 	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
@@ -428,7 +431,7 @@ func TestAGradedSessionRunsAWorkerThenAJudge(t *testing.T) {
 		t.Fatalf("stages = %v", got)
 	}
 	// The verdict names the model that produced it, so a reader can see
-	// when the grader and the worker were the same thing.
+	// when the grader and the worker were the same model.
 	if !strings.Contains(status.Verdict.Explanation, "claude-opus-5") {
 		t.Errorf("the verdict does not name its grader: %q", status.Verdict.Explanation)
 	}
@@ -470,8 +473,8 @@ func TestTheJudgeCannotWriteWhatItGrades(t *testing.T) {
 }
 
 // A rejection spends a revision, and the budget is spent exactly. An
-// evaluation the run never passes ends failed — the same terminal state the
-// other runtimes reach — not done.
+// evaluation the run never passes ends failed, the same terminal state the
+// other runtimes reach, not done.
 func TestARejectionSpendsARevisionAndTheBudgetIsExact(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{Grades: []string{"needs_revision", "needs_revision", "needs_revision"}})
 	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
@@ -510,7 +513,7 @@ func TestARejectionSpendsARevisionAndTheBudgetIsExact(t *testing.T) {
 }
 
 // A judge that cannot produce a parsable verdict is retried once, and a
-// session that still cannot be graded ends failed with that reason — never
+// session that still cannot be graded ends failed with that reason, never
 // done with no verdict.
 func TestAnUngradableSessionFailsRatherThanFinishingUndecided(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{MalformedRounds: map[int]bool{0: true, 1: true}})
@@ -556,8 +559,8 @@ func TestAFailedWorkerFailsTheSession(t *testing.T) {
 }
 
 // A dependency that will not install fails the session before any agent runs,
-// with a reason — rather than surfacing an hour later as an agent that cannot
-// import what the method told it to use.
+// with a reason, rather than appearing later as an agent that cannot import
+// what the method told it to use.
 func TestAFailedBootstrapFailsBeforeAnyAgentRuns(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{BootstrapExit: 1})
 	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
@@ -824,7 +827,7 @@ func TestCancelStopsTheRunningStageAndIsIdempotent(t *testing.T) {
 	if status.State != managed.StateFailed || status.TerminalReason != managed.ReasonCancelled {
 		t.Fatalf("a cancelled session did not end cancelled: %+v", status)
 	}
-	// The evidence stays readable — Cancel leaves the directory intact.
+	// The evidence stays readable: Cancel leaves the directory intact.
 	if _, err := runtime.Events(context.Background(), status.Ref); err != nil {
 		t.Fatalf("Events after cancel: %v", err)
 	}
@@ -839,10 +842,10 @@ func TestCancelStopsTheRunningStageAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// A stage the driver has lost — Observe reports it Gone — is recorded exiting
-// −1 and fails the session, rather than reading as a success on an unknowable
-// exit. The bootstrap's handle is rewritten to one the driver never issued, so
-// the next observation finds it gone.
+// A stage the driver has lost, which Observe reports as Gone, is recorded
+// exiting −1 and fails the session, rather than being read as a success on an
+// unknown exit. The bootstrap's handle is rewritten to one the driver never
+// issued, so the next observation finds it gone.
 func TestAStageTheDriverLostExitsMinusOneAndFails(t *testing.T) {
 	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 10})
 	ref := start(t, runtime, spec(false))
@@ -877,7 +880,7 @@ func TestAStageTheDriverLostExitsMinusOneAndFails(t *testing.T) {
 	}
 }
 
-// A stage's partial final line — written but not yet terminated by a newline —
+// A stage's partial final line, written but not yet terminated by a newline,
 // is held back rather than decoded as a torn record, and picked up once it is
 // complete. The bootstrap's log is rewritten under the driver to present the
 // partial line, then completed.
@@ -1129,8 +1132,8 @@ func TestAFailedRetainStopsBeforeRelease(t *testing.T) {
 	dir := sessionDir(t, status.Ref)
 
 	// The retention decision is read from the session, so a run that ended
-	// well and a run whose publication failed are distinguishable — and the
-	// default keeps either way.
+	// well and a run whose publication failed are distinguishable, and the
+	// default keeps both.
 	if _, err := os.Stat(filepath.Join(dir, "workspace", "REPRODUCIBILITY.md")); err != nil {
 		t.Fatalf("the reproduction is not there to begin with: %v", err)
 	}
@@ -1143,8 +1146,9 @@ func TestAFailedRetainStopsBeforeRelease(t *testing.T) {
 }
 
 // A caller may poll twice with the same reference. The checkpoint it gets back
-// must still advance, because the journal underneath it has — otherwise the
-// controller sees a locator that changed without saying so and fails the run.
+// must still advance, because the journal underneath it has; otherwise the
+// controller sees a locator that changed without a new revision and fails the
+// run.
 func TestPollingTwiceWithOneReferenceStillAdvances(t *testing.T) {
 	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 3})
 	ref := start(t, runtime, spec(true))
@@ -1185,10 +1189,10 @@ func TestEveryPipInTheSessionCanReachTheIndex(t *testing.T) {
 
 // A pool of workers shares one Runtime. Two callers asking at once must be
 // told about two different sessions, each must run in the one it was told
-// about, and a name nobody starts must leave nothing on disk — before this a
-// shared pending slot handed one workspace to every concurrent caller, so a
-// job templated its instructions against a directory another job then ran
-// in.
+// about, and a session that is named but never started must leave nothing on
+// disk. Before this, a shared pending slot handed one workspace to every
+// concurrent caller, so a job templated its instructions against a directory
+// another job then ran in.
 func TestConcurrentCallersGetTheirOwnSessions(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{})
 	ctx := context.Background()
