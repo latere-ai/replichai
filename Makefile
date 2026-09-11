@@ -142,19 +142,22 @@ down:
 	$(COMPOSE) down -v
 
 # Run the store contracts that need a real Postgres against the running compose
-# database — job (where SELECT ... FOR UPDATE SKIP LOCKED gets a real
-# disjointness assertion, and the quota a real concurrency one), access, and
-# platform. The project and profile contracts are absent on purpose: they cut
-# themselves a scratch database from this URL and are already self-contained.
+# database: job (where SELECT ... FOR UPDATE SKIP LOCKED gets a real
+# disjointness assertion, and the quota a real concurrency one), access,
+# platform, credit and project. job and access run directly against the
+# database in the URL and migrate and truncate it; platform, credit and project
+# each cut themselves a private database on the same server (replichai_*_test)
+# and leave the URL's own tables alone. profile has the same shape and is not in
+# the list; run it with `make db-contract DB_CONTRACT_PKGS=./internal/profile/`.
 #
 # It runs against a scratch database, never the dev one: these contracts
 # migrate and truncate whatever database they are pointed at, so aiming them at
 # `replichai` destroys the local rows you were working with. The recipe creates
 # the scratch database on first use, so a fresh `make up` needs no extra step.
 #
-# -p 1 is required. Packages otherwise build and run in parallel, and both
-# the access and platform contracts truncate access_grants — sharing one
-# database, they would race each other into spurious failures.
+# -p 1 is required. Packages otherwise build and run in parallel, and job and
+# access both migrate and truncate the one database in the URL — sharing it,
+# they would race each other into spurious failures.
 #
 # These are `:=`, not `?=`, on purpose. Make treats an exported variable as
 # already set, so `?=` would inherit a TEST_DATABASE_URL pointing at the dev
