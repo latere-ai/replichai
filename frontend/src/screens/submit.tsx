@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 import { createProject, type ResolvedPaper, resolvePaper } from '../api'
+import { invalidateProjects } from '../projects-store'
 import { type I18n } from '../i18n'
 import { createOutcome, generic, refusal } from '../errors'
 import { Ico } from '../icons'
@@ -67,7 +68,10 @@ export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (
       // there is no partial state to explain and nothing to keep the person here
       // for. A reference we did not recognise is reported on its row and can be
       // added again from inside the project.
-      if (outcome.ok) onSubmitted(data.project_id!)
+      if (outcome.ok) {
+        invalidateProjects()
+        onSubmitted(data.project_id!)
+      }
     } catch (e) {
       setErr(generic(t, e, 'createFailed'))
     } finally {

@@ -7,7 +7,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { LatereMark, Mark, Wordmark } from '../brand'
-import { getProject, listProjects, type Me } from '../api'
+import { getProject, type Me } from '../api'
+import { useProjects } from '../projects-store'
 import { type I18n } from '../i18n'
 import { Ico, type IconName } from '../icons'
 import { type Navigate, type ProjectTab, type SessionTab, type View } from '../routes'
@@ -153,21 +154,12 @@ export function Shell({
   const { folded, toggle: toggleRail } = useSidebar()
   const foldLabel = folded ? t('unfoldSidebar') : t('foldSidebar')
 
-  // How many projects the rail's Projects row carries. It is fetched here rather
-  // than lifted out of the screen, because the rail outlives every screen and a
-  // number that only existed while the list was mounted would vanish the moment
-  // the reader opened one of its rows.
-  const [projectCount, setProjectCount] = useState<number | undefined>(undefined)
-  useEffect(() => {
-    if (!signedIn) return
-    let live = true
-    listProjects()
-      .then((p) => live && setProjectCount((p ?? []).length))
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [signedIn, view.name])
+  // How many projects the rail's Projects row carries. It is read from the shared
+  // list rather than fetched here: the rail outlives every screen, so the number
+  // has to survive the list being unmounted, and it has to move when a project
+  // is thrown away from the screen beside it — which a private read of the list
+  // on every change of screen never managed.
+  const projectCount = useProjects(signedIn)?.length
 
   // Below the phone breakpoint the rail is an overlay instead of a column, and
   // this is what holds it open (030). It is not the fold and never persists —
