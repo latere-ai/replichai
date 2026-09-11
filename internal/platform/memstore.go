@@ -14,7 +14,7 @@ import (
 )
 
 // MemStore is an in-memory Store for tests and for offline runs with no
-// database. The Postgres implementation lands against the same contract test.
+// database. The Postgres implementation is tested against the same contract.
 type MemStore struct {
 	mu       sync.Mutex
 	settings Settings
@@ -23,8 +23,9 @@ type MemStore struct {
 }
 
 // NewMemStore builds an in-memory platform store seeded with the conservative
-// default. auth may be nil, in which case every caller is treated as an admin —
-// for offline runs with no access store wired, never for a served deployment.
+// default. auth may be nil, in which case every caller is treated as an
+// admin. That is for offline runs with no access store wired, never for a
+// served deployment.
 func NewMemStore(auth Authority) *MemStore {
 	return &MemStore{
 		settings: Settings{
@@ -37,12 +38,12 @@ func NewMemStore(auth Authority) *MemStore {
 }
 
 // requireAdmin re-checks the caller's tier, so an admin-only write holds even
-// if a route were mounted without the tier guard. Shared by both stores: the
-// check is the same belt-and-braces one wherever the settings row lives, and a
-// second copy is a second thing to keep in step.
+// if a route is mounted without the tier guard. Both stores share it: the
+// check is the same wherever the settings row lives, and a second copy would
+// have to be kept in step.
 //
-// A nil authority means every caller is an admin — the offline run with no
-// access store wired, never a served deployment.
+// A nil authority means every caller is an admin. That is for the offline
+// run with no access store wired, never for a served deployment.
 func requireAdmin(ctx context.Context, auth Authority, p access.Principal) error {
 	err := access.RequireAdmin(ctx, auth, p)
 	if errors.Is(err, access.ErrNotAdmin) {
