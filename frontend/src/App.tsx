@@ -56,7 +56,6 @@ import {
   listProjects,
   listPublic,
   listTrash,
-  makeProjectPublic,
   type Me,
   type Member,
   type ModelTier,
@@ -85,35 +84,30 @@ import {
   revokeAccess,
   saveProfile,
   setPlatformSettings,
-  type SignOff,
   startCheckout,
   startSession,
   topUp,
   trashProject,
   unfreezeAccount,
   type Wallet,
-  withdrawProject,
 } from './api'
 import { type I18n, useI18n } from './i18n'
 import {
+  addPaperErrLabel,
+  blockerTab,
+  checkoutErrLabel,
   createOutcome,
   creditMoveErrLabel,
+  deleteSessionErrLabel,
   generic,
+  movePaperErrLabel,
   profileSaveErrText,
-  blockerTab,
-  publishBlockers,
-  publishBlockerText,
-  publishErrText,
+  purgeErrLabel,
   refusal,
+  removePaperErrLabel,
   sessionFailureText,
   startErrLabel,
-  checkoutErrLabel,
-  addPaperErrLabel,
-  removePaperErrLabel,
-  movePaperErrLabel,
-  deleteSessionErrLabel,
   trashErrLabel,
-  purgeErrLabel,
 } from './errors'
 import { creditedMicro, formatUSD, MICRO, parseUSD, toDollars } from './money'
 import { Ico, type IconName } from './icons'
@@ -121,7 +115,7 @@ import { Landing } from './landing'
 import { isPublicView, useRouter, type Navigate, type ProjectTab, type SessionTab, type SettingsTab, type View } from './routes'
 import { useHead } from './head'
 import { citationBits, gradeable, groupByPaper, listCitation, type Grouped, type PaperGroup } from './papers'
-import { Check, Modal, NumberField, Pill, PromptDialog, RowButton, Seams, Segmented, Select, Tip, tipAttrs, Toggle } from './ui'
+import { Modal, NumberField, Pill, PromptDialog, RowButton, Seams, Segmented, Select, Tip, tipAttrs, Toggle } from './ui'
 import { useTheme } from './theme'
 import { absoluteTime, elapsed, relativeTime } from './when'
 import { useDrawer, useSidebar } from './sidebar'
@@ -147,6 +141,7 @@ import {
   VisibilityBadge,
 } from './screens/shared'
 import { SessionTranscript } from './screens/transcript'
+import { PublishedCard, PublishPanel, PublishWizard } from './screens/publish'
 
 export default function App() {
   const i18n = useI18n()
@@ -4731,540 +4726,6 @@ function Members({ i18n, projectID }: { i18n: I18n; projectID: string }) {
       </div>
       {err && <p className="err small" style={{ padding: '0 14px 12px' }}>{err}</p>}
     </div>
-  )
-}
-
-// PublishPanel is the entry to the public flip: a short summary and the button
-// that opens the wizard. The decision itself is never one click from a sidebar —
-// it opens the transcript and artifacts to everyone, and it puts the signer's
-// name behind the result (006n). Withdrawable since 006o, but not undoable:
-// copies taken while it was public stay taken.
-function PublishPanel({
-  i18n,
-  projectID,
-  onPublished,
-  onChanged,
-  onOpenBlocker,
-}: {
-  i18n: I18n
-  projectID: string
-  onPublished: () => void
-  onChanged?: () => void
-  onOpenBlocker?: (b: PublishBlocker) => void
-}) {
-  const { t } = i18n
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="card publish-panel">
-      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
-        <Ico name="globe" size={12} /> {t('publishTitle')}
-      </span>
-      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('publishBody')}
-      </p>
-      <button className="btn" onClick={() => setOpen(true)}>
-        <Ico name="globe" size={13} /> {t('publishStart')}
-      </button>
-      <span className="attestation">{t('attestationNote')}</span>
-      {open && (
-        <PublishWizard
-          i18n={i18n}
-          projectID={projectID}
-          onClose={() => setOpen(false)}
-          onPublished={() => {
-            setOpen(false)
-            onPublished()
-          }}
-          onChanged={onChanged}
-          onOpenBlocker={onOpenBlocker}
-        />
-      )}
-    </div>
-  )
-}
-
-// PublishWizard walks the three commitments of going public: what becomes
-// public, who stands behind it, and the responsibility for it. Step 2 is
-// prefilled from the owner's profile but recorded from what they confirm here —
-// the sign-off is a snapshot, so a later profile edit cannot rewrite it.
-function PublishWizard({
-  i18n,
-  projectID,
-  onClose,
-  onPublished,
-  onChanged,
-  onOpenBlocker,
-}: {
-  i18n: I18n
-  projectID: string
-  onClose: () => void
-  onPublished: () => void
-  // Something under this dialog changed, and the screen behind it is now stale
-  // (032). Deleting a blocker removes a session the project screen is listing;
-  // an owner who then closes the wizard instead of signing off again would
-  // otherwise be left clicking a row that is no longer there.
-  onChanged?: () => void
-  // Where a named blocker is opened. Absent on a screen with no session to go to
-  // — the refusal then still says what is wrong, it just cannot travel.
-  onOpenBlocker?: (b: PublishBlocker) => void
-}) {
-  const { t } = i18n
-  const [step, setStep] = useState(1)
-  const [p, setP] = useState<Profile>({})
-  const [toProfile, setToProfile] = useState(true)
-  const [affirmed, setAffirmed] = useState(false)
-  const [flipRepo, setFlipRepo] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const [blockers, setBlockers] = useState<PublishBlocker[]>([])
-
-  useEffect(() => {
-    getProfile()
-      .then((got) => setP(got ?? {}))
-      .catch(() => setP({}))
-  }, [])
-
-  const set = (k: TextField) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setP((cur) => ({ ...cur, [k]: e.target.value }))
-    setErr('')
-  }
-
-  const hasContact = (p.contact_email ?? '').trim() !== ''
-  // 006r: publishing puts a name on a result, and the name has to resolve to
-  // somewhere. The wizard sets it here rather than sending the signer off to
-  // settings and back — they are mid-decision, and the requirement is part of
-  // the decision.
-  const hasPage = !!p.public && (p.handle ?? '').trim() !== ''
-  const canContinueFromStep2 = hasContact && hasPage
-
-  const publish = async () => {
-    if (!affirmed || busy) return
-    setBusy(true)
-    setErr('')
-    setBlockers([])
-    const signOff: SignOff = {
-      signed_off_name: p.display_name,
-      signed_off_institution: p.institution,
-      signed_off_contact: (p.contact_email ?? '').trim(),
-      signed_off_orcid: p.orcid,
-      signed_off_scholar: p.scholar_url,
-    }
-    try {
-      // The handle and the public flag are not a convenience: the flip is
-      // refused without them, so this save has to succeed and its failure has
-      // to be reported. The rest of the profile stays a convenience for the
-      // next publish, which is why one save carries both.
-      await saveProfile(toProfile ? p : { handle: p.handle, public: p.public })
-      await makeProjectPublic(projectID, signOff, flipRepo)
-      onPublished()
-    } catch (e) {
-      // A 409 is any of the reasons this project is not publishable, and the
-      // status alone cannot tell them apart — they need different remedies, so
-      // the body's code decides. When the refusal is about the sessions rather
-      // than the signer, it also names them, and the reader is offered the way
-      // there instead of the sign-off form they were already past.
-      const named = publishBlockers(e)
-      setErr(publishErrText(t, e))
-      setBlockers(named)
-      if (!named.length) setStep(2)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const stepIcon: IconName = step === 1 ? 'globe' : step === 2 ? 'user' : 'shieldCheck'
-  return (
-    <Modal
-      title={step === 1 ? t('publishStep1') : step === 2 ? t('publishStep2') : t('publishStep3')}
-      icon={stepIcon}
-      eyebrow={
-        <span className="step-dots">
-          {t('publishStepOf', { n: String(step) })}
-          <span className="step-track">
-            {[1, 2, 3].map((n) => (
-              <span key={n} className={'step-dot' + (n <= step ? ' on' : '')} />
-            ))}
-          </span>
-        </span>
-      }
-      onClose={onClose}
-      foot={
-        <>
-          <button className="btn ghost" onClick={step === 1 ? onClose : () => setStep(step - 1)}>
-            {step > 1 && <Ico name="chevronLeft" size={12} w={2.2} />}
-            {step === 1 ? t('cancel') : t('backStep')}
-          </button>
-          {step < 3 ? (
-            <button className="btn" disabled={step === 2 && !canContinueFromStep2} onClick={() => setStep(step + 1)}>
-              {t('continueStep')} <Ico name="chevronRight" size={12} w={2.2} />
-            </button>
-          ) : (
-            <button className="btn" disabled={!affirmed || busy} onClick={publish}>
-              <Ico name="globe" size={13} /> {busy ? t('submitting') : t('publishConfirm')}
-            </button>
-          )}
-        </>
-      }
-    >
-      {step === 1 && (
-        <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-          {t('publishBody')}
-        </p>
-      )}
-
-      {step === 2 && (
-        <>
-          <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-            {t('publishStep2Body')}
-          </p>
-          <ProfileFields i18n={i18n} p={p} set={set} />
-          <Check on={!!p.public} onChange={(on) => setP((cur) => ({ ...cur, public: on }))}>
-            {t('publishPublicProfile')}
-          </Check>
-          <Check on={toProfile} onChange={setToProfile}>
-            {t('publishSaveToProfile')}
-          </Check>
-          {!hasContact && (
-            <p className="muted small" style={{ margin: 0 }}>
-              <Ico name="info" size={12} /> {t('publishContactRequired')}
-            </p>
-          )}
-          {hasContact && !hasPage && (
-            <p className="muted small" style={{ margin: 0 }}>
-              <Ico name="info" size={12} /> {t('publishProfileRequired')}
-            </p>
-          )}
-        </>
-      )}
-
-      {step === 3 && (
-        <>
-          <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-            {t('publishAttestation')}
-          </p>
-          <Check on={affirmed} onChange={setAffirmed}>
-            {t('publishAffirm')}
-          </Check>
-          <Check on={flipRepo} onChange={setFlipRepo}>
-            {t('flipRepoLabel')}
-          </Check>
-          <span className="attestation">{t('attestationNote')}</span>
-        </>
-      )}
-
-      {err && (
-        <p className="err small" style={{ margin: 0 }}>
-          <Ico name="alert" size={13} /> {err}
-        </p>
-      )}
-      {blockers.length > 0 && (
-        <Blockers
-          i18n={i18n}
-          blockers={blockers}
-          onOpen={onOpenBlocker}
-          // A deleted blocker leaves the list it was named in, and the refusal
-          // above it is stale the moment it does. The sign-off is not re-sent:
-          // the owner is still standing in step 3 with the affirmation checked,
-          // and re-attesting on their behalf is not this dialog's decision.
-          onDeleted={(b) => {
-            setBlockers((cur) => cur.filter((x) => x.session_id !== b.session_id))
-            setErr('')
-            onChanged?.()
-          }}
-        />
-      )}
-    </Modal>
-  )
-}
-
-// Blockers lists the sessions standing between a project and the public flip:
-// one row each, saying what is wrong with that one and opening it.
-//
-// The list is the point. The refusal used to be a single sentence about "the
-// reproduction", which named neither the session nor, when there were several,
-// how many more were behind it — so an owner fixed one and met the same wall.
-// An unfinished run is the one blocker with nothing to read and nothing to fix:
-// it has no manifest, so opening it lands the reader on an absence. The row
-// carries its own remedy instead (032).
-function Blockers({
-  i18n,
-  blockers,
-  onOpen,
-  onDeleted,
-}: {
-  i18n: I18n
-  blockers: PublishBlocker[]
-  onOpen?: (b: PublishBlocker) => void
-  onDeleted?: (b: PublishBlocker) => void
-}) {
-  const { t } = i18n
-  return (
-    <div className="stack" style={{ gap: 8 }} data-test="publish-blockers">
-      <span className="eyebrow eyebrow-ico">
-        <Ico name="alert" size={12} /> {t('publishBlockersTitle')}
-      </span>
-      {blockers.map((b) => (
-        <BlockerRow key={b.session_id} i18n={i18n} b={b} onOpen={onOpen} onDeleted={onDeleted} />
-      ))}
-    </div>
-  )
-}
-
-// One blocking session, and what the owner can do about this one.
-//
-// The delete confirms in the row rather than in a dialog: this list is already
-// inside the publish wizard's Modal, and a second Modal over it would share the
-// Escape key with the first — one press would close both and take the list of
-// blockers with it.
-function BlockerRow({
-  i18n,
-  b,
-  onOpen,
-  onDeleted,
-}: {
-  i18n: I18n
-  b: PublishBlocker
-  onOpen?: (b: PublishBlocker) => void
-  onDeleted?: (b: PublishBlocker) => void
-}) {
-  const { t } = i18n
-  const [asking, setAsking] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  // Only an unfinished run. A flagged tree is a decision about what the
-  // reproduction contains, and deleting the evidence is not how that is made.
-  const removable = !!onDeleted && b.reason === 'unfinished'
-  const go = async () => {
-    setBusy(true)
-    setErr('')
-    try {
-      await deleteSession(b.session_id)
-      onDeleted?.(b)
-    } catch (e) {
-      setErr(deleteSessionErrLabel(t, e))
-      setBusy(false)
-      setAsking(false)
-    }
-  }
-  return (
-    <div className="blocker-row">
-      <div style={{ minWidth: 0 }}>
-        <div className="small mono ellipsis">{b.ref || b.repo || b.session_id}</div>
-        <div className="muted small">{publishBlockerText(t, b)}</div>
-        {removable && !err && <div className="muted small">{t('blockerDeleteHint')}</div>}
-        {err && <div className="err small">{err}</div>}
-      </div>
-      {removable &&
-        (asking ? (
-          <>
-            <button className="btn ghost small" onClick={() => setAsking(false)} disabled={busy}>
-              {t('cancel')}
-            </button>
-            <button className="btn danger small" data-test="delete-blocker-confirm" onClick={go} disabled={busy}>
-              {busy ? t('deletingSession') : t('deleteSessionConfirm')}
-            </button>
-          </>
-        ) : (
-          <button className="btn ghost small" data-test="delete-blocker" onClick={() => setAsking(true)}>
-            <Ico name="trash" size={12} /> {t('deleteSession')}
-          </button>
-        ))}
-      {onOpen && !asking && (
-        <button className="btn ghost small" data-test="open-blocker" onClick={() => onOpen(b)}>
-          {t('publishOpenSession')} <Ico name="chevronRight" size={12} w={2.2} />
-        </button>
-      )}
-    </div>
-  )
-}
-
-// PublishedCard reports the recorded sign-off: who signed, where they were, and
-// how to reach them. A v1 sign-off carries no snapshot and shows the date line
-// alone, exactly as it did before 006n. It also carries the way back out — the
-// owner may withdraw the publication (006o).
-function PublishedCard({
-  i18n,
-  project,
-  signerHandle,
-  onWithdrawn,
-}: {
-  i18n: I18n
-  project: Project
-  signerHandle?: string
-  onWithdrawn: () => void
-}) {
-  const { t } = i18n
-  const [withdrawing, setWithdrawing] = useState(false)
-  const when = project.signed_off_at ? new Date(project.signed_off_at).toLocaleDateString() : ''
-  const rows: { label: string; node: React.ReactNode }[] = []
-  if (project.signed_off_email) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{project.signed_off_email}</span> })
-  if (project.signed_off_contact)
-    rows.push({ label: t('signedOffContact'), node: (
-        <a className="link" href={`mailto:${project.signed_off_contact}`}>
-          {project.signed_off_contact}
-        </a>
-      ) })
-  if (project.signed_off_orcid)
-    rows.push({
-      label: t('signedOffOrcid'),
-      node: (
-        <a className="link" href={`https://orcid.org/${project.signed_off_orcid}`} target="_blank" rel="noreferrer noopener">
-          {project.signed_off_orcid}
-        </a>
-      ),
-    })
-  if (project.signed_off_scholar) {
-    // The link text is the host, not the label again — a row reading
-    // "Scholar · Scholar" tells a reader nothing.
-    let host = project.signed_off_scholar
-    try {
-      host = new URL(project.signed_off_scholar).hostname
-    } catch {
-      /* keep the raw value if it will not parse */
-    }
-    rows.push({
-      label: t('signedOffScholar'),
-      node: (
-        <a className="link" href={project.signed_off_scholar} target="_blank" rel="noreferrer noopener">
-          {host}
-        </a>
-      ),
-    })
-  }
-
-  return (
-    <div className="card publish-panel">
-      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
-        <Ico name="globe" size={12} /> {t('publishTitle')}
-      </span>
-      <div className="publish-note">
-        <Ico name="check" size={14} w={2.4} />
-        {when ? t('publishedNote', { when }) : t('public')}
-      </div>
-      {project.signed_off_name && (
-        <div className="signer">
-          <div className="signer-name">
-            {/* The name links to the signer's page when they have one, and is
-                plain text when they do not. The snapshot below is what the
-                attestation reports; this is a convenience that may come and go
-                as its owner turns their profile on and off (006r). */}
-            {t('signedOffBy')}{' '}
-            {signerHandle ? (
-              <a className="link" href={`/u/${signerHandle}`}>
-                <strong>{project.signed_off_name}</strong>
-              </a>
-            ) : (
-              <strong>{project.signed_off_name}</strong>
-            )}
-          </div>
-          {project.signed_off_institution && <div className="signer-affil">{project.signed_off_institution}</div>}
-        </div>
-      )}
-      {rows.length > 0 && (
-        <div className="usage-rows">
-          {rows.map((r) => (
-            <div key={r.label} className="usage-line">
-              {r.label}
-              <span className="v">{r.node}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <button className="btn ghost" onClick={() => setWithdrawing(true)}>
-        <Ico name="lock" size={13} /> {t('withdrawStart')}
-      </button>
-      {withdrawing && (
-        <WithdrawDialog
-          i18n={i18n}
-          projectID={project.id}
-          onClose={() => setWithdrawing(false)}
-          onWithdrawn={() => {
-            setWithdrawing(false)
-            onWithdrawn()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-// WithdrawDialog confirms ending a publication. One step, not the publish
-// wizard's three: withdrawing is the conservative direction. What it must not do
-// is imply erasure — going private stops new access and does not retrieve copies
-// already taken, and the dialog says so rather than letting the owner assume it.
-function WithdrawDialog({
-  i18n,
-  projectID,
-  onClose,
-  onWithdrawn,
-}: {
-  i18n: I18n
-  projectID: string
-  onClose: () => void
-  onWithdrawn: () => void
-}) {
-  const { t } = i18n
-  const [reason, setReason] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-
-  const withdraw = async () => {
-    if (busy) return
-    setBusy(true)
-    setErr('')
-    try {
-      await withdrawProject(projectID, reason.trim())
-      onWithdrawn()
-    } catch {
-      setErr(t('withdrawError'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Modal
-      title={t('withdrawTitle')}
-      icon="lock"
-      onClose={onClose}
-      foot={
-        <>
-          <button className="btn ghost" onClick={onClose} disabled={busy}>
-            {t('cancel')}
-          </button>
-          {/* Withdrawing is the destructive direction, so the confirm carries
-              the warning tone rather than the brand's "go ahead". */}
-          <button className="btn ghost danger" onClick={withdraw} disabled={busy}>
-            <Ico name="lock" size={13} /> {busy ? t('withdrawBusy') : t('withdrawConfirm')}
-          </button>
-        </>
-      }
-    >
-      <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-        {t('withdrawBody')}
-      </p>
-      <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
-        <Ico name="alert" size={12} style={{ color: 'var(--warn)' }} /> {t('withdrawNotARecall')}
-      </p>
-      <label className="field">
-        {t('withdrawReason')}
-        <input
-          className="text"
-          value={reason}
-          onChange={(e) => {
-            setReason(e.target.value)
-            setErr('')
-          }}
-          placeholder={t('withdrawReasonHint')}
-          maxLength={2000}
-        />
-      </label>
-      {err && (
-        <p className="err small" style={{ margin: 0 }}>
-          <Ico name="alert" size={13} /> {err}
-        </p>
-      )}
-    </Modal>
   )
 }
 
