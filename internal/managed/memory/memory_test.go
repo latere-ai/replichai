@@ -15,7 +15,8 @@ import (
 
 func TestRuntimeContract(t *testing.T) { contracttest.Run(t, func() managed.Runtime { return New() }) }
 
-// A rejected evaluation ends failed, the state every runtime is held to.
+// TestFailingEvaluationContract checks that a rejected evaluation ends in
+// StateFailed, which is the state every runtime is held to.
 func TestFailingEvaluationContract(t *testing.T) {
 	contracttest.RunFailingEvaluation(t, func() managed.Runtime {
 		return NewWithStore(nil, Config{Grade: managed.GradeExhausted})
