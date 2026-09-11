@@ -60,9 +60,9 @@ func (r *Runtime) Capabilities(context.Context) (managed.Capabilities, error) {
 }
 
 // capabilities is the context-free half of Capabilities. Validate needs the
-// same answer and has no context to pass; borrowing a background one there
-// would claim an I/O boundary this adapter does not have, and forced the error
-// it cannot return to be discarded.
+// same answer and has no context to pass. Using a background context there
+// would imply an I/O boundary this adapter does not have, and would force
+// Validate to discard an error it cannot return.
 func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
 		OutputDir:          r.config.Provider.OutputDir(),
@@ -178,8 +178,9 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 		FileIDs: append([]string(nil), handle.Files...),
 	})
 	if err != nil {
-		// The session is already running on the backend, so a locator we cannot
-		// hand back is unreachable state: release it rather than leak it.
+		// The session is already running on the backend, so a locator that
+		// cannot be returned leaves unreachable state. It is released rather
+		// than leaked.
 		return managed.SessionRef{}, errors.Join(fmt.Errorf("encode locator: %w", err), r.releaseResources(ctx, worker, workspace))
 	}
 	return managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}, nil
@@ -327,10 +328,11 @@ func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, e
 		return provider.RunHandle{}, locator{}, fmt.Errorf("unsupported %s locator version %d", r.Name(), ref.LocatorVersion)
 	}
 	if len(ref.Locator) == 0 {
-		// Historical durable rows and detached CLI output carried only the vendor
-		// session id. Poll/evidence/cancel/release need no worker or workspace id;
-		// the first poll supplies the exact model before the controller accepts an
-		// observation. New starts always emit the complete locator above.
+		// Historical durable rows and detached CLI output carried only the
+		// vendor session id. Poll, evidence, cancel and release need no worker
+		// or workspace id, and the first poll supplies the exact model before
+		// the controller accepts an observation. New starts always emit the
+		// complete locator above.
 		return provider.RunHandle{ID: ref.ID}, locator{Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: "legacy-unresolved"}, Graded: true}, nil
 	}
 	var metadata locator
