@@ -75,7 +75,7 @@ var hidden = seo.Page{NoIndex: true}
 
 func (rt *Router) landingPage(*http.Request) seo.Page {
 	return rt.page(seo.Page{
-		Title:       "ReplicHAI: reproducibility audits of research papers",
+		Title:       "ReplicHAI · Does the paper reproduce?",
 		Description: "replichai audits the reproducibility of research papers. It implements and re-runs the parts of a paper a machine can run. It does not simulate studies with human participants. Each audit returns a verdict, published with the full transcript.",
 		Canonical:   rt.site.Abs(seo.LandingPath),
 		JSONLD: map[string]any{

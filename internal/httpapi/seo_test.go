@@ -27,7 +27,7 @@ import (
 const testShell = `<!doctype html><html lang="en"><head><meta charset="UTF-8" />` +
 	`<link rel="icon" href="/favicon.svg" />` +
 	`<!--seo-->` +
-	`<title>ReplicHAI — does the paper actually reproduce?</title>` +
+	`<title>ReplicHAI · Does the paper reproduce?</title>` +
 	`<meta name="description" content="the default" />` +
 	`<!--/seo-->` +
 	`<script>var theme = 1</script>` +
@@ -139,7 +139,7 @@ func TestAPublicProjectDescribesItself(t *testing.T) {
 			t.Errorf("the described page is missing %q", want)
 		}
 	}
-	if strings.Contains(body, "does the paper actually reproduce?") {
+	if strings.Contains(body, "Does the paper reproduce?") {
 		t.Error("the default head survived the substitution")
 	}
 	// The shell's own head is not the head region and must come through intact.
@@ -175,7 +175,7 @@ func TestAProjectNobodyPublishedIsNotDescribed(t *testing.T) {
 		if got := w.Header().Get("X-Robots-Tag"); got != "noindex" {
 			t.Errorf("%s: X-Robots-Tag %q, want noindex", tc.name, got)
 		}
-		if !strings.Contains(w.Body.String(), "does the paper actually reproduce?") {
+		if !strings.Contains(w.Body.String(), "Does the paper reproduce?") {
 			t.Errorf("%s: the default head was replaced", tc.name)
 		}
 		if tc.secret != "" && strings.Contains(w.Body.String(), tc.secret) {
