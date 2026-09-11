@@ -104,7 +104,7 @@ public_url=$(grep -o "<loc>${BASE_URL}/p/[^<]*</loc>" "$tmp/sitemap" | head -1 |
 if [ -n "$public_url" ]; then
   curl -sS -L --retry 3 --retry-delay 2 -o "$tmp/page" "$public_url" || fail "public page: curl failed"
   grep -q "<link rel=\"canonical\" href=\"${public_url}\"" "$tmp/page" || fail "$public_url does not carry its own canonical"
-  grep -q 'does the paper actually reproduce?' "$tmp/page" && fail "$public_url is still served the default head"
+  grep -q 'Does the paper reproduce?' "$tmp/page" && fail "$public_url is still served the default head"
   grep -q 'application/ld+json' "$tmp/page" || fail "$public_url carries no structured data"
   pass "a published page describes itself ($public_url)"
 else
