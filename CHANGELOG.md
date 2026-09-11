@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+- **A session row says which run it is.** Under a paper, every row printed
+  that paper's own reference — the same string on each, in the one view a
+  repeat study produces. The row now carries the model the session ran on,
+  and names the repository it made rather than labelling the link "GitHub".
+- **A paper's runs take less room.** Five runs at a paper's own row height
+  pushed the next paper off the screen; the nested rows are tighter, and the
+  transcript link drops to its icon where the word repeated down a column.
+
 ## v0.28.3 - 2026-09-11
 
 - **A run on your own machine can publish what it produced.** Every local
