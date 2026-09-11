@@ -53,6 +53,8 @@ type Client struct {
 	app   *appAuth // GitHub App auth; when set, mints/refreshes the bearer
 	base  string
 	http  *http.Client
+	// now is the clock a rate-limit reset is measured against.
+	now func() time.Time
 }
 
 // Option configures a Client.
@@ -65,7 +67,7 @@ func WithBaseURL(base string) Option { return func(c *Client) { c.base = base } 
 // generous because a reproduction's transcript can be several megabytes, and the
 // Contents API base64-encodes the whole file into one request body.
 func New(token string, opts ...Option) *Client {
-	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute, Transport: xotel.Transport(nil)}}
+	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute, Transport: xotel.Transport(nil)}, now: time.Now}
 	for _, o := range opts {
 		o(c)
 	}
@@ -94,18 +96,21 @@ func (c *Client) CreateRepo(ctx context.Context, owner, name string, private boo
 	}
 	var repo Repo
 	status, err := c.do(ctx, http.MethodPost, "/orgs/"+owner+"/repos", body, &repo)
+	// GitHub answers 422 to every validation failure — an invalid name, a
+	// blocked organisation, a plan limit — and only one of them means the
+	// repository is there to reuse. The body says which.
+	var refused *APIError
+	if errors.As(err, &refused) && refused.saysAlreadyExists() {
+		return Repo{}, ErrRepoExists
+	}
 	if err != nil {
 		return Repo{}, err
 	}
-	switch status {
-	case http.StatusCreated:
-		repo.Owner = owner
-		return repo, nil
-	case http.StatusUnprocessableEntity:
-		return Repo{}, ErrRepoExists
-	default:
+	if status != http.StatusCreated {
 		return Repo{}, fmt.Errorf("create %s/%s: unexpected status %d", owner, name, status)
 	}
+	repo.Owner = owner
+	return repo, nil
 }
 
 // ListRepos returns the names of every repository in an organisation, following
@@ -248,20 +253,21 @@ func (c *Client) GetFileContent(ctx context.Context, owner, name, path string) (
 		Encoding string `json:"encoding"`
 	}
 	status, err := c.do(ctx, http.MethodGet, "/repos/"+owner+"/"+name+"/contents/"+path, nil, &file)
-	if err != nil {
-		return nil, false, err
-	}
 	if status == http.StatusNotFound {
 		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
 	}
 	if status != http.StatusOK {
 		return nil, false, fmt.Errorf("read %s in %s/%s: unexpected status %d", path, owner, name, status)
 	}
 	if file.Encoding != "base64" {
-		// GitHub returns "none" for files it will not inline (over ~1MB). The
-		// content is not available this way; the caller should fall back to a
-		// sha comparison (FileUnchanged).
-		return nil, false, nil
+		// GitHub answers "none" for a file it will not inline (over ~1MB).
+		// The file is present, so it is read through the raw media type,
+		// which streams any size; answering "absent" here made a large
+		// verdict.json read as never written.
+		return c.GetFileRaw(ctx, owner, name, path)
 	}
 	// GitHub wraps base64 content at 60 columns; strip the newlines to decode.
 	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
@@ -297,7 +303,8 @@ func (c *Client) GetFileRaw(ctx context.Context, owner, name, path string) ([]by
 		return nil, false, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("read %s in %s/%s: unexpected status %d", path, owner, name, resp.StatusCode)
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		return nil, false, failure(http.MethodGet, "/repos/"+owner+"/"+name+"/contents/"+path, resp, payload, c.now())
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
@@ -335,11 +342,11 @@ func (c *Client) fileSHA(ctx context.Context, owner, name, path string) (string,
 		SHA string `json:"sha"`
 	}
 	status, err := c.do(ctx, http.MethodGet, "/repos/"+owner+"/"+name+"/contents/"+path, nil, &file)
-	if err != nil {
-		return "", false, err
-	}
 	if status == http.StatusNotFound {
 		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
 	}
 	if status != http.StatusOK {
 		return "", false, fmt.Errorf("stat %s in %s/%s: unexpected status %d", path, owner, name, status)
@@ -380,7 +387,9 @@ func (c *Client) SetPrivate(ctx context.Context, owner, name string) error {
 }
 
 // do performs one request, decoding a JSON response into out when non-nil, and
-// returns the status code.
+// returns the status code. A non-2xx answer is returned as an *APIError
+// alongside its status, carrying what GitHub said, so no caller has to
+// reduce a refusal to its number.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) (int, error) {
 	var reader io.Reader
 	if body != nil {
@@ -410,7 +419,10 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 	}
 	defer func() { _ = resp.Body.Close() }()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if out != nil && len(payload) > 0 && resp.StatusCode/100 == 2 {
+	if resp.StatusCode/100 != 2 {
+		return resp.StatusCode, failure(method, path, resp, payload, c.now())
+	}
+	if out != nil && len(payload) > 0 {
 		if err := json.Unmarshal(payload, out); err != nil {
 			return resp.StatusCode, fmt.Errorf("decoding %s %s: %w", method, path, err)
 		}
