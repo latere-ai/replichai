@@ -17,31 +17,7 @@
 // bubble clips it" is what a container can break. It needs a real layout engine,
 // so it drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5198
-const BASE = `http://localhost:${PORT}`
-
-// Naming a browser is a demand that it run: an unset PUPPETEER_EXECUTABLE_PATH
-// skips on a machine without Chrome, but a set one that does not exist fails, so
-// CI cannot quietly stop guarding the regression.
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
+import { check, fail, settled, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
@@ -51,9 +27,9 @@ const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility:
 const paper = { key: 'pap-1', ref: '10.1145/3562939.3567802', title: 'Walk This Beam', sessions: 0 }
 
 const routes = [
-  [/^\/me$/, { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 42.5, start_reserve: 5 } }],
-  [/^\/me\/profile$/, {}],
-  [/^\/projects$/, [{ ...project, session_count: 0, running: 0, latest_phase: '' }]],
+  ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 42.5, start_reserve: 5 } }],
+  ['/me/profile', {}],
+  ['/projects', [{ ...project, session_count: 0, running: 0, latest_phase: '' }]],
   [/^\/projects\/[^/]+$/, { project, sessions: [], papers: [paper], may_submit: true, role: 'owner' }],
   [/^\/projects\/[^/]+\/papers$/, [paper]],
   [/^\/projects\/[^/]+\/members$/, []],
@@ -61,46 +37,24 @@ const routes = [
   [/^\/(public|shared)$/, []],
 ]
 
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+// How many bubbles are up, read in the page: the bubble fades in from opacity 0.
+const UP = "[...document.querySelectorAll('.tip-bubble')].filter((b) => +getComputedStyle(b).opacity > 0.5).length"
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
+const h = await start()
 try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    // A cold dep-optimize pass takes tens of seconds on a first run.
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
+  const page = await h.page({ routes })
+  const up = () => page.evaluate(UP)
+  // bubbles waits for exactly `n` to be up, and gives up quietly: the count that
+  // follows is the assertion.
+  const bubbles = (n) => page.waitForFunction(`${UP} === ${n}`, { timeout: 2000 }).catch(() => {})
 
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 900 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin === BASE) {
-      const hit = routes.find(([re]) => re.test(u.pathname))
-      if (hit) return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(hit[1]) })
-      if (u.pathname.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    }
-    req.continue()
-  })
-
-  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  await page.open('/')
   // Navigation is state, not a router: the dashboard's project row opens the
   // project screen, where the paper rows live.
   await page.waitForSelector('.row')
   await page.evaluate(() => document.querySelector('.row')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
   await page.waitForSelector('.icon-btn.danger[data-tip], .icon-btn.danger')
-  await new Promise((r) => setTimeout(r, 400)) // let the entrance animation settle
+  await settled(page)
 
   // hover moves a real pointer onto the element and reports what the tip is,
   // where it sits, and — the part that catches clipping — what is actually
@@ -110,7 +64,9 @@ try {
     if (!el) return fail(`no ${label} on screen (${selector})`)
     const box = await el.boundingBox()
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await new Promise((r) => setTimeout(r, 350)) // the bubble fades in
+    // The bubble slides up as it fades in, so it is measured where it lands.
+    await bubbles(1)
+    await settled(page)
     const m = await page.evaluate(() => {
       const bubbles = [...document.querySelectorAll('.tip-bubble')].filter((b) => +getComputedStyle(b).opacity > 0.5)
       if (bubbles.length !== 1) return { n: bubbles.length }
@@ -150,12 +106,12 @@ try {
       }
     })
     if (m.n !== 1) return fail(`hovering the ${label} showed ${m.n} visible tooltips, want exactly 1`)
-    if (!m.text) fail(`the ${label}'s tooltip is empty`)
-    if (m.clipper) fail(`the ${label}'s tooltip sits inside a clipping ancestor (${m.clipper}) that cuts it off`)
-    if (!m.painted) fail(`the ${label}'s tooltip is not painted at its own centre — something covers or clips it (rect ${JSON.stringify(m.rect)})`)
-    if (!m.inViewport) fail(`the ${label}'s tooltip runs off the viewport: ${JSON.stringify(m.rect)}`)
-    if (!m.fits) fail(`the ${label}'s tooltip clips its own text`)
-    if (m.hidden !== 'true') fail(`the ${label}'s tooltip is in the accessibility tree; the trigger carries the label`)
+    check(m.text, `the ${label}'s tooltip is empty`)
+    check(!m.clipper, `the ${label}'s tooltip sits inside a clipping ancestor (${m.clipper}) that cuts it off`)
+    check(m.painted, `the ${label}'s tooltip is not painted at its own centre — something covers or clips it (rect ${JSON.stringify(m.rect)})`)
+    check(m.inViewport, `the ${label}'s tooltip runs off the viewport: ${JSON.stringify(m.rect)}`)
+    check(m.fits, `the ${label}'s tooltip clips its own text`)
+    check(m.hidden === 'true', `the ${label}'s tooltip is in the accessibility tree; the trigger carries the label`)
     return m
   }
 
@@ -164,9 +120,9 @@ try {
 
   // Away from the trigger, the bubble goes.
   await page.mouse.move(700, 860)
-  await new Promise((r) => setTimeout(r, 350))
-  const lingering = await page.evaluate(() => [...document.querySelectorAll('.tip-bubble')].filter((b) => +getComputedStyle(b).opacity > 0.5).length)
-  if (lingering) fail(`${lingering} tooltips stayed up after the pointer left`)
+  await bubbles(0)
+  const lingering = await up()
+  check(!lingering, `${lingering} tooltips stayed up after the pointer left`)
 
   // A trigger in the header, at the viewport's right edge: the bubble has to be
   // pulled back inside rather than hang off the screen. This is what the old
@@ -178,54 +134,50 @@ try {
   // path has to raise the same bubble.
   const radio = await hover('.segmented.compact button[role="radio"][data-tip]', 'appearance radio')
 
+  // focusRemove parks the pointer, takes focus off whatever holds it, and hands
+  // it to the remove button — from nothing, so `focusin` fires even when the
+  // button had it already — then waits for the bubble that focus raises.
+  const focusRemove = async () => {
+    await page.mouse.move(700, 860)
+    await page.evaluate(() => document.activeElement?.blur?.())
+    await bubbles(0)
+    await page.evaluate(() => document.querySelector('.icon-btn.danger').focus())
+    await bubbles(1)
+  }
+
   // Keyboard reach: focus alone must raise the tip, for anyone not using a mouse.
-  await page.mouse.move(700, 860)
-  await new Promise((r) => setTimeout(r, 250))
-  const focused = await page.evaluate(async () => {
-    const btn = document.querySelector('.icon-btn.danger')
-    btn.focus()
-    await new Promise((r) => setTimeout(r, 350))
-    const b = [...document.querySelectorAll('.tip-bubble')].find((x) => +getComputedStyle(x).opacity > 0.5)
-    return b ? b.textContent.trim() : ''
-  })
-  if (!focused) fail('focusing the remove button raised no tooltip')
+  await focusRemove()
+  const focused = await page.evaluate(() => [...document.querySelectorAll('.tip-bubble')].find((x) => +getComputedStyle(x).opacity > 0.5)?.textContent.trim() ?? '')
+  check(focused, 'focusing the remove button raised no tooltip')
 
   // Clicking a remove button takes its own row away. The bubble must go with the
   // trigger rather than hang over an empty list under a pointer that never moved.
-  const orphan = await page.evaluate(async () => {
+  await focusRemove()
+  await page.evaluate(() => {
     const btn = document.querySelector('.icon-btn.danger')
     const box = btn.getBoundingClientRect()
-    const send = (type) => btn.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }))
-    btn.focus()
-    await new Promise((r) => setTimeout(r, 300))
-    send('pointerdown')
+    btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }))
     btn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 400))
-    return [...document.querySelectorAll('.tip-bubble')].filter((b) => +getComputedStyle(b).opacity > 0.5).length
   })
-  if (orphan) fail(`${orphan} tooltips outlived the trigger that was clicked away`)
+  await bubbles(0)
+  const orphan = await up()
+  check(!orphan, `${orphan} tooltips outlived the trigger that was clicked away`)
 
   // Scrolling would leave a bubble stranded where its trigger used to be, so it
   // must go when the page moves under it.
-  const stranded = await page.evaluate(async () => {
-    document.querySelector('.icon-btn.danger').focus()
-    await new Promise((r) => setTimeout(r, 300))
-    ;(document.scrollingElement ?? document.documentElement).dispatchEvent(new Event('scroll', { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 200))
-    return [...document.querySelectorAll('.tip-bubble')].filter((b) => +getComputedStyle(b).opacity > 0.5).length
-  })
-  if (stranded) fail(`${stranded} tooltips survived a scroll under them`)
+  await focusRemove()
+  await page.evaluate(() => (document.scrollingElement ?? document.documentElement).dispatchEvent(new Event('scroll', { bubbles: true })))
+  await bubbles(0)
+  const stranded = await up()
+  check(!stranded, `${stranded} tooltips survived a scroll under them`)
 
-  if (!process.exitCode) {
-    console.log(
-      `ok: remove-paper tip "${remove.text}" painted at ${Math.round(remove.rect.left)},${Math.round(remove.rect.top)} inside its card; ` +
-        `wallet tip "${wallet.text}" clamped to the viewport; appearance radio tip "${radio.text}" without a wrapper; ` +
-        `focus raises it, pointer-out and scroll dismiss it`,
-    )
-  }
+  h.ok(
+    `remove-paper tip "${remove?.text}" painted at ${Math.round(remove?.rect.left)},${Math.round(remove?.rect.top)} inside its card; ` +
+      `wallet tip "${wallet?.text}" clamped to the viewport; appearance radio tip "${radio?.text}" without a wrapper; ` +
+      `focus raises it, pointer-out and scroll dismiss it`,
+  )
 } catch (e) {
-  fail(e.message)
+  fail(e)
 } finally {
-  await browser?.close()
-  vite.kill()
+  await h.close()
 }
