@@ -35,4 +35,10 @@ COPY --from=build /out/server /app/server
 # method.Load discovers ./method from the working directory.
 COPY method /app/method
 EXPOSE 8080
+# Not root. scratch has no passwd file, so the user is numeric; the server
+# binds a high port, reads /app/method and the CA bundle, and writes nothing,
+# so it needs no home directory and owns no files. No HEALTHCHECK: scratch has
+# no shell or curl to run one with, and the Kubernetes probes in
+# deploy/base/deployment.yaml ask /healthz instead.
+USER 65532:65532
 ENTRYPOINT ["/app/server"]
