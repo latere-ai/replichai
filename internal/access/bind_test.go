@@ -28,10 +28,10 @@ func TestOutcomeOfASeededRow(t *testing.T) {
 	}
 }
 
-// runBindContract is the first-login rule both stores hold: a seeded grant
-// binds to the first principal presenting its email, resolves for that same
-// principal however many times and however concurrently they ask, and never
-// resolves for a second principal.
+// runBindContract asserts the first-login rule both stores hold: a seeded
+// grant binds to the first principal presenting its email, resolves for that
+// same principal however many times and however concurrently they ask, and
+// never resolves for a second principal.
 func runBindContract(t *testing.T, acc seedableAccess, email string) {
 	t.Helper()
 	if err := acc.SeedGrant(ctx, email, TierUser); err != nil {
@@ -39,8 +39,8 @@ func runBindContract(t *testing.T, acc seedableAccess, email string) {
 	}
 	me := Principal{Sub: "sub-" + email, Email: email}
 
-	// The concurrent first sign-in: the app fires more than one request the
-	// moment the callback lands, and every one of them is the same person.
+	// The concurrent first sign-in: the app sends more than one request the
+	// moment the callback lands, and every one of them is from the same person.
 	var wg sync.WaitGroup
 	results := make([]bool, 8)
 	errs := make([]error, 8)

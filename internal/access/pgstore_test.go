@@ -88,8 +88,8 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 	// project of its own so it does not read the rows above.
 	bindingContract(t, mem, "proj-bind")
 
-	// And the grant contract, namespaced so it does not collide with the rows
-	// this test already wrote.
+	// The grant contract, namespaced so it does not collide with the rows this
+	// test already wrote.
 	storeContract(t, acc, "pg")
 
 	// The freeze-override contract, against the same real store (022d).
@@ -104,9 +104,9 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 // TestTheMigrationLeavesNoForgeLinkBehind asserts migration 5 removed the table
 // rather than deprecating it. `forge_links` was 006c's proof that a principal
 // owned a GitHub login, so that 006f could invite that login. 006f never read
-// it — it invites the login the request names — so the table was written by
-// nobody and read by nobody. A table nobody writes is not evidence, and leaving
-// it would invite a later reader to trust it.
+// it, because it invites the login the request names, so the table was written
+// by nobody and read by nobody. A table nobody writes is not evidence, and
+// leaving it would invite a later reader to trust it.
 func TestTheMigrationLeavesNoForgeLinkBehind(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {

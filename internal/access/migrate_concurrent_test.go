@@ -11,14 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// A rolling deploy runs two pods at once (maxSurge), so two processes migrate
-// the same database concurrently. Before the advisory lock both read "version
-// missing", both ran the DDL, and the loser died on "column already exists" —
-// which is exactly how the 006q deploy crash-looped its pod once before
-// recovering.
+// TestConcurrentMigratorsDoNotCollide checks that two processes can migrate
+// the same database concurrently, as happens when a rolling deploy runs two
+// pods at once (maxSurge). Before the advisory lock both read the version as
+// missing, both ran the DDL, and the loser failed on "column already exists",
+// which is how the 006q deploy crash-looped its pod once before recovering.
 //
-// This drives the real race: N migrators against one database, from empty.
-// Exactly one applies each version and none returns an error.
+// The test drives the real race: N migrators against one database, from
+// empty. Exactly one applies each version and none returns an error.
 func TestConcurrentMigratorsDoNotCollide(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -30,8 +30,8 @@ func TestConcurrentMigratorsDoNotCollide(t *testing.T) {
 	}
 	defer pool.Close()
 
-	// From empty, so every version is applied under contention rather than
-	// skipped by an already-recorded row.
+	// Start from empty, so every version is applied under contention rather
+	// than skipped by an already-recorded row.
 	for _, stmt := range []string{
 		`DROP TABLE IF EXISTS access_grants, project_members, forge_links, freeze_overrides, access_migrations CASCADE`,
 	} {
@@ -59,7 +59,7 @@ func TestConcurrentMigratorsDoNotCollide(t *testing.T) {
 		}
 	}
 
-	// Every version recorded exactly once, and the schema is whole.
+	// Every version is recorded exactly once, and the schema is complete.
 	var versions int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM access_migrations`).Scan(&versions); err != nil {
 		t.Fatalf("count versions: %v", err)

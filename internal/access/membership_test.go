@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// AC8: project membership binds one-way on the same terms as a grant — seeded by
-// verified email, bound to the first principal, a second principal refused.
+// AC8: project membership binds one-way on the same terms as a grant: seeded by
+// verified email, bound to the first principal, and a second principal refused.
 func TestMembershipSeedBindOneWay(t *testing.T) {
 	m := NewMemMembership()
 	_ = m.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"})
@@ -39,7 +39,8 @@ func TestMembershipSeedBindOneWay(t *testing.T) {
 	}
 }
 
-// Only a project's lead may change its membership.
+// TestMembershipLeadOnly checks that only a project's lead may change its
+// membership.
 func TestMembershipLeadOnly(t *testing.T) {
 	m := NewMemMembership()
 	_ = m.SeedLead(ctx, "proj-1", Principal{Sub: "lead-sub", Email: "lead@example.com"})
@@ -79,14 +80,14 @@ func TestMembershipLeadOnly(t *testing.T) {
 	}
 }
 
-// bindingContract is the login-time binding contract both stores satisfy. It is
-// one function so the in-memory and Postgres implementations cannot drift on the
-// invariant a project invitation depends on.
+// bindingContract asserts the login-time binding contract both stores satisfy.
+// It is one function so the in-memory and Postgres implementations cannot
+// drift on the invariant a project invitation depends on.
 //
 // Before the fix this whole contract failed: binding was a side effect of the
 // authorisation checks, every one of which short-circuits for an owner or a
-// public project, so an owner read as "pending" forever and an invitee never
-// appeared under "shared with me".
+// public project, so an owner was shown as "pending" permanently and an
+// invitee never appeared under "shared with me".
 func bindingContract(t *testing.T, m Membership, project string) {
 	t.Helper()
 	// Subject and addresses are derived from the project so the contract is
@@ -94,8 +95,8 @@ func bindingContract(t *testing.T, m Membership, project string) {
 	lead := Principal{Sub: project + "-lead", Email: "Lead-" + project + "@Example.com"}
 	collabEmail := "collab-" + project + "@example.com"
 
-	// An owner is bound the moment their project is seeded — no login, no
-	// project read, no authorisation check in between.
+	// An owner is bound the moment their project is seeded, with no login,
+	// project read, or authorisation check in between.
 	if err := m.SeedLead(ctx, project, lead); err != nil {
 		t.Fatalf("SeedLead: %v", err)
 	}
@@ -110,8 +111,8 @@ func bindingContract(t *testing.T, m Membership, project string) {
 		t.Errorf("the lead's own project should list, got %v", ids)
 	}
 
-	// An invitee is pending until they sign in, and signing in is what binds
-	// them — nothing else has to happen first.
+	// An invitee is pending until they sign in, and signing in binds them;
+	// nothing else has to happen first.
 	if err := m.Add(ctx, lead, project, strings.ToUpper(collabEmail), RoleCollaborator); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -160,7 +161,7 @@ func bindingContract(t *testing.T, m Membership, project string) {
 		t.Error("an unverified sign-in must never bind")
 	}
 
-	// Removing a *bound* member releases the binding, so a re-invitation binds
+	// Removing a bound member releases the binding, so a re-invitation binds
 	// again on the next sign-in. Binding a row at seed time made this the common
 	// case rather than the rare one: before, a removed member was usually still
 	// pending and there was no binding to release.
@@ -193,7 +194,8 @@ func mustList(t *testing.T, m Membership, project string) []Member {
 	return members
 }
 
-// The in-memory store satisfies the login-time binding contract.
+// TestMemMembershipBindingContract runs the login-time binding contract against
+// the in-memory store.
 func TestMemMembershipBindingContract(t *testing.T) {
 	bindingContract(t, NewMemMembership(), "proj-bind")
 }
@@ -210,7 +212,7 @@ func TestMembershipAdmitsNobodyToThePlatform(t *testing.T) {
 	if role, ok, _ := members.Role(ctx, lead, "proj-1"); !ok || role != RoleLead {
 		t.Fatal("precondition: lead has a project role")
 	}
-	// They still reach no operator tier — the gate consults grants, not membership.
+	// They still reach no operator tier: the gate consults grants, not membership.
 	if tier, ok, _ := grants.Resolve(ctx, lead); ok || tier != TierNone {
 		t.Errorf("a project role must not admit to the platform, got tier %s/%v", tier, ok)
 	}

@@ -23,9 +23,10 @@ func bootstrapAdmin(t *testing.T, s *MemStore) Principal {
 	return admin
 }
 
-// AC1: only sub and a verified email may feed authorisation. Asserted on the
-// type, so a later change cannot add a role, scope, or org claim that a login
-// could smuggle into a grant decision.
+// TestPrincipalCarriesOnlyIdentity checks AC1: only sub and a verified email
+// may feed authorisation. It is asserted on the type, so a later change cannot
+// add a role, scope, or org claim that a login could pass into a grant
+// decision.
 func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
 	allowed := map[string]bool{"Sub": true, "Email": true}
 	ty := reflect.TypeFor[Principal]()
@@ -36,7 +37,8 @@ func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
 	}
 }
 
-// The fail-closed default: an empty table grants nobody.
+// TestEmptyTableGrantsNobody checks the fail-closed default: an empty table
+// grants nobody.
 func TestEmptyTableGrantsNobody(t *testing.T) {
 	s := NewMemStore()
 	if tier, ok, _ := s.Resolve(ctx, Principal{Sub: "x", Email: "x@y.com"}); ok || tier != TierNone {
@@ -106,7 +108,8 @@ func TestAdminOnlyOperations(t *testing.T) {
 	}
 }
 
-// Grant is a promote when the email already has a grant, preserving its binding.
+// TestGrantPromotesAndPreservesBinding checks that Grant on an email that
+// already has a grant promotes it and preserves its binding.
 func TestGrantPromotesAndPreservesBinding(t *testing.T) {
 	s := NewMemStore()
 	admin := bootstrapAdmin(t, s)
@@ -117,7 +120,8 @@ func TestGrantPromotesAndPreservesBinding(t *testing.T) {
 	if err := s.Grant(ctx, admin, "seed@example.com", TierAdmin); err != nil {
 		t.Fatalf("promote: %v", err)
 	}
-	// The same principal now resolves at the higher tier — binding preserved.
+	// The same principal now resolves at the higher tier, so the binding is
+	// preserved.
 	if tier, ok, _ := s.Resolve(ctx, seed); !ok || tier != TierAdmin {
 		t.Errorf("promote should keep the binding and raise the tier, got %s/%v", tier, ok)
 	}

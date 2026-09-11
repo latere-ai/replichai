@@ -35,11 +35,11 @@ func openWrapTestPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// TestPGResolveRefusesATierTheColumnShouldNotHold pins the escalation a
-// truncating conversion would allow: 259 kept in a SMALLINT is 3 once it is cut
-// down to a uint8, and 3 is TierAdmin. Nothing in this package writes such a
-// value, but nothing in the schema forbids one either, so the read must fail
-// closed rather than promote whoever owns the row.
+// TestPGResolveRefusesATierTheColumnShouldNotHold checks the escalation a
+// truncating conversion would allow: 259 stored in a SMALLINT becomes 3 once
+// truncated to a uint8, and 3 is TierAdmin. Nothing in this package writes
+// such a value, but nothing in the schema forbids one either, so the read must
+// fail closed rather than promote whoever owns the row.
 func TestPGResolveRefusesATierTheColumnShouldNotHold(t *testing.T) {
 	pool := openWrapTestPool(t)
 	acc := NewPGAccess(pool)
@@ -57,7 +57,7 @@ func TestPGResolveRefusesATierTheColumnShouldNotHold(t *testing.T) {
 	if err == nil {
 		t.Error("Resolve on tier 259 must report the corrupt row, got a nil error")
 	}
-	// A corrupt row must not have consumed the one-way binding either.
+	// A corrupt row must not have taken the one-way binding either.
 	var principal *string
 	if err := pool.QueryRow(ctx,
 		`SELECT principal FROM access_grants WHERE email=$1`, "wrap@example.com").Scan(&principal); err != nil {
@@ -69,7 +69,7 @@ func TestPGResolveRefusesATierTheColumnShouldNotHold(t *testing.T) {
 }
 
 // TestPGRoleRefusesARoleTheColumnShouldNotHold is the membership half: 258
-// truncates to 2, which is RoleLead — ownership of the project and its
+// truncates to 2, which is RoleLead, meaning ownership of the project and its
 // membership list.
 func TestPGRoleRefusesARoleTheColumnShouldNotHold(t *testing.T) {
 	pool := openWrapTestPool(t)
@@ -94,7 +94,7 @@ func TestPGRoleRefusesARoleTheColumnShouldNotHold(t *testing.T) {
 }
 
 // TestDecodeTierAndRole covers the decoders without a database: every declared
-// value round-trips, and everything else is refused — including the values that
+// value round-trips, and everything else is refused, including the values that
 // a truncating conversion would have turned into authority.
 func TestDecodeTierAndRole(t *testing.T) {
 	for _, want := range []Tier{TierNone, TierUser, TierAdmin} {

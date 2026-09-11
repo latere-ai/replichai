@@ -13,7 +13,7 @@ import (
 )
 
 // MemStore is an in-memory Access for tests and for the rest of 006 to build
-// against with no database. The Postgres implementation lands against the same
+// against with no database. The Postgres implementation satisfies the same
 // contract.
 type MemStore struct {
 	mu sync.Mutex
@@ -23,7 +23,7 @@ type MemStore struct {
 	principalEmail map[string]string
 	// overrides holds active freeze overrides, keyed by normalized email (022d).
 	// A cleared override is deleted rather than kept, which the FreezeOverrides
-	// interface cannot tell apart from the Postgres store's soft clear.
+	// interface cannot distinguish from the Postgres store's soft clear.
 	overrides map[string]freezeGrant
 	clock     func() time.Time
 }
@@ -44,9 +44,9 @@ func NewMemStore() *MemStore {
 	}
 }
 
-// SeedGrant creates or promotes a grant at a tier with no admin check — the
-// bootstrap path for the platform-admin and seed-user email lists, applied at
-// startup. A development shortcut it is not: it is the deployment operator
+// SeedGrant creates or promotes a grant at a tier with no admin check. It is
+// the bootstrap path for the platform-admin and seed-user email lists, applied
+// at startup. It is not a development shortcut: it is the deployment operator
 // writing the initial whitelist, it seeds by email like every other grant, and
 // it records granted_by="bootstrap" so the trail shows how a grant arrived.
 // Runtime grants still go through an admin (/admin/access).
@@ -58,9 +58,9 @@ func (s *MemStore) SeedGrant(_ context.Context, email string, tier Tier) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// A revoked address stays revoked. This list is replayed on every startup
-	// from configuration, so un-revoking here would turn a ban into something
-	// that lasts until the next deploy — the same failure 006q's recorded
-	// revocation exists to prevent, one restart further out. Re-admitting is an
+	// from configuration, so clearing the revocation here would make a ban last
+	// only until the next deploy, which is the failure 006q's recorded
+	// revocation exists to prevent, one restart later. Re-admitting is an
 	// admin's deliberate act, and it goes through Grant.
 	if g, ok := s.grants[email]; ok && g.Revoked() {
 		return nil
@@ -90,10 +90,10 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 		return g.Tier, true, nil
 	}
 	// Seed by the IdP-authenticated email, and only if the grant is not already
-	// bound to someone else — a second principal is refused, not admitted onto
-	// the grant. The email is auth's assertion for this authenticated session
-	// (not a self-asserted value), and the operator whitelist is the guard, so
-	// no separate email_verified flag is required.
+	// bound to someone else: a second principal is refused, not admitted onto
+	// the grant. The email is auth's assertion for this authenticated session,
+	// not a self-asserted value, and the operator whitelist is the guard, so no
+	// separate email_verified flag is required.
 	if p.Email != "" {
 		email := normalizeEmail(p.Email)
 		if g, ok := s.grants[email]; ok && g.Principal == "" {
@@ -108,8 +108,8 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 
 // SelfGrant admits a principal who has just proven their identity (006q).
 func (s *MemStore) SelfGrant(ctx context.Context, p Principal) (Tier, bool, error) {
-	// An existing grant — seeded, granted, or already self-granted — is resolved
-	// and left exactly as it is. Only an address nobody has a row for is new.
+	// An existing grant, whether seeded, granted, or already self-granted, is
+	// resolved and left unchanged. Only an address with no row is new.
 	if tier, ok, err := s.Resolve(ctx, p); err != nil || ok {
 		return tier, ok, err
 	}
@@ -194,8 +194,8 @@ func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) 
 	at := s.clock()
 	g.RevokedAt, g.RevokedBy, g.Tier = &at, byAdmin.Sub, TierNone
 	s.grants[email] = g
-	// The binding stays. It is what keeps a re-login by the same person landing
-	// on the revoked row instead of creating a fresh one.
+	// The binding stays. It ensures a re-login by the same person resolves to
+	// the revoked row instead of creating a new one.
 	return nil
 }
 

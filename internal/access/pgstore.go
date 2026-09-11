@@ -15,7 +15,7 @@ import (
 )
 
 // PGAccess is the Postgres implementation of Access. It satisfies the same
-// contract the in-memory store does; the seed-and-bind is a row lock, so a
+// contract as the in-memory store; seed-and-bind takes a row lock, so a
 // concurrent first login binds exactly once.
 type PGAccess struct {
 	pool  *pgxpool.Pool
@@ -27,17 +27,17 @@ func NewPGAccess(pool *pgxpool.Pool) *PGAccess {
 	return &PGAccess{pool: pool, clock: time.Now}
 }
 
-// SeedGrant creates or promotes a grant at a tier with no admin check — the
-// bootstrap path for the admin and seed whitelists, applied at startup.
+// SeedGrant creates or promotes a grant at a tier with no admin check. It is
+// the bootstrap path for the admin and seed whitelists, applied at startup.
 func (s *PGAccess) SeedGrant(ctx context.Context, email string, tier Tier) error {
 	email = normalizeEmail(email)
 	if email == "" {
 		return ErrNoEmail
 	}
 	// A revoked address stays revoked. This list is replayed on every startup
-	// from configuration (ADMIN_EMAILS), so clearing the revocation
-	// here would make a ban last only until the next deploy. Re-admitting is an
-	// admin's deliberate act and goes through Grant.
+	// from configuration (ADMIN_EMAILS), so clearing the revocation here would
+	// make a ban last only until the next deploy. Re-admitting is an admin's
+	// deliberate act and goes through Grant.
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO access_grants (email, tier, granted_by, granted_at) VALUES ($1,$2,$3,$4)
 		ON CONFLICT (email) DO UPDATE SET
@@ -57,9 +57,9 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 	var tier Tier
 	var granted bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		// Already bound: resolve by principal. A revoked row resolves to nobody,
-		// exactly as a missing one does — the gate must not be able to tell the
-		// difference, and neither must a banned person.
+		// Already bound: resolve by principal. A revoked row resolves to not
+		// granted, exactly as a missing one does; neither the gate nor a banned
+		// person must be able to tell the difference.
 		var t int16
 		var revoked bool
 		err := tx.QueryRow(ctx,
@@ -93,11 +93,12 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 		if err != nil {
 			return err
 		}
-		if revoked { // a ban is not an invitation to bind, nor a grant to resolve
+		if revoked { // a revoked row is neither bound nor resolved
 			return nil
 		}
 		// Decoded before the UPDATE: binding is one-way, so a row carrying a tier
-		// this package never wrote must not consume the principal on its way out.
+		// this package never wrote must not bind the principal before the error
+		// is returned.
 		seeded, err := decodeTier(t)
 		if err != nil {
 			return err
@@ -134,10 +135,10 @@ func (s *PGAccess) Grant(ctx context.Context, byAdmin Principal, email string, t
 // Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
 // records rather than deletes.
 //
-// The WHERE clause is what makes a second revocation a no-op rather than a
-// rewrite of when the first happened. The binding is deliberately left in
-// place: it is what keeps a re-login by the same person landing on this row
-// instead of creating a fresh, unrevoked one.
+// The WHERE clause makes a second revocation a no-op rather than a rewrite of
+// when the first happened. The binding is deliberately left in place: it
+// ensures a re-login by the same person resolves to this row instead of
+// creating a new, unrevoked one.
 func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
@@ -159,11 +160,11 @@ func (s *PGAccess) OverrideActive(ctx context.Context, email string) (bool, erro
 	return active, err
 }
 
-// GrantOverride records a freeze override, (re)activating it. Admin only, the
-// same belt-and-braces check every other administrative write here makes. The
-// upsert clears any prior cleared_at, so granting after a clear starts a fresh
-// override. The admin is recorded by principal, as Grant and Revoke record
-// them, so the audit trail names an admin one way.
+// GrantOverride records a freeze override, activating or reactivating it.
+// Admin only, with the same defensive check every other administrative write
+// here makes. The upsert clears any prior cleared_at, so granting after a
+// clear starts a new override. The admin is recorded by principal, as Grant
+// and Revoke record them, so the audit trail names an admin consistently.
 func (s *PGAccess) GrantOverride(ctx context.Context, byAdmin Principal, email string) error {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
@@ -192,9 +193,9 @@ func (s *PGAccess) ClearOverride(ctx context.Context, email string) error {
 
 // SelfGrant admits a principal who has just proven their identity (006q).
 //
-// One statement, so two concurrent sign-ins cannot both insert: the conflict
-// clause updates nothing, which leaves a seeded admin at their tier and a
-// revoked address revoked. The follow-up Resolve is what binds and reports.
+// It is one statement, so two concurrent sign-ins cannot both insert: the
+// conflict clause updates nothing, which leaves a seeded admin at their tier
+// and a revoked address revoked. The Resolve that follows binds and reports.
 func (s *PGAccess) SelfGrant(ctx context.Context, p Principal) (Tier, bool, error) {
 	if tier, ok, err := s.Resolve(ctx, p); err != nil || ok {
 		return tier, ok, err
@@ -289,8 +290,8 @@ func (s *PGAccess) GrantsFor(ctx context.Context, byAdmin Principal, emails []st
 
 // errTierRange reports a tier column holding a value no tier of this package
 // names. It is an error rather than a silent TierNone because the grants table
-// is the authorisation decision: a value nobody here could have written is
-// corruption, and corruption in an ACL should be read about, not interpreted.
+// is the authorisation decision: a value this package could not have written
+// is corruption, and corruption in an ACL should be reported, not interpreted.
 var errTierRange = errors.New("access: grant tier out of range")
 
 // decodeTier turns a scanned SMALLINT into a Tier, failing closed on anything

@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// storeContract is what both grant stores answer to. It runs against the
-// in-memory store here and against Postgres in pgstore_test.go, so the two
-// cannot drift on a rule the gate depends on.
+// storeContract asserts the invariants both grant stores must hold. It runs
+// against the in-memory store here and against Postgres in pgstore_test.go, so
+// the two cannot drift on a rule the gate depends on.
 //
 // Every principal and address is derived from the ns prefix, so the contract is
 // self-contained and can run in a store that already holds other rows.
@@ -72,7 +72,7 @@ func storeContract(t *testing.T, s interface {
 		t.Error("a plain user must not read the grant list")
 	}
 
-	// Revocation locks its holder out on the very next resolve.
+	// Revocation locks its holder out on the next resolve.
 	if err := s.Revoke(ctx, admin, userEmail); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
@@ -90,7 +90,7 @@ func storeContract(t *testing.T, s interface {
 	}
 
 	// 006q: a ban must survive a re-login. Sign-in self-grants, so a revocation
-	// that deleted the row would be undone by the very next sign-in — a ban that
+	// that deleted the row would be undone by the next sign-in, and a ban that
 	// lasts one request is a logout.
 	if tier, ok, err := s.SelfGrant(ctx, user); err != nil || ok || tier != TierNone {
 		t.Errorf("a revoked principal self-granted back in: %s/%v/%v", tier, ok, err)
@@ -98,8 +98,8 @@ func storeContract(t *testing.T, s interface {
 	if tier, ok, _ := s.Resolve(ctx, user); ok || tier != TierNone {
 		t.Errorf("after a re-login the ban did not hold: %s/%v", tier, ok)
 	}
-	// The person stays visible to the admin, which is what makes the ban
-	// reversible rather than a disappearance.
+	// The person stays visible to the admin, which makes the ban reversible
+	// rather than a disappearance.
 	if g := grantOf(t, s, admin, userEmail); g == nil || !g.Revoked() {
 		t.Error("a revoked grant must remain listed, marked revoked")
 	} else if g.RevokedBy != admin.Sub {
@@ -107,9 +107,9 @@ func storeContract(t *testing.T, s interface {
 	}
 
 	// A ban must also survive a restart. ADMIN_EMAILS is replayed through
-	// SeedGrant on every boot, so un-revoking there would make
-	// a ban last until the next deploy — the same failure a recorded revocation
-	// exists to prevent, one restart further out.
+	// SeedGrant on every boot, so clearing the revocation there would make a
+	// ban last until the next deploy, which is the failure a recorded
+	// revocation exists to prevent, one restart later.
 	if err := s.SeedGrant(ctx, userEmail, TierUser); err != nil {
 		t.Fatalf("SeedGrant on a revoked address: %v", err)
 	}
@@ -121,7 +121,7 @@ func storeContract(t *testing.T, s interface {
 	}
 
 	// Granting again re-admits: an admin undoing their own decision is a
-	// first-class act, not a reason to edit a column by hand.
+	// supported operation, not a reason to edit a column by hand.
 	if err := s.Grant(ctx, admin, userEmail, TierUser); err != nil {
 		t.Fatalf("re-grant: %v", err)
 	}
@@ -185,14 +185,15 @@ func revocationOf(t *testing.T, s Access, admin Principal, email string) time.Ti
 	return *g.RevokedAt
 }
 
-// The in-memory store satisfies the grant contract.
+// TestMemStoreSatisfiesTheGrantContract runs the grant contract against the
+// in-memory store.
 func TestMemStoreSatisfiesTheGrantContract(t *testing.T) {
 	storeContract(t, NewMemStore(), "mem")
 }
 
-// A tier and a role name themselves for logs and API responses. The strings are
-// wire values the frontend switches on, so they are asserted rather than left
-// to a refactor.
+// TestTierAndRoleNames checks the names a tier and a role report for logs and
+// API responses. The strings are wire values the frontend switches on, so they
+// are asserted rather than left to a refactor.
 func TestTierAndRoleNames(t *testing.T) {
 	for tier, want := range map[Tier]string{
 		TierNone: "none", TierUser: "user", TierAdmin: "admin", Tier(99): "none",

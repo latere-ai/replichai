@@ -46,7 +46,7 @@ func runFreezeContract(t *testing.T, ov interface {
 		t.Fatalf("re-grant: %v", err)
 	}
 
-	// Clear retires it, idempotently; a fresh grant reactivates — so a later
+	// Clear retires it, idempotently; a new grant reactivates it, so a later
 	// chargeback re-freezes as a new decision.
 	if err := ov.ClearOverride(ctx, who); err != nil {
 		t.Fatalf("ClearOverride: %v", err)

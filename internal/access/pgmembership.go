@@ -23,7 +23,7 @@ func NewPGMembership(pool *pgxpool.Pool) *PGMembership {
 	return &PGMembership{pool: pool}
 }
 
-// SeedLead creates the first lead of a project with no lead check — the
+// SeedLead creates the first lead of a project with no lead check. It is the
 // bootstrap path project creation uses. It binds the lead's principal in the
 // same statement, so an owner is never listed as a pending invitation to their
 // own project.
@@ -101,7 +101,8 @@ func (m *PGMembership) Role(ctx context.Context, p Principal, project string) (R
 			return err
 		}
 		// Decoded before the UPDATE: binding is one-way, so a row carrying a role
-		// this package never wrote must not consume the principal on its way out.
+		// this package never wrote must not bind the principal before the error
+		// is returned.
 		seeded, err := decodeRole(r)
 		if err != nil {
 			return err
@@ -195,8 +196,9 @@ func (m *PGMembership) Projects(ctx context.Context, principalSub string) ([]str
 
 // errRoleRange reports a role column holding a value no role of this package
 // names. It is an error rather than a silent RoleNone for the same reason a bad
-// tier is: the row decides what somebody may touch in a project, so a value
-// nobody here could have written is corruption to be reported, not read.
+// tier is: the row decides what somebody may access in a project, so a value
+// this package could not have written is corruption to be reported, not
+// interpreted.
 var errRoleRange = errors.New("access: member role out of range")
 
 // decodeRole turns a scanned SMALLINT into a Role, failing closed on anything
@@ -204,8 +206,8 @@ var errRoleRange = errors.New("access: member role out of range")
 //
 // The column is SMALLINT with no CHECK, so it can hold whatever an out-of-band
 // write left there, and a plain Role(r) conversion would truncate rather than
-// refuse: a 258 arrives as 2, which is RoleLead — ownership of the project and
-// its membership list.
+// refuse: a 258 arrives as 2, which is RoleLead, meaning ownership of the
+// project and its membership list.
 func decodeRole(r int16) (Role, error) {
 	switch r {
 	case int16(RoleNone):
