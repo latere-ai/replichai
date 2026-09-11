@@ -86,7 +86,7 @@ sequenceDiagram
     end
 ```
 
-The `par` block is the point: the redirect and the webhook race, in either order, and only the lower branch credits the wallet. If the redirect wins, the re-read shows the old balance until the webhook lands. So the return page **polls `/me/credits` briefly** (a few reads over a few seconds), the new balance appears as soon as the webhook posts, and if the poll window closes first the page falls back to a "payment received: your credits will appear shortly" line. This affects perceived latency only; correctness never depends on the redirect.
+The `par` block shows the key property: the redirect and the webhook race, in either order, and only the lower branch credits the wallet. If the redirect wins, the re-read shows the old balance until the webhook lands. So the return page **polls `/me/credits` briefly** (a few reads over a few seconds), the new balance appears as soon as the webhook posts, and if the poll window closes first the page falls back to a "payment received: your credits will appear shortly" line. This affects perceived latency only; correctness never depends on the redirect.
 
 `POST /webhooks/stripe` **mounts outside the tier guard** (006c): Stripe is not a signed-in principal and carries no `TierUser`. Its authentication is the signature, not the session cookie. This is the one route in the app whose caller is a machine, and placing it outside `RequireTier` is a deliberate seam. It is stated here so a later refactor that moves all routes under one guard does not silently start rejecting every payment.
 
