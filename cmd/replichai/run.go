@@ -30,7 +30,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs.SetOutput(stderr)
 	var (
 		out          = fs.String("out", "runs", "directory for artifacts")
-		runtimeName  = fs.String("runtime", "local", "managed runtime to use")
+		runtimeName  = runtimeFlag(fs, "local")
 		methodDir    = fs.String("method", "", "path to a method directory")
 		parallel     = fs.Int("parallel", 0, fmt.Sprintf("how many papers to run at once (default %d here: half the cores, capped at 4)", batch.DefaultParallel()))
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "gap between status checks")
@@ -70,7 +70,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	}
 
 	runner := &projectRunner{
-		method: m, options: local, runtimeName: *runtimeName, out: *out,
+		method: m, options: local, runtimeName: resolveRuntime(*runtimeName, os.Getenv, "local"), out: *out,
 		owner: owner, invite: invite, publish: *doPublish,
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
