@@ -314,6 +314,12 @@ func newServer(addr string, handler http.Handler) *http.Server {
 		Addr:              addr,
 		Handler:           xotel.Handler(handler, serviceName),
 		ReadHeaderTimeout: 10 * time.Second,
+		// A kept-alive connection nobody is speaking on is closed. There is
+		// deliberately no ReadTimeout and no WriteTimeout: the event stream is
+		// a response that stays open for as long as a session runs, and either
+		// deadline would cancel it mid-run. Request bodies are bounded by the
+		// router instead, per route, which is where the size belongs.
+		IdleTimeout: 2 * time.Minute,
 	}
 }
 

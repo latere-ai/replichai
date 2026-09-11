@@ -8,15 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"path/filepath"
 	"time"
 
-	xotel "latere.ai/x/pkg/otel"
-
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/fetch"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
@@ -611,32 +608,12 @@ func toRepro(repo string, m publish.Manifest) httpapi.Reproduction {
 	}
 }
 
-// httpClient is this package's outbound client. Its transport is instrumented,
-// so every request starts a client span and carries the W3C trace context to
-// the other side. http.DefaultClient is deliberately left alone: replacing its
-// transport would reach every package in the process, including ones that have
-// made no such decision.
-var httpClient = xotel.HTTPClient()
-
-// newHTTPFetcher is the network seam paper resolution uses — a plain timed GET.
-func newHTTPFetcher(timeout time.Duration) paper.Fetcher {
-	return paper.FetcherFunc(func(ctx context.Context, url string) ([]byte, error) {
-		ctx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = resp.Body.Close() }()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("%s returned %d", url, resp.StatusCode)
-		}
-		return io.ReadAll(resp.Body)
-	})
+// newHTTPFetcher is the network seam paper resolution uses. It is the shared
+// fetcher, so a reference typed into the app can only ever reach a public
+// address, follow a bounded chain, and fill a bounded buffer; the timeout is
+// per fetch.
+func newHTTPFetcher(timeout time.Duration, opts ...fetch.Option) paper.Fetcher {
+	return fetch.New(append([]fetch.Option{fetch.WithTimeout(timeout)}, opts...)...)
 }
 
 // isPlaceholderTitle reports whether a project is still carrying the offline
