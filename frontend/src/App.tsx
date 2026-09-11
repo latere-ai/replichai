@@ -4726,9 +4726,21 @@ function SessionRow({
           </Tip>
         )
       )}
-      <span className="muted small row-cta">
-        <Ico name="message" size={12} /> {i18n.t('viewTranscript')}
-      </span>
+      {/* The call to action names itself once, on a session standing on its
+          own. Under a paper it is the same word on every row of the column and
+          the chevron beside it already says the row opens, so the nested rows
+          carry the icon and keep the word in the tooltip. */}
+      {nested ? (
+        <Tip text={i18n.t('viewTranscript')}>
+          <span className="muted small row-cta">
+            <Ico name="message" size={12} />
+          </span>
+        </Tip>
+      ) : (
+        <span className="muted small row-cta">
+          <Ico name="message" size={12} /> {i18n.t('viewTranscript')}
+        </span>
+      )}
       <Ico name="chevronRight" size={15} className="chev" />
     </div>
   )
