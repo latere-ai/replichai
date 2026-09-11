@@ -70,7 +70,14 @@ func (ClaudeCodeHarness) Env(_ Stage, request Request) (map[string]string, []str
 	// the root is pointed inside the session, where the siblings it derives
 	// land in a directory that is already writable and goes away with the
 	// run. Without this every shell command fails before it runs.
-	env := map[string]string{"CLAUDE_CODE_TMPDIR": request.Paths.HarnessTmp}
+	env := map[string]string{
+		"CLAUDE_CODE_TMPDIR": request.Paths.HarnessTmp,
+		// A reproduction does not phone home. Claude Code otherwise reaches a
+		// telemetry service and an error reporter on every run; these turn
+		// both off, and the egress allowlist no longer opens either host.
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+		"DISABLE_TELEMETRY":                        "1",
+	}
 	// The harness's own login lives in its own configuration directory.
 	// Redirecting the directory is how a session gets an isolated one — and
 	// it is also how a session loses the login, because an empty directory

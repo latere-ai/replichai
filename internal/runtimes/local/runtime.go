@@ -573,7 +573,10 @@ func gatewayHosts(gateway harness.Gateway) []string {
 func defaultVendorHosts(dialect harness.Dialect) []string {
 	switch dialect {
 	case harness.DialectAnthropic:
-		return []string{"api.anthropic.com", "statsig.anthropic.com", "sentry.io"}
+		// The model endpoint only. statsig.anthropic.com and sentry.io are
+		// the harness's telemetry and error reporting, which a reproduction
+		// does not open — and the harness is told not to reach them at all.
+		return []string{"api.anthropic.com"}
 	default:
 		// Codex signs in against ChatGPT and streams over a websocket on
 		// the same host, so the whole of it is named rather than the API

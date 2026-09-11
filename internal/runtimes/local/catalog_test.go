@@ -186,6 +186,22 @@ models:
 // With no file written, the default declaration is the harness's own login —
 // so a first run on a machine where the harness is already signed in needs no
 // configuration and no API key.
+// The default anthropic egress a gateway with no base URL falls back to is the
+// model endpoint alone. The harness's telemetry service and error reporter are
+// not opened — a reproduction does not phone home, and the harness is told not
+// to reach them either.
+func TestTheDefaultAnthropicEgressIsTheModelEndpointOnly(t *testing.T) {
+	hosts := defaultVendorHosts(harness.DialectAnthropic)
+	if len(hosts) != 1 || hosts[0] != "api.anthropic.com" {
+		t.Fatalf("anthropic vendor hosts = %v, want the model endpoint alone", hosts)
+	}
+	for _, host := range hosts {
+		if strings.Contains(host, "statsig") || host == "sentry.io" {
+			t.Errorf("a telemetry host is still opened: %v", hosts)
+		}
+	}
+}
+
 func TestTheDefaultCatalogNeedsNoCredential(t *testing.T) {
 	file, err := ReadCatalogFile(t.TempDir() + "/absent.yaml")
 	if err != nil {

@@ -224,6 +224,22 @@ func TestClaudeCodeCredentialChannels(t *testing.T) {
 	}
 }
 
+// Non-essential traffic is switched off whichever login the run uses, so a
+// reproduction does not phone the harness's telemetry or error reporter.
+func TestClaudeCodeDisablesNonEssentialTraffic(t *testing.T) {
+	paths := Paths{Workspace: "/s/workspace", Home: "/s/home", HarnessTmp: "/s/tmp/harness"}
+	for _, auth := range []AuthKind{AuthHarness, AuthAPIKey} {
+		env, _, err := NewClaudeCode().Env(StageWorker,
+			Request{Gateway: Gateway{Auth: auth, Key: "k"}, Paths: paths})
+		if err != nil {
+			t.Fatalf("%s: Env: %v", auth, err)
+		}
+		if env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] != "1" || env["DISABLE_TELEMETRY"] != "1" {
+			t.Errorf("%s: telemetry was not disabled: %v", auth, env)
+		}
+	}
+}
+
 // The operator's own sign-in is reachable, and their own instructions are not.
 // A reproduction that silently inherits a machine's global CLAUDE.md is not
 // reproducing the paper, and a plugin is code the method never asked for.
