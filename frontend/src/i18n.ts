@@ -832,10 +832,18 @@ export type TKey = keyof typeof en
 // enforces completeness against TKey.
 const strings: Record<Lang, Record<TKey, string>> = { en }
 
+// readLang accepts what localStorage held. Anything that names no locale — an
+// older build's value, a hand edit, the absent value of a first visit — reads
+// as English rather than reaching the string table as a block that is not
+// there, where the first t() used to throw.
+export function readLang(raw: string | null): Lang {
+  return raw !== null && raw in strings ? (raw as Lang) : 'en'
+}
+
 // useI18n stores the chosen language in localStorage and returns a translate
 // function that interpolates {name} placeholders.
 export function useI18n() {
-  const [lang, setLangState] = useState<Lang>((localStorage.getItem('lang') as Lang) || 'en')
+  const [lang, setLangState] = useState<Lang>(() => readLang(localStorage.getItem('lang')))
   const setLang = useCallback((l: Lang) => {
     localStorage.setItem('lang', l)
     setLangState(l)
