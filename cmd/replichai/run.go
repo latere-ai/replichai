@@ -174,6 +174,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		}
 		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
 		if mounts {
+			// The agent is about to clone this repository, so what the
+			// repository says about the paper has to be true before it does.
+			pub.recordIdentity(ctx, r.stderr)
 			opts = append(opts, audit.WithSessionMount(audit.SessionMount{
 				URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
 			}))
@@ -187,6 +190,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 					if err := pushWorkspace(ctx, pub, capabilities.OutputDir, entry.Reference(), evidence.Status.Ref, r.stdout, r.stderr); err != nil {
 						return err
 					}
+					// The remote's history now descends from the workspace, so
+					// a commit made here lands on top of the reproduction.
+					pub.recordIdentity(ctx, r.stderr)
 				}
 				grade := provider.GradeUnknown
 				if evidence.Status.Verdict != nil {
