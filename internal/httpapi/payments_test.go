@@ -200,18 +200,14 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 
 	// $5 bought and committed to a project the payer leads, so the wallet is
 	// back at 0 and the refund of that purchase will take it negative — the
-	// real crossing. The project is made through the route, which seeds the
-	// payer's membership the way the app does.
+	// real crossing. The membership is seeded the way the create route seeds
+	// its owner, so the ledger's own membership rule admits the allocation.
 	purchase("pi_1", 5*credit.Dollar)
-	created := do(t, rt.Handler(), "POST", "/projects", `{"title":"P","papers":["arxiv:2302.03714"]}`, payer.Sub)
-	if created.Code != http.StatusCreated {
-		t.Fatalf("create project: %d %s", created.Code, created.Body.String())
+	lead := access.Principal{Sub: payer.Sub, Email: payer.Email}
+	if err := d.Members.(*access.MemMembership).SeedLead(ctx, "proj-1", lead); err != nil {
+		t.Fatalf("SeedLead: %v", err)
 	}
-	var proj struct {
-		ID string `json:"project_id"`
-	}
-	_ = json.Unmarshal(created.Body.Bytes(), &proj)
-	if err := ledger.Allocate(ctx, access.Principal{Sub: payer.Sub, Email: payer.Email}, proj.ID, "P", 5*credit.Dollar); err != nil {
+	if err := ledger.Allocate(ctx, lead, "proj-1", "P", 5*credit.Dollar); err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
 	deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"})
