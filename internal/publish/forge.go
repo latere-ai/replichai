@@ -20,7 +20,7 @@ type File struct {
 	Content []byte
 }
 
-// Forge is the interface over repository hosting, modelled on
+// Forge is the interface over repository hosting, in the same style as
 // provider.Provider: one adapter per host, replaceable and testable without a
 // network. 003 extends it with the read side its registry needs.
 type Forge interface {
