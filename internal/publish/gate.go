@@ -6,6 +6,8 @@ package publish
 import (
 	"path"
 	"strings"
+
+	"github.com/latere-ai/replichai/internal/method"
 )
 
 // Origin says who produced an artifact. The zero value is deliberately unknown,
@@ -35,18 +37,17 @@ func Classify(p Provenance) (include bool, reason string) {
 	return false, "not written by the reproduction worker"
 }
 
-// workerReports are the fixed top-level files the method writes. Everything
-// under src/ is worker-written too; everything else is third-party.
-var workerReports = map[string]bool{
-	"README.md":          true,
-	"REPRODUCIBILITY.md": true,
-	"UNVERIFIED.md":      true,
-	"SOURCES.md":         true,
-	// instrument.json is the audit's declared study protocol (007a). It is a
-	// worker-written deliverable like the reports; without this line the
-	// allowlist would withhold it from every publication silently.
-	"instrument.json": true,
-}
+// workerReports are the fixed top-level files the method asks the worker to
+// write, taken from the method itself so the gate cannot hold a stale copy of
+// the list. Everything under method.SourceDir is worker-written too; everything
+// else is third-party.
+var workerReports = func() map[string]bool {
+	m := make(map[string]bool)
+	for _, name := range method.Deliverables() {
+		m[name] = true
+	}
+	return m
+}()
 
 // originOf classifies an artifact path structurally, with no I/O.
 func originOf(p string) Origin {
@@ -54,7 +55,7 @@ func originOf(p string) Origin {
 	if workerReports[clean] {
 		return OriginWorker
 	}
-	if clean == "src" || strings.HasPrefix(clean, "src/") {
+	if clean == method.SourceDir || strings.HasPrefix(clean, method.SourceDir+"/") {
 		return OriginWorker
 	}
 	return OriginThirdParty

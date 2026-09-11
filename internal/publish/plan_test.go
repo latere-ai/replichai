@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -125,5 +126,31 @@ func TestPlanClearWhenNothingWithheld(t *testing.T) {
 func TestPlanRejectsAnEmptySuffix(t *testing.T) {
 	if _, err := PlanPublication(passingResult("README.md"), pleasQLarify(), ""); !errors.Is(err, ErrNoName) {
 		t.Errorf("err = %v, want ErrNoName", err)
+	}
+}
+
+// Every deliverable the method asks the worker to write must survive the
+// offline publish. verdict.json went missing once because the gate's allowlist
+// was a second, hand-kept copy of the method's list; the plan now derives it
+// from method.Deliverables, so this test is the guard that they cannot drift.
+func TestPlanIncludesEveryMethodDeliverable(t *testing.T) {
+	deliverables := method.Deliverables()
+	result := passingResult(append(slices.Clone(deliverables), "src/main.py", "paper.pdf")...)
+	plan, err := PlanPublication(result, pleasQLarify(), "a3f9")
+	if err != nil {
+		t.Fatalf("PlanPublication: %v", err)
+	}
+	for _, name := range deliverables {
+		if !slices.Contains(plan.Include, name) {
+			t.Errorf("%s is a method deliverable but the plan withheld it; quarantine = %v", name, plan.Quarantine)
+		}
+	}
+	if !slices.Contains(plan.Include, "verdict.json") {
+		t.Error("verdict.json must be published: it is the finding as data")
+	}
+	for _, q := range plan.Quarantine {
+		if q.Path != "paper.pdf" {
+			t.Errorf("quarantined %s, which is worker-written", q.Path)
+		}
 	}
 }
