@@ -23,33 +23,7 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-
-const PORT = 5258
-const BASE = `http://localhost:${PORT}`
-
-const asked = process.env.PUPPETEER_EXECUTABLE_PATH
-const CHROME = asked
-  ? asked
-  : ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => require('node:fs').existsSync(p))
-
-if (!CHROME || !require('node:fs').existsSync(CHROME)) {
-  if (asked) {
-    console.error(`FAIL: PUPPETEER_EXECUTABLE_PATH=${asked} does not exist`)
-    process.exit(1)
-  }
-  console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
-  process.exit(0)
-}
-
-const fail = (msg) => {
-  console.error(`FAIL: ${msg}`)
-  process.exitCode = 1
-}
+import { fail, settled, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const ME = 'p'
@@ -84,72 +58,57 @@ let papers = [
   },
   { key: BARE, ref: 'https://example.edu/one.pdf', title: '', added_by: ME, added_at: at(1), sessions: 0 },
 ]
-let refreshed = 0
 let patchBody = null
 let patchKey = null
 
 const project = { id: PROJECT, owner: ME, title: 'A project', visibility: 'private', created_at: at(0) }
-const json = (req, body, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
-let browser
-try {
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(BASE)).ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (i > 240) throw new Error('vite did not start')
-    await new Promise((r) => setTimeout(r, 250))
-  }
-
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1440, height: 1000 })
-  await page.setRequestInterception(true)
-  page.on('request', (req) => {
-    const u = new URL(req.url())
-    if (u.origin !== BASE) return req.continue()
-    const path = u.pathname
-    const method = req.method()
-
-    // The two routes under test.
-    if (/^\/projects\/[^/]+\/papers\/refresh$/.test(path) && method === 'POST') {
-      refreshed++
+const routes = [
+  // The two routes under test.
+  [
+    'POST',
+    /^\/projects\/[^/]+\/papers\/refresh$/,
+    () => {
       // The source answers for the bare paper: this is what a fill-in does.
       papers = papers.map((p) =>
         p.key === BARE
           ? { ...p, title: 'A Paper Nobody Had Looked Up', record: { authors: ['Ada Lovelace'], venue: 'Interacting with Computers', year: 2022 } }
           : p,
       )
-      return json(req, { filled: 1, papers })
-    }
-    if (/^\/projects\/[^/]+\/papers$/.test(path) && method === 'PATCH') {
-      patchKey = u.searchParams.get('key')
-      patchBody = JSON.parse(req.postData() || '{}')
+      return { filled: 1, papers }
+    },
+  ],
+  [
+    'PATCH',
+    /^\/projects\/[^/]+\/papers$/,
+    ({ query, body }) => {
+      patchKey = query.get('key')
+      patchBody = body ?? {}
       papers = papers.map((p) => (p.key === patchKey ? { ...p, title: patchBody.title, record: { ...p.record, ...patchBody, authors: patchBody.authors } } : p))
-      return json(req, papers.find((p) => p.key === patchKey))
-    }
+      return papers.find((p) => p.key === patchKey)
+    },
+  ],
+  ['/me', { authenticated: true, principal: ME, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } }],
+  ['/me/profile', { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true }],
+  ['/projects', [{ ...project, session_count: 0, running: 0 }]],
+  [/^\/projects\/[^/]+$/, () => ({ project, sessions: [], papers, may_submit: true, role: 'owner' })],
+  [/^\/projects\/[^/]+\/papers$/, () => papers],
+  [/^\/projects\/[^/]+\/members$/, []],
+  [/^\/projects\/[^/]+\/credits$/, { wallet: 20, start_reserve: 5, available: 20 }],
+  ['/models', { tiers: [] }],
+  [/^\/(public|shared)$/, []],
+]
+const viewport = { width: 1440, height: 1000 }
 
-    if (path === '/me') return json(req, { authenticated: true, principal: ME, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } })
-    if (path === '/me/profile') return json(req, { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true })
-    if (path === '/projects') return json(req, [{ ...project, session_count: 0, running: 0 }])
-    if (/^\/projects\/[^/]+$/.test(path)) return json(req, { project, sessions: [], papers, may_submit: true, role: 'owner' })
-    if (/^\/projects\/[^/]+\/papers$/.test(path)) return json(req, papers)
-    if (/^\/projects\/[^/]+\/members$/.test(path)) return json(req, [])
-    if (/^\/projects\/[^/]+\/credits$/.test(path)) return json(req, { wallet: 20, start_reserve: 5, available: 20 })
-    if (path === '/models') return json(req, { tiers: [] })
-    if (path === '/public' || path === '/shared') return json(req, [])
-    if (path.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-    req.continue()
-  })
-
+const h = await start()
+try {
+  const page = await h.page({ viewport, routes })
   const cites = () => page.$$eval('[data-test="citation"], [data-test="citation-missing"]', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()))
+  const refreshed = () => page.calls.filter((c) => c === `POST /projects/${PROJECT}/papers/refresh`).length
 
   /* ── 1 and 2. A record reads as a citation; a paper without one says so ── */
 
-  await page.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+  await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('[data-test="citation"]', { timeout: 15000 })
 
   let lines = await cites()
@@ -167,7 +126,7 @@ try {
   if (!fillBtn) fail('a project with an unfilled paper offers no way to fill it in')
   await fillBtn.click()
   await page.waitForFunction(() => !document.querySelector('[data-test="citation-missing"]'), { timeout: 10000 })
-  if (refreshed !== 1) fail(`the fill-in called the endpoint ${refreshed} times`)
+  if (refreshed() !== 1) fail(`the fill-in called the endpoint ${refreshed()} times`)
 
   lines = await cites()
   if (!/Ada Lovelace/.test(lines[1]) || !/2022/.test(lines[1])) fail(`the filled-in paper did not re-read: ${JSON.stringify(lines[1])}`)
@@ -210,28 +169,10 @@ try {
         clamped to three lines, and the reader can open it ── */
 
   {
-    const p = await browser.newPage()
-    await p.setViewport({ width: 1440, height: 1000 })
-    await p.setRequestInterception(true)
-    p.on('request', (req) => {
-      const u = new URL(req.url())
-      if (u.origin !== BASE) return req.continue()
-      const path = u.pathname
-      if (path === '/me') return json(req, { authenticated: true, principal: ME, email: 'tester@example.com', tier: 'user', credits: { wallet: 20, start_reserve: 5 } })
-      if (path === '/me/profile') return json(req, { display_name: 'Ada Lovelace', contact_email: 'ada@example.org', handle: 'ada', public: true })
-      if (path === '/projects') return json(req, [{ ...project, session_count: 0, running: 0 }])
-      if (/^\/projects\/[^/]+$/.test(path)) return json(req, { project, sessions: [], papers, may_submit: true, role: 'owner' })
-      if (/^\/projects\/[^/]+\/papers$/.test(path)) return json(req, papers)
-      if (/^\/projects\/[^/]+\/members$/.test(path)) return json(req, [])
-      if (/^\/projects\/[^/]+\/credits$/.test(path)) return json(req, { wallet: 20, start_reserve: 5, available: 20 })
-      if (path === '/models') return json(req, { tiers: [] })
-      if (path === '/public' || path === '/shared') return json(req, [])
-      if (path.endsWith('/events')) return req.respond({ status: 200, contentType: 'text/event-stream', body: '' })
-      req.continue()
-    })
-    await p.goto(`${BASE}/p/${PROJECT}`, { waitUntil: 'networkidle0' })
+    const p = await h.page({ viewport, routes })
+    await p.open(`/p/${PROJECT}`)
     await p.waitForSelector('[data-test="paper-abstract"]', { timeout: 15000 })
-    await new Promise((r) => setTimeout(r, 400))
+    await settled(p)
 
     // The title is not the item that shrinks: it gets a line of its own, and the
     // whole of it — which is the complaint this layout answers.
@@ -251,7 +192,7 @@ try {
     // Opening it is what proves the clamp was hiding something: a fixture short
     // enough to fit would not grow, and the test would be measuring nothing.
     await p.click('[data-test="paper-abstract-toggle"]')
-    await new Promise((r) => setTimeout(r, 250))
+    await p.waitForFunction(() => document.querySelector('[data-test="paper-abstract"]')?.classList.contains('open'), { timeout: 5000 })
     const opened = await height()
     if (opened <= closed) fail(`opening the abstract left it ${opened}px; it was ${closed}px closed`)
     const whole = await p.$eval('[data-test="paper-abstract"]', (e) => e.textContent.trim())
@@ -265,10 +206,9 @@ try {
     await p.close()
   }
 
-  if (!process.exitCode) console.log('ok: a paper reads as a block — title, citation, abstract — and takes a correction')
-} catch (err) {
-  fail(err.message)
+  h.ok('a paper reads as a block — title, citation, abstract — and takes a correction')
+} catch (e) {
+  fail(e)
 } finally {
-  if (browser) await browser.close()
-  vite.kill()
+  await h.close()
 }
