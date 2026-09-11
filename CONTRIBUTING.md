@@ -2,28 +2,28 @@
 
 ## Checks
 
-The bar is one command, and it is the one CI runs:
+One command runs every check, and CI runs the same one:
 
 ```bash
 make check                # go tool lateregate: every gate that applies, in order
-go tool lateregate list   # the plan — which gates run, which are skipped, and why
+go tool lateregate list   # the plan: which gates run, which are skipped, and why
 make lint                 # one gate on its own: golangci-lint against the shared config
 ```
 
 `make check` formats, vets and tests (plain, under the race detector, with only
-the toolchain on PATH, and watching that nothing is left under `TMPDIR`),
+the toolchain on PATH, and checking that nothing is left under `TMPDIR`),
 lints, runs `govulncheck`, and checks the licence headers, the spec tree, and
 that every outbound HTTP client carries a tracing transport. Every gate lives
-in lateregate, pinned as a tool in `go.mod`, and it runs golangci-lint itself
-through `go run` at a pinned version — so beyond the Go toolchain there is
-nothing to install.
+in lateregate, which is pinned as a tool in `go.mod` and runs golangci-lint
+through `go run` at a pinned version, so nothing beyond the Go toolchain needs
+installing.
 
 `make lint-dead` is the one gate outside lateregate: `go tool deadcode -test
 ./...`. It fails on a function nothing reaches. The `-test` flag counts the
-test binaries as roots, so a seam that only the suite exercises — a fake, a
-fixture helper, a constructor a test wires — is reachable and passes; what
-fails is code no main, no test and no exported path can arrive at. Delete it
-rather than annotate it.
+test binaries as roots, so code that only the suite exercises (a fake, a
+fixture helper, a constructor a test wires) is reachable and passes. What fails
+is code that no main, no test and no exported path can reach. Delete such code
+rather than annotating it.
 
 Install the hooks once per clone:
 
@@ -42,14 +42,14 @@ make web-e2e    # the frontend's browser regressions, in headless Chrome
 make smoke      # the compose stack, end to end
 ```
 
-`make cover-pg` is the number to quote. `go test -cover ./...` with no database
-silently skips every Postgres store contract, which costs `internal/access`
-alone about forty points and makes the total meaningless.
+`make cover-pg` is the coverage figure to quote. `go test -cover ./...` with no
+database silently skips every Postgres store contract, which costs
+`internal/access` alone about forty points and makes the total meaningless.
 
 Tests need no network and no credential: the backend adapter runs against a
 local HTTP server, and an in-process provider stands in for the backend
-everywhere else. A test that needs either is in the wrong place — the one
-deliberate exception is the opt-in end-to-end run below.
+everywhere else. A test that needs either is in the wrong place. The one
+deliberate exception is the opt-in end-to-end run described below.
 
 ## The frontend
 
@@ -66,29 +66,30 @@ bun run test:browser   # every test/*.test.mjs in headless Chrome; skips cleanly
 ```
 
 The browser tests are the only ones that can catch a layout bug, because layout
-needs a layout engine. They render a screen against a mocked API and measure it
-— which is how the mobile spill was found, in a pane that scrolled sideways
-while `documentElement.scrollWidth` read clean. They share one harness
+needs a layout engine. They render a screen against a mocked API and measure
+it. This is how the mobile spill was found: a pane scrolled sideways while
+`documentElement.scrollWidth` read clean. They share one harness
 (`test/harness.mjs`: Chrome, one Vite server on a free port, a declarative
 route table whose event stream answers with a snapshot frame first, as the
 server does) and one runner (`test/run.mjs`) that runs every file and reports
-every failure; adding a test is adding a file. `node test/run.mjs <substring>`
+every failure. Adding a test means adding a file. `node test/run.mjs <substring>`
 runs a subset, and `JOBS=1` serialises them.
 
-Every string the UI renders lives in `frontend/src/i18n.ts` — English only
-today. Adding a language is a code in the `Lang` union plus a matching
-block, and TypeScript then requires that block to translate every key, so a
-locale cannot ship half-done. Dates, durations and amounts go through
-`frontend/src/locale.ts` with the app's language, never the browser's; a pure
-module or a test takes a translator from `translator(lang)`. The coverage test
-in `i18n-coverage.test.ts` scans `.ts` and `.tsx` for a literal phrase, a
-literal `aria-label`, or a `toLocale*String` without the app's language.
+Every string the UI renders lives in `frontend/src/i18n.ts`; today the only
+language is English. Adding a language means adding a code to the `Lang` union
+and a matching block, and TypeScript then requires that block to translate
+every key, so a locale cannot ship half-done. Dates, durations and amounts go
+through `frontend/src/locale.ts` with the app's language, never the browser's;
+a pure module or a test takes a translator from `translator(lang)`. The
+coverage test in `i18n-coverage.test.ts` scans `.ts` and `.tsx` for a literal
+phrase, a literal `aria-label`, or a `toLocale*String` call without the app's
+language.
 
 ## The Postgres contracts
 
-A few store contracts assert things only a real database can show — that
+A few store contracts assert things only a real database can show: that
 `SELECT ... FOR UPDATE SKIP LOCKED` hands disjoint work to competing claimants,
-that a project's credits stay exact under concurrent submits. They read
+and that a project's credits stay exact under concurrent submits. They read
 `TEST_DATABASE_URL` and skip when it is unset, so plain `go test ./...` stays
 offline and green.
 
@@ -102,9 +103,9 @@ make db-contract
 
 **Point `TEST_DATABASE_URL` at `replichai_test`, never at `replichai`.** The
 `job` and `access` contracts migrate and truncate whatever database they are
-handed, so aiming them at the dev database silently destroys the rows you were
-working with. `make db-contract` pins the scratch database and creates
-it on first use; the hazard is real only when you set the variable by hand:
+given, so pointing them at the dev database destroys the rows you were working
+with, without warning. `make db-contract` pins the scratch database and creates
+it on first use; the hazard exists only when you set the variable by hand:
 
 ```bash
 # Wrong. Truncates your local access grants and project memberships;
@@ -113,28 +114,27 @@ TEST_DATABASE_URL=postgres://replichai:replichai@localhost:5432/replichai \
     go test ./internal/access/
 ```
 
-Two details worth knowing if you run them yourself rather than through the
-target:
+Two details to know if you run them yourself rather than through the target:
 
 - `-p 1` is required. Go runs packages in parallel, and `job` and `access` both
-  migrate and truncate the one database in the URL; sharing it they race into
-  failures that look like real bugs.
+  migrate and truncate the one database in the URL; if they share it they race
+  into failures that look like real bugs.
 - `platform`, `credit`, `project` and `profile` never touch that database's
-  tables. Each cuts itself a private database on the same server
+  tables. Each creates a private database on the same server
   (`replichai_platform_test` and so on) and drops and recreates it per run, so
-  they share a `-p 1` run safely; the URL's user only has to be allowed to
+  they share a `-p 1` run safely; the URL's user only needs permission to
   `CREATE DATABASE`. `make db-contract` runs the first three beside `job` and
   `access`; `profile` has the same shape and runs with
   `make db-contract DB_CONTRACT_PKGS=./internal/profile/`.
 
 ## The real runtime end-to-end tests
 
-`internal/runtimes/local` has two tests that drive the real thing.
+`internal/runtimes/local` has two tests that drive the real tools.
 `TestRealEndToEnd` and `TestRealEndToEndWithCodex` run one session through
 `srt` confining a real Claude Code or Codex, on the login this machine already
-holds — bootstrap, worker and judge, end to end. They launch a paid agent
+holds: bootstrap, worker and judge, end to end. They launch a paid agent
 session and take minutes, so they are opt-in: set `REPLICHAI_E2E=1` to run
-them, and without it they skip. `make test` never sets it, and neither does CI.
+them; without it they skip. `make test` never sets it, and neither does CI.
 
 ```bash
 REPLICHAI_E2E=1 go test ./internal/runtimes/local/ -run TestRealEndToEnd -v
@@ -142,21 +142,21 @@ REPLICHAI_E2E=1 go test ./internal/runtimes/local/ -run TestRealEndToEnd -v
 
 ## What the linter is configured for
 
-`.golangci.yml` is generated, not written: `go tool lateregate golangci` (also
-`make lint-config`) renders it from the shared config plus the `golangci:`
-section of `.lateregate.yaml`, and the rendered file is gitignored. Change the
-linting in `.lateregate.yaml`, never in the file it produces. That section
-turns on correctness and clarity checks beyond the shared defaults, and carries
-two deliberate relaxations, each with its reason beside it:
+`.golangci.yml` is generated, not written by hand: `go tool lateregate golangci`
+(also `make lint-config`) renders it from the shared config plus the
+`golangci:` section of `.lateregate.yaml`, and the rendered file is gitignored.
+Change the linting in `.lateregate.yaml`, never in the file it produces. That
+section turns on correctness and clarity checks beyond the shared defaults, and
+carries two deliberate relaxations, each with its reason beside it:
 
 - `gosec` G301/G306 are off. A reproduction repository is meant to be read,
-  committed, and browsed, so `0755` directories and `0644` files are right
-  here; the linter's defaults assume secrets handling.
+  committed, and browsed, so `0755` directories and `0644` files are correct
+  there; the linter's defaults assume secrets handling.
 - `errcheck` ignores writes to stdout and stderr. A failed write to the
-  terminal is not actionable — there is nowhere left to report it.
+  terminal is not actionable, because there is nowhere left to report it.
 
 Go identifiers follow the standard library's US spelling (`context.Canceled`).
-Prose — comments, documents, the UI's strings — is British English, and
+Prose (comments, documents, the UI's strings) is British English, and
 `misspell` is told in `.lateregate.yaml` which British forms to accept.
 "Artifact" is the domain term and keeps its US spelling throughout.
 
@@ -171,8 +171,8 @@ SDK and vocabulary live, so nothing above the seam changes.
 
 ## Changing the method
 
-`method/` is data. Editing the rubric needs no rebuild, which is what makes
-iterating on the bar cheap — so re-run the golden set in `evals/` before
-trusting a change. The two cases pull in opposite directions on purpose: one
-paper whose repository exists but is empty, one that genuinely practises open
-science. A change that games either tends to show up in the other.
+`method/` is data. Editing the rubric needs no rebuild, which keeps iterating
+on the bar cheap, so re-run the golden set in `evals/` before trusting a
+change. The two cases pull in opposite directions on purpose: one paper whose
+repository exists but is empty, one that genuinely practises open science. A
+change that games either tends to show up in the other.
