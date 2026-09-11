@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { repoSuffix, runLabel } from './repo'
 
 // Five reproductions of one paper differ by four characters. A row that labels
