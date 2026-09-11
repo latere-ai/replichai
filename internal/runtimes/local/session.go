@@ -155,7 +155,12 @@ func (s *Session) ID() string { return s.id }
 func (s *Session) Dir() string { return s.dir }
 
 // Workspace is the agent's work, and the repository.
-func (s *Session) Workspace() string { return filepath.Join(s.dir, workspaceDir) }
+func (s *Session) Workspace() string { return workspacePath(filepath.Dir(s.dir), s.id) }
+
+// workspacePath is where session id under root keeps its workspace. It is a
+// pure function of the two so a workspace can be named before the session
+// exists — Capabilities names it, Start creates it.
+func workspacePath(root, id string) string { return filepath.Join(root, id, workspaceDir) }
 
 // Tmp is where downloads go, deliberately outside the repository.
 func (s *Session) Tmp() string { return filepath.Join(s.dir, tmpDir) }

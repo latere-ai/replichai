@@ -138,20 +138,21 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 	if err != nil {
 		return batch.Outcome{}, err
 	}
-	capabilities, err := runtime.Capabilities(ctx)
-	if err != nil {
-		return batch.Outcome{}, err
-	}
 	// The order the product keeps: the workspace holds the only copy of the
 	// work until the push has taken it, so the push is a retain hook and not
-	// something done after the session is released.
+	// something done after the session is released. The workspace is the one
+	// the session that ran names — read by reference, as the product reads it.
 	hooks := managed.Hooks{Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
 		out, errOut := newTemp(r.t), newTemp(r.t)
-		if err := pushWorkspace(ctx, r.pub, capabilities.OutputDir,
+		workspace, err := workspaceOf(runtime, evidence.Status.Ref)
+		if err != nil {
+			return err
+		}
+		if err := pushWorkspace(ctx, r.pub, workspace,
 			entry.Reference(), evidence.Status.Ref, out, errOut); err != nil {
 			return err
 		}
-		r.pushed = capabilities.OutputDir
+		r.pushed = workspace
 		return nil
 	}}
 	auditor := audit.NewSessionAuditor(controller, m,

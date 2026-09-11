@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
@@ -67,15 +66,6 @@ type Config struct {
 // (that is the driver) and no harness specifics (that is the adapter).
 type Runtime struct {
 	config Config
-
-	// mu guards pending, the session allocated by Capabilities and consumed by
-	// the next Start. The two are paired by the caller — the audit reads the
-	// output directory, then starts the session that writes to it, and the push
-	// reads that same directory again — and on this runtime that directory is
-	// per-session, so the allocation happens at the first of those calls and is
-	// held until Start takes it.
-	mu      sync.Mutex
-	pending *Session
 }
 
 // New composes a local runtime, refusing a configuration that could not run a
@@ -109,15 +99,23 @@ func (r *Runtime) Name() managed.RuntimeName { return Name }
 // itself. OutputDir is the workspace of the session the next Start will use,
 // because on this runtime the output directory is a per-session path and the
 // caller reads it before starting.
+// Capabilities names the session the caller's Start will run in — a fresh
+// id, its workspace path derived from it — and creates nothing. Every call
+// names a different session, so two callers sharing one Runtime cannot be
+// handed the same workspace; and a name nobody starts costs nothing, so a
+// caller asking only what the runtime can do leaves nothing behind. Start
+// reads the name back out of the specification it is handed (the audit
+// templates the workspace path into the instructions) and creates that
+// session then.
 func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error) {
 	if err := r.config.Sandbox.Preflight(ctx); err != nil {
 		return managed.Capabilities{}, err
 	}
-	session, err := r.reserve()
+	id, err := sessionID()
 	if err != nil {
 		return managed.Capabilities{}, err
 	}
-	return r.capabilities(session.Workspace()), nil
+	return r.capabilities(workspacePath(r.config.Root, id)), nil
 }
 
 func (r *Runtime) capabilities(outputDir string) managed.Capabilities {
@@ -203,7 +201,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
-	session, err := r.take()
+	session, err := r.claim(spec)
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
@@ -882,46 +880,56 @@ func (r *Runtime) reference(session *Session, locator Locator, revision uint64) 
 	return ref, ref.Validate(managed.DefaultMaxLocatorBytes)
 }
 
-// reserve allocates the session the next Start will use, or returns the one
-// already allocated.
-//
-// The pending session is deliberately shared across calls: a session's output
-// directory is a per-session path the caller must read before Start, and one
-// job reads it twice — the audit reads it to template its instructions, and the
-// push reads it again to know where to publish from. Both must name the session
-// Start then runs, so Capabilities is idempotent until a Start consumes the
-// reservation. (A worker pool sharing one Runtime therefore serialises a job's
-// Capabilities and Start; the alternative, a per-call reservation, breaks the
-// two-read pattern above because the push would name a session no Start ran.)
-func (r *Runtime) reserve() (*Session, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.pending != nil {
-		return r.pending, nil
+// claim creates the session a specification names, or a fresh one where it
+// names none. The name is the one Capabilities handed the caller: the audit
+// templates that session's workspace path into the instructions, so the
+// session Start runs is the one the caller was told about, and two callers
+// who were told about different sessions cannot end up in one. Creating it
+// here rather than at Capabilities means a name nobody starts is just a name.
+func (r *Runtime) claim(spec managed.SessionSpec) (*Session, error) {
+	id, ok := r.namedSession(spec)
+	if !ok {
+		fresh, err := sessionID()
+		if err != nil {
+			return nil, err
+		}
+		id = fresh
 	}
-	id, err := sessionID()
-	if err != nil {
-		return nil, err
-	}
-	session, err := CreateSession(r.config.Root, id, r.config.Lookup)
-	if err != nil {
-		return nil, err
-	}
-	r.pending = session
-	return session, nil
+	return CreateSession(r.config.Root, id, r.config.Lookup)
 }
 
-// take consumes the reserved session, so the next Capabilities allocates a
-// fresh one and one runtime can start more than one session.
-func (r *Runtime) take() (*Session, error) {
-	session, err := r.reserve()
-	if err != nil {
-		return nil, err
+// namedSession finds the session id a specification carries, by the
+// workspace path under this runtime's root that Capabilities handed out. A
+// specification that carries none — one built without asking — names no
+// session.
+func (r *Runtime) namedSession(spec managed.SessionSpec) (string, bool) {
+	prefix := r.config.Root + string(filepath.Separator)
+	for _, text := range []string{spec.Instructions, spec.Task} {
+		for _, at := range findAll(text, prefix) {
+			rest := text[at+len(prefix):]
+			end := strings.IndexRune(rest, filepath.Separator)
+			if end <= 0 {
+				continue
+			}
+			if id := rest[:end]; validSessionID(id) {
+				return id, true
+			}
+		}
 	}
-	r.mu.Lock()
-	r.pending = nil
-	r.mu.Unlock()
-	return session, nil
+	return "", false
+}
+
+// findAll returns every index at which needle starts in text.
+func findAll(text, needle string) []int {
+	var at []int
+	for from := 0; ; {
+		i := strings.Index(text[from:], needle)
+		if i < 0 {
+			return at
+		}
+		at = append(at, from+i)
+		from += i + len(needle)
+	}
 }
 
 // writeAttachments places a specification's attachments into the workspace,
@@ -1076,6 +1084,17 @@ func sessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buffer), nil
+}
+
+// validSessionID reports whether id has the shape sessionID makes: eight hex
+// digits. A path segment under the root that is anything else is not a
+// session this runtime named.
+func validSessionID(id string) bool {
+	if len(id) != 8 {
+		return false
+	}
+	_, err := hex.DecodeString(id)
+	return err == nil
 }
 
 // Workspace is the directory a referenced session worked in. It is what lets a

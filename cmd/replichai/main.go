@@ -140,7 +140,11 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			// then release. The workspace holds the only copy of the work
 			// until the push has taken it.
 			if !mounts {
-				if err := pushWorkspace(ctx, pub, capabilities.OutputDir, paper, evidence.Status.Ref, stdout, stderr); err != nil {
+				workspace, err := workspaceOf(runtime, evidence.Status.Ref)
+				if err != nil {
+					return err
+				}
+				if err := pushWorkspace(ctx, pub, workspace, paper, evidence.Status.Ref, stdout, stderr); err != nil {
 					return err
 				}
 				// The remote's history now descends from the workspace, so a
@@ -454,6 +458,20 @@ func shortDigest(d string) string {
 // session worked in. Only a local runtime can: a hosted one has no directory.
 type workspaceReader interface {
 	Workspace(managed.SessionRef) (string, error)
+}
+
+// workspaceOf asks the runtime where the referenced session worked. The
+// reference names the session and the session names its directory, so the
+// push reads from the session that ran — never from a directory named before
+// the run, which under a pool of concurrent sessions could be another's.
+// Only a runtime with a directory to name can answer; a hosted one has none,
+// and its work leaves through the mount instead.
+func workspaceOf(rt managed.Runtime, ref managed.SessionRef) (string, error) {
+	located, ok := rt.(workspaceReader)
+	if !ok {
+		return "", fmt.Errorf("runtime %s keeps no local workspace to push from", rt.Name())
+	}
+	return located.Workspace(ref)
 }
 
 // pushWorkspace publishes what the agent committed into a local repository it
