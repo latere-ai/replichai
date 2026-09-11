@@ -33,12 +33,21 @@ spec:
           image: ghcr.io/latere-ai/replichai:latest
           ports:
             - containerPort: 8080
-          # replichai-config is created from the deployment's .env (secrets: the
-          # OIDC client, ANTHROPIC_API_KEY, REPLICHAI_GITHUB_TOKEN,
-          # AUTH_COOKIE_KEY, ADMIN_EMAILS). See deploy/README.md.
+          # replichai-config is created from the deployment's .env and holds
+          # credentials only: ANTHROPIC_API_KEY, the GitHub App id and key (or
+          # the REPLICHAI_GITHUB_TOKEN fallback), AUTH_COOKIE_KEY,
+          # AUTH_CLIENT_SECRET where the client has one, MAILGUN_API_KEY,
+          # DRAFT_API_KEY, and the Stripe keys. A key in the secret that a
+          # manifest also sets with `env` is dead: Kubernetes gives `env` the
+          # last word over `envFrom`. See deploy/README.md.
           envFrom:
             - secretRef:
                 name: replichai-config
+          # What is the same in every environment lives here. What differs —
+          # BASE_URL, the OIDC client id and redirect URL, and the bootstrap
+          # admin list — is patched in by each overlay (deploy/prod,
+          # deploy/staging), so staging can never inherit production's client
+          # or admins by omission.
           env:
             # DATABASE_URL comes from the terraform-owned db secret, not .env, so
             # the app and the cluster agree on one connection string.
@@ -49,33 +58,18 @@ spec:
                   key: DATABASE_URL
             - name: ADDR
               value: ":8080"
-            - name: BASE_URL
-              value: https://replichai.latere.ai
             # Real audits run on the Anthropic managed runtime (memory is dev only).
             - name: REPLICHAI_RUNTIME
               value: anthropic-managed
-            # DEV is deliberately unset in production: the gate is fail-closed and
-            # every request must carry a real OIDC session. Setting DEV would
-            # admit a synthetic principal on a public domain.
+            # DEV is deliberately unset: the gate is fail-closed and every
+            # request must carry a real OIDC session. Setting DEV would admit a
+            # synthetic principal on a public domain.
             #
-            # OIDC login against latere auth (public PKCE client; the cookie key
-            # and any API keys live in the replichai-config secret).
+            # One issuer for every environment; each overlay registers its own
+            # client with it. The cookie key is a credential and comes from the
+            # replichai-config secret.
             - name: AUTH_ISSUER
               value: https://auth.latere.ai
-            - name: AUTH_CLIENT_ID
-              value: replichai
-            - name: AUTH_REDIRECT_URL
-              value: https://replichai.latere.ai/callback
-            # Who is an admin — a policy, not a secret, so it lives in the
-            # manifest (version-controlled and reviewable), not the .env secret.
-            # Runtime changes go through an admin via /admin/access.
-            #
-            # Anyone who signs in is granted `user`; credits are what limit
-            # them, and a new account has none. This list is only how the first
-            # platform admin exists before anyone has an account to promote
-            # them from.
-            - name: ADMIN_EMAILS
-              value: hi@changkun.de
             # Outbound mail (006p): the project invitation. The sending domain
             # and region are policy and live here; MAILGUN_API_KEY is a
             # credential and comes from the replichai-config secret. With no key

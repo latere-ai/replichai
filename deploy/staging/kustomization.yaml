@@ -13,7 +13,9 @@ namespace: latere-staging
 resources:
   - ../base
 
-# Override the prod values the base carries with their staging equivalents.
+# Everything an environment is named by is set here, not inherited: the base
+# carries no host, client, or admin list, so a value missing from this patch is
+# missing, not silently production's.
 patches:
   - target:
       kind: Deployment
@@ -31,6 +33,19 @@ patches:
                 env:
                   - name: BASE_URL
                     value: https://replichai-staging.latere.ai
+                  # PLACEHOLDER: the id of the staging client once it is
+                  # registered with auth.latere.ai. It must not be the prod
+                  # client — a redirect to this host on that client would be
+                  # a redirect the prod client accepts.
+                  - name: AUTH_CLIENT_ID
+                    value: replichai-staging
+                  - name: AUTH_REDIRECT_URL
+                    value: https://replichai-staging.latere.ai/callback
+                  # PLACEHOLDER: who bootstraps as a platform admin here. Empty
+                  # means nobody is seeded and the first admin has to be
+                  # granted some other way; fill it in before the first apply.
+                  - name: ADMIN_EMAILS
+                    value: ""
   - target:
       kind: Ingress
       name: replichai
