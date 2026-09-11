@@ -5,11 +5,15 @@
 #
 # Post-deploy release smoke for replichai.latere.ai.
 #
-# replichai's gate is fail-closed and its OIDC login front door is not wired
-# yet, so the operator surface admits nobody in production. What a release must
-# still prove is liveness: the pod is up, migrations applied at startup, and the
-# open /healthz endpoint answers. That is exactly what this checks. It grows an
-# authenticated check once the login lands.
+# replichai's gate is fail-closed: the operator surface admits nobody without a
+# session from the OIDC login (/login, /callback), and this script holds no
+# credential, so it never signs in. What a release must prove without one is
+# what it checks: the pod is up and migrations applied (/healthz), the app
+# shell is served, an operator route refuses an anonymous request with the JSON
+# error (so the dev bypass did not reach production), and the addresses a
+# machine reads -- robots.txt, the sitemap, a 404, a published page -- answer
+# as themselves. An authenticated check would need a service credential the
+# pipeline does not hold.
 #
 # Required tools: curl.
 #
