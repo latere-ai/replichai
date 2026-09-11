@@ -18,10 +18,13 @@ type fakeFetcher struct {
 	responses map[string][]byte
 	err       error
 	calls     int
+	// urls is every URL asked for, in order.
+	urls []string
 }
 
 func (f *fakeFetcher) Fetch(_ context.Context, url string) ([]byte, error) {
 	f.calls++
+	f.urls = append(f.urls, url)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -34,6 +37,27 @@ func (f *fakeFetcher) Fetch(_ context.Context, url string) ([]byte, error) {
 }
 
 const theDOI = "10.1145/3772318.3791265"
+
+// Every metadata lookup travels over TLS. The arXiv feed decides a paper's
+// identity — the DOI it carries — and a plain-http request lets anything on
+// the path answer with a different paper.
+func TestEveryLookupTravelsOverTLS(t *testing.T) {
+	fetch := &fakeFetcher{responses: map[string][]byte{
+		"export.arxiv.org": arxivFeedWithDOI(pleasQLarifyTitle, theDOI),
+		"api.crossref.org": crossrefWork(pleasQLarifyTitle),
+	}}
+	if _, err := Resolve(context.Background(), "https://arxiv.org/abs/2603.01795", WithFetcher(fetch)); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(fetch.urls) == 0 {
+		t.Fatal("an arXiv reference resolved without a lookup")
+	}
+	for _, url := range fetch.urls {
+		if !strings.HasPrefix(url, "https://") {
+			t.Errorf("lookup over plain http: %s", url)
+		}
+	}
+}
 
 func arxivFeedWithDOI(title, doi string) []byte {
 	return []byte(`<?xml version="1.0" encoding="UTF-8"?>

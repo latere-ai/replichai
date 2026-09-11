@@ -44,8 +44,10 @@ var (
 	ErrLookupFailed = errors.New("arxiv metadata lookup could not complete")
 )
 
-// arxivAPI is the metadata endpoint an arXiv ID is looked up against.
-const arxivAPI = "http://export.arxiv.org/api/query?id_list="
+// arxivAPI is the metadata endpoint an arXiv ID is looked up against. It is
+// reached over TLS: the feed decides a paper's identity — its DOI — and a
+// plain-http lookup lets anything on the path rewrite it.
+const arxivAPI = "https://export.arxiv.org/api/query?id_list="
 
 // crossrefAPI is the canonical DOI metadata endpoint a DOI's title is read from.
 const crossrefAPI = "https://api.crossref.org/works/"
