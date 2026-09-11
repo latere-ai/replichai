@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package notify is what replichai says to somebody who is not looking at it.
+// Package notify sends messages to people who are not using the app at the
+// time.
 //
-// Everything else the platform does is a reply to a request: a person asks, the
-// server answers, and the conversation ends. A project invitation is the one
-// place the platform asserts something *about a person who is not present* —
-// you have been given access to this work — and it needs a way out to them.
+// Everything else the platform does is a reply to a request. A project
+// invitation tells a person who is not present that they have been given
+// access to a project, and that message has to reach them another way.
 //
-// Delivery is not this package's business. latere.ai/x/pkg/email picks a
-// transport and refuses header injection; here lives the part that is
-// replichai's own: what an invitation says, and the rule that failing to say it
-// must never undo the membership that caused it.
+// Delivery is outside this package. latere.ai/x/pkg/email picks a transport
+// and refuses header injection. This package holds the parts specific to
+// replichai: what each message says, and the rule that a failed send must
+// never undo the membership that caused it.
 package notify
 
 import (
@@ -22,39 +22,39 @@ import (
 	"strings"
 )
 
-// Transport delivers one rendered message. It is the slice of
-// latere.ai/x/pkg/email.Sender this package needs, named here so a test can
-// substitute one without a network and without the shared package's selection
-// logic.
+// Transport delivers one rendered message. It is the subset of
+// latere.ai/x/pkg/email.Sender this package needs, declared here so a test can
+// substitute one without a network and without the shared package's transport
+// selection.
 type Transport interface {
 	Send(ctx context.Context, to, subject, htmlBody string) error
 }
 
-// Notifier sends what the platform has to tell somebody. A nil *Notifier is
-// usable and silent: a deployment that wires no transport still runs, and every
-// caller is spared a nil check at the call site.
+// Notifier sends the platform's messages. A nil *Notifier is usable and sends
+// nothing: a deployment that wires no transport still runs, and callers need
+// no nil check.
 type Notifier struct {
 	tx      Transport
 	baseURL string
 }
 
-// New builds a Notifier over a transport. baseURL is where the app lives, and
-// is what every link in a message is built from — a message with a link to
-// localhost is worse than no message.
+// New builds a Notifier over a transport. baseURL is the app's address, and
+// every link in a message is built from it. A message linking to localhost is
+// worse than no message.
 func New(tx Transport, baseURL string) *Notifier {
 	return &Notifier{tx: tx, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
 // ProjectInvitation tells someone they have been added to a project.
 //
-// It is an announcement, not an offer: the membership already exists, created
-// by an owner who was authorised to create it, so there is nothing here to
-// accept and no token to carry. What the message has to do is name who invited
-// them and point at the work.
+// It is an announcement, not an offer. The membership already exists, created
+// by an owner who was authorised to create it, so there is nothing to accept
+// and no token to carry. The message names who added them and links to the
+// project.
 //
-// The error is returned for logging, never for handling — see the doc on the
-// route that calls this. A nil Notifier reports success, because a deployment
-// with no mail configured has not failed at anything.
+// The error is returned for logging only, never for handling; see the doc on
+// the route that calls this. A nil Notifier returns nil, because a deployment
+// with no mail configured has not failed.
 func (n *Notifier) ProjectInvitation(ctx context.Context, to, projectID, projectName, inviter string) error {
 	if n == nil || n.tx == nil {
 		return nil
@@ -64,12 +64,12 @@ func (n *Notifier) ProjectInvitation(ctx context.Context, to, projectID, project
 }
 
 // AccountFrozen tells someone their account is in view-only mode after a
-// clawed-back payment, and that a top-up lifts it (022d).
+// refunded or charged-back payment, and that a top-up lifts the hold (022d).
 //
-// A chargeback lands when nobody is looking at the app, so this email — not the
-// in-app banner — is what turns a silent debt into an action. Like the
-// invitation, the error is returned only for logging, and a nil Notifier is
-// silently successful.
+// A chargeback arrives while nobody is using the app, so this email, rather
+// than the in-app banner, is what brings the debt to the person's attention.
+// As with the invitation, the error is returned only for logging, and a nil
+// Notifier returns nil.
 func (n *Notifier) AccountFrozen(ctx context.Context, to string) error {
 	if n == nil || n.tx == nil {
 		return nil
@@ -78,7 +78,8 @@ func (n *Notifier) AccountFrozen(ctx context.Context, to string) error {
 	return n.tx.Send(ctx, to, subject, body)
 }
 
-// walletURL is where a reader tops up — the app's wallet screen, not an API path.
+// walletURL returns the app's wallet screen, where a reader tops up. It is
+// not an API path.
 func (n *Notifier) walletURL() string {
 	return n.baseURL + "/wallet"
 }
@@ -101,24 +102,24 @@ func renderAccountFrozen(walletURL string) (subject, htmlBody string) {
 	return subject, htmlBody
 }
 
-// projectURL is where a project lives *for a reader of a message* — the app's
-// deep link, not the API's.
+// projectURL returns the app's deep link to a project, for a reader of a
+// message. It is not the API path.
 //
-// /projects/{id} is a gated JSON endpoint, so the first invitations linked
-// somewhere a browser could only ever receive an error from. The app owns /p/,
-// where a signed-out reader is sent through sign-in and returned to the project
-// they were invited to.
+// /projects/{id} is a gated JSON endpoint, so the first invitations linked to
+// a page a browser could only receive an error from. The app serves /p/,
+// where a signed-out reader is sent through sign-in and returned to the
+// project they were invited to.
 func (n *Notifier) projectURL(projectID string) string {
 	return n.baseURL + "/p/" + projectID
 }
 
-// renderProjectInvitation builds the subject and body. Everything interpolated
-// is escaped here, at the one place it is composed, so no caller can be the
-// reason a project name becomes markup in somebody's mail client.
+// renderProjectInvitation builds the subject and body. Every interpolated
+// value is escaped here, where the message is composed, so no caller can
+// cause a project name to become markup in a mail client.
 //
-// The inviter may be nameless — the identity provider does not always carry a
-// display name — in which case the message says so rather than printing an
-// empty strong tag.
+// The inviter may have no name, because the identity provider does not always
+// carry a display name. In that case the message uses a generic phrase rather
+// than an empty strong tag.
 func renderProjectInvitation(projectName, inviter, projectURL string) (subject, htmlBody string) {
 	name := strings.TrimSpace(projectName)
 	if name == "" {
@@ -144,8 +145,8 @@ func renderProjectInvitation(projectName, inviter, projectURL string) (subject, 
 }
 
 // LogFailure records a message that could not be delivered. It is a function
-// rather than an inline log line so every unsent notification reads the same
-// way in the log, whatever sent it.
+// rather than an inline log line so every unsent notification is logged in
+// the same form, whichever caller sent it.
 func LogFailure(kind, to string, err error) {
 	slog.Warn("notify: message not sent", "kind", kind, "to", to, "error", err)
 }
