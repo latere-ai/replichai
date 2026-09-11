@@ -38,7 +38,7 @@ func TestCodecRoundTripAndTamper(t *testing.T) {
 	// A tampered value fails authentication rather than yielding a forged one.
 	// Flip an interior base64 character, not the last one: the final character
 	// carries non-canonical low bits, so flipping it can decode to identical
-	// ciphertext and open legitimately — the tamper must actually change bytes.
+	// ciphertext and open legitimately. The tamper must change decoded bytes.
 	mid := len(sealed) / 2
 	tampered := sealed[:mid] + flip(sealed[mid]) + sealed[mid+1:]
 	if err := c.Open(tampered, &Session{}); err == nil {
@@ -87,10 +87,10 @@ func flip(b byte) string {
 	return "A"
 }
 
-// A sealed value carries its own expiry, judged by the server. A cookie a
-// browser was told to keep for twelve hours is worth nothing at hour thirteen
-// wherever it was copied to; before this only the browser's MaxAge stood
-// between a leaked cookie and indefinite replay.
+// A sealed value carries its own expiry, judged by the server. A cookie the
+// browser was told to keep for twelve hours is refused at hour thirteen
+// wherever it was copied to. Before this check, only the browser's MaxAge
+// prevented indefinite replay of a leaked cookie.
 func TestASealedValueExpiresOnTheServersClock(t *testing.T) {
 	c, err := NewCodec(strings.Repeat("ab", 32))
 	if err != nil {

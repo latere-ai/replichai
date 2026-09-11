@@ -12,7 +12,7 @@ import (
 )
 
 // AC6: the dev bypass refuses a non-loopback bind unless the insecure override
-// is set, so it cannot ship the back door to a reachable deployment.
+// is set, so a reachable deployment cannot run with the bypass on.
 func TestCheckDevBypass(t *testing.T) {
 	loopback := []string{"127.0.0.1:8080", "localhost:8080", "[::1]:8080", "127.0.0.1:0"}
 	for _, addr := range loopback {
@@ -25,7 +25,7 @@ func TestCheckDevBypass(t *testing.T) {
 		if err := CheckDevBypass(addr, false); err == nil {
 			t.Errorf("non-loopback %q must be refused without the override", addr)
 		}
-		// The explicit override permits it (a containerised local run).
+		// The explicit override permits it, for a containerised local run.
 		if err := CheckDevBypass(addr, true); err != nil {
 			t.Errorf("override should permit %q: %v", addr, err)
 		}

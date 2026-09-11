@@ -14,8 +14,9 @@ import (
 
 // DevMiddleware attributes every request to a synthetic principal, so the app
 // runs locally without an identity provider. It authenticates but never grants:
-// operating still needs a grant an admin seeded (e.g. via ADMIN_EMAILS), so the
-// dev bypass is not a back door onto the shared credential (006c AC6).
+// operating still needs a grant an admin seeded, for example through
+// ADMIN_EMAILS, so the dev bypass does not open the shared credential to
+// anyone (006c AC6).
 func DevMiddleware(sub, email string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -30,9 +31,9 @@ func DevMiddleware(sub, email string) func(http.Handler) http.Handler {
 // CheckDevBypass refuses the dev bypass on a deployment that is not loopback,
 // unless an explicit insecure override is set. A public listen address with the
 // bypass on would admit every request as the synthetic principal, so a
-// non-loopback bind fails closed rather than shipping the back door (AC6). The
-// override exists for a containerised local run that binds all interfaces
-// (compose sets it); it must never be set in production.
+// non-loopback bind fails closed (AC6). The override exists for a containerised
+// local run that binds all interfaces; compose sets it. It must never be set in
+// production.
 func CheckDevBypass(addr string, insecureOverride bool) error {
 	if insecureOverride || isLoopbackAddr(addr) {
 		return nil
@@ -51,7 +52,7 @@ func isLoopbackAddr(addr string) bool {
 	host = strings.Trim(host, "[]")
 	switch host {
 	case "", "0.0.0.0", "::":
-		return false // all interfaces — reachable
+		return false // all interfaces, so reachable
 	case "localhost":
 		return true
 	}

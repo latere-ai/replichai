@@ -13,8 +13,8 @@ import (
 	"github.com/latere-ai/replichai/internal/oteltest"
 )
 
-// assertTraced is the pair of facts that together say a hop is instrumented:
-// this side recorded a client span, and the other side was told which trace it
+// assertTraced checks the two facts that together show a hop is instrumented:
+// this side recorded a client span, and the other side received the trace it
 // belongs to. Either alone is satisfied by a client that is wrapped but inert,
 // or by one that traces locally and propagates nothing.
 func assertTraced(t *testing.T, recorder *tracetest.SpanRecorder, peer *oteltest.Peer) {

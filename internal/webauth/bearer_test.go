@@ -31,8 +31,8 @@ func (v validator) Validate(raw string) (*jwt.Claims, error) {
 	return nil, jwt.ErrInvalidSignature
 }
 
-// seen records the identity a handler received, which is the whole question:
-// two credential sources must produce one principal.
+// seen records the identity a handler received. The property under test is
+// that two credential sources produce one principal.
 func seen(t *testing.T, middleware func(http.Handler) http.Handler, request *http.Request) (httpapi.Identity, int) {
 	t.Helper()
 	var identity httpapi.Identity
@@ -73,7 +73,7 @@ func TestNoBearerPassesThrough(t *testing.T) {
 	if code != http.StatusOK || identity.Sub != "" {
 		t.Fatalf("identity = %+v, code = %d", identity, code)
 	}
-	// Another scheme is not a bearer, and is left for whoever it is for.
+	// Another scheme is not a bearer and is left alone.
 	request := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
 	request.Header.Set("Authorization", "Basic abc")
 	if _, code := seen(t, Bearer(validator{}), request); code != http.StatusOK {
@@ -81,8 +81,8 @@ func TestNoBearerPassesThrough(t *testing.T) {
 	}
 }
 
-// A request carrying a bearer is authenticated by the bearer, full stop. An
-// invalid one is a 401 rather than a fall-through to the cookie: otherwise an
+// A request carrying a bearer is authenticated by the bearer only. An invalid
+// one is a 401 rather than a fall-through to the cookie: otherwise an
 // attacker-supplied header could downgrade a session, or a stale cookie could
 // rescue a revoked token.
 func TestABearerNeverFallsThroughToTheCookie(t *testing.T) {
@@ -157,8 +157,8 @@ func TestAnUnconfiguredDeploymentRefusesBearers(t *testing.T) {
 }
 
 // The real validator pins the issuer and the audience: a token for another
-// service is refused even where the same issuer signed it, which is why the
-// CLI mints an audience-scoped actor token in the first place.
+// service is refused even where the same issuer signed it. That is why the
+// CLI mints an audience-scoped actor token.
 func TestTheRealValidatorPinsIssuerAndAudience(t *testing.T) {
 	built := NewValidator("https://auth.latere.ai", "https://auth.latere.ai/.well-known/jwks.json",
 		[]string{"replichai.latere.ai"})

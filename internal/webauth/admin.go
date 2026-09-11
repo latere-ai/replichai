@@ -19,11 +19,11 @@ import (
 	"github.com/latere-ai/replichai/internal/platform"
 )
 
-// Admin serves the platform-admin endpoints: the access list, grant, and
-// revoke (006c), the platform settings row (006k), and the credit top-up that
-// is how money enters the platform at all (011). Each resolves the caller's own
-// grant through the store, which refuses anyone below admin tier — so the
-// enforcement is server-side even if the route were reached without the tier
+// Admin serves the platform-admin endpoints: the access list, grant and
+// revoke (006c), the platform settings row (006k), and the credit top-up
+// through which money enters the platform (011). Each resolves the caller's
+// own grant through the store, which refuses anyone below admin tier, so the
+// enforcement is server-side even if a route were reached without the tier
 // guard.
 type Admin struct {
 	access    access.Access
@@ -36,19 +36,19 @@ type Admin struct {
 
 // PaperSweep fills in the bibliography of every paper the platform holds that is
 // still missing one (037). It is a function rather than an interface because
-// there is one of them and it takes no arguments an admin chooses: what it does
-// is decided by the enrichment rule, not by whoever pressed the button.
+// there is only one and it takes no arguments an admin chooses: its behaviour
+// is decided by the enrichment rule, not by the caller.
 type PaperSweep func(ctx context.Context) (projects, filled int, err error)
 
 // WithPaperSweep enables the bibliography sweep. Without it the route answers
-// 503, which is what a deployment with no paper resolver should say.
+// 503, which is correct for a deployment with no paper resolver.
 func WithPaperSweep(f PaperSweep) func(*Admin) {
 	return func(a *Admin) { a.sweep = f }
 }
 
-// ProjectCaps is the sliver of the project store this console writes: one
-// project's own overdraft floor. Narrow on purpose — the admin surface has no
-// business renaming or publishing somebody's project.
+// ProjectCaps is the subset of the project store this console writes: one
+// project's overdraft floor. It is kept narrow because the admin surface must
+// not be able to rename or publish a project.
 type ProjectCaps interface {
 	SetCreditCap(ctx context.Context, id string, cap int64) error
 }
@@ -66,8 +66,8 @@ func WithOverrides(ov access.FreezeOverrides) func(*Admin) {
 }
 
 // NewAdmin builds the admin handlers. A nil platform store disables the
-// settings endpoints and a nil ledger the top-up (they answer 503), for a
-// deployment or a test that wires only the access half.
+// settings endpoints and a nil ledger disables the top-up; both then answer
+// 503. This serves a deployment or a test that wires only the access half.
 func NewAdmin(acc access.Access, plat platform.Store, credits credit.Store, opts ...func(*Admin)) *Admin {
 	a := &Admin{access: acc, platform: plat, credits: credits}
 	for _, opt := range opts {
@@ -77,10 +77,10 @@ func NewAdmin(acc access.Access, plat platform.Store, credits credit.Store, opts
 }
 
 // MountAdmin registers every admin route behind the tier guard and returns the
-// set it registered. Returning them is the point: a test drives each one as a
-// plain user and asserts a refusal, so a route added here without the guard —
-// or added elsewhere and forgotten — fails the test rather than shipping open
-// (006k AC1). It is the same trick the operator router's gated set plays.
+// set it registered. A test drives each returned route as a plain user and
+// asserts a refusal, so a route added here without the guard, or added
+// elsewhere and not listed, fails the test rather than shipping open
+// (006k AC1). The operator router's gated set uses the same technique.
 func MountAdmin(mux *http.ServeMux, guard func(http.Handler) http.Handler, a *Admin) []httpapi.Route {
 	routes := []struct {
 		httpapi.Route
@@ -115,7 +115,7 @@ type GrantView struct {
 	Bound     bool      `json:"bound"`
 	GrantedBy string    `json:"granted_by,omitempty"`
 	GrantedAt time.Time `json:"granted_at,omitzero"`
-	// Wallet is this person's credit balance in micro-USD — what an admin reads
+	// Wallet is this person's credit balance in micro-USD, which an admin reads
 	// before deciding who needs a top-up. It is keyed by email, so it is
 	// readable for somebody who has never signed in.
 	Wallet int64 `json:"wallet"`
@@ -126,8 +126,9 @@ type GrantView struct {
 }
 
 // List returns every grant, with its wallet balance and frozen state merged in.
-// With ?filter=negative it returns only the accounts that owe — the debts an
-// operator acts on — so finding them is not a scan down the balance column.
+// With ?filter=negative it returns only the accounts with a negative balance,
+// which are the ones an operator acts on, so finding them does not require
+// scanning the balance column.
 func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 	caller := principalFrom(r)
 	grants, err := a.access.List(r.Context(), caller)
@@ -145,8 +146,8 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 			GrantedBy: g.GrantedBy,
 			GrantedAt: g.GrantedAt,
 		}
-		// The wallet is read by email, which is also how it is funded — so an
-		// admin can see and top up somebody who has not signed in yet, and
+		// The wallet is read by email, which is also how it is funded. An admin
+		// can therefore see and top up somebody who has not signed in yet, and
 		// reading the table never binds a grant to the caller's principal the
 		// way resolving one would.
 		if a.credits != nil {
@@ -171,8 +172,8 @@ func (a *Admin) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Unfreeze grants a one-shot freeze override so a negative-wallet account may
-// work again (022d). It is recorded state naming the admin; the override retires
-// itself when the wallet returns to solvent, so it forgives this debt only.
+// work again (022d). The override is recorded state naming the admin. It is
+// retired when the wallet returns to solvent, so it waives this debt only.
 func (a *Admin) Unfreeze(w http.ResponseWriter, r *http.Request) {
 	if a.overrides == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_override_store")
@@ -186,8 +187,8 @@ func (a *Admin) Unfreeze(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"email": email, "overridden": true})
 }
 
-// Refreeze clears a still-standing override, re-freezing a negative account an
-// admin had waived. The inverse of Unfreeze, for a decision reconsidered.
+// Refreeze clears an active override, re-freezing a negative account an admin
+// had waived. It is the inverse of Unfreeze.
 func (a *Admin) Refreeze(w http.ResponseWriter, r *http.Request) {
 	if a.overrides == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_override_store")
@@ -208,8 +209,8 @@ func (a *Admin) Settings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The read is fail-closed in the store: an error still yields the
-	// conservative default, so the console shows the number that is in force
-	// rather than nothing at all.
+	// conservative default, so the console shows the number in force rather
+	// than nothing.
 	s, err := a.platform.Settings(r.Context())
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin: reading platform settings", "error", err)
@@ -230,14 +231,15 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		// member could read is an allowance they would plan around (011).
 		OverdraftCap int64        `json:"overdraft_cap"`
 		Rates        *credit.Card `json:"rates"`
-		// The purchase spread and floor (022b), pointers so an omitted field
-		// keeps the one in force rather than zeroing it — a console that edits
+		// The purchase spread and floor (022b) are pointers so an omitted field
+		// keeps the value in force rather than zeroing it. A console that edits
 		// only the reserve must not wipe the margin.
 		SpreadBps        *int64 `json:"spread_bps"`
 		SpreadFixedMicro *int64 `json:"spread_fixed_micro"`
 		MinTopupMicro    *int64 `json:"min_topup_micro"`
-		// Which model drafts a description (039), a pointer for the same reason:
-		// a console that edits only the reserve must not switch drafting off.
+		// Draft names the model that drafts a description (039). It is a
+		// pointer for the same reason: a console that edits only the reserve
+		// must not switch drafting off.
 		Draft *draft.Config `json:"draft"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -286,11 +288,11 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s)
 }
 
-// Solvency reports outstanding sold-liability: the sum of every wallet and pot
-// balance — credits the platform has sold and not yet delivered as compute
-// (022c). An operator watches it against what the vendor account holds and tops
-// the vendor up when it needs it; it is the read that replaces coupling a
-// customer payment to a vendor top-up.
+// Solvency reports outstanding sold liability: the sum of every wallet and pot
+// balance, meaning credits the platform has sold and not yet delivered as
+// compute (022c). An operator compares it with the vendor account's balance and
+// tops the vendor up when needed. This read replaces coupling a customer
+// payment to a vendor top-up.
 func (a *Admin) Solvency(w http.ResponseWriter, r *http.Request) {
 	if a.credits == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_credits_store")
@@ -305,19 +307,20 @@ func (a *Admin) Solvency(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]int64{"outstanding_micro": total})
 }
 
-// Topup adds credits to one person's wallet — the only way money enters the
-// platform until a payment provider posts the same ledger entry. The email need
-// not have signed in yet, which is what lets an admin fund somebody before
-// inviting them.
+// Topup adds credits to one person's wallet. It is the only way money enters
+// the platform until a payment provider posts the same ledger entry. The email
+// need not have signed in yet, so an admin can fund somebody before inviting
+// them.
 func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
 	if a.credits == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_credit_store")
 		return
 	}
 	var body struct {
-		// Amount is micro-USD, positive. A negative top-up is not a withdrawal
-		// with the sign flipped: taking credits back is a different act with a
-		// different record, and it does not exist yet.
+		// Amount is micro-USD and must be positive. A negative amount is
+		// refused rather than treated as a withdrawal: taking credits back is
+		// a different operation with a different record, and it does not
+		// exist yet.
 		Amount int64 `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -335,10 +338,9 @@ func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SetProjectCap overrides one project's overdraft floor; zero restores the
-// platform default. Admin-only, and deliberately not the owner's: a project
-// deciding how far past its own balance it may run is the one party with an
-// interest in that number being large.
+// SetProjectCap overrides one project's overdraft floor. Zero restores the
+// platform default. It is admin-only and deliberately not available to the
+// owner, because the owner has an interest in setting the overdraft high.
 func (a *Admin) SetProjectCap(w http.ResponseWriter, r *http.Request) {
 	if a.projects == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_project_store")
@@ -393,8 +395,8 @@ func (a *Admin) Revoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ParseTier maps a tier name to a Tier, rejecting the unknown and the fail-safe
-// "none" (which is not a grantable tier).
+// ParseTier maps a tier name to a Tier. It rejects unknown names and the
+// fail-safe "none", which is not a grantable tier.
 func ParseTier(s string) (access.Tier, bool) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "user":
@@ -432,10 +434,10 @@ func writeAdminError(w http.ResponseWriter, err error) {
 // RefreshPapers fills in every paper the platform holds whose bibliography is
 // incomplete (037), and reports what it did.
 //
-// It is the admin's half of the fill-in: an owner's button covers the project in
-// front of them, and this covers the ones nobody has opened since the record
-// existed. It is synchronous, because the number it returns is the reason to
-// press it — and it is safe to press twice, because enrichment never overwrites.
+// It is the admin's half of the fill-in: an owner's button covers one project,
+// and this covers the projects no owner has opened since the record was
+// created. It is synchronous, because the count it returns is the reason to
+// call it. It is safe to call twice, because enrichment never overwrites.
 func (a *Admin) RefreshPapers(w http.ResponseWriter, r *http.Request) {
 	if a.sweep == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "no_sweep")

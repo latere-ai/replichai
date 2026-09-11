@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package webauth wires the access model (006c) to the HTTP layer: the gate
-// policy the httpapi seam mounts, and — later — the OIDC login middleware that
-// resolves an identity onto the request. It is the one place that imports both
+// policy the httpapi seam mounts, and the OIDC login middleware that resolves
+// an identity onto the request. It is the only package that imports both
 // internal/httpapi and internal/access, so neither imports the other.
 package webauth
 
@@ -16,8 +16,8 @@ import (
 
 // Gate builds the fail-closed gate policy httpapi mounts on its operator routes.
 // It reads the identity the auth middleware placed on the request and resolves
-// the grant per request — never caching a tier in a session — so a revoked
-// grant locks its holder out on the very next request.
+// the grant on every request. A tier is never cached in a session, so a revoked
+// grant locks its holder out on the next request.
 //
 // The reasons are machine-readable: not_authenticated when there is no verified
 // identity, not_granted when there is one but no grant.
@@ -32,9 +32,9 @@ func Gate(a access.Access) httpapi.Gate {
 			Email: id.Email,
 		})
 		if err != nil {
-			// The store did not answer; that is an outage, not a refusal, and
+			// The store did not answer. That is an outage, not a refusal, and
 			// the gate reports it as one so the app does not tell a granted
-			// person they were never invited.
+			// person that they have no grant.
 			return false, httpapi.ReasonUnavailable
 		}
 		if !granted {
@@ -44,10 +44,11 @@ func Gate(a access.Access) httpapi.Gate {
 	})
 }
 
-// RequireTier guards a route that needs a tier above plain admission — the
-// admin surface (grant, revoke, promote) needs TierAdmin. It resolves per
-// request and answers insufficient_tier for a granted-but-insufficient
-// principal, so the check holds even when a request is forged past the UI.
+// RequireTier guards a route that needs a tier above plain admission. The
+// admin surface, meaning grant, revoke and promote, needs TierAdmin. It
+// resolves the tier on every request and answers insufficient_tier for a
+// granted principal below the minimum, so the check holds even when a request
+// bypasses the UI.
 func RequireTier(a access.Access, min access.Tier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
