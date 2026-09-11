@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from 'bun:test'
-import { absoluteTime, elapsed, relativeTime } from './when'
+import { absoluteTime, duration, elapsed, relativeTime } from './when'
 
 const now = Date.parse('2026-08-08T12:00:00Z')
 const ago = (ms: number) => new Date(now - ms).toISOString()
@@ -64,5 +64,33 @@ describe('elapsed', () => {
     expect(elapsed(undefined)).toBe('')
     expect(elapsed('nonsense')).toBe('')
     expect(elapsed('2026-08-08T10:00:00Z', Date.parse('2026-08-08T09:59:50Z'))).toBe('0s')
+  })
+})
+
+// duration is the one formatter behind elapsed, the transcript's offsetOf and
+// the timeline's phase lengths. Each of those pins its own output (above, and
+// in transcript.test.ts); this checks the seam they share, at every scale and
+// in both modes.
+describe('duration', () => {
+  it('counts seconds under a minute, whether or not seconds were asked for', () => {
+    expect(duration(0)).toBe('0s')
+    expect(duration(59)).toBe('59s')
+    expect(duration(12, { seconds: true })).toBe('12s')
+  })
+
+  it('keeps the seconds at minute scale only when asked', () => {
+    expect(duration(60)).toBe('1m')
+    expect(duration(60, { seconds: true })).toBe('1m 0s')
+    expect(duration(34 * 60 + 7)).toBe('34m')
+    expect(duration(34 * 60 + 7, { seconds: true })).toBe('34m 7s')
+    expect(duration(59 * 60 + 59, { seconds: true })).toBe('59m 59s')
+  })
+
+  it('reads hours with their minutes and never the seconds', () => {
+    expect(duration(3600)).toBe('1h 0m')
+    expect(duration(3600, { seconds: true })).toBe('1h 0m')
+    expect(duration(107 * 60 + 30)).toBe('1h 47m')
+    expect(duration(107 * 60 + 30, { seconds: true })).toBe('1h 47m')
+    expect(duration(25 * 3600 + 5 * 60)).toBe('25h 5m')
   })
 })
