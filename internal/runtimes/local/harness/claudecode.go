@@ -119,14 +119,17 @@ func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
 
 // Needs is what Claude Code requires of the machine.
 //
-// The login: on macOS the credential is in the login Keychain rather than in a
-// file, so the keychain has to be readable — read-only, and only for a session
-// that actually uses that sign-in. It is a real widening and the narrowest one
-// that works; without it the harness answers "not logged in".
+// The login: its configuration directory and file, where the credential lives
+// on Linux and the account state lives everywhere; and on macOS the login
+// Keychain as well, because there the credential is in the keychain rather
+// than in a file. All read-only, and only for a session that actually uses
+// that sign-in. It is a real widening and the narrowest one that works;
+// without it the harness answers "not logged in".
 //
 // The denials: the operator's standing instructions are not the method, and a
 // reproduction that silently inherits them is not reproducing the paper. Their
-// plugins are not the method either, and they run code.
+// plugins, agents, commands and skills are not the method either, Claude Code
+// loads all four at startup, and they run code.
 func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 	needs := Needs{}
 	// Nothing under the shared temporary root: the scratch area is
@@ -136,13 +139,13 @@ func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 	if machine.Home == "" {
 		return needs
 	}
-	needs.Denies = []string{
-		filepath.Join(machine.Home, ".claude", "CLAUDE.md"),
-		filepath.Join(machine.Home, ".claude", "plugins"),
-		filepath.Join(machine.Home, ".claude", "settings.json"),
-	}
+	config := filepath.Join(machine.Home, ".claude")
+	needs.Login = []Grant{{Path: config}, {Path: config + ".json"}}
 	if machine.Platform == "darwin" {
-		needs.Reads = []string{filepath.Join(machine.Home, "Library", "Keychains")}
+		needs.Login = append(needs.Login, Grant{Path: filepath.Join(machine.Home, "Library", "Keychains")})
+	}
+	for _, name := range []string{"CLAUDE.md", "settings.json", "plugins", "agents", "commands", "skills"} {
+		needs.Denies = append(needs.Denies, filepath.Join(config, name))
 	}
 	return needs
 }

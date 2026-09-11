@@ -219,6 +219,12 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	// comparing two reproductions is entitled to know which they have.
 	record.Network.Allowed = effective.Domains
 	record.Harness.Version = r.harnessVersion(ctx)
+	// What the run could read of the operator's own machine is part of what
+	// it is. Only a session on the operator's sign-in is opened any of it,
+	// and the record lists exactly what launch will grant.
+	if gateway.Auth == harness.AuthHarness {
+		record.Sandbox.ConfigRead = harness.LoginPaths(r.config.Harness.Needs(r.config.Machine))
+	}
 	if err := session.WriteEnvironment(record); err != nil {
 		return managed.SessionRef{}, err
 	}
@@ -434,9 +440,15 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		stageNetwork.Passthrough = needs.TLSPassthrough
 		// The operator's own sign-in is reached only by a session that
 		// uses it; one carrying its own credential is granted none of it.
+		// This is the one decision point: the harness says where its login
+		// lives, and only here is it decided whether that is opened.
 		if gateway.Auth == harness.AuthHarness {
-			for _, path := range needs.Reads {
-				paths = append(paths, sandbox.Path{Host: path, Access: sandbox.ReadOnly})
+			for _, grant := range needs.Login {
+				access := sandbox.ReadOnly
+				if grant.Write {
+					access = sandbox.ReadWrite
+				}
+				paths = append(paths, sandbox.Path{Host: grant.Path, Access: access})
 			}
 		}
 		// Withheld either way: the operator's standing instructions and

@@ -178,25 +178,25 @@ func TestCodexSpeaksTheOpenAIDialects(t *testing.T) {
 	}
 }
 
-// Codex keeps its token in a file under its own configuration directory, so
-// the existing grant already covers it and nothing further is opened. Its
-// standing instructions are withheld for the same reason every harness's are.
+// Codex keeps its token in its own configuration directory and writes its own
+// state back there — its aliases, its app-server, its session records — so the
+// login grant is that directory, writable. It is a login grant rather than a
+// standing one: a session carrying its own credential has CODEX_HOME redirected
+// into the session and never touches the operator's. Its standing instructions
+// are withheld for the same reason every harness's are.
 func TestCodexLoginProfile(t *testing.T) {
 	login := NewCodex().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
-	if len(login.Reads) != 0 {
-		t.Errorf("codex opened %v to reach a token that is already readable", login.Reads)
+	if len(login.Login) != 1 || login.Login[0].Path != "/Users/x/.codex" || !login.Login[0].Write {
+		t.Fatalf("login = %+v, want the configuration directory, writable", login.Login)
 	}
 	if len(login.Denies) != 1 || !strings.Contains(login.Denies[0], "AGENTS.md") {
 		t.Errorf("denies = %v", login.Denies)
 	}
-	// Its scratch area, and its own configuration directory: Codex writes
-	// its aliases, its app-server and its session records there and fails
-	// to start where it cannot.
-	joined := strings.Join(login.Writes, " ")
-	for _, want := range []string{"codex-501", "/Users/x/.codex"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("%s is not writable: %v", want, login.Writes)
-		}
+	// Its scratch area is what every stage gets, whichever login it runs on;
+	// the configuration directory is not in this list, or a session on an
+	// API key would be handed the operator's token.
+	if len(login.Writes) != 1 || !strings.Contains(login.Writes[0], "codex-501") {
+		t.Errorf("standing writes = %v, want the scratch area alone", login.Writes)
 	}
 	// It does not read an injected certificate authority, so its own
 	// endpoints are tunnelled rather than inspected — still allowlisted.

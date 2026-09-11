@@ -159,9 +159,14 @@ wire_api = %q
 %s`, gateway.BaseURL, wire, key)
 }
 
-// Needs is what Codex requires of the machine: nothing to reach its own login,
-// which is a file inside the configuration directory the sandbox already
-// grants, and a scratch area under the temporary root.
+// Needs is what Codex requires of the machine: its configuration directory,
+// where its token lives and where it writes its own state — its aliases, its
+// app-server, its session records — and fails to start where it cannot; and a
+// scratch area under the temporary root.
+//
+// The configuration directory is a login grant, not a standing one: a session
+// carrying its own credential has CODEX_HOME redirected into the session and
+// never touches the operator's, so it is granted nothing there.
 //
 // The operator's standing instructions are denied for the same reason they are
 // for any harness: they are not the method.
@@ -178,10 +183,7 @@ func (CodexHarness) Needs(machine Machine) Needs {
 			filepath.Join(machine.TempDir, fmt.Sprintf("codex-%d", machine.UID)))
 	}
 	if machine.Home != "" {
-		// Codex writes its own state — its aliases, its app-server, its
-		// session records — into its configuration directory, and fails
-		// to start where it cannot.
-		needs.Writes = append(needs.Writes, filepath.Join(machine.Home, ".codex"))
+		needs.Login = []Grant{{Path: filepath.Join(machine.Home, ".codex"), Write: true}}
 		needs.Denies = []string{filepath.Join(machine.Home, ".codex", "AGENTS.md")}
 	}
 	return needs

@@ -96,6 +96,11 @@ func TestEveryDeniedPathReachesTheSettings(t *testing.T) {
 	if !slices.Contains(settings.Filesystem.DenyRead, home) {
 		t.Errorf("the home directory is not denied: %v", settings.Filesystem.DenyRead)
 	}
+	// A .env is a credential file by convention, and the guide says it is
+	// denied; the table is what makes that true.
+	if !slices.Contains(settings.Filesystem.DenyRead, "/Users/x/.env") {
+		t.Errorf("~/.env is readable: %v", settings.Filesystem.DenyRead)
+	}
 	// The harness's own configuration is the one allowance inside it.
 	if !slices.Contains(settings.Filesystem.AllowRead, "/Users/x/.claude") {
 		t.Errorf("the harness configuration is not readable: %v", settings.Filesystem.AllowRead)
@@ -151,7 +156,7 @@ func TestNetworkModesRender(t *testing.T) {
 // The stage's own paths become its access, and the judge's read-only workspace
 // stays read-only.
 func TestTheProfileIsBuiltFromTheStagePaths(t *testing.T) {
-	driver := New(Config{Platform: sandbox.Darwin, Home: "/Users/x", Look: found("srt", "rg"), ConfigDirs: []string{"/Users/x/.claude"}})
+	driver := New(Config{Platform: sandbox.Darwin, Home: "/Users/x", Look: found("srt", "rg")})
 	spec := sandbox.StageSpec{
 		Name: "judge-1",
 		Paths: []sandbox.Path{
