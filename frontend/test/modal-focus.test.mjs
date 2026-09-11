@@ -4,7 +4,7 @@
 // A browser regression test for where the keyboard is while a dialog is up.
 //
 // The bug it guards: Modal set aria-modal and did nothing else about focus. The
-// keyboard stayed on the button that opened the dialog — behind the backdrop —
+// keyboard stayed on the button that opened the dialog, behind the backdrop,
 // so Tab walked the page underneath, Enter re-fired the opener, and nothing
 // brought focus back when the dialog closed. Every dialog in the app is one
 // Modal, so the behaviour is asserted there once: focus lands inside on open,

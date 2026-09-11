@@ -4,8 +4,8 @@
 // A browser regression test for a paper's bibliography (037).
 //
 // A project used to show a title and the string somebody typed to name the
-// paper. Everything else — who wrote it, where it appeared, when — was fetched
-// during resolution and thrown away, so a project read as a list of URLs.
+// paper. Everything else, namely who wrote it, where it appeared and when, was
+// fetched during resolution and discarded, so a project read as a list of URLs.
 //
 // Five things have to hold:
 //
@@ -130,8 +130,8 @@ try {
 
   lines = await cites()
   if (!/Ada Lovelace/.test(lines[1]) || !/2022/.test(lines[1])) fail(`the filled-in paper did not re-read: ${JSON.stringify(lines[1])}`)
-  // With nothing left to fill, the control goes: a button that can only say
-  // "nothing to do" is furniture.
+  // With nothing left to fill, the control is removed: a button with nothing to
+  // do should not be shown.
   await page.waitForFunction(() => !document.querySelector('[data-test="fill-in-papers"]'), { timeout: 10000 })
 
   /* ── 4. Correcting what a source got wrong ── */
@@ -174,8 +174,8 @@ try {
     await p.waitForSelector('[data-test="paper-abstract"]', { timeout: 15000 })
     await settled(p)
 
-    // The title is not the item that shrinks: it gets a line of its own, and the
-    // whole of it — which is the complaint this layout answers.
+    // The title is not the item that shrinks: it gets a whole line of its own,
+    // which is the complaint this layout answers.
     const title = await p.$eval('.paper-title', (e) => ({
       w: Math.round(e.getBoundingClientRect().width),
       full: e.scrollWidth <= e.clientWidth + 1 || e.getBoundingClientRect().height > 20,

@@ -8,14 +8,14 @@
 // card sets `overflow: hidden`, which drops its automatic minimum size to zero,
 // so a long transcript collapsed all of its cards to their padding and clipped
 // the text inside them. Short transcripts never overflowed and so never showed
-// it — the defect only appears past a few dozen events.
+// it; the defect only appears past a few dozen events.
 //
 // The assertion is geometry, not pixels: no event card may have more content
 // than it has room for. It needs a real layout engine, so it drives Chrome over
 // a Vite dev server with the API mocked. Run it with `bun run test:browser`.
 import { fail, settled, start } from './harness.mjs'
 
-// Well past the point where the stream overflows its box — a short transcript
+// Well past the point where the stream overflows its box: a short transcript
 // fits, and a fitting transcript never shrinks.
 const EVENTS = 400
 
@@ -28,8 +28,9 @@ const RUNNING_MS = 21_180_000
 
 // A transcript with every card shape the viewer renders: a message with a title
 // and a body, a tool call with its argument block, a collapsed tool result, a
-// thought, and a grade — spread across a two-hour run so the scrubber has a real
-// span to draw, and with some events charged so the histogram is token-weighted.
+// thought, and a grade. They are spread across a two-hour run so the scrubber
+// has a real span to draw, and some events are charged so the histogram is
+// token-weighted.
 function events() {
   const shapes = [
     {
@@ -41,7 +42,7 @@ function events() {
     { role: 'agent', kind: 'tool_result', content: 'total 48\ndrwxr-xr-x 8 root root 4096 .\n' },
     { role: 'agent', kind: 'thinking', content: '' },
     // A kind the client has no name of its own for. It must never reach the
-    // filter rail as a raw identifier (006s AC7) — this is the exact family that
+    // filter rail as a raw identifier (006s AC7); this is the exact family that
     // showed up on screen as `outcome_evaluation_ongoing`.
     { role: 'agent', kind: 'outcome_evaluation_ongoing', content: 'scoring 8 of 13 sub-claims' },
   ]
@@ -127,7 +128,7 @@ try {
   if (m.overlapping) fail(`${m.overlapping} event cards overlap the next one`)
 
   // 006s AC3: the phase bands are proportional to elapsed time. `running` is
-  // 21e6 of the 21.2e6 ms the job spent, so it must own almost the whole bar —
+  // 21e6 of the 21.2e6 ms the job spent, so it must own almost the whole bar;
   // an evenly-divided strip would put it at a fifth.
   const bands = await page.evaluate(() => {
     const bar = document.querySelector('.scrub-bar')
@@ -214,14 +215,13 @@ try {
   if (railTotal !== narrowed.cards) fail(`rail counts sum to ${railTotal} but ${narrowed.cards} cards are shown`)
   if (restored !== EVENTS + 1) fail(`clearing the search left ${restored} cards, want ${EVENTS + 1}`)
 
-  // The topbar is a single row — 56px since 034 — and the app is a full-height
-  // shell: nothing
-  // on the session screen may wrap it or scroll the document sideways. The
-  // breadcrumb is what broke both — a paper title long enough to wrap took the
-  // trail onto a second line and pushed the header's controls off the right
+  // The topbar is a single row, 56px since 034, and the app is a full-height
+  // shell: nothing on the session screen may wrap it or scroll the document
+  // sideways. The breadcrumb broke both: a paper title long enough to wrap took
+  // the trail onto a second line and pushed the header's controls off the right
   // edge. Run last: it moves the viewport, and the checks above are placed at
-  // 1440. The floor is the three-column body (220 + 300 side rails beside the
-  // 236px nav), so the sweep stops where that layout stops fitting.
+  // 1440. The floor is the three-column body, with 220px and 300px side rails
+  // beside the 236px nav, so the sweep stops where that layout stops fitting.
   const widths = [1680, 1440, 1280, 1100, 1000, 900, 820]
   for (const width of widths) {
     await page.setViewport({ width, height: 900 })
@@ -240,9 +240,9 @@ try {
       }
     })
     if (bar.scroll > 0.5) fail(`at ${width}px the document scrolls ${Math.round(bar.scroll)}px sideways`)
-    // The number is the bar's height, and the guarantee is that it is *one* row:
-    // a second line of breadcrumb is what this catches, and it catches it as a
-    // height that is no longer this one.
+    // The number is the bar's height, and the guarantee is that it is one row:
+    // a second line of breadcrumb is what this catches, as a height that is no
+    // longer this one.
     if (bar.topbar !== 56) fail(`at ${width}px the topbar is ${bar.topbar}px tall, want 56`)
     if (bar.wrapped.length) fail(`at ${width}px these breadcrumb segments wrap onto a second line: ${bar.wrapped.join(' | ')}`)
   }

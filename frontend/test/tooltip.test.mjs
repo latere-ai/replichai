@@ -5,10 +5,10 @@
 //
 // The bug it guards: the bubble used to be a `::after` pseudo-element on the
 // trigger, positioned absolutely. Every card in the app rounds its corners with
-// `overflow: hidden`, and an absolutely-positioned child is clipped by that — so
-// a tip on any control inside a card was sliced off at the card's edge and
-// showed up on screen as a black stub with no text in it. The paper row's remove
-// button was the report; eighteen `overflow: hidden` rules were the reach.
+// `overflow: hidden`, and an absolutely-positioned child is clipped by that, so
+// a tip on any control inside a card was cut off at the card's edge and showed
+// up on screen as a black stub with no text in it. The paper row's remove
+// button was the report; eighteen `overflow: hidden` rules were affected.
 //
 // Clipping does not change an element's own box, so "the bubble exists and has a
 // size" passes against the broken code too. The discriminating assertion is hit
@@ -57,8 +57,8 @@ try {
   await settled(page)
 
   // hover moves a real pointer onto the element and reports what the tip is,
-  // where it sits, and — the part that catches clipping — what is actually
-  // painted at its centre.
+  // where it sits, and what is painted at its centre, which is the part that
+  // catches clipping.
   const hover = async (selector, label) => {
     const el = await page.$(selector)
     if (!el) return fail(`no ${label} on screen (${selector})`)
@@ -72,10 +72,10 @@ try {
       if (bubbles.length !== 1) return { n: bubbles.length }
       const b = bubbles[0]
       const r = b.getBoundingClientRect()
-      // A tip must not take the pointer in the app — but hit testing is the only
+      // A tip must not take the pointer in the app, but hit testing is the only
       // read of what is painted where, and it skips a pointer-events:none box.
-      // The property changes nothing about layout or clipping, so borrow it for
-      // the probe and give it straight back.
+      // The property changes nothing about layout or clipping, so it is enabled
+      // for the probe and restored straight after.
       const prior = b.style.pointerEvents
       b.style.pointerEvents = 'auto'
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
@@ -135,8 +135,8 @@ try {
   const radio = await hover('.segmented.compact button[role="radio"][data-tip]', 'appearance radio')
 
   // focusRemove parks the pointer, takes focus off whatever holds it, and hands
-  // it to the remove button — from nothing, so `focusin` fires even when the
-  // button had it already — then waits for the bubble that focus raises.
+  // it to the remove button from an unfocused state, so `focusin` fires even
+  // when the button had it already, then waits for the bubble that focus raises.
   const focusRemove = async () => {
     await page.mouse.move(700, 860)
     await page.evaluate(() => document.activeElement?.blur?.())

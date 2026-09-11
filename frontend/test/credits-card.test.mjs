@@ -6,18 +6,19 @@
 // Three defects, each invisible to a test that reads text:
 //
 // The two amounts did not line up. `.usage-line .v` is `margin-left: auto`, so
-// both should have been flush right — but the second row was wrapped in a
+// both should have been flush right, but the second row was wrapped in a
 // <Tip>, whose <span> is inline, and an inline box around a block row collapses
-// that row to its content. The value then sits against its label. Only geometry
-// sees it.
+// that row to its content. The value then sits against its label. Only a
+// geometry measurement detects it.
 //
 // The amount field took integers. It is a money field on every screen it
-// appears, and stripping the decimal point meant a project could be allocated
-// whole dollars only — a $16.82 balance could not be moved back in one go.
+// appears on, and stripping the decimal point meant a project could be
+// allocated whole dollars only, so a $16.82 balance could not be moved back in
+// one go.
 //
 // The card ran the full width of the screen to show two numbers and a stepper,
 // pushing the sessions below the fold. It belongs in the rail beside them, which
-// is narrower than the three controls it holds — so the row has to wrap rather
+// is narrower than the three controls it holds, so the row has to wrap rather
 // than clip its third button.
 import { fail, json, settled, start } from './harness.mjs'
 
@@ -26,10 +27,10 @@ const PROJECT = 'proj-1'
 const project = { id: PROJECT, owner: 'p', title: 'Point of no Undo', visibility: 'private', created_at: at(0) }
 const paper = { key: 'doi:x', ref: '10.1145/3654777.3676417', title: 'Point of no Undo', sessions: 1 }
 const job = { id: 'j1', project_id: PROJECT, paper_key: paper.key, ref: paper.ref, phase: 'done', repo_name: 'open-hai/x', created_at: at(1), updated_at: at(0), cost: 3_842_000 }
-// A running session holds $10 of the balance, so available is below it — which
-// is when the second amount row appears (an identical available is now hidden as
-// a duplicate). Available is also under the reserve, so the warning and both
-// buttons show too.
+// A running session holds $10 of the balance, so available is below it, which
+// is when the second amount row appears; an available equal to the balance is
+// hidden as a duplicate. Available is also under the reserve, so the warning and
+// both buttons show too.
 const credits = { balance: 16_820_000, available: 6_820_000, start_reserve: 20_000_000, may_reclaim: true }
 
 // What the allocate request actually carried, so the test checks the amount
@@ -71,7 +72,7 @@ try {
         label: line.textContent.replace(/\s+/g, ' ').trim(),
         right: v ? Math.round(v.getBoundingClientRect().right) : null,
         // A row that collapsed to its content is narrower than the list holding
-        // it, which is the shape of the defect rather than only its symptom.
+        // it. That is the defect itself rather than only its symptom.
         width: Math.round(line.getBoundingClientRect().width),
         listWidth: Math.round(line.parentElement.getBoundingClientRect().width),
       }
@@ -94,8 +95,8 @@ try {
 
   // And the amount that leaves is the amount typed, in micro-USD.
   await page.evaluate(() => [...document.querySelectorAll('.card .btn')].find((b) => /allocate/i.test(b.textContent))?.click())
-  // The card clears the field once the allocate has landed — which is also
-  // when the next amount can be typed into an empty field.
+  // The card clears the field once the allocate has landed, so the next amount
+  // is typed into an empty field.
   await page.waitForFunction(() => document.querySelector('.numf-input')?.value === '', { timeout: 5000 }).catch(() => {})
   if (allocated !== 16_820_000) fail(`Allocate sent ${allocated}, want 16820000 — the cents were dropped`)
 

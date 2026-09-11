@@ -4,21 +4,21 @@
 // A browser regression test for a project's description (038) and the draft
 // that offers to write one (039).
 //
-// A project could say what it was called and nothing else. Its title is either
-// what somebody typed or the first paper's reference, so a good half of them
-// were named after a doi: string and none could say why they existed — to their
-// own owner returning after a month, to a collaborator arriving, or to the
-// stranger the public zone is addressed to.
+// A project could show its title and nothing else. The title is either what
+// somebody typed or the first paper's reference, so about half of them were
+// named after a doi: string and none could explain its purpose to its owner
+// returning after a month, to a collaborator arriving, or to a stranger reading
+// the public zone.
 //
 // Six things have to hold:
 //
 //   1. An owner whose project has no description is invited to write one; a
-//      reader of the same project is shown nothing at all. Empty is a state,
-//      not a placeholder somebody has to read past.
+//      reader of the same project is shown nothing at all. An empty description
+//      is a state, not a placeholder a reader has to skip past.
 //   2. Writing one calls PATCH /projects/{id} with the description alone, and
 //      the head re-reads without a reload.
-//   3. It is edited in place, on the screen it is read on — not behind a
-//      settings page.
+//   3. It is edited in place, on the screen it is read on, not on a settings
+//      page.
 //   4. The list shows it under the title, on one line.
 //   5. A draft lands in the editor and nowhere else: asking for one stores
 //      nothing, and what is finally saved is what the person left in the field.
@@ -154,7 +154,7 @@ try {
     await p.waitForSelector('[data-test="describe-input"]', { timeout: 5000 })
     await models
     if (await p.$('[data-test="describe-draft"]')) fail('a deployment with no drafting model offered a control that can only fail')
-    // And the field still works, which is the whole point of the fallback.
+    // And the field still works, which is what the fallback is for.
     await p.type('[data-test="describe-input"]', 'Typed by hand.')
     await p.click('[data-test="describe-save"]')
     await p.waitForSelector('[data-test="description"]', { timeout: 10000 })
@@ -167,7 +167,7 @@ try {
   const reader = await open('somebody-else')
   description = ''
   await reader.open(`/p/${PROJECT}`)
-  // The head renders once the project — and with it the reader's role — is known.
+  // The head renders once the project, and with it the reader's role, is known.
   await reader.waitForSelector('.detail-head', { timeout: 15000 })
   if (await reader.$('[data-test="describe-add"]')) fail('a reader who cannot edit was invited to write a description')
   if (await reader.$('[data-test="description"]')) fail('an empty description rendered as an empty paragraph')

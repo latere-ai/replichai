@@ -6,11 +6,11 @@
 //
 // The bug it guards: the server sends a snapshot of the job the moment a stream
 // connects (internal/httpapi/events.go). The session screen stored that snapshot
-// in the very state its stream effect depended on, so every connect produced a
-// frame, every frame a new job object, and every new job object a reconnect —
-// a tight loop of GET /jobs/{id}/events for as long as a running session's page
-// was open. A session row in a project had the same shape and reopened its
-// stream on every refresh of the list around it.
+// in the state its stream effect depended on, so every connect produced a
+// frame, every frame a new job object, and every new job object a reconnect,
+// which was a tight loop of GET /jobs/{id}/events for as long as a running
+// session's page was open. A session row in a project had the same shape and
+// reopened its stream on every refresh of the list around it.
 //
 // The measurement is the number of connections the browser opens. The mock
 // answers a stream exactly as the server does, snapshot first, and holds the
@@ -65,7 +65,7 @@ try {
 
   // A session row in a project, through a refresh of the list around it. The
   // stop lands, the screen re-reads the project, the row is handed a new object
-  // for the same session — and must keep the stream it has.
+  // for the same session, and it must keep the stream it has.
   await (async () => {
     const page = await h.page({ routes })
     await page.open('/p/proj-1')

@@ -4,12 +4,12 @@
 // A browser regression test for folding the navigation rail.
 //
 // What it guards: the rail is a fixed 236px column of the shell's flex row, and
-// folding it is not one property. The width has to change, the labels have to
-// stop taking space (not merely turn invisible — a `visibility: hidden` label
-// still reserves its line box and pushes the icons off centre in a 64px column),
-// every destination has to stay clickable at its icon, the label has to survive
-// as a tooltip, the main area has to actually claim the space the rail gave up,
-// and the choice has to outlive a reload.
+// folding it is not one property. The width has to change; the labels have to
+// stop taking space rather than merely turn invisible, because a `visibility:
+// hidden` label still reserves its line box and pushes the icons off centre in
+// a 64px column; every destination has to stay clickable at its icon; the label
+// has to survive as a tooltip; the main area has to claim the space the rail
+// gave up; and the choice has to outlive a reload.
 //
 // None of that is reachable from a unit test: the assertions here are computed
 // geometry and painted hit tests, which need a real layout engine. It drives
@@ -27,9 +27,9 @@ const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
 const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
 
-// An admin, so the rail carries both groups and the fold has to cope with more
-// than one — the Platform group's eyebrow is the label most likely to be left
-// behind holding width open.
+// An admin, so the rail carries both groups and the fold has to handle more
+// than one; the Platform group's eyebrow is the label most likely to be left
+// holding width open.
 const routes = [
   ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 42.5, start_reserve: 5 } }],
   ['/me/profile', {}],
@@ -65,8 +65,8 @@ try {
         width: r.width,
         mainLeft: main.getBoundingClientRect().left,
         expanded: document.querySelector('.rail-fold-btn').getAttribute('aria-expanded'),
-        // A row is reachable only if its own icon is the topmost painted thing
-        // at the icon's centre — a row squeezed to zero, or covered by a label
+        // A row is reachable only if its own icon is the topmost painted element
+        // at the icon's centre. A row squeezed to zero, or covered by a label
         // that overflowed, fails here while still having a bounding box.
         rows: rows.map((b) => {
           const ico = b.querySelector('.nav-ico')
@@ -102,8 +102,8 @@ try {
     if (!row.clickable) fail(`the "${row.label}" row is not clickable in the open rail`)
   }
 
-  // Fold it. The click is a real one on the real control — the affordance being
-  // reachable is half of what is being tested.
+  // Fold it. The click is a real one on the real control, because the control
+  // being reachable is half of what is tested.
   await page.click('.rail-fold-btn')
   await settled(page) // the width transition
 
@@ -112,8 +112,8 @@ try {
   if (!near(shut.width, FOLDED)) fail(`the folded rail is ${shut.width}px, want ${FOLDED}px`)
   if (shut.expanded !== 'false') fail(`the folded rail's toggle reports aria-expanded=${shut.expanded}, want "false"`)
   // The point of folding: the space has to go to the content, not be left blank.
-  // No +1: the rail's right border is gone (034) — the content is a sheet inset
-  // on the desk, so what the main area starts at is the rail's own edge.
+  // No +1: the rail's right border is gone (034), and the content is a sheet
+  // inset on the desk, so the main area starts at the rail's own edge.
   if (!near(shut.mainLeft, FOLDED, 2)) fail(`the main area starts at ${shut.mainLeft}px after folding, want the rail's ${FOLDED}px edge`)
   if (shut.rows.length !== open.rows.length) fail(`folding dropped ${open.rows.length - shut.rows.length} navigation rows; every destination must stay reachable`)
   for (const row of shut.rows) {
@@ -127,11 +127,11 @@ try {
     if (c.shown) fail(`${c.sel} is still laid out in the folded rail and holds the column open`)
   }
 
-  // The label has to actually reach the reader, not just sit in an attribute —
-  // and it has to reach them without hiding the destination underneath it. The
-  // rail stacks its rows vertically, so a bubble placed below its trigger lands
-  // squarely on the next row's icon: the tip that names one destination would
-  // cover the next one.
+  // The label has to reach the reader rather than only sit in an attribute, and
+  // it has to do so without hiding the destination underneath it. The rail
+  // stacks its rows vertically, so a bubble placed below its trigger lands on
+  // the next row's icon: the tip that names one destination would cover the
+  // next one.
   await page.hover('.rail .nav-btn')
   // The bubble fades up into place, so it is waited for and then let finish:
   // the position measured is where it came to rest, not a frame of its rise.
@@ -142,8 +142,8 @@ try {
     if (!b) return { text: '' }
     const r = b.getBoundingClientRect()
     const rows = [...document.querySelectorAll('.rail .nav-btn')]
-    // No row may be covered — not the neighbours the bubble would land on if it
-    // were placed below, and not the row being pointed at either.
+    // No row may be covered: neither the neighbours the bubble would land on if
+    // it were placed below, nor the row being pointed at.
     const covered = rows
       .map((row) => ({ row: row.getAttribute('data-tip'), r: row.getBoundingClientRect() }))
       .filter(({ r: q }) => r.left < q.right && r.right > q.left && r.top < q.bottom && r.bottom > q.top)
@@ -164,8 +164,8 @@ try {
   if (tip.offCentre > 2) fail(`the "${tip.text}" tooltip sits ${Math.round(tip.offCentre)}px off its row's middle`)
   if (tip.inViewport === false) fail(`the "${tip.text}" tooltip runs off the viewport`)
 
-  // A folded rail still navigates. This is the assertion that a rail collapsed
-  // by width alone — icons squeezed to nothing — would fail.
+  // A folded rail still navigates. A rail collapsed by width alone, with its
+  // icons squeezed to nothing, would fail this assertion.
   await page.evaluate(() => document.querySelectorAll('.rail .nav-btn')[1].click())
   await page.waitForFunction(() => document.querySelectorAll('.rail .nav-btn')[1]?.classList.contains('active'), { timeout: 3000 }).catch(() => {})
   const moved = await page.evaluate(() => ({
@@ -175,8 +175,8 @@ try {
   if (!moved.active) fail('clicking a folded nav row marked no destination current')
   if (!moved.stillFolded) fail('navigating unfolded the rail; the fold is the reader’s choice, not the screen’s')
 
-  // The choice outlives a reload — that is what makes it a preference rather
-  // than a gesture.
+  // The choice outlives a reload, which is what makes it a preference rather
+  // than a one-off action.
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.rail .rail-fold-btn')
   await settled(page)

@@ -5,9 +5,9 @@
 //
 // The bug it guards: navigation used to be one useState and the address bar never
 // moved, so a reload started over at the dashboard, no screen could be linked to,
-// and Back left the app. Every assertion here is about the browser's own state —
-// the location after a click, the screen after a reload, the screen after Back —
-// which is exactly what a unit test of pathOf/viewOf cannot reach.
+// and Back left the app. Every assertion here is about the browser's own state,
+// namely the location after a click, the screen after a reload and the screen
+// after Back, which a unit test of pathOf/viewOf cannot reach.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -106,7 +106,7 @@ const routes = [
     ({ params: [id] }) => ({ id, repo: `open-hai/${id}`, title: 't', verdict: verdictOf[id] ?? 'partial', review: 'clear', can_publish: false }),
   ],
   [/^\/jobs\/([^/]+)\/artifacts$/, ({ params: [id] }) => ({ files: filesOf[id] ?? [] })],
-  // One committed file, named after the session it belongs to — so a pane
+  // One committed file, named after the session it belongs to, so a pane
   // showing the wrong session's file is visible in the rendered text, not
   // only in the list beside it.
   [/^\/jobs\/([^/]+)\/artifact$/, ({ params: [id], query }) => text(`# ${id} ${query.get('path')}`)],
@@ -150,9 +150,9 @@ try {
   if ((await path()) !== `/p/${PROJECT}`) fail(`opening a project left the address at ${await path()}, want /p/${PROJECT}`)
 
   // The reported defect, end to end (015). Two papers, each with a published
-  // session: the artifacts of each must be the artifacts of *that* run. The old
+  // session: the artifacts of each must be the artifacts of that run. The old
   // project-level tab showed whichever session was newest, under an address that
-  // named the project — so paper A's reproduction was in the product and
+  // named the project, so paper A's reproduction was in the product and
   // reachable by nothing.
   const filesShown = () => page.evaluate(() => [...document.querySelectorAll('.file-row .row-title')].map((e) => e.textContent.trim()))
   for (const [id, want] of [
@@ -171,9 +171,9 @@ try {
   }
 
   // Each session's record is its own, too. The grade lives on the run record
-  // rather than under a "Verdict" heading now — it is the rubric's judgement of
-  // the run, not the paper's verdict — but the invariant 015 wrote this for is
-  // unchanged: one session's pane must never show another's.
+  // rather than under a "Verdict" heading now, because it is the rubric's
+  // judgement of the run rather than the paper's verdict, but the invariant 015
+  // wrote this for is unchanged: one session's pane must never show another's.
   for (const id of [JOB, JOB_B]) {
     await page.open(`/p/${PROJECT}/s/${id}/verdict`)
     await page.waitForSelector('[data-test="run-record"]')
@@ -309,7 +309,7 @@ try {
   if ((await path()) !== '/new') fail(`new project is at ${await path()}, want /new`)
 
   // One project screen after another. The screen is remounted per project, so
-  // nothing of the first survives into the second — reusing the instance showed
+  // nothing of the first survives into the second; reusing the instance showed
   // the previous project's title and sessions until the fetch landed.
   await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('.detail-tabs')
@@ -318,7 +318,7 @@ try {
   if ((await heading()) !== project.title) fail(`the first project is titled ${JSON.stringify(await heading())}`)
   await page.evaluate((id) => history.pushState(null, '', `/p/${id}`) || dispatchEvent(new PopStateEvent('popstate')), OTHER)
   // Mid-flight: nothing of the first project may still be on screen while the
-  // second is loading — not its title, not its session row. The window opens
+  // second is loading, neither its title nor its session row. The window opens
   // the moment the second project's fetch is seen, and the mock holds it open
   // for SLOW_MS.
   await waitUntil(() => page.calls.includes(`GET /projects/${OTHER}`), { what: 'the second project to be fetched' })
@@ -341,10 +341,11 @@ try {
   await page.waitForSelector('.detail-tabs')
   if ((await path()) !== `/p/${PROJECT}`) fail(`a mistyped tab left the address at ${await path()}, want /p/${PROJECT}`)
 
-  // An address we do not own says so, at the address that was asked for (042c).
-  // It used to render the dashboard and rewrite the URL to `/` — a page nobody
-  // asked for, and to a crawler an unbounded set of URLs answering 200 with
-  // identical content. The tab says it too, and Back still works.
+  // An address the app does not own says so, at the address that was asked for
+  // (042c). It used to render the dashboard and rewrite the URL to `/`, which
+  // was a page nobody asked for and, to a crawler, an unbounded set of URLs
+  // answering 200 with identical content. The tab says it too, and Back still
+  // works.
   await page.open('/nonsense')
   await page.waitForSelector('[data-test="not-found"]')
   if ((await path()) !== '/nonsense') fail(`a miss corrected the address to ${await path()}, want /nonsense`)

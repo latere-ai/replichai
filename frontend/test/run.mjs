@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Runs the browser suite: every test/*.test.mjs, against one Vite server, a few
-// at a time, and reports all of the failures rather than the first.
+// at a time, and reports every failure rather than the first.
 //
-// It replaces a `&&` chain in package.json that stopped at the first red file
-// and had to be edited to admit a new one. A file is in the suite by being in
-// the directory.
+// It replaces a `&&` chain in package.json that stopped at the first failing
+// file and had to be edited to admit a new one. A file is in the suite when it
+// is in the directory.
 //
 //   node test/run.mjs               # everything
 //   node test/run.mjs session       # files whose name contains "session"

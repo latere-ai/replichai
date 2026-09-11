@@ -3,22 +3,22 @@
 
 // A browser regression test for removing a session (032).
 //
-// What it guards is the dead end. A run that began publishing and never finished
+// It guards against a dead end. A run that began publishing and never finished
 // holds a repository with no reproduction record, and the publish gate blocks on
-// exactly that — so one cancelled or crashed session made its project
-// unpublishable forever, and nothing anywhere in the product could clear it. The
-// refusal named the session and offered one thing to do with it: open it, and
-// land on a transcript that does not mention publishing at all.
+// exactly that, so one cancelled or crashed session made its project
+// unpublishable forever, and nothing in the product could clear it. The refusal
+// named the session and offered one thing to do with it: open it, and land on a
+// transcript that does not mention publishing at all.
 //
 // So two surfaces have to work, and the second is the one that matters:
 //
 //   1. A finished session on the project screen carries a delete, behind the
-//      app's own dialog, which says what survives it — the cost, and the
+//      app's own dialog, which says what survives it: the cost, and the
 //      repository, which is closed rather than destroyed.
 //   2. The blocker row inside the publish wizard carries the same delete, and
 //      using it clears the way: the very next sign-off makes the project public.
 //
-// The second is asserted through to the *end state*, not to the row
+// The second is asserted through to the end state, not to the row
 // disappearing. A test that stops at the disappearing row passes on a stale list.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
@@ -31,7 +31,7 @@ const PROJECT = 'proj-1'
 const GOOD = 'job-good' // finished, cleared, publishable
 const STUCK = 'job-stuck' // a repository, and no manifest it will ever gain
 
-// The server's state, mutated by the calls the page makes — so this drives the
+// The server's state, mutated by the calls the page makes, so this drives the
 // real delete → publish round trip rather than two static fixtures.
 const deleted = new Set()
 let visibility = 'private'
@@ -52,7 +52,7 @@ const sessionOf = (id) => ({
 })
 const live = () => [GOOD, STUCK].filter((id) => !deleted.has(id)).map(sessionOf)
 
-// What the server refuses with, recomputed from what is left — exactly what
+// What the server refuses with, recomputed from what is left, exactly as
 // internal/httpapi does: a session with a repository and no manifest blocks, and
 // a deleted one is not read at all.
 const refusal = () => ({
@@ -123,9 +123,10 @@ try {
     await btn.evaluate((el) => el.click())
   }
 
-  // The wizard, walked to its sign-off: three steps — what becomes public, who
-  // stands behind it, responsibility. The profile is prefilled and publishable,
-  // so both Continues come live; each step is waited for by the dot it lights.
+  // The wizard, walked to its sign-off: three steps, namely what becomes public,
+  // who stands behind it, and responsibility. The profile is prefilled and
+  // publishable, so both Continues come live; each step is waited for by the
+  // dot it lights.
   const walkToSignOff = async () => {
     await page.click('[data-test="publish-project"]')
     await page.waitForSelector('.modal', { timeout: 5000 })
@@ -150,8 +151,8 @@ try {
   await page.click('[data-test="delete-session"]')
   await page.waitForSelector('[data-test="delete-session-confirm"]', { timeout: 5000 })
   const dialog = await page.$eval('.modal', (el) => el.textContent.replace(/\s+/g, ' ').trim())
-  // The dialog spends its words on what does *not* go. That is the whole reason
-  // it is a dialog and not a bare button.
+  // The dialog states what does not go. That is the reason it is a dialog and
+  // not a bare button.
   if (!/ledger/i.test(dialog)) fail(`the dialog does not say the cost survives: ${dialog}`)
   if (!/closed, not destroyed/i.test(dialog)) fail(`the dialog does not say the repository survives: ${dialog}`)
 
@@ -171,8 +172,8 @@ try {
   const blocked = await rows()
   if (blocked.length !== 1) fail(`the refusal named ${blocked.length} sessions, want the one unfinished run`)
   if (!/never finished/i.test(blocked[0])) fail(`the row does not explain the unfinished run: ${blocked[0]}`)
-  // The row carries its own remedy. Before 032 its only offer was "Open session"
-  // — a transcript that says nothing about publishing.
+  // The row carries its own remedy. Before 032 its only offer was "Open session",
+  // which led to a transcript that says nothing about publishing.
   if (!(await page.$('[data-test="delete-blocker"]'))) fail('the unfinished blocker offers no way to remove it')
 
   // It confirms in the row, not in a second Modal: two modals would share the
@@ -186,11 +187,11 @@ try {
   if (!deleted.has(STUCK)) fail('confirming the blocker delete did not call DELETE /jobs/{id}')
   if (deleted.has(GOOD)) fail('the delete removed the wrong session')
 
-  // The screen *behind* the wizard is now stale, and this is the path that has
+  // The screen behind the wizard is now stale, and this is the path that has
   // no reload to hide it: the owner deletes a blocker and then closes the wizard
   // instead of signing off again. Without a refresh on the delete, the project
   // screen keeps listing a session that is gone, and opening it 404s. Asserted
-  // in place — a page.goto here would pass whether or not anything refetched.
+  // in place; a page.goto here would pass whether or not anything refetched.
   await page.evaluate(() => document.querySelector('.modal-backdrop')?.click())
   await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
   // The refetch is given time to land; a row that is still there after it is

@@ -4,11 +4,11 @@
 // A browser test for the model-tier picker on the papers card (031).
 //
 // Every session this product ran before 031 ran on the "best" tier, because
-// nothing offered a choice. The thing worth testing is not that a control
-// renders — it is that the tier a person picks is the tier the request carries,
-// and that the prices beside each tier are the server's rather than numbers the
-// client made up. Both are invisible to a test that only reads the DOM, so this
-// one drives the picker and inspects what actually left the browser.
+// nothing offered a choice. What needs testing is not that a control renders
+// but that the tier a person picks is the tier the request carries, and that
+// the prices beside each tier are the server's rather than numbers the client
+// computed. Neither is visible to a test that only reads the DOM, so this one
+// drives the picker and inspects the request that left the browser.
 import { fail, settled, start, waitUntil } from './harness.mjs'
 
 const at = (i) => new Date(1754_215_200_000 - i * 86_400_000).toISOString()

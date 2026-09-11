@@ -3,30 +3,30 @@
 
 // A browser regression test for the first screen (017, rebuilt by 029 and 033).
 //
-// What it guards: the landing is a page a researcher reads, and the way in never
-// leaves the screen. 017 guaranteed that with a fold — the sign-in button's box
-// above 900px — and a page that scrolls cannot keep that promise. The
-// replacement is stronger and length-independent: a sticky header, asserted at
-// the top of the page *and* at the bottom of it, on both viewports. Those two
-// assertions supersede 017's criteria 3 and 4.
+// What it guards: the landing is a page a researcher reads, and the sign-in
+// never leaves the screen. 017 guaranteed that with a fold, the sign-in button's
+// box above 900px, which a page that scrolls cannot keep. The replacement is
+// stronger and independent of page length: a sticky header, asserted at the top
+// of the page and at the bottom of it, on both viewports. Those two assertions
+// supersede 017's criteria 3 and 4.
 //
-// It also guards what a figure is for. Three of them carry the argument, and a
-// reader who has asked for less motion must get the finished state of each
-// rather than a frozen first frame — a claim about computed style that no unit
-// test can make.
+// It also guards the figures. Three of them carry the argument, and a reader who
+// has asked for less motion must get the finished state of each rather than a
+// frozen first frame. That is a claim about computed style, which no unit test
+// can make.
 //
 // It also guards the mark. The one it replaced was the character `r` set in
-// `--font-serif: 'Instrument Serif'` — a font with no `@font-face` anywhere in
+// `--font-serif: 'Instrument Serif'`, a font with no `@font-face` anywhere in
 // the repository, so the identity had always rendered in Georgia. The assertions
 // below require an SVG that paints, in both themes, at every size it is used.
 //
-// 033 rebuilt the page from the design, and added four things worth guarding:
-// the hero is now a slab that has to hold its own copy at both viewports and
-// stay legible when its WebGL scene never loads; the walkthrough *dims* steps
-// it is not on, which is motion and must stand down under `reduce`; the file
-// list names the product's own output and must match the publish gate; and the
-// verdict panel is a fabrication, so it has to be marked as one and must never
-// carry a paper key that resolves.
+// 033 rebuilt the page from the design and added four things to guard: the hero
+// is now a slab that has to hold its own copy at both viewports and stay legible
+// when its WebGL scene never loads; the walkthrough dims steps it is not on,
+// which is motion and must be disabled under `reduce`; the file list names the
+// product's own output and must match the publish gate; and the verdict panel is
+// a fabrication, so it has to be marked as one and must never carry a paper key
+// that resolves.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -87,18 +87,18 @@ try {
         w: r.width,
         h: r.height,
         // A mark that paints: both rings have a real stroke and neither is
-        // transparent. The `r` this replaced would fail nothing here — it was a
-        // div — which is why the tag is asserted first.
+        // transparent. The `r` this replaced was a div and would fail none of
+        // these checks, which is why the tag is asserted first.
         innerStroke: cs(inner).stroke,
         outerStroke: cs(outer).stroke,
         outerOpacity: +cs(outer).opacity,
         // The outer loop is drawn open. Losing the dash array turns the mark
-        // into two concentric rings and the drawing stops saying anything.
+        // into two concentric rings and the drawing loses its meaning.
         dashed: (inner.getAttribute('stroke-dasharray') || '') === '' && (outer.getAttribute('stroke-dasharray') || '') !== '',
         // The product's own wordmark stays font-independent. 040 self-hosts
         // Instrument Serif for the shared footer, so "the app does not ship it"
-        // is no longer the reason — the reason is that an identity which waits
-        // on a download is one that can be missing.
+        // is no longer the reason. The reason is that an identity that waits on
+        // a download can be missing.
         font: cs(document.querySelector('.wordmark')).fontFamily,
         seam: !!document.querySelector('.wordmark .wordmark-seam'),
         word: document.querySelector('.wordmark').textContent.trim(),
@@ -144,7 +144,8 @@ try {
       if (b.width < 90) fail(`the sign-in is ${b.width}px wide at ${viewport.width}px`)
     }
     await seen('at the top')
-    // The page is long on purpose. The promise is that the way in survives that.
+    // The page is long on purpose. The requirement is that the sign-in stays
+    // reachable throughout.
     const scrolled = await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight)
       return document.documentElement.scrollHeight > window.innerHeight
@@ -213,10 +214,10 @@ try {
     if (still.runner !== 'none') fail('the loop runner still spins under reduced motion')
 
     // The walkthrough dims the steps it is not on and folds their artifacts down
-    // to a header strip. Both of those are motion by this page's own definition,
-    // so under `reduce` the driver must never start: every step lit, every plate
-    // open. A reader who asked for less movement is not asked to scroll to find
-    // three quarters of a band.
+    // to a header strip. Both are motion by this page's own definition, so under
+    // `reduce` the driver must never start: every step lit, every plate open. A
+    // reader who asked for less movement is not made to scroll to find three
+    // quarters of a band.
     await page.evaluate(() => {
       document.querySelector('.lp-walk').scrollIntoView()
     })
@@ -255,8 +256,8 @@ try {
       }
       return {
         // The slab paints its own dark ground. The scene is lazy, optional, and
-        // allowed to fail; if the copy's legibility rode on it, a browser with
-        // no WebGL would get white text on white.
+        // allowed to fail; if the copy's legibility depended on it, a browser
+        // with no WebGL would get white text on white.
         bg: getComputedStyle(el).backgroundColor,
         h1: document.querySelector('.lp-slab h1')?.textContent.trim().length ?? 0,
         signin: inside('[data-test="lp-hero-signin"]'),
@@ -275,11 +276,11 @@ try {
   {
     // t() falls back to the key when a locale has no string for it, which is
     // right for a locale that is behind and wrong for a key that exists
-    // nowhere: the boundary band painted `landingVerdictBody` at readers for
+    // nowhere: the boundary band showed `landingVerdictBody` to readers for
     // three weeks because the strings had been deleted as unused while the
-    // markup still asked for them. The compiler catches that now — t() is typed
-    // against TKey — and this is the same claim made about the rendered page,
-    // which is where a reader meets it.
+    // markup still asked for them. The compiler catches that now, because t()
+    // is typed against TKey, and this makes the same check on the rendered
+    // page, which is where a reader would see it.
     const page = await open({ authenticated: false })
     await page.waitForSelector('.lp-section')
     await scrollThrough(page)
@@ -296,9 +297,10 @@ try {
       return bad
     })
     if (keys.length) fail(`the landing paints ${keys.length} untranslated keys at readers: ${JSON.stringify([...new Set(keys)])}`)
-    // The same claim about the other marker a reader must never meet. A seam is
-    // an instruction to whoever sets the line; t() takes it out for everybody
-    // else, and the tab once read "No page|at this address" because it did not.
+    // The same check for the other marker a reader must never see. A seam is
+    // an instruction to whoever sets the line; t() removes it for every other
+    // consumer, and the tab once read "No page|at this address" because it did
+    // not.
     const seam = await page.evaluate(() => {
       const bad = []
       const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
@@ -317,10 +319,10 @@ try {
   {
     // The hero is full-bleed and every band under it used to be capped at
     // 1180px, so a wide screen got a full-width first screen followed by a
-    // column with 400px of nothing on either side. The page has one edge now,
-    // and this is what says so: the gutter each band leaves is the page's own
-    // margin rather than the remainder of a cap, on the widest viewport we
-    // claim to serve.
+    // column with 400px of empty space on either side. The page has one edge
+    // now, and this asserts it: the gutter each band leaves is the page's own
+    // margin rather than the remainder of a cap, on the widest viewport the
+    // page claims to serve.
     // With published work, so the registry strip is a band with contents to
     // measure rather than one this loop skips.
     const published = Array.from({ length: 6 }, (_, i) => ({
@@ -341,7 +343,7 @@ try {
         band.scrollIntoView()
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
         // The band's own box is full width by construction once the cap is
-        // gone; what a reader sees is where its *contents* start and stop.
+        // gone; what a reader sees is where its contents start and stop.
         const kids = [...band.children].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 0)
         if (!kids.length) continue
         out.push({
@@ -363,13 +365,13 @@ try {
       if (Math.abs(b.left - rightGutter) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off centre: ${Math.round(b.left)}px left, ${Math.round(rightGutter)}px right`)
     }
     // The verdict table is the one element with four columns of real content,
-    // and it was the island that made the widening pointless: a 920px window
-    // in a 2560px frame.
+    // and it was the element that made the widening pointless: a 920px box in
+    // a 2560px frame.
     const windowWidth = await page.evaluate(() => document.querySelector('.lp-window').getBoundingClientRect().width)
     if (windowWidth < 1200) fail(`at ${WIDE.width}px the verdict window is ${Math.round(windowWidth)}px wide; the evidence does not take the room the page gives it`)
-    // Width bought with more columns is width spent well only up to a point. A
-    // grid that answers 2560px with a seven-across strip of slivers is the same
-    // waste, inverted — so the thing to measure is the card, not the track.
+    // Adding columns uses width well only up to a point. A grid that fills
+    // 2560px with seven narrow columns wastes the width in the other direction,
+    // so the measurement is the card, not the track.
     const cards = await page.evaluate(() => {
       const widths = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().width))
       return { fields: widths('.lp-field'), costs: widths('.lp-cost'), anatomy: widths('.lp-part'), registry: widths('.lp-card') }
@@ -386,11 +388,11 @@ try {
 
   {
     // The counterpart to the reduced-motion block, and the one that was missing:
-    // with motion *allowed* every band starts transparent and is brought in by
+    // with motion allowed every band starts transparent and is brought in by
     // an observer, so a band whose reveal ref was never wired is on the page,
     // occupying its full height, and invisible. Geometry assertions do not catch
-    // that — a box at opacity 0 measures exactly like a box at opacity 1 — which
-    // is how a blank hero reached production.
+    // that, because a box at opacity 0 measures exactly like a box at opacity 1,
+    // which is how a blank hero reached production.
     const page = await open({ authenticated: false }, { routes: [['/public', []]] })
     await page.waitForSelector('.lp-slab')
     // The hero is above the fold and must be visible with no scrolling at all.
@@ -403,8 +405,8 @@ try {
       const bands = [...document.querySelectorAll('.lp-hero, .lp-section')]
       const seen = (b) => +getComputedStyle(b).opacity >= 0.9
       const frame = () => new Promise((r) => requestAnimationFrame(r))
-      // Each band is given what its reveal takes — the observer, then the
-      // transition — and no more; one that never arrives is what is reported.
+      // Each band is given the time its reveal takes, the observer and then the
+      // transition, and no more; one that never arrives is reported.
       for (const b of bands) {
         b.scrollIntoView()
         for (const t0 = performance.now(); !seen(b) && performance.now() - t0 < 1500; ) await frame()
@@ -450,7 +452,7 @@ try {
       files: [...document.querySelectorAll('.lp-file-name')].map((e) => e.textContent.trim()),
       example: !!document.querySelector('.lp-tag.example'),
       // Every DOI-shaped string on the page. The verdict this page shows is
-      // invented, and an invented verdict hung on somebody's real DOI is the
+      // invented, and an invented verdict attached to somebody's real DOI is the
       // exact failure this product exists to catch.
       dois: (document.body.innerText.match(/10\.\d{4,9}\/[^\s]+/g) || []),
     }))
@@ -458,9 +460,9 @@ try {
     const want = ['README.md', 'REPRODUCIBILITY.md', 'src/', 'UNVERIFIED.md', 'SOURCES.md']
     if (JSON.stringify(shown.files) !== JSON.stringify(want)) fail(`the page says a session ships ${JSON.stringify(shown.files)}, and the publish gate ships ${JSON.stringify(want)}`)
     if (!shown.example) fail('the demo verdict is not marked as an example; it is a fabrication and has to say so')
-    // An empty match set would satisfy the filter below identically to "only the
-    // illustrative key is there", and this is the one guard on the page that
-    // must never pass because it looked at nothing.
+    // An empty match set would satisfy the filter below in the same way as "only
+    // the illustrative key is there", and this guard must never pass because it
+    // checked nothing.
     if (!shown.dois.some((d) => d.startsWith('10.0000/'))) fail('the paper-key guard matched nothing, so it cannot prove the demo key is the illustrative one')
     // 10.0000 is unassigned, so it resolves to nothing. Any other registrant
     // prefix means the page hung a made-up verdict on a real paper.
@@ -472,8 +474,8 @@ try {
   /* ── The published strip is a band a reader can see ── */
 
   {
-    // The strip renders only once its fetch lands, which is *after* the first
-    // paint — and every band on this page starts at the pre-reveal opacity. A
+    // The strip renders only once its fetch lands, which is after the first
+    // paint, and every band on this page starts at the pre-reveal opacity. A
     // reveal that was wired up on mount alone never observed this one, so the
     // section was on the page, occupying its full height, and invisible.
     const published = [
@@ -526,8 +528,8 @@ try {
     if (strip.painted !== strip.cards) fail(`${strip.cards - strip.painted} of ${strip.cards} strip cards never became visible`)
     if (!strip.titles.every(Boolean)) fail(`a strip card has no title: ${JSON.stringify(strip.titles)}`)
     // The card's second line is a person's name under a paper's title, which is
-    // exactly the shape of an author byline — and the signer is the one person
-    // it is never about. It has to say what the name is for.
+    // the shape of an author byline, and the signer is not an author. The line
+    // has to say what the name is for.
     const signers = ['Ada Lovelace', 'Grace Hopper']
     strip.bylines.forEach((by, i) => {
       if (!by?.includes(signers[i])) fail(`strip card ${i} does not name its signer: ${by}`)
@@ -549,7 +551,7 @@ try {
       if (cite.includes('Barbara Liskov') || cite.includes('UIST')) fail(`the strip citation merged a second paper into the first: ${cite}`)
       if (!cite.includes('1 more')) fail(`a two-paper project does not count its second paper: ${cite}`)
     }
-    // A record nobody could fill in renders no line at all — not an empty one,
+    // A record nobody could fill in renders no line at all: not an empty one,
     // and not a bare separator.
     if (strip.cites[1] !== null) fail(`a card with no bibliography still rendered a citation: ${JSON.stringify(strip.cites[1])}`)
     if (!strip.links.every((h) => h?.startsWith('/p/'))) fail(`a strip card links nowhere useful: ${JSON.stringify(strip.links)}`)
@@ -557,14 +559,15 @@ try {
   }
 
   // An empty registry is not an empty band: the section is absent entirely,
-  // because a heading over nothing is a claim about a community.
+  // because a heading with nothing under it would state that nobody has
+  // published.
   {
     const page = await open({ authenticated: false }, { routes: [['/public', []]] })
     await page.waitForSelector('.landing')
-    // "No band" means nothing until the registry has answered and the page has
-    // drawn what it said. The request log is consulted rather than a response
+    // "No band" proves nothing until the registry has answered and the page has
+    // drawn the result. The request log is consulted rather than a response
     // waiter, because the answer may already have landed by the time the
-    // landing is on screen — a waiter armed after that never resolves.
+    // landing is on screen, and a waiter armed after that never resolves.
     await waitUntil(() => page.calls.includes('GET /public'), { what: 'the registry to be asked' })
     await settled(page)
     const there = await page.evaluate(() => !!document.querySelector('[data-test="lp-strip"]'))
@@ -586,8 +589,8 @@ try {
 
   {
     // A project address renders the app signed out since 028, so the landing's
-    // own round trip is asserted from an address that still needs an account —
-    // the public deep link is public-shell.test.mjs's to guard.
+    // own round trip is asserted from an address that still needs an account.
+    // public-shell.test.mjs guards the public deep link.
     const page = await open({ authenticated: false }, { path: '/new' })
     await page.waitForSelector('.landing')
     const href = await page.evaluate(() => document.querySelector('[data-test="lp-signin"]').getAttribute('href'))
@@ -603,10 +606,10 @@ try {
       const btn = getComputedStyle(btnEl)
       return { w: r.width, h: r.height, fill: getComputedStyle(svg).fill, ink: btn.color, bg: btn.backgroundColor, paths: svg.querySelectorAll('path').length }
     })
-    // Hovered, too. 034 made the base `.btn:hover` repaint the fill *and* the
-    // ink, so a slab button that overrides only the fill inherits the base's ink
-    // — which is how the hero's sign-in became white on white, taking the latere
-    // mark with it, since the mark fills with currentColor.
+    // Hovered, too. 034 made the base `.btn:hover` repaint the fill and the
+    // ink, so a slab button that overrides only the fill inherits the base's
+    // ink. That is how the hero's sign-in became white on white, taking the
+    // latere mark with it, since the mark fills with currentColor.
     const hovered = await page.evaluate(async () => {
       const out = []
       for (const sel of ['[data-test="lp-hero-signin"]', '.lp-close .btn:not(.ghost)']) {
@@ -665,10 +668,10 @@ try {
 
   {
     // 033 built four blocks as a material rather than a theme and painted them
-    // near-black in both appearances. On paper that is four holes down one page,
-    // so 040 gave the material a light half. What is guarded here is that each
-    // half is actually the half it claims: the grounds, and — the thing a colour
-    // swap silently breaks — that the ink on each ground is still readable.
+    // near-black in both appearances. In the light theme that is four dark
+    // blocks down one page, so 040 gave the material a light half. This guards
+    // that each half is the half it claims: the grounds, and, since a colour
+    // swap silently breaks it, that the ink on each ground is still readable.
     const BLOCKS = {
       hero: '.lp-slab',
       boundary: '.lp-loops .lp-block',
@@ -677,8 +680,8 @@ try {
     }
     const probe = (page) =>
       page.evaluate((blocks) => {
-        // Relative luminance, so "is this paper or is this ink" is one number
-        // rather than three, and contrast is the WCAG ratio off the same value.
+        // Relative luminance, so light or dark is one number rather than three,
+        // and contrast is the WCAG ratio from the same value.
         const rgba = (c) => {
           const n = c.match(/\d+(\.\d+)?/g).map(Number)
           return [n[0], n[1], n[2], n.length > 3 ? n[3] : 1]
@@ -757,28 +760,28 @@ try {
   {
     // The shared footer sets "Latere AI" and all six product wordmarks in
     // Instrument Serif. Until 040 this app named that family and shipped no
-    // font, so every one of them rendered in Georgia — the same logotype as
-    // latere.ai, in a different face. Nothing else on the page notices: the
-    // markup is right, the colour is right, and the text is there.
+    // font, so every one of them rendered in Georgia: the same logotype as
+    // latere.ai, in a different face. No other check detects it: the markup is
+    // right, the colour is right, and the text is there.
     const page = await open({ authenticated: false })
     await page.waitForSelector('.landing .site-footer .logo-text')
     const face = await page.evaluate(async () => {
       await document.fonts.ready
       const el = document.querySelector('.landing .site-footer .logo-text')
       const cs = getComputedStyle(el)
-      // The FontFaceSet holds the faces the *document declared*, and nothing
-      // else — a family that only exists on the reader's machine is not in it,
-      // and neither is one that was named and never served. `fonts.check()`
-      // looks like the right call here and is not: it answers "can this text be
-      // painted", which is true of any family, spelled correctly or not.
+      // The FontFaceSet holds only the faces the document declared. A family
+      // that only exists on the reader's machine is not in it, and neither is
+      // one that was named and never served. `fonts.check()` is not the right
+      // call here: it answers whether the text can be painted, which is true of
+      // any family, spelled correctly or not.
       const faces = [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Instrument Serif')
       return {
         asked: cs.fontFamily,
         style: cs.fontStyle,
         served: faces.map((f) => f.style).sort(),
         loaded: faces.filter((f) => f.status === 'loaded').map((f) => f.style),
-        // The gradient wordmarks, which are spans inside the products column
-        // — not `.footer-brand`, the block that holds the Latere lockup.
+        // The gradient wordmarks, which are spans inside the products column,
+        // not `.footer-brand`, the block that holds the Latere lockup.
         brands: [...document.querySelectorAll('.landing .footer-cols span[class$="-brand"]')].length,
       }
     })
@@ -821,8 +824,8 @@ try {
     if (!foot.rights) fail('the footer has no copyright line')
     if (foot.ink === foot.muted) fail(`the footer's link ink and its muted ink are both ${foot.ink}; the palette aliases did not reach it`)
     if (foot.themes.length !== 3) fail(`the footer offers ${foot.themes.length} appearances, want light, dark, and auto`)
-    // One language, because the app has one. A dropdown offering a translation
-    // that does not exist is a promise the app cannot keep.
+    // One language, because the app has one. A dropdown must not offer a
+    // translation that does not exist.
     if (foot.langs.length !== 1 || foot.langs[0] !== 'en') fail(`the footer offers ${JSON.stringify(foot.langs)}; the app ships English only`)
     if (foot.legacy) fail('the landing still carries its own one-line footer beside the shared one')
     if (foot.active.length !== 1) fail(`${foot.active.length} appearances are marked active`)
@@ -831,7 +834,7 @@ try {
     const flipped = await page.evaluate(async () => {
       const before = document.documentElement.dataset.theme
       const btns = [...document.querySelectorAll('.landing .site-footer .footer-seg-btn')]
-      // ☀ light, ☾ dark, ◐ auto — pick whichever is not the one showing now.
+      // ☀ light, ☾ dark, ◐ auto. Pick whichever is not the one showing now.
       btns[before === 'dark' ? 0 : 1].click()
       // The switch is waited for rather than given time; one that never comes
       // is what the first check below reports.
@@ -855,10 +858,10 @@ try {
 
   {
     // A seam makes its segments unbreakable, and an unbreakable segment that
-    // does not fit *overflows* — it does not break anyway. These two titles are
-    // the narrowest headings in the product (a 420px card, less its padding, on
-    // a 320px phone), so they are where a seam placed one word too far to the
-    // right shows up as a card wider than the screen.
+    // does not fit overflows rather than breaking. These two titles are the
+    // narrowest headings in the product, in a 420px card less its padding on a
+    // 320px phone, so a seam placed one word too far to the right shows up here
+    // as a card wider than the screen.
     for (const [me, what] of [
       [null, 'the auth-outage card'],
       [{ authenticated: true, principal: 'p', email: 'nobody@example.com', tier: 'none' }, 'the no-access card'],

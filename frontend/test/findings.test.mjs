@@ -3,16 +3,16 @@
 
 // A browser regression test for the findings panes (021b, 021c).
 //
-// What it guards is the difference between a claim and an absence. Three things
-// on these screens are easy to get subtly, silently wrong:
+// It guards the difference between a claim and an absence. Three things on these
+// screens can go wrong without any visible error:
 //
-// An outer-loop row must never read as a result. The product's one hard rule is
-// that the study with human participants is not scored, and a row that renders
-// with an outcome tone says the opposite without a word changing.
+// An outer-loop row must never read as a result. The product's rule is that the
+// study with human participants is not scored, and a row rendered with an
+// outcome tone states the opposite without any text changing.
 //
-// A verified claim that disagrees with the paper must still surface. That is the
-// case a table of outcomes hides — the run reproduced the claim and found the
-// paper's own figure wrong — and it is invisible unless the mismatch is rendered
+// A verified claim that disagrees with the paper must still surface. A table of
+// outcomes hides that case, where the run reproduced the claim and found the
+// paper's own figure wrong, and it stays hidden unless the mismatch is rendered
 // beside the outcome and repeated under "unresolved".
 //
 // A session with no findings must say so. Rendering an empty boundary table
@@ -38,9 +38,9 @@ const sessionOf = (id) => ({
   paper_key: paper.key,
   ref: paper.ref,
   // The one that died carries a repository and a failure. RepoName marks that
-  // publishing began, not that it finished, and `failed` is terminal — so a
+  // publishing began, not that it finished, and `failed` is terminal, so a
   // rail keyed on "terminal and has a repo" picks this one and hides the run
-  // that actually produced findings.
+  // that produced findings.
   phase: id === DIED ? 'failed' : 'done',
   error: id === DIED ? 'publish: forge refused the commit' : undefined,
   repo_name: `open-hai/${id}`,
@@ -172,8 +172,8 @@ try {
   else {
     if (!/NOT SCORED/i.test(outer.outcome || '')) fail(`the outer row reads "${outer.outcome}"; the human study is never scored`)
     if (!outer.outer) fail('the outer row is not marked as one, so it is only distinguishable by reading the label')
-    // Its tone must not be one of the result tones, which is what makes the
-    // rule visible without reading.
+    // Its tone must not be one of the result tones, so the rule is visible
+    // without reading the text.
     const results = read.rows.filter((r) => !r.outer).map((r) => r.outcomeColor)
     if (results.includes(outer.outcomeColor)) fail(`the outer row is toned like a result (${outer.outcomeColor})`)
   }
@@ -195,8 +195,8 @@ try {
   if (!read.unresolved.some((r) => /latency/i.test(r))) fail('the blocked claim is not listed as unresolved')
 
   // One verdict word on the screen, and it is the paper's. The manifest's grade
-  // is the rubric's judgement of the *run* — a careful audit of a paper that
-  // does not reproduce passes it — so heading both "Verdict" put two verdicts on
+  // is the rubric's judgement of the run, which a careful audit of a paper that
+  // does not reproduce passes, so heading both "Verdict" put two verdicts on
   // one paper and invited the reader to take "Passed" as "it reproduced".
   const verdicts = await page.evaluate(() => {
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
@@ -321,7 +321,7 @@ try {
     }
   })
 
-  // One card, because the project holds one paper with a graded session — and
+  // One card, because the project holds one paper with a graded session, and
   // it has to be the graded one, not the newer session that reached publishing
   // and then failed. That session has a repository and is terminal, so a rail
   // keyed on those two facts renders nothing here while findings exist.
@@ -338,8 +338,8 @@ try {
   /* ── The windowed spend (021e) ── */
 
   // 034 folded the three counters into two cards; the spend kept its own ruled
-  // row on the credits card. Where it sits changed, what it must say did not: a
-  // figure whose period is not stated is not a figure.
+  // row on the credits card. Its position changed; what it must say did not: a
+  // figure must state its period.
   await page.open('/')
   await page.waitForSelector('[data-test="spend-30d"]', { timeout: 15000 })
   // A dash stands in until the list has landed and the sum is known.

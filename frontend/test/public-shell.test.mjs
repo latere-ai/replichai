@@ -4,8 +4,8 @@
 // A browser regression test for browsing signed out (028).
 //
 // What it guards: until now every address sent a reader with no account to the
-// sign-in screen, and the one thing this product publishes — a reproduction
-// somebody signed — was unreadable to anybody who had not joined. The registry
+// sign-in screen, so the one thing this product publishes, a reproduction
+// somebody signed, was unreadable to anybody who had not joined. The registry
 // and everything under it now render in the app's own frame, with the
 // destinations that need an account absent rather than disabled.
 //
