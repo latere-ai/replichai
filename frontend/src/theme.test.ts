@@ -3,7 +3,7 @@
 
 import { expect, test } from 'bun:test'
 import { readMode, resolveTheme, THEME_MODES } from './theme'
-import { hueOf } from './App'
+import { hueOf } from './account'
 
 // The mode is what persists; the resolved theme is what the stylesheet reads.
 // Every dark rule hangs off [data-theme='dark'], so "auto" must never reach the
