@@ -571,6 +571,7 @@ const en = {
     errNotAllowed: 'Your account can’t do this right now. Signing out and back in fixes most cases; if it persists, ask a platform admin.',
     errOffline: 'You appear to be offline. Check your connection and try again.',
     rename: 'Rename',
+    renameFailed: 'Couldn’t rename this project. Try again in a moment.',
     save: 'Save',
     cancel: 'Cancel',
     // project detail
@@ -676,6 +677,7 @@ const en = {
     remove: 'Remove',
     pending: 'pending',
     inviteError: 'Couldn’t add that person. Check the email address and try again.',
+    removeMemberFailed: 'Couldn’t remove that person. They are still a collaborator; try again in a moment.',
     // researcher profile (006n)
     profileTitle: 'Researcher profile',
     profileIntro:
