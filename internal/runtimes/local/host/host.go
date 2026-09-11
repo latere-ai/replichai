@@ -225,8 +225,8 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 // stage the driver lost and fails a session that actually finished.
 func wrapperScript(token string, command []string, statusPath string) string {
 	return fmt.Sprintf("# replichai-stage:%s\n%s\ncode=$?\nprintf %%s $code > %s\nmv -f %s %s\n",
-		token, shellJoin(command),
-		shellQuote(statusPath+".part"), shellQuote(statusPath+".part"), shellQuote(statusPath))
+		token, sandbox.ShellJoin(command),
+		sandbox.ShellQuote(statusPath+".part"), sandbox.ShellQuote(statusPath+".part"), sandbox.ShellQuote(statusPath))
 }
 
 // hasPath reports whether the environment a stage inherits can resolve a
@@ -469,18 +469,4 @@ func belongsTo(pid int, token string) bool {
 		return false
 	}
 	return strings.Contains(string(output), "replichai-stage:"+token)
-}
-
-// shellJoin renders an argv as a single quoted command line. Every element is
-// quoted, so nothing in a task or a model id is ever interpreted by the shell.
-func shellJoin(argv []string) string {
-	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		parts = append(parts, shellQuote(arg))
-	}
-	return strings.Join(parts, " ")
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
