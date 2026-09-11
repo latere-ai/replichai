@@ -25,6 +25,10 @@ import (
 // sessionTTL is how long a signed-in session lasts before a re-login.
 const sessionTTL = 12 * time.Hour
 
+// flowTTL is how long a login may take between leaving for the IdP and
+// coming back.
+const flowTTL = 10 * time.Minute
+
 // OIDCClient is the slice of oidc.Provider the login uses. Behind an
 // interface so the callback flow tests offline against a fake; the real
 // *oidc.Provider satisfies it.
@@ -106,12 +110,12 @@ func (l *Login) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		Verifier: oidc.GenerateVerifier(),
 		Next:     safeNext(r.URL.Query().Get("next")),
 	}
-	sealed, err := l.codec.Seal(fs)
+	sealed, err := l.codec.Seal(fs, flowTTL)
 	if err != nil {
 		http.Error(w, "login init failed", http.StatusInternalServerError)
 		return
 	}
-	setCookie(w, flowCookie, sealed, l.secure, 10*time.Minute)
+	setCookie(w, flowCookie, sealed, l.secure, flowTTL)
 	http.Redirect(w, r, l.auth.AuthCodeURL(fs.State, fs.Nonce, fs.Verifier), http.StatusFound)
 }
 
@@ -191,7 +195,7 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sealed, err := l.codec.Seal(sess)
+	sealed, err := l.codec.Seal(sess, sessionTTL)
 	if err != nil {
 		http.Error(w, "session init failed", http.StatusInternalServerError)
 		return

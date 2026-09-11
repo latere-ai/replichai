@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
 	"latere.ai/x/pkg/authkit/oidc"
@@ -88,7 +89,7 @@ func TestCallbackHappyPathSetsSession(t *testing.T) {
 	}}, access.NewMemStore())
 
 	// A valid flow cookie with a known state.
-	flow, _ := l.codec.Seal(flowState{State: "st8", Nonce: "n", Verifier: "v", Next: "/dash"})
+	flow, _ := l.codec.Seal(flowState{State: "st8", Nonce: "n", Verifier: "v", Next: "/dash"}, time.Hour)
 	r := httptest.NewRequest("GET", "/callback?state=st8&code=abc", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 	w := httptest.NewRecorder()
@@ -119,7 +120,7 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, userInfo)
 
-	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"}, time.Hour)
 	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 	w := httptest.NewRecorder()
@@ -156,7 +157,7 @@ func TestCallbackBindsProjectMemberships(t *testing.T) {
 	client := fakeOIDC{identity: oidc.User{Sub: "invitee-sub", Email: "invitee@example.com"}}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, nil).
 		BindMemberships(members)
-	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"}, time.Hour)
 	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 	w := httptest.NewRecorder()
@@ -277,7 +278,7 @@ func (failingAccess) SelfGrant(context.Context, access.Principal) (access.Tier, 
 // callback drives one complete OIDC callback and asserts it redirected.
 func callback(t *testing.T, l *Login) *httptest.ResponseRecorder {
 	t.Helper()
-	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"}, time.Hour)
 	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 	w := httptest.NewRecorder()
@@ -295,7 +296,7 @@ func TestCallbackSurvivesABindFailure(t *testing.T) {
 	client := fakeOIDC{identity: oidc.User{Sub: "u1", Email: "u@example.com"}}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, nil).
 		BindMemberships(failingMembership{})
-	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"}, time.Hour)
 	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 	w := httptest.NewRecorder()
@@ -329,7 +330,7 @@ func TestCallbackRejections(t *testing.T) {
 	})
 
 	t.Run("state mismatch", func(t *testing.T) {
-		flow, _ := l.codec.Seal(flowState{State: "real", Verifier: "v"})
+		flow, _ := l.codec.Seal(flowState{State: "real", Verifier: "v"}, time.Hour)
 		r := httptest.NewRequest("GET", "/callback?state=forged&code=c", nil)
 		r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 		w := httptest.NewRecorder()
@@ -346,7 +347,7 @@ func TestCallbackRejections(t *testing.T) {
 
 func TestMiddlewareSetsIdentityFromSession(t *testing.T) {
 	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore())
-	sealed, _ := l.codec.Seal(Session{Sub: "u1", Email: "u@example.com"})
+	sealed, _ := l.codec.Seal(Session{Sub: "u1", Email: "u@example.com"}, time.Hour)
 
 	var got httpapi.Identity
 	var ok bool

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"latere.ai/x/pkg/authkit/oidc"
 
@@ -22,7 +23,7 @@ func callbackSession(t *testing.T, id oidc.User, ui UserInfoFunc) Session {
 	t.Helper()
 	codec, _ := NewCodec(testKey)
 	l := NewLogin(fakeOIDC{identity: id}, codec, access.NewMemStore(), "https://replichai.latere.ai", false, ui)
-	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"})
+	flow, _ := l.codec.Seal(flowState{State: "s", Verifier: "v", Next: "/"}, time.Hour)
 	r := httptest.NewRequest("GET", "/callback?state=s&code=c", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
 	w := httptest.NewRecorder()

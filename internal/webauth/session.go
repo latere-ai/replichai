@@ -51,6 +51,20 @@ const (
 // file and covered by round-trip and tamper tests.
 type Codec struct {
 	aead cipher.AEAD
+	// now is the clock the expiry is judged by; tests move it.
+	now func() time.Time
+}
+
+// ErrExpired reports a sealed value past the lifetime it was sealed with.
+var ErrExpired = errors.New("sealed value has expired")
+
+// envelope is what is actually sealed: the value and the moment it stops
+// being valid. The expiry travels inside the ciphertext, so a cookie's MaxAge
+// is only a hint to the browser and the server judges age itself — a value
+// taken from a browser and replayed later is refused however long it is kept.
+type envelope struct {
+	Expires int64           `json:"exp"`
+	Value   json.RawMessage `json:"v"`
 }
 
 // NewCodec builds a codec from a 64-hex-char (32-byte) key, e.g. from
@@ -68,12 +82,16 @@ func NewCodec(hexKey string) (*Codec, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Codec{aead: aead}, nil
+	return &Codec{aead: aead, now: time.Now}, nil
 }
 
 // Seal encrypts v (JSON) into a URL-safe base64 string: nonce ‖ ciphertext.
-func (c *Codec) Seal(v any) (string, error) {
-	plain, err := json.Marshal(v)
+func (c *Codec) Seal(v any, ttl time.Duration) (string, error) {
+	value, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	plain, err := json.Marshal(envelope{Expires: c.now().Add(ttl).Unix(), Value: value})
 	if err != nil {
 		return "", err
 	}
@@ -101,7 +119,14 @@ func (c *Codec) Open(s string, v any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(plain, v)
+	var env envelope
+	if err := json.Unmarshal(plain, &env); err != nil {
+		return err
+	}
+	if env.Expires == 0 || c.now().Unix() > env.Expires {
+		return ErrExpired
+	}
+	return json.Unmarshal(env.Value, v)
 }
 
 // setCookie writes a sealed value as a hardened cookie. secure=false drops the

@@ -4,9 +4,15 @@
 package webauth
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/latere-ai/replichai/internal/httpapi"
 )
 
 const testKey = "0000000000000000000000000000000000000000000000000000000000000000" // 32 bytes
@@ -16,7 +22,7 @@ func TestCodecRoundTripAndTamper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCodec: %v", err)
 	}
-	sealed, err := c.Seal(Session{Sub: "u1", Email: "u@x.com"})
+	sealed, err := c.Seal(Session{Sub: "u1", Email: "u@x.com"}, time.Hour)
 	if err != nil {
 		t.Fatalf("Seal: %v", err)
 	}
@@ -79,4 +85,58 @@ func flip(b byte) string {
 		return "B"
 	}
 	return "A"
+}
+
+// A sealed value carries its own expiry, judged by the server. A cookie a
+// browser was told to keep for twelve hours is worth nothing at hour thirteen
+// wherever it was copied to; before this only the browser's MaxAge stood
+// between a leaked cookie and indefinite replay.
+func TestASealedValueExpiresOnTheServersClock(t *testing.T) {
+	c, err := NewCodec(strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+
+	sealed, err := c.Seal(Session{Sub: "u1"}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s Session
+	if err := c.Open(sealed, &s); err != nil || s.Sub != "u1" {
+		t.Fatalf("fresh: %v %+v", err, s)
+	}
+	now = now.Add(59 * time.Minute)
+	if err := c.Open(sealed, &s); err != nil {
+		t.Fatalf("within the hour: %v", err)
+	}
+	now = now.Add(2 * time.Minute)
+	if err := c.Open(sealed, &s); !errors.Is(err, ErrExpired) {
+		t.Fatalf("past the hour: err=%v, want ErrExpired", err)
+	}
+}
+
+// An expired session cookie leaves the request unauthenticated, exactly as
+// no cookie would; the gate then refuses it.
+func TestAnExpiredSessionCookieIsNoSession(t *testing.T) {
+	c, _ := NewCodec(strings.Repeat("ab", 32))
+	now := time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	l := &Login{codec: c}
+
+	sealed, _ := c.Seal(Session{Sub: "u1", Email: "u@x.com"}, sessionTTL)
+	now = now.Add(sessionTTL + time.Minute)
+
+	var seen httpapi.Identity
+	var ok bool
+	h := l.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		seen, ok = httpapi.IdentityFrom(r)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName(sessionCookie, false), Value: sealed})
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if ok && seen.Sub != "" {
+		t.Fatalf("an expired cookie authenticated %+v", seen)
+	}
 }
