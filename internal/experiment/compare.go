@@ -13,26 +13,25 @@ import (
 // Comparison lays a released-source outcome beside the paper's own reported
 // results. It is a report, not a verdict: re-running the paper's data through
 // the paper's pipeline has a right answer, so the platform shows the two side
-// by side and stops — it does not conclude the paper reproduced or failed to.
-// That is a researcher's call to draw and defend (007's out-of-scope line).
+// by side and does not conclude whether the paper reproduced. That conclusion
+// is the researcher's to draw and defend, and is out of scope under 007.
 //
-// It deliberately carries no pass/fail field. A divergence may be a rounding
-// convention, a library version, or a real error, and telling those apart is
-// the work this report is for — not something a boolean could hold honestly.
-// AC8 asserts the absence of such a field structurally, so a later change
-// cannot add one silently.
+// It carries no pass/fail field. A divergence may be a rounding convention, a
+// library version, or a real error, and telling those apart is the purpose of
+// the report; a boolean cannot hold that. AC8 asserts the absence of such a
+// field structurally, so a later change cannot add one silently.
 type Comparison struct {
-	// Source is what the comparison is about. It carries the whole difference in
-	// meaning: the same arithmetic reads as re-analysis of the paper for a
-	// released source and as calibration of a cohort for a synthetic one (007c).
+	// Source is what the comparison is about. It determines the meaning: the
+	// same arithmetic reads as re-analysis of the paper for a released source
+	// and as calibration of a cohort for a synthetic one (007c).
 	Source Source          `json:"source"`
 	Rows   []ComparisonRow `json:"rows"`
 }
 
 // Subject names what the comparison establishes, so a synthetic calibration can
 // never be rendered as re-analysis of the paper. This is the rendering half of
-// 007c's labelling: a released comparison speaks about the paper, a synthetic
-// one speaks about the model cohort and never about the paper or about people.
+// 007c's labelling: a released comparison is about the paper; a synthetic one
+// is about the model cohort and never about the paper or about people.
 func (c Comparison) Subject() string {
 	switch c.Source {
 	case SourceReleased:
@@ -54,18 +53,17 @@ type ComparisonRow struct {
 	Citation   string `json:"citation,omitempty"` // the reported value's paper citation
 }
 
-// CompareFor produces the released-source comparison for an experiment's
-// outcome, or reports that this experiment is not compared. Only a released run
+// CompareFor produces the comparison for an experiment's outcome, or reports
+// that this experiment is not compared. Only a released or synthetic run
 // against an instrument that declares reported results is laid beside
-// protocol.reported — an uploaded finding is the researcher's own, with no paper
-// baseline to compare it to, and a source with nothing reported has nothing to
-// compare against. This is what actually drives Compare: the caller resolves the
-// instrument, the runner fills the outcome, and this decides whether a
-// comparison is meaningful.
+// protocol.reported: an uploaded finding is the researcher's own and has no
+// paper baseline, and a source with nothing reported has nothing to compare
+// against. The caller resolves the instrument, the runner fills the outcome,
+// and CompareFor decides whether a comparison is meaningful.
 func CompareFor(e *Experiment, inst Instrument) (Comparison, bool) {
 	// Released re-analysis and synthetic calibration are both laid beside the
-	// paper's reported results; an uploaded finding is the researcher's own, with
-	// no paper baseline to compare against.
+	// paper's reported results; an uploaded finding is the researcher's own,
+	// with no paper baseline to compare against.
 	switch e.Source {
 	case SourceReleased, SourceSynthetic:
 	default:
@@ -83,7 +81,7 @@ func CompareFor(e *Experiment, inst Instrument) (Comparison, bool) {
 // metric, in the reported order, then appends any recomputed metric the paper
 // did not report. Each pair carries a numeric delta only when both values parse
 // cleanly as numbers; otherwise the two values stand side by side with a note,
-// which is the honest output for free-form statistics like "b=42ms, p=.003".
+// which is the correct output for free-form statistics such as "b=42ms, p=.003".
 func Compare(o Outcome, reported []instrument.Reported) Comparison {
 	recomputed := make(map[string]string, len(o.Recomputed))
 	for _, s := range o.Recomputed {

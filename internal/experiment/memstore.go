@@ -164,8 +164,8 @@ func (a *MemArtifactStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-// DeletePrefix removes every stored key beginning with prefix — how a dataset
-// deletion reaches an experiment's derived artifacts.
+// DeletePrefix removes every stored key beginning with prefix; this is how a
+// dataset deletion reaches an experiment's derived artifacts.
 func (a *MemArtifactStore) DeletePrefix(_ context.Context, prefix string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

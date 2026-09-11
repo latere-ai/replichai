@@ -12,10 +12,10 @@ import (
 
 // AC10: verdict and rate in the 002 manifest are untouched by every path in this
 // spec. The structural guarantee is that no experiment code constructs or writes
-// a reproduction manifest — experiment imports publish for its Repo type, not to
-// grade a reproduction. This scans the package source so a future change that
-// wired an experiment into the manifest would trip here, in the direction the
-// firewall cares about.
+// a reproduction manifest; experiment imports publish for its Repo type, not to
+// grade a reproduction. This test scans the package source so a future change
+// that wired an experiment into the manifest, the direction the firewall
+// guards, fails here.
 func TestExperimentNeverWritesAManifest(t *testing.T) {
 	forbidden := []string{"ManifestFor", "publish.Manifest", "publish.Reproduction", "SchemaVersion"}
 	entries, err := os.ReadDir(".")

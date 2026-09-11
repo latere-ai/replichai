@@ -21,9 +21,9 @@ import (
 const CohortDataFile = "cohort.csv"
 
 // ErrPersonaInPrompt reports a prompt template that assigns the cohort a
-// demographic or persona attribute. Inventing a population and reporting how its
-// strata differ is fabricated participant data with extra steps, and it is
-// refused outright (007c), not scoped for later.
+// demographic or persona attribute. Inventing a population and reporting how
+// its strata differ is fabricated participant data, and it is refused outright
+// (007c) rather than deferred.
 var ErrPersonaInPrompt = errors.New("a model cohort prompt must carry no demographic or persona attribute")
 
 // personaTerms are attributes a cohort prompt must never carry. Matched on word
@@ -40,10 +40,10 @@ func AssertNoPersona(prompt string) error {
 }
 
 // ModelCohort is a model cohort: N sessions driven through the protocol's
-// servable components, answering as instructed, over the existing provider seam
-// — no new backend. Its marginal claim over the generator is only how a
-// plausible responder behaves, so it is gated on ground truth (see
-// GateModelCohort) and its data is a pilot, never evidence about people.
+// servable components, answering as instructed, over the existing provider
+// contract with no new backend. Its only claim beyond the generator is how a
+// plausible responder behaves, so GateModelCohort gates it on ground truth,
+// and its data is a pilot and never evidence about people.
 type ModelCohort struct {
 	N          int
 	Trials     int
@@ -88,8 +88,9 @@ func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (
 	return data, err
 }
 
-// instructions is the cohort worker's standing doctrine: answer as a plausible
-// participant for the servable components only, and invent no demographics.
+// instructions is the cohort worker's standing instructions: answer as a
+// plausible participant for the servable components only, and invent no
+// demographics.
 func (m *ModelCohort) instructions() string {
 	var b strings.Builder
 	b.WriteString("You are a plausible participant in a study. Answer its trials as an ordinary person would, honestly and without inventing a fixed identity.\n\n")

@@ -51,8 +51,8 @@ func TestComparePairsByMetric(t *testing.T) {
 	}
 }
 
-// CompareFor is what wires Compare to a run: only a released experiment with an
-// outcome and a reported baseline is compared.
+// CompareFor wires Compare to a run: only a released experiment with an outcome
+// and a reported baseline is compared.
 func TestCompareFor(t *testing.T) {
 	inst := Instrument{Decl: instrument.Instrument{Protocol: &instrument.Protocol{
 		Reported: []instrument.Reported{{Metric: "effect_size", Value: "0.42", Citation: "Table 2"}},
@@ -88,8 +88,9 @@ func TestCompareFor(t *testing.T) {
 	})
 }
 
-// AC8: a synthetic comparison renders as calibration of the cohort, a released
-// one as re-analysis of the paper — distinguished by Source, both tested.
+// AC8: a synthetic comparison renders as calibration of the cohort and a
+// released one as re-analysis of the paper. Source distinguishes them, and both
+// are tested.
 func TestComparisonSubjectBylSource(t *testing.T) {
 	released := Comparison{Source: SourceReleased}
 	if !strings.Contains(released.Subject(), "re-analysis of the paper") {
@@ -124,9 +125,9 @@ func TestCompareEmptyIsEmpty(t *testing.T) {
 	}
 }
 
-// AC8: Compare emits no pass/fail judgement — asserted on the type, so a later
-// change cannot add one silently. No field of Comparison or its rows may be a
-// boolean or named like a verdict.
+// AC8: Compare emits no pass/fail judgement. This is asserted on the type, so a
+// later change cannot add one silently: no field of Comparison or its rows may
+// be a boolean or named like a verdict.
 func TestComparisonHasNoVerdictField(t *testing.T) {
 	verdictish := []string{"pass", "fail", "verdict", "judg", "reproduc", "success", "ok", "valid"}
 	for _, typ := range []reflect.Type{

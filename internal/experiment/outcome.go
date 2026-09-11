@@ -3,10 +3,10 @@
 
 package experiment
 
-// Outcome is what running one experiment produced. It records a run that
-// executed and a run that failed to execute with equal standing: an analysis
-// that fails on conforming data is a finding about the instrument, not an error
-// to hide, so "it did not run, and here is the error" is a complete result.
+// Outcome is what running one experiment produced. A run that failed to execute
+// is recorded with the same standing as one that ran: an analysis that fails on
+// conforming data is a finding about the instrument, so a false Ran with the
+// captured error is a complete result.
 type Outcome struct {
 	// Ran is false when the declared command did not execute cleanly. A false
 	// Ran with the captured error is a reportable finding, not a failure of the
@@ -25,9 +25,9 @@ type Outcome struct {
 	Artifacts []Artifact
 }
 
-// Statistic is one value the analysis recomputed, named to line up with a
-// protocol.reported metric. The value is carried as the analysis emitted it —
-// interpreting units and precision is the report reader's work, not ours.
+// Statistic is one value the analysis recomputed, named to match a
+// protocol.reported metric. The value is carried as the analysis emitted it;
+// interpreting units and precision is left to the reader of the report.
 type Statistic struct {
 	Metric string `json:"metric"`
 	Value  string `json:"value"`

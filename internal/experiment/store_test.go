@@ -193,7 +193,8 @@ func TestFSArtifactStoreRefusesEscape(t *testing.T) {
 	}
 }
 
-// A corrupt row on disk surfaces as an error, not a zero value silently.
+// A corrupt row on disk is reported as an error rather than read as a zero
+// value.
 func TestFSStoreSurfacesCorruptRow(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewFSStore(dir)

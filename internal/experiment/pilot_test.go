@@ -33,8 +33,8 @@ func validModelPilot() Pilot {
 	}
 }
 
-// AC5: the cohort_kind label survives every path out — the stored record, the
-// report, and the export. Enumerated, not spot-checked on one.
+// AC5: the cohort_kind label survives every path out: the stored record, the
+// report, and the export. Each path is checked.
 func TestLabelSurvivesEveryPath(t *testing.T) {
 	p := validModelPilot()
 	report, err := p.Render()
@@ -140,16 +140,17 @@ func TestCapsAdmit(t *testing.T) {
 	}
 }
 
-// AC7: a Pilot is a distinct type from Outcome — the boundary is the compiler's,
-// not a reviewer's — and its Kind is required, not optional.
+// AC7: a Pilot is a distinct type from Outcome, so the compiler rather than a
+// reviewer enforces the boundary, and its Kind is required.
 func TestPilotIsNotAnOutcome(t *testing.T) {
 	// Kind is required: a zero Pilot is never written.
 	if _, err := (Pilot{}).Export(); err == nil {
 		t.Error("a Pilot with no cohort_kind must not export")
 	}
 	// The types do not convert: neither embeds or holds the other, so a pilot
-	// cannot flow into a path that consumes a run outcome. Asserted structurally
-	// (like the stored-declaration guard) so the boundary cannot silently erode.
+	// cannot flow into a path that consumes a run outcome. This is asserted
+	// structurally, like the stored-declaration guard, so the boundary cannot
+	// erode silently.
 	pilotT, outcomeT := reflect.TypeFor[Pilot](), reflect.TypeFor[Outcome]()
 	for field := range pilotT.Fields() {
 		if field.Type == outcomeT {

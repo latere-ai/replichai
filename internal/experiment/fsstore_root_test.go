@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// A row id names a file, so an id that climbs is an id that names someone
-// else's file. The store resolves every read and write inside its own directory
+// A row id names a file, so an id that climbs out of the store names a file
+// elsewhere. The store resolves every read and write inside its own directory
 // and lets the operating system refuse the climb, rather than trusting whoever
 // minted the id.
 func TestFSStoreConfinesRowIDs(t *testing.T) {

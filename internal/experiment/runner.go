@@ -18,10 +18,10 @@ import (
 // Defaults for a runner. The instrument is mounted read-only, the dataset lands
 // outside it, and the worker writes its report to the provider's output dir.
 const (
-	// DefaultInstrumentMount is where the instrument repository is mounted,
-	// read-only — an experiment reads it and must never write to it.
+	// DefaultInstrumentMount is where the instrument repository is mounted
+	// read-only; an experiment reads it and must never write to it.
 	DefaultInstrumentMount = "/workspace/instrument"
-	// DefaultInputPath is where the dataset is attached, deliberately OUTSIDE the
+	// DefaultInputPath is where the dataset is attached. It is outside the
 	// instrument mount so it cannot be committed into the reproduction (AC4).
 	DefaultInputPath = "/workspace/input/dataset"
 	// ResultFile is the report the worker writes and the runner reads back.
@@ -34,8 +34,8 @@ const (
 
 // Runner executes one experiment in the provider sandbox: the instrument
 // mounted read-only, the dataset attached outside it, the declared command run
-// once, its real output captured. It does not grade and it does not repair —
-// there is no rubric and no revision budget, and the worker's doctrine forbids
+// once, its real output captured. It does not grade and does not repair: there
+// is no rubric and no revision budget, and the worker's instructions forbid
 // changing the command.
 //
 // It uses the same normalized controller as audits, with Evaluation left nil.
@@ -56,7 +56,8 @@ type Runner struct {
 type RunnerOption func(*Runner)
 
 // WithMountToken sets the read-only-scoped credential the instrument is mounted
-// with. It must never be the organisation token — an experiment only reads.
+// with. It must never be the organisation token, because an experiment only
+// reads.
 func WithMountToken(token string) RunnerOption {
 	return func(r *Runner) { r.mountToken = token }
 }
@@ -97,9 +98,9 @@ type runReport struct {
 }
 
 // Run executes the experiment against input and returns its outcome. input is
-// the bytes to analyse — the researcher's dataset for an uploaded source, the
-// paper's released data for a released one — attached outside the mount. It
-// resolves the instrument's command onto the input path, runs it once, and
+// the bytes to analyse, the researcher's dataset for an uploaded source or the
+// paper's released data for a released one, and is attached outside the mount.
+// Run resolves the instrument's command onto the input path, runs it once, and
 // reads the worker's report back. A command that failed to run is a complete
 // outcome, not an error from Run.
 func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input []byte) (out Outcome, err error) {
@@ -170,8 +171,8 @@ func packageSpecs(packages map[string][]string) []managed.Package {
 }
 
 // taskFor builds the per-run task: the exact command, where its input and the
-// instrument are, and the report to write. The doctrine (no repair) is the
-// worker's standing instruction; this only names the command and the paths.
+// instrument are, and the report to write. The rule against repair is in the
+// worker's standing instructions; this only names the command and the paths.
 func (r *Runner) taskFor(command string) string {
 	return fmt.Sprintf(`Run this analysis exactly as written and report what happened:
 
@@ -182,8 +183,8 @@ The input data is at %s. The instrument repository is mounted read-only at %s �
 }
 
 // collect reads the worker's report and persists the output artifacts. A missing
-// or unreadable report is itself an outcome — a run that produced nothing
-// reportable did not run, honestly recorded rather than raised as an error.
+// or unreadable report is itself an outcome: a run that produced nothing
+// reportable did not run, and that is recorded rather than raised as an error.
 func (r *Runner) collect(ctx context.Context, e *Experiment, evidence managed.EvidenceReader, command string) (Outcome, error) {
 	byPath := make(map[string]managed.Artifact, len(evidence.Artifacts))
 	for _, a := range evidence.Artifacts {
@@ -215,7 +216,7 @@ func (r *Runner) collect(ctx context.Context, e *Experiment, evidence managed.Ev
 	for _, name := range rep.Outputs {
 		art, ok := byPath[name]
 		if !ok {
-			continue // the worker named an output it did not actually produce; skip it
+			continue // the worker named an output it did not produce
 		}
 		body, err := evidence.Fetch(ctx, art)
 		if err != nil {

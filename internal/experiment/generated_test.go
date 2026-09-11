@@ -59,9 +59,9 @@ func TestGeneratedConformsAndIsDeterministic(t *testing.T) {
 	}
 }
 
-// AC1 (end to end): generated data feeds the instrument's own pipeline — the
-// 007b runner — with no model and no credential. This closes the loop the
-// generator exists for: its CSV must actually be consumable by the executor.
+// AC1, end to end: generated data feeds the instrument's own pipeline, the 007b
+// runner, with no model and no credential. The generator's CSV must be
+// consumable by the executor.
 func TestGeneratedFeedsTheRunnerEndToEnd(t *testing.T) {
 	decl := generatorInstrument()
 	data, err := (Generated{N: 20, Seed: 5}).Collect(context.Background(), decl)
@@ -95,12 +95,12 @@ func TestGeneratedRefusesNoAnalysis(t *testing.T) {
 	}
 }
 
-// meanDifference is a real analysis stand-in for CI: it computes the actual
-// treatment-minus-control mean of an outcome column. It is deliberately a
-// genuine computation, not a canned verdict — a test that asserted "detected"
-// through a memory provider returning a fixed string would fabricate exactly the
-// result 007c exists to prevent. The live analysis is the paper's Python in the
-// sandbox; this stands in for it where CI has no Python.
+// meanDifference stands in for the analysis in CI: it computes the
+// treatment-minus-control mean of an outcome column. It is a real computation
+// rather than a canned verdict, because a test that asserted "detected" through
+// a memory provider returning a fixed string would fabricate the result 007c
+// exists to prevent. The live analysis is the paper's Python in the sandbox;
+// this replaces it where CI has no Python.
 func meanDifference(t *testing.T, data []byte, outcome, groupCol, treatment string) float64 {
 	t.Helper()
 	rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
@@ -137,8 +137,9 @@ func meanDifference(t *testing.T, data []byte, outcome, groupCol, treatment stri
 	return tSum/float64(tN) - cSum/float64(cN)
 }
 
-// AC2: a cohort carrying a specified effect is detected by the analysis, and a
-// null cohort is not — the positive and negative control, asserted as a pair.
+// AC2: the analysis detects a cohort carrying a specified effect and does not
+// detect a null cohort. The positive and negative controls are asserted as a
+// pair.
 func TestGeneratedControlPair(t *testing.T) {
 	decl := generatorInstrument()
 	const detectThreshold = 3.0 // noise sd is 10, N/group is 100, so SE ≈ 1

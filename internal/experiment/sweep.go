@@ -27,7 +27,7 @@ type SweepPoint struct {
 
 // SweepReport is a distribution-and-sensitivity finding about the instrument.
 // Every statement in it is about the instrument's own behaviour across ranges
-// the paper never sampled — never about the paper and never about people.
+// the paper never sampled, and never about the paper or about people.
 type SweepReport struct {
 	Points   []SweepPoint `json:"points"`
 	Unstable []SweepPoint `json:"unstable"`
@@ -42,9 +42,9 @@ func (SweepReport) Subject() string {
 // Sweep runs the generated cohort across a range of injected effect sizes and
 // applies the analysis to each, reporting where the analysis becomes unstable:
 // where it fails to run, or where its recovered statistic does not increase with
-// a larger injected effect (a monotonicity break that signals the pipeline is
-// unreliable over that range). It is ungated, deterministic, and free — no
-// model, no credential — because it claims nothing about a responder.
+// a larger injected effect, a monotonicity break that signals the pipeline is
+// unreliable over that range. It is ungated and deterministic and uses no model
+// or credential, because it claims nothing about a responder.
 func Sweep(ctx context.Context, decl instrument.Instrument, base Generated, effects []float64,
 	spec SpecifiedEffect, analyze Analysis) (SweepReport, error) {
 	var rep SweepReport

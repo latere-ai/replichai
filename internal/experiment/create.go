@@ -8,16 +8,16 @@ import (
 	"fmt"
 )
 
-// Errors refused at creation, before any sandbox exists. Catching these here is
-// the point: a run is never started to discover inside a script that the
-// instrument had nothing to run or that the data did not fit.
+// Errors returned at creation, before any sandbox exists, so a run is never
+// started only to discover inside a script that the instrument had nothing to
+// run or that the data did not fit.
 var (
-	// ErrNoAnalysis reports an instrument whose analysis could not be recovered
-	// (007a's null analysis). It cannot be experimented on, and the refusal is
-	// up front rather than after a run with nothing to run (AC7).
+	// ErrNoAnalysis reports an instrument whose analysis could not be
+	// recovered, 007a's null analysis. It cannot be experimented on, and it is
+	// refused before a run rather than after one (AC7).
 	ErrNoAnalysis = errors.New("instrument has no runnable analysis")
 	// ErrUnparameterisedCommand reports an analysis command that does not name
-	// its input — it cannot be pointed at new data.
+	// its input, so it cannot be pointed at new data.
 	ErrUnparameterisedCommand = errors.New("analysis command does not parameterise its input")
 	// ErrDatasetRequired reports an uploaded-source experiment created without a
 	// dataset to run on.
@@ -27,10 +27,10 @@ var (
 	ErrSourceUnsupported = errors.New("data source not supported by this build")
 )
 
-// Create builds an experiment ready to run, refusing up front everything that
-// can be known without a sandbox: an instrument with no analysis (AC7), a
-// command that cannot take new data, and — for an uploaded dataset — columns
-// that do not match the analysis input, with the offending column named (AC5).
+// Create builds an experiment ready to run. It refuses everything that can be
+// known without a sandbox: an instrument with no analysis (AC7), a command that
+// cannot take new data, and, for an uploaded dataset, columns that do not match
+// the analysis input, naming the offending column (AC5).
 //
 // The command is kept as the instrument declares it, input placeholder intact;
 // the runner substitutes the real path when it knows where the data landed.

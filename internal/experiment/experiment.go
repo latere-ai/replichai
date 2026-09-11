@@ -3,15 +3,15 @@
 
 // Package experiment runs a reproduction's declared analysis on new data.
 //
-// [007a] leaves an instrument — instrument.json plus src/ in a published
-// reproduction — that nothing executes. This package is the executor and the
+// [007a] leaves an instrument, instrument.json plus src/ in a published
+// reproduction, that nothing executes. This package is the executor and the
 // domain model around it: an experiment binds one instrument to one data
 // source and records what running it produced.
 //
-// The firewall the whole 007 track rests on is a package direction: experiment
-// imports instrument, provider, and publish, and internal/audit never imports
+// The 007 track depends on a package-import rule: experiment imports
+// instrument, provider, and publish, and internal/audit never imports
 // experiment. An auditor that could read an experiment could let a cohort
-// inform a verdict by a side door; the missing import edge forbids it.
+// inform a verdict; the missing import edge forbids it.
 package experiment
 
 import (
@@ -25,8 +25,8 @@ import (
 )
 
 // Source is where an experiment's input data comes from. Four are named so the
-// domain model is whole; this spec (007b) implements the two offline ones, and
-// synthetic (007c) and human (007d) land later.
+// domain model is complete; 007b implements the two offline ones, and
+// synthetic (007c) and human (007d) follow.
 type Source string
 
 // The data sources an experiment can bind to.
@@ -37,15 +37,15 @@ const (
 	// SourceUploaded runs a dataset the researcher brings: their finding on the
 	// paper's instrument, never published because it is their data.
 	SourceUploaded Source = "uploaded"
-	// SourceSynthetic drives an LLM cohort — a pilot, evidence about nobody
-	// (007c).
+	// SourceSynthetic drives an LLM cohort. The result is a pilot and is
+	// evidence about nobody (007c).
 	SourceSynthetic Source = "synthetic"
 	// SourceHuman collects from participants via a hosted page (007d).
 	SourceHuman Source = "human"
 )
 
 // Offline reports whether a source needs no participants, consent, or public
-// write path — the two this spec runs.
+// write path. These are the two sources 007b runs.
 func (s Source) Offline() bool { return s == SourceReleased || s == SourceUploaded }
 
 // InstrumentPath is where the instrument declaration lives in a reproduction.
@@ -54,7 +54,7 @@ const InstrumentPath = "instrument.json"
 // Errors returned by resolution.
 var (
 	// ErrNoInstrument reports that a repository has no instrument.json at the
-	// resolved commit — there is nothing to experiment on.
+	// resolved commit, so there is nothing to experiment on.
 	ErrNoInstrument = errors.New("no instrument.json in the reproduction")
 )
 
@@ -67,9 +67,9 @@ type InstrumentRef struct {
 }
 
 // Instrument is a resolved instrument: the pinned reference plus the declaration
-// read there. It is never stored — the store keeps only the InstrumentRef, and
-// the declaration is re-resolved from the repository, so nothing drifts from the
-// manifests that are the source of truth (003's rule, one level up).
+// read there. It is never stored: the store keeps only the InstrumentRef and
+// the declaration is re-resolved from the repository, so nothing drifts from
+// the manifests, which are the source of truth under 003's rule.
 type Instrument struct {
 	Ref  InstrumentRef
 	Decl instrument.Instrument
@@ -88,9 +88,9 @@ type Forge interface {
 }
 
 // Resolve pins repo to its current head commit and reads the instrument there.
-// The pin is the point: an experiment records the exact commit it ran, so
-// re-resolving the same InstrumentRef later returns the same declaration
-// however many commits the reproduction has since gained.
+// An experiment records the exact commit it ran, so re-resolving the same
+// InstrumentRef later returns the same declaration regardless of the commits
+// the reproduction has since gained.
 func Resolve(ctx context.Context, f Forge, repo publish.Repo) (Instrument, error) {
 	commit, err := f.Head(ctx, repo)
 	if err != nil {
