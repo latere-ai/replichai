@@ -66,7 +66,11 @@ test('every user-facing string routes through t()', () => {
       if (ts.isJsxAttribute(node) && node.initializer && ts.isStringLiteral(node.initializer)) {
         const name = node.name.getText(sf)
         const value = node.initializer.text.trim()
-        if (TEXT_ATTRS.has(name) && hasLetters(value) && !ALLOW.has(value)) {
+        // An aria-label is always read aloud, so a literal one is always
+        // copy — even a "+" or a "−", which a screen reader says as a word
+        // and the letter test above would wave through.
+        const text = name === 'aria-label' ? value !== '' : hasLetters(value)
+        if (TEXT_ATTRS.has(name) && text && !ALLOW.has(value)) {
           offenders.push(`${rel}: ${name}=${JSON.stringify(value)}`)
         }
       }
