@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -226,7 +227,7 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 	if ref, ok, refErr := j.ManagedSessionRef(); refErr != nil {
 		return fmt.Errorf("read backend session reference: %w", refErr)
 	} else if ok {
-		if err := w.runner.Close(ctx, ref); err != nil {
+		if err := w.call("close", func() error { return w.runner.Close(ctx, ref) }); err != nil {
 			return fmt.Errorf("stop backend run %s: %w", ref.ID, err)
 		}
 	}
@@ -442,20 +443,12 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 			continue // another worker has it
 		}
 		if j.Phase == PhaseRunning && j.Status.RunID != "" {
-			go func(j Job) {
-				if err := w.driveResume(ctx, j); err != nil {
-					log.Printf("worker: resume session %s: %v", j.ID, err)
-				}
-			}(j) // rejoin the live backend session
+			w.spawn(j.ID, func() error { return w.driveResume(ctx, j) }) // rejoin the live backend session
 			resumed++
 			continue
 		}
 		if j.Phase == PhasePublishing && j.Status.RunID != "" {
-			go func(j Job) {
-				if err := w.drivePublish(ctx, j); err != nil {
-					log.Printf("worker: republish session %s: %v", j.ID, err)
-				}
-			}(j) // the run settled; finish finalizing it
+			w.spawn(j.ID, func() error { return w.drivePublish(ctx, j) }) // the run settled; finish finalizing it
 			resumed++
 			continue
 		}
@@ -483,6 +476,33 @@ func (w *Worker) track(pool context.Context, id string) (context.Context, func()
 	}
 }
 
+// call runs one step of a Runner and turns a panic into an error. The runner is
+// the composition root's code driving a third-party engine, and a panic there
+// is one job's failure, not the process's: an unrecovered panic in a worker
+// goroutine takes the whole server down, and if the job that caused it is
+// still in an active phase the next boot picks it up and panics again. Every
+// call into the runner goes through here, so no phase can be the exception.
+func (w *Worker) call(step string, fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s: runner panicked: %v\n%s", step, r, debug.Stack())
+		}
+	}()
+	return fn()
+}
+
+// spawn starts background work that must not be able to end the process. The
+// reconciler's rejoins run here: a panic in one is logged and the job it was
+// driving is failed, and the pool keeps serving.
+func (w *Worker) spawn(id string, fn func() error) {
+	go func() {
+		err := w.call("background drive", fn)
+		if err != nil {
+			log.Printf("worker: session %s: %v", id, err)
+		}
+	}()
+}
+
 // drive walks one claimed job (already in resolving) through the phases under a
 // per-job context Cancel can interrupt. Any error moves it to failed with the
 // cause recorded, never to done — except a shutdown, which leaves the job where
@@ -506,13 +526,13 @@ func (w *Worker) drive(pool context.Context, j Job) error {
 		w.watch(pool, j.ID)
 	}
 
-	if err := w.runner.Resolve(ctx, &j); err != nil {
+	if err := w.call("resolve", func() error { return w.runner.Resolve(ctx, &j) }); err != nil {
 		return w.stop(pool, j.ID, err)
 	}
 	if err := w.store.Advance(ctx, j.ID, PhaseRunning, apply(j)); err != nil {
 		return w.stop(pool, j.ID, err)
 	}
-	runErr := w.runner.Execute(ctx, &j, observe)
+	runErr := w.call("execute", func() error { return w.runner.Execute(ctx, &j, observe) })
 	observeMu.Lock()
 	statusErr := observeErr
 	observeMu.Unlock()
@@ -550,7 +570,7 @@ func (w *Worker) driveResume(pool context.Context, j Job) error {
 		}
 		w.watch(pool, j.ID)
 	}
-	runErr := w.runner.Resume(ctx, &j, observe)
+	runErr := w.call("resume", func() error { return w.runner.Resume(ctx, &j, observe) })
 	observeMu.Lock()
 	statusErr := observeErr
 	observeMu.Unlock()
@@ -574,7 +594,7 @@ func (w *Worker) drivePublish(pool context.Context, j Job) error {
 	ctx, done := w.track(pool, j.ID)
 	defer done()
 
-	if err := w.runner.Publish(ctx, &j); err != nil {
+	if err := w.call("publish", func() error { return w.runner.Publish(ctx, &j) }); err != nil {
 		if errors.Is(err, ErrRetryablePublish) {
 			return err
 		}
@@ -588,7 +608,7 @@ func (w *Worker) publish(pool, ctx context.Context, j Job) error {
 	if err := w.store.Advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
 		return w.stop(pool, j.ID, err)
 	}
-	if err := w.runner.Publish(ctx, &j); err != nil {
+	if err := w.call("publish", func() error { return w.runner.Publish(ctx, &j) }); err != nil {
 		if errors.Is(err, ErrRetryablePublish) {
 			return err
 		}
