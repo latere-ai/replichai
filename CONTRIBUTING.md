@@ -48,7 +48,8 @@ alone about forty points and makes the total meaningless.
 
 Tests need no network and no credential: the backend adapter runs against a
 local HTTP server, and an in-process provider stands in for the backend
-everywhere else. A test that needs either is in the wrong place.
+everywhere else. A test that needs either is in the wrong place — the one
+deliberate exception is the opt-in end-to-end run below.
 
 ## The frontend
 
@@ -116,6 +117,19 @@ target:
   `CREATE DATABASE`. `make db-contract` runs the first three beside `job` and
   `access`; `profile` has the same shape and runs with
   `make db-contract DB_CONTRACT_PKGS=./internal/profile/`.
+
+## The real runtime end-to-end tests
+
+`internal/runtimes/local` has two tests that drive the real thing.
+`TestRealEndToEnd` and `TestRealEndToEndWithCodex` run one session through
+`srt` confining a real Claude Code or Codex, on the login this machine already
+holds — bootstrap, worker and judge, end to end. They launch a paid agent
+session and take minutes, so they are opt-in: set `REPLICHAI_E2E=1` to run
+them, and without it they skip. `make test` never sets it, and neither does CI.
+
+```bash
+REPLICHAI_E2E=1 go test ./internal/runtimes/local/ -run TestRealEndToEnd -v
+```
 
 ## What the linter is configured for
 
