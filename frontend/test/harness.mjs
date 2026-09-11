@@ -83,17 +83,24 @@ export async function waitUntil(cond, { timeout = 5000, every = 25, what = 'cond
   }
 }
 
-// settled waits for every finite animation on the page to finish. A screen's
-// entrance fade is the usual reason a measurement has to wait; a pulse that
-// never ends is not waited for.
-export async function settled(page) {
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getTiming().iterations !== Infinity)
-        .map((a) => a.finished.catch(() => {})),
-    ),
+// settled waits for every finite animation on the page to finish, then two
+// frames. A screen's entrance fade is the usual reason a measurement has to
+// wait; a pulse that never ends is not waited for, and a paused one — whose
+// `finished` never resolves — is given up on after a bound rather than hanging
+// the test.
+export async function settled(page, { timeout = 3000 } = {}) {
+  await page.evaluate(
+    (ms) =>
+      Promise.race([
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+            .map((a) => a.finished.catch(() => {})),
+        ),
+        new Promise((r) => setTimeout(r, ms)),
+      ]),
+    timeout,
   )
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
 }

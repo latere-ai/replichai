@@ -30,7 +30,7 @@
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
-import { DESKTOP, fail, json, settled, sleep, start } from './harness.mjs'
+import { DESKTOP, fail, json, settled, sleep, start, waitUntil } from './harness.mjs'
 
 const PHONE = { width: 390, height: 844 }
 // The widest screen the page claims to serve. 044 added it: nothing in this
@@ -562,8 +562,10 @@ try {
     const page = await open({ authenticated: false }, { routes: [['/public', []]] })
     await page.waitForSelector('.landing')
     // "No band" means nothing until the registry has answered and the page has
-    // drawn what it said.
-    await page.waitForResponse((r) => new URL(r.url()).pathname === '/public')
+    // drawn what it said. The request log is consulted rather than a response
+    // waiter, because the answer may already have landed by the time the
+    // landing is on screen — a waiter armed after that never resolves.
+    await waitUntil(() => page.calls.includes('GET /public'), { what: 'the registry to be asked' })
     await settled(page)
     const there = await page.evaluate(() => !!document.querySelector('[data-test="lp-strip"]'))
     if (there) fail('an empty registry still renders the published band')
