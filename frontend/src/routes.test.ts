@@ -29,6 +29,18 @@ test('every address resolves to its screen', () => {
   for (const [path, view] of table) expect(viewOf(path)).toEqual(view)
 })
 
+// A handle arrives percent-encoded, and an encoding can be cut short — a link
+// truncated in a chat, a typo in the bar. decodeURIComponent throws on one, and
+// it used to throw inside the router's initial state, which took the whole app
+// down to a white screen. A malformed address is an address this app does not
+// have, and says so at the address that was typed.
+test('a malformed handle encoding is not found rather than fatal', () => {
+  expect(viewOf('/u/%E0%A4%A')).toEqual({ name: 'notfound', path: '/u/%E0%A4%A' })
+  expect(viewOf('/u/%')).toEqual({ name: 'notfound', path: '/u/%' })
+  // A well-formed encoding still decodes and lowercases, as before.
+  expect(viewOf('/u/Ada%20Lovelace')).toEqual({ name: 'profile', handle: 'ada lovelace' })
+})
+
 test('every screen writes the address it is read from', () => {
   for (const [path, view] of table) expect(pathOf(view)).toBe(path)
 })
