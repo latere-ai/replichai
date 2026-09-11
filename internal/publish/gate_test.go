@@ -6,6 +6,8 @@ package publish
 import (
 	"strings"
 	"testing"
+
+	"github.com/latere-ai/replichai/internal/method"
 )
 
 func TestClassifyIncludesOnlyWorkerOrigin(t *testing.T) {
@@ -26,8 +28,8 @@ func TestClassifyIncludesOnlyWorkerOrigin(t *testing.T) {
 }
 
 func TestOriginOfClassifiesStructurally(t *testing.T) {
-	worker := []string{"README.md", "REPRODUCIBILITY.md", "UNVERIFIED.md", "SOURCES.md",
-		"instrument.json", "src/main.py", "src/lib/util.py", "./src/model.py"}
+	worker := append(method.Deliverables(),
+		"verdict.json", "src/main.py", "src/lib/util.py", "./src/model.py")
 	for _, p := range worker {
 		if originOf(p) != OriginWorker {
 			t.Errorf("originOf(%q) = third-party, want worker", p)
