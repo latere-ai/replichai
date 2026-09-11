@@ -11,8 +11,9 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
-// The recorded stream decodes to the same events twice, and its accumulated
-// usage equals the harness's own final totals.
+// TestCodexDecodesItsOwnStream checks that the recorded stream decodes to the
+// same events twice, and that its accumulated usage equals the harness's own
+// final totals.
 func TestCodexDecodesItsOwnStream(t *testing.T) {
 	h := NewCodex()
 	first, usage, lines := decodeFixture(t, h, "testdata/codex.jsonl")
@@ -31,8 +32,8 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 		}
 		ids[first[index].ID] = true
 	}
-	// The fixture is a recorded run, so these are the numbers Codex itself
-	// reported for it.
+	// The fixture is a recorded run, so these are the numbers Codex reported
+	// for it.
 	if usage.InputFresh != 40212 || usage.InputCached != 30208 || usage.Output != 79 {
 		t.Fatalf("usage = %+v", usage)
 	}
@@ -41,7 +42,7 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 	}
 
 	// Every line produced an event carrying its raw payload, including the
-	// one that is not JSON and the event type this build has never seen.
+	// line that is not JSON and the event type this build does not know.
 	withRaw := 0
 	for _, event := range first {
 		if len(event.Raw) > 0 {
@@ -55,8 +56,8 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 	for _, event := range first {
 		kinds = append(kinds, event.Kind)
 	}
-	// The kinds a real run produced: a thread and a turn opening, the
-	// agent's messages, the command it ran and what came back, the turn's
+	// These are the kinds a real run produced: a thread and a turn starting,
+	// the agent's messages, the command it ran and its output, the turn's
 	// result, and the two lines this build has no case for.
 	for _, want := range []managed.EventKind{managed.KindMessage, managed.KindToolUse, managed.KindToolResult, KindResult, KindRaw} {
 		if !slices.Contains(kinds, want) {
@@ -65,9 +66,10 @@ func TestCodexDecodesItsOwnStream(t *testing.T) {
 	}
 }
 
-// Reasoning is mapped where a run emits it. The recorded fixture is a trivial
-// task that produced none, so the mapping is asserted directly rather than
-// left to whether a model happened to think out loud.
+// TestCodexMapsReasoning checks that reasoning is mapped when a run emits it.
+// The recorded fixture is a trivial task that produced none, so the mapping is
+// asserted directly rather than depending on whether a model happened to emit
+// reasoning.
 func TestCodexMapsReasoning(t *testing.T) {
 	events, err := NewCodex().Decode("worker-0", 0,
 		[]byte(`{"type":"item.completed","item":{"id":"item_9","type":"reasoning","text":"The paper is on arXiv."}}`))
@@ -79,9 +81,9 @@ func TestCodexMapsReasoning(t *testing.T) {
 	}
 }
 
-// A started item and its completion are the same item; recording both would
-// say the same thing twice. A command is the exception: what it was and what
-// it returned are two different facts.
+// TestCodexDoesNotDoubleRecordAnItem checks that a started item and its
+// completion are recorded once, since they are the same item. A command is
+// the exception: the command and its result are two different facts.
 func TestCodexDoesNotDoubleRecordAnItem(t *testing.T) {
 	started, err := NewCodex().Decode("worker-0", 0,
 		[]byte(`{"type":"item.started","item":{"id":"item_0","type":"agent_message","text":"hello"}}`))
@@ -95,8 +97,9 @@ func TestCodexDoesNotDoubleRecordAnItem(t *testing.T) {
 	}
 }
 
-// A failing command shows its exit code. A tool result carrying only stdout
-// hides the failure the reproduction turned on.
+// TestCodexToolResultKeepsTheExitCode checks that a failing command shows its
+// exit code. A tool result carrying only stdout would hide a failure the
+// reproduction depended on.
 func TestCodexToolResultKeepsTheExitCode(t *testing.T) {
 	events, err := NewCodex().Decode("worker-0", 0,
 		[]byte(`{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"false","aggregated_output":"boom","exit_code":2,"status":"completed"}}`))
@@ -108,8 +111,9 @@ func TestCodexToolResultKeepsTheExitCode(t *testing.T) {
 	}
 }
 
-// The provider block points at the operator's gateway and reads its credential
-// from a fixed environment name, so the configuration file never holds one.
+// TestCodexConfigCarriesTheGatewayNotTheKey checks that the provider block
+// points at the operator's gateway and reads its credential from a fixed
+// environment variable, so that the configuration file never holds one.
 func TestCodexConfigCarriesTheGatewayNotTheKey(t *testing.T) {
 	h := NewCodex()
 	request := Request{
@@ -154,9 +158,10 @@ func TestCodexConfigCarriesTheGatewayNotTheKey(t *testing.T) {
 	}
 }
 
+// TestCodexSkipsItsOwnTrustCheck checks that Codex's trust prompt is skipped.
 // Codex refuses a directory it has not been told to trust, and a session's
 // workspace is a repository it has never seen. The sandbox is the boundary, so
-// its own trust prompt is skipped rather than worked around.
+// the prompt is skipped rather than worked around.
 func TestCodexSkipsItsOwnTrustCheck(t *testing.T) {
 	argv, err := NewCodex().Argv(StageWorker, Request{
 		Task: "reproduce it", Paths: Paths{Workspace: "/s/workspace", Home: "/s/home"},
@@ -169,8 +174,10 @@ func TestCodexSkipsItsOwnTrustCheck(t *testing.T) {
 	}
 }
 
-// Codex is the harness an open-weights model behind an OpenAI-compatible
-// gateway pairs with, and it does not answer for the Anthropic dialect.
+// TestCodexSpeaksTheOpenAIDialects checks that Codex speaks both OpenAI
+// dialects, which makes it the harness to pair with an open-weights model
+// behind an OpenAI-compatible gateway, and that it does not speak the
+// Anthropic dialect.
 func TestCodexSpeaksTheOpenAIDialects(t *testing.T) {
 	h := NewCodex()
 	if !Speaks(h, DialectOpenAIResponses) || !Speaks(h, DialectOpenAIChat) || Speaks(h, DialectAnthropic) {
@@ -178,12 +185,13 @@ func TestCodexSpeaksTheOpenAIDialects(t *testing.T) {
 	}
 }
 
-// Codex keeps its token in its own configuration directory and writes its own
-// state back there — its aliases, its app-server, its session records — so the
-// login grant is that directory, writable. It is a login grant rather than a
-// standing one: a session carrying its own credential has CODEX_HOME redirected
-// into the session and never touches the operator's. Its standing instructions
-// are withheld for the same reason every harness's are.
+// TestCodexLoginProfile checks the login grant. Codex keeps its token in its
+// own configuration directory and writes its own state there, including its
+// aliases, its app-server and its session records, so the login grant is that
+// directory, writable. It is a login grant rather than a standing one: a
+// session that carries its own credential has CODEX_HOME redirected into the
+// session and never touches the operator's directory. The operator's standing
+// instructions are withheld for the same reason as for every harness.
 func TestCodexLoginProfile(t *testing.T) {
 	login := NewCodex().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
 	if len(login.Login) != 1 || login.Login[0].Path != "/Users/x/.codex" || !login.Login[0].Write {
@@ -192,26 +200,28 @@ func TestCodexLoginProfile(t *testing.T) {
 	if len(login.Denies) != 1 || !strings.Contains(login.Denies[0], "AGENTS.md") {
 		t.Errorf("denies = %v", login.Denies)
 	}
-	// Its scratch area is what every stage gets, whichever login it runs on;
-	// the configuration directory is not in this list, or a session on an
-	// API key would be handed the operator's token.
+	// Every stage gets the scratch area, regardless of which login it runs
+	// on. The configuration directory is not in this list, because a session
+	// on an API key would otherwise be given the operator's token.
 	if len(login.Writes) != 1 || !strings.Contains(login.Writes[0], "codex-501") {
 		t.Errorf("standing writes = %v, want the scratch area alone", login.Writes)
 	}
-	// It does not read an injected certificate authority, so its own
-	// endpoints are tunnelled rather than inspected — still allowlisted.
+	// Codex does not read an injected certificate authority, so its own
+	// endpoints are tunnelled rather than inspected. They are still subject
+	// to the allowlist.
 	if len(login.TLSPassthrough) == 0 {
 		t.Error("a client that will not trust the sandbox's authority has no passthrough")
 	}
 }
 
-// A role the agent never receives is not a role. Codex reads one from AGENTS.md
-// under CODEX_HOME and has no flag for it, and a run on the operator's own
-// login leaves CODEX_HOME to the operator, so Files writes nothing there.
-// Three runs of the real method proved what that costs: with no standing
-// instructions the agent wrote its reproduction into a subdirectory, committed
-// nothing, and the graded work could not be published at all. So the
-// instructions travel with the task instead.
+// TestCodexCarriesItsRoleWhenNoFileCan checks that the role reaches the agent
+// when no file can carry it. Codex reads a role from AGENTS.md under
+// CODEX_HOME and has no flag for it, and a run on the operator's own login
+// leaves CODEX_HOME to the operator, so Files writes nothing there. Three runs
+// of the real method showed the cost: with no standing instructions the agent
+// wrote its reproduction into a subdirectory, committed nothing, and the
+// graded work could not be published. The instructions therefore travel with
+// the task instead.
 func TestCodexCarriesItsRoleWhenNoFileCan(t *testing.T) {
 	request := Request{
 		Task:         "reproduce it",
@@ -238,8 +248,9 @@ func TestCodexCarriesItsRoleWhenNoFileCan(t *testing.T) {
 		t.Fatalf("the task did not survive: %q", prompt)
 	}
 
-	// Where a file does carry them, it stays the only copy: the same role
-	// twice in one session is a prompt the operator did not write.
+	// When a file does carry the instructions, it is the only copy. Sending
+	// the same role twice in one session would be a prompt the operator did
+	// not write.
 	keyed := request
 	keyed.Gateway = Gateway{Name: "lux", BaseURL: "https://lux.latere.ai/v1", Dialect: DialectOpenAIResponses, Auth: AuthAPIKey, Key: "sk-x"}
 	argv, err = NewCodex().Argv(StageWorker, keyed)

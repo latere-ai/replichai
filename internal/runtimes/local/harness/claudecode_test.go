@@ -14,7 +14,7 @@ import (
 )
 
 // decodeFixture runs one recorded stream through a harness the way the pump
-// does, returning the events and the accumulated usage.
+// does, and returns the events, the accumulated usage, and the line count.
 func decodeFixture(t *testing.T, h Harness, path string) ([]managed.Event, managed.Usage, int) {
 	t.Helper()
 	file, err := os.Open(path)
@@ -51,8 +51,9 @@ func decodeFixture(t *testing.T, h Harness, path string) ([]managed.Event, manag
 	return events, usage, lines
 }
 
-// The recorded stream decodes to the same events twice, and its accumulated
-// usage equals the harness's own final totals, bucket by bucket.
+// TestClaudeCodeDecodesItsOwnStream checks that the recorded stream decodes to
+// the same events twice, and that its accumulated usage equals the harness's
+// own final totals, bucket by bucket.
 func TestClaudeCodeDecodesItsOwnStream(t *testing.T) {
 	h := NewClaudeCode()
 	first, usage, lines := decodeFixture(t, h, "testdata/claude-code.jsonl")
@@ -75,7 +76,7 @@ func TestClaudeCodeDecodesItsOwnStream(t *testing.T) {
 	}
 
 	// The result line's cumulative totals are authoritative, so the
-	// accumulated usage is exactly what the harness itself reported.
+	// accumulated usage is exactly what the harness reported.
 	want := managed.Usage{
 		Model:        managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
 		InputFresh:   2700,
@@ -89,8 +90,8 @@ func TestClaudeCodeDecodesItsOwnStream(t *testing.T) {
 		usage.Output != want.Output {
 		t.Fatalf("usage = %+v, want %+v", usage, want)
 	}
-	// The unsplit bucket stays empty when the split figures are present:
-	// adding both would count the same tokens twice.
+	// The unsplit bucket stays empty when the split figures are present,
+	// because adding both would count the same tokens twice.
 	if usage.CacheWrite != 0 {
 		t.Errorf("cache write double-counted: %+v", usage)
 	}
@@ -99,8 +100,9 @@ func TestClaudeCodeDecodesItsOwnStream(t *testing.T) {
 	}
 
 	// Every input line produced at least one event carrying its raw payload,
-	// including the one that is not JSON and the one this build has no case
-	// for. A transcript that drops what it cannot parse is not evidence.
+	// including the line that is not JSON and the line this build has no
+	// case for. A transcript that dropped what it could not parse would not
+	// be evidence.
 	withRaw := 0
 	for _, event := range first {
 		if len(event.Raw) > 0 {
@@ -122,8 +124,8 @@ func TestClaudeCodeDecodesItsOwnStream(t *testing.T) {
 	}
 }
 
-// The vendor's own cost figure is recorded as decomposition, never as a bucket
-// the platform would price.
+// TestClaudeCodeRecordsTheVendorCostAsDetail checks that the vendor's own cost
+// figure is recorded as a detail, never as a bucket the platform would price.
 func TestClaudeCodeRecordsTheVendorCostAsDetail(t *testing.T) {
 	events, _, _ := decodeFixture(t, NewClaudeCode(), "testdata/claude-code.jsonl")
 	last := events[len(events)-1]
@@ -181,9 +183,9 @@ func TestClaudeCodeArgvCarriesTheRoleOutsideTheWorkspace(t *testing.T) {
 	}
 }
 
-// A harness login needs no credential at all, which is the case the host
-// sandbox exists to serve. A key is named so the driver keeps it out of the
-// process table.
+// TestClaudeCodeCredentialChannels checks that a harness login needs no
+// credential at all, which is the case the host sandbox exists to serve, and
+// that a key is named so that the driver keeps it out of the process table.
 func TestClaudeCodeCredentialChannels(t *testing.T) {
 	h := NewClaudeCode()
 	paths := Paths{Workspace: "/s/workspace", Home: "/s/home", Tmp: "/s/tmp", HarnessTmp: "/s/tmp/harness"}
@@ -193,9 +195,9 @@ func TestClaudeCodeCredentialChannels(t *testing.T) {
 		t.Fatalf("harness login demanded a credential: %v, %v", secrets, err)
 	}
 	// The login lives in the harness's own configuration directory.
-	// Redirecting it to a session-scoped one is how a run loses the login:
-	// an empty directory holds no credential, and the harness answers "not
-	// logged in" — which is the whole default path, gone.
+	// Redirecting it to a session-scoped directory loses the login, because
+	// an empty directory holds no credential and the harness reports "not
+	// logged in". That would break the default path entirely.
 	if _, redirected := env["CLAUDE_CONFIG_DIR"]; redirected {
 		t.Errorf("a harness login was pointed at an empty configuration directory: %v", env)
 	}
@@ -224,8 +226,9 @@ func TestClaudeCodeCredentialChannels(t *testing.T) {
 	}
 }
 
-// Non-essential traffic is switched off whichever login the run uses, so a
-// reproduction does not phone the harness's telemetry or error reporter.
+// TestClaudeCodeDisablesNonEssentialTraffic checks that non-essential traffic
+// is switched off regardless of which login the run uses, so that a
+// reproduction does not contact the harness's telemetry or error reporter.
 func TestClaudeCodeDisablesNonEssentialTraffic(t *testing.T) {
 	paths := Paths{Workspace: "/s/workspace", Home: "/s/home", HarnessTmp: "/s/tmp/harness"}
 	for _, auth := range []AuthKind{AuthHarness, AuthAPIKey} {
@@ -240,14 +243,15 @@ func TestClaudeCodeDisablesNonEssentialTraffic(t *testing.T) {
 	}
 }
 
-// The operator's own sign-in is reachable, and their own instructions are not.
-// A reproduction that silently inherits a machine's global CLAUDE.md is not
-// reproducing the paper, and a plugin is code the method never asked for.
+// TestClaudeCodesLoginProfile checks that the operator's own login is
+// reachable and their own instructions are not. A reproduction that silently
+// inherited a machine's global CLAUDE.md would not be reproducing the paper,
+// and a plugin is code the method never asked for.
 func TestClaudeCodesLoginProfile(t *testing.T) {
 	login := NewClaudeCode().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
-	// The login is its configuration directory and file, and on macOS the
+	// The login is the configuration directory and file, and on macOS the
 	// keychain as well, because the credential is not in a file there. All
-	// of it read-only: nothing of the operator's account is written.
+	// of it is read-only; nothing in the operator's account is written.
 	want := []string{"/Users/x/.claude", "/Users/x/.claude.json", "/Users/x/Library/Keychains"}
 	if got := LoginPaths(login); !slices.Equal(got, want) {
 		t.Fatalf("macOS login = %v, want %v", got, want)
@@ -257,15 +261,15 @@ func TestClaudeCodesLoginProfile(t *testing.T) {
 			t.Errorf("%s is writable: the login is read, never written", grant.Path)
 		}
 	}
-	// Elsewhere the credential is a file inside the configuration directory,
-	// so that is all that is opened.
+	// On other platforms the credential is a file inside the configuration
+	// directory, so only that directory and file are opened.
 	linux := LoginPaths(NewClaudeCode().Needs(Machine{Platform: "linux", Home: "/home/x"}))
 	if !slices.Equal(linux, []string{"/home/x/.claude", "/home/x/.claude.json"}) {
 		t.Errorf("linux login = %v", linux)
 	}
-	// Everything Claude Code loads at startup that is the operator's and
-	// not the method is withheld from the directory that has to be readable
-	// for the login.
+	// Everything Claude Code loads at startup that belongs to the operator
+	// and not to the method is withheld from the directory that must be
+	// readable for the login.
 	for _, want := range []string{"CLAUDE.md", "plugins", "settings.json", "agents", "commands", "skills"} {
 		found := false
 		for _, deny := range login.Denies {
@@ -277,13 +281,14 @@ func TestClaudeCodesLoginProfile(t *testing.T) {
 			t.Errorf("%s reaches the run: %v", want, login.Denies)
 		}
 	}
-	// Nothing outside the session is writable: the scratch area is
-	// redirected into it by the environment instead of granted under the
-	// shared temporary root.
+	// Nothing outside the session is writable. The scratch area is
+	// redirected into the session by the environment instead of being
+	// granted under the shared temporary root.
 	if len(login.Writes) != 0 {
 		t.Errorf("the harness was granted a path outside the session: %v", login.Writes)
 	}
-	// With no home there is nothing to grant and nothing to withhold.
+	// With no home directory there is nothing to grant and nothing to
+	// withhold.
 	if empty := NewClaudeCode().Needs(Machine{Platform: "darwin"}); len(empty.Login) != 0 || len(empty.Denies) != 0 {
 		t.Errorf("a homeless machine granted %+v", empty)
 	}
