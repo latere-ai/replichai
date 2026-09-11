@@ -1,7 +1,8 @@
 # Deploying replichai
 
-Kustomize manifests for the `latere` Kubernetes cluster. Production is applied
-with `kubectl`; staging is a prepared stub (see `staging/`).
+Kustomize manifests for the `latere` Kubernetes cluster. Production is deployed
+by the release pipeline on every `v*` tag (see [Release](#release)); staging is
+a prepared stub (see `staging/`).
 
 ## Layout
 
@@ -11,13 +12,14 @@ with `kubectl`; staging is a prepared stub (see `staging/`).
 
 ## One-time prerequisites (terraform owns these)
 
-The domain, database, and DB secret are provisioned in [`../../terraform`](../../terraform):
+The domain, database, and DB secret are provisioned by terraform in the latere
+infrastructure repository, which is not part of this one:
 
 - `dns.tf` — the `replichai.latere.ai` A record → the ingress load balancer.
 - `database.tf` — the `replichai` database on the shared cluster, and the
   `replichai-db` Kubernetes secret (`DATABASE_URL`) in the `latere` namespace.
 
-Apply them with the terraform workflow (`tofu apply`) before the first deploy.
+Apply them there (`tofu apply`) before the first deploy.
 
 ## The config secret (from `.env`)
 
@@ -132,23 +134,42 @@ deployment never fails to boot for want of mail, and an invitation is never
 silently dropped without a trace. `BASE_URL` is what every link in a message is
 built from, so a wrong value sends people to the wrong host.
 
-## Build and push the image
+## Release
 
-There is no release pipeline yet; build and push by hand (a `Dockerfile` is at
-the repo root):
+A release is a tag, and the pipeline does the rest:
+
+```bash
+git tag v0.29.0 && git push origin v0.29.0
+```
+
+`.github/workflows/release.yml` hands the tag to the shared `service-release`
+pipeline (`latere-ai/ci`), which builds the image from the root `Dockerfile`,
+pushes it to `ghcr.io/latere-ai/replichai`, applies `deploy/prod/` in the
+`latere` namespace, rolls the Deployment onto the new image, runs
+`test/release-smoke.sh` against `https://replichai.latere.ai`, and publishes
+the GitHub release with the tag's section of `CHANGELOG.md` (the pre-push hook
+refuses a release tag that has none). Between releases, `docker.yml` builds an
+image from every push to `main`, tagged by branch and by sha, so a commit can
+be tried in a cluster without cutting a release.
+
+Nothing deploys staging: the overlay is a prepared stub.
+
+### By hand, when the pipeline is down
+
+The pipeline does nothing a laptop with cluster access cannot:
 
 ```bash
 podman build -t ghcr.io/latere-ai/replichai:$(git rev-parse --short HEAD) .
 podman push ghcr.io/latere-ai/replichai:$(git rev-parse --short HEAD)
-```
-
-## Deploy
-
-```bash
 kubectl apply -k deploy/prod/
-kubectl -n latere set image deploy/replichai replichai=ghcr.io/latere-ai/replichai:<tag>
+kubectl -n latere set image deploy/replichai replichai=ghcr.io/latere-ai/replichai:$(git rev-parse --short HEAD)
 kubectl -n latere rollout status deploy/replichai
+test/release-smoke.sh
 ```
+
+The manifests deliberately pin no image tag — the pipeline's `set image` is
+what pins it — so follow an `apply` with the `set image`, as above, rather than
+treating the apply as the deploy.
 
 ## `DEV` stays unset
 
