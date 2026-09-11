@@ -4,21 +4,22 @@
 // Package paper resolves a paper reference to a stable identity and a
 // human-readable slug.
 //
-// Identity answers "is this the same paper we already audited?" and must not
-// drift: it is a resolved external identifier — a DOI, else an arXiv ID, else a
-// content digest — never the title, which changes between preprint and
-// camera-ready and across indexes. The slug answers "what should the repository
-// be called?" and is presentation only; it never determines identity.
+// The identity decides whether two references name the same paper, so it must
+// not drift. It is a resolved external identifier: a DOI, else an arXiv ID,
+// else a content digest. It is never the title, which changes between preprint
+// and camera-ready and across indexes. The slug names the repository and is
+// presentation only; it never determines identity.
 //
-// A DOI is terminal for the *identity key*, which is derived offline. Its human
-// title — and therefore its slug — is enriched from Crossref (the canonical DOI
-// metadata service, reliable where publisher pages bot-block) when a fetcher is
-// present; without one, or on a failed lookup, the slug degrades to the key. An
-// arXiv reference is upgraded: its published DOI is looked up so the preprint and
-// the published version collapse to one identity, and a lookup that cannot
-// complete errors rather than guessing arxiv-scheme, so identity never drifts
-// with connectivity. The network is reached through the Fetcher seam alone, which
-// a test injects to run without one.
+// A DOI in the reference is the final identity key, and the key is derived
+// offline. When a fetcher is present, the title, and so the slug, is enriched
+// from Crossref, the canonical DOI metadata service, which answers where
+// publisher pages block automated clients. Without a fetcher, or when the
+// lookup fails, the slug falls back to the key. An arXiv reference is looked
+// up for its published DOI, so the preprint and the published version resolve
+// to one identity. A lookup that cannot complete returns an error rather than
+// falling back to the arxiv scheme, so identity does not depend on
+// connectivity. All network access goes through the Fetcher interface, which
+// a test replaces to run without a network.
 package paper
 
 import (
@@ -39,14 +40,15 @@ var (
 	// not be resolved to one.
 	ErrUnresolvable = errors.New("cannot resolve reference to a paper identity")
 	// ErrLookupFailed reports that an arXiv reference's DOI lookup could not
-	// complete. Resolution fails rather than falling back to arxiv-scheme, so a
-	// paper with a DOI is never recorded as a preprint on a bad network.
+	// complete. Resolution fails rather than falling back to the arxiv scheme,
+	// so a paper with a DOI is never recorded as a preprint because the network
+	// failed.
 	ErrLookupFailed = errors.New("arxiv metadata lookup could not complete")
 )
 
 // arxivAPI is the metadata endpoint an arXiv ID is looked up against. It is
-// reached over TLS: the feed decides a paper's identity — its DOI — and a
-// plain-http lookup lets anything on the path rewrite it.
+// reached over TLS because the feed carries the DOI that decides the paper's
+// identity, and a plain HTTP lookup would let anything on the path rewrite it.
 const arxivAPI = "https://export.arxiv.org/api/query?id_list="
 
 // crossrefAPI is the canonical DOI metadata endpoint a DOI's title is read from.
@@ -63,17 +65,17 @@ type Identity struct {
 	Slug    string
 	Sources []string
 	// Record is the paper's bibliography, as far as the source that named it
-	// declares one (037). Empty for a reference nothing could be looked up for,
-	// and never guessed.
+	// declares one (037). It is empty for a reference that could not be looked
+	// up, and is never inferred.
 	Record Record
 }
 
 // String renders the canonical "scheme:key" identity string.
 func (id Identity) String() string { return id.Scheme.String() + ":" + id.Key }
 
-// Fetcher retrieves the bytes at a URL. It is the one network seam in this
-// package: injecting one lets resolution run without real network access, and
-// its absence makes a network-required resolution fail rather than guess.
+// Fetcher retrieves the bytes at a URL. It is the only network access in this
+// package. A test supplies one to run without real network access. When none
+// is supplied, a resolution that needs the network fails rather than guessing.
 type Fetcher interface {
 	Fetch(ctx context.Context, url string) ([]byte, error)
 }
@@ -87,16 +89,17 @@ func (f FetcherFunc) Fetch(ctx context.Context, url string) ([]byte, error) { re
 // Option configures resolution.
 type Option func(*resolver)
 
-// WithFetcher supplies the network seam resolution uses to look up arXiv
-// metadata and to inspect publisher pages.
+// WithFetcher supplies the Fetcher that resolution uses to look up metadata
+// and to inspect publisher pages.
 func WithFetcher(f Fetcher) Option { return func(r *resolver) { r.fetch = f } }
 
 type resolver struct {
 	fetch Fetcher
 }
 
-// Resolve turns a reference — a DOI, an arXiv URL or bare ID, a publisher URL,
-// or a direct document URL — into an Identity. It never mutates state.
+// Resolve turns a reference into an Identity. The reference may be a DOI, an
+// arXiv URL or bare ID, a publisher URL, or a direct document URL. Resolve
+// never mutates state.
 func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, error) {
 	r := &resolver{}
 	for _, o := range opts {
@@ -107,15 +110,16 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 		return Identity{}, fmt.Errorf("%w: empty reference", ErrUnresolvable)
 	}
 
-	// A DOI anywhere in the reference is the terminal identity key, derived
-	// offline: Key() never fetches, and a resolution with no fetcher stays offline
-	// with a key-based slug, so identity never rides connectivity. With a fetcher,
-	// enrich the human title from Crossref — the canonical DOI metadata service,
-	// reliable where publisher pages bot-block — falling back to the publisher page
-	// when the reference is a URL. A resolved title drives the slug (a readable
-	// repository name) and the project title; a failed lookup degrades to the
-	// key-based slug, so a blocked network yields the same identity a no-fetcher
-	// resolution would.
+	// A DOI anywhere in the reference is the final identity key, and it is
+	// derived offline: Key never fetches, and a resolution with no fetcher
+	// stays offline with a key-based slug, so identity does not depend on
+	// connectivity. With a fetcher, the title is enriched from Crossref, the
+	// canonical DOI metadata service, which answers where publisher pages
+	// block automated clients; when the reference is a URL, the publisher
+	// page is the fallback. A resolved title drives the slug, which is the
+	// repository name, and the project title. A failed lookup falls back to
+	// the key-based slug, so a blocked network yields the same identity a
+	// no-fetcher resolution would.
 	if doi, ok := extractDOI(ref); ok {
 		title, rec := "", Record{}
 		if r.fetch != nil {
@@ -131,12 +135,13 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 		return r.finish(SchemeDOI, doi, title, ref, rec), nil
 	}
 
-	// An arXiv ID is not terminal: look it up to discover a possible DOI.
+	// An arXiv ID is not final: look it up for a published DOI.
 	if id, ok := extractArXiv(ref); ok {
 		return r.resolveArXiv(ctx, id, ref)
 	}
 
-	// A URL with no embedded identifier: fetch and inspect it, else digest it.
+	// A URL with no embedded identifier is fetched and inspected, and digested
+	// when the page declares no identifier.
 	if looksLikeURL(ref) {
 		return r.resolveURL(ctx, ref)
 	}
@@ -144,14 +149,15 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 	return Identity{}, fmt.Errorf("%w: %q is not a DOI, arXiv ID, or URL", ErrUnresolvable, ref)
 }
 
-// Key extracts a paper's stable identity offline — with no network — for the
-// double-trigger guard and the project a submit opens. A DOI or arXiv ID in the
-// reference yields its canonical "scheme:key"; a plain URL yields a normalised
-// "url:<ref>" so the same link submitted twice keys alike; a reference that is
-// neither a DOI, an arXiv ID, nor URL-shaped is rejected, so a garbage submit
-// fails fast at the edge. It never fetches, so a submit never rides arXiv's
-// availability — the worker's Resolve phase does the enriching lookup, and the
-// key it guards on need not equal the identity that lookup finally records.
+// Key extracts a paper's stable identity offline, with no network access, for
+// the double-trigger guard and the project a submit opens. A DOI or arXiv ID
+// in the reference yields its canonical "scheme:key". A plain URL yields a
+// normalised "url:<ref>", so the same link submitted twice yields the same
+// key. A reference that is not a DOI, an arXiv ID, or URL-shaped is rejected,
+// so an invalid submit fails at the edge. Key never fetches, so a submit does
+// not depend on arXiv being available. The worker's Resolve phase does the
+// enriching lookup, and the key the guard uses need not equal the identity
+// that lookup records.
 func Key(reference string) (string, error) {
 	ref := strings.TrimSpace(reference)
 	if ref == "" {
@@ -170,10 +176,11 @@ func Key(reference string) (string, error) {
 }
 
 // normalizeURLKey folds a URL to a stable guard key: lower-cased scheme and
-// host, no fragment, no trailing slash — so http/HTTPS, a stray fragment, or a
-// trailing slash on the same link do not read as two papers. It is deliberately
-// conservative: distinct URLs for the same paper are not collapsed (that is the
-// worker's resolving job), only trivially different renderings of one link.
+// host, no fragment, no trailing slash. A difference in scheme case, a
+// fragment, or a trailing slash on the same link therefore does not read as
+// two papers. It is deliberately conservative: only trivially different
+// renderings of one link are collapsed. Distinct URLs for the same paper are
+// left to the worker's Resolve phase.
 func normalizeURLKey(ref string) string {
 	u, err := url.Parse(ref)
 	if err != nil {
@@ -200,7 +207,7 @@ func (r *resolver) finish(scheme Scheme, key, title, source string, rec Record) 
 	return id
 }
 
-// resolveArXiv upgrades an arXiv ID to its DOI when the paper carries one.
+// resolveArXiv resolves an arXiv ID to its DOI when the paper carries one.
 func (r *resolver) resolveArXiv(ctx context.Context, id, source string) (Identity, error) {
 	if r.fetch == nil {
 		return Identity{}, fmt.Errorf("%w: arXiv %s needs a fetcher", ErrLookupFailed, id)
@@ -224,11 +231,12 @@ func (r *resolver) resolveArXiv(ctx context.Context, id, source string) (Identit
 
 // resolveURL handles a URL with no identifier in the string itself. It fetches
 // the document and reads the Highwire / Google Scholar citation_* meta tags
-// academic publishers emit — a structured, per-page declaration of the paper's
-// own identity, not a scrape of the freeform body. A declared DOI wins; a
-// declared arXiv ID re-enters the deterministic arXiv lookup; a page with
-// neither falls back to a content digest. It needs a fetcher; without one, or
-// on a fetch that fails, there is nothing to inspect and resolution errors.
+// that academic publishers emit. These are a structured, per-page declaration
+// of the paper's identity, not a scrape of the body text. A declared DOI takes
+// precedence; a declared arXiv ID goes through the arXiv lookup; a page with
+// neither falls back to a content digest. It needs a fetcher. Without one, or
+// when the fetch fails, there is nothing to inspect and resolution returns an
+// error.
 func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error) {
 	if r.fetch == nil {
 		return Identity{}, fmt.Errorf("%w: %q needs a fetcher", ErrUnresolvable, ref)
@@ -270,7 +278,7 @@ type arxivFeed struct {
 		DOI       string `xml:"doi"`
 		Published string `xml:"published"`
 		Summary   string `xml:"summary"`
-		// A preprint updated after acceptance carries where it appeared.
+		// A preprint updated after acceptance names the venue it appeared in.
 		JournalRef string `xml:"journal_ref"`
 		Authors    []struct {
 			Name string `xml:"name"`
@@ -311,8 +319,8 @@ var (
 )
 
 // extractDOI finds and normalises a DOI in a string: lowercased, trailing
-// sentence punctuation trimmed. A DOI is case-insensitive, so lowercasing is
-// the normal form that makes two spellings one identity.
+// sentence punctuation trimmed. A DOI is case-insensitive, so lowercasing
+// gives two spellings of one DOI the same identity.
 func extractDOI(s string) (string, bool) {
 	m := doiRe.FindString(s)
 	if m == "" {
@@ -343,11 +351,11 @@ func metaContent(body []byte, re *regexp.Regexp) string {
 	return ""
 }
 
-// titleFromCrossref asks Crossref — the canonical DOI metadata service — for a
-// DOI's title. It is the primary title source for a DOI because it is reliable
-// and unblocked where publisher pages often bot-block. Returns "" on any failure
-// (unreachable, not found, malformed): enriching the title is best-effort and
-// must never fail a resolution that already has its key.
+// metaFromCrossref reads a DOI's title and record from Crossref, the canonical
+// DOI metadata service. It is the primary source for a DOI because it answers
+// where publisher pages often block automated clients. It returns zero values
+// on any failure, whether unreachable, not found, or malformed: enrichment is
+// best-effort and must never fail a resolution that already has its key.
 func (r *resolver) metaFromCrossref(ctx context.Context, doi string) (string, Record) {
 	body, err := r.fetch.Fetch(ctx, crossrefAPI+doi)
 	if err != nil {
@@ -356,9 +364,9 @@ func (r *resolver) metaFromCrossref(ctx context.Context, doi string) (string, Re
 	return parseCrossref(body)
 }
 
-// titleFromBody reads a page's declared paper title — the Highwire
-// citation_title meta tag academic publishers emit, else the HTML <title> — or
-// "" when it declares neither.
+// titleFromBody reads a page's declared paper title: the Highwire
+// citation_title meta tag academic publishers emit, else the HTML <title>. It
+// returns "" when the page declares neither.
 func titleFromBody(body []byte) string {
 	return firstNonEmpty(metaContent(body, citationTitleRe), htmlTitle(body))
 }

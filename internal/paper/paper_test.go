@@ -38,9 +38,9 @@ func (f *fakeFetcher) Fetch(_ context.Context, url string) ([]byte, error) {
 
 const theDOI = "10.1145/3772318.3791265"
 
-// Every metadata lookup travels over TLS. The arXiv feed decides a paper's
-// identity — the DOI it carries — and a plain-http request lets anything on
-// the path answer with a different paper.
+// TestEveryLookupTravelsOverTLS checks that every metadata lookup uses TLS.
+// The arXiv feed carries the DOI that decides a paper's identity, and a plain
+// HTTP request lets anything on the path answer with a different paper.
 func TestEveryLookupTravelsOverTLS(t *testing.T) {
 	fetch := &fakeFetcher{responses: map[string][]byte{
 		"export.arxiv.org": arxivFeedWithDOI(pleasQLarifyTitle, theDOI),
@@ -116,7 +116,8 @@ func TestResolveFourFormsOneIdentity(t *testing.T) {
 }
 
 // AC2: an arXiv entry carrying a DOI resolves to the DOI scheme; one carrying
-// none resolves to the arXiv scheme (the completed-lookup-no-DOI case).
+// none resolves to the arXiv scheme, which is the case of a completed lookup
+// with no DOI.
 func TestResolveArXivUpgradesToDOI(t *testing.T) {
 	withDOI := &fakeFetcher{responses: map[string][]byte{
 		"export.arxiv.org": arxivFeedWithDOI(pleasQLarifyTitle, theDOI),
@@ -141,9 +142,9 @@ func TestResolveArXivUpgradesToDOI(t *testing.T) {
 	}
 }
 
-// AC2 continued / the fetch-failure decision: a lookup that cannot complete
-// errors rather than falling back to arxiv-scheme, so identity cannot drift
-// with connectivity.
+// AC2, the fetch-failure case: a lookup that cannot complete returns an error
+// rather than falling back to the arxiv scheme, so identity does not depend on
+// connectivity.
 func TestResolveArXivErrorsWhenLookupFails(t *testing.T) {
 	// A failing fetcher.
 	failing := &fakeFetcher{err: errors.New("network down")}
@@ -156,9 +157,9 @@ func TestResolveArXivErrorsWhenLookupFails(t *testing.T) {
 	}
 }
 
-// AC3: the two PleaSQLarify title variants resolve to the same identity — the
-// motivating case — and, because they differ only past the 48-character
-// window, to the same slug.
+// AC3: the two PleaSQLarify title variants, the case that motivated this
+// package, resolve to the same identity, and because they differ only after
+// the 48-character limit, to the same slug.
 func TestResolvePleaSQLarifyTitleDriftOneIdentity(t *testing.T) {
 	const authorsTitle = "PleaSQLarify: Visual Pragmatic Repair for Natural Language Database Interfaces"
 
@@ -181,7 +182,7 @@ func TestResolvePleaSQLarifyTitleDriftOneIdentity(t *testing.T) {
 		t.Fatalf("authors-site resolve: %v", err)
 	}
 
-	// Same identity, from two different titles — the motivating assertion.
+	// Same identity from two different titles. This is the motivating assertion.
 	if arxivID.Key != siteID.Key || arxivID.Scheme != siteID.Scheme {
 		t.Fatalf("identity drifted: %s vs %s", arxivID, siteID)
 	}
@@ -194,8 +195,9 @@ func TestResolvePleaSQLarifyTitleDriftOneIdentity(t *testing.T) {
 	}
 }
 
-// A synthetic pair that differs within the window proves a slug can also track
-// the title, keeping that coverage off the PleaSQLarify case.
+// TestSlugTracksTitleWhenDifferenceIsInWindow uses a synthetic pair that
+// differs within the limit to show that a slug can also follow the title, so
+// that coverage does not rest on the PleaSQLarify case.
 func TestSlugTracksTitleWhenDifferenceIsInWindow(t *testing.T) {
 	a := Slug("Retrieval Augmented Generation")
 	b := Slug("Retrieval Augmented Summarisation")
@@ -204,11 +206,11 @@ func TestSlugTracksTitleWhenDifferenceIsInWindow(t *testing.T) {
 	}
 }
 
-// AC6: a publisher URL whose fetch is blocked degrades to the identifier parsed
-// from the URL — here the DOI in the path — rather than failing. The DOI is
-// terminal for the identity, so a blocked fetch yields the byte-identical
-// identity a no-fetcher resolution would: same key, same key-derived slug, empty
-// title. The fetch is only ever an attempt to enrich the human title.
+// AC6: a publisher URL whose fetch is blocked falls back to the identifier
+// parsed from the URL, here the DOI in the path, rather than failing. The DOI
+// is the final identity, so a blocked fetch yields exactly the identity a
+// no-fetcher resolution would: same key, same key-derived slug, empty title.
+// The fetch only ever attempts to enrich the title.
 func TestResolvePublisherURLDegradesToURLDOI(t *testing.T) {
 	const ref = "https://dl.acm.org/doi/" + theDOI
 
@@ -230,9 +232,9 @@ func TestResolvePublisherURLDegradesToURLDOI(t *testing.T) {
 	}
 }
 
-// A DOI resolves its human title from Crossref — the canonical, unblocked
-// metadata service — and that title drives both the key-unchanged identity and a
-// readable, title-derived slug (the repository name).
+// TestResolveDOIEnrichesViaCrossref checks that a DOI takes its title from
+// Crossref, the canonical metadata service, that the key is unchanged, and
+// that the title drives a readable slug, which is the repository name.
 func TestResolveDOIEnrichesViaCrossref(t *testing.T) {
 	crossref := &fakeFetcher{responses: map[string][]byte{
 		"api.crossref.org": crossrefWork(pleasQLarifyTitle),
@@ -247,15 +249,16 @@ func TestResolveDOIEnrichesViaCrossref(t *testing.T) {
 	if id.Title != pleasQLarifyTitle {
 		t.Errorf("title = %q, want the Crossref title", id.Title)
 	}
-	// The slug now follows the title — a readable repository name — which is safe
-	// because Crossref is deterministic, unlike a publisher scrape.
+	// The slug follows the title, giving a readable repository name. This is
+	// safe because Crossref is deterministic, unlike a publisher page.
 	if want := Slug(pleasQLarifyTitle); id.Slug != want {
 		t.Errorf("slug = %q, want title-derived %q", id.Slug, want)
 	}
 }
 
-// When Crossref has no title, resolution falls back to the publisher page's
-// declared citation_title (for a URL reference); the title still drives the slug.
+// TestResolveDOIFallsBackToPublisherPage checks that when Crossref has no title
+// and the reference is a URL, resolution falls back to the page's declared
+// citation_title, and the title still drives the slug.
 func TestResolveDOIFallsBackToPublisherPage(t *testing.T) {
 	const ref = "https://dl.acm.org/doi/" + theDOI
 	// Crossref returns an empty title set; the page declares one.
@@ -275,9 +278,10 @@ func TestResolveDOIFallsBackToPublisherPage(t *testing.T) {
 	}
 }
 
-// The identity KEY never rides the network: with no fetcher, a DOI resolves
-// offline to its key and a key-derived slug, with no title. (Key() is likewise
-// always offline — this is the Resolve-side of that guarantee.)
+// TestResolveDOIWithoutFetcherIsOffline checks that the identity key never
+// depends on the network: with no fetcher, a DOI resolves offline to its key
+// and a key-derived slug, with no title. Key is likewise always offline; this
+// test covers the Resolve side of that guarantee.
 func TestResolveDOIWithoutFetcherIsOffline(t *testing.T) {
 	id, err := Resolve(context.Background(), "doi:"+theDOI) // no fetcher
 	if err != nil {
@@ -321,10 +325,10 @@ func TestResolveEmptyReference(t *testing.T) {
 	}
 }
 
-// Key is the offline guard key: it must never fetch, must fold trivial URL
-// renderings to one key, must fail fast on garbage, and — for an arXiv or DOI
-// reference — must agree with Resolve's identity string so the guard keys on the
-// same paper the run records.
+// TestKeyIsOfflineAndStable checks the offline guard key: it must never fetch,
+// must fold trivial URL renderings to one key, must fail on an invalid
+// reference, and for an arXiv or DOI reference must agree with Resolve's
+// identity string, so the guard keys on the same paper the run records.
 func TestKeyIsOfflineAndStable(t *testing.T) {
 	cases := []struct {
 		name, ref, want string
@@ -357,8 +361,9 @@ func TestKeyRejectsGarbage(t *testing.T) {
 	}
 }
 
-// Key agrees with Resolve on the canonical identity for the offline schemes, so
-// guarding on Key and recording Resolve's identity never disagree about a DOI.
+// TestKeyAgreesWithResolveForDOI checks that Key and Resolve agree on the
+// canonical identity for the offline schemes, so guarding on Key and recording
+// Resolve's identity never disagree about a DOI.
 func TestKeyAgreesWithResolveForDOI(t *testing.T) {
 	ref := "https://doi.org/10.1145/3313831"
 	id, err := Resolve(context.Background(), ref)

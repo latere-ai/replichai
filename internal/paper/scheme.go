@@ -11,7 +11,7 @@ import (
 // Scheme is the kind of external identifier a paper's identity resolves to.
 //
 // The zero value is SchemeUnknown, so a struct field that was never set cannot
-// masquerade as a real scheme, and identity is never keyed on an unset one.
+// pass as a real scheme, and an identity is never keyed on an unset one.
 type Scheme uint8
 
 // The identifier schemes, in the priority order resolution tries them.
@@ -43,7 +43,7 @@ func (s Scheme) String() string {
 // MarshalJSON encodes the value as its stable name.
 func (s Scheme) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
-// UnmarshalJSON decodes a stable name, rejecting anything unrecognized.
+// UnmarshalJSON decodes a stable name, rejecting anything unrecognised.
 func (s *Scheme) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err != nil {

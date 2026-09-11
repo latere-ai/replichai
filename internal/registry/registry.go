@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package registry derives the set of published reproductions by reading their
-// manifests, so there is no second source of truth to drift from reality.
+// manifests, so there is no second copy of that data to fall out of date.
 //
-// It answers three questions: has this paper been reproduced before (Lookup),
-// what slug did its first reproduction fix (CanonicalSlug), and what unique
-// name should the next reproduction get (AllocateName). Identity, never slug or
-// title, is what relates reproductions of one paper.
+// Lookup reports whether a paper has been reproduced before, CanonicalSlug
+// returns the slug its first reproduction fixed, and AllocateName returns a
+// unique name for the next reproduction. Reproductions of one paper are
+// related by identity, never by slug or title.
 package registry
 
 import (
@@ -26,16 +26,16 @@ import (
 // DefaultTTL is how long a derived snapshot is reused before refetching.
 const DefaultTTL = time.Minute
 
-// ErrNoManifest is what a Source returns for a repository that carries no
-// replication.json — a run that never finalized, which is the normal state of a
-// repository the agent is still committing into.
+// ErrNoManifest is returned by a Source for a repository that has no
+// replication.json. That is a run that has not finalized, which is the normal
+// state of a repository the agent is still committing into.
 //
-// It exists because the caller has to tell that apart from a forge that did not
-// answer. Both used to arrive as a bare error, and the publish gate read either
-// one as "this reproduction is contaminated" — telling an owner their tree was
-// flagged when the truth was that their run had not finished, or that GitHub
-// had blipped. A missing file and an unreachable forge are different facts and
-// only one of them is about the reproduction.
+// It exists because the caller has to distinguish a missing manifest from a
+// forge that did not answer. Both used to arrive as a bare error, and the
+// publish gate treated either as a contaminated reproduction, telling an owner
+// their tree was flagged when their run had not finished or GitHub had failed
+// transiently. A missing file and an unreachable forge are different facts,
+// and only the first is about the reproduction.
 var ErrNoManifest = errors.New("no manifest")
 
 // Source enumerates published reproductions and reads their files. A GitHub
@@ -43,14 +43,14 @@ var ErrNoManifest = errors.New("no manifest")
 type Source interface {
 	List(ctx context.Context) ([]string, error)
 	Manifest(ctx context.Context, repo string) (publish.Manifest, error)
-	// File reads one file from a repository — the transcript (005) and any other
-	// committed artifact — for the read surface's pass-through. ok is false for a
-	// file that is genuinely absent; a transport failure is an error, never a
-	// disguised miss (the 003 read-error rule).
+	// File reads one file from a repository, such as the transcript (005) or
+	// any other committed artifact, for the read surface to pass through. ok is
+	// false for a file that is absent. A transport failure is an error and is
+	// never reported as a miss, following the 003 read-error rule.
 	File(ctx context.Context, repo, path string) ([]byte, bool, error)
 	// Tree lists a repository's committed file paths, so the app can serve the
-	// artifact file tree (006f) — an OSF-style pass-through that works even when
-	// the underlying forge repository stays private.
+	// artifact file tree (006f). The app passes the files through in the manner
+	// of OSF, which works even when the forge repository stays private.
 	Tree(ctx context.Context, repo string) ([]string, error)
 }
 
@@ -117,9 +117,10 @@ type record struct {
 	manifest publish.Manifest
 }
 
-// load returns a fresh-enough snapshot, refetching when the TTL has lapsed. A
-// repository with a missing or malformed manifest is skipped with a warning,
-// not a failure, so the registry survives hand-edited repositories.
+// load returns the cached snapshot, refetching when the TTL has lapsed. A
+// repository with a missing or malformed manifest is skipped with a warning
+// rather than failing the load, so a hand-edited repository does not break the
+// registry.
 func (r *Registry) load(ctx context.Context) (*snapshot, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -151,14 +152,16 @@ func (r *Registry) load(ctx context.Context) (*snapshot, error) {
 	return snap, nil
 }
 
-// identityKey is the "scheme:key" identity string of a manifest — the same form
-// paper.Identity.String produces, so lookups match on identity, never slug.
+// identityKey returns the "scheme:key" identity string of a manifest. It is
+// the same form paper.Identity.String produces, so lookups match on identity,
+// never on slug.
 func identityKey(m publish.Manifest) string {
 	return m.Paper.Scheme.String() + ":" + m.Paper.Key
 }
 
 // Lookup returns every prior reproduction of an identity, earliest first,
-// matched on the identity key alone. Empty, not an error, when none exist.
+// matched on the identity key alone. It returns an empty slice, not an error,
+// when none exist.
 func (r *Registry) Lookup(ctx context.Context, id paper.Identity) ([]PriorReproduction, error) {
 	snap, err := r.load(ctx)
 	if err != nil {
@@ -193,10 +196,11 @@ func (r *Registry) CanonicalSlug(ctx context.Context, id paper.Identity) (string
 }
 
 // AllocateName returns "<canonical-slug>-<suffix>" for the next reproduction of
-// an identity: the canonical slug (or the paper's own, for a first
-// reproduction) with a suffix checked against every existing repository name.
-// It retries on collision, widening the suffix from four to six characters
-// after five attempts, so it never returns a name that already exists.
+// an identity. The slug is the canonical slug, or the paper's own slug for a
+// first reproduction; the suffix is checked against every existing repository
+// name. It retries on collision, widening the suffix from four to six
+// characters after five attempts, so it never returns a name that already
+// exists.
 func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string, error) {
 	slug, ok, err := r.CanonicalSlug(ctx, id)
 	if err != nil {

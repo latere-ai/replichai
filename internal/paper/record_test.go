@@ -10,9 +10,10 @@ import (
 	"testing"
 )
 
-// A full Crossref work, of the shape the real service returns: authors with
-// given and family parts, a container title, a date-parts issue date, and the
-// volume/issue/page/publisher that used to be fetched and discarded.
+// crossrefFull is a full Crossref work of the shape the real service returns:
+// authors with given and family parts, a container title, a date-parts issue
+// date, and the volume, issue, page and publisher fields, which an earlier
+// version fetched and discarded.
 const crossrefFull = `{"message":{
   "title":["Effects of Semantic Segmentation Visualization on Trust"],
   "author":[
@@ -50,8 +51,8 @@ func TestResolveDOIKeepsTheCrossrefRecord(t *testing.T) {
 	}
 }
 
-// AC1, the other half: a record that declares less resolves anyway, with the
-// fields nobody declared left empty rather than invented.
+// AC1, the sparse case: a record that declares fewer fields resolves anyway,
+// and the undeclared fields are left empty rather than invented.
 func TestResolveDOIWithASparseCrossrefRecord(t *testing.T) {
 	fetch := &fakeFetcher{responses: map[string][]byte{
 		"api.crossref.org": []byte(`{"message":{"title":["A Paper"],"issued":{"date-parts":[[2019]]}}}`),
@@ -100,8 +101,10 @@ func TestResolveArXivKeepsAuthorsAndYear(t *testing.T) {
 	}
 }
 
-// A preprint that names a DOI becomes that DOI, and Crossref is then the better
-// source for its record — but what Crossref omits, the preprint still supplies.
+// TestArXivWithADOIPrefersCrossrefAndKeepsTheRest checks that a preprint
+// naming a DOI resolves to that DOI, that Crossref is then the preferred
+// source for its record, and that the preprint still supplies what Crossref
+// omits.
 func TestArXivWithADOIPrefersCrossrefAndKeepsTheRest(t *testing.T) {
 	feed := []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
@@ -153,8 +156,8 @@ func TestResolveURLReadsTheCitationTags(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	want := Record{
-		// Kept as the page spells them: inverting a name is a guess about
-		// somebody's actual name, and the owner can correct it.
+		// Kept as the page spells them. Inverting a name is a guess about a
+		// real person's name, and the owner can correct it.
 		Authors:   []string{"Ou, Changkun", "Welsch, Robin"},
 		Venue:     "Interacting with Computers",
 		Year:      2022,
@@ -168,8 +171,8 @@ func TestResolveURLReadsTheCitationTags(t *testing.T) {
 	}
 }
 
-// AC3, the other half: a page that declares nothing about itself resolves to a
-// paper with no record at all, rather than to a paper with an invented one.
+// AC3, the empty case: a page that declares nothing about itself resolves to a
+// paper with no record, rather than to a paper with an invented one.
 func TestResolveURLWithNoDeclarationIsSparse(t *testing.T) {
 	fetch := &fakeFetcher{responses: map[string][]byte{
 		"example.edu": []byte(`<html><head><title>Some PDF</title></head><body>x</body></html>`),
@@ -183,8 +186,9 @@ func TestResolveURLWithNoDeclarationIsSparse(t *testing.T) {
 	}
 }
 
-// A conference page names its venue with citation_conference_title, and a page
-// with a single page number cites one page rather than a range to itself.
+// TestConferencePageAndSinglePage checks that a conference page names its
+// venue with citation_conference_title, and that a page with one page number
+// cites a single page rather than a range.
 func TestConferencePageAndSinglePage(t *testing.T) {
 	page := []byte(`<html><head>
   <meta name="citation_title" content="One Page">
@@ -201,8 +205,9 @@ func TestConferencePageAndSinglePage(t *testing.T) {
 	}
 }
 
-// The DOI path falls back to the publisher's page for what Crossref does not
-// answer — including a DOI Crossref has no record of at all.
+// TestDOIFallsBackToThePage checks that the DOI path falls back to the
+// publisher's page for what Crossref does not answer, including a DOI Crossref
+// has no record of.
 func TestDOIFallsBackToThePage(t *testing.T) {
 	page := []byte(`<html><head>
   <meta name="citation_title" content="From The Page">
@@ -222,8 +227,9 @@ func TestDOIFallsBackToThePage(t *testing.T) {
 	}
 }
 
-// Enrichment is best-effort: a metadata service that is down or answering
-// nonsense must not fail a resolution that already has its key.
+// TestABrokenSourceStillResolves checks that enrichment is best-effort: a
+// metadata service that is down or returns malformed data must not fail a
+// resolution that already has its key.
 func TestABrokenSourceStillResolves(t *testing.T) {
 	fetch := &fakeFetcher{responses: map[string][]byte{"api.crossref.org": []byte(`not json at all`)}}
 	id, err := Resolve(context.Background(), theDOI, WithFetcher(fetch))
@@ -266,10 +272,9 @@ func TestYearFromTheWaysSourcesSpellADate(t *testing.T) {
 	}
 }
 
-// A record is what a citation is made of, and nothing in this package may write
-// one from a model or from the paper's prose. The guard is the package's own
-// source: every field is set from a parsed source, and this test fails if the
-// package ever grows an import that could invent one.
+// TestNothingInferred checks that no record field is read from the paper's
+// prose. Nothing in this package may write a record from a model or from body
+// text; every field is set from a parsed declaration.
 func TestNothingInferred(t *testing.T) {
 	rec := recordFromBody([]byte(`<html><body>Ada Lovelace wrote this in 1843 for the Journal of Everything.</body></html>`))
 	if !rec.Empty() {
@@ -280,9 +285,10 @@ func TestNothingInferred(t *testing.T) {
 	}
 }
 
-// The truncation this found: a conference is called CHI '24, and reading a
-// double-quoted attribute up to the first apostrophe inside it lost the year.
-// The same matcher reads the title and the DOI, so it lost those too.
+// TestAnApostropheInsideAQuotedAttribute covers a truncation bug: a conference
+// is called CHI '24, and reading a double-quoted attribute up to the first
+// apostrophe inside it lost the year. The same matcher reads the title and the
+// DOI, so it lost those too.
 func TestAnApostropheInsideAQuotedAttribute(t *testing.T) {
 	page := []byte(`<html><head>
   <meta name="citation_title" content="What's Left of a Title">
@@ -301,9 +307,10 @@ func TestAnApostropheInsideAQuotedAttribute(t *testing.T) {
 	}
 }
 
-// An abstract is what a source publishes, with its markup removed and nothing
-// else changed. Crossref deposits JATS; arXiv publishes a <summary>; a
-// publisher page may emit citation_abstract.
+// TestTheAbstractComesFromTheSource checks that an abstract is the source's
+// own, with its markup removed and nothing else changed. Crossref deposits
+// JATS; arXiv publishes a <summary>; a publisher page may emit
+// citation_abstract.
 func TestTheAbstractComesFromTheSource(t *testing.T) {
 	fetch := &fakeFetcher{responses: map[string][]byte{
 		"api.crossref.org": []byte(`{"message":{"title":["A Paper"],"abstract":"<jats:p>Abstract We argue that <jats:italic>context</jats:italic> is more than location.</jats:p>"}}`),

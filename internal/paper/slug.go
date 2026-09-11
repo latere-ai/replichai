@@ -5,8 +5,8 @@ package paper
 
 import "strings"
 
-// maxSlugLen is the character budget for a slug. A title longer than this is
-// filled word by word up to the last word that fits.
+// maxSlugLen is the maximum length of a slug in characters. A longer title is
+// added word by word up to the last word that fits.
 const maxSlugLen = 48
 
 // leadingArticles are dropped from the front of a title before slugging, so
@@ -16,8 +16,9 @@ var leadingArticles = map[string]bool{"the": true, "a": true, "an": true}
 
 // Slug derives a presentation slug from a title: ASCII, lowercase,
 // hyphen-separated, no leading or trailing hyphen, at most maxSlugLen
-// characters on a word boundary. It returns "" when the title folds to nothing
-// (all CJK, symbols, or empty); the caller substitutes the identity key.
+// characters on a word boundary. It returns "" when the title folds to
+// nothing, such as a title that is all CJK, all symbols, or empty; the caller
+// substitutes the identity key.
 func Slug(title string) string {
 	words := slugWords(title)
 	for len(words) > 0 && leadingArticles[words[0]] {
@@ -35,8 +36,8 @@ func Slug(title string) string {
 		}
 		if next > maxSlugLen {
 			if b.Len() == 0 {
-				// A single first word longer than the budget: take a hard
-				// prefix so an over-long title still yields a slug.
+				// A first word longer than the limit is cut to the limit, so
+				// an over-long title still yields a slug.
 				return w[:maxSlugLen]
 			}
 			break
@@ -77,8 +78,9 @@ func slugWords(title string) []string {
 }
 
 // foldRune reduces a rune to ASCII: ASCII passes through, common Latin accents
-// decompose to their base letters, and anything with no ASCII equivalent (CJK,
-// mathematical symbols, emoji) folds to nothing so it drops out of the slug.
+// decompose to their base letters, and anything with no ASCII equivalent, such
+// as CJK, mathematical symbols, and emoji, folds to nothing and drops out of
+// the slug.
 func foldRune(r rune) []rune {
 	if r < 0x80 {
 		return []rune{r}
@@ -90,8 +92,9 @@ func foldRune(r rune) []rune {
 }
 
 // latinFold maps accented Latin letters and a few ligatures to ASCII. It is not
-// a full Unicode decomposition — it covers what appears in paper titles, and
-// anything outside it folds away, which the key-fallback makes safe.
+// a full Unicode decomposition. It covers what appears in paper titles, and
+// anything outside it folds away, which is safe because the slug falls back to
+// the key.
 var latinFold = map[rune]string{
 	'à': "a", 'á': "a", 'â': "a", 'ã': "a", 'ä': "a", 'å': "a", 'ā': "a", 'ă': "a", 'ą': "a",
 	'ç': "c", 'ć': "c", 'č': "c",

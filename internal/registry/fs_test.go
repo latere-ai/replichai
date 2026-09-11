@@ -59,10 +59,11 @@ func TestFSSourceReadsAndParses(t *testing.T) {
 	}
 }
 
-// A repository with no manifest is ErrNoManifest, and a malformed one is not:
-// the first is a run that has not finalized, the second is a read that failed.
-// The publish gate reports the two differently, so the distinction has to be
-// made here rather than guessed from an error string.
+// TestFSSourceAbsentManifestIsNoManifest checks that a repository with no
+// manifest yields ErrNoManifest and a malformed one does not. The first is a
+// run that has not finalized, the second is a read that failed. The publish
+// gate reports the two differently, so the distinction has to be made here
+// rather than inferred from an error string.
 func TestFSSourceAbsentManifestIsNoManifest(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "unfinished"), 0o755); err != nil {
@@ -87,8 +88,8 @@ func TestFSSourceMissingRootIsEmpty(t *testing.T) {
 	}
 }
 
-// File reads an arbitrary committed artifact (the transcript, 005/006h) and
-// reports a genuinely absent file as a miss, not an error.
+// TestFSSourceFile checks that File reads any committed artifact, such as the
+// transcript (005/006h), and reports an absent file as a miss, not an error.
 func TestFSSourceFile(t *testing.T) {
 	root := t.TempDir()
 	writeRepo(t, root, "repo-a", []byte("{}"))
