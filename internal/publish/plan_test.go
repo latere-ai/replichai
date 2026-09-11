@@ -36,16 +36,17 @@ func passingResult(paths ...string) audit.Result {
 	}
 }
 
-// The motivating fixture: worker reports + src/, a gated benchmark and the
-// paper PDF (third-party), plus compiled residue and a secret.
+// TestPlanClassifiesTheFullArtifactSet uses the motivating fixture: worker
+// reports and src/, a gated benchmark and the paper PDF as third-party files,
+// plus a compiled file and a secret.
 func TestPlanClassifiesTheFullArtifactSet(t *testing.T) {
 	result := passingResult(
 		"README.md", "REPRODUCIBILITY.md", "SOURCES.md", "UNVERIFIED.md",
 		"src/main.py", "src/lib/util.py",
-		"data/benchmark.csv",    // third-party — the gated-benchmark case
+		"data/benchmark.csv",    // third-party: the gated benchmark case
 		"paper.pdf",             // third-party
-		"src/__pycache__/x.pyc", // compiled — dropped
-		".env",                  // secret — dropped
+		"src/__pycache__/x.pyc", // compiled, so dropped
+		".env",                  // secret, so dropped
 	)
 	plan, err := PlanPublication(result, pleasQLarify(), "a3f9")
 	if err != nil {
@@ -73,7 +74,7 @@ func TestPlanClassifiesTheFullArtifactSet(t *testing.T) {
 		}
 	}
 
-	// AC4: compiled residue and secrets appear in neither set.
+	// AC4: compiled files and secrets appear in neither set.
 	for _, p := range []string{"src/__pycache__/x.pyc", ".env"} {
 		if slices.Contains(plan.Include, p) || quarantined[p] != "" {
 			t.Errorf("%s must never appear in a plan", p)
@@ -129,10 +130,11 @@ func TestPlanRejectsAnEmptySuffix(t *testing.T) {
 	}
 }
 
-// Every deliverable the method asks the worker to write must survive the
-// offline publish. verdict.json went missing once because the gate's allowlist
-// was a second, hand-kept copy of the method's list; the plan now derives it
-// from method.Deliverables, so this test is the guard that they cannot drift.
+// TestPlanIncludesEveryMethodDeliverable checks that every deliverable the
+// method asks the worker to write survives the offline publish. verdict.json
+// was once withheld because the gate's allowlist was a second, hand-maintained
+// copy of the method's list. The plan now derives it from method.Deliverables,
+// and this test checks that the two cannot drift.
 func TestPlanIncludesEveryMethodDeliverable(t *testing.T) {
 	deliverables := method.Deliverables()
 	result := passingResult(append(slices.Clone(deliverables), "src/main.py", "paper.pdf")...)

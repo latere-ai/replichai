@@ -59,10 +59,10 @@ func (f *fakeLiveForge) CommitFiles(_ context.Context, _, _, message string, fil
 	return len(files) > 0, nil
 }
 
-// track puts a committed path into the tree, because a real forge does: a
-// finalize that runs after a harvest reads a tree the harvest contributed to,
-// and a fake that forgot that could not tell harvest-before-finalize from the
-// other way round (044b).
+// track adds a committed path to the tree, as a real forge does. A finalize
+// that runs after a harvest reads a tree the harvest contributed to, and a
+// fake that did not track this could not distinguish a harvest before a
+// finalize from one after it (044b).
 func (f *fakeLiveForge) track(path string) {
 	if !slices.Contains(f.tree, path) {
 		f.tree = append(f.tree, path)
@@ -75,8 +75,8 @@ func fixedNow() func() time.Time {
 
 var testID = paper.Identity{Key: "arxiv:2603.01795", Title: "A Paper", Slug: "a-paper"}
 
-// AC6: a clean committed tree yields a manifest marked redistribution-clear and
-// a committed transcript.
+// TestFinalizeLiveCleanTree checks AC6: a clean committed tree yields a
+// manifest marked clear for redistribution and a committed transcript.
 func TestFinalizeLiveCleanTree(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", "src/run.py", "results/plot.png"})
 	events := []provider.Event{{Kind: "message", Content: "hello"}}
@@ -104,8 +104,9 @@ func TestFinalizeLiveCleanTree(t *testing.T) {
 	}
 }
 
-// AC6: a tree carrying a third-party file (a committed PDF) writes the manifest
-// NOT clear — barring the public flip — and still commits.
+// TestFinalizeLiveLeakedTreeBarsPublic checks AC6: a tree carrying a
+// third-party file, here a committed PDF, writes a manifest that is not clear,
+// which bars the public flip, and still commits.
 func TestFinalizeLiveLeakedTreeBarsPublic(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", "paper.pdf"})
 
@@ -124,10 +125,11 @@ func TestFinalizeLiveLeakedTreeBarsPublic(t *testing.T) {
 	}
 }
 
-// 009 commit 1: a secret in the transcript, on an otherwise-clean tree, writes
-// the manifest with its own review reason (secret_in_transcript, not
-// third-party data) — barring the public flip — and still commits the
-// transcript intact so the owner keeps the evidence.
+// TestFinalizeLiveSecretInTranscriptBarsPublic checks 009 commit 1: a secret
+// in the transcript, on an otherwise clean tree, writes the manifest with its
+// own review reason, secret_in_transcript rather than third-party data, which
+// bars the public flip. The transcript is still committed intact so the owner
+// keeps the evidence.
 func TestFinalizeLiveSecretInTranscriptBarsPublic(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", "src/run.py"})
 	events := []provider.Event{
@@ -159,14 +161,15 @@ func TestFinalizeLiveSecretInTranscriptBarsPublic(t *testing.T) {
 	if ok, _ := EligibleForPublic(m); ok {
 		t.Error("a reproduction whose transcript leaked must be ineligible for the public flip")
 	}
-	// The transcript is still committed — the reproduction stays readable to the
+	// The transcript is still committed. The reproduction stays readable to the
 	// owner; only the public flip is refused.
 	if !rep.TranscriptCommitted || rep.TranscriptFiles == 0 {
 		t.Errorf("a flagged transcript must still be committed; report = %+v", rep)
 	}
 }
 
-// Re-finalizing an unchanged reproduction rewrites no manifest — idempotent.
+// TestFinalizeLiveIdempotentManifest checks that re-finalizing an unchanged
+// reproduction does not rewrite the manifest.
 func TestFinalizeLiveIdempotentManifest(t *testing.T) {
 	forge := newFakeForge([]string{"README.md"})
 	args := func() (FinalizeReport, error) {
@@ -189,8 +192,9 @@ func TestFinalizeLiveIdempotentManifest(t *testing.T) {
 	}
 }
 
-// RecordIdentity then RecordedIdentity round-trips the identity through the repo,
-// so finalize never re-resolves over the paper source.
+// TestRecordAndReadIdentity checks that RecordIdentity followed by
+// RecordedIdentity round-trips the identity through the repository, so finalize
+// never re-resolves over the paper source.
 func TestRecordAndReadIdentity(t *testing.T) {
 	forge := newFakeForge(nil)
 	if err := RecordIdentity(context.Background(), forge, "open-hai", "r", testID); err != nil {
@@ -203,13 +207,13 @@ func TestRecordAndReadIdentity(t *testing.T) {
 	if got.Key != testID.Key || got.Slug != testID.Slug {
 		t.Errorf("round-trip identity = %+v, want %+v", got, testID)
 	}
-	// An absent identity reads back not-ok, not an error.
+	// An absent identity reads back as not ok rather than as an error.
 	if _, ok, err := RecordedIdentity(context.Background(), newFakeForge(nil), "o", "n"); ok || err != nil {
 		t.Errorf("absent identity should be ok=false err=nil, got ok=%v err=%v", ok, err)
 	}
 }
 
-// ── findings (021a) ──────────────────────────────────────────────────────────
+// Findings (021a).
 
 // goodFindings is a verdict.json that validates, so each test below can break
 // exactly one thing about it.
@@ -235,8 +239,9 @@ func goodFindings(t *testing.T) []byte {
 	return raw
 }
 
-// A valid verdict.json is recorded on the manifest and leaves UNVERIFIED.md
-// alone — the agent's file is not touched when there is nothing to say.
+// TestFinalizeLiveRecordsValidFindings checks that a valid verdict.json is
+// recorded on the manifest and that UNVERIFIED.md is left alone, since the
+// agent's file is not touched when there is nothing to record.
 func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", FindingsFile})
 	forge.files[FindingsFile] = goodFindings(t)
@@ -250,8 +255,9 @@ func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 		t.Fatalf("valid findings reported as unusable: %v", rep.FindingProblems)
 	}
 	// verdict.json must not read as third-party data. If it did, every new
-	// reproduction would come out review != "clear" and become unpublishable —
-	// a product-wide block introduced by adding a file.
+	// reproduction would have a review other than clear and become
+	// unpublishable, which would be a product-wide block introduced by adding
+	// a file.
 	if len(rep.Leaked) != 0 {
 		t.Fatalf("the findings file tripped the redistribution gate: %v", rep.Leaked)
 	}
@@ -267,12 +273,13 @@ func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 	}
 }
 
-// The decision that matters: a missing file is recorded and the run still
-// publishes. The manifest is the system's word and must not depend on the
-// agent's JSON.
+// TestFinalizeLiveMissingFindingsStillPublishes checks the central decision:
+// a missing file is recorded and the run still publishes. The manifest is the
+// system's statement and must not depend on the agent's JSON.
 func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
-	// A real reproduction in the tree, with no verdict.json beside it — the case
-	// the findings note is written for, as opposed to an empty repository (044d).
+	// A real reproduction in the tree with no verdict.json beside it. This is
+	// the case the findings note is written for, as opposed to an empty
+	// repository (044d).
 	forge := newFakeForge([]string{"README.md", "REPRODUCIBILITY.md", "src/run.py"})
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
@@ -300,7 +307,8 @@ func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
 	}
 }
 
-// An invalid file records the specific schema problems, not "invalid".
+// TestFinalizeLiveInvalidFindingsRecordsTheProblems checks that an invalid
+// file records the specific schema problems rather than a generic failure.
 func TestFinalizeLiveInvalidFindingsRecordsTheProblems(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", FindingsFile})
 	var v verdict.Verdict
@@ -326,7 +334,8 @@ func TestFinalizeLiveInvalidFindingsRecordsTheProblems(t *testing.T) {
 	}
 }
 
-// Prose in the file is a parse failure, not a panic, and is recorded as one.
+// TestFinalizeLiveNonJSONFindings checks that prose in the file is recorded as
+// a parse failure and does not panic.
 func TestFinalizeLiveNonJSONFindings(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", FindingsFile})
 	forge.files[FindingsFile] = []byte("# Reproducibility\n\nPartially reproducible.\n")
@@ -341,7 +350,8 @@ func TestFinalizeLiveNonJSONFindings(t *testing.T) {
 	}
 }
 
-// Re-finalizing must converge: the note is rewritten, never stacked.
+// TestFinalizeLiveDoesNotStackTheUnverifiedNote checks that re-finalizing
+// converges: the note is rewritten and never duplicated.
 func TestFinalizeLiveDoesNotStackTheUnverifiedNote(t *testing.T) {
 	forge := newFakeForge([]string{"README.md"})
 	forge.files[UnverifiedFile] = []byte("# Unverified\n\n- The dataset link 404s.\n")
@@ -372,11 +382,12 @@ func TestFinalizeLiveDoesNotStackTheUnverifiedNote(t *testing.T) {
 	}
 }
 
-// ── an empty repository (044d) ───────────────────────────────────────────────
+// An empty repository (044d).
 
-// The incident's repository: the run committed nothing, so the tree holds only
-// what the system put there before it started. Saying "the findings exist only
-// as prose in this repository" would promise prose that is not there.
+// TestFinalizeLiveReportsARunThatCommittedNothing reproduces the incident's
+// repository: the run committed nothing, so the tree holds only what the
+// system put there before it started. Saying that the findings exist only as
+// prose in this repository would promise prose that is not there.
 func TestFinalizeLiveReportsARunThatCommittedNothing(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", IdentityFile})
 
@@ -402,9 +413,10 @@ func TestFinalizeLiveReportsARunThatCommittedNothing(t *testing.T) {
 	}
 }
 
-// Re-finalizing an empty repository reads a tree that now holds the manifest and
-// the transcript — the system's own files, which must not read as a
-// reproduction — and converges rather than stacking a second note.
+// TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize checks that
+// re-finalizing an empty repository reads a tree that now holds the manifest
+// and the transcript, which are the system's own files and must not read as a
+// reproduction, and converges rather than adding a second note.
 func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", IdentityFile})
 	events := []provider.Event{{Kind: "message", Content: "hello"}}
@@ -414,8 +426,8 @@ func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
 		t.Fatalf("first finalize = %+v, %v", first, err)
 	}
 
-	// The second pass sees everything the first one wrote — the fake tracks its
-	// tree, so this is the same shape a real re-finalize meets.
+	// The second pass sees everything the first one wrote. The fake tracks its
+	// tree, so this is the same state a real re-finalize meets.
 	second, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
 		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
 	if err != nil {
@@ -430,8 +442,9 @@ func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
 	}
 }
 
-// One agent-authored path is enough. The question the system can answer is
-// whether a reproduction is there at all, not whether it is any good.
+// TestHoldsReproduction checks that one agent-authored path is enough. The
+// question the system can answer is whether a reproduction exists, not whether
+// it is good.
 func TestHoldsReproduction(t *testing.T) {
 	for _, tc := range []struct {
 		name string

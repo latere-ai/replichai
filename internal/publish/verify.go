@@ -12,24 +12,25 @@ import (
 )
 
 // This file is the post-run half of the redistribution gate (006f). When the
-// worker commits directly into a mounted repository, the publisher can no
-// longer filter before the push — so Classify, the same gate 002 uses, runs
-// afterwards as a verifier of what was actually committed, and as the guard on
-// the one irreversible action: making a reproduction public.
+// worker commits directly into a mounted repository, the publisher cannot
+// filter before the push, so the gate runs afterwards as a verifier of what
+// was committed, and as the guard on the one irreversible action: making a
+// reproduction public.
 
 // VerifyTree checks a mounted repository's committed tree for third-party
-// content that should not have been committed, and returns the offending paths.
-// An empty result means the bounded workspace held — the agent committed its
-// reproduction and kept downloads out. A non-empty result bars the repository
-// from ever being made public.
+// content that should not have been committed, and returns the offending
+// paths. An empty result means the bounded workspace held: the agent committed
+// its reproduction and kept downloads out. A non-empty result bars the
+// repository from ever being made public.
 //
-// Unlike 002's PlanPublication, this cannot allow-list: an agent-authored repo
-// is a real software project — .gitignore, LICENSE, requirements.txt, tests,
-// configs, generated results — not a fixed set of report files. So the method
-// is the primary control (keep downloads out of the repo), and this is the
-// backstop: it flags only what is almost certainly third-party — the paper, a
-// dataset, model weights, an archive, or a leaked secret. Everything else is
-// presumed the reproduction's own work.
+// Unlike 002's PlanPublication, this cannot use an allowlist. An agent-authored
+// repository is a real software project, with a .gitignore, a LICENSE, a
+// requirements.txt, tests, configs and generated results, and not a fixed set
+// of report files. The method's instruction to keep downloads out of the
+// repository is the primary control, and this is the backstop. It flags only
+// what is almost certainly third-party: the paper, a dataset, model weights,
+// an archive, or a leaked secret. Everything else is presumed to be the
+// reproduction's own work.
 func VerifyTree(paths []string) []string {
 	var flagged []string
 	for _, p := range paths {
@@ -40,11 +41,11 @@ func VerifyTree(paths []string) []string {
 	return flagged
 }
 
-// vendoredDirs are directory names that hold somebody else's code rather than
-// the reproduction's. They matter because a local run builds in the directory
-// that becomes the repository: the dependency tree is in the repository root
-// from the moment anything is installed, and it is third-party redistribution
-// by the hundred megabyte even though every file in it ends in .py or .so.
+// vendoredDirs are directory names that hold third-party code rather than the
+// reproduction's. They matter because a local run builds in the directory that
+// becomes the repository: the dependency tree is in the repository root from
+// the moment anything is installed, and it is hundreds of megabytes of
+// third-party redistribution even though every file in it ends in .py or .so.
 var vendoredDirs = map[string]bool{
 	"venv": true, ".venv": true, "node_modules": true, "site-packages": true,
 	"vendor": true, ".tox": true,
@@ -79,13 +80,13 @@ func isThirdPartyData(p string) bool {
 	return thirdPartyExts[strings.ToLower(p[dot:])]
 }
 
-// RedistributionFrom classifies the post-run verifier's two findings — over the
-// committed tree and over the transcript — into the manifest's redistribution
-// result. A tree leak is third-party *data* and takes precedence; a secret in
-// the transcript on an otherwise-clean tree is a distinct reason, so the
-// manifest states which bar applies rather than misreporting a leaked credential
-// as bulk data. Only a clean tree and a clean transcript are `clear` — the sole
-// state eligible for the public flip (EligibleForPublic).
+// RedistributionFrom classifies the post-run verifier's two findings, over the
+// committed tree and over the transcript, into the manifest's redistribution
+// result. A tree leak is third-party data and takes precedence. A secret in
+// the transcript on an otherwise clean tree is a distinct reason, so the
+// manifest states which bar applies rather than misreporting a leaked
+// credential as bulk data. Only a clean tree and a clean transcript are clear,
+// which is the only state eligible for the public flip (EligibleForPublic).
 func RedistributionFrom(treeClean, transcriptClean bool) Redistribution {
 	switch {
 	case !treeClean:
@@ -98,9 +99,10 @@ func RedistributionFrom(treeClean, transcriptClean bool) Redistribution {
 }
 
 // ManifestFor builds the manifest for a reproduction the worker committed into
-// a mounted repository. Unlike PlanPublication, there is no file set to filter —
-// the agent already committed — so the redistribution status is the verifier's
-// classified result (RedistributionFrom) over the committed tree and transcript.
+// a mounted repository. Unlike PlanPublication, there is no file set to filter,
+// because the agent already committed, so the redistribution status is the
+// verifier's result from RedistributionFrom over the committed tree and
+// transcript.
 func ManifestFor(id paper.Identity, repo, methodDigest string, verdict provider.Grade, created time.Time, redist Redistribution) Manifest {
 	return Manifest{
 		Schema: SchemaVersion,
@@ -122,9 +124,9 @@ func ManifestFor(id paper.Identity, repo, methodDigest string, verdict provider.
 
 // EligibleForPublic reports whether a reproduction may be made public: its
 // manifest must show the redistribution gate passed clean, with nothing
-// withheld. It answers only the redistribution question — trust and identity
-// (who may flip the switch) are the caller's concern (006c), never this
-// package's.
+// withheld. It answers only the redistribution question. Trust and identity,
+// meaning who may make the repository public, are the caller's concern (006c)
+// and not this package's.
 func EligibleForPublic(m Manifest) (bool, string) {
 	if m.Redistribution.ThirdPartyData {
 		return false, "third-party data was withheld from this reproduction"

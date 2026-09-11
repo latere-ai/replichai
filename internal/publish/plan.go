@@ -31,11 +31,12 @@ type QuarantinedFile struct {
 	Reason string
 }
 
-// ErrNoName reports a plan that cannot be named — an empty slug or suffix.
+// ErrNoName reports a plan that cannot be named because the slug or the suffix
+// is empty.
 var ErrNoName = errors.New("cannot name the repository")
 
 // PlanPublication builds the publication plan for one audit. It is pure: no
-// network, no repository, no clock, and no file reads — every artifact is
+// network, no repository, no clock, and no file reads; every artifact is
 // classified by its path alone. The suffix is supplied so naming is
 // deterministic and testable.
 func PlanPublication(result audit.Result, id paper.Identity, suffix string) (Plan, error) {
@@ -46,7 +47,7 @@ func PlanPublication(result audit.Result, id paper.Identity, suffix string) (Pla
 
 	plan := Plan{RepoName: name, SourceDir: result.ArtifactDir}
 	for _, a := range result.Artifacts {
-		// Compiled residue and known-secret files never enter the plan at all —
+		// Compiled files and known secret files never enter the plan. They are
 		// neither published nor listed as withheld.
 		if a.IsCompiled() || isSecretName(a.Path) {
 			continue
@@ -75,7 +76,8 @@ func PlanPublication(result audit.Result, id paper.Identity, suffix string) (Pla
 			Repo:         DefaultOrg + "/" + name,
 			MethodDigest: result.MethodDigest,
 			Verdict:      result.Grade(),
-			// Created is stamped at publish; Rate stays nil (the open mapping).
+			// Created is set at publish time. Rate stays nil because the rate
+			// mapping is still open.
 		},
 		Redistribution: Redistribution{ThirdPartyData: withheld, Review: review},
 	}

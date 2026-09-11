@@ -4,10 +4,10 @@
 // Package publish turns one completed audit's artifacts into a published
 // reproduction repository.
 //
-// It runs in two steps with a hard line between them. PlanPublication is pure —
-// it classifies artifacts through a fail-closed redistribution gate and builds
-// the manifest, touching no network, no repository, and no clock. Publish then
-// carries a plan out against a Forge, the swappable seam over repository
+// It runs in two separate steps. PlanPublication is pure: it classifies
+// artifacts through a fail-closed redistribution gate and builds the manifest,
+// and it touches no network, no repository, and no clock. Publish then carries
+// a plan out against a Forge, the replaceable interface over repository
 // hosting, and is the only part that reads files or creates anything.
 package publish
 
@@ -22,14 +22,14 @@ import (
 // SchemaVersion is the manifest schema this package writes and 003 reads.
 //
 // It stayed at 1 when Findings was added (021a). The field is optional and
-// additive, no reader gates on the number, and 002 pins this shape — bumping it
+// additive, no reader checks the number, and 002 fixes this shape. Bumping it
 // would have rewritten every published manifest on its next finalize to signal
 // a change no reader could act on.
 const SchemaVersion = 1
 
-// Manifest is replication.json — the record every published repository carries
-// at its root, and the only thing 003's registry reads. It serialises to the
-// exact shape 003 expects, so the two never drift.
+// Manifest is replication.json, the record every published repository carries
+// at its root and the only file 003's registry reads. It serialises to the
+// exact shape 003 expects, so the two do not drift.
 type Manifest struct {
 	Schema         int            `json:"schema"`
 	Paper          ManifestPaper  `json:"paper"`
@@ -39,20 +39,21 @@ type Manifest struct {
 }
 
 // Findings records what the system made of the agent's verdict.json (021a). It
-// is deliberately a record and not a gate: the findings are the agent's claim,
-// the transcript is the evidence, and the manifest is the system's word. Making
-// the system's word depend on the agent's JSON parsing would invert all three,
-// so a missing or invalid file is written down here and the run still publishes.
+// is a record and not a gate: the findings are the agent's claim, the
+// transcript is the evidence, and the manifest is the system's statement.
+// Making the system's statement depend on whether the agent's JSON parses
+// would invert all three, so a missing or invalid file is recorded here and
+// the run still publishes.
 //
-// A nil Findings means the manifest predates 021a, which is not the same as a
-// run that had no findings — that one carries Present: false and a reason.
+// A nil Findings means the manifest predates 021a. That is not the same as a
+// run that had no findings, which carries Present false and a reason.
 type Findings struct {
 	Present  bool     `json:"present"`
 	Problems []string `json:"problems,omitempty"` // why it could not be read, when it could not
-	// Reproduction reports whether the repository holds a reproduction at all —
-	// any path the run committed itself. A run that pushed nothing still gets a
-	// manifest, because it happened and it cost money; what the manifest must not
-	// do is imply a reproduction is there to read (044d).
+	// Reproduction reports whether the repository holds a reproduction at all,
+	// meaning any path the run committed itself. A run that pushed nothing
+	// still gets a manifest, because the run happened and cost money; the
+	// manifest must not imply that a reproduction is there to read (044d).
 	Reproduction bool `json:"reproduction"`
 }
 
@@ -76,7 +77,7 @@ type Reproduction struct {
 
 // Rate is the decomposed reproducibility rate, present only when it could be
 // parsed out of the worker's report. It is run-dependent (004), so a nil Rate
-// is a truthful "not recorded", never a fabricated zero.
+// means not recorded rather than a fabricated zero.
 type Rate struct {
 	Value       float64 `json:"value"`
 	Numerator   float64 `json:"numerator"`

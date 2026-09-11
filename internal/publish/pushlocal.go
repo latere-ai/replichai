@@ -21,7 +21,7 @@ var (
 	ErrNothingCommitted = errors.New("the run committed nothing")
 	// ErrNoWorkspace reports that there is no repository to push: the
 	// directory is gone or was never initialised. It is a failure of the
-	// push, never a finding about the run, which is why it is not
+	// push and not a finding about the run, which is why it is distinct from
 	// ErrNothingCommitted.
 	ErrNoWorkspace = errors.New("the workspace is not a git repository")
 	// ErrRefusedContent reports a committed tree carrying third-party
@@ -42,16 +42,16 @@ type Pushed struct {
 // LocalPush is one push of a workspace the agent committed into but never had
 // a remote for (045g).
 //
-// The token reaches git through an askpass helper, never in argv — engine and
-// process arguments are visible to every user on the machine — and never in
-// the repository's own configuration, where it would survive in .git/config
-// and in the reflog after the run. The remote is added, pushed, and removed,
-// so a session directory kept under the retention policy carries neither a
-// credential nor a push target.
+// The token reaches git through an askpass helper. It is never passed in
+// argv, because process arguments are visible to every user on the machine,
+// and never written to the repository's own configuration, where it would
+// survive in .git/config and in the reflog after the run. The remote is added,
+// pushed to, and removed, so a session directory kept under the retention
+// policy carries neither a credential nor a push target.
 type LocalPush struct {
 	// Workspace is the git repository the agent committed into.
 	Workspace string
-	// RemoteURL is where it goes.
+	// RemoteURL is the push target.
 	RemoteURL string
 	// Token is the forge credential. It is held for the length of one push
 	// and never enters a sandbox.
@@ -65,15 +65,15 @@ type LocalPush struct {
 // Verify checks what the agent committed, before anything leaves the machine.
 //
 // The gate is VerifyTree rather than Classify. Classify is an allowlist over a
-// harvested output directory — the fixed report files plus src/ — and an
-// agent-authored repository is a real software project: a LICENSE, a
-// requirements.txt, tests and configs would all be stripped by it. VerifyTree
-// is the backstop written for exactly this case: it flags the paper, a
-// dataset, model weights, an archive or a leaked credential, and presumes
-// everything else is the reproduction's own work.
+// harvested output directory, consisting of the fixed report files plus src/,
+// and an agent-authored repository is a real software project: Classify would
+// strip a LICENSE, a requirements.txt, tests and configs. VerifyTree is the
+// backstop written for this case. It flags the paper, a dataset, model
+// weights, an archive or a leaked credential, and presumes everything else is
+// the reproduction's own work.
 //
-// It reads the tree at HEAD, because that is what the push sends. The index
-// is not: a file staged and never committed does not travel, and a file
+// It reads the tree at HEAD, because that is what the push sends. The index is
+// not sent: a file staged and never committed does not travel, and a file
 // committed and then unstaged does.
 func (push LocalPush) Verify(ctx context.Context) ([]string, error) {
 	files, err := push.git(ctx, "ls-tree", "-r", "--name-only", "HEAD")
@@ -99,13 +99,13 @@ func (push LocalPush) Run(ctx context.Context) (Pushed, error) {
 	}
 	head, err := push.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD")
 	if err != nil {
-		// HEAD cannot be read. Either the repository has no commit yet —
-		// the run produced nothing, which is a result and is recorded as
-		// one — or there is nothing to read it from: git is missing, the
+		// HEAD cannot be read. Either the repository has no commit yet, in
+		// which case the run produced nothing and that is recorded as its
+		// result, or there is nothing to read it from: git is missing, the
 		// directory is gone, or it was never a repository. Only the first
-		// is ErrNothingCommitted. Reporting the rest as "committed nothing"
-		// would record a false outcome over a run that may have committed
-		// everything.
+		// case is ErrNothingCommitted. Reporting the rest as "committed
+		// nothing" would record a false outcome over a run that may have
+		// committed everything.
 		if errors.Is(err, exec.ErrNotFound) {
 			return Pushed{}, err
 		}
@@ -183,9 +183,9 @@ func (push LocalPush) gitWithAskpass(ctx context.Context, askpass string, args .
 	return string(output), nil
 }
 
-// writeAskpass writes the helper git asks for a password. It is 0600, lives
-// outside the workspace so it can never be committed, and is removed as soon
-// as the push is over.
+// writeAskpass writes the helper git asks for a password. It is mode 0700,
+// lives outside the workspace so it cannot be committed, and is removed as
+// soon as the push is over.
 func writeAskpass(token string) (string, func(), error) {
 	if token == "" {
 		return "", func() {}, nil

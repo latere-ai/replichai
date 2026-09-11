@@ -13,9 +13,10 @@ import (
 )
 
 func TestVerifyTreeAcceptsARealReproductionRepo(t *testing.T) {
-	// A normal software repo: reports, source, tests, config, deps, generated
-	// results — none of it third-party. This is the case that must not
-	// false-positive (an agent-authored repo is not four report files).
+	// A normal software repository: reports, source, tests, config,
+	// dependencies, generated results, none of it third-party. This is the case
+	// that must not produce a false positive; an agent-authored repository is
+	// not four report files.
 	clean := []string{
 		"README.md", "REPRODUCIBILITY.md", "SOURCES.md", "UNVERIFIED.md",
 		".gitignore", "LICENSE", "requirements.txt", "pyproject.toml", "Makefile",
@@ -44,10 +45,11 @@ func TestVerifyTreeFlagsThirdPartyDataAndSecrets(t *testing.T) {
 	}
 }
 
-// A local run installs its dependencies into the directory that becomes the
+// TestVerifyTreeFlagsAnInstalledDependencyTree checks the case of a local run
+// that installs its dependencies into the directory that becomes the
 // repository. Every file in that tree ends in .py or .so, so the extension
-// rules never see it — and it is still a few hundred megabytes of somebody
-// else's code. A tree that carries one is barred from being made public.
+// rules do not catch it, and it is still a few hundred megabytes of third-party
+// code. A tree that carries one is barred from being made public.
 func TestVerifyTreeFlagsAnInstalledDependencyTree(t *testing.T) {
 	tree := []string{
 		"README.md", "src/main.py", "requirements.txt",
@@ -87,9 +89,10 @@ func TestManifestForReflectsCleanliness(t *testing.T) {
 	}
 }
 
-// A secret in the transcript, on an otherwise-clean tree, is barred under its own
-// review reason — never misreported as third-party data — and is not eligible
-// for the public flip. A tree leak still takes precedence over a transcript one.
+// TestRedistributionFromClassifiesEachBar checks that a secret in the
+// transcript, on an otherwise clean tree, is barred under its own review reason
+// and never misreported as third-party data, and is not eligible for the
+// public flip. A tree leak still takes precedence over a transcript leak.
 func TestRedistributionFromClassifiesEachBar(t *testing.T) {
 	cases := []struct {
 		treeClean, transcriptClean bool

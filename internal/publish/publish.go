@@ -22,15 +22,15 @@ const ExcludedFile = "EXCLUDED.md"
 
 // ErrSecretInContent reports a high-signal secret found inside a file that was
 // otherwise cleared for publication. Publishing aborts: the filename gate
-// missed it, and shipping it would be worse than a failed publish.
+// missed it, and publishing it would be worse than a failed publish.
 var ErrSecretInContent = errors.New("refusing to publish: secret found in file content")
 
-// Published is the composable result later steps act on — 006c's collaborator
-// invitation takes Published.Repo.
+// Published is the result later steps act on; 006c's collaborator invitation
+// takes Published.Repo.
 type Published struct {
 	Repo    Repo
 	Preview bool // Live() was not passed; nothing was created
-	Existed bool // the repository already existed (idempotent re-publish)
+	Existed bool // the repository already existed, so this was an idempotent re-publish
 }
 
 // Option configures Publish.
@@ -50,9 +50,10 @@ func WithClock(now func() time.Time) Option {
 }
 
 // Publish carries a plan out against a forge. It previews by default and
-// creates nothing; Live() makes it real. When live it creates the private
-// repository if absent, then pushes — pushing even when the repository already
-// existed, so a run that failed mid-push completes on retry.
+// creates nothing; Live() makes it create and push. When live, it creates the
+// private repository if absent, then pushes. It pushes even when the
+// repository already existed, so a run that failed during a push completes on
+// retry.
 func Publish(ctx context.Context, plan Plan, forge Forge, opts ...Option) (Published, error) {
 	cfg := publishConfig{now: time.Now}
 	for _, o := range opts {
@@ -85,7 +86,7 @@ func Publish(ctx context.Context, plan Plan, forge Forge, opts ...Option) (Publi
 }
 
 // assemble builds the files to push: the manifest with its created stamp, every
-// included file (swept for secrets), and EXCLUDED.md when anything was withheld.
+// included file, swept for secrets, and EXCLUDED.md when anything was withheld.
 func assemble(plan Plan, now time.Time) ([]File, error) {
 	m := plan.Manifest
 	m.Reproduction.Created = now.UTC()

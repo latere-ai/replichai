@@ -13,8 +13,8 @@ import (
 
 // FSForge is a filesystem Forge: each repository is a directory under Root. It
 // runs the whole publish loop offline, so it is the default for local use and
-// the double every test publishes against. Visibility is recorded in memory so
-// a test can assert a reproduction is never created public.
+// the fake every test publishes against. Visibility is recorded in memory so a
+// test can assert a reproduction is never created public.
 type FSForge struct {
 	Root  string
 	Owner string

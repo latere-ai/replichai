@@ -11,11 +11,11 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// The credential shapes a run can plausibly put in front of itself are removed
-// from anything published. The host sandbox grants the harness its own
-// configuration by design, so an agent that reads its own credential file puts
-// the contents in a tool result — which is committed as evidence into a
-// repository that may later be made public.
+// TestCredentialShapesAreRemoved checks that the credential shapes a run can
+// plausibly encounter are removed from anything published. The host sandbox
+// grants the harness its own configuration by design, so an agent that reads
+// its own credential file puts the contents in a tool result, which is
+// committed as evidence into a repository that may later be made public.
 func TestCredentialShapesAreRemoved(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -60,8 +60,9 @@ func TestCredentialShapesAreRemoved(t *testing.T) {
 	}
 }
 
-// The sweep runs over everything the transcript publishes: the machine stream,
-// the narrative, and the raw payloads the events carry.
+// TestThePublishedTranscriptIsSwept checks that the sweep runs over everything
+// the transcript publishes: the machine-readable stream, the narrative, and
+// the raw payloads the events carry.
 func TestThePublishedTranscriptIsSwept(t *testing.T) {
 	secret := "sk-ant-api03-AbCdEf0123456789xyz"
 	events := []provider.Event{
@@ -95,8 +96,9 @@ func TestThePublishedTranscriptIsSwept(t *testing.T) {
 	}
 }
 
-// The caller's own events are not modified: they are evidence the caller may
-// still be holding, and the sweep is about what gets published.
+// TestTheSweepDoesNotMutateTheCallersEvents checks that the caller's own
+// events are not modified. They are evidence the caller may still be holding,
+// and the sweep applies only to what is published.
 func TestTheSweepDoesNotMutateTheCallersEvents(t *testing.T) {
 	secret := "ghp_AbCdEf0123456789ABCDEF"
 	events := []provider.Event{{Kind: provider.KindToolResult, Content: secret}}

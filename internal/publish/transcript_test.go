@@ -34,7 +34,8 @@ func TestRenderTranscriptFiles(t *testing.T) {
 		}
 	}
 
-	// jsonl: one normalised event per line — typed fields up top, raw nested.
+	// jsonl: one normalised event per line, with typed fields at the top level
+	// and the raw payload nested.
 	lines := strings.Split(strings.TrimSpace(string(files[TranscriptJSONL])), "\n")
 	if len(lines) != 4 {
 		t.Fatalf("want 4 jsonl lines, got %d", len(lines))
@@ -134,8 +135,9 @@ func TestTranscriptLeaksCleanTranscript(t *testing.T) {
 	}
 }
 
-// A cap that lands inside a multi-byte rune must move back to the rune
-// boundary: the capped content is published as evidence.
+// TestCapContentNeverSplitsARune checks that a cap that lands inside a
+// multi-byte rune moves back to the rune boundary, since the capped content is
+// published as evidence.
 func TestCapContentNeverSplitsARune(t *testing.T) {
 	long := strings.Repeat("語", maxEventMDBytes/3+1) // 3 bytes each, so the cap falls mid-rune
 	got := capContent(long)

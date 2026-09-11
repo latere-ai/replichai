@@ -10,15 +10,15 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 )
 
-// Origin says who produced an artifact. The zero value is deliberately unknown,
-// so an unclassified file is never mistaken for worker-written.
+// Origin records who produced an artifact. The zero value is OriginUnknown by
+// design, so an unclassified file is never mistaken for a worker-written one.
 type Origin uint8
 
 // The origins an artifact can have.
 const (
 	OriginUnknown    Origin = iota
 	OriginWorker            // a fixed report file, or anything under src/
-	OriginThirdParty        // everything else — downloaded, not written here
+	OriginThirdParty        // everything else, which was downloaded rather than written here
 )
 
 // Provenance is what the gate knows about one artifact: its path and origin.
@@ -27,9 +27,10 @@ type Provenance struct {
 	Origin Origin
 }
 
-// Classify is the redistribution decision, pure and reusable: an artifact is
-// published only when it is worker-written; anything else is withheld with a
-// reason. This is the fail-closed gate — 005's transcript gate reuses it.
+// Classify is the redistribution decision. It is pure and reusable: an
+// artifact is published only when it is worker-written, and anything else is
+// withheld with a reason. This is the fail-closed gate, and 005's transcript
+// gate reuses it.
 func Classify(p Provenance) (include bool, reason string) {
 	if p.Origin == OriginWorker {
 		return true, ""
@@ -62,11 +63,12 @@ func originOf(p string) Origin {
 }
 
 // secretNames and secretExts are filenames that must never be published. This
-// is a filename check, not a proof of secret-freedom. Content is swept
-// separately, and only where the system chose neither the file nor its
+// is a filename check and does not prove that no secret is present. Content is
+// swept separately, and only where the system chose neither the file nor its
 // contents: RedactSecrets runs over the transcript before it is committed. A
-// key pasted into a worker-written file is caught by neither, and the control
-// there is that a stage is given only the credentials it needs.
+// key pasted into a worker-written file is caught by neither check, and the
+// control for that case is that a stage is given only the credentials it
+// needs.
 var (
 	secretNames = map[string]bool{
 		"id_rsa": true, "id_dsa": true, "id_ecdsa": true, "id_ed25519": true,
