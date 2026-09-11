@@ -10,16 +10,21 @@ permissions:
   contents: read
 
 jobs:
-  # The Go gates that stand on their own: the ubuntu/macos matrix, gofmt,
-  # go vet + go test, the hermetic run, and modernize. What stays below is
-  # what this pipeline cannot delegate -- a suite that needs a live Postgres,
+  # The shared bar -- `go tool lateregate`, the same command as `make check`.
+  # In the order it runs them: fmt-check, modernize, cgo-free, otel-client,
+  # license, spec-lint, depcheck (skipped here: no package is named), lint
+  # (golangci-lint against the config rendered from .lateregate.yaml), vuln,
+  # test (go vet and the suite), race, hermetic, tempdir, and cover. The exact
+  # plan for the current tree is `go tool lateregate list`. What stays below
+  # is what that bar cannot run for us -- a suite that needs a live Postgres,
   # and a frontend that needs bun and a browser.
   verify:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
 
-  # golangci-lint stays here rather than in go-verify: this repo runs about
-  # nineteen linters against go-verify's shared one, and the shared config
-  # cannot express its reasoned test-file exclusions yet.
+  # The Postgres contracts. The shared bar runs the suite with no database, so
+  # every store contract skips there; this job gives them one and runs the
+  # whole suite under the race detector against it. golangci-lint is not here:
+  # it is the lint gate above.
   test:
     name: test (race) + postgres contracts
     runs-on: ubuntu-latest
