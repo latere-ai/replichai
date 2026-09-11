@@ -110,9 +110,10 @@ Your reproduction lives at %[1]s, which is a git repository on the machine runni
 - Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s. Put them in "$TMPDIR", which is writable and is discarded with the session. Never "git add" or commit third-party data: the repository must contain only your own reproduction work, and a tree carrying a paper or a dataset is refused at publication.`, workspace, deliverableList())
 }
 
-// DefaultPackages are installed into every sandbox: enough to pull a paper
-// down and read it, with anything domain-specific installed per run.
-func DefaultPackages() map[string][]string {
+// defaultPackages are installed into every sandbox: enough to pull a paper
+// down and read it, with anything domain-specific installed per run. Each
+// call is a fresh map, so one auditor's additions never reach another.
+func defaultPackages() map[string][]string {
 	return map[string][]string{"pip": {"pypdf", "requests"}}
 }
 
@@ -134,16 +135,8 @@ type Result struct {
 	InstrumentViolations []instrument.Violation
 }
 
-// InstrumentOK reports whether the run wrote a schema-valid instrument.json.
-func (r Result) InstrumentOK() bool {
-	return r.InstrumentPresent && len(r.InstrumentViolations) == 0
-}
-
 // InstrumentFile is the audit's declared study protocol (007a).
 const InstrumentFile = "instrument.json"
-
-// Passed reports whether the run met the rubric.
-func (r Result) Passed() bool { return r.Status.Passed() }
 
 // Grade reports the verdict's grade, or GradeUnknown when none was recorded.
 func (r Result) Grade() provider.Grade {
@@ -174,33 +167,9 @@ type Auditor struct {
 // Option configures an Auditor.
 type Option func(*Auditor)
 
-// WithWorkerName overrides the name given to the worker.
-func WithWorkerName(name string) Option {
-	return func(a *Auditor) { a.workerName = name }
-}
-
 // WithModelPreference overrides the model tier requested.
 func WithModelPreference(pref string) Option {
 	return func(a *Auditor) { a.modelPref = pref }
-}
-
-// WithMaxRevisions overrides how many times the worker may revise.
-func WithMaxRevisions(n int) Option {
-	return func(a *Auditor) {
-		if n > 0 {
-			a.maxRevisions = n
-		}
-	}
-}
-
-// WithPollInterval overrides the gap between status checks.
-func WithPollInterval(d time.Duration) Option {
-	return func(a *Auditor) { a.pollInterval = d }
-}
-
-// WithTimeout overrides how long a run may take before it is abandoned.
-func WithTimeout(d time.Duration) Option {
-	return func(a *Auditor) { a.timeout = d; a.unbounded = false }
 }
 
 // WithoutTimeout removes the wall-clock deadline: the wait ends when the backend
@@ -215,16 +184,6 @@ func WithTimeout(d time.Duration) Option {
 // those need a clock here.
 func WithoutTimeout() Option {
 	return func(a *Auditor) { a.unbounded = true }
-}
-
-// WithPollFailures overrides how many consecutive failed observations are
-// tolerated before the wait gives up.
-func WithPollFailures(n int) Option {
-	return func(a *Auditor) {
-		if n > 0 {
-			a.pollFailures = n
-		}
-	}
 }
 
 // WithObserver installs a callback invoked on every status observation.
@@ -261,7 +220,7 @@ func New(p provider.Provider, m method.Method, opts ...Option) *Auditor {
 		method:       m,
 		workerName:   DefaultWorkerName,
 		modelPref:    DefaultModelPreference,
-		packages:     DefaultPackages(),
+		packages:     defaultPackages(),
 		maxRevisions: DefaultMaxRevisions,
 		pollInterval: DefaultPollInterval,
 		timeout:      DefaultTimeout,

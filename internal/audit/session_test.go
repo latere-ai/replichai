@@ -132,7 +132,7 @@ func TestSessionAuditorOptionsAndResultHelpers(t *testing.T) {
 	if err != nil || !retained || result.Grade() != managed.GradePassed {
 		t.Fatalf("Run = %+v, retained=%v, %v", result, retained, err)
 	}
-	if result.InstrumentOK() || (SessionResult{}).Grade() != managed.GradeUnknown {
+	if instrumentOK(result.InstrumentPresent, result.InstrumentViolations) || (SessionResult{}).Grade() != managed.GradeUnknown {
 		t.Fatal("result helpers misclassified missing instrument/verdict")
 	}
 	spec := runtime.Specs()[0]
