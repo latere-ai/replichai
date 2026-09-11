@@ -2,16 +2,16 @@
 # SPDX-FileCopyrightText: 2026 Latere AI
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# Lightweight full-stack smoke test against the real compose stack (Postgres +
-# the server), using the free in-process memory provider — no API key, no cost.
-# It brings the stack up, submits a paper, asserts the job runs to done, and
-# tears the stack down. Exits non-zero on any failure.
+# Full-stack smoke test against the compose stack of Postgres and the server,
+# using the in-process memory provider, so it needs no API key and costs
+# nothing. It brings the stack up, submits a paper, asserts the job runs to
+# done, and tears the stack down. Exits non-zero on any failure.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 BASE=${BASE:-http://localhost:8080}
 
-# Work with either Docker or podman (the compose subcommand or the standalone).
+# Work with either Docker or podman, as the compose subcommand or the standalone binary.
 detect_compose() {
   if [ -n "${COMPOSE:-}" ]; then echo "$COMPOSE"; return; fi
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo "docker compose"; return; fi
@@ -37,9 +37,9 @@ for i in $(seq 1 30); do
   [ "$i" = 30 ] && { echo " timed out"; docker compose logs server | tail -20; exit 1; }
 done
 
-# Two acts since 012: a project records the papers it is about, and a session
-# runs one of them. The create spends nothing, which is why it works here with
-# no credits configured at all.
+# Since 012 there are two steps: a project records the papers it is about, and
+# a session runs one of them. Creating a project spends nothing, so it works
+# here with no credits configured.
 echo "==> opening a project with one paper"
 CREATED=$(curl -sf -XPOST "$BASE/projects" -H 'content-type: application/json' \
   -d '{"title":"smoke","papers":["10.1145/3544548.3580778"]}')
