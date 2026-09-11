@@ -67,11 +67,18 @@ func mountProtocol(mountPath string) string {
 
 A git repository is mounted at %[1]s, and its commit history is published as part of the result. Treat it as the home of your reproduction:
 
-- Write your reproduction files (README.md, REPRODUCIBILITY.md, src/, UNVERIFIED.md, SOURCES.md, instrument.json) inside %[1]s.
+- Write your reproduction files (%[2]s) inside %[1]s.
 - Commit your progress with git as you finish each part — small, meaningful commits. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
 - Run "git push" immediately after every commit. A commit that is not pushed is discarded when this session ends: the sandbox is destroyed and only what reached the remote survives. Committing is not publishing.
 - Before you finish, run "git status -sb" and confirm the branch is not ahead of origin/main. If it is, push. Record that output — criterion 9 is graded on it.
-- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use /tmp. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, mountPath)
+- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s; use /tmp. Never "git add" or commit third-party data: the repository must contain only your own reproduction work.`, mountPath, deliverableList())
+}
+
+// deliverableList renders the method's deliverables for a protocol sentence,
+// so the files a session is asked to write are the files the method requires
+// and the gate admits, with no second copy of the list to fall behind.
+func deliverableList() string {
+	return strings.Join(method.Deliverables(), ", ") + ", and " + method.SourceDir + "/"
 }
 
 // workspaceProtocol tells the worker how to use a workspace that is a git
@@ -94,13 +101,13 @@ func workspaceProtocol(workspace string) string {
 
 Your reproduction lives at %[1]s, which is a git repository on the machine running this session. There is no remote, and %[1]s is not destroyed when this session ends.
 
-- Write your reproduction files (README.md, REPRODUCIBILITY.md, src/, UNVERIFIED.md, SOURCES.md, verdict.json, instrument.json) inside %[1]s.
+- Write your reproduction files (%[2]s) inside %[1]s.
 - Commit your progress with git as you finish each part — small, meaningful commits. If git refuses to commit for want of an identity, set one first with "git config user.email" and "git config user.name".
 - There is nothing to push. The system publishes what you committed, after this session ends, and verifies it independently. Criterion 9 does not apply to this run.
 - Before you finish, run "git status" and confirm nothing is uncommitted, then record "git log --oneline -5". Uncommitted work is not part of the history that gets published.
 - A Python environment is already prepared for you at "$VIRTUAL_ENV", with this run's declared packages installed. Use it — "$VIRTUAL_ENV/bin/python" and "$VIRTUAL_ENV/bin/pip" — and do not create a virtualenv inside %[1]s: it is not your work, it is enormous, and a tree carrying one is refused at publication along with everything else in it.
 - This session reaches a fixed list of domains. A fetch refused with EGRESS_BLOCKED is a limit of this run, not a fact about the paper: record it as "not fetched — the sandbox refused <domain>", never as "no artifact found" or "not released". Saying an author released nothing when you were not allowed to look is the worst error this audit can make.
-- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s. Put them in "$TMPDIR", which is writable and is discarded with the session. Never "git add" or commit third-party data: the repository must contain only your own reproduction work, and a tree carrying a paper or a dataset is refused at publication.`, workspace)
+- Keep every download (the paper PDF, datasets, benchmarks, any third-party file) OUTSIDE %[1]s. Put them in "$TMPDIR", which is writable and is discarded with the session. Never "git add" or commit third-party data: the repository must contain only your own reproduction work, and a tree carrying a paper or a dataset is refused at publication.`, workspace, deliverableList())
 }
 
 // DefaultPackages are installed into every sandbox: enough to pull a paper

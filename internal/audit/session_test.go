@@ -221,6 +221,26 @@ func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 	}
 }
 
+// Whichever repository protocol a session is handed, it must ask for every
+// file the method requires. The lists were once typed out by hand in each
+// protocol and the mount one omitted verdict.json; deriving them from
+// method.Deliverables makes the omission impossible, and this test proves it.
+func TestEveryRepositoryProtocolNamesEveryDeliverable(t *testing.T) {
+	for name, protocol := range map[string]string{
+		"mount":     mountProtocol("/workspace/repro"),
+		"workspace": workspaceProtocol("/s/workspace"),
+	} {
+		for _, file := range method.Deliverables() {
+			if !strings.Contains(protocol, file) {
+				t.Errorf("the %s protocol does not ask for %s", name, file)
+			}
+		}
+		if !strings.Contains(protocol, method.SourceDir+"/") {
+			t.Errorf("the %s protocol does not ask for %s/", name, method.SourceDir)
+		}
+	}
+}
+
 // The mount protocol and the workspace protocol are mutually exclusive: a
 // session either pushes from inside or is pushed from outside, and being told
 // both would be being told to do two different things with one repository.
