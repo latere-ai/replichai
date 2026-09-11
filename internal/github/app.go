@@ -211,7 +211,11 @@ func (a *appAuth) doJWT(ctx context.Context, jwt, method, path string, body, out
 		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if out != nil && resp.StatusCode/100 == 2 {
+	if resp.StatusCode/100 != 2 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		return resp.StatusCode, failure(method, path, resp, payload, time.Now())
+	}
+	if out != nil {
 		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 			return resp.StatusCode, fmt.Errorf("decoding %s %s: %w", method, path, err)
 		}

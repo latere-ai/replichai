@@ -13,6 +13,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/latere-ai/replichai/internal/managed"
 )
 
 func testClient(t *testing.T, handler http.HandlerFunc) *Client {
@@ -58,9 +61,148 @@ func TestCreateRepoPrivate(t *testing.T) {
 func TestCreateRepoExistsIsTyped(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}]}`))
 	})
 	if _, err := c.CreateRepo(context.Background(), "open-hai", "x", true); !errors.Is(err, ErrRepoExists) {
 		t.Errorf("err = %v, want ErrRepoExists", err)
+	}
+}
+
+// GitHub answers 422 to every validation failure. Only "already exists" means
+// there is a repository to reuse; treating an invalid name or a plan limit as
+// one sent the caller to fetch a repository that was never created.
+func TestCreateRepoOtherValidationFailuresAreNotExists(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name is too long (maximum is 100 characters)"}]}`))
+	})
+	_, err := c.CreateRepo(context.Background(), "open-hai", strings.Repeat("x", 101), true)
+	if errors.Is(err, ErrRepoExists) {
+		t.Fatalf("an invalid name was reported as an existing repository: %v", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "name is too long") {
+		t.Fatalf("err = %v, want GitHub's reason", err)
+	}
+}
+
+// A refusal says what GitHub said. "unexpected status 403" told an operator
+// nothing; "Resource not accessible by integration" tells them which
+// permission the token lacks.
+func TestAFailureCarriesGitHubsMessage(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest"}`))
+	})
+	err := c.Invite(context.Background(), "open-hai", "x", "alice")
+	var refused *APIError
+	if !errors.As(err, &refused) {
+		t.Fatalf("err = %T %v, want *APIError", err, err)
+	}
+	if refused.Status != http.StatusForbidden || refused.Message != "Resource not accessible by integration" {
+		t.Fatalf("APIError = %+v", refused)
+	}
+	for _, want := range []string{"PUT", "/repos/open-hai/x/collaborators/alice", "403", "Resource not accessible by integration"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not say %q", err, want)
+		}
+	}
+	if refused.Temporary() {
+		t.Error("a permission denial is not temporary; retrying it cannot help")
+	}
+	// A body that is not GitHub's JSON shape still reaches the message.
+	plain := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "gateway is on fire", http.StatusBadGateway)
+	})
+	if err := plain.SetPublic(context.Background(), "open-hai", "x"); err == nil || !strings.Contains(err.Error(), "gateway is on fire") {
+		t.Errorf("a plain-text body was dropped: %v", err)
+	}
+}
+
+// A rate limit is a temporary failure with a figure attached, in the shape
+// managed.IsTemporary already matches, so a caller backs off rather than
+// failing a publication over "not now".
+func TestARateLimitIsTemporaryAndSaysHowLong(t *testing.T) {
+	t.Run("secondary limit with Retry-After", func(t *testing.T) {
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "30")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}`))
+		})
+		_, err := c.GetRepo(context.Background(), "open-hai", "x")
+		var limited *APIError
+		if !errors.As(err, &limited) || !limited.Temporary() || limited.RetryAfter() != 30*time.Second {
+			t.Fatalf("err = %v; want a temporary failure asking for 30s", err)
+		}
+		if !managed.IsTemporary(err) {
+			t.Error("managed.IsTemporary does not recognise the rate limit")
+		}
+	})
+
+	t.Run("primary limit with a reset epoch", func(t *testing.T) {
+		now := time.Unix(1_700_000_000, 0)
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("X-RateLimit-Reset", "1700000090")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"API rate limit exceeded for installation ID 1."}`))
+		})
+		c.now = func() time.Time { return now }
+		_, err := c.HeadCommit(context.Background(), "open-hai", "x")
+		var limited *APIError
+		if !errors.As(err, &limited) || !limited.Temporary() || limited.RetryAfter() != 90*time.Second {
+			t.Fatalf("err = %v; want a temporary failure asking for 90s", err)
+		}
+		if !strings.Contains(err.Error(), "retry after 1m30s") {
+			t.Errorf("the error does not say how long to wait: %v", err)
+		}
+	})
+
+	t.Run("429 with no figure is still temporary", func(t *testing.T) {
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+		_, err := c.TreePaths(context.Background(), "open-hai", "x", "main")
+		var limited *APIError
+		if !errors.As(err, &limited) || !limited.Temporary() || limited.RetryAfter() != 0 {
+			t.Fatalf("err = %v; want temporary with no figure", err)
+		}
+	})
+
+	t.Run("a plain 403 is a denial, not a limit", func(t *testing.T) {
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("X-RateLimit-Remaining", "4999")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"Must have admin rights to Repository."}`))
+		})
+		err := c.SetPublic(context.Background(), "open-hai", "x")
+		if managed.IsTemporary(err) {
+			t.Fatalf("a permission denial was reported as temporary: %v", err)
+		}
+	})
+}
+
+// GitHub will not inline a file over about a megabyte: the JSON answer says
+// encoding "none" and carries no content. The file is there, so it is read
+// through the raw media type; answering "absent" made a large verdict.json
+// read as never written.
+func TestGetFileContentReadsALargeFileThroughTheRawPath(t *testing.T) {
+	want := []byte(strings.Repeat(`{"boundary":[]}`, 10))
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/open-hai/x/contents/verdict.json" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if r.Header.Get("Accept") == "application/vnd.github.raw" {
+			_, _ = w.Write(want)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": "", "encoding": "none", "sha": "big", "size": 2_000_000})
+	})
+	got, ok, err := c.GetFileContent(context.Background(), "open-hai", "x", "verdict.json")
+	if err != nil || !ok {
+		t.Fatalf("GetFileContent: ok=%v err=%v", ok, err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("content = %q, want the raw bytes", got)
 	}
 }
 
