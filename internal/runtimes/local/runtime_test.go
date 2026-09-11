@@ -303,6 +303,34 @@ func TestConcurrentSessionsGetTheirOwnWorkspace(t *testing.T) {
 	}
 }
 
+// A Start that fails after it has taken a session leaves nothing behind: the
+// directory it made is gone, so a driver that cannot launch a stage does not
+// accumulate an empty session per attempt. The reference was never returned,
+// so no later call could find the directory to clean it up.
+func TestStartCleansUpTheSessionWhenLaunchFails(t *testing.T) {
+	root := t.TempDir()
+	driver := localtest.New(localtest.Script{FailLaunch: errors.New("the driver cannot start a stage")})
+	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
+	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, noCredentials)
+	runtime, err := local.New(local.Config{
+		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
+		Root: root, Lookup: os.LookupEnv,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := runtime.Start(context.Background(), spec(false)); err == nil {
+		t.Fatal("Start succeeded although the driver cannot launch anything")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read the session root: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("a failed Start left %d session directories behind: %v", len(entries), entries)
+	}
+}
+
 // A graded session that passes ends done with a decided verdict, having run
 // one worker and one judge.
 func TestAGradedSessionRunsAWorkerThenAJudge(t *testing.T) {

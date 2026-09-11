@@ -193,7 +193,7 @@ func (r *Runtime) carriesCredential(model managed.ModelRef, gateway harness.Gate
 // Start creates the session and launches its first worker stage. It returns a
 // reference only once that reference alone is enough to recover the session:
 // the directory exists, the journal is written, and the stage is detached.
-func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.SessionRef, error) {
+func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref managed.SessionRef, err error) {
 	if err := r.Validate(spec); err != nil {
 		return managed.SessionRef{}, err
 	}
@@ -208,10 +208,21 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
-	if err := r.writeAttachments(session, spec); err != nil {
+	// Until the reference is returned the session is not recoverable by
+	// anyone, so a failure past this point must not leave its directory on
+	// disk nor a bootstrap it launched still running: both would be a leak no
+	// later call could find to clean up.
+	locator := Locator{Driver: r.config.Sandbox.Name(), Harness: r.config.Harness.Name()}
+	defer func() {
+		if err != nil {
+			r.abandon(ctx, session, locator)
+		}
+	}()
+
+	if err = r.writeAttachments(session, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
-	if err := session.writeJSON(specFile, spec); err != nil {
+	if err = session.writeJSON(specFile, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
 	effective := r.network(spec, gateway)
@@ -227,15 +238,14 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if gateway.Auth == harness.AuthHarness {
 		record.Sandbox.ConfigRead = harness.LoginPaths(r.config.Harness.Needs(r.config.Machine))
 	}
-	if err := session.WriteEnvironment(record); err != nil {
+	if err = session.WriteEnvironment(record); err != nil {
 		return managed.SessionRef{}, err
 	}
 
-	locator := Locator{Driver: r.config.Sandbox.Name(), Harness: r.config.Harness.Name()}
 	// The bootstrap runs first and as a stage of its own, so a dependency
 	// that will not install fails the session with a reason rather than
 	// surfacing an hour later as an agent that cannot import.
-	if err := r.launch(ctx, session, &locator, spec, model, gateway, harness.StageBootstrap, spec.Task); err != nil {
+	if err = r.launch(ctx, session, &locator, spec, model, gateway, harness.StageBootstrap, spec.Task); err != nil {
 		return managed.SessionRef{}, err
 	}
 	status := managed.Status{
@@ -246,15 +256,26 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
-	ref, err := r.reference(session, locator, revision)
+	ref, err = r.reference(session, locator, revision)
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
 	status.Ref = ref
-	if err := session.WriteStatus(status); err != nil {
+	if err = session.WriteStatus(status); err != nil {
 		return managed.SessionRef{}, err
 	}
 	return ref, nil
+}
+
+// abandon undoes a Start that could not finish: it stops every stage the
+// attempt launched, so no bootstrap is left running detached, and removes the
+// session directory, which no reference names and so nothing else will ever
+// clean up.
+func (r *Runtime) abandon(ctx context.Context, session *Session, locator Locator) {
+	for _, stage := range locator.Stages {
+		_ = r.config.Sandbox.Discard(ctx, stage.Handle)
+	}
+	_ = session.Remove()
 }
 
 // Poll advances the session: it drains whatever the current stage has written,
