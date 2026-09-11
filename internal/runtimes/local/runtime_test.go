@@ -146,6 +146,16 @@ func TestLocalMeetsTheManagedContract(t *testing.T) {
 	})
 }
 
+// And to the shared terminal state for a rejected evaluation: failed, not done.
+// Local reported done, and the job store maps state one to one, so the same
+// outcome settled as done here and failed on every other runtime.
+func TestLocalFailingEvaluationMeetsTheContract(t *testing.T) {
+	contracttest.RunFailingEvaluation(t, func() managed.Runtime {
+		runtime, _ := build(t, localtest.Script{Grades: []string{"needs_revision", "needs_revision"}})
+		return runtime
+	})
+}
+
 func spec(graded bool) managed.SessionSpec {
 	s := managed.SessionSpec{
 		Model:        managed.ModelSelector{Preference: "best"},
@@ -416,11 +426,13 @@ func TestTheJudgeCannotWriteWhatItGrades(t *testing.T) {
 	}
 }
 
-// A rejection spends a revision, and the budget is spent exactly.
+// A rejection spends a revision, and the budget is spent exactly. An
+// evaluation the run never passes ends failed — the same terminal state the
+// other runtimes reach — not done.
 func TestARejectionSpendsARevisionAndTheBudgetIsExact(t *testing.T) {
 	runtime, driver := build(t, localtest.Script{Grades: []string{"needs_revision", "needs_revision", "needs_revision"}})
 	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
-	if status.State != managed.StateDone || status.TerminalReason != managed.ReasonEvaluationFailed {
+	if status.State != managed.StateFailed || status.TerminalReason != managed.ReasonEvaluationFailed {
 		t.Fatalf("status = %+v", status)
 	}
 	if status.Verdict == nil || status.Verdict.Grade != managed.GradeExhausted {

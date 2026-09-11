@@ -89,6 +89,24 @@ func Run(t *testing.T, factory Factory) {
 	})
 }
 
+// RunFailingEvaluation holds a runtime to the shared terminal state for a
+// graded session the evaluator rejects: StateFailed with ReasonEvaluationFailed
+// and a verdict that did not pass, never StateDone. The three runtimes
+// disagreed on this — local reported StateDone — and the job store maps state
+// one to one, so the same outcome landed as done on one runtime and failed on
+// the rest. The factory must build a runtime whose evaluation fails.
+func RunFailingEvaluation(t *testing.T, factory Factory) {
+	t.Helper()
+	runtime := factory()
+	status := pollTerminal(t, runtime, start(t, runtime, spec(true)))
+	if status.State != managed.StateFailed || status.TerminalReason != managed.ReasonEvaluationFailed {
+		t.Fatalf("a rejected evaluation did not end failed: %+v", status)
+	}
+	if status.Verdict == nil || status.Verdict.Passed() {
+		t.Fatalf("a rejected evaluation carries no rejecting verdict: %+v", status)
+	}
+}
+
 func spec(graded bool) managed.SessionSpec {
 	spec := managed.SessionSpec{
 		Model:        managed.ModelSelector{Preference: "best"},
