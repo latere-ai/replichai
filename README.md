@@ -103,8 +103,11 @@ replichai audit https://arxiv.org/abs/2603.01795 --runtime local
 ```
 
 On a machine where `claude login` has already happened that needs no API key
-and no configuration. `--sandbox container` swaps the sandbox for Podman or
-Docker when a pinned toolchain matters; `--harness codex` and a gateway in
+and no configuration. That host sandbox is what runs today. `--sandbox
+container` is built to swap it for Podman or Docker when a pinned toolchain
+matters, but it needs the harness image
+(`ghcr.io/latere-ai/replichai-harness`), which is not published yet — until it
+is, point `--image` at one you built. `--harness codex` and a gateway in
 `models.yaml` put an open-weights model behind the same run.
 
 A whole project at once, and the results in the app:
