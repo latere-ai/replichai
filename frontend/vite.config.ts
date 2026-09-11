@@ -3,6 +3,7 @@
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { keepPlaceholder } from './scripts/keep-placeholder.mjs'
 
 // The Go server embeds the build, so output goes straight into the spa package.
 // In dev, `bun run dev` serves the SPA on :5173 and proxies the API to the
@@ -37,7 +38,10 @@ const api = [
 ]
 
 export default defineConfig({
-  plugins: [react()],
+  // keepPlaceholder puts dist/PLACEHOLDER back at the end of every build, so a
+  // build that failed after emptying the directory cannot leave go:embed with
+  // nothing to match.
+  plugins: [react(), keepPlaceholder()],
   build: { outDir: '../internal/spa/dist', emptyOutDir: true },
   server: {
     port: 5173,

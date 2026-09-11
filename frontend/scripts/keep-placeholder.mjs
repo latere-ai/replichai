@@ -13,22 +13,44 @@
 // test at once for everyone who pulls. internal/spa's TestEmbedSurvivesCleanCheckout
 // catches it, but only after it has been committed and pushed.
 //
-// Restoring it here makes the build put back what it removed, so the guard
-// stops depending on somebody noticing a deletion in `git status`.
+// Restoring it makes the build put back what it removed, so the guard stops
+// depending on somebody noticing a deletion in `git status`. It is a Vite
+// plugin rather than a step after `vite build` in package.json, because that
+// step ran only when the build succeeded: Vite empties the directory just
+// before it writes, so a build that failed while writing left dist empty and
+// `go build` broken. closeBundle runs in Vite's own finally, whichever way the
+// build ended.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const placeholder = resolve(here, '../../internal/spa/dist/PLACEHOLDER')
+
+// PLACEHOLDER is where the file lives, relative to this script.
+export const PLACEHOLDER = resolve(here, '../../internal/spa/dist/PLACEHOLDER')
 
 // Kept byte-for-byte in step with the committed file: a differing body would
 // show up as a spurious modification in every build.
-const body = `This file exists so \`//go:embed all:dist\` in spa.go has something to match in a
+export const body = `This file exists so \`//go:embed all:dist\` in spa.go has something to match in a
 clean checkout, where the real frontend build output (index.html, assets/) is
 gitignored. The release image replaces this directory with the actual
 \`bun run build\` output before compiling, so the placeholder never ships.
 `
 
-mkdirSync(dirname(placeholder), { recursive: true })
-writeFileSync(placeholder, body)
+// restorePlaceholder writes the file, and the directory it lives in, back.
+export function restorePlaceholder(path = PLACEHOLDER) {
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, body)
+}
+
+// keepPlaceholder is the Vite plugin: the restore, at the end of every build,
+// succeeded or not.
+export function keepPlaceholder() {
+  return {
+    name: 'keep-placeholder',
+    apply: 'build',
+    closeBundle() {
+      restorePlaceholder()
+    },
+  }
+}
