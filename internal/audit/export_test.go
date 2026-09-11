@@ -9,11 +9,11 @@ import (
 	"github.com/latere-ai/replichai/internal/instrument"
 )
 
-// The knobs below are turned by nothing in production: the server wires the
+// Nothing in production uses the options below: the server configures the
 // legacy Auditor with its own options and the CLI runs sessions through
-// SessionAuditor. The tests that drive the legacy loop at speed still need
-// them, so they live here — visible to this package's tests, internal and
-// external alike, and absent from the API a caller sees.
+// SessionAuditor. The tests that drive the legacy loop quickly still need
+// them, so they are defined here, where they are visible to this package's
+// internal and external tests and absent from the API a caller sees.
 
 // WithWorkerName overrides the name given to the worker.
 func WithWorkerName(name string) Option {

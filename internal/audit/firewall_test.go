@@ -16,12 +16,13 @@ import (
 	"github.com/latere-ai/replichai/internal/provider/memory"
 )
 
-// The firewall the whole 007 track rests on: the audit never reads an
-// experiment. An auditor that could ingest experiment output could let a
-// synthetic cohort inform a boundary classification or a rate without ever
-// writing the verdict itself — the same violation by a side door. The missing
-// import edge forbids it, and an import cycle would be a build failure; this is
-// that same guarantee made explicit in the direction that matters (007 crit. 4).
+// TestAuditNeverImportsExperiment checks the constraint the 007 track depends
+// on: the audit never reads an experiment. An auditor that could read
+// experiment output could let a synthetic cohort inform a boundary
+// classification or a rate without writing the verdict itself, which is the
+// same violation by another route. The absent import edge forbids it, and an
+// import cycle would be a build failure; this test makes the same guarantee
+// explicit in the direction that matters (007 crit. 4).
 func TestAuditNeverImportsExperiment(t *testing.T) {
 	const (
 		auditPkg      = "github.com/latere-ai/replichai/internal/audit"
@@ -38,11 +39,12 @@ func TestAuditNeverImportsExperiment(t *testing.T) {
 	}
 }
 
-// AC4 (second half): re-auditing a paper after pilots have run against its
-// instrument produces the same verdict. The audit does not read an experiment,
-// so a thousand pilots or none leave its verdict identical. This lives in an
-// external test package so it can import both audit and experiment without
-// creating the production edge the test above forbids.
+// TestReAuditIsUnaffectedByPilots checks the second half of AC4: re-auditing a
+// paper after pilots have run against its instrument produces the same
+// verdict. The audit does not read an experiment, so its verdict is the same
+// whether a thousand pilots ran or none. The test is in an external test
+// package so it can import both audit and experiment without creating the
+// production import edge the test above forbids.
 func TestReAuditIsUnaffectedByPilots(t *testing.T) {
 	m := method.Method{
 		Instructions: "Audit the paper. Write to {{OUTPUT_DIR}}.",

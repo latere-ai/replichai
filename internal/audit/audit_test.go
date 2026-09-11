@@ -145,8 +145,8 @@ func TestWaitTimesOut(t *testing.T) {
 	}
 }
 
-// flakyProvider fails its first n Poll calls, then defers to the real one. It
-// stands in for a backend that momentarily will not answer while the session
+// flakyProvider fails its first n Poll calls, then delegates to the embedded
+// provider. It models a backend that briefly does not answer while the session
 // behind it keeps working.
 type flakyProvider struct {
 	*memory.Provider
@@ -183,8 +183,8 @@ func TestWaitWithoutTimeoutOutlivesTheDeadline(t *testing.T) {
 }
 
 func TestWaitWithoutTimeoutStillFailsOnAFailedSession(t *testing.T) {
-	// Removing the clock removes only the clock: a session the backend reports
-	// as failed still ends the wait, with that state reported.
+	// Removing the deadline removes only the deadline: a session the backend
+	// reports as failed still ends the wait, and that state is reported.
 	p := memory.New()
 	p.Grade = provider.GradeFailed
 	a := newTestAuditor(t, p, WithoutTimeout())
@@ -393,8 +393,9 @@ func TestRunReturnsCleanupErrors(t *testing.T) {
 	}
 }
 
-// A well-formed instrument.json the memory provider can hand back as an
-// artifact, so Run's finalize-time check has something to validate.
+// validInstrumentJSON is a well-formed instrument.json that the memory
+// provider returns as an artifact, so Run's finalize-time check has something
+// to validate.
 const validInstrumentJSON = `{
   "protocol": {
     "design": "2x2 within",
@@ -432,7 +433,7 @@ func TestRunValidatesTheInstrument(t *testing.T) {
 
 	t.Run("invalid instrument is reported, not fatal", func(t *testing.T) {
 		p := memory.New()
-		// A null protocol without a reason — a schema violation.
+		// A null protocol without a reason is a schema violation.
 		p.Files = map[string][]byte{InstrumentFile: []byte(
 			`{"protocol": null, "analysis": null, "servability": {"components": [], "all_servable": true}}`)}
 		result, err := newTestAuditor(t, p).Run(context.Background(), "paper", t.TempDir())
@@ -493,9 +494,9 @@ func TestRunReleasesTheRunEvenWhenCanceled(t *testing.T) {
 	// still cleans up after itself.
 	p := memory.New()
 	p.PollsBeforeDone = 99
-	// The wait between polls is where a cancellation lands, so the test's
-	// sleep reports when Run has reached it and then holds until cancelled,
-	// rather than the test sleeping and hoping Run got there first.
+	// A cancellation arrives during the wait between polls, so the test's
+	// sleep signals when Run has reached it and then blocks until cancelled,
+	// rather than the test sleeping and assuming Run got there first.
 	waiting := make(chan struct{})
 	var once sync.Once
 	a := New(p, testMethod, WithPollInterval(time.Hour), withSleep(func(ctx context.Context, _ time.Duration) error {
@@ -632,11 +633,11 @@ func TestDefaultPackagesAreIndependentCopies(t *testing.T) {
 	}
 }
 
-// TestMountProtocolDemandsAPush pins the push as its own instruction with its
-// own consequence (044a). A run once read this protocol, committed five times
-// into the mount and pushed nothing, and every commit died with the sandbox —
-// because the push was a subordinate clause of the commit sentence. It must not
-// be edited back down into one.
+// TestMountProtocolDemandsAPush checks that the push is its own instruction
+// with its own stated consequence (044a). A run once read this protocol,
+// committed five times into the mount and pushed nothing, and every commit
+// was lost with the sandbox, because the push was a clause of the commit
+// instruction. It must not be merged back into one.
 func TestMountProtocolDemandsAPush(t *testing.T) {
 	protocol := mountProtocol(DefaultMountPath)
 	for _, want := range []string{
@@ -650,7 +651,7 @@ func TestMountProtocolDemandsAPush(t *testing.T) {
 			t.Errorf("mount protocol missing %q:\n%s", want, protocol)
 		}
 	}
-	// The push must not be buried in the sentence that asks for the commit.
+	// The push must not be part of the sentence that asks for the commit.
 	for line := range strings.SplitSeq(protocol, "\n") {
 		if strings.Contains(line, "small, meaningful commits") && strings.Contains(line, "git push") {
 			t.Errorf("the push is back inside the commit instruction:\n%s", line)

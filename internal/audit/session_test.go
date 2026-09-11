@@ -191,10 +191,11 @@ func sessionController(t *testing.T, runtime managed.Runtime) *managed.Controlle
 	}))
 }
 
-// A session with no mount is told it has no remote, and told not to push.
-// Rubric criterion 9 keys on a remote being configured, so the instructions
-// and the rubric are read together by the grader and have to agree about what
-// is present — otherwise every local run fails a criterion it cannot satisfy.
+// TestTheWorkspaceProtocolSaysThereIsNoRemote checks that a session with no
+// mount is told it has no remote and is not told to push. Rubric criterion 9
+// depends on a remote being configured, and the grader reads the instructions
+// and the rubric together, so they have to agree about what is present.
+// Otherwise every local run fails a criterion it cannot satisfy.
 func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 	protocol := workspaceProtocol("/s/workspace")
 	for _, want := range []string{
@@ -221,10 +222,11 @@ func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 	}
 }
 
-// Whichever repository protocol a session is handed, it must ask for every
-// file the method requires. The lists were once typed out by hand in each
-// protocol and the mount one omitted verdict.json; deriving them from
-// method.Deliverables makes the omission impossible, and this test proves it.
+// TestEveryRepositoryProtocolNamesEveryDeliverable checks that each repository
+// protocol asks for every file the method requires. The lists were once
+// written by hand in each protocol, and the mount protocol omitted
+// verdict.json. Deriving them from method.Deliverables prevents the omission,
+// and this test checks that it does.
 func TestEveryRepositoryProtocolNamesEveryDeliverable(t *testing.T) {
 	for name, protocol := range map[string]string{
 		"mount":     mountProtocol("/workspace/repro"),
@@ -241,9 +243,10 @@ func TestEveryRepositoryProtocolNamesEveryDeliverable(t *testing.T) {
 	}
 }
 
-// The mount protocol and the workspace protocol are mutually exclusive: a
-// session either pushes from inside or is pushed from outside, and being told
-// both would be being told to do two different things with one repository.
+// TestOnlyOneRepositoryProtocolReachesASession checks that the mount protocol
+// and the workspace protocol are mutually exclusive. A session either pushes
+// from inside the sandbox or is pushed from outside it, and receiving both
+// texts would instruct two different things for one repository.
 func TestOnlyOneRepositoryProtocolReachesASession(t *testing.T) {
 	mounted := mountProtocol("/workspace/repro")
 	workspace := workspaceProtocol("/s/workspace")
@@ -255,10 +258,10 @@ func TestOnlyOneRepositoryProtocolReachesASession(t *testing.T) {
 	}
 }
 
-// The hunt wants to go anywhere, and asks for what the runtime can actually
-// enforce. A host sandbox is allow-only by construction and refuses a
-// wildcard, so a specification demanding open egress would be refused outright
-// and the local audit could not start at all.
+// TestTheNetworkPolicyFollowsWhatTheRuntimeCanEnforce checks that the artifact
+// search asks for the egress policy the runtime can enforce. A host sandbox
+// accepts only an allowlist and refuses a wildcard, so a specification that
+// demands open egress would be refused and the local audit could not start.
 func TestTheNetworkPolicyFollowsWhatTheRuntimeCanEnforce(t *testing.T) {
 	open := networkFor(managed.Capabilities{NetworkModes: map[managed.NetworkMode]bool{
 		managed.NetworkOpen: true, managed.NetworkAllowlist: true, managed.NetworkNone: true,
@@ -273,9 +276,9 @@ func TestTheNetworkPolicyFollowsWhatTheRuntimeCanEnforce(t *testing.T) {
 	if bounded.Mode != managed.NetworkAllowlist {
 		t.Fatalf("a runtime that cannot was given %q", bounded.Mode)
 	}
-	// The bound is the declared list, and it has to carry the places an
-	// artifact actually lives — a preprint server, a publisher, a code
-	// host, a data repository — or the hunt is decoration.
+	// The allowlist is ArtifactDomains, and it has to include the places an
+	// artifact is published: a preprint server, a publisher, a code host, a
+	// data repository. Otherwise the search cannot find anything.
 	joined := strings.Join(bounded.AllowedDomains, " ")
 	for _, want := range []string{"arxiv.org", "doi.org", "github.com", "*.github.io", "zenodo.org", "osf.io", "pypi.org"} {
 		if !strings.Contains(joined, want) {
@@ -290,9 +293,9 @@ func TestTheNetworkPolicyFollowsWhatTheRuntimeCanEnforce(t *testing.T) {
 		t.Fatalf("closed = %+v", closed)
 	}
 
-	// Every domain is a shape srt accepts: a hostname or a single-label
-	// wildcard, never a bare wildcard or a top-level one, which it refuses
-	// outright and which would fail the whole run at launch.
+	// Every domain has a form srt accepts: a hostname or a single-label
+	// wildcard, never a bare wildcard or a top-level one. srt refuses those,
+	// which would fail the whole run at launch.
 	for _, domain := range ArtifactDomains() {
 		if domain == "*" || strings.HasPrefix(domain, "*.") && strings.Count(domain, ".") < 2 {
 			t.Errorf("%q is too broad for the sandbox to accept", domain)

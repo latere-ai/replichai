@@ -5,20 +5,21 @@ package audit
 
 import "sort"
 
-// ArtifactDomains are the places an artifact hunt goes: preprint servers,
-// publishers, code hosts, research data repositories, package indexes, and the
-// bibliographic services that resolve an identifier to a record.
+// ArtifactDomains returns the domains an artifact search may reach: preprint
+// servers, publishers, code hosts, research data repositories, package
+// indexes, and the bibliographic services that resolve an identifier to a
+// record.
 //
 // The list exists because not every sandbox can offer unrestricted egress. A
-// container can; a host sandbox is allow-only by construction and refuses a
-// wildcard outright. So a run in one is given a bound rather than nothing, and
-// the bound is recorded in the run's environment record — which is a better
-// account of an artifact hunt than "it could go anywhere", even where the
-// latter is available.
+// container can. A host sandbox accepts only an allowlist and refuses a
+// wildcard, so a run in one is given this list rather than no network, and
+// the list is recorded in the run's environment record. That record is a more
+// precise account of an artifact search than unrestricted egress, even where
+// unrestricted egress is available.
 //
-// What it costs is real and is the reason a run says which policy it had: a
+// The list has a cost, which is why a run records which policy it had: a
 // paper whose only artifact link is an author's personal page at a university
-// is not reachable under this list, and the hunt records that as "not
+// is not reachable under this list, and the search records that as "not
 // fetched" rather than as "not released". A reader comparing two runs can see
 // which one was bounded.
 func ArtifactDomains() []string {
@@ -49,12 +50,12 @@ func ArtifactDomains() []string {
 		"journals.plos.org", "*.plos.org",
 		"*.tandfonline.com", "*.sagepub.com", "*.cambridge.org", "*.oup.com",
 
-		// Code hosts, which is where a released artifact usually is.
+		// Code hosts, where a released artifact usually lives.
 		"github.com", "*.github.com",
 		"raw.githubusercontent.com", "objects.githubusercontent.com", "codeload.github.com",
-		// Project pages. A real run was blocked reaching a benchmark's
-		// own site at *.github.io, which is where a released artifact
-		// announces itself as often as the repository is.
+		// Project pages. A real run was blocked from reaching a benchmark's
+		// own site under *.github.io. A released artifact is announced on a
+		// project page as often as in the repository.
 		"github.io", "*.github.io",
 		"gitlab.io", "*.gitlab.io",
 		"readthedocs.io", "*.readthedocs.io",
