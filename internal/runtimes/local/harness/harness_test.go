@@ -97,18 +97,6 @@ func TestSpeaksGatesTheDialectPairing(t *testing.T) {
 	}
 }
 
-// Instructions precede the task in the combined form. The contract permits
-// combining them and forbids reordering them.
-func TestPrependKeepsTheOrder(t *testing.T) {
-	combined := Prepend("ROLE", "TASK")
-	if strings.Index(combined, "ROLE") > strings.Index(combined, "TASK") {
-		t.Fatalf("task came first:\n%s", combined)
-	}
-	if !strings.Contains(combined, InstructionHeader) {
-		t.Fatal("the combined form is not marked as one")
-	}
-}
-
 // Only the judge is barred from writing the workspace, and that is the whole
 // mechanism behind a grader that cannot edit what it grades.
 func TestOnlyTheJudgeIsReadOnly(t *testing.T) {

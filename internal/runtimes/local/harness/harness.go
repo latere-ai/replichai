@@ -385,18 +385,6 @@ func Speaks(h Harness, dialect Dialect) bool {
 // rather than as a mutated original.
 const RevisionHeader = "\n\n--- The grader rejected the previous attempt. Its reasoning follows; address it. ---\n\n"
 
-// InstructionHeader introduces the worker's standing role where a harness has
-// no system-prompt mechanism to carry it. A harness that uses this records it,
-// so a reader can see which form was used.
-const InstructionHeader = "--- Standing instructions ---\n\n"
-
-// Prepend combines instructions and task for a harness with no system-prompt
-// flag. The contract permits combining the two on the wire; it does not permit
-// reordering them, so the instructions always come first.
-func Prepend(instructions, task string) string {
-	return InstructionHeader + instructions + "\n\n--- Task ---\n\n" + task
-}
-
 // Outside reports whether a file destination is outside the workspace. No
 // harness may write configuration into the workspace, because the agent
 // commits what is there and the method's own text would be published as part
