@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
@@ -64,7 +66,7 @@ type Config struct {
 	Image string
 	// Platform is the operating system. It is a parameter so that refusals
 	// can be tested on one machine.
-	Platform sandbox.Platform
+	Platform hostsandbox.Platform
 	// UID and GID are the ownership a stage writes with, so that the
 	// operator can read and push what the run produced.
 	UID, GID int
@@ -78,7 +80,7 @@ type Config struct {
 type Sandbox struct {
 	config       Config
 	engine       Engine
-	capabilities sandbox.Capabilities
+	capabilities hostsandbox.Capabilities
 	toolchain    string
 }
 
@@ -87,7 +89,7 @@ type Sandbox struct {
 // environment is wrong before a paper is fetched or a repository created.
 func New(ctx context.Context, config Config) (*Sandbox, error) {
 	if config.Platform == "" {
-		config.Platform = sandbox.CurrentPlatform()
+		config.Platform = hostsandbox.CurrentPlatform()
 	}
 	if config.Image == "" {
 		config.Image = DefaultImage
@@ -101,8 +103,8 @@ func New(ctx context.Context, config Config) (*Sandbox, error) {
 	if config.UID == 0 && config.GID == 0 {
 		config.UID, config.GID = os.Getuid(), os.Getgid()
 	}
-	if config.Platform == sandbox.Windows {
-		return nil, sandbox.NotReady(config.Platform, sandbox.Container, sandbox.ConditionUnsupported, "podman")
+	if config.Platform == hostsandbox.Windows {
+		return nil, sandbox.NotReady(config.Platform, sandbox.Container, hostsandbox.ConditionUnsupported, "podman")
 	}
 	driver := &Sandbox{config: config}
 	engine, err := driver.selectEngine(ctx)
@@ -117,7 +119,7 @@ func New(ctx context.Context, config Config) (*Sandbox, error) {
 }
 
 // Name is the driver's canonical name.
-func (s *Sandbox) Name() sandbox.DriverName { return sandbox.Container }
+func (s *Sandbox) Name() hostsandbox.DriverName { return sandbox.Container }
 
 // Engine is the engine this driver selected.
 func (s *Sandbox) Engine() Engine { return s.engine }
@@ -149,7 +151,7 @@ func (s *Sandbox) selectEngine(ctx context.Context) (Engine, error) {
 		}
 	}
 	if first == nil {
-		first = sandbox.NotReady(s.config.Platform, sandbox.Container, sandbox.ConditionMissing, string(Podman))
+		first = sandbox.NotReady(s.config.Platform, sandbox.Container, hostsandbox.ConditionMissing, string(Podman))
 	}
 	return "", first
 }
@@ -159,7 +161,7 @@ func (s *Sandbox) selectEngine(ctx context.Context) (Engine, error) {
 // running but unable to supply the image.
 func (s *Sandbox) probe(ctx context.Context, engine Engine) error {
 	if _, err := s.config.Look(string(engine)); err != nil {
-		return sandbox.NotReady(s.config.Platform, sandbox.Container, sandbox.ConditionMissing, string(engine))
+		return sandbox.NotReady(s.config.Platform, sandbox.Container, hostsandbox.ConditionMissing, string(engine))
 	}
 	if _, err := s.config.Run(ctx, []string{string(engine), "info", "--format", "{{.Host.Arch}}"}, nil); err != nil {
 		notReady := sandbox.NotReady(s.config.Platform, sandbox.Container, sandbox.ConditionStopped, string(engine))
@@ -194,14 +196,14 @@ func (s *Sandbox) readImage(ctx context.Context) error {
 			s.config.Image, ManagersLabel)
 	}
 	s.toolchain = strings.TrimSpace(toolchain)
-	s.capabilities = sandbox.Capabilities{
+	s.capabilities = hostsandbox.Capabilities{
 		PackageManagers: declared,
 		// Neither engine filters egress by domain natively. Doing so
 		// requires a proxy the container is forced through, which is what
 		// srt already provides on the host. Declaring a mode this driver
 		// cannot enforce would make the capability declaration, which
 		// specifications are validated against, incorrect.
-		NetworkModes:       map[string]bool{sandbox.NetworkNone: true, sandbox.NetworkOpen: true},
+		NetworkModes:       map[string]bool{hostsandbox.NetworkNone: true, hostsandbox.NetworkOpen: true},
 		MaxAttachmentBytes: 64 << 20,
 	}
 	return nil
@@ -218,18 +220,18 @@ func (s *Sandbox) CarriesHarnessLogin() bool { return false }
 func (s *Sandbox) Preflight(ctx context.Context) error { return s.probe(ctx, s.engine) }
 
 // Capabilities reports what the image declares and what the engine enforces.
-func (s *Sandbox) Capabilities() sandbox.Capabilities { return s.capabilities }
+func (s *Sandbox) Capabilities() hostsandbox.Capabilities { return s.capabilities }
 
 // Launch starts one stage as a detached container. Ownership is mapped so
 // that the operator can read and push what the run produced. A rootless
 // container writing the workspace as root would leave a directory the push
 // cannot use, and that failure would appear later and elsewhere.
-func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.StageHandle, error) {
+func (s *Sandbox) Launch(ctx context.Context, spec hostsandbox.StageSpec) (hostsandbox.StageHandle, error) {
 	if err := s.Preflight(ctx); err != nil {
-		return sandbox.StageHandle{}, err
+		return hostsandbox.StageHandle{}, err
 	}
 	if len(spec.Argv) == 0 {
-		return sandbox.StageHandle{}, errors.New("a stage needs a command")
+		return hostsandbox.StageHandle{}, errors.New("a stage needs a command")
 	}
 	name := containerName(spec.Name)
 	argv := []string{string(s.engine), "run", "--detach", "--name", name,
@@ -241,12 +243,12 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	argv = append(argv, s.ownership()...)
 	for _, path := range spec.Paths {
 		mode := "ro"
-		if path.Access == sandbox.ReadWrite {
+		if path.Access == hostsandbox.ReadWrite {
 			mode = "rw"
 		}
 		argv = append(argv, "--volume", fmt.Sprintf("%s:%s:%s", path.Host, path.Destination(), mode))
 	}
-	if spec.Network.Mode == sandbox.NetworkNone {
+	if spec.Network.Mode == hostsandbox.NetworkNone {
 		argv = append(argv, "--network", "none")
 	}
 	// Credentials go through an environment file rather than --env, because
@@ -254,7 +256,7 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	// the machine.
 	envFile, err := s.writeEnvFile(spec)
 	if err != nil {
-		return sandbox.StageHandle{}, err
+		return hostsandbox.StageHandle{}, err
 	}
 	if envFile != "" {
 		defer func() { _ = os.Remove(envFile) }()
@@ -270,9 +272,9 @@ func (s *Sandbox) Launch(ctx context.Context, spec sandbox.StageSpec) (sandbox.S
 	argv = append(argv, spec.Argv...)
 
 	if _, err := s.config.Run(ctx, argv, nil); err != nil {
-		return sandbox.StageHandle{}, fmt.Errorf("start stage %s: %w", spec.Name, err)
+		return hostsandbox.StageHandle{}, fmt.Errorf("start stage %s: %w", spec.Name, err)
 	}
-	return sandbox.StageHandle{Driver: sandbox.Container, ID: name}, nil
+	return hostsandbox.StageHandle{Driver: sandbox.Container, ID: name}, nil
 }
 
 // ownership returns the uid mapping arguments, which differ by engine.
@@ -289,7 +291,7 @@ func (s *Sandbox) ownership() []string {
 // removed as soon as the container is running. Note that `inspect` still
 // shows the value to anyone who can talk to the engine, which is the same
 // person who owns the credential.
-func (s *Sandbox) writeEnvFile(spec sandbox.StageSpec) (string, error) {
+func (s *Sandbox) writeEnvFile(spec hostsandbox.StageSpec) (string, error) {
 	if len(spec.EnvFile) == 0 {
 		return "", nil
 	}
@@ -318,9 +320,9 @@ func (s *Sandbox) writeEnvFile(spec sandbox.StageSpec) (string, error) {
 // Observe reads the container's state. A container the engine no longer holds
 // is reported as gone, not finished, because an unknown exit must not be
 // reported as success.
-func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sandbox.StageStatus, error) {
-	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
-		return sandbox.StageStatus{}, err
+func (s *Sandbox) Observe(ctx context.Context, handle hostsandbox.StageHandle) (hostsandbox.StageStatus, error) {
+	if err := hostsandbox.MatchHandle(sandbox.Container, handle); err != nil {
+		return hostsandbox.StageStatus{}, err
 	}
 	output, err := s.config.Run(ctx, []string{string(s.engine), "inspect", "--format",
 		"{{.State.Running}}|{{.State.ExitCode}}", handle.ID}, nil)
@@ -329,28 +331,28 @@ func (s *Sandbox) Observe(ctx context.Context, handle sandbox.StageHandle) (sand
 		// observation rather than a failure to observe, and gone is not
 		// finished, so it is never reported as success.
 		//nolint:nilerr // a missing container is an observation
-		return sandbox.StageStatus{Gone: true}, nil
+		return hostsandbox.StageStatus{Gone: true}, nil
 	}
 	running, code, _ := strings.Cut(strings.TrimSpace(string(output)), "|")
 	if strings.EqualFold(running, "true") {
-		return sandbox.StageStatus{Running: true}, nil
+		return hostsandbox.StageStatus{Running: true}, nil
 	}
 	exit, err := strconv.Atoi(strings.TrimSpace(code))
 	if err != nil {
 		// An exit code the engine did not report is unknown, and an unknown
 		// exit must not be reported as success.
 		//nolint:nilerr // an unreadable exit code is gone, not zero
-		return sandbox.StageStatus{Gone: true}, nil
+		return hostsandbox.StageStatus{Gone: true}, nil
 	}
-	return sandbox.StageStatus{ExitCode: exit}, nil
+	return hostsandbox.StageStatus{ExitCode: exit}, nil
 }
 
 // Output reads the container's log from an offset. The engine writes the log
 // outside the container's filesystem, so a stage cannot rewrite its own
 // transcript. This is the same guarantee the host driver gets from a denied
 // path.
-func (s *Sandbox) Output(ctx context.Context, handle sandbox.StageHandle, offset int64) (io.ReadCloser, error) {
-	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
+func (s *Sandbox) Output(ctx context.Context, handle hostsandbox.StageHandle, offset int64) (io.ReadCloser, error) {
+	if err := hostsandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return nil, err
 	}
 	body, err := s.config.Run(ctx, []string{string(s.engine), "logs", handle.ID}, nil)
@@ -369,8 +371,8 @@ func (s *Sandbox) Output(ctx context.Context, handle sandbox.StageHandle, offset
 
 // Stop ends a running container. Stopping one that has already exited is not
 // an error, because the controller cancels without knowing the state.
-func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
-	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
+func (s *Sandbox) Stop(ctx context.Context, handle hostsandbox.StageHandle) error {
+	if err := hostsandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return err
 	}
 	_, _ = s.config.Run(ctx, []string{string(s.engine), "stop", "--time", "10", handle.ID}, nil)
@@ -379,8 +381,8 @@ func (s *Sandbox) Stop(ctx context.Context, handle sandbox.StageHandle) error {
 
 // Discard removes the container. It never touches the session directory,
 // which belongs to the runtime and may not have been pushed yet.
-func (s *Sandbox) Discard(ctx context.Context, handle sandbox.StageHandle) error {
-	if err := sandbox.MatchHandle(sandbox.Container, handle); err != nil {
+func (s *Sandbox) Discard(ctx context.Context, handle hostsandbox.StageHandle) error {
+	if err := hostsandbox.MatchHandle(sandbox.Container, handle); err != nil {
 		return err
 	}
 	_, _ = s.config.Run(ctx, []string{string(s.engine), "rm", "--force", handle.ID}, nil)
@@ -417,7 +419,7 @@ func containerName(stage string) string {
 // guestOf maps a host path to the path the stage sees, so that a working
 // directory given as a host path reaches the container as its mount
 // destination.
-func guestOf(spec sandbox.StageSpec, host string) string {
+func guestOf(spec hostsandbox.StageSpec, host string) string {
 	for _, path := range spec.Paths {
 		if path.Host == host {
 			return path.Destination()
