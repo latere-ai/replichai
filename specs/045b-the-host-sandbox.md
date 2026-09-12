@@ -171,6 +171,12 @@ Built as `internal/runtimes/local/host`, and then rewritten in the places a real
 
 **Two things about the stage itself.** srt parses its own options anywhere in what it is handed, so the command is separated by `--`; and a stage with no `PATH` resolves nothing, not even srt, whose shebang needs node. That failed as an exit 127 with an empty log and is now refused with a reason.
 
+**The driver is a shared package with a thin adapter over it.** srt, the settings renderer, the path policy, the network policy, the detached lifetime, the handle format and the readiness table are `latere.ai/x/pkg/hostsandbox`. `internal/runtimes/local/host` is what is this program's about them, and nothing else: the harness binary declared as a preflight requirement, so a missing one is reported with install instructions rather than as an exec failure after the stage has started; `~/.config/replichai`, the cloud token this program keeps on the machine, denied to every stage beside the shared deny table; the package managers and the attachment cap the runtime reads, which srt knows nothing about; the harness version query, which runs outside the sandbox because it is this program's question about its own dependency; and the refusal text naming `--sandbox container`. The adapter is four methods over the shared driver.
+
+The three refusals drawn above are printed without their `local:` prefix, because the message belongs to the driver rather than to the runtime composing it, and the confirmation line is `srt echo ok` rather than `srt "echo ok"`: srt accepts a quoted string only after `-c`, and the quoted form fails with `command not found`.
+
+Both drivers are now held to one contract suite, `hostsandboxtest.Run`. The host driver runs it wherever srt is installed. The container driver's run of it is opt-in on `REPLICHAI_E2E=1`, because constructing that driver runs the engine, which writes to its own storage outside the test's temporary directory.
+
 ### Still short
 
 **`environment.json` records where a run was allowed to go, not where it went.** The allowlist is in the record; nothing reads srt's proxy log, so `domains_reached` stays empty.
