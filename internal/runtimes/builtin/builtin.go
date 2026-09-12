@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/managed/legacy"
 	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
@@ -47,7 +49,7 @@ type LocalConfig struct {
 	// container. It is not part of the runtime's name, because both satisfy
 	// the same contract and a name that encoded the mechanism would have to
 	// be migrated to switch to the other.
-	Sandbox sandbox.DriverName
+	Sandbox hostsandbox.DriverName
 	// Harness selects the agentic CLI: claude-code (the default) or codex.
 	Harness string
 	// Engine names the container engine where the container sandbox is
@@ -66,7 +68,7 @@ type LocalConfig struct {
 	Home string
 	// Lookup reads the environment for gateway credentials. It is the only
 	// channel through which a stage inherits any of the environment, limited
-	// to what sandbox.HostEnvironment admits. It is required because this
+	// to what hostsandbox.Environment admits. It is required because this
 	// package is inside the seam and configuration arrives from the
 	// composition root rather than being read here.
 	Lookup local.LookupEnv
@@ -122,7 +124,7 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 		Sandbox: driver, Harness: agent, Catalog: catalog, Lookup: config.Lookup,
 		Root: config.Root, Retention: local.Retention(config.Retention),
 		Machine: harness.Machine{
-			Platform: string(sandbox.CurrentPlatform()), Home: config.Home,
+			Platform: string(hostsandbox.CurrentPlatform()), Home: config.Home,
 			// Use the shared root rather than os.TempDir(). os.TempDir()
 			// honours TMPDIR, which a session sets to its own directory,
 			// but a harness writes its scratch under the shared root
@@ -136,13 +138,13 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 // because it needs no image and no virtual machine and reuses the login
 // already on the machine. The container driver must be chosen explicitly and
 // provides a pinned toolchain.
-func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness) (sandbox.Sandbox, error) {
-	switch sandbox.DriverName(strings.ToLower(strings.TrimSpace(string(config.Sandbox)))) {
+func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness) (hostsandbox.Sandbox, error) {
+	switch hostsandbox.DriverName(strings.ToLower(strings.TrimSpace(string(config.Sandbox)))) {
 	case sandbox.Container:
 		return container.New(ctx, container.Config{
 			Engine: container.Engine(config.Engine), Image: config.Image,
 		})
-	case sandbox.Host, "":
+	case hostsandbox.Host, "":
 		// The harness's own configuration is not granted here. The harness
 		// reports where its login lives through Needs, and the runtime
 		// decides whether a session is granted access to it: only a

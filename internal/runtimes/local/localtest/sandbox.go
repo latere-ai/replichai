@@ -20,7 +20,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
+	"latere.ai/x/pkg/hostsandbox"
 )
 
 // Script describes what the fake driver does with each stage.
@@ -70,7 +70,7 @@ type Sandbox struct {
 }
 
 type stage struct {
-	spec      sandbox.StageSpec
+	spec      hostsandbox.StageSpec
 	polls     int
 	exit      int
 	running   bool
@@ -96,27 +96,27 @@ func New(script Script) *Sandbox {
 // Name returns the name of the driver this fake stands in for. It uses the
 // host driver's name so that a session started under it routes the way a real
 // one would.
-func (s *Sandbox) Name() sandbox.DriverName { return sandbox.Host }
+func (s *Sandbox) Name() hostsandbox.DriverName { return hostsandbox.Host }
 
 // Preflight returns the script's NotReady error.
 func (s *Sandbox) Preflight(context.Context) error { return s.script.NotReady }
 
 // Capabilities returns a permissive declaration. This driver enforces nothing,
 // and it declares what the real host driver declares rather than every mode.
-func (s *Sandbox) Capabilities() sandbox.Capabilities {
-	return sandbox.Capabilities{
+func (s *Sandbox) Capabilities() hostsandbox.Capabilities {
+	return hostsandbox.Capabilities{
 		PackageManagers: map[string]bool{"pip": true, "npm": true},
 		NetworkModes: map[string]bool{
-			sandbox.NetworkNone: true, sandbox.NetworkAllowlist: true, sandbox.NetworkOpen: true,
+			hostsandbox.NetworkNone: true, hostsandbox.NetworkAllowlist: true, hostsandbox.NetworkOpen: true,
 		},
 		MaxAttachmentBytes: 64 << 20,
 	}
 }
 
 // Launch records the stage and writes what it would have produced.
-func (s *Sandbox) Launch(_ context.Context, spec sandbox.StageSpec) (sandbox.StageHandle, error) {
+func (s *Sandbox) Launch(_ context.Context, spec hostsandbox.StageSpec) (hostsandbox.StageHandle, error) {
 	if s.script.FailLaunch != nil {
-		return sandbox.StageHandle{}, s.script.FailLaunch
+		return hostsandbox.StageHandle{}, s.script.FailLaunch
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -129,9 +129,9 @@ func (s *Sandbox) Launch(_ context.Context, spec sandbox.StageSpec) (sandbox.Sta
 	s.next++
 	s.stages[id] = entry
 	if err := s.produce(entry); err != nil {
-		return sandbox.StageHandle{}, err
+		return hostsandbox.StageHandle{}, err
 	}
-	return sandbox.StageHandle{Driver: sandbox.Host, ID: id}, nil
+	return hostsandbox.StageHandle{Driver: hostsandbox.Host, ID: id}, nil
 }
 
 // writeFinalLine appends the stage's held-back last line to its log, once.
@@ -251,18 +251,18 @@ func (s *Sandbox) gradeFor(round int) string {
 // Observe reports the stage as running until the scripted number of polls has
 // passed, so that a caller exercises the running path as well as the finished
 // one.
-func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbox.StageStatus, error) {
-	if err := sandbox.MatchHandle(sandbox.Host, handle); err != nil {
-		return sandbox.StageStatus{}, err
+func (s *Sandbox) Observe(_ context.Context, handle hostsandbox.StageHandle) (hostsandbox.StageStatus, error) {
+	if err := hostsandbox.MatchHandle(hostsandbox.Host, handle); err != nil {
+		return hostsandbox.StageStatus{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.stages[handle.ID]
 	if !ok {
-		return sandbox.StageStatus{Gone: true}, nil
+		return hostsandbox.StageStatus{Gone: true}, nil
 	}
 	if entry.discarded {
-		return sandbox.StageStatus{Gone: true}, nil
+		return hostsandbox.StageStatus{Gone: true}, nil
 	}
 	if entry.running {
 		entry.polls++
@@ -272,24 +272,24 @@ func (s *Sandbox) Observe(_ context.Context, handle sandbox.StageHandle) (sandbo
 			// line is written now, after any drain that ran before this
 			// observation. A runtime that does not drain again loses it.
 			if err := entry.writeFinalLine(); err != nil {
-				return sandbox.StageStatus{}, err
+				return hostsandbox.StageStatus{}, err
 			}
 		}
 	}
-	return sandbox.StageStatus{Running: entry.running, ExitCode: entry.exit}, nil
+	return hostsandbox.StageStatus{Running: entry.running, ExitCode: entry.exit}, nil
 }
 
 // Output streams the stage's log from an offset, from a file the stage itself
 // never had write access to.
-func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset int64) (io.ReadCloser, error) {
-	if err := sandbox.MatchHandle(sandbox.Host, handle); err != nil {
+func (s *Sandbox) Output(_ context.Context, handle hostsandbox.StageHandle, offset int64) (io.ReadCloser, error) {
+	if err := hostsandbox.MatchHandle(hostsandbox.Host, handle); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
 	entry, ok := s.stages[handle.ID]
 	s.mu.Unlock()
 	if !ok {
-		return nil, sandbox.ErrGone
+		return nil, hostsandbox.ErrGone
 	}
 	file, err := os.Open(entry.spec.LogPath)
 	if os.IsNotExist(err) {
@@ -306,8 +306,8 @@ func (s *Sandbox) Output(_ context.Context, handle sandbox.StageHandle, offset i
 }
 
 // Stop ends a running stage.
-func (s *Sandbox) Stop(_ context.Context, handle sandbox.StageHandle) error {
-	if err := sandbox.MatchHandle(sandbox.Host, handle); err != nil {
+func (s *Sandbox) Stop(_ context.Context, handle hostsandbox.StageHandle) error {
+	if err := hostsandbox.MatchHandle(hostsandbox.Host, handle); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -319,8 +319,8 @@ func (s *Sandbox) Stop(_ context.Context, handle sandbox.StageHandle) error {
 }
 
 // Discard forgets the stage. It never touches the session directory.
-func (s *Sandbox) Discard(_ context.Context, handle sandbox.StageHandle) error {
-	if err := sandbox.MatchHandle(sandbox.Host, handle); err != nil {
+func (s *Sandbox) Discard(_ context.Context, handle hostsandbox.StageHandle) error {
+	if err := hostsandbox.MatchHandle(hostsandbox.Host, handle); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -333,10 +333,10 @@ func (s *Sandbox) Discard(_ context.Context, handle sandbox.StageHandle) error {
 
 // Stages returns every stage this driver was asked to launch, in order, so
 // that a test can check what the runtime built and not only what it produced.
-func (s *Sandbox) Stages() []sandbox.StageSpec {
+func (s *Sandbox) Stages() []hostsandbox.StageSpec {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	specs := make([]sandbox.StageSpec, 0, len(s.stages))
+	specs := make([]hostsandbox.StageSpec, 0, len(s.stages))
 	for index := range s.next {
 		if entry, ok := s.stages[fmt.Sprintf("fake:%d", index)]; ok {
 			specs = append(specs, entry.spec)
@@ -347,9 +347,9 @@ func (s *Sandbox) Stages() []sandbox.StageSpec {
 
 // writablePath returns the host path behind one guest destination, or the
 // empty string when the stage was not given that destination as writable.
-func writablePath(spec sandbox.StageSpec, guest string) string {
+func writablePath(spec hostsandbox.StageSpec, guest string) string {
 	for _, path := range spec.Paths {
-		if path.Destination() == guest && path.Access == sandbox.ReadWrite {
+		if path.Destination() == guest && path.Access == hostsandbox.ReadWrite {
 			return path.Host
 		}
 	}

@@ -34,6 +34,7 @@ import (
 	paystripe "latere.ai/x/pay/stripe"
 	"latere.ai/x/pkg/authkit/oidc"
 	xemail "latere.ai/x/pkg/email"
+	"latere.ai/x/pkg/hostsandbox"
 	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -51,7 +52,6 @@ import (
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 	"github.com/latere-ai/replichai/internal/spa"
 	"github.com/latere-ai/replichai/internal/webauth"
 )
@@ -407,7 +407,7 @@ func serverLocalConfig() builtin.LocalConfig {
 		root = filepath.Join(home, ".replichai", "sessions")
 	}
 	return builtin.LocalConfig{
-		Sandbox:    sandbox.DriverName(os.Getenv("REPLICHAI_SANDBOX")),
+		Sandbox:    hostsandbox.DriverName(os.Getenv("REPLICHAI_SANDBOX")),
 		Harness:    os.Getenv("REPLICHAI_HARNESS"),
 		Engine:     os.Getenv("REPLICHAI_CONTAINER_ENGINE"),
 		Image:      os.Getenv("REPLICHAI_HARNESS_IMAGE"),

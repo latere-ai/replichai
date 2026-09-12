@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
 // Name identifies this runtime in a session reference. The sandbox mechanism
@@ -51,11 +52,11 @@ type Environment struct {
 // which is the harness's own login, and holds exactly what the run was
 // granted.
 type EnvironmentSandbox struct {
-	Driver      sandbox.DriverName `json:"driver"`
-	Version     string             `json:"version,omitempty"`
-	Image       string             `json:"image,omitempty"`
-	NetworkMode string             `json:"network_mode"`
-	ConfigRead  []string           `json:"config_read_allowed,omitempty"`
+	Driver      hostsandbox.DriverName `json:"driver"`
+	Version     string                 `json:"version,omitempty"`
+	Image       string                 `json:"image,omitempty"`
+	NetworkMode string                 `json:"network_mode"`
+	ConfigRead  []string               `json:"config_read_allowed,omitempty"`
 }
 
 // EnvironmentHost is the machine.
@@ -93,7 +94,7 @@ type EnvironmentNetwork struct {
 
 // NewEnvironment starts the record with what is knowable before the first
 // stage runs. The rest is filled in as the session proceeds.
-func NewEnvironment(ctx context.Context, driver sandbox.DriverName, harnessName harness.Name, model managed.ModelRef, gateway harness.Gateway, mode string) Environment {
+func NewEnvironment(ctx context.Context, driver hostsandbox.DriverName, harnessName harness.Name, model managed.ModelRef, gateway harness.Gateway, mode string) Environment {
 	return Environment{
 		Sandbox: EnvironmentSandbox{Driver: driver, NetworkMode: mode},
 		Host:    EnvironmentHost{OS: runtime.GOOS, Arch: runtime.GOARCH, Kernel: kernelVersion(ctx)},
