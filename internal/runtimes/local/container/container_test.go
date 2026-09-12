@@ -8,12 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
+	"latere.ai/x/pkg/hostsandbox"
+	"latere.ai/x/pkg/hostsandbox/hostsandboxtest"
 )
 
 // engine is a scripted engine. It records every command and answers from a
@@ -81,7 +84,7 @@ func found(names ...string) func(string) (string, error) {
 func build(t *testing.T, config Config, e *engine) *Sandbox {
 	t.Helper()
 	if config.Platform == "" {
-		config.Platform = sandbox.Darwin
+		config.Platform = hostsandbox.Darwin
 	}
 	if config.Look == nil {
 		config.Look = found("podman")
@@ -100,8 +103,8 @@ func build(t *testing.T, config Config, e *engine) *Sandbox {
 func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	t.Run("not installed", func(t *testing.T) {
 		e := newEngine()
-		_, err := New(context.Background(), Config{Platform: sandbox.Darwin, Look: found(), Run: e.run})
-		if !errors.Is(err, sandbox.ErrNotReady) {
+		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found(), Run: e.run})
+		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
 		for _, want := range []string{"brew install podman", "podman machine init", "--sandbox host"} {
@@ -113,8 +116,8 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	t.Run("installed but not running", func(t *testing.T) {
 		e := newEngine()
 		e.fail["info"] = errors.New("cannot connect to podman socket")
-		_, err := New(context.Background(), Config{Platform: sandbox.Darwin, Look: found("podman"), Run: e.run})
-		if !errors.Is(err, sandbox.ErrNotReady) {
+		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
+		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
 		for _, want := range []string{"podman machine start", "never initialised", "cannot connect"} {
@@ -127,8 +130,8 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 		e := newEngine()
 		e.fail["image inspect"] = errors.New("no such image")
 		e.fail["pull"] = errors.New("network unreachable")
-		_, err := New(context.Background(), Config{Platform: sandbox.Darwin, Look: found("podman"), Run: e.run})
-		if !errors.Is(err, sandbox.ErrNotReady) {
+		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
+		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
 		for _, want := range []string{"podman pull", "REPLICHAI_HARNESS_IMAGE"} {
@@ -143,7 +146,7 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 		e.answers["image inspect"] = "pip|python 3.13.2"
 		original := e.run
 		driver, err := New(context.Background(), Config{
-			Platform: sandbox.Darwin, Look: found("podman"),
+			Platform: hostsandbox.Darwin, Look: found("podman"),
 			Run: func(ctx context.Context, argv []string, stdin io.Reader) ([]byte, error) {
 				if strings.HasPrefix(strings.Join(argv[1:], " "), "image inspect") {
 					calls++
@@ -172,9 +175,9 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 func TestANamedEngineDoesNotFallBack(t *testing.T) {
 	e := newEngine()
 	_, err := New(context.Background(), Config{
-		Platform: sandbox.Darwin, Engine: Docker, Look: found("podman"), Run: e.run,
+		Platform: hostsandbox.Darwin, Engine: Docker, Look: found("podman"), Run: e.run,
 	})
-	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "docker") {
+	if !errors.Is(err, hostsandbox.ErrNotReady) || !strings.Contains(err.Error(), "docker") {
 		t.Fatalf("New = %v", err)
 	}
 	// When no engine is named, the two are tried in order.
@@ -202,33 +205,33 @@ func TestCapabilitiesComeFromTheImage(t *testing.T) {
 	// domain, and declaring a mode this driver cannot enforce would make the
 	// capability declaration, which specifications are validated against,
 	// incorrect.
-	if capabilities.NetworkModes[sandbox.NetworkAllowlist] {
+	if capabilities.NetworkModes[hostsandbox.NetworkAllowlist] {
 		t.Error("the container driver claims to enforce a domain allowlist")
 	}
-	if !capabilities.NetworkModes[sandbox.NetworkNone] || !capabilities.NetworkModes[sandbox.NetworkOpen] {
+	if !capabilities.NetworkModes[hostsandbox.NetworkNone] || !capabilities.NetworkModes[hostsandbox.NetworkOpen] {
 		t.Errorf("network modes = %v", capabilities.NetworkModes)
 	}
 
 	e := newEngine()
 	e.answers["image inspect"] = "|"
-	_, err := New(context.Background(), Config{Platform: sandbox.Darwin, Look: found("podman"), Run: e.run})
+	_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
 	if err == nil || !strings.Contains(err.Error(), ManagersLabel) {
 		t.Fatalf("an image declaring nothing was accepted: %v", err)
 	}
 }
 
-func stage() sandbox.StageSpec {
-	return sandbox.StageSpec{
+func stage() hostsandbox.StageSpec {
+	return hostsandbox.StageSpec{
 		Name:    "worker-0",
 		Argv:    []string{"claude", "--print", "--", "reproduce it"},
 		Workdir: "/s/workspace",
 		Env:     map[string]string{"ANTHROPIC_API_KEY": "sk-secret", "TMPDIR": "/tmp-session"},
 		EnvFile: []string{"ANTHROPIC_API_KEY"},
-		Paths: []sandbox.Path{
-			{Host: "/s/workspace", Guest: "/workspace", Access: sandbox.ReadWrite},
-			{Host: "/s/tmp", Guest: "/tmp-session", Access: sandbox.ReadWrite},
+		Paths: []hostsandbox.Path{
+			{Host: "/s/workspace", Guest: "/workspace", Access: hostsandbox.ReadWrite},
+			{Host: "/s/tmp", Guest: "/tmp-session", Access: hostsandbox.ReadWrite},
 		},
-		Network: sandbox.Network{Mode: sandbox.NetworkOpen},
+		Network: hostsandbox.Network{Mode: hostsandbox.NetworkOpen},
 		LogPath: "/s/session/raw/worker-0.log",
 	}
 }
@@ -293,9 +296,9 @@ func TestTheJudgesWorkspaceIsMountedReadOnly(t *testing.T) {
 	driver := build(t, Config{}, e)
 	spec := stage()
 	spec.Name = "judge-1"
-	spec.Paths = []sandbox.Path{
-		{Host: "/s/workspace", Guest: "/workspace", Access: sandbox.ReadOnly},
-		{Host: "/s/grade", Guest: "/grade", Access: sandbox.ReadWrite},
+	spec.Paths = []hostsandbox.Path{
+		{Host: "/s/workspace", Guest: "/workspace", Access: hostsandbox.ReadOnly},
+		{Host: "/s/grade", Guest: "/grade", Access: hostsandbox.ReadWrite},
 	}
 	spec.Workdir = "/s/grade"
 	if _, err := driver.Launch(context.Background(), spec); err != nil {
@@ -361,8 +364,8 @@ func TestOutputReadsFromAnOffset(t *testing.T) {
 // TestWindowsIsRefused checks that Windows is refused with a message naming
 // WSL2 rather than the other driver, which is equally unavailable there.
 func TestWindowsIsRefused(t *testing.T) {
-	_, err := New(context.Background(), Config{Platform: sandbox.Windows, Look: found("podman"), Run: newEngine().run})
-	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "WSL2") {
+	_, err := New(context.Background(), Config{Platform: hostsandbox.Windows, Look: found("podman"), Run: newEngine().run})
+	if !errors.Is(err, hostsandbox.ErrNotReady) || !strings.Contains(err.Error(), "WSL2") {
 		t.Fatalf("New = %v", err)
 	}
 }
@@ -399,11 +402,11 @@ func TestStopAndDiscardAreIdempotent(t *testing.T) {
 		t.Fatalf("Discard on a gone container: %v", err)
 	}
 	// A handle from the other driver is refused by both.
-	other := sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:1@2"}
-	if err := driver.Stop(context.Background(), other); !errors.Is(err, sandbox.ErrMismatch) {
+	other := hostsandbox.StageHandle{Driver: hostsandbox.Host, ID: "pid:1@2"}
+	if err := driver.Stop(context.Background(), other); !errors.Is(err, hostsandbox.ErrMismatch) {
 		t.Errorf("Stop = %v", err)
 	}
-	if err := driver.Discard(context.Background(), other); !errors.Is(err, sandbox.ErrMismatch) {
+	if err := driver.Discard(context.Background(), other); !errors.Is(err, hostsandbox.ErrMismatch) {
 		t.Errorf("Discard = %v", err)
 	}
 }
@@ -440,7 +443,7 @@ func TestLaunchRefusesAnEmptyStageAndAStoppedEngine(t *testing.T) {
 		t.Fatal("a stage with no command was launched")
 	}
 	e.fail["info"] = errors.New("cannot connect to podman socket")
-	if _, err := driver.Launch(context.Background(), stage()); !errors.Is(err, sandbox.ErrNotReady) {
+	if _, err := driver.Launch(context.Background(), stage()); !errors.Is(err, hostsandbox.ErrNotReady) {
 		t.Fatalf("Launch on a stopped engine = %v", err)
 	}
 }
@@ -459,11 +462,70 @@ func TestAStageMissingItsCredentialIsRefused(t *testing.T) {
 	}
 	// A closed network reaches the engine as a closed network.
 	spec = stage()
-	spec.Network = sandbox.Network{Mode: sandbox.NetworkNone}
+	spec.Network = hostsandbox.Network{Mode: hostsandbox.NetworkNone}
 	if _, err := driver.Launch(context.Background(), spec); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	if !strings.Contains(strings.Join(e.lastMatching("run "), " "), "--network none") {
 		t.Error("a closed network did not reach the engine")
 	}
+}
+
+// TestTheDriverMeetsTheSandboxContract runs the shared contract suite against
+// a real engine and the real image, so that both of this program's drivers are
+// held to one contract. It is opt-in on the same REPLICHAI_E2E=1 as the other
+// tests that touch the machine: constructing this driver runs the engine,
+// which writes to its own storage outside the test's temporary directory. To
+// run it:
+//
+//	REPLICHAI_E2E=1 go test ./internal/runtimes/local/container/ -run TestTheDriverMeetsTheSandboxContract -v
+func TestTheDriverMeetsTheSandboxContract(t *testing.T) {
+	if os.Getenv("REPLICHAI_E2E") != "1" {
+		t.Skip("set REPLICHAI_E2E=1 to run the contract against a real engine")
+	}
+	// The runner refuses a pull, so a machine without the image skips rather
+	// than downloading one inside a test.
+	present := func(ctx context.Context, argv []string, stdin io.Reader) ([]byte, error) {
+		if len(argv) > 1 && argv[1] == "pull" {
+			return nil, errors.New("the harness image is not on this machine")
+		}
+		return realRunner(ctx, argv, stdin)
+	}
+	driver, err := New(context.Background(), Config{Image: os.Getenv("REPLICHAI_HARNESS_IMAGE"), Run: present})
+	if err != nil {
+		t.Skipf("no container engine or harness image here, so the contract is unchecked:\n%v", err)
+	}
+	hostsandboxtest.Run(t, func(t *testing.T) *hostsandboxtest.Subject {
+		return &hostsandboxtest.Subject{
+			Driver: &discarding{Sandbox: driver, t: t},
+			Dir:    t.TempDir(),
+			Print: func(text string, code int) []string {
+				return []string{"/bin/sh", "-c", fmt.Sprintf("printf %%s %q; exit %d", text, code)}
+			},
+			Wait: func(d time.Duration) []string {
+				return []string{"/bin/sh", "-c", fmt.Sprintf("sleep %d", int(d.Seconds()))}
+			},
+		}
+	})
+}
+
+// discarding is the driver under test with a cleanup attached to every
+// launch. The contract suite deliberately leaves a stage behind in most of
+// its cases, which for this driver is a container left on the machine.
+type discarding struct {
+	*Sandbox
+	t *testing.T
+}
+
+func (d *discarding) Launch(ctx context.Context, spec hostsandbox.StageSpec) (hostsandbox.StageHandle, error) {
+	handle, err := d.Sandbox.Launch(ctx, spec)
+	if err != nil {
+		return handle, err
+	}
+	d.t.Cleanup(func() {
+		if err := d.Discard(context.WithoutCancel(ctx), handle); err != nil {
+			d.t.Errorf("discard %s: %v", handle.ID, err)
+		}
+	})
+	return handle, nil
 }
