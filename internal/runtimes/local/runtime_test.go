@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/managed/contracttest"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
@@ -107,7 +109,7 @@ func TestTheLoginGrantReachesOnlyASessionOnTheOperatorsLogin(t *testing.T) {
 	runtime, driver := buildWith(t, localtest.Script{}, local.DefaultCatalogFile(), noCredentials, machine)
 	status := runToTerminal(t, runtime, start(t, runtime, spec(true)))
 	for _, stage := range driver.Stages() {
-		granted := map[string]sandbox.Access{}
+		granted := map[string]hostsandbox.Access{}
 		for _, path := range stage.Paths {
 			granted[path.Host] = path.Access
 		}
@@ -118,7 +120,7 @@ func TestTheLoginGrantReachesOnlyASessionOnTheOperatorsLogin(t *testing.T) {
 				t.Errorf("the bootstrap was handed the login at %s", path)
 			case !strings.HasPrefix(stage.Name, "bootstrap") && !ok:
 				t.Errorf("stage %s cannot reach the login at %s: %+v", stage.Name, path, stage.Paths)
-			case ok && access != sandbox.ReadOnly:
+			case ok && access != hostsandbox.ReadOnly:
 				t.Errorf("stage %s can write the login at %s", stage.Name, path)
 			}
 		}
@@ -226,7 +228,7 @@ func TestPollRefusesARunningSessionWithNoStages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
-	if err := session.WriteLocator(local.Locator{Driver: sandbox.Host, Harness: harness.ClaudeCode}); err != nil {
+	if err := session.WriteLocator(local.Locator{Driver: hostsandbox.Host, Harness: harness.ClaudeCode}); err != nil {
 		t.Fatalf("WriteLocator: %v", err)
 	}
 	if _, err := runtime.Poll(context.Background(), ref); err == nil {
@@ -446,13 +448,13 @@ func TestTheJudgeCannotWriteWhatItGrades(t *testing.T) {
 	stages := driver.Stages()
 	worker, judge := stageNamed(t, driver, "worker"), stageNamed(t, driver, "judge")
 	for _, path := range judge.Paths {
-		if path.Destination() == "/workspace" && path.Access != sandbox.ReadOnly {
+		if path.Destination() == "/workspace" && path.Access != hostsandbox.ReadOnly {
 			t.Fatalf("the judge can write the workspace: %+v", path)
 		}
 	}
 	writable := 0
 	for _, path := range judge.Paths {
-		if path.Access == sandbox.ReadWrite && path.Destination() == "/grade" {
+		if path.Access == hostsandbox.ReadWrite && path.Destination() == "/grade" {
 			writable++
 		}
 	}
@@ -499,7 +501,7 @@ func TestARejectionSpendsARevisionAndTheBudgetIsExact(t *testing.T) {
 	}
 	// The revision carries the grader's reasoning under its own header, so
 	// it reads in the transcript as its own request.
-	var revision sandbox.StageSpec
+	var revision hostsandbox.StageSpec
 	for _, stage := range driver.Stages() {
 		if strings.HasPrefix(stage.Name, "revision") {
 			revision = stage
@@ -675,7 +677,7 @@ func TestAReferenceFromAnotherDriverIsRefused(t *testing.T) {
 
 type containerNamed struct{ *localtest.Sandbox }
 
-func (containerNamed) Name() sandbox.DriverName { return sandbox.Container }
+func (containerNamed) Name() hostsandbox.DriverName { return sandbox.Container }
 
 // reportingDriver is a scripted driver that also reports a pinned image and
 // toolchain, the way the container driver does, so the record's population of
@@ -789,13 +791,13 @@ func TestAnUndeclaredModelIsRefusedBeforeAnythingIsCreated(t *testing.T) {
 // A driver that cannot run on this machine refuses with its own instructions,
 // before a session directory is made.
 func TestANotReadyDriverRefusesWithInstructions(t *testing.T) {
-	notReady := sandbox.NotReady(sandbox.Darwin, sandbox.Host, sandbox.ConditionMissing, "srt")
+	notReady := sandbox.NotReady(hostsandbox.Darwin, hostsandbox.Host, hostsandbox.ConditionMissing, "srt")
 	runtime, driver := build(t, localtest.Script{NotReady: notReady})
 	_, err := runtime.Capabilities(context.Background())
-	if !errors.Is(err, sandbox.ErrNotReady) || !strings.Contains(err.Error(), "npm install") {
+	if !errors.Is(err, hostsandbox.ErrNotReady) || !strings.Contains(err.Error(), "npm install") {
 		t.Fatalf("Capabilities = %v", err)
 	}
-	if _, err := runtime.Start(context.Background(), spec(false)); !errors.Is(err, sandbox.ErrNotReady) {
+	if _, err := runtime.Start(context.Background(), spec(false)); !errors.Is(err, hostsandbox.ErrNotReady) {
 		t.Fatalf("Start = %v", err)
 	}
 	if len(driver.Stages()) != 0 {
@@ -1060,7 +1062,7 @@ func containsContent(events []managed.Event, substring string) bool {
 
 // stageNamed is the first stage of one role. Tests ask by role rather than by
 // index, so inserting a stage into the sequence does not rewrite them.
-func stageNamed(t *testing.T, driver *localtest.Sandbox, role string) sandbox.StageSpec {
+func stageNamed(t *testing.T, driver *localtest.Sandbox, role string) hostsandbox.StageSpec {
 	t.Helper()
 	for _, stage := range driver.Stages() {
 		if strings.HasPrefix(stage.Name, role) {
@@ -1068,10 +1070,10 @@ func stageNamed(t *testing.T, driver *localtest.Sandbox, role string) sandbox.St
 		}
 	}
 	t.Fatalf("no %s stage ran: %v", role, names(driver.Stages()))
-	return sandbox.StageSpec{}
+	return hostsandbox.StageSpec{}
 }
 
-func names(stages []sandbox.StageSpec) []string {
+func names(stages []hostsandbox.StageSpec) []string {
 	out := make([]string, 0, len(stages))
 	for _, stage := range stages {
 		out = append(out, stage.Name)

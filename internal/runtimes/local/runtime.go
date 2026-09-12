@@ -19,9 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
 // Retention is what Release does with a session directory. The default is
@@ -40,7 +41,7 @@ const (
 // are the two seams; Catalog is the operator's model declaration; Root is
 // where session directories are made.
 type Config struct {
-	Sandbox   sandbox.Sandbox
+	Sandbox   hostsandbox.Sandbox
 	Harness   harness.Harness
 	Catalog   *Catalog
 	Root      string
@@ -51,7 +52,7 @@ type Config struct {
 	Machine harness.Machine
 	// Lookup reads one variable of the process environment, os.LookupEnv at
 	// the composition root. The git this runtime runs inherits only what
-	// sandbox.HostEnvironment admits through it; nothing inside the seam
+	// hostsandbox.Environment admits through it; nothing inside the seam
 	// reads the environment itself, because a second, unscoped source of
 	// configuration would let a credential meant for one runtime reach
 	// another.
@@ -498,7 +499,7 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		// will not start otherwise; Claude Code needs nothing here,
 		// because its scratch is redirected into the session instead.
 		for _, path := range needs.Writes {
-			paths = append(paths, sandbox.Path{Host: path, Access: sandbox.ReadWrite})
+			paths = append(paths, hostsandbox.Path{Host: path, Access: hostsandbox.ReadWrite})
 		}
 		stageNetwork.Passthrough = needs.TLSPassthrough
 		// Only a session that uses the operator's own sign-in may reach
@@ -507,18 +508,18 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		// login lives, and only here is it decided whether to grant access.
 		if gateway.Auth == harness.AuthHarness {
 			for _, grant := range needs.Login {
-				access := sandbox.ReadOnly
+				access := hostsandbox.ReadOnly
 				if grant.Write {
-					access = sandbox.ReadWrite
+					access = hostsandbox.ReadWrite
 				}
-				paths = append(paths, sandbox.Path{Host: grant.Path, Access: access})
+				paths = append(paths, hostsandbox.Path{Host: grant.Path, Access: access})
 			}
 		}
 		// Denied in either case: the operator's standing instructions and
 		// plugins are not part of the method.
 		denied = needs.Denies
 	}
-	stage := sandbox.StageSpec{
+	stage := hostsandbox.StageSpec{
 		Name:    name,
 		Argv:    argv,
 		Env:     r.stageEnv(session, env),
@@ -530,7 +531,7 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		LogPath: session.RawLog(name),
 	}
 	if stage.Network.Mode == "" {
-		stage.Network.Mode = sandbox.NetworkNone
+		stage.Network.Mode = hostsandbox.NetworkNone
 	}
 	switch role {
 	case harness.StageJudge:
@@ -555,12 +556,12 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 // told to run on does nothing at all, and the caller who wrote the allowlist
 // does not know which endpoint the catalogue resolved. The effective list is
 // recorded in the run's environment record rather than left implicit.
-func (r *Runtime) network(spec managed.SessionSpec, gateway harness.Gateway) sandbox.Network {
-	network := sandbox.Network{
+func (r *Runtime) network(spec managed.SessionSpec, gateway harness.Gateway) hostsandbox.Network {
+	network := hostsandbox.Network{
 		Mode:    string(spec.Sandbox.Network.Mode),
 		Domains: append([]string(nil), spec.Sandbox.Network.AllowedDomains...),
 	}
-	if network.Mode != sandbox.NetworkAllowlist {
+	if network.Mode != hostsandbox.NetworkAllowlist {
 		return network
 	}
 	for _, host := range gatewayHosts(gateway) {
@@ -610,22 +611,22 @@ func defaultVendorHosts(dialect harness.Dialect) []string {
 // workspace read-only and grade/ read-write, so a grader cannot edit what it
 // grades. session/ is in neither list, so the agent cannot rewrite the
 // transcript.
-func (r *Runtime) stagePaths(session *Session, role harness.Stage) []sandbox.Path {
-	workspace := sandbox.Path{Host: session.Workspace(), Guest: "/workspace", Access: sandbox.ReadWrite}
+func (r *Runtime) stagePaths(session *Session, role harness.Stage) []hostsandbox.Path {
+	workspace := hostsandbox.Path{Host: session.Workspace(), Guest: "/workspace", Access: hostsandbox.ReadWrite}
 	if role == harness.StageJudge {
-		workspace.Access = sandbox.ReadOnly
-		return []sandbox.Path{
+		workspace.Access = hostsandbox.ReadOnly
+		return []hostsandbox.Path{
 			workspace,
-			{Host: session.Grade(), Guest: "/grade", Access: sandbox.ReadWrite},
-			{Host: session.Home(), Guest: "/home", Access: sandbox.ReadWrite},
-			{Host: session.Tmp(), Guest: "/tmp-session", Access: sandbox.ReadWrite},
+			{Host: session.Grade(), Guest: "/grade", Access: hostsandbox.ReadWrite},
+			{Host: session.Home(), Guest: "/home", Access: hostsandbox.ReadWrite},
+			{Host: session.Tmp(), Guest: "/tmp-session", Access: hostsandbox.ReadWrite},
 		}
 	}
-	return []sandbox.Path{
+	return []hostsandbox.Path{
 		workspace,
-		{Host: session.Tmp(), Guest: "/tmp-session", Access: sandbox.ReadWrite},
-		{Host: session.Venv(), Guest: "/venv", Access: sandbox.ReadWrite},
-		{Host: session.Home(), Guest: "/home", Access: sandbox.ReadWrite},
+		{Host: session.Tmp(), Guest: "/tmp-session", Access: hostsandbox.ReadWrite},
+		{Host: session.Venv(), Guest: "/venv", Access: hostsandbox.ReadWrite},
+		{Host: session.Home(), Guest: "/home", Access: hostsandbox.ReadWrite},
 	}
 }
 
@@ -664,7 +665,7 @@ func (r *Runtime) drain(ctx context.Context, session *Session, harnessName harne
 	}
 	stream, err := r.config.Sandbox.Output(ctx, record.Handle, record.Offset)
 	if err != nil {
-		if errors.Is(err, sandbox.ErrGone) {
+		if errors.Is(err, hostsandbox.ErrGone) {
 			return managed.Usage{}, nil
 		}
 		return managed.Usage{}, err
@@ -764,7 +765,7 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 	}
 	if len(locator.Stages) > 0 {
 		if err := r.config.Sandbox.Stop(ctx, locator.Stages[len(locator.Stages)-1].Handle); err != nil &&
-			!errors.Is(err, sandbox.ErrGone) {
+			!errors.Is(err, hostsandbox.ErrGone) {
 			return err
 		}
 	}
@@ -785,7 +786,7 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 		return err
 	}
 	for _, stage := range locator.Stages {
-		if err := r.config.Sandbox.Discard(ctx, stage.Handle); err != nil && !errors.Is(err, sandbox.ErrGone) {
+		if err := r.config.Sandbox.Discard(ctx, stage.Handle); err != nil && !errors.Is(err, hostsandbox.ErrGone) {
 			return err
 		}
 	}

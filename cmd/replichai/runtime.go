@@ -10,10 +10,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
 const defaultCLIRuntime = "anthropic-managed"
@@ -57,7 +58,7 @@ type localOptions struct {
 // bind registers the local runtime's flags on a flag set. Every one of them
 // has an environment default, so an operator configures a machine once.
 func (options *localOptions) bind(fs *flag.FlagSet) {
-	fs.StringVar(&options.sandbox, "sandbox", envOr("REPLICHAI_SANDBOX", string(sandbox.Host)),
+	fs.StringVar(&options.sandbox, "sandbox", envOr("REPLICHAI_SANDBOX", string(hostsandbox.Host)),
 		"with --runtime local: host (srt) or container (podman, docker)")
 	fs.StringVar(&options.harness, "harness", envOr("REPLICHAI_HARNESS", "claude-code"),
 		"with --runtime local: the agent CLI to run, claude-code or codex")
@@ -80,7 +81,7 @@ func (options *localOptions) bind(fs *flag.FlagSet) {
 func (options localOptions) config() builtin.LocalConfig {
 	home, _ := os.UserHomeDir()
 	return builtin.LocalConfig{
-		Sandbox: sandbox.DriverName(options.sandbox), Harness: options.harness,
+		Sandbox: hostsandbox.DriverName(options.sandbox), Harness: options.harness,
 		Engine: options.engine, Image: options.image, ModelsFile: options.models,
 		Root: options.root, Retention: options.retention,
 		Home: home, Lookup: os.LookupEnv,

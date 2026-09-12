@@ -17,9 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
 // The session directory's layout. workspace/ becomes the repository, tmp/ and
@@ -57,25 +58,25 @@ const LocatorVersion = 1
 // secret-bearing words, and these field names are chosen to pass that check
 // rather than to be exempted from it.
 type Locator struct {
-	Version int                `json:"version"`
-	Dir     string             `json:"dir"`
-	Driver  sandbox.DriverName `json:"driver"`
-	Harness harness.Name       `json:"harness"`
-	Stages  []StageRecord      `json:"stages"`
+	Version int                    `json:"version"`
+	Dir     string                 `json:"dir"`
+	Driver  hostsandbox.DriverName `json:"driver"`
+	Harness harness.Name           `json:"harness"`
+	Stages  []StageRecord          `json:"stages"`
 }
 
 // StageRecord is one stage's entry in the journal. Offset is how far the
 // transcript pump has read, so a restart resumes rather than re-decoding, and
 // Lines is the next event index, which is what keeps event ids stable.
 type StageRecord struct {
-	Role      harness.Stage       `json:"role"`
-	Name      string              `json:"name"`
-	Handle    sandbox.StageHandle `json:"handle"`
-	StartedAt time.Time           `json:"started_at"`
-	Offset    int64               `json:"offset"`
-	Lines     int                 `json:"lines"`
-	Exit      *int                `json:"exit,omitempty"`
-	Verdict   *managed.Verdict    `json:"verdict,omitempty"`
+	Role      harness.Stage           `json:"role"`
+	Name      string                  `json:"name"`
+	Handle    hostsandbox.StageHandle `json:"handle"`
+	StartedAt time.Time               `json:"started_at"`
+	Offset    int64                   `json:"offset"`
+	Lines     int                     `json:"lines"`
+	Exit      *int                    `json:"exit,omitempty"`
+	Verdict   *managed.Verdict        `json:"verdict,omitempty"`
 }
 
 // Session is one run's directory on disk. Every durable fact about a local
@@ -130,7 +131,7 @@ func CreateSession(root, id string, lookup LookupEnv) (*Session, error) {
 			return nil, fmt.Errorf("create %s: %w", child, err)
 		}
 	}
-	if err := initRepository(session.Workspace(), sandbox.HostEnvironment(lookup)); err != nil {
+	if err := initRepository(session.Workspace(), hostsandbox.Environment(lookup)); err != nil {
 		return nil, err
 	}
 	return session, nil

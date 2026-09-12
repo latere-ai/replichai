@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"strings"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
-	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
 // PackageManifest is the file in which the bootstrap records the package
@@ -47,24 +48,24 @@ func (r *Runtime) bootstrapArgv(spec managed.SessionSpec, session *Session) []st
 
 	pip, npm := split(spec.Sandbox.Packages)
 	if len(pip) > 0 {
-		fmt.Fprintf(&script, "python3 -m venv %s\n", sandbox.ShellQuote(session.Venv()))
+		fmt.Fprintf(&script, "python3 -m venv %s\n", hostsandbox.ShellQuote(session.Venv()))
 		trusted := make([]string, 0, len(PackageIndexHosts())*2)
 		for _, host := range PackageIndexHosts() {
 			trusted = append(trusted, "--trusted-host", host)
 		}
 		fmt.Fprintf(&script, "%s install --disable-pip-version-check --quiet %s %s\n",
-			sandbox.ShellQuote(session.Venv()+"/bin/pip"), sandbox.ShellJoin(trusted), sandbox.ShellJoin(pip))
+			hostsandbox.ShellQuote(session.Venv()+"/bin/pip"), hostsandbox.ShellJoin(trusted), hostsandbox.ShellJoin(pip))
 		fmt.Fprintf(&script, "%s freeze > %s\n",
-			sandbox.ShellQuote(session.Venv()+"/bin/pip"), sandbox.ShellQuote(session.Venv()+"/"+PackageManifest))
+			hostsandbox.ShellQuote(session.Venv()+"/bin/pip"), hostsandbox.ShellQuote(session.Venv()+"/"+PackageManifest))
 	}
 	if len(npm) > 0 {
 		fmt.Fprintf(&script, "cd %s && npm install --silent --no-fund --no-audit %s\n",
-			sandbox.ShellQuote(session.Venv()), sandbox.ShellJoin(npm))
+			hostsandbox.ShellQuote(session.Venv()), hostsandbox.ShellJoin(npm))
 	}
 	// A specification's own bootstrap entries are argv arrays, never shell
 	// fragments, so nothing in one is handed to a shell to interpret.
 	for _, argv := range spec.Sandbox.Bootstrap {
-		script.WriteString(sandbox.ShellJoin(argv) + "\n")
+		script.WriteString(hostsandbox.ShellJoin(argv) + "\n")
 	}
 	if script.Len() == len("set -eu\n") {
 		script.WriteString("true\n")
@@ -76,11 +77,11 @@ func (r *Runtime) bootstrapArgv(spec managed.SessionSpec, session *Session) []st
 // the temporary directory and the harness home. The workspace is excluded
 // because nothing installed belongs in the reproduction, and the evidence
 // directory is excluded as it is for every other stage.
-func (r *Runtime) bootstrapPaths(session *Session) []sandbox.Path {
-	return []sandbox.Path{
-		{Host: session.Venv(), Guest: "/venv", Access: sandbox.ReadWrite},
-		{Host: session.Tmp(), Guest: "/tmp-session", Access: sandbox.ReadWrite},
-		{Host: session.Home(), Guest: "/home", Access: sandbox.ReadWrite},
+func (r *Runtime) bootstrapPaths(session *Session) []hostsandbox.Path {
+	return []hostsandbox.Path{
+		{Host: session.Venv(), Guest: "/venv", Access: hostsandbox.ReadWrite},
+		{Host: session.Tmp(), Guest: "/tmp-session", Access: hostsandbox.ReadWrite},
+		{Host: session.Home(), Guest: "/home", Access: hostsandbox.ReadWrite},
 	}
 }
 

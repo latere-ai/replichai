@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
@@ -52,7 +54,7 @@ func TestLocalIsComposedAndRefusesAnUnusableMachine(t *testing.T) {
 	// Docker is named explicitly, so a machine without it is refused rather
 	// than falling back to podman.
 	if _, err := catalog.Build(context.Background(), "local"); err != nil {
-		if !errors.Is(err, sandbox.ErrNotReady) {
+		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("Build(local) = %v", err)
 		}
 		if !strings.Contains(err.Error(), "--sandbox host") {

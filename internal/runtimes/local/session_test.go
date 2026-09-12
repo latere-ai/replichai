@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"latere.ai/x/pkg/hostsandbox"
+
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
@@ -296,10 +298,10 @@ func TestArtifactsSkipLinks(t *testing.T) {
 func TestAFreshProcessReopensASession(t *testing.T) {
 	session := newSession(t)
 	locator := Locator{
-		Driver: sandbox.Host, Harness: harness.ClaudeCode,
+		Driver: hostsandbox.Host, Harness: harness.ClaudeCode,
 		Stages: []StageRecord{{
 			Role: harness.StageWorker, Name: "worker-0",
-			Handle: sandbox.StageHandle{Driver: sandbox.Host, ID: "pid:48213@1724570400"},
+			Handle: hostsandbox.StageHandle{Driver: hostsandbox.Host, ID: "pid:48213@1724570400"},
 			Offset: 4096, Lines: 12,
 		}},
 	}
@@ -343,7 +345,7 @@ func TestTheLocatorSurvivesTheContractsSecretCheck(t *testing.T) {
 		Stages: []StageRecord{{
 			Role:   harness.StageJudge,
 			Name:   "judge-0",
-			Handle: sandbox.StageHandle{Driver: sandbox.Container, ID: "replichai-7f3a91c2-j0"},
+			Handle: hostsandbox.StageHandle{Driver: sandbox.Container, ID: "replichai-7f3a91c2-j0"},
 		}},
 	}
 	if err := session.WriteLocator(locator); err != nil {
@@ -392,10 +394,10 @@ func TestRedactEventRemovesConfiguredCredentials(t *testing.T) {
 // The environment record carries no credential, only which kind was used.
 func TestTheEnvironmentRecordNamesTheAuthKindNotTheCredential(t *testing.T) {
 	session := newSession(t)
-	record := NewEnvironment(context.Background(), sandbox.Host, harness.ClaudeCode,
+	record := NewEnvironment(context.Background(), hostsandbox.Host, harness.ClaudeCode,
 		managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
 		harness.Gateway{Name: "lux", Auth: harness.AuthAPIKey, Key: "sk-secret"},
-		sandbox.NetworkOpen)
+		hostsandbox.NetworkOpen)
 	record.Sandbox.Version = "python 3.13.2"
 	if err := session.WriteEnvironment(record); err != nil {
 		t.Fatalf("WriteEnvironment: %v", err)

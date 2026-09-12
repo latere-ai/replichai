@@ -1,219 +1,141 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package sandbox defines the boundary a local session's work runs inside:
-// the driver contract, the stage description a driver executes, and the typed
-// not-ready error a driver returns when the machine cannot run it (045a).
+// Package sandbox holds what replichai adds to the sandbox seam in
+// latere.ai/x/pkg/hostsandbox (045a): the container driver's name, the two
+// readiness conditions only an engine has, the install table for the engines
+// and harnesses this program runs, and the refusal text that names this
+// program's own commands and the other driver as the alternative.
 //
-// Nothing here knows about agents, models, grading or git. A driver starts a
-// process under an isolation mechanism, reports whether it is still running,
-// and returns the bytes it wrote. The runtime above composes those into a
-// managed session.
+// The stage vocabulary, the Sandbox interface and the srt driver are the
+// shared package's. Nothing here knows about agents, models, grading or git.
 package sandbox
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"strings"
+
+	"latere.ai/x/pkg/hostsandbox"
 )
 
-// DriverName identifies one isolation mechanism. It is recorded in a session's
-// locator, so a session started under one driver is never observed through
-// another, whose handles have a different meaning.
-type DriverName string
+// Container is the container driver's name. hostsandbox.Host is the other.
+const Container hostsandbox.DriverName = "container"
 
-// The drivers this repository ships. Host is the default: the harness already
-// installed on the machine, confined by srt. Container is opt-in, for a pinned
-// toolchain.
+// The conditions the container driver adds to the shared package's.
 const (
-	Host      DriverName = "host"
-	Container DriverName = "container"
+	// ConditionStopped is an engine that is installed but not running. On
+	// macOS this is almost always a podman machine that was never started.
+	ConditionStopped hostsandbox.Condition = "stopped"
+	// ConditionImage is an engine that runs but cannot supply the image.
+	ConditionImage hostsandbox.Condition = "image"
 )
 
-// Access is how a stage may use one path.
-type Access string
-
-// The path access modes. A path not named in a StageSpec is denied outright;
-// there is no implicit read.
-const (
-	ReadOnly  Access = "ro"
-	ReadWrite Access = "rw"
-)
-
-// Path is one filesystem path a stage may use, given as a host path. A driver
-// maps it to what the stage sees: the same path under the host driver, or a
-// mount destination under the container driver.
-type Path struct {
-	// Host is the absolute path on the machine running the session.
-	Host string
-	// Guest is the path the stage sees. Empty means the same as Host, which
-	// is the host driver's normal case.
-	Guest string
-	// Access is read-only or read-write. There is no third mode. A path a
-	// stage may not access is left out of the spec entirely.
-	Access Access
+// Remedies is the install table for everything this program's drivers need:
+// srt and its dependencies from the shared package, the container engines,
+// and the harnesses.
+func Remedies() hostsandbox.Remedies {
+	return hostsandbox.DefaultRemedies().With(hostsandbox.Remedies{
+		"podman": {
+			Install: map[hostsandbox.Platform][]string{
+				hostsandbox.Darwin: {"brew install podman", "podman machine init --cpus 4 --memory 8192 --disk-size 100", "podman machine start"},
+				hostsandbox.Linux:  {"sudo apt-get install -y podman         # Debian, Ubuntu", "sudo dnf install -y podman              # Fedora, RHEL"},
+			},
+			Verify: "podman info",
+		},
+		"docker": {
+			Install: map[hostsandbox.Platform][]string{
+				hostsandbox.Darwin: {"brew install --cask docker", "open -a Docker"},
+				hostsandbox.Linux:  {"sudo apt-get install -y docker.io      # Debian, Ubuntu"},
+			},
+			Verify: "docker info",
+		},
+		"claude": {
+			Install: map[hostsandbox.Platform][]string{
+				hostsandbox.Darwin: {"npm install -g @anthropic-ai/claude-code", "claude login"},
+				hostsandbox.Linux:  {"npm install -g @anthropic-ai/claude-code", "claude login"},
+			},
+			Verify: "claude --version",
+		},
+		"codex": {
+			Install: map[hostsandbox.Platform][]string{
+				hostsandbox.Darwin: {"npm install -g @openai/codex", "codex login"},
+				hostsandbox.Linux:  {"npm install -g @openai/codex", "codex login"},
+			},
+			Verify: "codex --version",
+		},
+	})
 }
 
-// Destination is where the stage sees this path, which is Guest when the
-// driver remaps it and Host when it does not.
-func (p Path) Destination() string {
-	if strings.TrimSpace(p.Guest) != "" {
-		return p.Guest
+// Alternative is the text that names the other driver, so that an operator
+// blocked on one is told there is another. Windows gets none, because both
+// drivers are equally unavailable there.
+func Alternative(platform hostsandbox.Platform, driver hostsandbox.DriverName) string {
+	if platform == hostsandbox.Windows {
+		return ""
 	}
-	return p.Host
-}
-
-// Network is a stage's egress policy. It mirrors managed.NetworkPolicy without
-// importing it, because a driver must not read a session specification.
-type Network struct {
-	// Mode is "none", "allowlist" or "open".
-	Mode string
-	// Domains is the allowlist. It is meaningful only in allowlist mode, and
-	// a driver rejects it in the other two modes.
-	Domains []string
-	// Passthrough lists domains reached without the sandbox terminating TLS.
-	// They remain subject to the allowlist; only the inspection is skipped,
-	// for clients that do not trust an injected certificate authority.
-	Passthrough []string
-}
-
-// The network modes a StageSpec can carry.
-const (
-	NetworkNone      = "none"
-	NetworkAllowlist = "allowlist"
-	NetworkOpen      = "open"
-)
-
-// StageSpec is one unit of work a driver runs: an argv, an environment, the
-// paths it may access, and its egress policy. Everything in it is computed by
-// the runtime. A driver translates it into a Seatbelt profile, a bubblewrap
-// invocation, or engine arguments, and adds nothing of its own.
-type StageSpec struct {
-	// Name is a short, filesystem-safe label such as "worker-0" or
-	// "judge-1". It names the stage's log and its container.
-	Name string
-	// Argv is the command. It is never a shell fragment.
-	Argv []string
-	// Env is the environment. Values that are credentials are delivered by
-	// the driver through a mechanism that keeps them out of the process
-	// table; see EnvFile.
-	Env map[string]string
-	// EnvFile names the environment keys whose values are credentials.
-	// A driver must not pass these on a command line.
-	EnvFile []string
-	// Workdir is the directory the stage starts in. It must appear in Paths.
-	Workdir string
-	// Paths is every path the stage may read or write. Any path not listed
-	// is denied.
-	Paths []Path
-	// Denied are paths that must stay unreadable even though an entry in
-	// Paths would otherwise cover them. A driver that grants a directory in
-	// order to reach one file inside it uses this to withhold the rest.
-	Denied []string
-	// Network is the egress policy.
-	Network Network
-	// LogPath is the host file the driver writes the stage's combined
-	// output to. It is deliberately not in Paths, because the stage must
-	// not be able to rewrite its own transcript.
-	LogPath string
-}
-
-// StageHandle is a driver's durable reference to one launched stage. It is
-// opaque to the runtime, which stores it in the session locator and passes it
-// back to the driver. It must therefore survive JSON encoding and must carry
-// no credential.
-type StageHandle struct {
-	// Driver is which driver launched the stage.
-	Driver DriverName `json:"driver"`
-	// ID is the driver's own handle: a pid and process start time for the
-	// host driver, a container name for the container driver.
-	ID string `json:"id"`
-}
-
-// Valid reports whether the handle names something a driver could look up.
-func (h StageHandle) Valid() bool {
-	return strings.TrimSpace(string(h.Driver)) != "" && strings.TrimSpace(h.ID) != ""
-}
-
-// StageStatus is one observation of a launched stage.
-type StageStatus struct {
-	// Running reports whether the stage is still alive.
-	Running bool
-	// ExitCode is meaningful only once Running is false. A stage killed by
-	// a signal reports a negative code.
-	ExitCode int
-	// Gone reports that the driver has no record of the stage at all. This
-	// is the state of a reaped process or a removed container after a
-	// restart. Running is false and ExitCode is not meaningful.
-	Gone bool
-}
-
-// Succeeded reports whether the stage finished and exited zero.
-func (s StageStatus) Succeeded() bool { return !s.Running && !s.Gone && s.ExitCode == 0 }
-
-// Capabilities is a driver's half of a runtime's capability declaration. The
-// runtime adds what it provides itself, which is evaluation, artifacts and
-// cancellation, and refuses a specification that neither half can satisfy.
-type Capabilities struct {
-	// PackageManagers are the managers this driver can install with.
-	PackageManagers map[string]bool
-	// NetworkModes are the egress policies this driver can enforce. A
-	// driver declares only what it enforces. There is no best-effort mode
-	// in which an allowlist silently becomes open egress.
-	NetworkModes map[string]bool
-	// MaxAttachmentBytes bounds a single attachment written into the
-	// workspace. Zero means the runtime's own default applies.
-	MaxAttachmentBytes int64
-}
-
-// Sandbox is one isolation mechanism that can run a stage. The interface is
-// small enough to fake, and every driver is held to the same contract suite
-// in sandboxtest.
-type Sandbox interface {
-	// Name is the driver's canonical name. It is recorded in every handle
-	// the driver issues, and every call that takes a handle checks it.
-	Name() DriverName
-
-	// Preflight reports whether this machine can run the driver at all. When
-	// it cannot, Preflight returns a *NotReadyError carrying remediation, so
-	// that a caller prints instructions rather than a failed exec.
-	Preflight(context.Context) error
-
-	// Capabilities reports what this driver can enforce and install.
-	Capabilities() Capabilities
-
-	// Launch starts one stage detached and returns a handle that survives
-	// the calling process.
-	Launch(context.Context, StageSpec) (StageHandle, error)
-
-	// Observe reports whether a launched stage is still running, and its
-	// exit status once it is not.
-	Observe(context.Context, StageHandle) (StageStatus, error)
-
-	// Output streams the stage's raw bytes from an offset. It reads from a
-	// location the stage itself cannot write.
-	Output(context.Context, StageHandle, int64) (io.ReadCloser, error)
-
-	// Stop terminates a running stage with a grace period. Stopping a
-	// stage that has already exited is not an error.
-	Stop(context.Context, StageHandle) error
-
-	// Discard removes whatever the driver created for the stage. It never
-	// touches the session directory, which belongs to the runtime and may
-	// not have been pushed yet.
-	Discard(context.Context, StageHandle) error
-}
-
-// MatchHandle returns an error for a handle routed to the wrong driver.
-// Handles from two drivers are both opaque strings and would otherwise be
-// interchangeable, so a pid could be looked up as a container name.
-func MatchHandle(driver DriverName, handle StageHandle) error {
-	if !handle.Valid() {
-		return fmt.Errorf("%w: empty stage handle", ErrNotReady)
+	switch driver {
+	case hostsandbox.Host:
+		return "Or run in a container instead:  replichai audit … --sandbox container"
+	case Container:
+		return "Or use the host sandbox, which needs no engine:  replichai audit … --sandbox host"
+	default:
+		return ""
 	}
-	if handle.Driver != driver {
-		return &MismatchError{Expected: driver, Actual: handle.Driver}
+}
+
+// NotReady builds the refusal for one condition, on one platform, for one or
+// more components, in this program's words. It is a pure function, so every
+// message this program can print is reachable from a test on a machine with
+// none of the components installed.
+func NotReady(platform hostsandbox.Platform, driver hostsandbox.DriverName, condition hostsandbox.Condition, components ...string) *hostsandbox.NotReadyError {
+	err := Remedies().NotReady(platform, driver, condition, components...)
+	err.Alternative = Alternative(platform, driver)
+	switch {
+	case platform == hostsandbox.Windows:
+		err.Remediation = "Windows is not supported. Run replichai inside WSL2, where both\nsandboxes work."
+	case condition == hostsandbox.ConditionUnsupported:
+		err.Alternative = ""
+	case condition == ConditionStopped:
+		err.Remediation = stoppedText(platform, components)
+	case condition == ConditionImage:
+		err.Remediation = imageText(components)
 	}
-	return nil
+	return err
+}
+
+func stoppedText(platform hostsandbox.Platform, components []string) string {
+	var b strings.Builder
+	remedies := Remedies()
+	for _, component := range components {
+		fmt.Fprintf(&b, "%s is installed but is not running.\n\n", component)
+		switch {
+		case component == "podman" && platform == hostsandbox.Darwin:
+			b.WriteString("    podman machine start\n\nIf you have never initialised one:\n\n")
+			b.WriteString("    podman machine init --cpus 4 --memory 8192 --disk-size 100\n    podman machine start\n")
+		case component == "docker" && platform == hostsandbox.Darwin:
+			b.WriteString("    open -a Docker\n")
+		default:
+			fmt.Fprintf(&b, "    systemctl --user start %s\n", component)
+		}
+	}
+	for _, component := range components {
+		if verify := remedies[component].Verify; verify != "" {
+			fmt.Fprintf(&b, "\nThen confirm with: %s\n", verify)
+			break
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func imageText(components []string) string {
+	image := "the harness image"
+	if len(components) > 0 {
+		image = components[len(components)-1]
+	}
+	return fmt.Sprintf(`The engine is running, but the harness image is unavailable.
+
+    podman pull %s
+
+The image is public. Behind a proxy, set REPLICHAI_HARNESS_IMAGE to a
+mirror holding the same digest.`, image)
 }
