@@ -11,11 +11,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: linux-vm
     permissions:
       contents: read
       packages: write
     steps:
+      - name: Isolate Docker credentials
+        run: echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
