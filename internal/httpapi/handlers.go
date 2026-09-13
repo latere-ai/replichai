@@ -41,6 +41,14 @@ type Identity struct {
 	Email   string
 	Name    string
 	Picture string
+	// OrgID, Roles and PrincipalType are the membership the issuer put in
+	// the credential: the organisation the person acts in, the five
+	// standard role names, and user or service. The server decides project
+	// access from its own membership tables and reads these for nothing
+	// yet; they are carried so the one identity struct is the whole token.
+	OrgID         string
+	Roles         []string
+	PrincipalType string
 }
 
 // ctxKey is the type of this package's context keys. identityKey carries the

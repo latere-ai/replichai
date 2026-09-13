@@ -12,7 +12,6 @@ package cloud
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +23,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+	authjwt "latere.ai/x/pkg/authkit/jwt"
 	"latere.ai/x/pkg/authkit/oidc"
 )
 
@@ -384,19 +384,11 @@ func isInvalidGrant(err error) bool {
 // own credential to print who is signed in, and the server verifies the
 // token.
 func identityFrom(raw string) (subject, email string) {
-	parts := strings.Split(raw, ".")
-	if len(parts) != 3 {
-		return "", ""
-	}
-	body, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", ""
-	}
 	var claims struct {
 		Sub   string `json:"sub"`
 		Email string `json:"email"`
 	}
-	if err := json.Unmarshal(body, &claims); err != nil {
+	if authjwt.DecodePayload(raw, &claims) != nil {
 		return "", ""
 	}
 	return claims.Sub, claims.Email
