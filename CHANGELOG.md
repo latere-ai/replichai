@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.29.0 - 2026-09-13
+
 - **`AUTH_AUDIENCE` names the one audience the server's bearer path accepts**
   and is required whenever `AUTH_ISSUER` is set; the deployment sets
   `replichai.latere.ai`. `REPLICHAI_TOKEN_AUDIENCE` and its default are gone.
