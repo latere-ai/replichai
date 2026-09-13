@@ -78,7 +78,19 @@ jobs:
           set -euo pipefail
           browser=$(node --input-type=module -e 'import { PUPPETEER_REVISIONS } from "puppeteer-core"; console.log(PUPPETEER_REVISIONS.chrome)')
           sudo "$(command -v node)" node_modules/@puppeteer/browsers/lib/main-cli.js install "chrome@$browser" --install-deps --path "$RUNNER_TEMP/chrome"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/chrome"
           chrome=$(find "$RUNNER_TEMP/chrome" -type f -path '*/chrome-linux64/chrome' -print -quit)
           test -x "$chrome"
           echo "PUPPETEER_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
+      # Ubuntu restricts unprivileged user namespaces. Chrome's bundled
+      # helper provides its sandbox without changing the host's AppArmor policy.
+      # https://pptr.dev/troubleshooting#using-setuid-sandbox
+      - name: Configure Chrome sandbox
+        run: |
+          set -euo pipefail
+          sandbox="$(dirname "$PUPPETEER_EXECUTABLE_PATH")/chrome_sandbox"
+          test -f "$sandbox"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+          echo "CHROME_DEVEL_SANDBOX=$sandbox" >> "$GITHUB_ENV"
       - run: cd frontend && bun run test:browser
