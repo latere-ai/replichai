@@ -188,3 +188,18 @@ waive:
       lint job was also off here, and this tree has not held the shared floor
       before. Closing it is test work in access, job and project first
     until: 2026-11-30
+
+# The identity shape of the family: specs/infrastructure/identity.md in latere-ai/specs
+identity:
+  role: service
+  audience: replichai.latere.ai
+  waive:
+    verifier:
+      until: 2026-11-30
+      reason: internal/cloud/auth.go takes a token apart by hand; id-04 moves it onto authkit/jwt
+    audience:
+      until: 2026-11-30
+      reason: id-04 sets AUTH_AUDIENCE in the deployment
+    documents:
+      until: 2026-11-30
+      reason: live docs name retired packages; id-02 corrects them
