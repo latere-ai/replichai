@@ -71,7 +71,7 @@ func Bearer(validator TokenValidator) func(http.Handler) http.Handler {
 // principal. The cookie path fills the same fields from the same claim names,
 // so the two sources cannot disagree about what identifies a person.
 func identityFromClaims(claims *jwt.Claims) httpapi.Identity {
-	return httpapi.Identity{Sub: claims.Sub, Email: claims.Email}
+	return httpapi.Identity{Sub: claims.Sub, Email: claims.Email, OrgID: claims.OrgID, Roles: claims.Roles, PrincipalType: string(claims.PrincipalType)}
 }
 
 // bearerToken reads the credential and reports whether one was presented.

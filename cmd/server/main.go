@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,7 @@ import (
 	// Aliased: "email" is a loop variable in the seeding code below, and a
 	// package with the same name would read as a shadowing accident.
 	paystripe "latere.ai/x/pay/stripe"
+	"latere.ai/x/pkg/authkit/jwt"
 	"latere.ai/x/pkg/authkit/oidc"
 	xemail "latere.ai/x/pkg/email"
 	"latere.ai/x/pkg/hostsandbox"
@@ -379,7 +381,11 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 		// The dev bypass refuses to run off loopback, and adding a second
 		// credential path must not add a second way past that: the bearer
 		// middleware sits inside it, not beside it.
-		return webauth.DevMiddleware(devSub, devEmail)(bearer(guarded)), nil
+		h, err := bearer(guarded)
+		if err != nil {
+			return nil, err
+		}
+		return webauth.DevMiddleware(devSub, devEmail)(h), nil
 	}
 
 	login, err := buildLogin(ctx, acc, baseURL)
@@ -392,7 +398,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	mux.HandleFunc("GET /logout", login.HandleLogout)
 	// One principal, two credential sources. The bearer runs first and, where
 	// one is presented, the cookie is not consulted at all (045j).
-	return bearer(login.Middleware(guarded)), nil
+	return bearer(login.Middleware(guarded))
 }
 
 // serverLocalConfig returns the configuration the local runtime needs when an
@@ -421,17 +427,30 @@ func serverLocalConfig() builtin.LocalConfig {
 // bearer is the credential path for the terminal client. A deployment that
 // configures no issuer refuses every bearer rather than accepting an unverified
 // one, and serves the cookie path unchanged.
-func bearer(next http.Handler) http.Handler {
+func bearer(next http.Handler) (http.Handler, error) {
 	issuer := os.Getenv("AUTH_ISSUER")
 	jwks := os.Getenv("AUTH_JWKS_URL")
 	if issuer != "" && jwks == "" {
 		jwks = strings.TrimRight(issuer, "/") + "/.well-known/jwks.json"
 	}
-	audience := envOr("REPLICHAI_TOKEN_AUDIENCE", "replichai.latere.ai")
 	if issuer == "" || jwks == "" {
-		return webauth.Bearer(nil)(next)
+		return webauth.Bearer(nil)(next), nil
 	}
-	return webauth.Bearer(webauth.NewValidator(issuer, jwks, []string{audience}))(next)
+	v, err := bearerValidator(issuer, jwks, os.Getenv("AUTH_AUDIENCE"))
+	if err != nil {
+		return nil, err
+	}
+	return webauth.Bearer(v)(next), nil
+}
+
+// bearerValidator is the verifier the bearer path runs: the issuer, its key
+// set, and the one audience this deployment accepts. An empty audience
+// would admit every token the issuer ever minted, so it is refused.
+func bearerValidator(issuer, jwks, audience string) (*jwt.Validator, error) {
+	if audience == "" {
+		return nil, errors.New("AUTH_ISSUER is set and AUTH_AUDIENCE is empty; name the one audience this server accepts (the deployment sets replichai.latere.ai)")
+	}
+	return webauth.NewValidator(issuer, jwks, []string{audience}), nil
 }
 
 // buildLogin constructs the OIDC login from the AUTH_* environment. A missing

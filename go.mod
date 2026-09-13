@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.59.0
+	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.10.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
@@ -11,7 +12,7 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 	golang.org/x/oauth2 v0.36.0
 	latere.ai/x/pay v0.1.0
-	latere.ai/x/pkg v0.60.1
+	latere.ai/x/pkg v0.62.0
 )
 
 require (
@@ -22,7 +23,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
@@ -60,7 +60,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	latere.ai/x/ci-gate v0.32.2 // indirect
+	latere.ai/x/ci-gate v0.34.0 // indirect
 )
 
 tool (

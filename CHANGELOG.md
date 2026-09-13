@@ -10,6 +10,12 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+- **`AUTH_AUDIENCE` names the one audience the server's bearer path accepts**
+  and is required whenever `AUTH_ISSUER` is set; the deployment sets
+  `replichai.latere.ai`. `REPLICHAI_TOKEN_AUDIENCE` and its default are gone.
+  The CLI reads its own credential through the shared decoder, and the
+  verifier runs the family's `authkit/conformance` suite in the server's tests.
+
 - **A session from before session references were kept can no longer take
   the server down.** Cancelling such a session, or restarting the server with
   one still in publishing, called an engine that was never wired and panicked;

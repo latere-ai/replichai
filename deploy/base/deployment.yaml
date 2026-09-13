@@ -81,6 +81,11 @@ spec:
             # replichai-config secret.
             - name: AUTH_ISSUER
               value: https://auth.latere.ai
+            # The one audience the bearer path accepts: the actor token the
+            # CLI mints for this server. A token minted for another service,
+            # or for the issuer itself, is refused.
+            - name: AUTH_AUDIENCE
+              value: replichai.latere.ai
             # Outbound mail (006p): the project invitation. The sending domain
             # and region are policy and live here; MAILGUN_API_KEY is a
             # credential and comes from the replichai-config secret. With no key
