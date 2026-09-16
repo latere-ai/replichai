@@ -193,3 +193,4 @@ waive:
 identity:
   role: service
   audience: replichai.latere.ai
+  roles_only: true
