@@ -5,6 +5,13 @@ status: designed
 
 # 041g — Latere runs a session
 
+> **Amended 2026-09-16.** The family removed agent delegation on 2026-09-06:
+> one hop, one token minted for one audience, and no token that carries a
+> chain. The credential paragraph below is corrected. Where the rest of this
+> spec says Auth mints delegated credentials, or names a delegated Auth
+> identity for a Drive mount, read: the caller asks Auth for a token addressed
+> to the one service it is about to call, and asks again for the next one.
+
 **Status:** designed, not built. **Production enablement is blocked on durable replay at the in-flight model/tool boundary** (below). The adapter and fake/local integration may be built after 041e, but it must not be offered as a hosted runtime until that prerequisite is demonstrated.
 
 **Scope:** add `latere-topos`, a platform-native runtime composed from the embeddable Topos runtime, Lux native model access, and Cella sandboxes. Preserve replichai's durable session/evidence/billing contract, use Latere Auth delegation and cost attribution, and leave Drive mount lifecycle with Cella/Drive. Do not route managed sessions through a vendor compatibility surface.
@@ -74,7 +81,7 @@ The adapter must probe/declare the contract version it relies on. “Resume usua
 
 No OpenAI/Anthropic provider key enters replichai or the sandbox. Lux stores provider secrets and receives either a scoped `lux_*` virtual key or a refreshed Latere bearer. The Lux client uses the native `/lux/v1/generate` dialect through `luxsdk`, not `/compat/anthropic` or `/compat/openai`; compatibility surfaces are for wire-locked clients, while this is new code.
 
-Background work cannot persist a user's browser bearer. Enqueue snapshots the actor subject and organization. A credential broker exchanges the service identity for short-lived, audience-scoped delegated tokens for Lux/Cella on demand; token sources refresh per request. If Auth cannot mint that delegation, the route is unavailable. Tokens/API keys never enter job JSON, the adapter journal, events, locators, command argv, or logs.
+Background work cannot persist a user's browser bearer. Enqueue snapshots the actor subject and organization. The runtime asks Auth for a short-lived token addressed to one audience at a time, Lux or Cella, and asks again for the next; each token reaches the one service it was minted for and carries no chain. Token sources mint again per request rather than passing one token on. If Auth cannot mint for that audience, the route is unavailable. Tokens/API keys never enter job JSON, the adapter journal, events, locators, command argv, or logs.
 
 Cella secret inputs are vault entry references. Bootstrap/tool commands use `SecretEnv` or the platform's current egress-substitution contract; plaintext secrets are not materialised into prompts. Network access is compiled from `SessionSpec.Network` into an approved Cella policy/capability mapping. A policy that cannot exactly enforce `none|allowlist|open` is refused before sandbox creation.
 

@@ -5,11 +5,19 @@ status: built
 
 # 045j — A bearer the API accepts
 
+> **Amended 2026-09-16.** The shared verifier is `latere.ai/x/pkg/authkit/jwt`,
+> which the dependency line below now names; the standalone package it
+> replaced is retired. Where this spec writes jwtauth.Validator, read
+> jwt.Validator, built by `jwt.New(jwt.Config{JWKSURL, Issuer, Audiences})`
+> the way `internal/webauth/bearer.go` builds it. The design is unchanged: one
+> validator, checking issuer, audience, signature and expiry, with the one
+> audience named by `AUTH_AUDIENCE` since v0.29.0.
+
 **Status:** built.
 
 **Scope:** the server half of terminal access: a bearer credential path beside the existing cookie session, resolving to the same principal, gated by the same `internal/access` policy. One authentication seam, two credential sources. No new authorisation model and no new routes.
 
-**Depends on:** [045i](045i-signing-in-from-the-terminal.md), [006a](006a-http-api-and-streaming.md), [006c](006c-identity-and-access.md), `latere.ai/x/pkg/jwtauth`.
+**Depends on:** [045i](045i-signing-in-from-the-terminal.md), [006a](006a-http-api-and-streaming.md), [006c](006c-identity-and-access.md), `latere.ai/x/pkg/authkit/jwt`.
 
 ## Problem
 
