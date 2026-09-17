@@ -14,6 +14,9 @@ committed. The commit log already holds that.
   refusal says who acts: a budget or policy stop is the maintainer's, a
   flake is re-run, a code failure is fixed and pushed first (ci-gate
   v0.40.0). Nothing changes for a user of Replichai.
+- The identity gate reads the frontend for the retired admin flag and
+  refuses a second copy of the authorizer envelope (ci-gate v0.42.0).
+  Nothing changes for a user of Replichai.
 
 ## v0.29.0 - 2026-09-13
 
