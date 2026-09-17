@@ -14,7 +14,7 @@
 // So two things are asserted here. The file runs in a browser it did not start,
 // which is the pressure removed. And a browser that goes away is reported as a
 // browser that went away.
-import { check, start, watchBrowser } from './harness.mjs'
+import { check, start, startBrowser, watchBrowser } from './harness.mjs'
 
 const h = await start()
 
@@ -49,6 +49,25 @@ try {
     const leaked = await fresh.evaluate(() => localStorage.getItem('harness-probe'))
     check(leaked === null, `local storage crossed contexts: another context reads ${leaked}`)
     await other.close()
+  }
+
+  /* ── The runner starts the browser it names ── */
+
+  {
+    // The runner is the owner: it names the browser for its children and closes
+    // it at the end, so it must not read that name back. A WEB_TEST_WS left in a
+    // shell by an earlier run would otherwise point a whole run at a browser
+    // nobody owns, and the run would close somebody else's process.
+    const saved = process.env.WEB_TEST_WS
+    process.env.WEB_TEST_WS = 'ws://127.0.0.1:1/devtools/browser/gone'
+    const own = await startBrowser({ join: null }).catch((e) => e)
+    if (saved === undefined) delete process.env.WEB_TEST_WS
+    else process.env.WEB_TEST_WS = saved
+    if (own instanceof Error) check(false, `the runner joined a stale browser: ${own.message}`)
+    else {
+      check(own.owned && !!own.browser, 'the runner joined a browser instead of starting the one it owns')
+      await own.browser?.close().catch(() => {})
+    }
   }
 
   /* ── A browser that goes away says so ── */
