@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Runs the browser suite: every test/*.test.mjs, against one Vite server, a few
-// at a time, and reports every failure rather than the first.
+// Runs the browser suite: every test/*.test.mjs, against one Vite server and one
+// browser, a few at a time, and reports every failure rather than the first.
 //
 // It replaces a `&&` chain in package.json that stopped at the first failing
 // file and had to be edited to admit a new one. A file is in the suite when it
@@ -16,7 +16,7 @@ import { readdirSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findChrome, startVite } from './harness.mjs'
+import { findChrome, startBrowser, startVite } from './harness.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const filters = process.argv.slice(2)
@@ -36,13 +36,19 @@ if (!findChrome()) {
 
 const jobs = Math.max(1, Number(process.env.JOBS) || Math.min(4, Math.ceil(availableParallelism() / 2)))
 const vite = await startVite()
+// One browser for the run, the way there is one server for it. A file that
+// launched its own held a browser per job, and a browser that dies under that
+// pressure takes its file down with a timeout that names an element rather than
+// the browser. Each file still gets its own context, so nothing is shared but
+// the process.
+const { browser } = await startBrowser()
 
 // one runs a file to completion and keeps its output for the report.
 function one(file) {
   return new Promise((res) => {
     const began = Date.now()
     const out = []
-    const p = spawn(process.execPath, [join(here, file)], { env: { ...process.env, WEB_TEST_BASE: vite.base }, stdio: ['ignore', 'pipe', 'pipe'] })
+    const p = spawn(process.execPath, [join(here, file)], { env: { ...process.env, WEB_TEST_BASE: vite.base, WEB_TEST_WS: browser.wsEndpoint() }, stdio: ['ignore', 'pipe', 'pipe'] })
     p.stdout.on('data', (d) => out.push(d))
     p.stderr.on('data', (d) => out.push(d))
     p.on('close', (code) => res({ file, code, output: Buffer.concat(out).toString(), ms: Date.now() - began }))
@@ -61,6 +67,7 @@ await Promise.all(
     }
   }),
 )
+await browser.close().catch(() => {})
 vite.stop()
 
 const failed = results.filter((r) => r.code !== 0)

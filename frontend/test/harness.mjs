@@ -277,6 +277,50 @@ export async function startVite() {
   return { base, stop: () => proc.kill('SIGTERM') }
 }
 
+/* ── Chrome, one for the suite ── */
+
+// startBrowser joins the browser the runner already started and named in
+// WEB_TEST_WS, and launches one only when a file is run on its own. It returns
+// null where there is no Chrome to launch, which the caller reports as a skip.
+//
+// One process for the whole suite, not one per file. Every file used to launch
+// its own Chrome, so a run held as many browsers as it ran files at a time, each
+// with its own zygote, network service, GPU process and renderers. Under that
+// pressure a browser dies, and a dead browser is not an error puppeteer raises:
+// the call waiting on it is simply never answered. What the suite then reported
+// was whichever wait had a timeout on it, naming an element that had rendered
+// everywhere else, which is how a browser that crashed read as a landing page
+// that never came up.
+export async function startBrowser({ headless = true } = {}) {
+  const puppeteer = (await import(require.resolve('puppeteer-core'))).default
+  const ws = process.env.WEB_TEST_WS
+  if (ws) return { browser: await puppeteer.connect({ browserWSEndpoint: ws }), owned: false }
+  const chrome = findChrome()
+  if (!chrome) return { browser: null, owned: true }
+  return { browser: await puppeteer.launch({ executablePath: chrome, headless }), owned: true }
+}
+
+// browserGone is what a lost browser prints. It names the browser, because the
+// alternative is a timeout that names an element and sends the reader to the
+// application code.
+function browserGone() {
+  console.error('FAIL: the browser went away mid-run; it crashed or was killed')
+  process.exit(1)
+}
+
+// watchBrowser turns the browser going away into the failure it is, and returns
+// the release the teardown calls so a closed browser is not reported as a lost
+// one.
+export function watchBrowser(browser, { onGone = browserGone } = {}) {
+  let expected = false
+  browser.on('disconnected', () => {
+    if (!expected) onGone()
+  })
+  return () => {
+    expected = true
+  }
+}
+
 /* ── The harness ── */
 
 export const DESKTOP = { width: 1440, height: 900 }
@@ -285,21 +329,26 @@ export const DESKTOP = { width: 1440, height: 900 }
 // when there is no Chrome to drive. What it returns opens pages against the
 // mocked API and closes everything at the end.
 export async function start() {
-  const chrome = findChrome()
-  if (!chrome) {
+  const vite = await startVite()
+  const { browser, owned } = await startBrowser()
+  if (!browser) {
     console.log('skip: no Chrome found (set PUPPETEER_EXECUTABLE_PATH)')
+    vite.stop()
     process.exit(0)
   }
-  const vite = await startVite()
-  const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-  const browser = await puppeteer.launch({ executablePath: chrome, headless: true })
+  const release = watchBrowser(browser)
+  // One context per file. Pages in one browser share cookies and local storage,
+  // and a file must not read what another file wrote; a context has neither of
+  // them in common with the rest of the suite.
+  const context = await browser.createBrowserContext()
   return {
     base: vite.base,
     browser,
+    context,
     // page opens a tab against the mocked API. Everything about the mock is per
     // page, so a test that needs a different server later opens a second page.
     async page({ viewport = DESKTOP, ...mocking } = {}) {
-      const page = await browser.newPage()
+      const page = await context.newPage()
       await page.setViewport(viewport)
       const { calls, pageErrors } = await mock(page, vite.base, mocking)
       page.calls = calls
@@ -312,7 +361,10 @@ export async function start() {
       if (!process.exitCode) console.log(`ok: ${what}`)
     },
     async close() {
-      await browser.close().catch(() => {})
+      release()
+      await context.close().catch(() => {})
+      if (owned) await browser.close().catch(() => {})
+      else await browser.disconnect().catch(() => {})
       vite.stop()
     },
   }
