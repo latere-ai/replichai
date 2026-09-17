@@ -279,9 +279,10 @@ export async function startVite() {
 
 /* ── Chrome, one for the suite ── */
 
-// startBrowser joins the browser the runner already started and named in
-// WEB_TEST_WS, and launches one only when a file is run on its own. It returns
-// null where there is no Chrome to launch, which the caller reports as a skip.
+// startBrowser joins the browser at `join`, which is the one the runner started
+// and named in WEB_TEST_WS, and launches one only when there is none to join. It
+// returns null where there is no Chrome to launch either, which the caller
+// reports as a skip.
 //
 // One process for the whole suite, not one per file. Every file used to launch
 // its own Chrome, so a run held as many browsers as it ran files at a time, each
@@ -291,10 +292,9 @@ export async function startVite() {
 // was whichever wait had a timeout on it, naming an element that had rendered
 // everywhere else, which is how a browser that crashed read as a landing page
 // that never came up.
-export async function startBrowser({ headless = true } = {}) {
+export async function startBrowser({ headless = true, join = process.env.WEB_TEST_WS } = {}) {
   const puppeteer = (await import(require.resolve('puppeteer-core'))).default
-  const ws = process.env.WEB_TEST_WS
-  if (ws) return { browser: await puppeteer.connect({ browserWSEndpoint: ws }), owned: false }
+  if (join) return { browser: await puppeteer.connect({ browserWSEndpoint: join }), owned: false }
   const chrome = findChrome()
   if (!chrome) return { browser: null, owned: true }
   return { browser: await puppeteer.launch({ executablePath: chrome, headless }), owned: true }

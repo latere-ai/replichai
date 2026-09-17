@@ -41,7 +41,11 @@ const vite = await startVite()
 // pressure takes its file down with a timeout that names an element rather than
 // the browser. Each file still gets its own context, so nothing is shared but
 // the process.
-const { browser } = await startBrowser()
+// `join: null` because the runner is the owner: it names the browser it started
+// and must not read that name back. An inherited WEB_TEST_WS, left in a shell by
+// an earlier run, otherwise points this run at a browser it does not own and
+// closes at the end.
+const { browser } = await startBrowser({ join: null })
 
 // one runs a file to completion and keeps its output for the report.
 function one(file) {
