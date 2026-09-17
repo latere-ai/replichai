@@ -10,6 +10,11 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+- A release refuses to cut while this repository's CI is red, and the
+  refusal says who acts: a budget or policy stop is the maintainer's, a
+  flake is re-run, a code failure is fixed and pushed first (ci-gate
+  v0.40.0). Nothing changes for a user of Replichai.
+
 ## v0.29.0 - 2026-09-13
 
 - **`AUTH_AUDIENCE` names the one audience the server's bearer path accepts**
