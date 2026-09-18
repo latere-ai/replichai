@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.29.1 - 2026-09-18
+
 - A release refuses to cut while this repository's CI is red, and the
   refusal says who acts: a budget or policy stop is the maintainer's, a
   flake is re-run, a code failure is fixed and pushed first (ci-gate
