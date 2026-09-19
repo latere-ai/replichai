@@ -84,7 +84,8 @@ func main() {
 
 func run() error {
 	addr := flag.String("addr", envOr("ADDR", ":8080"), "listen address")
-	dbURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "Postgres URL; empty uses in-memory stores")
+	dbURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "Postgres URL on the direct endpoint; empty uses in-memory stores, and migrations always use this one")
+	dbPoolURL := flag.String("database-pool-url", os.Getenv("DATABASE_POOL_URL"), "Postgres URL on the pooler's endpoint, which serving traffic opens; empty serves on --database-url")
 	runtimeName := flag.String("runtime", envOr("REPLICHAI_RUNTIME", "memory"), "managed runtime")
 	methodDir := flag.String("method", os.Getenv("METHOD_DIR"), "method directory; empty discovers ./method")
 	reproDir := flag.String("repro-dir", os.Getenv("REPRO_DIR"), "filesystem registry source; empty is an empty registry")
@@ -174,7 +175,7 @@ func run() error {
 	modelResolver := runtimes.ModelResolver{Runtime: selectedRuntime}
 	logger.Info("managed runtime selected", "runtime", selectedRuntime.Name())
 
-	st, err := openStores(ctx, *dbURL)
+	st, err := openStores(ctx, servingURL(*dbPoolURL, *dbURL), *dbURL)
 	if err != nil {
 		return err
 	}
@@ -631,12 +632,28 @@ type stores struct {
 	close    func()
 }
 
-// openStores opens every store over one Postgres pool, or their in-memory
-// equivalents, and migrates each. The project migration runs after the job
-// migration because its backfill reads the jobs table. The platform store is
-// built last because it re-checks admin tier through the access store.
-func openStores(ctx context.Context, dbURL string) (stores, error) {
-	if dbURL == "" {
+// servingURL is the DSN the serving pool opens: the pooler's endpoint when one
+// is configured, the direct endpoint otherwise. The fallback is what keeps a
+// deployment whose Secret does not carry the pooled key serving exactly as it
+// did before the pooler existed.
+func servingURL(pooled, direct string) string {
+	if pooled != "" {
+		return pooled
+	}
+	return direct
+}
+
+// openStores opens every store over one Postgres pool on serving, or their
+// in-memory equivalents, and applies the schema over migration. The direct
+// endpoint carries the migrations because the pooled endpoint is a
+// transaction-mode pool whose size is a fixed claim budgeted for request
+// traffic: a boot-time migration there queues behind serving work and holds
+// nothing across the transactions the pooler reassigns a backend between.
+//
+// The in-memory choice is made on migration, the direct endpoint, so a Secret
+// carrying only the pooled key is not a configured database.
+func openStores(ctx context.Context, serving, migration string) (stores, error) {
+	if migration == "" {
 		slog.WarnContext(ctx, "no DATABASE_URL: using in-memory stores, so state is lost on restart")
 		acc := access.NewMemStore()
 		plat := platform.NewMemStore(acc)
@@ -656,29 +673,13 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 			close:    func() {},
 		}, nil
 	}
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := pgxpool.New(ctx, serving)
 	if err != nil {
-		return stores{}, err
+		return stores{}, fmt.Errorf("open serving pool: %w", err)
 	}
-	if err := waitForDB(ctx, pool); err != nil {
+	if err := migrateAll(ctx, migration); err != nil {
 		pool.Close()
 		return stores{}, err
-	}
-	for _, m := range []struct {
-		name string
-		fn   func(context.Context, *pgxpool.Pool) error
-	}{
-		{"job", job.Migrate},
-		{"access", access.Migrate},
-		{"project", project.Migrate}, // after job: its backfill reads jobs
-		{"platform", platform.Migrate},
-		{"profile", profile.Migrate},
-		{"credit", credit.Migrate},
-	} {
-		if err := m.fn(ctx, pool); err != nil {
-			pool.Close()
-			return stores{}, fmt.Errorf("%s migrate: %w", m.name, err)
-		}
 	}
 	slog.InfoContext(ctx, "connected to Postgres and applied migrations")
 	acc := access.NewPGAccess(pool)
@@ -696,6 +697,56 @@ func openStores(ctx context.Context, dbURL string) (stores, error) {
 		profiles: profile.NewPGStore(pool),
 		close:    pool.Close,
 	}, nil
+}
+
+// migrationPoolConfig parses migrationURL and bounds what a migration holds on
+// the direct endpoint: one connection, none of them idle.
+func migrationPoolConfig(migrationURL string) (*pgxpool.Config, error) {
+	cfg, err := pgxpool.ParseConfig(migrationURL)
+	if err != nil {
+		return nil, fmt.Errorf("open migration pool: %w", err)
+	}
+	cfg.MaxConns = 1
+	cfg.MinConns = 0
+	return cfg, nil
+}
+
+// migrateAll applies every namespace's schema over migrationURL and closes the
+// connection it used. The project migration runs after the job migration
+// because its backfill reads the jobs table.
+//
+// The pool is capped at one connection because one is all a migration uses,
+// and the whole pool is released before the server serves a request: a
+// migration is a boot-time claim on the direct endpoint, not a standing one.
+func migrateAll(ctx context.Context, migrationURL string) error {
+	cfg, err := migrationPoolConfig(migrationURL)
+	if err != nil {
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("open migration pool: %w", err)
+	}
+	defer pool.Close()
+	if err := waitForDB(ctx, pool); err != nil {
+		return fmt.Errorf("reach the migration endpoint: %w", err)
+	}
+	for _, m := range []struct {
+		name string
+		fn   func(context.Context, *pgxpool.Pool) error
+	}{
+		{"job", job.Migrate},
+		{"access", access.Migrate},
+		{"project", project.Migrate}, // after job: its backfill reads jobs
+		{"platform", platform.Migrate},
+		{"profile", profile.Migrate},
+		{"credit", credit.Migrate},
+	} {
+		if err := m.fn(ctx, pool); err != nil {
+			return fmt.Errorf("%s migrate: %w", m.name, err)
+		}
+	}
+	return nil
 }
 
 // thawOnSolvent clears an account's freeze override as soon as a top-up leaves
