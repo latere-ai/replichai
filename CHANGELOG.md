@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.30.0 - 2026-09-19
+
 ### Changed
 
 - The server serves through the family's database pooler. Serving traffic
