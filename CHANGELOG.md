@@ -10,6 +10,16 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The server serves through the family's database pooler. Serving traffic
+  opens `DATABASE_POOL_URL` when the deployment carries it and falls back to
+  `DATABASE_URL`, so a deployment whose secret predates the pool starts
+  unchanged. Migrations run at boot on the direct endpoint over a connection
+  of their own and release it before the first request. The pool's own size,
+  and no longer the replica count, is the server's claim on the shared
+  database.
+
 ## v0.29.1 - 2026-09-18
 
 - A release refuses to cut while this repository's CI is red, and the
