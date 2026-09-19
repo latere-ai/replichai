@@ -194,3 +194,8 @@ identity:
   role: service
   audience: replichai.latere.ai
   roles_only: true
+
+# The database shape of the family: specs/infrastructure/database-pooling.md in latere-ai/specs
+postgres:
+  # Direct until this repository's cutover release reads DATABASE_POOL_URL.
+  role: direct
