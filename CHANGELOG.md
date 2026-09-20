@@ -10,6 +10,20 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- Every json value the server writes now reaches its column as text rather
+  than as bytes. Sent as bytes, such a value arrives as a hex literal that the
+  column refuses with `invalid input syntax for type json`, but only when the
+  driver sends parameters in the text format. The pooled connection string
+  asks the server to describe each statement first, so the encoding is chosen
+  correctly and no write was failing; the repair removes the dependency on
+  that setting. It covers submitting a session, importing one run from your
+  own machine, moving a session to its next phase, recording its latest
+  status, and saving the platform settings that carry the rate card and the
+  drafting model. ci-gate v0.46.0 fails a build that binds a json encoding as
+  bytes, so the class cannot return.
+
 ## v0.30.0 - 2026-09-19
 
 ### Changed
