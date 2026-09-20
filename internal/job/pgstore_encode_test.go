@@ -27,8 +27,8 @@ func TestEncodeStatusRejectsMalformedSessionRef(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "encode status") {
 		t.Fatalf("encodeStatus error = %v, want an encode-status error", err)
 	}
-	if raw != nil {
-		t.Fatalf("encodeStatus bytes = %q, want nil", raw)
+	if raw != "" {
+		t.Fatalf("encodeStatus text = %q, want empty", raw)
 	}
 }
 
@@ -40,7 +40,7 @@ func TestEncodeStatusKeepsUsage(t *testing.T) {
 		t.Fatalf("encodeStatus: %v", err)
 	}
 	var back provider.RunStatus
-	if err := json.Unmarshal(raw, &back); err != nil {
+	if err := json.Unmarshal([]byte(raw), &back); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if back.Usage.OutputTokens != 7 || back.State != provider.StateDone {
@@ -58,7 +58,7 @@ func TestEncodePhaseAtRejectsUnencodableTime(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "encode phase_at") {
 		t.Fatalf("encodePhaseAt error = %v, want an encode-phase_at error", err)
 	}
-	if raw != nil {
-		t.Fatalf("encodePhaseAt bytes = %q, want nil", raw)
+	if raw != "" {
+		t.Fatalf("encodePhaseAt text = %q, want empty", raw)
 	}
 }

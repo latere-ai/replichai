@@ -96,24 +96,35 @@ const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, stat
 // and because a session's cost is derived from the usage, the charge would
 // silently disappear. The field that can fail to encode is Status.SessionRef,
 // a json.RawMessage holding whatever the caller put there.
-func encodeStatus(status provider.RunStatus) ([]byte, error) {
+//
+// The encoding is returned as text rather than as bytes. Whenever parameters
+// travel in the text format, a byte slice is sent as bytea and reaches the
+// server as a hex literal, which jsonb refuses with SQLSTATE 22P02. The
+// family's pooled DSNs set default_query_exec_mode=cache_describe, under
+// which the driver asks the server to describe the statement, learns each
+// parameter's type and encodes accordingly, so bytes do not fail there
+// today. Text is what makes the write correct under any exec mode, rather
+// than resting on which mode a DSN happens to carry.
+func encodeStatus(status provider.RunStatus) (string, error) {
 	raw, err := json.Marshal(status)
 	if err != nil {
-		return nil, fmt.Errorf("encode status: %w", err)
+		return "", fmt.Errorf("encode status: %w", err)
 	}
-	return raw, nil
+	return string(raw), nil
 }
 
 // encodePhaseAt serialises the phase timeline for the phase_at column. The
-// reasoning is the same as for encodeStatus: time.Time fails to encode a year
-// outside [0,9999], and the clock behind these timestamps is injectable, so a
-// bad one must fail the write rather than erase when each phase was entered.
-func encodePhaseAt(phaseAt map[Phase]time.Time) ([]byte, error) {
+// reasoning is the same as for encodeStatus, on both counts: time.Time fails
+// to encode a year outside [0,9999], and the clock behind these timestamps is
+// injectable, so a bad one must fail the write rather than erase when each
+// phase was entered; and the encoding travels as text so the write does not
+// depend on which exec mode the DSN carries.
+func encodePhaseAt(phaseAt map[Phase]time.Time) (string, error) {
 	raw, err := json.Marshal(phaseAt)
 	if err != nil {
-		return nil, fmt.Errorf("encode phase_at: %w", err)
+		return "", fmt.Errorf("encode phase_at: %w", err)
 	}
-	return raw, nil
+	return string(raw), nil
 }
 
 // scanJob reads one row in jobColumns order.
@@ -180,10 +191,13 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	rates, err := json.Marshal(card)
+	// rate_card is jsonb NOT NULL, and the encoding binds as text for the
+	// same reason encodeStatus returns text.
+	encodedCard, err := json.Marshal(card)
 	if err != nil {
 		return Job{}, err
 	}
+	rates := string(encodedCard)
 
 	var j Job
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {

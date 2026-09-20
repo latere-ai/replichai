@@ -75,14 +75,21 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 	if len(next.Rates.Models) == 0 {
 		next.Rates = credit.DefaultCard()
 	}
-	card, err := json.Marshal(next.Rates)
+	// rate_card and draft are both jsonb NOT NULL, and each encoding binds as
+	// text: whenever parameters travel in the text format, a byte slice is
+	// sent as bytea and reaches the server as a hex literal, which jsonb
+	// refuses with SQLSTATE 22P02. See encodeStatus in internal/job for why
+	// text is bound rather than trusting the DSN's exec mode.
+	encodedCard, err := json.Marshal(next.Rates)
 	if err != nil {
 		return err
 	}
-	drafting, err := json.Marshal(next.Draft)
+	card := string(encodedCard)
+	encodedDraft, err := json.Marshal(next.Draft)
 	if err != nil {
 		return err
 	}
+	drafting := string(encodedDraft)
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, updated_by, updated_at)
 		VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
