@@ -33,13 +33,10 @@ fmt-check:
 # the staged Go files: gofmt, and the check for code a standard library call
 # already covers. pre-push runs golangci-lint over the packages the push
 # changes. Both call lateregate, which runs the linter through `go run` at a
-# pinned version, so nothing beyond the Go toolchain needs installing. The
-# target also restores the CLAUDE.md -> AGENTS.md symlink, which is gitignored
-# and so absent in a fresh clone.
+# pinned version, so nothing beyond the Go toolchain needs installing.
 .PHONY: hooks
 hooks:
 	git config core.hooksPath .githooks
-	@[ -e CLAUDE.md ] || [ -L CLAUDE.md ] || ln -s AGENTS.md CLAUDE.md
 	@echo "installed git hooks (core.hooksPath=.githooks)"
 
 # Fails on code a standard library call already covers. Overlaps the modernize
