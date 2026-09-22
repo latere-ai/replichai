@@ -9,6 +9,14 @@ on:
 # only keeps a fresh ghcr image, tagged by branch and sha, available between
 # releases.
 
+# A newer push to the same ref supersedes this run: its commit carries every
+# change this one would verify, and the runner slots are better spent on it.
+# It also keeps an older run from finishing last and pushing its image
+# over the newer one's branch tag.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: linux-vm
