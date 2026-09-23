@@ -26,7 +26,7 @@ import (
 // Name and Picture are display data only (006m). They are kept here, in a
 // client-held sealed cookie, rather than in a server table, because
 // access_grants is an ACL and not a user table. They confer nothing, since no
-// display claim reaches an authorisation decision, and they may be stale until
+// display claim reaches an authorization decision, and they may be stale until
 // the next sign-in, bounded by sessionTTL.
 type Session struct {
 	Sub     string `json:"sub"`

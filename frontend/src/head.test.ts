@@ -26,7 +26,7 @@ test('a record is titled by its name, and never by a placeholder', () => {
   expect(titleOf({ name: 'profile', handle: 'ada' }, t, false)).toBe('@ada · ReplicHAI')
 })
 
-test('a tab canonicalises to the record it is a view of', () => {
+test('a tab canonicalizes to the record it is a view of', () => {
   expect(canonicalOf({ name: 'project', id: 'p1', tab: 'verdict' })).toBe('/p/p1')
   expect(canonicalOf({ name: 'project', id: 'p1' })).toBe('/p/p1')
   expect(canonicalOf({ name: 'session', jobId: 's1', projectId: 'p1', tab: 'artifacts' })).toBe('/p/p1/s/s1')

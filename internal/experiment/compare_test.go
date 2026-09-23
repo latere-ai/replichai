@@ -125,7 +125,7 @@ func TestCompareEmptyIsEmpty(t *testing.T) {
 	}
 }
 
-// AC8: Compare emits no pass/fail judgement. This is asserted on the type, so a
+// AC8: Compare emits no pass/fail judgment. This is asserted on the type, so a
 // later change cannot add one silently: no field of Comparison or its rows may
 // be a boolean or named like a verdict.
 func TestComparisonHasNoVerdictField(t *testing.T) {

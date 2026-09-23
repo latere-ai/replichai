@@ -14,8 +14,8 @@ import (
 
 // TestConcurrentJobMigratorsDoNotCollide checks that two processes can migrate
 // the same database concurrently, as happens when a rolling deploy runs two
-// pods at once. The advisory lock serialises the versions, and it has to
-// serialise the creation of the migrations table as well.
+// pods at once. The advisory lock serializes the versions, and it has to
+// serialize the creation of the migrations table as well.
 //
 // CREATE TABLE IF NOT EXISTS is not atomic against a concurrent creator: both
 // sessions find the table absent, both run the DDL, and the loser fails on a

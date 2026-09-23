@@ -44,6 +44,6 @@ func TestSchemeUnknownIsNotValid(t *testing.T) {
 func TestSchemeUnmarshalRejectsUnknown(t *testing.T) {
 	var s Scheme
 	if err := json.Unmarshal([]byte(`"isbn"`), &s); err == nil {
-		t.Error("unmarshalling an unknown scheme should fail")
+		t.Error("unmarshaling an unknown scheme should fail")
 	}
 }

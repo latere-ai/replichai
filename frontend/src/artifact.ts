@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Artifact rendering: markdown to sanitised HTML, code to syntax-highlighted
+// Artifact rendering: markdown to sanitized HTML, code to syntax-highlighted
 // HTML, images served inline. Content comes from repositories, including public
-// ones, so every rendered HTML path is sanitised before it reaches the DOM.
+// ones, so every rendered HTML path is sanitized before it reaches the DOM.
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -69,7 +69,7 @@ export function langOf(path: string): string {
   return langByExt[ext(path)] ?? 'plaintext'
 }
 
-// renderMarkdown turns markdown into HTML and sanitises it before it is trusted.
+// renderMarkdown turns markdown into HTML and sanitizes it before it is trusted.
 // Fenced code blocks are highlighted by highlightIn after mounting.
 export function renderMarkdown(text: string): string {
   const raw = marked.parse(text, { async: false, gfm: true }) as string

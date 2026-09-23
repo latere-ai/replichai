@@ -33,6 +33,6 @@ It also gets in the way of two things that are now normal. Somebody setting up a
 
 1. `POST /projects` with a title and no papers creates the project and returns 201.
 2. `POST /projects` with neither a title nor a paper is refused with `missing_title`, and creates nothing.
-3. `POST /projects` with papers and no title keeps 006j's behaviour: the title is the first paper's reference, and enrichment may still replace it.
+3. `POST /projects` with papers and no title keeps 006j's behavior: the title is the first paper's reference, and enrichment may still replace it.
 4. The New-project screen submits with no paper rows filled in, provided the project is named, and says what is missing when it is not.
 5. The project opens with an empty papers card that offers the add-a-paper flow.

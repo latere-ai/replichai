@@ -57,7 +57,7 @@ CREATE UNIQUE INDEX profiles_handle_key ON profiles (handle);
 // The lock is taken inside the migration transaction and released with it,
 // so the second process waits, then reads the version the first recorded and
 // skips it. Each migrator has its own lock id, so the five migrators only
-// serialise against other copies of themselves.
+// serialize against other copies of themselves.
 const migrationLock = 4
 
 // Migrate applies the profile schema. Safe to run on every startup.

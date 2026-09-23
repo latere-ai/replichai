@@ -35,7 +35,7 @@ All three are inline SVG built from the design tokens, so they hold in light and
 
 **Motion is opt-out at the system level.** Every animation is inside a `@media (prefers-reduced-motion: no-preference)` block, and the reduced-motion rendering is the finished state of each figure, not a still frame of an unstarted one. A reader who has asked for less motion gets the whole argument, statically.
 
-**The brand hue stays spent on what an operator can act on.** `styles.css:1-9` reserves it, and 017 kept it off the wordmark for that reason. The figures are drawn in the neutral ramp with the publish green (`--pub`) marking published state where they show it. The only brand-coloured things on the page are the mark and the sign-in button, which is the thing to act on.
+**The brand hue stays spent on what an operator can act on.** `styles.css:1-9` reserves it, and 017 kept it off the wordmark for that reason. The figures are drawn in the neutral ramp with the publish green (`--pub`) marking published state where they show it. The only brand-colored things on the page are the mark and the sign-in button, which is the thing to act on.
 
 **The live strip is progressive enhancement, and the page is complete without it.** Below the figures, up to six recent public reproductions read from `GET /public`: title, signer (linking to their `/u/{handle}` page), and verdict state, each linking into the project. If the call fails or returns nothing, the section is not rendered at all, and the page reads as designed. No skeletons that never fill, no "0 reproductions" claiming the community is empty. A **Browse the registry** link sits under it, and, because 028 opened it, is also present when the strip is absent.
 
@@ -43,7 +43,7 @@ All three are inline SVG built from the design tokens, so they hold in light and
 
 **The landing is what a signed-out visitor gets at every address that is not public.** 028 decides which addresses render the shell signed out; everything else lands here, and the header's sign-in still carries `next={current path}`, so a deep link into a private project still round-trips through sign-in to where it pointed.
 
-**The failure screens keep the centred card.** `AuthUnavailable` and `NoAccess` are unchanged, for 017's reason: somebody whose session just broke is not an audience for a pitch.
+**The failure screens keep the centered card.** `AuthUnavailable` and `NoAccess` are unchanged, for 017's reason: somebody whose session just broke is not an audience for a pitch.
 
 ## The copy
 
@@ -69,6 +69,6 @@ All three are inline SVG built from the design tokens, so they hold in light and
 4. With `GET /public` answering six projects, the strip renders six links; with an empty answer or a failure, the section is absent and the registry link is still on the page.
 5. The registry link and every strip link resolve to a screen a signed-out reader can read (028), asserted by following one.
 6. The header sign-in href is `/login?next={current path}`, and the deep-link round trip from a private `/p/{id}` still holds.
-7. `AuthUnavailable` and `NoAccess` render the centred card, unchanged.
+7. `AuthUnavailable` and `NoAccess` render the centered card, unchanged.
 8. Every string is in `i18n.ts`; `i18n-coverage.test.ts` passes.
 9. 017 carries a drift note naming its superseded criteria, and `landing.test.mjs` asserts criterion 1 rather than the fold.

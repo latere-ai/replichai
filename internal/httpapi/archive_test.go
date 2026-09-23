@@ -85,7 +85,7 @@ func TestProjectArchive(t *testing.T) {
 			t.Errorf("the archive has no %s; it holds %v", want, slices.Sorted(maps.Keys(files)))
 		}
 	}
-	// Files are organised by session, not merged. Two sessions' REPRODUCIBILITY.md
+	// Files are organized by session, not merged. Two sessions' REPRODUCIBILITY.md
 	// must not collide, which is the distinction 015 restored.
 	if body := files["sessions/"+published.ID+"/README.md"]; body != "content of README.md" {
 		t.Errorf("README.md = %q, want the committed bytes", body)

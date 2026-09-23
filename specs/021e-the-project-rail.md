@@ -21,7 +21,7 @@ On the projects screen, [018](018-one-list-of-projects.md) left three tiles. The
 
 ## Decisions
 
-**The rail summarises the latest session per paper, and says so.** A project holds papers ([012](012-a-project-holds-papers.md)); a paper has sessions; only a session has findings ([015](015-a-verdict-belongs-to-a-session.md)). So the rail is not "the project's rate". It is one card per paper with a graded session, headed `LATEST SESSION · INNER LOOP` and naming the session it read. On a project holding one paper it looks exactly like the design; on a project holding three it stays accurate, which is the failure 015 was written to fix.
+**The rail summarizes the latest session per paper, and says so.** A project holds papers ([012](012-a-project-holds-papers.md)); a paper has sessions; only a session has findings ([015](015-a-verdict-belongs-to-a-session.md)). So the rail is not "the project's rate". It is one card per paper with a graded session, headed `LATEST SESSION · INNER LOOP` and naming the session it read. On a project holding one paper it looks exactly like the design; on a project holding three it stays accurate, which is the failure 015 was written to fix.
 
 **The decomposition is the bar, not the number.** Verified, partial and blocked as three counts and one stacked bar, with the rate beside them rather than above them.
 

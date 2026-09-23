@@ -54,8 +54,8 @@ type CatalogFile struct {
 // and a harness that speaks its dialect, every credential has been resolved,
 // and no preference resolves two ways within one harness.
 //
-// The catalogue is declared rather than discovered because a gateway in front
-// of an open-weights model may serve one model and expose no catalogue at all,
+// The catalog is declared rather than discovered because a gateway in front
+// of an open-weights model may serve one model and expose no catalog at all,
 // leaving nothing a preference tier could be resolved from.
 type Catalog struct {
 	entries  []entry
@@ -99,22 +99,22 @@ func ReadCatalogFile(path string) (CatalogFile, error) {
 		return DefaultCatalogFile(), nil
 	}
 	if err != nil {
-		return CatalogFile{}, fmt.Errorf("read model catalogue: %w", err)
+		return CatalogFile{}, fmt.Errorf("read model catalog: %w", err)
 	}
 	var file CatalogFile
 	if err := yaml.Unmarshal(body, &file); err != nil {
-		return CatalogFile{}, fmt.Errorf("parse model catalogue %s: %w", path, err)
+		return CatalogFile{}, fmt.Errorf("parse model catalog %s: %w", path, err)
 	}
 	return file, nil
 }
 
 // NewCatalog validates a declaration against the installed harnesses and
 // resolves every credential. Validation happens here rather than at first use,
-// so an operator learns that the catalogue is wrong before a paper is fetched
+// so an operator learns that the catalog is wrong before a paper is fetched
 // rather than from a gateway's 400 response partway through a run.
 func NewCatalog(file CatalogFile, registry *harness.Registry, lookup LookupEnv) (*Catalog, error) {
 	if lookup == nil {
-		return nil, errors.New("the model catalogue needs an environment reader; configuration arrives from the composition root")
+		return nil, errors.New("the model catalog needs an environment reader; configuration arrives from the composition root")
 	}
 	catalog := &Catalog{gateways: make(map[string]harness.Gateway, len(file.Gateways))}
 	for name, config := range file.Gateways {
@@ -125,7 +125,7 @@ func NewCatalog(file CatalogFile, registry *harness.Registry, lookup LookupEnv) 
 		catalog.gateways[name] = gateway
 	}
 	if len(file.Models) == 0 {
-		return nil, fmt.Errorf("model catalogue declares no models")
+		return nil, fmt.Errorf("model catalog declares no models")
 	}
 	// A preference may resolve to at most one model per harness. Two "best"
 	// rows is an error rather than an arbitrary pick, because a session is
@@ -207,7 +207,7 @@ func resolveGateway(name string, config GatewayConfig, lookup LookupEnv) (harnes
 	return gateway, nil
 }
 
-// Models is the catalogue for one harness, in the shape the managed contract
+// Models is the catalog for one harness, in the shape the managed contract
 // asks a runtime to report.
 func (c *Catalog) Models(name harness.Name) []managed.Model {
 	models := make([]managed.Model, 0, len(c.entries))
@@ -246,7 +246,7 @@ func (c *Catalog) Resolve(name harness.Name, selector managed.ModelSelector) (ma
 			}
 		}
 		return managed.ModelRef{}, harness.Gateway{}, fmt.Errorf(
-			"harness %q has no declared model %s/%s; add it to the model catalogue",
+			"harness %q has no declared model %s/%s; add it to the model catalog",
 			name, selector.Exact.Provider, selector.Exact.ID)
 	}
 	preference := strings.ToLower(strings.TrimSpace(selector.Preference))

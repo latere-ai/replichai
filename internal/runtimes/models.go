@@ -10,7 +10,7 @@ import (
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
-// ModelResolver projects a managed runtime's qualified catalogue onto the
+// ModelResolver projects a managed runtime's qualified catalog onto the
 // legacy tier-pricing seam until provider-qualified cards land.
 type ModelResolver struct{ Runtime managed.Runtime }
 
@@ -23,7 +23,7 @@ func (resolver ModelResolver) ResolveModel(ctx context.Context, preference strin
 }
 
 // ResolveModelRef resolves a preference to the qualified model the runtime will
-// actually run. A catalogue that maps one preference onto two different models
+// actually run. A catalog that maps one preference onto two different models
 // is an error rather than an arbitrary pick, because a session is priced on
 // that choice being determinate.
 func (resolver ModelResolver) ResolveModelRef(ctx context.Context, preference string) (managed.ModelRef, error) {

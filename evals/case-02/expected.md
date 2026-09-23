@@ -12,7 +12,7 @@ It is the mirror of [case-01](../case-01/expected.md). Case-01 tests whether the
 
 A run **fails** if it:
 
-- mechanically penalises the reproducibility rate because the paper is a user study;
+- mechanically penalizes the reproducibility rate because the paper is a user study;
 - classifies the statistical analysis as outer loop merely because the *data* came from people;
 - fails to locate the released artifacts (they exist on three hosts and are not hard to find);
 - claims to have reproduced the analysis without actually running it against the released data.
@@ -36,7 +36,7 @@ Expected open-science score: **high** — code ✅, data ✅, code license ✅, 
 
 ### 3. The boundary
 
-- **Outer loop** — recruitment (N=60), random assignment to Rest/Twitter/YouTube/TikTok, the 10-minute interruption on participants' own feeds, behavioural data collection, questionnaire self-report, and the central claim itself ("TikTok degrades PM"), which can only be re-established with a new sample.
+- **Outer loop** — recruitment (N=60), random assignment to Rest/Twitter/YouTube/TikTok, the 10-minute interruption on participants' own feeds, behavioral data collection, questionnaire self-report, and the central claim itself ("TikTok degrades PM"), which can only be re-established with a new sample.
 - **Inner loop** — everything from the released data onward: accuracy preprocessing, the accuracy LMM, the RT GLMM, the DDM fitting, the Table 1 ANOVA, the questionnaire ANOVAs.
 
 The subtle call: the **PsychoPy program is software but its output is human data**. Either classification is defensible if justified; what matters is that the run *notices the ambiguity* rather than sorting it silently.

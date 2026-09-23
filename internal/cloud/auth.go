@@ -5,7 +5,7 @@
 // auth.latere.ai with the device-code flow, stores the credential, and
 // presents it to replichai's own API (045i).
 //
-// Authorisation is not decided here. The token says who the caller is. What
+// Authorization is not decided here. The token says who the caller is. What
 // they may do is decided by the deployment's own access table, against a
 // stored record, and never read out of a token.
 package cloud
@@ -195,7 +195,7 @@ func (s *Session) Login(ctx context.Context, show func(Prompt)) (Token, error) {
 
 // tokenFrom converts an OAuth grant into the stored shape. Where the response
 // omits a new refresh token it keeps the previous one. Omitting it is ordinary
-// OAuth behaviour, and dropping the old one is a common cause of a working
+// OAuth behavior, and dropping the old one is a common cause of a working
 // client signing itself out after a day.
 func (s *Session) tokenFrom(granted *oauth2.Token, previous Token) Token {
 	token := Token{
@@ -251,7 +251,7 @@ func (s *Session) Current(ctx context.Context) (Token, error) {
 	return refreshed, nil
 }
 
-// SwitchOrg moves the saved credential to another organisation context through
+// SwitchOrg moves the saved credential to another organization context through
 // the refresh grant, so switching does not need a second device login.
 func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
 	token, err := s.Store.Load()
@@ -275,7 +275,7 @@ func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
 
 func (s *Session) refreshWithOrg(ctx context.Context, refresh, org string) (*oauth2.Token, error) {
 	// The body is built with url.Values so a refresh token or an
-	// organisation id containing a reserved character reaches the provider
+	// organization id containing a reserved character reaches the provider
 	// as one value rather than as extra fields.
 	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "client_id": {ClientID}}
 	if org != "" {
@@ -292,7 +292,7 @@ func (s *Session) refreshWithOrg(ctx context.Context, refresh, org string) (*oau
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("switch organisation: %s", response.Status)
+		return nil, fmt.Errorf("switch organization: %s", response.Status)
 	}
 	var body struct {
 		AccessToken  string `json:"access_token"`

@@ -21,7 +21,7 @@ One thing came out of the build. **The manifest's grade and the findings' verdic
 
 **The summary leads, the table is the result.** The pane opens with the verdict word, the graded date, and the agent's summary paragraph, then the boundary table immediately below it, because the rubric is explicit that the table is the finding and the rate is derived from it. The rate keeps its place but no longer stands alone: it is rendered against `Components` (`8 / 13 verified · 2 partial · 3 blocked`), so the decomposition it depends on is always beside it.
 
-**Inner and outer are typographically different, not just labelled.** An outer row is muted and its outcome column reads `NOT SCORED`, never a tone that could be mistaken for a result. The one rule the product exists to defend has to be visible without reading the label.
+**Inner and outer are typographically different, not just labeled.** An outer row is muted and its outcome column reads `NOT SCORED`, never a tone that could be mistaken for a result. The one rule the product exists to defend has to be visible without reading the label.
 
 **What did not reproduce gets its own section, above the table.** The design has a boundary table and nothing else, which buries the interesting rows among the verified ones. `MISMATCHES & UNRESOLVED` lists every inner-loop claim that is not cleanly verified (`blocked`, `partial`, or verified with a `Mismatch`), each with its specific blocker or the reported-versus-observed pair and its delta. A run with none says so explicitly rather than rendering an empty box.
 
@@ -39,7 +39,7 @@ One thing came out of the build. **The manifest's grade and the findings' verdic
 4. The decisions section renders question, where, assumption, and sensitivity for each decision.
 5. A session with no findings renders today's card plus the stated reason, and no empty table.
 6. A browser test drives 1–5 against a mocked API in Chrome, and fails without the change.
-7. The four semantic tokens are retuned in both themes; the existing browser suite stays green (it asserts geometry and behaviour, not hue).
+7. The four semantic tokens are retuned in both themes; the existing browser suite stays green (it asserts geometry and behavior, not hue).
 
 ## Not in scope
 

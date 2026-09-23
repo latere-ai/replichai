@@ -39,7 +39,7 @@ type Runtime interface {
 }
 ```
 
-`Validate` is pure and mandatory. `Start` repeats validation defensively before any remote write. `Models` serves tier resolution and the `/models` surface; it is not part of constructing a session. `Events` is the canonical transcript input and may return a snapshot repeatedly. Raw vendor payloads may be attached to each normalised event for evidence.
+`Validate` is pure and mandatory. `Start` repeats validation defensively before any remote write. `Models` serves tier resolution and the `/models` surface; it is not part of constructing a session. `Events` is the canonical transcript input and may return a snapshot repeatedly. Raw vendor payloads may be attached to each normalized event for evidence.
 
 ## Session request
 
@@ -78,9 +78,9 @@ type NetworkPolicy struct {
 }
 ```
 
-Bootstrap entries are argv arrays, never shell fragments. Package managers are a closed documented set. An adapter declares the subset it supports. Domain names are canonicalised; `none` rejects domains and secrets, `allowlist` requires at least one domain, and `open` does not accept host-bound secrets. Secrets are references only and are forbidden from `SessionRef`, events, logs, and errors.
+Bootstrap entries are argv arrays, never shell fragments. Package managers are a closed documented set. An adapter declares the subset it supports. Domain names are canonicalized; `none` rejects domains and secrets, `allowlist` requires at least one domain, and `open` does not accept host-bound secrets. Secrets are references only and are forbidden from `SessionRef`, events, logs, and errors.
 
-`RepositoryResource` names URL, revision, destination, access mode (`ro|rw`), and a credential reference. A runtime may mount, clone, or materialise it, but the resulting filesystem and write authority must match. `AttachmentResource` names a stable logical filename, media type, content source, and digest; duplicate destinations or a digest mismatch fail before start.
+`RepositoryResource` names URL, revision, destination, access mode (`ro|rw`), and a credential reference. A runtime may mount, clone, or materialize it, but the resulting filesystem and write authority must match. `AttachmentResource` names a stable logical filename, media type, content source, and digest; duplicate destinations or a digest mismatch fail before start.
 
 ## Durable identity
 
@@ -107,7 +107,7 @@ The reference is valid as soon as `Start` succeeds. A runtime may not return suc
 - `pending → running → done|failed` is monotonic; a terminal observation never becomes non-terminal. Repeated terminal polls are stable.
 - Usage is the cumulative total for the session and is component-wise monotonic. Unknown usage is zero, never an estimate disguised as provider data.
 - An ungraded successful session is `done` with `Verdict == nil`. A graded `done` session has a decided verdict. A runtime may not report a graded success without its evaluation result.
-- Events have stable ids, normalised kind/role/text/time/usage fields, and optional raw evidence. Re-reading events does not change an existing event's normalised meaning.
+- Events have stable ids, normalized kind/role/text/time/usage fields, and optional raw evidence. Re-reading events does not change an existing event's normalized meaning.
 - Artifact paths are relative, slash-clean, and unique. Fetch must reject traversal and an artifact not returned by `ListArtifacts`.
 - Events and artifacts remain readable after terminal state and cancellation until `Release` completes. A successful release may make them unreadable; this is why capture precedes release.
 
@@ -115,7 +115,7 @@ The reference is valid as soon as `Start` succeeds. A runtime may not return suc
 
 Capabilities are semantic flags and constrained values, not vendor product names: supported package managers, network modes, repository access modes, evaluation, durable event retention, artifact fetch, cancellation, and maximum attachment/locator sizes.
 
-All unsupported behaviour returns `UnsupportedError{Runtime, Field, Capability}`. Invalid combinations return `InvalidSpecError`. Reference/runtime disagreement returns `RuntimeMismatchError`. Missing remote state returns `NotFoundError`; retryable upstream failures implement a `Temporary() bool` marker. Errors wrap causes but redact credentials and attachment content.
+All unsupported behavior returns `UnsupportedError{Runtime, Field, Capability}`. Invalid combinations return `InvalidSpecError`. Reference/runtime disagreement returns `RuntimeMismatchError`. Missing remote state returns `NotFoundError`; retryable upstream failures implement a `Temporary() bool` marker. Errors wrap causes but redact credentials and attachment content.
 
 An adapter must discover remote model availability without mutating state. Capability and validation errors occur before upload, container, workspace, agent, response, or session creation. There is no “best effort” mode.
 
@@ -134,7 +134,7 @@ An adapter must discover remote model availability without mutating state. Capab
 
 - Poll retry timing and resource rollback orchestration: 041b.
 - Catalog selection, persistence migration, and credentials: 041c.
-- The final usage meter/rate-card representation: 041d; this leaf establishes only cumulative normalised usage.
+- The final usage meter/rate-card representation: 041d; this leaf establishes only cumulative normalized usage.
 - Migrating the current Anthropic and memory adapters: 041e.
 - Direct OpenAI or Latere network calls: 041f and 041g.
 

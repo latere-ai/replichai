@@ -64,7 +64,7 @@ stateDiagram-v2
 1. From a session's screens, a researcher starts a `synthetic:generated` experiment (seed, optional effect) and an `uploaded` experiment (file), each at its own URL, and both reload and deep-link.
 2. `synthetic:model` and `released` are shown disabled with a stated reason, not hidden.
 3. An uploaded file that violates the input schema shows the offending column inline before an experiment is created; a valid file proceeds.
-4. The run view streams phases over the existing SSE component to completion, and the result view renders the outcome, with a synthetic one rendered as a pilot and indelibly labelled.
+4. The run view streams phases over the existing SSE component to completion, and the result view renders the outcome, with a synthetic one rendered as a pilot and indelibly labeled.
 5. Covered by the frontend's unit and browser suites on the project's existing terms, against a stubbed API.
 
 ## Out of scope

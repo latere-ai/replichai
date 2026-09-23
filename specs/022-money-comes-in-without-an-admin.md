@@ -92,7 +92,7 @@ The `par` block shows the key property: the redirect and the webhook race, in ei
 
 ### The credit is posted at most once, and the ledger insert is what guarantees it
 
-Stripe retries webhook deliveries by design, and a network fault can deliver the same `checkout.session.completed` twice. The current ledger has no defence: a balance is a fold over entries, so two `topup` rows silently double the money. The fix is a unique reference on the entry, and the *insert*, not a read-then-insert check, is what dedupes, for the reason 011 gives for holding inside the enqueue transaction: a check on a second connection races the write it is trying to protect.
+Stripe retries webhook deliveries by design, and a network fault can deliver the same `checkout.session.completed` twice. The current ledger has no defense: a balance is a fold over entries, so two `topup` rows silently double the money. The fix is a unique reference on the entry, and the *insert*, not a read-then-insert check, is what dedupes, for the reason 011 gives for holding inside the enqueue transaction: a check on a second connection races the write it is trying to protect.
 
 Migration `v3` of the credit schema (v1 is the ledger, v2 added `project_id`/`project_name`):
 
@@ -225,7 +225,7 @@ The console's people table already lists every grant with its wallet balance mer
 - **A filter to the accounts that owe** (the negative-wallet rows), so an operator can find every debt in one place instead of scanning balances.
 - **An unfreeze action** (`POST /admin/access/{email}/unfreeze`) that records the one-shot override above, and its inverse if an admin wants to re-freeze a still-negative account they had waived.
 
-This is the collections surface, deliberately small: it makes the debt *visible* and *actionable by a human*, and stops there. It does not auto-retry cards, dun on a schedule, or escalate. Those stay operator judgement, which is appropriate for something that will happen rarely and always needs a person's decision.
+This is the collections surface, deliberately small: it makes the debt *visible* and *actionable by a human*, and stops there. It does not auto-retry cards, dun on a schedule, or escalate. Those stay operator judgment, which is appropriate for something that will happen rarely and always needs a person's decision.
 
 ### Non-goal: a customer's payment does not top up the Anthropic account
 

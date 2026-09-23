@@ -39,7 +39,7 @@ published paper. It has not yet established that the machine may run it.
 
 **The institutions that could have the mandate have not moved.** AEA's Data Editor, cascad,
 CODECHECK, ReScience C, AJPS/Odum (median 20-day human turnaround), the Biostatistics
-reproducibility editor, ACM's artifact badging: all active, all bound by human labour, and no
+reproducibility editor, ACM's artifact badging: all active, all bound by human labor, and no
 LLM agent found in any of their published processes. The one exception is
 **[Code Ocean](https://codeocean.com/blog/trusted-agents)**, which shipped an agent (Aqua,
 Oct 2025) into a platform that already holds verification contracts with Nature-family,
@@ -73,7 +73,7 @@ is open ground.
 
 **The inverse thesis is far better funded than ours.** Simile (emerged 2026, $100M Series A
 led by Index; founders Joon Sung Park, Percy Liang, Michael Bernstein; angels Fei-Fei Li and
-Andrej Karpathy) commercialises the Park et al. generative-agent work at enterprise scale.
+Andrej Karpathy) commercializes the Park et al. generative-agent work at enterprise scale.
 Aaru raised a Series A at a ~$1B headline valuation (Dec 2025). Viewpoints AI and Evidenza
 market synthetic panels using borrowed academic validation language ("Stanford-validated,
 88% match"). They sell: skip the people, simulate the population, get the answer today.
@@ -135,12 +135,12 @@ The consequence: a corpus where 1% of papers share materials is a small inner lo
 It is also why the boundary table and "nothing found is a finding" matter more here than
 they would in ML. For most CHI papers, the audit's product is the absence of materials.
 
-**Manual replication's price floor is known from one programme.** Reproducibility Project:
+**Manual replication's price floor is known from one program.** Reproducibility Project:
 Cancer Biology spent **~$52.5k–75k per paper over 8 years**, and cut scope from 53 papers to
 23 because authors would not cooperate ([Nature](https://www.nature.com/articles/d41586-021-03691-0),
 [IFP cost analysis](https://ifp.org/how-much-should-we-spend-on-replication/)). DARPA SCORE
 closed in April 2026: 3,900 papers sampled, ~50% replication success, and data available for
-only 24%. We could not find a published per-paper cost for any other programme (not
+only 24%. We could not find a published per-paper cost for any other program (not
 Psychology, not Many Labs, not SCORE). That absence is itself informative: the field appears
 to have no unit-economics discipline, and a platform can supply one.
 
@@ -188,7 +188,7 @@ papers](https://arxiv.org/abs/2607.02134)** (Jul 2026, per-claim evidence tracki
 references for implicit implementation detail, a technique we should adopt for step 4),
 and the live **[ICML 2026 Agent Reproduction Challenge](https://huggingface.co/spaces/ICML-2026-agent-repro/challenge)**
 (15 Jul – 2 Aug 2026, $4,000 in GPU credits, bring your own coding agent, claims from every
-ICML 2026 paper, logbooks reviewed by organisers rather than scored automatically, and
+ICML 2026 paper, logbooks reviewed by organizers rather than scored automatically, and
 coverage acknowledged upfront as "uneven" depending on code and data availability). One
 sweep reported ~6,800 papers and 20,594 logged verdicts; neither number survived a direct
 check of the writeup, so treat them as unconfirmed. The window closes 2 Aug 2026 and the

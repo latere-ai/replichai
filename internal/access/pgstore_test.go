@@ -97,7 +97,7 @@ func TestPGStoresSatisfyTheContract(t *testing.T) {
 
 	// The first-login binding, with the concurrency only a real database
 	// shows: parallel transactions queue on the row lock and the second must
-	// recognise the row the first just bound as its own.
+	// recognize the row the first just bound as its own.
 	runBindContract(t, acc, "bind-pg@example.com")
 }
 

@@ -26,7 +26,7 @@ func TestServingURLPrefersThePool(t *testing.T) {
 	}
 }
 
-// TestServingURLFallsBackToDirect pins the behaviour of a deployment whose
+// TestServingURLFallsBackToDirect pins the behavior of a deployment whose
 // Secret does not carry the pooled key: it serves on the direct endpoint
 // exactly as it did before the pooler existed.
 func TestServingURLFallsBackToDirect(t *testing.T) {
@@ -92,7 +92,7 @@ func TestOpenStoresMigratesOnTheSecondURL(t *testing.T) {
 func TestMigrateAllCapsItsPoolAtOneConnection(t *testing.T) {
 	t.Parallel()
 	// connect_timeout bounds the dial; the pool is configured before anything
-	// is dialled, so the cap is observable through the error's absence of a
+	// is dialed, so the cap is observable through the error's absence of a
 	// second connection rather than through a live pool. Assert on the parsed
 	// configuration directly instead.
 	cfg, err := migrationPoolConfig("postgres://u:p@" + directHost + ":5432/replichai")

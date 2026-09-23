@@ -6,7 +6,7 @@
 //
 // Every balance in the product is a sum over one append-only table. No balance
 // is stored anywhere, following the rule 006l applied to the session count it
-// replaces: a materialised total is a second source of truth, and it drifts
+// replaces: a materialized total is a second source of truth, and it drifts
 // the first time a row is corrected. Summing also means the rows themselves,
 // each naming its actor and its cause, explain why a holder has the balance
 // it has.

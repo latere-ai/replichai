@@ -33,7 +33,7 @@ func newSession(t *testing.T) *Session {
 
 // A session id whose directory already exists is refused rather than adopted.
 // The id is four random bytes, so two sessions can collide, and MkdirAll would
-// have re-initialised the first session's workspace as if it were the
+// have re-initialized the first session's workspace as if it were the
 // second's, losing the first's evidence to a run that believed it started
 // clean.
 func TestCreateSessionRefusesAnExistingID(t *testing.T) {
@@ -42,7 +42,7 @@ func TestCreateSessionRefusesAnExistingID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first CreateSession: %v", err)
 	}
-	// Leave a mark in the first session's workspace, so a re-initialisation
+	// Leave a mark in the first session's workspace, so a re-initialization
 	// that adopted the directory would be detectable.
 	marker := filepath.Join(first.Workspace(), "evidence.txt")
 	if err := os.WriteFile(marker, []byte("the first session's work"), 0o600); err != nil {
@@ -51,7 +51,7 @@ func TestCreateSessionRefusesAnExistingID(t *testing.T) {
 	if _, err := CreateSession(root, "collision", os.LookupEnv); !errors.Is(err, ErrSessionExists) {
 		t.Fatalf("a colliding id was not refused: %v", err)
 	}
-	// The first session's directory is untouched: nothing re-initialised it.
+	// The first session's directory is untouched: nothing re-initialized it.
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("the colliding create disturbed the first session: %v", err)
 	}
@@ -430,8 +430,8 @@ func TestAnInstalledDependencyTreeIsNotHarvested(t *testing.T) {
 	session := newSession(t)
 	workspace := session.Workspace()
 
-	// A virtualenv under an unpredictable name, recognised by the marker
-	// Python itself writes, and one recognised by name.
+	// A virtualenv under an unpredictable name, recognized by the marker
+	// Python itself writes, and one recognized by name.
 	for _, dir := range []string{"pyenv-3.13/lib/python3.13/site-packages/numpy", "node_modules/left-pad"} {
 		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o700); err != nil {
 			t.Fatalf("mkdir: %v", err)

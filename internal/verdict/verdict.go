@@ -7,7 +7,7 @@
 // The rubric already requires everything in it: a per-component reproduction
 // table (criterion 1), every component classified inner or outer with a
 // citation (2), the unwritten decisions with their sensitivity (3), and code,
-// data, licence, preregistration and supplement each scored against a fetched
+// data, license, preregistration and supplement each scored against a fetched
 // URL or an explicit "none found" naming where the run looked (4). Before this
 // file existed the audit wrote all of it into REPRODUCIBILITY.md and
 // SOURCES.md, where nothing downstream could read it, so a per-claim result
@@ -133,7 +133,7 @@ type Verdict struct {
 
 // Components is the decomposition the rate is derived from. It is shown
 // wherever the rate is shown, because the rubric forbids reading the rate
-// without the decomposition it summarises.
+// without the decomposition it summarizes.
 type Components struct {
 	Verified int `json:"verified"`
 	Partial  int `json:"partial"`
@@ -292,7 +292,7 @@ func Validate(raw []byte) ([]Problem, error) {
 		}
 	}
 
-	// The counts summarise the inner rows, so they cannot disagree with them.
+	// The counts summarize the inner rows, so they cannot disagree with them.
 	if got := v.Components.Verified + v.Components.Partial + v.Components.Blocked; got != v.Components.Total {
 		add("components", fmt.Sprintf("verified+partial+blocked is %d but total is %d", got, v.Components.Total))
 	}

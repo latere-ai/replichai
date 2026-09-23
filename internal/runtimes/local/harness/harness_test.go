@@ -85,7 +85,7 @@ func TestRegistryRefusesDuplicatesAndListsChoices(t *testing.T) {
 		t.Fatalf("Names = %v, want sorted", names)
 	}
 	if _, err := registry.Lookup("  CLAUDE-CODE "); err != nil {
-		t.Fatalf("canonicalisation failed: %v", err)
+		t.Fatalf("canonicalization failed: %v", err)
 	}
 	_, err = registry.Lookup("nope")
 	if err == nil || !strings.Contains(err.Error(), "claude-code, codex") {

@@ -78,7 +78,7 @@ func New(config Config) (*Runtime, error) {
 		return nil, errors.New("local runtime needs a harness")
 	}
 	if config.Catalog == nil {
-		return nil, errors.New("local runtime needs a model catalogue")
+		return nil, errors.New("local runtime needs a model catalog")
 	}
 	if strings.TrimSpace(config.Root) == "" {
 		return nil, errors.New("local runtime needs a session root")
@@ -184,7 +184,7 @@ func (r *Runtime) carriesCredential(model managed.ModelRef, gateway harness.Gate
 	}
 	return fmt.Errorf(
 		"%w: %s/%s is declared to use the %s harness's own login, and a %s sandbox cannot reach it: it holds none of "+
-			"this machine's files. Declare a gateway with a key_env in the model catalogue instead",
+			"this machine's files. Declare a gateway with a key_env in the model catalog instead",
 		managed.ErrUnsupported, model.Provider, model.ID, r.config.Harness.Name(), r.config.Sandbox.Name())
 }
 
@@ -221,7 +221,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 		return managed.SessionRef{}, err
 	}
 	// The spec persisted for Poll drops the attachment bytes. They are already
-	// materialised into the workspace above, and Poll needs only the model,
+	// materialized into the workspace above, and Poll needs only the model,
 	// the task and the evaluation. Kept whole, a large attachment would be
 	// decoded from disk on every poll for the life of the session.
 	if err = session.writeJSON(specFile, withoutAttachmentBytes(spec)); err != nil {
@@ -554,7 +554,7 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 // network is the egress policy a stage runs under. Under an allowlist the
 // model's own endpoint is added: a session that cannot reach the model it was
 // told to run on does nothing at all, and the caller who wrote the allowlist
-// does not know which endpoint the catalogue resolved. The effective list is
+// does not know which endpoint the catalog resolved. The effective list is
 // recorded in the run's environment record rather than left implicit.
 func (r *Runtime) network(spec managed.SessionSpec, gateway harness.Gateway) hostsandbox.Network {
 	network := hostsandbox.Network{

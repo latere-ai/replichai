@@ -36,7 +36,7 @@ Three separate failures sit behind that one line.
 
 **Only public records get a head.** The injected head is built from `Visibility == public && !Trashed()` and `profile.Public`, never from the caller's identity and never through `mayViewProject`. A private project read by its own owner gets the default head and `noindex`. The rule is a single predicate, so a test can rule out "a private title reaches crawlable HTML" rather than relying on a review to notice it.
 
-**Tabs fold to the record.** `/p/{id}/verdict` canonicalises to `/p/{id}`, `/p/{id}/s/{jobId}/artifacts` to `/p/{id}/s/{jobId}`. A tab is a view of one record, not a second record.
+**Tabs fold to the record.** `/p/{id}/verdict` canonicalizes to `/p/{id}`, `/p/{id}/s/{jobId}/artifacts` to `/p/{id}/s/{jobId}`. A tab is a view of one record, not a second record.
 
 **An address that does not exist says so.** Go learns the route shapes the client already knows, and anything outside them is a 404 that carries the shell. The app still renders, and renders a not-found screen rather than the dashboard under a corrected address.
 

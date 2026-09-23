@@ -11,7 +11,7 @@ import type { I18n, TKey } from './i18n'
 // checkbox, radio, select, number stepper, disclosure triangle, tooltip, or
 // prompt(). Each one is rebuilt so it carries the app's own tokens and reads
 // the same on every platform, and each one keeps the role, state, and keyboard
-// behaviour the native element would have provided.
+// behavior the native element would have provided.
 
 /* ── Type ── */
 
@@ -310,7 +310,7 @@ export function Segmented<T extends string>({
 
 // NumberField is a plain text box with its own steppers. The native number
 // input draws OS spinners that no stylesheet can reach, and its scroll-wheel
-// behaviour changes a value nobody meant to touch.
+// behavior changes a value nobody meant to touch.
 export function NumberField({
   i18n,
   value,
@@ -427,7 +427,7 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
   // Portalled to <body>. A fixed backdrop is contained by any promoted
   // ancestor, and both screens that open a dialog run a fade-up animation whose
   // filled transform promotes them, which confined the backdrop to the content
-  // column, left the rail live behind a "modal", and centred the dialog on the
+  // column, left the rail live behind a "modal", and centered the dialog on the
   // wrong box.
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
@@ -531,7 +531,7 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 // bubble would leave the viewport.
 //
 // 'right' is for a trigger in a vertical stack. Above and below are both a
-// neighbour's row there, as in the folded navigation rail, so the bubble
+// neighbor's row there, as in the folded navigation rail, so the bubble
 // goes out to the side instead, where nothing is stacked.
 type TipSide = 'top' | 'bottom' | 'right'
 
@@ -632,7 +632,7 @@ export function TipHost() {
     const fits = (top: number) => top >= M && top + b.height <= window.innerHeight - M
     // Beside the trigger rather than under it: level with its middle, clear of
     // its right edge. Nothing flips here, because the vertical stack this is for has a
-    // neighbour above and below, and the clamp below keeps it on screen.
+    // neighbor above and below, and the clamp below keeps it on screen.
     const beside = tip.side === 'right'
     const top = beside
       ? tip.rect.top + tip.rect.height / 2 - b.height / 2
@@ -646,7 +646,7 @@ export function TipHost() {
     const left = beside ? tip.rect.right + M : tip.rect.left + tip.rect.width / 2 - b.width / 2
     setAt({
       // Pulled back inside for a trigger near the viewport's edge, where the
-      // header's wallet pill sits, and a centred bubble would hang off the screen.
+      // header's wallet pill sits, and a centered bubble would hang off the screen.
       left: Math.min(Math.max(M, left), Math.max(M, window.innerWidth - b.width - M)),
       top: Math.min(Math.max(M, top), Math.max(M, window.innerHeight - b.height - M)),
     })

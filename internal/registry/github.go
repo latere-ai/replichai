@@ -12,19 +12,19 @@ import (
 	"github.com/latere-ai/replichai/internal/publish"
 )
 
-// GitHubSource reads reproductions from a GitHub organisation through
+// GitHubSource reads reproductions from a GitHub organization through
 // internal/github. It is the production source behind the registry.
 type GitHubSource struct {
 	client *github.Client
 	owner  string
 }
 
-// NewGitHubSource returns a source over an organisation.
+// NewGitHubSource returns a source over an organization.
 func NewGitHubSource(client *github.Client, owner string) *GitHubSource {
 	return &GitHubSource{client: client, owner: owner}
 }
 
-// List enumerates the organisation's repositories.
+// List enumerates the organization's repositories.
 func (s *GitHubSource) List(ctx context.Context) ([]string, error) {
 	return s.client.ListRepos(ctx, s.owner)
 }

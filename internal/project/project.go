@@ -59,7 +59,7 @@ type Project struct {
 	Description string     `json:"description,omitempty"`
 	Visibility  Visibility `json:"visibility"` // private by default; the public flip is 006f
 	// CreditCap overrides the platform's overdraft floor for this project, in
-	// micro-USD; zero means the platform default. It is never serialised: a
+	// micro-USD; zero means the platform default. It is never serialized: a
 	// published overdraft becomes an allowance somebody plans around, which
 	// this number must not become (011).
 	CreditCap int64     `json:"-"`
@@ -82,7 +82,7 @@ type Project struct {
 	// (h***n@example.org). It is derived server-side from the session's verified
 	// email and never taken from a request body, so a published identity cannot
 	// be typed in, and it is redacted before storage rather than at render, so
-	// the full address is never serialised.
+	// the full address is never serialized.
 	SignedOffEmail string `json:"signed_off_email,omitempty"`
 	// The retraction (006o), zero until the owner withdraws a publication. It is
 	// stored beside the sign-off rather than clearing it: withdrawing ends a
@@ -343,14 +343,14 @@ type Store interface {
 	// snapshot, and the time. It is repeatable: publishing a withdrawn project
 	// overwrites the snapshot with the new attestation and clears the retraction
 	// (006o), so the row never claims to be both live and withdrawn. The caller,
-	// the HTTP owner check and the manifest-clear gate, authorises; this store
+	// the HTTP owner check and the manifest-clear gate, authorizes; this store
 	// only records.
 	SetPublic(ctx context.Context, id string, s SignOff) error
 	// SetPrivate withdraws a publication (006o): visibility returns to private
 	// and the retraction is recorded, leaving every sign-off field unchanged. On
 	// a project that is already private it succeeds and changes nothing, because
 	// the timestamp must keep recording the moment the publication ended, not
-	// the last time somebody asked. The caller authorises, and only the owner
+	// the last time somebody asked. The caller authorizes, and only the owner
 	// may call it.
 	SetPrivate(ctx context.Context, id string, w Withdrawal) error
 	// ListAll returns every project, trashed ones included, oldest first. It is
@@ -373,7 +373,7 @@ type Store interface {
 	// Trash moves a project to the trash, and Restore takes it back out (019).
 	// Both are idempotent, and Trash keeps the first timestamp: a repeated call
 	// must not rewrite the moment the project left the list. A missing project
-	// is ErrNotFound, because the caller has just authorised against one.
+	// is ErrNotFound, because the caller has just authorized against one.
 	Trash(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
 	// ListTrashed returns an owner's trashed projects, newest-trashed first. It
@@ -430,7 +430,7 @@ type Store interface {
 	// It returns ErrNotFound for a project that is not there, ErrPaperNotFound
 	// when the source does not hold the key, and ErrPaperExists when the
 	// destination already does, because merging two papers' histories is not a
-	// move. The caller authorises both ends and decides whether the sessions may
+	// move. The caller authorizes both ends and decides whether the sessions may
 	// move (035 refuses while one is still running); this store only records.
 	MovePaper(ctx context.Context, fromID, toID, key string) error
 }

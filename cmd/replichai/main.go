@@ -3,7 +3,7 @@
 
 // Command replichai audits the reproducibility of research papers.
 //
-// This package owns argument parsing and output. All behaviour lives in
+// This package owns argument parsing and output. All behavior lives in
 // internal/audit, so an HTTP server can drive the same code path.
 //
 // Every write to stdout or stderr here discards its error explicitly. A failed
@@ -303,7 +303,7 @@ func providerEventsFromManaged(events []managed.Event) []provider.Event {
 }
 
 // newPlatformPublisher asks the platform for the repository and the credential
-// to push to it (045l). This path leaves no organisation credential on this
+// to push to it (045l). This path leaves no organization credential on this
 // machine: the token it returns can write to one repository, expires within
 // the hour, and is revoked when the push is done.
 //
@@ -993,7 +993,7 @@ func slugify(reference string) string {
 }
 
 // publisherFor chooses where the repository comes from (045l). When a project
-// is named, the platform is asked, which leaves no organisation credential on
+// is named, the platform is asked, which leaves no organization credential on
 // this machine. When none is named, the credential this machine already holds
 // is used.
 //

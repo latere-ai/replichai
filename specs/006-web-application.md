@@ -33,7 +33,7 @@ The web layer is new packages and a new `cmd/`, not a rewrite of any of these.
 
 ## Decisions
 
-**The project is the tenant.** There is no organisation in the product, only individual users, each owning private research **projects**. A project is one replication effort; it holds one or more runs and their artifacts (the reproduction, later the 007 experiments), and the user iterates it and manages its lifecycle. Private by default; the *owner* decides when it goes public. Collaboration is per-project invitation, not an org. This is the ownership model, and it belongs to the app, not to the forge or the IDP.
+**The project is the tenant.** There is no organization in the product, only individual users, each owning private research **projects**. A project is one replication effort; it holds one or more runs and their artifacts (the reproduction, later the 007 experiments), and the user iterates it and manages its lifecycle. Private by default; the *owner* decides when it goes public. Collaboration is per-project invitation, not an org. This is the ownership model, and it belongs to the app, not to the forge or the IDP.
 
 Three roles follow, all project-scoped except the first: **platform admin** (oversees everything, controls the invite-only login gate), **project admin** (the owning user), **project contributor** (invited into a private project).
 
@@ -47,7 +47,7 @@ Three roles follow, all project-scoped except the first: **platform admin** (ove
 |---|---|---|
 | Projects, membership, visibility, and lifecycle — the app's ownership model | **Postgres** | The product's own model, which neither the forge nor the IDP holds |
 | Job lifecycle — a paper submitted, now resolving, now running, its progress and error | **Postgres** | Ephemeral orchestration state that spans requests and outlives the process |
-| Access grants, linked forge accounts, and who made what public — authorisation and audit trail | **Postgres** | Durable state the deployment owns |
+| Access grants, linked forge accounts, and who made what public — authorization and audit trail | **Postgres** | Durable state the deployment owns |
 | Reproduction artifacts | **The `Store`** (forge for the MVP) | Repositories with agent-authored history; the app reads them through the seam |
 | The finished-reproduction registry | **Derived from the store** (003) | The manifests are the source of truth; nothing should drift from them |
 
@@ -61,7 +61,7 @@ So Postgres holds the ownership model, jobs in flight, and who may start one. It
 | `email` | Seeding a grant for someone who has not signed in yet, and nothing else |
 | name / picture, from `/userinfo` | Display only, never stored |
 
-Nothing else. No IDP-issued roles, scopes, org membership, superadmin flag, delegation, or billing claim reaches an authorisation decision here. Those belong to the identity product's model, and reading them would couple this product to it. **Authentication is portable; authorisation is ours.** The contract is the standard and only the standard: discover the issuer, run a public PKCE login, verify the ID token, keep `sub` and the IdP-authenticated email, discard the rest. Which library implements that is 006c's to pick: a conformant one, not a vendor SDK whose value is the claims we have just refused. Swapping the issuer is then a config change.
+Nothing else. No IDP-issued roles, scopes, org membership, superadmin flag, delegation, or billing claim reaches an authorization decision here. Those belong to the identity product's model, and reading them would couple this product to it. **Authentication is portable; authorization is ours.** The contract is the standard and only the standard: discover the issuer, run a public PKCE login, verify the ID token, keep `sub` and the IdP-authenticated email, discard the rest. Which library implements that is 006c's to pick: a conformant one, not a vendor SDK whose value is the claims we have just refused. Swapping the issuer is then a config change.
 
 Rejected: gating on an IDP-issued `replichai:operate` scope or membership of a seed org. It looks like less code, but it puts our product's access policy in another service's schema and admin UI, and makes the beta undeployable against any other issuer.
 
@@ -72,7 +72,7 @@ Rejected: gating on an IDP-issued `replichai:operate` scope or membership of a s
 - **In the UI**, GitHub appears on exactly one screen: the finished reproduction's *take it out* panel, for a user who wants to own it. It is absent from sign-in, from submitting, from watching a run, and from reading a result. A user who never wants a repository never sees GitHub mentioned.
 - Consequently `/me` reports *linked accounts*, not a `github_login`, and the link routes are `/{forge}`-parameterised. GitHub is the only implementation today; it is not the only shape the surface admits.
 
-A user with no forge account runs an audit end to end, watches it, and reads its result, verdict, and transcript in the web application. What they cannot do without linking is receive the repository as a collaborator, because that is a forge-side grant and the forge needs an account to grant it to. Making the project *public* needs no account at all: the organisation already owns the repository, and the flip is the owner's to make with a sign-off (see the public flip below).
+A user with no forge account runs an audit end to end, watches it, and reads its result, verdict, and transcript in the web application. What they cannot do without linking is receive the repository as a collaborator, because that is a forge-side grant and the forge needs an account to grant it to. Making the project *public* needs no account at all: the organization already owns the repository, and the flip is the owner's to make with a sign-off (see the public flip below).
 
 The link is stored against the principal, not the session: one row per principal and forge, so a claim months later still knows where to send the invitation. It is written only by the link callback, never by a request body: the account is *proven*, never typed. An earlier sketch had `claim { github_login }` take the name as a parameter, and a wrong or hostile value would have handed collaborator access on a private reproduction to a stranger; the claim now carries no name. It invites the linked account or fails. The link's OAuth requests identity only; `repo` scope is never requested, at any point, for any user.
 
@@ -96,7 +96,7 @@ The grant table is an ACL, not a user table: it stores a principal, an email use
 
 Within a project, ownership splits into two project-scoped roles, **project admin** (the owner) and **project contributor** (invited by email), neither of which is a platform tier: a contributor still needs a platform grant to sign in at all, so a project invitation never admits anyone to the platform. Everyone signed in but ungranted sees the not-invited screen.
 
-**Making a project public is the owner's action, gated by a responsibility sign-off, and one-way.** 002 publishes to the organisation privately and leaves the decision to go public to a human; this is that decision, and it needs no forge account on the user's side. The **owner**, not a cross-project role, flips their **own** project, and only after:
+**Making a project public is the owner's action, gated by a responsibility sign-off, and one-way.** 002 publishes to the organization privately and leaves the decision to go public to a human; this is that decision, and it needs no forge account on the user's side. The **owner**, not a cross-project role, flips their **own** project, and only after:
 
 - **002's gate cleared it.** Only worker-written files were ever pushed, so going public redistributes nothing third-party by construction; the flip refuses any project whose reproduction manifest is not `clear`.
 - **A recorded sign-off.** The owner affirms, in a recorded attestation, that they are responsible for publishing the results; the attestation version, deciding principal, and timestamp are written to Postgres (`signed_off_by` / `signed_off_at` / `attestation_version`). This is the one fact neither the manifest nor the forge records.
@@ -104,13 +104,13 @@ Within a project, ownership splits into two project-scoped roles, **project admi
 
 A public project joins the **public zone** every signed-in user can browse, which shows the initiator who triggered the replication and opens the whole project: its sessions, transcripts, datasets, and artifacts. Because the app serves artifacts through its own read-only pass-through, a project can go public without exposing an underlying repository; a GitHub-connected owner may additionally, and optionally, flip the repository itself public. The registry (003) still derives from the forge, so a newly public project needs no separate index entry.
 
-**Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organisation's credential, calls `InviteCollaborator` with the linked account, which for a non-member creates an invitation the user accepts. The consequences define the trust model:
+**Ownership by invitation, not delegation.** A user is granted their reproduction repository by *invitation*: the backend, holding the organization's credential, calls `InviteCollaborator` with the linked account, which for a non-member creates an invitation the user accepts. The consequences define the trust model:
 
 - The link's OAuth is used only to **verify identity** (which account is really this person), never to act on their behalf.
-- The service **never holds a user's repository credentials.** The organisation invites; the user accepts.
-- This is a composable step *after* 002 publishes. 002 stays identity-agnostic (it publishes to the organisation); the web layer adds "invite the submitter" on top, using the `publish.Repo` handle 002 returns.
+- The service **never holds a user's repository credentials.** The organization invites; the user accepts.
+- This is a composable step *after* 002 publishes. 002 stays identity-agnostic (it publishes to the organization); the web layer adds "invite the submitter" on top, using the `publish.Repo` handle 002 returns.
 
-Rejected: OAuth with write scope so the service creates the repository under the user's own account. It would make the service hold write credentials for every user's forge, invert the trust, and scatter reproductions across personal accounts instead of the one organisation the registry (003) reads.
+Rejected: OAuth with write scope so the service creates the repository under the user's own account. It would make the service hold write credentials for every user's forge, invert the trust, and scatter reproductions across personal accounts instead of the one organization the registry (003) reads.
 
 **Asynchronous jobs, streamed progress.** An audit runs up to an hour (`audit.DefaultTimeout`), so a submission cannot block a request. Submitting enqueues a job; a worker runs the audit; the observer callback and the transcript events (005) stream to the browser. For a single-tenant, low-volume service the worker is an in-process goroutine pool over a Postgres-backed job table, with no external queue to operate. Rejected for now: Redis or a dedicated queue; it is infrastructure the volume does not yet justify, and the job table already gives durability and retry.
 
@@ -178,7 +178,7 @@ These are invariants the whole must hold, verified as the children land:
 8. A grant seeded by an email admits that person on their first sign-in and binds to their principal; a second principal presenting that email afterwards is refused. Revoking the grant locks the holder out on the next request, with no session left standing.
 9. A forge account is required for nothing but the collaborator invitation. A test drives an unlinked user from submission to a read result and transcript end to end; `claim` is the only route that answers differently (`409`).
 10. Only a project's **owner** can make it public, with no forge account required, and only with a recorded responsibility sign-off and a manifest this service published `clear` under 002's gate. A non-owner's flip is refused `403` server-side even when the request is forged past the UI; an un-signed request changes nothing; and a project with no accountable manifest is refused for everyone.
-11. The IDP is replaceable and the forge is contained. Every gate and tier test runs against a stub issuer, with no claim beyond `sub` and email reaching an authorisation decision; every job, gate, and API test runs against fake forge interfaces, with GitHub named only inside its adapter and the account-link adapter.
+11. The IDP is replaceable and the forge is contained. Every gate and tier test runs against a stub issuer, with no claim beyond `sub` and email reaching an authorization decision; every job, gate, and API test runs against fake forge interfaces, with GitHub named only inside its adapter and the account-link adapter.
 
 ## Out of scope
 

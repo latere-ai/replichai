@@ -249,7 +249,7 @@ type Outcome struct {
 	Ref       managed.SessionRef
 }
 
-// Runner runs one paper. The batch serialises Prepare and does not serialise
+// Runner runs one paper. The batch serializes Prepare and does not serialize
 // Execute; that is the whole concurrency contract. Allocating a repository
 // name is a read followed by a decision, and two concurrent readers would
 // decide the same name.
@@ -378,7 +378,7 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			save()
 			mu.Unlock()
 
-			// Prepare is serialised: allocating a name is a read of what
+			// Prepare is serialized: allocating a name is a read of what
 			// exists followed by a decision, so two concurrent papers whose
 			// slugs collide would decide the same name.
 			prepare.Lock()

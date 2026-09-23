@@ -15,9 +15,9 @@ import (
 )
 
 // Factory constructs one runtime on demand. Construction is deferred rather
-// than done at registration so a catalogue can be assembled, and its names
+// than done at registration so a catalog can be assembled, and its names
 // resolved, before any credential is in hand: both composition roots build a
-// zero-config catalogue to validate the operator's chosen name, then rebuild a
+// zero-config catalog to validate the operator's chosen name, then rebuild a
 // configured one.
 type Factory func(context.Context) (managed.Runtime, error)
 
@@ -28,7 +28,7 @@ type Entry struct {
 	// entry rather than folding the name for the caller.
 	Name managed.RuntimeName
 	// Aliases are additional names that resolve to this entry. They are
-	// canonicalised on registration and may not collide with any entry's
+	// canonicalized on registration and may not collide with any entry's
 	// name or with another entry's alias.
 	Aliases []string
 	// Build is required. NewCatalog rejects an entry without one.
@@ -44,7 +44,7 @@ type Catalog struct {
 	aliases map[managed.RuntimeName]managed.RuntimeName
 }
 
-// NewCatalog validates the entries and returns the catalogue they describe. A
+// NewCatalog validates the entries and returns the catalog they describe. A
 // bad entry fails the whole call instead of being skipped: a name that is not
 // canonical, or one claimed twice as a name or an alias, would make lookup
 // ambiguous, and a persisted session that resolves to the wrong adapter cannot

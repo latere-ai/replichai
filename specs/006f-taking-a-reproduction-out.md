@@ -24,7 +24,7 @@ A throwaway run (2026-07-25) confirmed the mechanic this depends on: the managed
 
 **The repository is created first and mounted, not pushed at the end.** The flow inverts 002's:
 
-1. Create an empty, private repository under the organisation.
+1. Create an empty, private repository under the organization.
 2. Mount it into the audit's session; the agent commits its reproduction as it works.
 3. After the run: verify what was committed, read the head commit, write the manifest, invite the user.
 
@@ -37,13 +37,13 @@ A throwaway run (2026-07-25) confirmed the mechanic this depends on: the managed
 | Server token (org admin / GitHub App) | the deployment | create the repo, send the invitation, read head, flip visibility | **never** |
 | Mount token (fine-grained, one repo, short-lived) | the run | the agent's clone and push | yes — and nothing else |
 
-The mount token grants write to exactly the one repository it belongs to. A leak costs that repo, not the organisation.
+The mount token grants write to exactly the one repository it belongs to. A leak costs that repo, not the organization.
 
 **The mounted repository is a bounded workspace.** Because the agent pushes live, the publisher can no longer pre-filter, so the boundary moves into the method. The worker is instructed to commit only its reproduction (the reports and `src/`) into the mounted repo, and to keep every download (paper PDF, benchmark, corpus) in a scratch directory *outside* the mount. Third-party data then physically cannot be committed, and live push is safe by construction. This is a method change, and it is the primary control.
 
 **The gate becomes a post-run verifier, and its rule must invert.** The publisher can no longer filter before a push that has already happened; it *verifies* the committed tree afterwards. But 002's allow-list (worker = the four report files and `src/`) is wrong here: an agent-authored repository is a real software project (`.gitignore`, `LICENSE`, `requirements.txt`, tests, configs, generated results), not a fixed set of report files, so an allow-list flags all of it. So the method is the primary control (keep downloads out of the repository), and `publish.VerifyTree` is the backstop: it flags only what is almost certainly third-party, meaning the paper PDF, a dataset, model weights, an archive, a database, or a leaked secret. A tree that verifies clean gets `redistribution: clear` and is eligible for the visibility flip; a tree that flags anything is kept private and **barred from ever being made public**. This is the fail-closed posture, enforced after the fact.
 
-**Ownership by invitation.** The user is added as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation they accept. The username is the *proven* GitHub login from 006c's link step, never a typed one. No user ever grants the service `repo` scope; the organisation invites outward.
+**Ownership by invitation.** The user is added as a collaborator (`PUT /repos/{owner}/{repo}/collaborators/{username}`), which for a non-member creates an invitation they accept. The username is the *proven* GitHub login from 006c's link step, never a typed one. No user ever grants the service `repo` scope; the organization invites outward.
 
 **Collaboration is per-project, driven by the owner, and admits nobody to the platform.** A project owner (006g) invites a collaborator *by email* into the project: a row in the membership store (006c), bound one-way on the collaborator's first login. This is the app-level invitation; the forge collaborator invite above is what follows once that person has a *proven* GitHub login and a session's repository to be added to. The two are distinct on purpose: project membership decides who may *see and operate the project in the app*; the forge invite decides who may *push to the repository*. Adding a collaborator by email never grants a platform tier: membership and tier are resolved independently, and neither can be satisfied by the other (006c's orthogonality rule). What that *cost* an invitee changed with [006q](006q-sign-in-is-open-budget-is-not.md): signing in now self-grants `TierUser`, so an invitee reaches the app on their own rather than answering `not_granted` until an admin acts. The rule stands; the barrier it used to put in front of a collaborator does not. The membership store already exists (006c); this spec gives it its first HTTP surface: `GET/POST/DELETE /projects/{id}/members`, owner-only.
 

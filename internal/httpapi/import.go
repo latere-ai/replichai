@@ -70,7 +70,7 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// The body is bounded at registration, where bodyLimits names this route,
 	// so a record past MaxImportBytes fails the decode with the error tooLarge
-	// recognises.
+	// recognizes.
 	var body importedSession
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		if tooLarge(err) {

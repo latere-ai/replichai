@@ -49,7 +49,7 @@ export function emptyWallet(credits?: Credits): boolean {
 
 // CreateOutcome is everything the New-project screen has to say after a create:
 // a banner, empty when there is nothing to say, and a message for each paper
-// row the server did not recognise, keyed by the reference the row holds.
+// row the server did not recognize, keyed by the reference the row holds.
 type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
 
 // createOutcome decides what a create attempt tells the person.
@@ -57,7 +57,7 @@ type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
 // A create records papers and starts nothing (012), so there is no per-paper
 // session to fail, no partial success to explain, and no credits to run out of;
 // all of that was removed with the enqueue. Two outcomes remain: the papers
-// were recorded, or the server did not recognise some of the references.
+// were recorded, or the server did not recognize some of the references.
 export function createOutcome(t: T, status: number, data: CreatedProject): CreateOutcome {
   const rows = new Map<string, string>()
   const papers: PaperResult[] = data.papers ?? []

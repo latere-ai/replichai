@@ -63,7 +63,7 @@ export function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
 }
 
 // NavItem is one destination in the rail. Each keeps a fixed hue on its icon so
-// the rail is scannable by colour; the label only takes the brand when current.
+// the rail is scannable by color; the label only takes the brand when current.
 // A folded rail has room for the icon and nothing else, so the label moves into
 // a tooltip rather than disappearing. `data-tip` goes on the button itself: it is
 // all TipHost reads, and the `tip` class that usually comes with it is an
@@ -395,7 +395,7 @@ export function Shell({
             onTab={(tab, correct) => setView({ name: 'project', id: view.id, title: view.title, tab }, { replace: correct })}
             // The title is the breadcrumb's, and only the screen that fetched the
             // project knows it. It corrects the view in place rather than
-            // travelling anywhere.
+            // traveling anywhere.
             onTitle={(title) =>
               setView((now) => (now.name === 'project' && now.title !== title ? { ...now, title } : now), { replace: true })
             }

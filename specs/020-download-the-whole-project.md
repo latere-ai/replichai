@@ -19,7 +19,7 @@ The stream depends on there being no `WriteTimeout`: `cmd/server` sets only `Rea
 
 **Scope:** one action that gives a reader everything a project produced, as a single archive. Adds `GET /projects/{id}/archive`, streamed as a zip built from each session's committed tree, and the button that calls it.
 
-**Depends on:** [006f](006f-taking-a-reproduction-out.md) (the repository a session publishes), [005](005-transcript.md) (the transcript inside it), [015](015-a-verdict-belongs-to-a-session.md) (a verdict belongs to a session, so the archive is organised by session), [018](018-one-list-of-projects.md) (the row the button sits on).
+**Depends on:** [006f](006f-taking-a-reproduction-out.md) (the repository a session publishes), [005](005-transcript.md) (the transcript inside it), [015](015-a-verdict-belongs-to-a-session.md) (a verdict belongs to a session, so the archive is organized by session), [018](018-one-list-of-projects.md) (the row the button sits on).
 
 ## Problem
 
@@ -29,7 +29,7 @@ So there is no way to get the work out in bulk. A project with three sessions an
 
 ## Decisions
 
-**One archive per project, organised by session.** 015 established that a verdict and a repository belong to the session that produced them, and a project holds several papers. So the archive's top level is sessions, not files:
+**One archive per project, organized by session.** 015 established that a verdict and a repository belong to the session that produced them, and a project holds several papers. So the archive's top level is sessions, not files:
 
 ```
 <project-title>/

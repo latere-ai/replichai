@@ -16,7 +16,7 @@ import (
 	"github.com/latere-ai/replichai/internal/platform"
 )
 
-// stubResolver stands in for a backend catalogue and counts how often it is
+// stubResolver stands in for a backend catalog and counts how often it is
 // called, so the memoisation can be observed.
 type stubResolver struct {
 	calls atomic.Int64

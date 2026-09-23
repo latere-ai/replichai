@@ -99,11 +99,11 @@ const (
 )
 
 // ProjectPath is a project's address. A tab such as `/verdict` or `/people` is
-// a view of the same record, not a second record, so a tab canonicalises to
+// a view of the same record, not a second record, so a tab canonicalizes to
 // this path.
 func ProjectPath(id string) string { return "/p/" + id }
 
-// SessionPath is a session's address under its project. Its tabs canonicalise
+// SessionPath is a session's address under its project. Its tabs canonicalize
 // to it for the same reason.
 func SessionPath(projectID, jobID string) string { return "/p/" + projectID + "/s/" + jobID }
 

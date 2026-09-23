@@ -16,7 +16,7 @@ import { terminal } from './session-stop'
 export const phaseClass = (p: string) => (terminal(p) ? p : 'running')
 
 // phaseTone maps a session phase onto the semantic ramp, so a phase is the same
-// colour wherever it appears: a row badge, a timeline dot, a pill.
+// color wherever it appears: a row badge, a timeline dot, a pill.
 export function phaseTone(phase: string): Tone {
   if (phase === 'done') return 'ok'
   if (phase === 'failed') return 'err'

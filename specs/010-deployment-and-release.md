@@ -29,7 +29,7 @@ status: built
 
 **The ingress is tuned for streaming and long runs.** SSE needs the proxy to not buffer and not time out: the ingress disables response buffering and sets a one-hour read/send timeout, so `/jobs/{id}/events` streams live rather than arriving in one block at the end. The run itself is not bounded by that hour: a session outlives its watchers by design (006b), and the browser's `EventSource` reconnects when the proxy drops an idle stream, so the viewer picks the run back up where it is.
 
-**A modest connection budget.** The shared cluster has ~25 Postgres slots across every service, so the `replichai-db` DSN pins `pool_max_conns=5` (pgx honours it), keeping replichai's usage small without a per-service pool cluster.
+**A modest connection budget.** The shared cluster has ~25 Postgres slots across every service, so the `replichai-db` DSN pins `pool_max_conns=5` (pgx honors it), keeping replichai's usage small without a per-service pool cluster.
 
 **Terraform provisions the domain, the database, and the DB secret.** In [`../terraform`](../../terraform): `dns.tf` adds the `replichai.latere.ai` A record to the ingress load balancer; `database.tf` adds the `replichai` database (with `prevent_destroy`, like every other service) and the `replichai-db` Kubernetes secret carrying `DATABASE_URL`. Applied via the existing `tofu` workflow.
 

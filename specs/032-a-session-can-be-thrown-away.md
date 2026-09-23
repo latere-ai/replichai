@@ -61,7 +61,7 @@ The owner sees the refusal, follows *Open session* to a transcript that explains
 
 **Four read paths filter, and they are written down here because missing one is the bug.** The filter goes in the store, not in callers; 019's read-path audit is the thing not to repeat.
 
-| Read path | Behaviour | Why |
+| Read path | Behavior | Why |
 |---|---|---|
 | `Get` | `ErrNotFound` | one gate closes every per-session read at once: the job, transcript, verdict, artifacts, events, cancel |
 | `ListByProject` | excludes | the session list, `publishBlockers`, the archive (020), and `trashProject`'s running check all read it |

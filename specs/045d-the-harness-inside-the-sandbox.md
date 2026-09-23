@@ -132,7 +132,7 @@ ID = "<stage>-<sequence>"          sequence = the line's ordinal within that sta
 
 Position, not content: a hash of the line would give two identical tool results the same id, and the transcript is a sequence. `session/events.jsonl` is append-only and the pump records how far it has read, so a `Poll` after a restart resumes from the last id rather than re-decoding from the start.
 
-`Raw` keeps the harness's own line verbatim, for the reason the contract gives for that field: the transcript is the evidence for a run and must not be reduced to this package's vocabulary. A tool result larger than 256 KiB is truncated in `Content` with an explicit marker and kept whole in the raw stage log under `session/raw/`, so the normalised transcript stays readable and nothing is destroyed.
+`Raw` keeps the harness's own line verbatim, for the reason the contract gives for that field: the transcript is the evidence for a run and must not be reduced to this package's vocabulary. A tool result larger than 256 KiB is truncated in `Content` with an explicit marker and kept whole in the raw stage log under `session/raw/`, so the normalized transcript stays readable and nothing is destroyed.
 
 ## Where a harness must not reach
 

@@ -7,7 +7,7 @@ status: designed
 
 **Status:** designed, not built. Implement only after 041a–041e are built and reviewed against the then-current OpenAI API; hosted shell/container features are evolving.
 
-**Scope:** add `openai-responses`, a direct OpenAI managed-session runtime over background Responses and hosted-shell containers. Implement durable restart, normalised events/artifacts/usage, cancellation/release, and a portable rubric/revision loop. Register it explicitly in the runtime catalog. Do not weaken unsupported sandbox semantics.
+**Scope:** add `openai-responses`, a direct OpenAI managed-session runtime over background Responses and hosted-shell containers. Implement durable restart, normalized events/artifacts/usage, cancellation/release, and a portable rubric/revision loop. Register it explicitly in the runtime catalog. Do not weaken unsupported sandbox semantics.
 
 **Depends on:** [041e](041e-anthropic-conforms-to-the-session-contract.md). Current API basis: OpenAI's [Responses reference](https://developers.openai.com/api/reference/cli/resources/beta/subresources/responses), [response creation contract](https://developers.openai.com/api/reference/cli/resources/responses/methods/create), and [Containers reference](https://developers.openai.com/api/reference/cli/resources/containers).
 
@@ -19,7 +19,7 @@ One replichai session may require several Responses: deterministic bootstrap, wo
 
 ## Capability gate
 
-The adapter is enabled only with explicit `OPENAI_API_KEY`, configured tier-to-model mappings, rate coverage, and an API feature version known to support the required hosted-shell/container behaviour. It does not guess a “first” model or assume every Responses model supports hosted shell. Operator configuration declares models; startup validates syntax and rate coverage, while the first real request still handles account/model availability as a typed policy error.
+The adapter is enabled only with explicit `OPENAI_API_KEY`, configured tier-to-model mappings, rate coverage, and an API feature version known to support the required hosted-shell/container behavior. It does not guess a “first” model or assume every Responses model supports hosted shell. Operator configuration declares models; startup validates syntax and rate coverage, while the first real request still handles account/model availability as a typed policy error.
 
 Capabilities advertise only what the current API can enforce:
 
@@ -28,7 +28,7 @@ Capabilities advertise only what the current API can enforce:
 - network `none` and explicit domain `allowlist`, including domain-bound secrets;
 - supported memory sizes and expiry window;
 - `pip` packages/bootstrap through a verified bootstrap response;
-- attachments and read-write Git repositories through container materialisation;
+- attachments and read-write Git repositories through container materialization;
 - portable evaluation/revision.
 
 An unrestricted `NetworkOpen` request is **unsupported** when the container API offers only disabled/allowlist policy. It is rejected before container creation; the adapter never turns “open” into a guessed allowlist. This means an existing open-network audit is eligible for OpenAI only after its route supplies an explicit sufficient domain policy. Experiments/cohorts with disabled or known-domain access can route immediately. The Latere/Cella path in 041g is the alternative for policies Cella can enforce differently.
@@ -60,7 +60,7 @@ OpenAI exposes shell through the model, not as an ordinary client exec endpoint.
 - tool outputs must show every argv entry, exit code zero, and the expected files/digests before the worker stage can start;
 - deviation, missing tool evidence, timeout, or nonzero exit makes the session failed and prevents the worker task.
 
-Repository materialisation clones/checks out the declared revision into the declared destination. Read-write mode configures push authority using a host-bound secret supported by container network policy; the secret value is resolved by the adapter at request time and never appears in prompts, argv, locators, or events. Publication still verifies the remote committed tree, so a claimed push without the expected GitHub state fails evidence retention.
+Repository materialization clones/checks out the declared revision into the declared destination. Read-write mode configures push authority using a host-bound secret supported by container network policy; the secret value is resolved by the adapter at request time and never appears in prompts, argv, locators, or events. Publication still verifies the remote committed tree, so a claimed push without the expected GitHub state fails evidence retention.
 
 If the API cannot deliver a repository credential without exposing it to the model/container beyond the requested secret contract, read-write repository capability is disabled and audit requests fail preflight. No URL-with-token fallback exists.
 
@@ -68,7 +68,7 @@ If the API cannot deliver a repository credential without exposing it to the mod
 
 OpenAI Responses has no direct equivalent of Anthropic Managed Agents' `user.define_outcome`. A non-nil `EvaluationSpec` is implemented as an adapter-owned loop:
 
-1. after a worker Response completes, create a fresh evaluator Response with the rubric, normalised worker transcript, and bounded artifact manifest/read access;
+1. after a worker Response completes, create a fresh evaluator Response with the rubric, normalized worker transcript, and bounded artifact manifest/read access;
 2. require a strict structured result: decided pass/fail plus reasons and revision feedback;
 3. on pass, produce terminal `done` with verdict;
 4. on fail with remaining budget, create a revision Response in the same container with the evaluator feedback and original instructions/task, then evaluate again;
@@ -82,9 +82,9 @@ The evaluator is a separate Response without the worker's assistant role or self
 
 `Poll` retrieves the current Response and maps queued/in-progress to neutral pending/running; completed advances or terminates; failed/cancelled/incomplete map to failed with distinct terminal reason. A completed worker is not terminal while evaluation/revision remains.
 
-`Events` folds output items and tool-call records from every journaled Response into stable `(stage, response id, item id)` event ids and chronological order. It exposes normalised per-event usage where OpenAI reports it and retains raw items as evidence. Status usage sums all bootstrap, worker, evaluator, and revision Responses, subtracting cached input from total input exactly once and recording the actual service tier.
+`Events` folds output items and tool-call records from every journaled Response into stable `(stage, response id, item id)` event ids and chronological order. It exposes normalized per-event usage where OpenAI reports it and retains raw items as evidence. Status usage sums all bootstrap, worker, evaluator, and revision Responses, subtracting cached input from total input exactly once and recording the actual service tier.
 
-`ListArtifacts` lists container files with pagination, excluding declared input files and adapter-internal manifests. Paths are normalised and contained. `FetchArtifact` uses container file-content retrieval and enforces configured total/file limits. The Git repository remains the publication source of truth; container files are supplementary evidence.
+`ListArtifacts` lists container files with pagination, excluding declared input files and adapter-internal manifests. Paths are normalized and contained. `FetchArtifact` uses container file-content retrieval and enforces configured total/file limits. The Git repository remains the publication source of truth; container files are supplementary evidence.
 
 `Cancel` calls response cancellation only for an active cancellable Response and is idempotent around terminal/not-found outcomes. `Release`, after retention, deletes owned stored Responses/files where supported and then deletes the owned container. It records partial cleanup for retry. Expiry is a safety net, not the normal cleanup mechanism.
 

@@ -138,7 +138,7 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 }
 
 // Signing in turns a project invitation into a membership. Binding used to be
-// a side effect of the authorisation checks, every one of which short-circuits
+// a side effect of the authorization checks, every one of which short-circuits
 // for an owner or a public project, so an invitee stayed unbound, absent from
 // "shared with me" and shown as "pending" indefinitely.
 func TestCallbackBindsProjectMemberships(t *testing.T) {
@@ -182,7 +182,7 @@ func TestCallbackBindsProjectMemberships(t *testing.T) {
 // 006q: signing in admits the principal. Before this, a new user who proved
 // their identity was refused by the gate until an admin added them by hand.
 // Every evaluation of the product therefore needed a support ticket, and a
-// project invitation could not be honoured without one.
+// project invitation could not be honored without one.
 func TestCallbackAdmitsAnyoneWhoSignsIn(t *testing.T) {
 	codec, _ := NewCodec(testKey)
 	acc := access.NewMemStore()

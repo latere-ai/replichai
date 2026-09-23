@@ -111,7 +111,7 @@ MaxAttachmentBytes 64 MiB
 MaxLocatorBytes    managed.DefaultMaxLocatorBytes
 ```
 
-`rw: false` is a refusal, not a gap: the local path does not mount a writable remote, because the host pushes ([045g](045g-the-host-pushes.md)). A specification asking for a read-write repository is refused with a message naming that leaf, rather than being honoured by putting a forge token inside a sandbox.
+`rw: false` is a refusal, not a gap: the local path does not mount a writable remote, because the host pushes ([045g](045g-the-host-pushes.md)). A specification asking for a read-write repository is refused with a message naming that leaf, rather than being honored by putting a forge token inside a sandbox.
 
 `allowlist` differing between the drivers is the consequence of what each can enforce, and `ValidateCapabilities` is what turns it into a refusal before anything is created rather than a silently ignored policy. The audit's `NetworkOpen` specification runs on both.
 

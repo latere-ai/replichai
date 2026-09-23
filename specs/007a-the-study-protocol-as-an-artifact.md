@@ -39,7 +39,7 @@ A paper that describes its procedure too vaguely to extract yields `protocol: nu
 
 This is a small method change with a large consequence: it is the difference between an implementation and an instrument, and it is what lets [007b](007b-experiments-over-instruments.md) run the same pipeline over four different data sources without knowing anything about the paper.
 
-**Servability is a closed criteria list, answered per component.** "Highly replicable" becomes a decision the audit makes against declared, mechanical criteria rather than a judgement call. A component is servable only if all hold:
+**Servability is a closed criteria list, answered per component.** "Highly replicable" becomes a decision the audit makes against declared, mechanical criteria rather than a judgment call. A component is servable only if all hold:
 
 | Criterion | Excludes |
 |---|---|
@@ -71,7 +71,7 @@ So a paper with no extractable protocol passes criterion 7 by saying so. This ke
 
 Which means the pair discriminates in only one direction here. A change making the audit credulous about servability shows up immediately in both. A change making it uselessly conservative shows up in neither, because there is no case in the golden set whose outer loop is servable end to end. **That gap is a third eval case to add**, chosen for a fully hostable study, and until it exists the conservative direction is unguarded. That is the accurate state of the regression set, not a property to hide by asserting a `true` the papers do not support.
 
-**`instrument.json` must join the publish gate's worker-written allowlist.** `publish.Classify` is an *allowlist*: `internal/publish/gate.go` includes `OriginWorker` and withholds everything else, and `originOf` recognises exactly four fixed report names plus `src/`. A new top-level deliverable is therefore withheld from every publication by default, silently, because withholding is the safe direction and produces no error. So `originOf` gains `instrument.json`, and a test asserts the file survives a publish. Overlooking this would ship an audit whose new artifact never reaches a single published repository.
+**`instrument.json` must join the publish gate's worker-written allowlist.** `publish.Classify` is an *allowlist*: `internal/publish/gate.go` includes `OriginWorker` and withholds everything else, and `originOf` recognizes exactly four fixed report names plus `src/`. A new top-level deliverable is therefore withheld from every publication by default, silently, because withholding is the safe direction and produces no error. So `originOf` gains `instrument.json`, and a test asserts the file survives a publish. Overlooking this would ship an audit whose new artifact never reaches a single published repository.
 
 ## Interface (sketch)
 

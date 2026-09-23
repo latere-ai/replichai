@@ -65,7 +65,7 @@ The pool refuses to start more concurrent sessions than the machine can carry, a
 
 Two guards, because one is not enough:
 
-**A process-local lock around allocate-and-create.** The batch driver serialises the allocation and the repository creation for its own workers, so within one batch the second worker reads a registry that already contains the first worker's repository.
+**A process-local lock around allocate-and-create.** The batch driver serializes the allocation and the repository creation for its own workers, so within one batch the second worker reads a registry that already contains the first worker's repository.
 
 **The forge is the arbiter.** A concurrent batch on another machine is outside that lock, so a creation that fails on a name collision retries with the next suffix, up to a small bound, and the registry read is treated as advisory. This is the correct ownership: the registry is derived state and the forge holds the actual namespace, so the forge's refusal is the authoritative fact and the registry's answer is a hint that avoids most collisions.
 
@@ -124,6 +124,6 @@ Built as `internal/batch` and `replichai run`. Both input forms, the per-paper o
 
 **Resume skips only what finished.** This spec said terminal entries; what shipped retries failed ones, because retrying what failed is the reason to resume. A retried paper keeps its repository and its session reference, so it publishes into the repository the first attempt created rather than allocating a second.
 
-**The name race is guarded within a batch and not across machines.** Preparation is serialised, so two papers in one batch cannot allocate one name. The cross-machine case (a creation refused for a name in use, retried with the next suffix) is not implemented: `newPublisher` still reuses an existing repository on `ErrRepoExists`, which is right for a re-run of one paper and wrong for a collision between two.
+**The name race is guarded within a batch and not across machines.** Preparation is serialized, so two papers in one batch cannot allocate one name. The cross-machine case (a creation refused for a name in use, retried with the next suffix) is not implemented: `newPublisher` still reuses an existing repository on `ErrRepoExists`, which is right for a re-run of one paper and wrong for a collision between two.
 
-**The pool does not refuse an oversized parallelism.** `--parallel` is honoured exactly; nothing compares it against what the machine or the engine can carry.
+**The pool does not refuse an oversized parallelism.** `--parallel` is honored exactly; nothing compares it against what the machine or the engine can carry.

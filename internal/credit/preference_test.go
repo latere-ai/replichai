@@ -7,7 +7,7 @@ import "testing"
 
 // TestValidClosesTheSet checks that Valid accepts only the offered set. The
 // boundary that accepts a person's choice validates against this set, and the
-// adapter passes anything it does not recognise through as a literal model id,
+// adapter passes anything it does not recognize through as a literal model id,
 // so a preference outside the set must never be valid.
 func TestValidClosesTheSet(t *testing.T) {
 	for _, p := range Preferences {

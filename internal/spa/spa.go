@@ -99,7 +99,7 @@ func compressed(next http.Handler) http.Handler {
 		// Any Content-Length set upstream is the uncompressed length and would
 		// be wrong on the wire. It is removed and the response is chunked.
 		w.Header().Del("Content-Length")
-		// A range request cannot be honoured on a body compressed on the way
+		// A range request cannot be honored on a body compressed on the way
 		// out: the file server would set a Content-Length for a slice of the
 		// uncompressed file over a gzipped body. HTTP allows a server to
 		// ignore the range, so the whole asset is served.

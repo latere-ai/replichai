@@ -18,7 +18,7 @@ import (
 // machine.
 //
 // The route exists because the order of operations is reversed. Without it, the
-// terminal creates the repository with an organisation token it holds, pushes,
+// terminal creates the repository with an organization token it holds, pushes,
 // and files a record naming what it made. With platform provisioning, the
 // terminal needs the credential before it has anything to file: a session that
 // has not finished cannot be imported, and one that has finished has nowhere to
@@ -32,7 +32,7 @@ import (
 //
 // It is nil when the deployment has no GitHub App. A personal access token
 // authenticates but cannot mint a sub-token of itself, and returning the
-// organisation token instead would put the same credential on the operator's
+// organization token instead would put the same credential on the operator's
 // machine and in a response body.
 type RepoProvisioner interface {
 	Provision(ctx context.Context, id paper.Identity) (Provisioned, error)

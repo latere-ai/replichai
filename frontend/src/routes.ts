@@ -208,7 +208,7 @@ export function useRouter() {
     setView(to)
   }, [])
 
-  // An address we do not recognise is corrected in place on arrival, so a reload
+  // An address we do not recognize is corrected in place on arrival, so a reload
   // of a typo does not keep resolving to the dashboard at the wrong URL.
   useEffect(() => {
     const want = pathOf(current.current)

@@ -50,7 +50,7 @@ When a runtime advances its internal multi-stage orchestration, `Poll` returns a
 
 `Status` receives the initial pending observation and every distinct later observation. Observer failure is treated as a caller failure: cancel, retain, release. Duplicate runtime observations are not emitted.
 
-`Retain` is the evidence handoff. `EvidenceReader` exposes terminal/partial status, normalised events, artifact metadata, and bounded artifact fetch while the remote resources still exist. For a reproduction, the hook writes/commits the transcript and completes publication evidence. For an experiment or cohort, it stores the transcript and required output artifacts. Only a successful `Retain` permits release.
+`Retain` is the evidence handoff. `EvidenceReader` exposes terminal/partial status, normalized events, artifact metadata, and bounded artifact fetch while the remote resources still exist. For a reproduction, the hook writes/commits the transcript and completes publication evidence. For an experiment or cohort, it stores the transcript and required output artifacts. Only a successful `Retain` permits release.
 
 If retention fails, the reference remains durable and the controller deliberately does **not** release. The job records `cleanup_pending` with the retention error, and reconciliation retries `Resume`/retention. Preserving recoverable evidence is more important than eager remote cleanup. A later explicit admin purge may release it under the existing destructive-action rules.
 
@@ -119,4 +119,4 @@ Pre-existing repositories, Drive workspaces, and caller-owned resources are refe
 
 ## Outcome
 
-`managed.Controller` centralises validation, start notification, checkpointing, monotonic polling, transient retry, cancellation, evidence retention, and release. Audit, experiment runner, and model cohort construct one `SessionSpec`; server and CLI use the same controller. Controller tests cover ordering, restart, cancellation, retention failure, cleanup error joining, and complete memory-runtime execution.
+`managed.Controller` centralizes validation, start notification, checkpointing, monotonic polling, transient retry, cancellation, evidence retention, and release. Audit, experiment runner, and model cohort construct one `SessionSpec`; server and CLI use the same controller. Controller tests cover ordering, restart, cancellation, retention failure, cleanup error joining, and complete memory-runtime execution.

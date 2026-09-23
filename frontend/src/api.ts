@@ -345,7 +345,7 @@ async function refusal(r: Response): Promise<ApiError> {
 // the dev server's own HTML for a path it does not proxy or a gateway page in
 // front of the API, is a server fault and is reported as one, with its status
 // and a code. Before, r.json() threw a SyntaxError that nothing downstream
-// recognised, and every screen reported it as "you appear to be offline".
+// recognized, and every screen reported it as "you appear to be offline".
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) throw await refusal(r)
   try {
@@ -528,7 +528,7 @@ export const draftDescription = (id: string) =>
 // createProject opens a named project holding its papers, with seeded
 // collaborators. It starts no session, so it cannot be refused for money; the
 // credit check is startSession's. The status is returned so the caller can tell
-// a recorded paper from a reference the server did not recognise.
+// a recorded paper from a reference the server did not recognize.
 export async function createProject(
   title: string,
   papers: string[],

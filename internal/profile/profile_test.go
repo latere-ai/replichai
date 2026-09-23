@@ -41,7 +41,7 @@ func TestValidate(t *testing.T) {
 }
 
 // TestRedactEmail checks the redaction behind the published signer line: the
-// address is recognisable to its owner and unusable to a harvester, and a
+// address is recognizable to its owner and unusable to a harvester, and a
 // value that is not an address never passes through unmasked.
 func TestRedactEmail(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{

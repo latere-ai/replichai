@@ -31,7 +31,7 @@ type QualifiedModelResolver interface {
 // Preference is a model tier the engine asks for, and is the unit in which a
 // session's cost is chosen. It is a named type over a closed set rather than a
 // plain string because it crosses a trust boundary: a person picks one before
-// a run (031), and the adapter passes anything it does not recognise through
+// a run (031), and the adapter passes anything it does not recognize through
 // as a literal model id, which a card cannot price at its real rate.
 //
 // It is not called Tier because access.Tier already means what a principal may
@@ -55,8 +55,8 @@ const (
 const DefaultPreference = PrefBest
 
 // Preferences are the model tiers the engine asks for. Pricing checks against
-// these rather than against a vendor's catalogue: what a session costs depends
-// on which id a preference resolves to, not on what the catalogue contains.
+// these rather than against a vendor's catalog: what a session costs depends
+// on which id a preference resolves to, not on what the catalog contains.
 //
 // It is also the closed set the HTTP boundary validates a submitted choice
 // against, so the two cannot disagree about which tiers exist.
@@ -104,7 +104,7 @@ type Coverage struct {
 
 // Covers reports how this card would price each preference the engine asks for.
 //
-// It uses the caller's own resolver rather than reading a catalogue, because
+// It uses the caller's own resolver rather than reading a catalog, because
 // that resolution decides the price: the adapter matches a preference against
 // whatever the backend lists today, and a dated or suffixed id misses an exact
 // match on a card that names the bare alias.

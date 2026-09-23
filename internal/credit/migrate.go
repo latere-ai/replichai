@@ -34,7 +34,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return backfill(ctx, pool)
 }
 
-// backfillLock serialises the copy the way the schema migrations serialise
+// backfillLock serializes the copy the way the schema migrations serialize
 // their DDL: a rolling deploy runs two pods at once and both would otherwise
 // copy the same rows.
 const backfillLock int64 = 0x1ED6E5

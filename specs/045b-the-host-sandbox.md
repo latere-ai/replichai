@@ -50,13 +50,13 @@ It goes at `<session>/venv`, **outside the workspace**, not at `workspace/.venv`
 
 `srt` denies network by default and allows named domains through a host proxy, with wildcards and a precedence rule where denials win. That maps onto `managed.NetworkPolicy` directly:
 
-| `NetworkPolicy.Mode` | driver behaviour |
+| `NetworkPolicy.Mode` | driver behavior |
 |---|---|
 | `none` | no proxy, no egress |
 | `allowlist` | `allowedDomains` from the specification, plus the model endpoint's host |
 | `open` | all domains allowed, still through the proxy so the transcript records what was reached |
 
-This is the capability the container driver cannot declare ([045c](045c-the-container-sandbox.md)), and it is the more useful one for this product: an audit's artifact hunt is defensible when a reader can see where it went. Under `open` the proxy's access log is written to `session/network.log` and summarised in `environment.json`; it is host-owned, so the agent cannot edit it.
+This is the capability the container driver cannot declare ([045c](045c-the-container-sandbox.md)), and it is the more useful one for this product: an audit's artifact hunt is defensible when a reader can see where it went. Under `open` the proxy's access log is written to `session/network.log` and summarized in `environment.json`; it is host-owned, so the agent cannot edit it.
 
 The caveats `srt` states are inherited and disclosed: filtering is by domain and not by content, so a broad allowance like `github.com` permits exfiltration to any repository on it, and domain fronting can evade the filter. The threat model here is a model that makes mistakes, not a model that is trying to escape; a run that needs the stronger claim uses the container driver on a machine that is itself isolated.
 
@@ -167,7 +167,7 @@ Built as `internal/runtimes/local/host`, and then rewritten in the places a real
 
 **The operator's own instructions are withheld.** `~/.claude/CLAUDE.md`, `~/.claude/settings.json`, `~/.claude/plugins` and `~/.codex/AGENTS.md` are denied to every run. They are not the method, and a reproduction that silently inherits the habits of whoever ran it is not reproducing the paper. This spec did not anticipate it; granting the configuration directory for the login is what raised it.
 
-**TLS termination has to be declared to be usable.** srt publishes its certificate authority to the standard per-tool trust variables only when termination is configured, so an undeclared block left every HTTPS client rejecting the proxy. It is always declared now. pip is the exception that remains: on macOS it verifies against the system trust store and ignores every certificate variable, so the package indexes are tunnelled rather than inspected.
+**TLS termination has to be declared to be usable.** srt publishes its certificate authority to the standard per-tool trust variables only when termination is configured, so an undeclared block left every HTTPS client rejecting the proxy. It is always declared now. pip is the exception that remains: on macOS it verifies against the system trust store and ignores every certificate variable, so the package indexes are tunneled rather than inspected.
 
 **Two things about the stage itself.** srt parses its own options anywhere in what it is handed, so the command is separated by `--`; and a stage with no `PATH` resolves nothing, not even srt, whose shebang needs node. That failed as an exit 127 with an empty log and is now refused with a reason.
 

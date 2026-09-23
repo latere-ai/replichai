@@ -43,7 +43,7 @@ test('every mode is offered by the switcher, and each resolves', () => {
 })
 
 // The avatar hue is decoration, but a stable one: the same address is the same
-// colour everywhere it appears, and case is not part of the identity.
+// color everywhere it appears, and case is not part of the identity.
 test('an avatar hue is stable, case-insensitive, and in range', () => {
   expect(hueOf('ada@example.edu')).toBe(hueOf('ADA@Example.edu'))
   expect(hueOf('ada@example.edu')).not.toBe(hueOf('grace@example.edu'))

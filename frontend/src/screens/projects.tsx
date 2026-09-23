@@ -481,7 +481,7 @@ function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
 }
 
 // The Owner column. The reader's own projects say "You", which is the common
-// case and one nobody should have to read a name to recognise. Somebody else's
+// case and one nobody should have to read a name to recognize. Somebody else's
 // shows their profile name, linking to their public page when they have one. A
 // name the server could not resolve is a dash: the opaque subject it would
 // otherwise fall back to names nobody either.

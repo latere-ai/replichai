@@ -13,10 +13,10 @@ import (
 )
 
 // modelsTTL is how long a priced tier list is reused. Covers resolves each tier
-// against the backend's catalogue, one round trip per tier, and a page that
+// against the backend's catalog, one round trip per tier, and a page that
 // offers the choice would otherwise pay three round trips on every load.
 //
-// Five minutes follows from how the two inputs change. A vendor's catalogue
+// Five minutes follows from how the two inputs change. A vendor's catalog
 // changes on release days, and an admin's price edit is rare and not something
 // anyone waits at a screen for. Serving either a few minutes stale costs
 // nothing, because neither is what a session is billed from; that is the card
@@ -44,7 +44,7 @@ type tierPrice struct {
 
 // modelCache memoises the priced tier list. It is one value rather than a map,
 // because the answer does not vary by caller: the card is the platform's and
-// the catalogue is the backend's.
+// the catalog is the backend's.
 type modelCache struct {
 	mu     sync.Mutex
 	at     time.Time

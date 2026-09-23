@@ -5,7 +5,7 @@ status: built
 
 # 035 — A paper can move to another project
 
-**Status:** built. Every acceptance criterion holds. `project.Store.MovePaper` with the `SessionMover`/`PGSessionMover` seam (Postgres does it in one transaction; the in-memory store moves the sessions first and puts the paper back if they fail), `job.MovePaperSessions`/`MovePaperSessionsTx`, `POST /projects/{id}/papers/move` with the two-project authorisation, and the paper row's Move action with its dialog. Covered by `runMovePaperContract` against both stores, `runMoveSessionsContract` against both movers, `internal/httpapi/paper_move_test.go`, the extended `cmd/server` e2e, and `frontend/test/paper-move.test.mjs`. Go (including the Postgres contracts), the 130 unit tests and the 18-file browser suite are green.
+**Status:** built. Every acceptance criterion holds. `project.Store.MovePaper` with the `SessionMover`/`PGSessionMover` seam (Postgres does it in one transaction; the in-memory store moves the sessions first and puts the paper back if they fail), `job.MovePaperSessions`/`MovePaperSessionsTx`, `POST /projects/{id}/papers/move` with the two-project authorization, and the paper row's Move action with its dialog. Covered by `runMovePaperContract` against both stores, `runMoveSessionsContract` against both movers, `internal/httpapi/paper_move_test.go`, the extended `cmd/server` e2e, and `frontend/test/paper-move.test.mjs`. Go (including the Postgres contracts), the 130 unit tests and the 18-file browser suite are green.
 
 Five guards were verified to fail with their fix reverted: the running-session refusal (the move returned 204 mid-run), the destination lead check (a lead of one end could move), the in-memory rollback (a failed session move split the paper from its runs), `updated_at` (bumping it in the SQL moved months-old spend into the window), and the deleted-session filter (the thrown-away run's charge stayed under the source). The browser test was checked against three separate regressions: Move gated behind "never run", the destination list unfiltered, and the refresh dropped after a successful move.
 
@@ -132,7 +132,7 @@ On success the project screen refreshes its papers and sessions, so the moved ro
 
 - **`internal/project/store_contract_test.go`**: `runMovePaperContract`, run against both stores with a recording fake mover: the happy move, `ErrPaperNotFound`, `ErrPaperExists` at the destination with the source untouched, idempotence of a repeated move, and the loud failure when no mover is wired. The Postgres half runs under `make` with `TEST_DATABASE_URL`.
 - **`internal/job`**: the real movers, both stores: `project_id` rewritten for exactly the matching `(project_id, paper_key)` rows including deleted ones, `updated_at` untouched, and every other column (`repo_name`, `rate_card`, `phase_at`) left alone.
-- **`internal/httpapi/paper_move_test.go`**: every row of the status table, plus the two-project authorisation, against the in-memory fakes.
+- **`internal/httpapi/paper_move_test.go`**: every row of the status table, plus the two-project authorization, against the in-memory fakes.
 - **`cmd/server/e2e_test.go`**: a real server: two projects, a paper run to `done` in the first, moved to the second, then read back through `GET /projects/{id}/papers` on both.
 - **`frontend/src/`**: the error mapping under bun; **`frontend/test/paper-move.test.mjs`** drives the dialog in a browser and is registered in `package.json`'s `test:browser`.
 

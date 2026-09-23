@@ -59,7 +59,7 @@ Every subcommand, one line each:
 | `replichai providers` | the runtimes this build knows |
 | `replichai rates` | what a session costs per model, from the compiled-in rate card or a live one (`--database-url`) |
 | `replichai login` / `whoami` / `logout` | sign in to the app from the terminal by device code, show who you are, forget the credential |
-| `replichai org [<org-uuid>\|--personal]` | show or switch the organisation projects are filed under |
+| `replichai org [<org-uuid>\|--personal]` | show or switch the organization projects are filed under |
 | `replichai sessions ls` / `replichai sessions prune` | list the session directories on this machine, and reclaim their space |
 | `replichai project create <title>` / `replichai project ls` | the projects in the app that locally run sessions are filed under |
 | `replichai project sessions <id>` / `replichai project rm-session <id>...` | list a project's sessions, and delete one |

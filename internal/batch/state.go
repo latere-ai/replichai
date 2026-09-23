@@ -113,7 +113,7 @@ type Totals struct {
 	VendorUS int64
 }
 
-// Summarise totals the entries. The totals count every outcome rather than
+// Summarize totals the entries. The totals count every outcome rather than
 // only successes, because a report that shows only successes reads as if
 // everything completed.
 func (s State) Summarise() Totals {

@@ -15,7 +15,7 @@ status: built
 
 The hosted path clones a private repository into the sandbox with a token and asks the agent to push as it works. That design is justified, because the history is the agent's own, and it carries two costs the local path does not have to pay.
 
-**A forge credential lives inside a sandbox with an open network and a shell.** [009](009-secret-containment-when-the-agent-commits-live.md) wanted a per-repository mount token instead of an organisation PAT and could not have it, because a GitHub App installation token lives at most an hour and a real run took fifty-three minutes. That third commit is still deferred.
+**A forge credential lives inside a sandbox with an open network and a shell.** [009](009-secret-containment-when-the-agent-commits-live.md) wanted a per-repository mount token instead of an organization PAT and could not have it, because a GitHub App installation token lives at most an hour and a real run took fifty-three minutes. That third commit is still deferred.
 
 **Unpushed commits are destroyed.** [044](044-a-run-that-produced-nothing.md) is the record of a run that committed five times, never pushed, and left an empty repository. [044a](044a-the-mount-is-pushed.md) made the push its own instruction and a graded criterion; [044b](044b-the-server-harvests-the-session.md) added recovery that does not depend on the agent doing it.
 

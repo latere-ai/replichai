@@ -154,7 +154,7 @@ func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	}
 }
 
-// dialectOf is the wire protocol a harness speaks, for a catalogue built here.
+// dialectOf is the wire protocol a harness speaks, for a catalog built here.
 func dialectOf(agent harness.Harness) string { return string(agent.Dialects()[0]) }
 
 // defaultModelOf is a model each harness will accept without configuration.

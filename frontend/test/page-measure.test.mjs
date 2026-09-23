@@ -12,8 +12,8 @@
 // explains, so the policy ran several screens deep.
 //
 // What this test holds:
-//   - the column is centred, so the space that is left is even on both sides
-//   - it is wide enough to be worth centring, not 560px of an 1800px panel
+//   - the column is centered, so the space that is left is even on both sides
+//   - it is wide enough to be worth centering, not 560px of an 1800px panel
 //   - a statement line keeps its three facts on one line, in three columns
 //   - the statement has no scroll region of its own
 //   - a policy setting reads beside its control, and drops under it when narrow

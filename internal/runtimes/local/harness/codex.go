@@ -174,7 +174,7 @@ wire_api = %q
 func (CodexHarness) Needs(machine Machine) Needs {
 	// Codex is a Rust binary and does not read an injected certificate
 	// authority, so a sandbox that terminates TLS to inspect egress breaks
-	// every request it makes. Its own endpoints are tunnelled without
+	// every request it makes. Its own endpoints are tunneled without
 	// inspection instead. They are still subject to the allowlist.
 	needs := Needs{TLSPassthrough: []string{
 		"chatgpt.com", "*.chatgpt.com", "api.openai.com", "auth.openai.com",

@@ -17,7 +17,7 @@ Open questions:
 
 The 007 *instrument* abstraction assumes a study can be re-instantiated as a re-runnable thing. The variety of study types is large, and some instruments cannot be reproduced mechanically at all:
 
-- VR/AR apparatus, specialised or custom hardware, physical lab setups, wet-lab protocols, field deployments, longitudinal/in-the-wild studies.
+- VR/AR apparatus, specialized or custom hardware, physical lab setups, wet-lab protocols, field deployments, longitudinal/in-the-wild studies.
 
 Open questions:
 - **A replicability spectrum**, not a binary: fully re-runnable → partially → apparatus-bound → not mechanically replicable. The 007 instrument/experiment model presumes an instrument *exists* to bind data to; the non-replicable end needs an accurate verdict rather than being forced into that model.
@@ -51,7 +51,7 @@ The short version of why it is not a storage feature:
 - **A mutable document has no stable identity.** 006d's rule for an identifier-less PDF is `sha256` of the extracted text, so v1/v2/v3 of one manuscript are three unrelated papers to `project_papers`, to the double-trigger guard (which therefore lets two versions run at once), and to the registry. This is 012's unsolved arXiv-versus-DOI divergence promoted to the normal case.
 - **The good outcome makes it worse.** A draft that gets published acquires the DOI it should always have had, and the sessions already run against it must follow: a merge of two paper keys, which nothing does today.
 - **A paper and a bundle of materials are different things.** An audit handed its code and data is not measuring what an audit that had to find them measured; one `rate` cannot answer both questions accurately.
-- **Deletion collides with a rule that is right.** 012 makes a paper with sessions permanently undeletable, deliberately. "Delete my manuscript" is a request that must be honoured. Both cannot hold.
+- **Deletion collides with a rule that is right.** 012 makes a paper with sessions permanently undeletable, deliberately. "Delete my manuscript" is a request that must be honored. Both cannot hold.
 
 Storage itself is the easy part and is already forked cleanly: `experiment.ArtifactStore` is the seam, and below it either drive ([008](008-drive-data-plane.md), which already claims this ground) or a `replichai/` prefix in the shared bucket.
 

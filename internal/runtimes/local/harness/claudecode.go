@@ -26,7 +26,7 @@ func (ClaudeCodeHarness) Name() Name { return ClaudeCode }
 // Binary is the executable a preflight looks for.
 func (ClaudeCodeHarness) Binary() string { return "claude" }
 
-// Dialects returns the Anthropic wire protocol only. The catalogue refuses a
+// Dialects returns the Anthropic wire protocol only. The catalog refuses a
 // gateway that speaks an OpenAI dialect rather than letting the mismatch
 // appear at the first request.
 func (ClaudeCodeHarness) Dialects() []Dialect { return []Dialect{DialectAnthropic} }
@@ -219,7 +219,7 @@ func (u *claudeUsage) usage(model managed.ModelRef) managed.Usage {
 	return usage
 }
 
-// Decode reads one line of the stream. A line this build does not recognise
+// Decode reads one line of the stream. A line this build does not recognize
 // becomes one raw event rather than being dropped, because a transcript that
 // silently dropped what it could not parse would not be evidence.
 func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]managed.Event, error) {

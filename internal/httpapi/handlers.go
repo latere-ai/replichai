@@ -35,14 +35,14 @@ import (
 // request; who a principal is and what they may do remain 006c's concern.
 //
 // Name and Picture are display claims (006m). They are rendered and never
-// consulted by any authorisation decision. Both may be empty.
+// consulted by any authorization decision. Both may be empty.
 type Identity struct {
 	Sub     string
 	Email   string
 	Name    string
 	Picture string
 	// OrgID, Roles and PrincipalType are the membership the issuer put in
-	// the credential: the organisation the person acts in, the five
+	// the credential: the organization the person acts in, the five
 	// standard role names, and user or service. The server decides project
 	// access from its own membership tables and reads these for nothing
 	// yet; they are carried so the one identity struct is the whole token.
@@ -376,7 +376,7 @@ func tidyPaperEdit(e *project.PaperEdit) error {
 // An owner uses it for a project that predates the bibliography. It runs the
 // same enrichment a fresh add runs, so what a refresh may overwrite, which is
 // nothing a person edited and nothing already filled, is decided in one place.
-// Requests to the metadata services are serialised: they are free services,
+// Requests to the metadata services are serialized: they are free services,
 // and a project with twenty papers must not open twenty connections to
 // Crossref at once.
 func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
@@ -434,7 +434,7 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 // change and save, which keeps 038's field human-written. A draft they discard
 // is still charged, because the tokens were spent either way.
 //
-// The order is: authorisation, pricing, the project's balance, the model call,
+// The order is: authorization, pricing, the project's balance, the model call,
 // then the charge. Pricing before the call is what guarantees that an unpriced
 // model does not draft; otherwise a model with no price would be discovered
 // only after the tokens were spent.
@@ -645,7 +645,7 @@ func draftPapers(papers []project.Paper) []draft.Paper {
 // this method decides what happens. It is safe to run again, because enrichment
 // is idempotent.
 //
-// Requests to the metadata services are strictly serialised. They are free
+// Requests to the metadata services are strictly serialized. They are free
 // services, and a sweep is the one place in this codebase that could send them
 // a thousand requests in a second.
 func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err error) {
@@ -724,7 +724,7 @@ func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
 // project (035).
 //
 // It is a removal from one project and an addition to the other, so it is
-// authorised like both: lead or owner on each end, which is stricter than the
+// authorized like both: lead or owner on each end, which is stricter than the
 // any-member rule adding follows and the same as the rule removing follows.
 // projectForWork resolves the one project in the path, so the destination is
 // resolved separately and put through the same three checks: stake, trash, and,
@@ -767,7 +767,7 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Authorisation is checked before state, on both ends. The other order
+	// Authorization is checked before state, on both ends. The other order
 	// would tell a caller who may not move anything into a project whether it
 	// is published: a caller can name any id they have a stake in, so the
 	// refusals below would otherwise report its visibility before reporting
@@ -850,7 +850,7 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The set of tiers is validated here, at the only boundary a person's choice
-	// crosses. The provider adapter passes a preference it does not recognise
+	// crosses. The provider adapter passes a preference it does not recognize
 	// through as a literal model id, and a model the card cannot name is priced
 	// at the dearest rates it holds, so an unchecked string would be both a
 	// request for a model that may not exist and a bill at the top of the card.
@@ -1516,7 +1516,7 @@ func nonEmpty(in []string) []string {
 
 // SpendWindowDays is how far back the projects screen's spend tile looks. A
 // window needs a stated length or the number means nothing. Thirty days is the
-// length the tile is labelled with, so the two cannot drift.
+// length the tile is labeled with, so the two cannot drift.
 const SpendWindowDays = 30
 
 // ProjectView is a project in a list, carrying a session summary so the list
@@ -1686,7 +1686,7 @@ func (rt *Router) projectViews(r *http.Request, projects []project.Project) ([]P
 	}
 	status, err := rt.jobs.StatusByProjects(ctx, ids)
 	if err != nil {
-		slog.WarnContext(r.Context(), "projects: summarising sessions", "error", err)
+		slog.WarnContext(r.Context(), "projects: summarizing sessions", "error", err)
 		return nil, err
 	}
 	modified, err := rt.projects.ModifiedAt(ctx, ids)
@@ -2488,7 +2488,7 @@ func (rt *Router) listMembers(w http.ResponseWriter, r *http.Request) {
 // still need a platform grant.
 //
 // It then notifies them (006p). The mail is deliberately best-effort: the
-// membership is the durable record, created and authorised here, and an outage
+// membership is the durable record, created and authorized here, and an outage
 // at a mail provider must not appear to the owner as a failure to share their
 // work. A message that was not sent is logged and can be sent again by inviting
 // the same person once more.
@@ -3148,7 +3148,7 @@ func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 	return events, nil
 }
 
-// eventUsage reads only the adapter-normalised Usage field. Vendor wire payloads
+// eventUsage reads only the adapter-normalized Usage field. Vendor wire payloads
 // are evidence rather than an application protocol, so they are not parsed here.
 func eventUsage(e provider.Event) (provider.Usage, bool) {
 	if e.Usage == nil {

@@ -97,7 +97,7 @@ func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 // reports that it settled; the others report that they did not.
 //
 // This is the concurrent half of the exactly-once guarantee, and it is asserted
-// here rather than through the job store: there the phase machine serialises
+// here rather than through the job store: there the phase machine serializes
 // terminal writes, so a test driving cancels concurrently passes whether or not
 // the ledger guards anything.
 func TestPGStoreSettlesOnceUnderConcurrency(t *testing.T) {

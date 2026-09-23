@@ -34,7 +34,7 @@ const AnthropicManaged managed.RuntimeName = "anthropic-managed"
 
 // AnthropicConfig holds what the Anthropic runtime needs to reach the vendor.
 type AnthropicConfig struct {
-	// APIKey is required to build the runtime; the catalogue still lists
+	// APIKey is required to build the runtime; the catalog still lists
 	// and resolves the name without it.
 	APIKey string
 	// BaseURL overrides the vendor endpoint and is empty in normal use.
@@ -57,7 +57,7 @@ type LocalConfig struct {
 	Engine string
 	// Image overrides the harness image.
 	Image string
-	// ModelsFile is the operator's model catalogue.
+	// ModelsFile is the operator's model catalog.
 	ModelsFile string
 	// Root is where session directories are made.
 	Root string
@@ -75,7 +75,7 @@ type LocalConfig struct {
 }
 
 // Config is what a composition root hands this package to compose the
-// catalogue. Every field is optional: Config{} still yields a catalogue whose
+// catalog. Every field is optional: Config{} still yields a catalog whose
 // names resolve, which is how both binaries validate the operator's choice
 // before resolving credentials, and a nil MemoryStore gives the memory runtime
 // a fresh one.
@@ -92,8 +92,8 @@ func Harnesses() (*harness.Registry, error) {
 }
 
 // buildLocal composes the local runtime from a sandbox driver, a harness, and
-// the operator's model catalogue. A missing engine, a missing srt, a harness
-// that is not installed, or a catalogue that does not validate fails here,
+// the operator's model catalog. A missing engine, a missing srt, a harness
+// that is not installed, or a catalog that does not validate fails here,
 // before any paper is fetched.
 func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error) {
 	registry, err := Harnesses()
@@ -126,7 +126,7 @@ func buildLocal(ctx context.Context, config LocalConfig) (managed.Runtime, error
 		Machine: harness.Machine{
 			Platform: string(hostsandbox.CurrentPlatform()), Home: config.Home,
 			// Use the shared root rather than os.TempDir(). os.TempDir()
-			// honours TMPDIR, which a session sets to its own directory,
+			// honors TMPDIR, which a session sets to its own directory,
 			// but a harness writes its scratch under the shared root
 			// regardless.
 			TempDir: "/tmp", UID: os.Getuid(),
@@ -161,7 +161,7 @@ func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness
 // concrete adapters are named, so every other package routes by name alone.
 // Entries are registered whether or not their configuration is present and
 // report a missing credential from the factory instead, keeping name
-// resolution usable on an unconfigured catalogue.
+// resolution usable on an unconfigured catalog.
 func Catalog(config Config) (*runtimes.Catalog, error) {
 	return runtimes.NewCatalog(
 		runtimes.Entry{Name: managedmemory.Name, Build: func(context.Context) (managed.Runtime, error) {

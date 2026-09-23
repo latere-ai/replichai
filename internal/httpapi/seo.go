@@ -118,7 +118,7 @@ func (rt *Router) registryPage(*http.Request) seo.Page {
 }
 
 // projectPage describes one published reproduction. A tab is a view of this
-// record rather than a second one, so /p/{id}/verdict canonicalises to /p/{id}.
+// record rather than a second one, so /p/{id}/verdict canonicalizes to /p/{id}.
 func (rt *Router) projectPage(r *http.Request) seo.Page {
 	proj, ok := rt.publicProject(r, r.PathValue("id"))
 	if !ok {

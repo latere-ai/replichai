@@ -94,7 +94,7 @@ func parseCrossref(body []byte) (string, Record) {
 		Abstract:  plainAbstract(m.Abstract),
 	}
 	for _, a := range m.Author {
-		// A person has given and family names; an organisation has one `name`.
+		// A person has given and family names; an organization has one `name`.
 		// Both are rendered the way the source would print them.
 		if n := collapseWS(strings.TrimSpace(a.Given + " " + a.Family)); n != "" {
 			rec.Authors = append(rec.Authors, n)

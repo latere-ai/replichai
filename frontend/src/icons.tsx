@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react'
 
 // One stroke-drawn icon set, all on a 24×24 grid so a single stroke width reads
-// evenly at every size. Icons carry no colour of their own: they inherit
+// evenly at every size. Icons carry no color of their own: they inherit
 // currentColor, which is what lets one glyph sit in a brand button, a muted row,
 // and a semantic pill without a variant per place.
 

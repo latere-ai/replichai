@@ -320,10 +320,10 @@ func runProjectJoinContract(t *testing.T, s Store) {
 	if status["pX"].LatestAt.IsZero() {
 		t.Error("pX LatestAt is zero; want the newest session's update time")
 	}
-	// A project not asked about is not summarised, so a list pays only for the
+	// A project not asked about is not summarized, so a list pays only for the
 	// page it shows.
 	if _, ok := status["pZ"]; ok {
-		t.Error("pZ summarised; want only the projects asked for")
+		t.Error("pZ summarized; want only the projects asked for")
 	}
 
 	runSpendWindowContract(t, s)

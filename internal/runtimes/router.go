@@ -15,7 +15,7 @@ import (
 // reinterpreted under today's meaning.
 const RouteVersion = 1
 
-// Route is a serialisable snapshot of the routing decision taken for new work.
+// Route is a serializable snapshot of the routing decision taken for new work.
 // It names the runtime instead of leaving one to be derived later, so work
 // bound to it still runs where it was routed after the deployment default has
 // moved on.
@@ -24,8 +24,8 @@ type Route struct {
 	Runtime managed.RuntimeName `json:"runtime"`
 }
 
-// Validate reports whether the route is one this package can honour: a version
-// it recognises, and a runtime name already in canonical form.
+// Validate reports whether the route is one this package can honor: a version
+// it recognizes, and a runtime name already in canonical form.
 func (route Route) Validate() error {
 	if route.Version != RouteVersion {
 		return fmt.Errorf("unsupported managed route version %d", route.Version)

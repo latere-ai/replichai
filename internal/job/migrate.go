@@ -178,12 +178,12 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 // The lock is taken inside the migration transaction and released with it, so
 // the second process waits, then reads the version the first recorded and
 // skips it. Each namespace has its own id, so the five migrators only ever
-// serialise against another copy of themselves.
+// serialize against another copy of themselves.
 const migrationLock = 1
 
 func applyMigration(ctx context.Context, pool *pgxpool.Pool, version int, sql string) error {
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		// Serialise against another server starting at the same moment. The
+		// Serialize against another server starting at the same moment. The
 		// version check below cannot do this on its own: a row that does not
 		// exist yet locks nothing, so both would read "missing" and both apply.
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {

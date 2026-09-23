@@ -13,9 +13,9 @@ status: built
 
 006f made the public flip one-way and said so everywhere: `Visibility`'s doc comment, the `Store.SetPublic` contract, `github.Client.SetPublic` ("deliberately one-way: this package offers no `SetPrivate`"), the publish wizard's step 1, and acceptance criterion 6. The reasoning was sound for the act of *signing*: an attestation is a record, and a record you can silently delete is not a record.
 
-But visibility and the attestation are not the same thing, and treating them as one leaves an owner with no move at all. A published project turns out to contain an author's unreleased figure. A co-author objects after the fact. A licence question surfaces on a dataset the manifest could not see. Today the only remedy is to ask an operator to touch the database, and nothing takes the GitHub repository back: it stays open under `open-hai` with the app showing no trace of the problem.
+But visibility and the attestation are not the same thing, and treating them as one leaves an owner with no move at all. A published project turns out to contain an author's unreleased figure. A co-author objects after the fact. A license question surfaces on a dataset the manifest could not see. Today the only remedy is to ask an operator to touch the database, and nothing takes the GitHub repository back: it stays open under `open-hai` with the app showing no trace of the problem.
 
-The gap is not a missing toggle. *Publishing* was modelled as a state change when it is a declaration with a duration. The fix is not to make the flip erasable; it is to give it an end.
+The gap is not a missing toggle. *Publishing* was modeled as a state change when it is a declaration with a duration. The fix is not to make the flip erasable; it is to give it an end.
 
 Granting this to the owner is safe for a stated reason: **withdrawal is not deletion, and an owner has no deletion.** Removing a project cascades (sessions, transcripts, artifacts, manifests, and the ledger entries recording what its runs cost), so it stays an admin action. Withdrawal touches one column and takes nothing away; it is the strongest reversal an owner can be trusted with precisely because it destroys nothing. Everything published remains on the row, readable by its owner and by an operator, and republishable in one step.
 
@@ -47,7 +47,7 @@ We set *every* repository the project owns private, not only those the publish f
 
 Rejected: **withdrawal as a platform-operator takedown only** (006k). Operator takedown is a real and different need (removing something over an owner's objection), and this spec does not build it. But the common case is an owner who found a problem in their own publication, and routing that through a support request is the status quo this spec fixes.
 
-Rejected: **a public tombstone.** A withdrawn project could leave a "this reproduction was withdrawn on …" page in the public zone, as a journal leaves a retraction notice. It is arguably the more scientific behaviour, and it is a real design question, but it turns withdrawal into a *different kind of publication*, with its own visibility rules for a project whose contents the owner just decided should not be readable. Out of scope here; the record is kept on the row so a later spec can surface it without a migration.
+Rejected: **a public tombstone.** A withdrawn project could leave a "this reproduction was withdrawn on …" page in the public zone, as a journal leaves a retraction notice. It is arguably the more scientific behavior, and it is a real design question, but it turns withdrawal into a *different kind of publication*, with its own visibility rules for a project whose contents the owner just decided should not be readable. Out of scope here; the record is kept on the row so a later spec can surface it without a migration.
 
 ## Acceptance criteria
 

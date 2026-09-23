@@ -27,7 +27,7 @@ type Forge interface {
 	// Exists reports whether a repository of this name is already present, so a
 	// republish neither duplicates nor recreates it.
 	Exists(ctx context.Context, name string) (bool, error)
-	// Create makes an empty repository. private must be honoured; a
+	// Create makes an empty repository. private must be honored; a
 	// reproduction is never created public.
 	Create(ctx context.Context, name string, private bool) (Repo, error)
 	// Push writes files into the repository, overwriting, so a push that

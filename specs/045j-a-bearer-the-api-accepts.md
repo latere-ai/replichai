@@ -15,7 +15,7 @@ status: built
 
 **Status:** built.
 
-**Scope:** the server half of terminal access: a bearer credential path beside the existing cookie session, resolving to the same principal, gated by the same `internal/access` policy. One authentication seam, two credential sources. No new authorisation model and no new routes.
+**Scope:** the server half of terminal access: a bearer credential path beside the existing cookie session, resolving to the same principal, gated by the same `internal/access` policy. One authentication seam, two credential sources. No new authorization model and no new routes.
 
 **Depends on:** [045i](045i-signing-in-from-the-terminal.md), [006a](006a-http-api-and-streaming.md), [006c](006c-identity-and-access.md), `latere.ai/x/pkg/authkit/jwt`.
 
@@ -23,7 +23,7 @@ status: built
 
 Every authenticated route on `replichai.latere.ai` is reached with a session cookie. `internal/webauth` runs the OIDC login, sets a cookie holding the subject and the email, and mounts the gate the API is registered behind. The only `Authorization: Bearer` in the tree is `webauth/userinfo.go` calling out to the identity provider.
 
-So a CLI has no way in, and [045k](045k-a-local-session-reaches-the-cloud.md) has nothing to call. That is one missing credential path, not a missing authorisation model: who may do what is already decided by `internal/access` against a table, and that decision is independent of how the caller proved who they are.
+So a CLI has no way in, and [045k](045k-a-local-session-reaches-the-cloud.md) has nothing to call. That is one missing credential path, not a missing authorization model: who may do what is already decided by `internal/access` against a table, and that decision is independent of how the caller proved who they are.
 
 ## One principal, two sources
 

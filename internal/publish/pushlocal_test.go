@@ -71,7 +71,7 @@ func bareRemote(t *testing.T) string {
 // TestAnAgentAuthoredRepositoryPushesWhole checks that an agent-authored
 // repository, which is a real software project, reaches the remote in full.
 // Routing it through Classify, the allowlist over a harvested output
-// directory, would have stripped the licence, the requirements file and the
+// directory, would have stripped the license, the requirements file and the
 // tests.
 func TestAnAgentAuthoredRepositoryPushesWhole(t *testing.T) {
 	dir := workspace(t, map[string]string{

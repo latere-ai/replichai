@@ -206,7 +206,7 @@ func run() error {
 		runnerForge = githubForge{forgeClient}
 		// Nil where the credential is a PAT: it authenticates but cannot mint a
 		// sub-token of itself, and the route says so rather than handing the
-		// organisation's own token back over HTTP.
+		// organization's own token back over HTTP.
 		if forgeClient.CanMint() {
 			repoProvisioner = forgeProvisioner{forge: githubForge{forgeClient}, owner: forgeOwner}
 		}
@@ -242,7 +242,7 @@ func run() error {
 	}
 
 	// Reproductions are read from the forge, which is the derived registry
-	// (003): the published repositories under the organisation are the source
+	// (003): the published repositories under the organization are the source
 	// of truth. A local run with no forge token falls back to a filesystem
 	// directory.
 	var reproSource registry.Source
@@ -403,7 +403,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 }
 
 // serverLocalConfig returns the configuration the local runtime needs when an
-// operator selects it for the server. The catalogue registers the name whether
+// operator selects it for the server. The catalog registers the name whether
 // or not it is configured, so without this a REPLICHAI_RUNTIME=local server
 // would refuse with a message about composition roots rather than about the
 // machine.
@@ -874,7 +874,7 @@ func loadAppKey(v string) ([]byte, error) {
 // reachable effect was to strip Secure and __Host- from a deployment serving
 // real traffic over TLS, which no developer needs and which an attacker
 // wants. Nothing set it: not compose, not an overlay, not example.env. Unlike
-// DEV_INSECURE, which gives a containerised local run something it needs and
+// DEV_INSECURE, which gives a containerized local run something it needs and
 // is refused off loopback, this variable had no use.
 func secureCookies(baseURL string) bool { return strings.HasPrefix(baseURL, "https") }
 

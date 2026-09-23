@@ -33,12 +33,12 @@ func build(t *testing.T, script localtest.Script) (*local.Runtime, *localtest.Sa
 	return buildWith(t, script, local.DefaultCatalogFile(), noCredentials, harness.Machine{})
 }
 
-// noCredentials is a lookup with nothing in it, for a catalogue on the
+// noCredentials is a lookup with nothing in it, for a catalog on the
 // harness's own login.
 func noCredentials(string) (string, bool) { return "", false }
 
 // buildWith composes a runtime over the scripted driver with the given
-// catalogue, credential lookup and machine, so a test can put the runtime on an
+// catalog, credential lookup and machine, so a test can put the runtime on an
 // API key or on a machine with a home directory.
 func buildWith(t *testing.T, script localtest.Script, file local.CatalogFile, lookup local.LookupEnv,
 	machine harness.Machine) (*local.Runtime, *localtest.Sandbox) {
@@ -252,7 +252,7 @@ func TestAttachmentBytesAreNotReReadOnEveryPoll(t *testing.T) {
 	ref := start(t, runtime, s)
 	dir := sessionDir(t, ref)
 
-	// The attachment is materialised in the workspace with its bytes intact.
+	// The attachment is materialized in the workspace with its bytes intact.
 	body, err := os.ReadFile(filepath.Join(dir, "workspace", "data", "input.bin"))
 	if err != nil {
 		t.Fatalf("the attachment was not written into the workspace: %v", err)
@@ -753,7 +753,7 @@ func TestDiscardRetentionRemovesTheDirectory(t *testing.T) {
 }
 
 // A specification asking for a writable remote is refused with the leaf that
-// covers it named, rather than honoured by putting a token in a sandbox.
+// covers it named, rather than honored by putting a token in a sandbox.
 func TestAWritableRepositoryIsRefused(t *testing.T) {
 	runtime, _ := build(t, localtest.Script{})
 	s := spec(false)

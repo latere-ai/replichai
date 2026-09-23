@@ -92,7 +92,7 @@ func assemble(plan Plan, now time.Time) ([]File, error) {
 	m.Reproduction.Created = now.UTC()
 	manifestJSON, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("marshalling the manifest: %w", err)
+		return nil, fmt.Errorf("marshaling the manifest: %w", err)
 	}
 	files := []File{{Path: ManifestFile, Content: append(manifestJSON, '\n')}}
 

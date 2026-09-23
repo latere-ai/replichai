@@ -136,7 +136,7 @@ func TestARateLimitIsTemporaryAndSaysHowLong(t *testing.T) {
 			t.Fatalf("err = %v; want a temporary failure asking for 30s", err)
 		}
 		if !managed.IsTemporary(err) {
-			t.Error("managed.IsTemporary does not recognise the rate limit")
+			t.Error("managed.IsTemporary does not recognize the rate limit")
 		}
 	})
 
@@ -369,7 +369,7 @@ func TestSetPrivateSendsPrivateTrue(t *testing.T) {
 
 // TestSetPrivateRefusedSurfaces checks that a refused visibility change is
 // returned as an error. GitHub refuses the change on some repositories, such
-// as one in a fork network or one under an organisation policy, and the client
+// as one in a fork network or one under an organization policy, and the client
 // must report that rather than a withdrawal it did not perform. The caller
 // decides that a forge failure is non-fatal, and it can only decide that if it
 // is told.

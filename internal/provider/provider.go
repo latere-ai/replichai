@@ -105,7 +105,7 @@ type Attachment struct {
 // for publication runs unchanged.
 //
 // Token is a write credential that lives only inside the sandbox; it must be
-// scoped to this one repository, never a broad organisation token.
+// scoped to this one repository, never a broad organization token.
 //
 // ReadOnly requests a mount the worker must not push to: an experiment reads an
 // instrument and must not write to the reproduction (007b). The field records
@@ -257,7 +257,7 @@ func (a Artifact) IsCompiled() bool {
 
 // Provider is a backend capable of running graded, sandboxed, tool-using work.
 //
-// Every method that can block takes a context and must honour its
+// Every method that can block takes a context and must honor its
 // cancellation, so an audit can be stopped from outside.
 type Provider interface {
 	// Name identifies the adapter.

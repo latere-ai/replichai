@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The hero scene has two palettes (040), and this test checks that nothing
-// paints outside them. A colour literal left in the geometry cannot follow the
+// paints outside them. A color literal left in the geometry cannot follow the
 // appearance, which is the bug 040 fixed in the stylesheet, and no browser test
 // can see it: the scene is WebGL, the test harness has no GPU, and a canvas
 // cannot be read with a computed-style probe.
@@ -42,7 +42,7 @@ describe('the hero scene', () => {
   it('adds light in the dark and inks on paper', () => {
     expect(paletteOf('DARK')).toContain('additive: true')
     expect(paletteOf('LIGHT')).toContain('additive: false')
-    // Blending, tone mapping and the colour buffers all branch on that one
+    // Blending, tone mapping and the color buffers all branch on that one
     // flag; nothing inside the builder may branch on the theme name itself.
     const body = src.slice(src.indexOf('export async function mountHeroScene'))
     expect(body.split("=== 'light'").length - 1).toBe(1)

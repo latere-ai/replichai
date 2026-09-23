@@ -34,14 +34,14 @@ func TestRenderTranscriptFiles(t *testing.T) {
 		}
 	}
 
-	// jsonl: one normalised event per line, with typed fields at the top level
+	// jsonl: one normalized event per line, with typed fields at the top level
 	// and the raw payload nested.
 	lines := strings.Split(strings.TrimSpace(string(files[TranscriptJSONL])), "\n")
 	if len(lines) != 4 {
 		t.Fatalf("want 4 jsonl lines, got %d", len(lines))
 	}
 	if !strings.Contains(lines[0], `"role":"agent"`) || !strings.Contains(lines[0], `"type":"agent.message"`) {
-		t.Errorf("jsonl not normalised + nested: %s", lines[0])
+		t.Errorf("jsonl not normalized + nested: %s", lines[0])
 	}
 	if !strings.Contains(lines[1], `"tool":"bash"`) {
 		t.Errorf("jsonl tool_use missing the tool: %s", lines[1])

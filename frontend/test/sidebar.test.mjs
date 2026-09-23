@@ -6,7 +6,7 @@
 // What it guards: the rail is a fixed 236px column of the shell's flex row, and
 // folding it is not one property. The width has to change; the labels have to
 // stop taking space rather than merely turn invisible, because a `visibility:
-// hidden` label still reserves its line box and pushes the icons off centre in
+// hidden` label still reserves its line box and pushes the icons off center in
 // a 64px column; every destination has to stay clickable at its icon; the label
 // has to survive as a tooltip; the main area has to claim the space the rail
 // gave up; and the choice has to outlive a reload.
@@ -66,7 +66,7 @@ try {
         mainLeft: main.getBoundingClientRect().left,
         expanded: document.querySelector('.rail-fold-btn').getAttribute('aria-expanded'),
         // A row is reachable only if its own icon is the topmost painted element
-        // at the icon's centre. A row squeezed to zero, or covered by a label
+        // at the icon's center. A row squeezed to zero, or covered by a label
         // that overflowed, fails here while still having a bounding box.
         rows: rows.map((b) => {
           const ico = b.querySelector('.nav-ico')
@@ -142,7 +142,7 @@ try {
     if (!b) return { text: '' }
     const r = b.getBoundingClientRect()
     const rows = [...document.querySelectorAll('.rail .nav-btn')]
-    // No row may be covered: neither the neighbours the bubble would land on if
+    // No row may be covered: neither the neighbors the bubble would land on if
     // it were placed below, nor the row being pointed at.
     const covered = rows
       .map((row) => ({ row: row.getAttribute('data-tip'), r: row.getBoundingClientRect() }))

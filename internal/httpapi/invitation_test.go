@@ -188,7 +188,7 @@ func TestAddingAMemberWorksWithNoNotifier(t *testing.T) {
 }
 
 // TestInvitationGoesToTheAddressInvited checks that the invitation goes to
-// the address invited, normalised the way membership normalises it, and never
+// the address invited, normalized the way membership normalizes it, and never
 // to a second address from the body.
 func TestInvitationGoesToTheAddressInvited(t *testing.T) {
 	d := testDeps(allowAll)

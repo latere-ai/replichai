@@ -23,7 +23,7 @@ The design closes that. It is also a better page: the hero is a full section rat
 
 ## Decisions
 
-**Every colour comes from a token.** The design is authored light-only in literal hex, and every one of those hexes is already a `styles.css` token: `#2369bd` is `--brand`, `#0c0a09` is `--fg-1`, `#3f7a55` is `--ok`, `#6b4fa8` is `--pub`. They are written as tokens, so the page holds in dark without a second palette. The two dark slabs (hero and close) are the exception and are *deliberately* dark in both themes: they are a material, not a theme, and the design's own text colours travel with them.
+**Every color comes from a token.** The design is authored light-only in literal hex, and every one of those hexes is already a `styles.css` token: `#2369bd` is `--brand`, `#0c0a09` is `--fg-1`, `#3f7a55` is `--ok`, `#6b4fa8` is `--pub`. They are written as tokens, so the page holds in dark without a second palette. The two dark slabs (hero and close) are the exception and are *deliberately* dark in both themes: they are a material, not a theme, and the design's own text colors travel with them.
 
 **The hero scene is bundled, not fetched.** The design imports three.js from a CDN at runtime. It ships as a dependency instead, dynamically imported inside the effect so Vite splits it into its own chunk that the first paint never pays for. A CDN in the critical path of the first screen makes a third party's uptime part of ours, and the design's own `try/catch` already says the page must survive the scene failing; bundling makes that the rare case rather than the network's decision.
 

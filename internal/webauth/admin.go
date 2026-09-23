@@ -36,7 +36,7 @@ type Admin struct {
 
 // PaperSweep fills in the bibliography of every paper the platform holds that is
 // still missing one (037). It is a function rather than an interface because
-// there is only one and it takes no arguments an admin chooses: its behaviour
+// there is only one and it takes no arguments an admin chooses: its behavior
 // is decided by the enrichment rule, not by the caller.
 type PaperSweep func(ctx context.Context) (projects, filled int, err error)
 

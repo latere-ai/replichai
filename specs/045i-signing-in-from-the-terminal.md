@@ -9,13 +9,13 @@ status: built
 
 **Scope:** `replichai login`, `whoami`, `logout`, `org`: the OAuth2 device-code flow against `auth.latere.ai`, where the token is stored, how it is refreshed, and how a short-lived actor token is minted for the API. The client half only; the server half is [045j](045j-a-bearer-the-api-accepts.md).
 
-**Depends on:** [006c](006c-identity-and-access.md) (what authorisation is here), [014d](014d-an-auth-outage-is-not-sign-out.md) (the lesson this reuses), `latere.ai/x/pkg/oidc`.
+**Depends on:** [006c](006c-identity-and-access.md) (what authorization is here), [014d](014d-an-auth-outage-is-not-sign-out.md) (the lesson this reuses), `latere.ai/x/pkg/oidc`.
 
 ## Problem
 
 The CLI has no identity. Everything it does is local or goes to GitHub with a token from the environment. For a locally-run session to reach the app ([045k](045k-a-local-session-reaches-the-cloud.md)) the CLI has to be able to say who it is, and a terminal cannot run a browser redirect.
 
-The device-code flow is the answer and it is already built in a neighbouring project: `latere` signs in against `auth.latere.ai` with RFC 8628 and stores the result under `~/.config/latere/`. `latere.ai/x/pkg/oidc` provides `DeviceAuth` and `DeviceAccessToken` directly. This leaf is that flow with replichai's own client identity, and the decisions are about what not to share.
+The device-code flow is the answer and it is already built in a neighboring project: `latere` signs in against `auth.latere.ai` with RFC 8628 and stores the result under `~/.config/latere/`. `latere.ai/x/pkg/oidc` provides `DeviceAuth` and `DeviceAccessToken` directly. This leaf is that flow with replichai's own client identity, and the decisions are about what not to share.
 
 ## The flow
 
@@ -45,7 +45,7 @@ replichai login
 
 ## Its own client, its own file
 
-The token goes to `~/.config/replichai/auth.json`, mode `0600`, holding the access token, the refresh token, the expiry, the issuer, the client id and the active organisation.
+The token goes to `~/.config/replichai/auth.json`, mode `0600`, holding the access token, the refresh token, the expiry, the issuer, the client id and the active organization.
 
 Deliberately not `~/.config/latere/`. The two CLIs are different OAuth clients requesting different scopes, and `latere`'s own source carries the warning that made this decision: a refresh that silently narrowed scopes strands commands until the next full login. Two programs sharing one token file means either program's refresh can narrow the other's. Sharing a sign-in is a product question for auth to answer with the browser session; sharing a token file is a coupling with no benefit.
 
@@ -55,17 +55,17 @@ The file is on the sandbox deny list ([045b](045b-the-host-sandbox.md)), so a ru
 
 `openid email profile offline_access`. Nothing product-specific, because nothing product-specific is decided by the token.
 
-[006c](006c-identity-and-access.md) is explicit: authorisation is this deployment's own table, decided against `access_grants`, never read out of a token. The bearer says who the caller is; `internal/access` says what they may do; signing in self-grants the ordinary user tier, and what limits a person is the meter, not a guest list. The CLI therefore requests identity scopes only, and a token carrying a claim about tiers would be ignored if it had one.
+[006c](006c-identity-and-access.md) is explicit: authorization is this deployment's own table, decided against `access_grants`, never read out of a token. The bearer says who the caller is; `internal/access` says what they may do; signing in self-grants the ordinary user tier, and what limits a person is the meter, not a guest list. The CLI therefore requests identity scopes only, and a token carrying a claim about tiers would be ignored if it had one.
 
 ## Refresh, and what a failure means
 
-The token is refreshed on use when it is within a minute of expiry, and the refresh preserves the previous refresh token where the response omits a new one, which is ordinary OAuth behaviour and a common source of a working client that logs itself out after a day.
+The token is refreshed on use when it is within a minute of expiry, and the refresh preserves the previous refresh token where the response omits a new one, which is ordinary OAuth behavior and a common source of a working client that logs itself out after a day.
 
 [014d](014d-an-auth-outage-is-not-sign-out.md) settled the equivalent question in the app: an auth outage is not a sign-out. The same rule applies here. A refresh that fails because the network is down, or because auth returned a 5xx, leaves the stored token in place and reports the failure. Only an explicit `invalid_grant`, meaning the credential is revoked or expired, clears the file and asks for `replichai login`. A CLI that deletes its credential whenever a network connection drops is a CLI people stop trusting with a batch that runs for an hour.
 
-## Organisation context
+## Organization context
 
-`replichai org` prints the active context; `replichai org <uuid>` and `replichai org --personal` switch it through the refresh-token grant, so switching does not need another device login. The active organisation is stored beside the token and sent with every API call, because a project belongs to a context and an operator who works in two of them must not have to guess which one a `push` landed in.
+`replichai org` prints the active context; `replichai org <uuid>` and `replichai org --personal` switch it through the refresh-token grant, so switching does not need another device login. The active organization is stored beside the token and sent with every API call, because a project belongs to a context and an operator who works in two of them must not have to guess which one a `push` landed in.
 
 ## The actor token
 
@@ -76,7 +76,7 @@ Where auth refuses the mint (an older deployment, an audience it does not know),
 ## Acceptance criteria
 
 1. `replichai login` completes a device-code flow against a fake auth server and writes `auth.json` with mode `0600`.
-2. `whoami` prints the subject and email from the stored token without a network call, and reports the active organisation.
+2. `whoami` prints the subject and email from the stored token without a network call, and reports the active organization.
 3. `logout` removes the file and revokes at the endpoint where one is offered; a second `logout` is not an error.
 4. A refresh failing with a network error or a 5xx leaves the file intact and reports the failure; a refresh failing with `invalid_grant` clears it and says to sign in. Both are tested.
 5. A refresh response with no new refresh token preserves the old one.
@@ -89,12 +89,12 @@ Where auth refuses the mint (an older deployment, an audience it does not know),
 
 - Sharing a sign-in with `latere`. Separate clients, separate files, for the reason above.
 - Machine credentials for CI. A service account is a different principal kind and its own spec; CI today runs the local path with no cloud sync.
-- Authorising anything. The token identifies; `internal/access` authorises.
+- Authorizing anything. The token identifies; `internal/access` authorizes.
 - A browser-based login for the CLI. The device flow is the terminal's answer.
 
 ## Outcome
 
-Built as `internal/cloud` and the `login`, `whoami`, `logout` and `org` commands. The device-code flow, the private credential file under replichai's own client id, the refresh that keeps a previous refresh token, the organisation switch through the refresh grant, and the actor-token mint with its reported fallback are as specced.
+Built as `internal/cloud` and the `login`, `whoami`, `logout` and `org` commands. The device-code flow, the private credential file under replichai's own client id, the refresh that keeps a previous refresh token, the organization switch through the refresh grant, and the actor-token mint with its reported fallback are as specced.
 
 **An auth outage is not a sign-out**, tested both ways: a server error and a network failure leave the credential in place, and only `invalid_grant` clears it.
 

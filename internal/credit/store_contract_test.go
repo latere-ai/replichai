@@ -82,7 +82,7 @@ func runStoreContract(t *testing.T, s Store) {
 	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
-	// The wallet is keyed by normalised email, so a grant seeded one way is
+	// The wallet is keyed by normalized email, so a grant seeded one way is
 	// found by a login typed another.
 	if n, _ := s.Balance(ctx, Wallet("LEAD@latere.ai ")); n != 10*Dollar {
 		t.Fatalf("wallet after top-up = %d, want %d", n, 10*Dollar)
@@ -425,7 +425,7 @@ func TestPGStoreAndMemStorePostPaidEntriesIdempotently(t *testing.T) {
 
 func TestWalletEmailInvertsWallet(t *testing.T) {
 	if got, ok := WalletEmail(Wallet("Person@Latere.ai ")); !ok || got != "person@latere.ai" {
-		t.Fatalf("WalletEmail(Wallet(...)) = %q, %v; want the normalised email", got, ok)
+		t.Fatalf("WalletEmail(Wallet(...)) = %q, %v; want the normalized email", got, ok)
 	}
 	if _, ok := WalletEmail(Pot("p1")); ok {
 		t.Fatalf("WalletEmail(Pot) reported a wallet; a pot is not one")
@@ -549,7 +549,7 @@ func swapDBName(t *testing.T, raw, name string) string {
 // TestPGStoreAndMemStoreSettleExactlyOnce checks that settlement is
 // exactly-once. This is where that guarantee is tested.
 //
-// The job store's phase machine already serialises terminal transitions, so a
+// The job store's phase machine already serializes terminal transitions, so a
 // double settle cannot be reached through it today, which means a test driving
 // cancels concurrently passes whether or not the ledger guards anything. The
 // guarantee has to be asserted here, by settling the same session twice

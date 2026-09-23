@@ -27,7 +27,7 @@ import (
 // around, which a backstop must not become. Inferring the number from a run
 // that dies at a repeatable balance is not worth engineering against. The code
 // paths that would return the number directly are, and this test covers them:
-// every payload a member reads, and the client's whole string catalogue.
+// every payload a member reads, and the client's whole string catalog.
 func TestTheOverdraftFloorIsPublishedNowhere(t *testing.T) {
 	d := testDeps(allowAll)
 	ledger := credit.NewMemStore(nil, d.Members.(credit.Members))
@@ -156,7 +156,7 @@ func TestAKilledRunRecordsNothingAboutMoney(t *testing.T) {
 	}
 }
 
-// repoRoot walks up to the module root, so the catalogue test does not depend
+// repoRoot walks up to the module root, so the catalog test does not depend
 // on where `go test` was invoked from.
 func repoRoot(t *testing.T) string {
 	t.Helper()

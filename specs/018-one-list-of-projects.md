@@ -15,11 +15,11 @@ Three things came out of the build. **A summary read that fails now returns 500 
 
 ## Problem
 
-The Projects screen splits the reader's work in two by a fact they did not choose: whether they created the project or were invited to it. A project's tab depends on who created it, and the reader has to remember which side a given piece of work is on before they can find it. Nothing else on the screen is organised that way: the public registry is one list, and the sessions inside a project are one list.
+The Projects screen splits the reader's work in two by a fact they did not choose: whether they created the project or were invited to it. A project's tab depends on who created it, and the reader has to remember which side a given piece of work is on before they can find it. Nothing else on the screen is organized that way: the public registry is one list, and the sessions inside a project are one list.
 
 Three problems follow from the split, all visible in the current screen:
 
-**The two halves disagree about the same project.** The owned list summarises through `jobs.StatusByProject`, whose SQL is `WHERE principal = $1` (`internal/job/pgstore.go:325`); it counts only the sessions the caller submitted. The shared list summarises through `ListByProject`, which counts every session in the project. So a project where a collaborator ran a session reports a different session count depending on which list it appears in. Today the two counts never appear side by side; merged, they would.
+**The two halves disagree about the same project.** The owned list summarizes through `jobs.StatusByProject`, whose SQL is `WHERE principal = $1` (`internal/job/pgstore.go:325`); it counts only the sessions the caller submitted. The shared list summarizes through `ListByProject`, which counts every session in the project. So a project where a collaborator ran a session reports a different session count depending on which list it appears in. Today the two counts never appear side by side; merged, they would.
 
 **There is no owner to show.** `Project.Owner` is an opaque OIDC subject. The shared tab works around it with `signerOf` (`App.tsx:105`), which falls back to that subject for any project that was never published, which is most of them. A merged list needs an owner column, and there is nothing to put in it.
 

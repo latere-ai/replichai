@@ -205,7 +205,7 @@ func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 	return nil
 }
 
-// check honours cancellation and returns the injected error.
+// check honors cancellation and returns the injected error.
 func (p *Provider) check(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err

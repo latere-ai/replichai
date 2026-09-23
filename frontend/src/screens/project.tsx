@@ -504,7 +504,7 @@ export function ProjectScreen({
   )
 }
 
-// LatestFindings summarises the newest graded session of each paper the project
+// LatestFindings summarizes the newest graded session of each paper the project
 // holds (021e): its inner-loop decomposition and the open-science scorecard.
 //
 // It is per paper on purpose. The operator design puts one rate on the project
@@ -646,7 +646,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   const [repro, setRepro] = useState<Reproduction | null>(null)
   const [missing, setMissing] = useState(false)
   // The paper's verdict, when the run recorded one. The manifest's grade is the
-  // rubric's judgement of the run, so a list about papers must not print it in
+  // rubric's judgment of the run, so a list about papers must not print it in
   // the column a reader reads as "did this reproduce". That was the same
   // conflation the session pane had, one level up.
   const [findings, setFindings] = useState<Findings | null>(null)
@@ -691,8 +691,8 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   )
 }
 
-// decompositionOf is the counts the verdict word summarises, so a row never
-// carries a judgement without the slicing it came from.
+// decompositionOf is the counts the verdict word summarizes, so a row never
+// carries a judgment without the slicing it came from.
 function decompositionOf(f: Findings): string {
   const c = f.components
   return c?.total ? `${c.verified}/${c.total}` : ''

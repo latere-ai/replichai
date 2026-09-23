@@ -62,13 +62,13 @@ The consequence in product terms: LLM cohorts exist for work that happens *after
 
 `instrument.json` is additive. A paper whose protocol cannot be extracted and whose analysis cannot be declared produces a reproduction exactly as good as it produces today, plus an accurate record of why it is not an instrument. This is the same posture as `UNVERIFIED.md`: the blocker is the finding.
 
-**An experiment binds one instrument to one data source.** This is the central generalisation, and it is why this is one mechanism rather than four features:
+**An experiment binds one instrument to one data source.** This is the central generalization, and it is why this is one mechanism rather than four features:
 
 | Data source | Where the data comes from | What a result establishes | May be published |
 |---|---|---|---|
 | `released` | the paper's own released data | **re-analysis** — the paper's statistics recomputed | yes, as today |
 | `uploaded` | a dataset the researcher brings | a new finding, theirs, on the paper's instrument | no — it is their data, not ours to redistribute |
-| `synthetic` | an LLM cohort driven through `protocol` | **nothing about people** — a pilot, and labelled as one | the pilot report only, stamped synthetic |
+| `synthetic` | an LLM cohort driven through `protocol` | **nothing about people** — a pilot, and labeled as one | the pilot report only, stamped synthetic |
 | `human` | participants, via a page the platform hosts | **re-observation** — the claim tested against a new sample | never; it is participant data |
 
 One analysis pipeline runs over all four, because the pipeline is `instrument.analysis` and the sources differ only in where the input file came from. The "establishes" column is not documentation. It is the epistemic record `procedure.md` §7 demands, moved from prose into the domain model, and it is what keeps a synthetic pilot from being mistaken for a replication.
@@ -77,7 +77,7 @@ The fourth request this track opened with, letting a researcher test a new hypot
 
 **A project owns the work, and researchers are named by email.** A project is the replication effort around one paper: its instrument, its experiments, its collected data, and its people. Membership is `(principal, project, role)` with roles *lead* and *collaborator*, seeded by verified email and bound one-way to a principal on first sign-in.
 
-That binding is not a new mechanism. It is exactly what [006c](006c-identity-and-access.md) already decided for `access_grants`: seed by an `email_verified` claim, bind on first login, refuse a second principal presenting the same email afterwards. Project membership generalises that table's shape; it does not set up a second membership system beside it.
+That binding is not a new mechanism. It is exactly what [006c](006c-identity-and-access.md) already decided for `access_grants`: seed by an `email_verified` claim, bind on first login, refuse a second principal presenting the same email afterwards. Project membership generalizes that table's shape; it does not set up a second membership system beside it.
 
 **Project membership is orthogonal to platform access, and is not a way up the tiers.** A project lead may add a colleague by email. That does *not* admit them to the platform: they still need a platform grant from an admin before they can sign in and operate, and the UI says so plainly when a lead adds someone ungranted. The beta stays fail-closed and there is still no self-serve path up the tier ladder.
 
@@ -86,7 +86,7 @@ Rejected: having a project invitation seed a seed-tier grant. It is the obvious 
 **Participant responses are a third origin class, and they are structurally unpublishable.** `publish.Classify` today keys on `Origin`: worker-written versus third-party-fetched. Participant data is neither, and the consequences are substantive:
 
 - It never enters a reproduction repository, a mount, or a manifest. It lives in Postgres and is exported directly to the project's researchers. The redistribution gate therefore never sees it, because it is never in a tree. That is the primary control, and it is structural.
-- It reaches an agent sandbox only as the de-identified dataset it is: attached outside the mount, exactly as an uploaded dataset is, so the project's own analysis can run over it. Forbidding the sandbox outright would make a `human`-source experiment impossible, since analysing a new sample means running the instrument's pipeline. What makes that safe is a property of the collection schema, not a promise: [007d](007d-hosting-a-study.md) admits only the protocol's declared closed-form measures plus an opaque token, so there is no field an identifier could occupy.
+- It reaches an agent sandbox only as the de-identified dataset it is: attached outside the mount, exactly as an uploaded dataset is, so the project's own analysis can run over it. Forbidding the sandbox outright would make a `human`-source experiment impossible, since analyzing a new sample means running the instrument's pipeline. What makes that safe is a property of the collection schema, not a promise: [007d](007d-hosting-a-study.md) admits only the protocol's declared closed-form measures plus an opaque token, so there is no field an identifier could occupy.
 - No new `Origin` case is needed for that, and this is worth stating because the opposite is the intuitive assumption. `internal/publish/gate.go` is an **allowlist**: `Classify` includes `OriginWorker` and withholds everything else, and `originOf` maps every path outside the fixed report names and `src/` to `OriginThirdParty`. So a participant-data file appearing in a tree is *already* withheld and already bars the visibility flip, with no change at all. Adding a participant case would sharpen the refusal's reason string; it would not add a control.
 - The allowlist cuts the other way for the track's own deliverables, which is the consequence to act on: `instrument.json` ([007a](007a-the-study-protocol-as-an-artifact.md)) and `study/` ([007d](007d-hosting-a-study.md)) are worker-written but unknown to `originOf`, so they would be withheld from every publication *silently*, because withholding is the safe direction and raises no error. Both specs add themselves to the allowlist with a test.
 - [003](003-reproduction-registry.md)'s registry is derived from the forge. Participant data can never reach it, by the same structural fact.
@@ -111,7 +111,7 @@ Each is tightly scoped and gets its own implementation pass. The order is delibe
 |---|---|---|
 | **[007a](007a-the-study-protocol-as-an-artifact.md) — The study protocol as an artifact** | `instrument.json`: protocol extraction, the analysis entrypoint contract, and the servability assessment; the additive rubric criterion and the eval expectations | 004 |
 | **[007b](007b-experiments-over-instruments.md) — Experiments over instruments** | the instrument/experiment/data-source domain model, and its two offline sources: `released` and `uploaded`; execution in the provider sandbox | 007a, 006f |
-| **[007c](007c-the-synthetic-pilot.md) — The synthetic pilot** | the `synthetic` source: an LLM cohort driven through `protocol`, its indelible labelling, and its calibration against papers that released real data | 007b |
+| **[007c](007c-the-synthetic-pilot.md) — The synthetic pilot** | the `synthetic` source: an LLM cohort driven through `protocol`, its indelible labeling, and its calibration against papers that released real data | 007b |
 | **[007d](007d-hosting-a-study.md) — Hosting a study for participants** | the `human` source: the hosted page on its own origin, consent, the anonymous write path, per-project collection and export, retention | 007b, 006a, 006b, 006c, 006e |
 
 **Sequence, and why it is not the order these were asked for.** The synthetic pilot was the first capability requested and is third here. A synthetic cohort is only *checkable* where the paper released real participant data: you validate it against the paper's own reported effect, which is ground truth you have. Before the experiment machinery and a `released` baseline exist, a synthetic pilot emits numbers nobody can falsify, which is the failure mode this whole spec is built to avoid. So: protocol extraction, then the offline bindings, then synthetic against a known answer, then human cohorts last, because they carry the compliance and public-write surface.

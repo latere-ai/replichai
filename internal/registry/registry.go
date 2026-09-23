@@ -39,7 +39,7 @@ const DefaultTTL = time.Minute
 var ErrNoManifest = errors.New("no manifest")
 
 // Source enumerates published reproductions and reads their files. A GitHub
-// source lists an organisation; a filesystem source reads a directory.
+// source lists an organization; a filesystem source reads a directory.
 type Source interface {
 	List(ctx context.Context) ([]string, error)
 	Manifest(ctx context.Context, repo string) (publish.Manifest, error)
@@ -107,7 +107,7 @@ func New(source Source, opts ...Option) *Registry {
 	return r
 }
 
-// snapshot is one derived view of the organisation.
+// snapshot is one derived view of the organization.
 type snapshot struct {
 	names []string            // every repository name, for collision checks
 	byKey map[string][]record // identity string -> reproductions, earliest first

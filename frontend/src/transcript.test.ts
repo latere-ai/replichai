@@ -101,7 +101,7 @@ test('the histogram is token-weighted when any event was charged, and counts eve
   ]
   const w = histogram(charged, span, 4)
   expect(w.weighted).toBe(true)
-  // Normalised to the peak: the cheap bucket is a tenth of the expensive one.
+  // Normalized to the peak: the cheap bucket is a tenth of the expensive one.
   expect(w.bars).toEqual([0.1, 0, 0, 1])
 
   // The same two moments, uncharged: the shape is now "how busy", and says so.

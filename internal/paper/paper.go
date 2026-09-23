@@ -152,7 +152,7 @@ func Resolve(ctx context.Context, reference string, opts ...Option) (Identity, e
 // Key extracts a paper's stable identity offline, with no network access, for
 // the double-trigger guard and the project a submit opens. A DOI or arXiv ID
 // in the reference yields its canonical "scheme:key". A plain URL yields a
-// normalised "url:<ref>", so the same link submitted twice yields the same
+// normalized "url:<ref>", so the same link submitted twice yields the same
 // key. A reference that is not a DOI, an arXiv ID, or URL-shaped is rejected,
 // so an invalid submit fails at the edge. Key never fetches, so a submit does
 // not depend on arXiv being available. The worker's Resolve phase does the
@@ -318,7 +318,7 @@ var (
 	htmlTitleRe     = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 )
 
-// extractDOI finds and normalises a DOI in a string: lowercased, trailing
+// extractDOI finds and normalizes a DOI in a string: lowercased, trailing
 // sentence punctuation trimmed. A DOI is case-insensitive, so lowercasing
 // gives two spellings of one DOI the same identity.
 func extractDOI(s string) (string, bool) {

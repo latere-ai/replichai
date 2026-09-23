@@ -50,7 +50,7 @@ type engineRunner struct {
 	workDir  string
 	// The forge (006i). When gh is nil, as in a local run with no token, the
 	// runner neither creates a repository nor publishes, and the session's
-	// transcript is readable live only. owner is the organisation repositories
+	// transcript is readable live only. owner is the organization repositories
 	// are created under; token is the mount credential, passed to the platform
 	// egress and never to the sandbox.
 	gh    forge
@@ -175,7 +175,7 @@ func lastSlash(s string) int {
 	return -1
 }
 
-// pause waits out the configured per-phase delay, honouring cancellation.
+// pause waits out the configured per-phase delay, honoring cancellation.
 func (e *engineRunner) pause(ctx context.Context) {
 	if e.delay <= 0 {
 		return
@@ -554,7 +554,7 @@ func (l liveTranscript) Events(ctx context.Context, status provider.RunStatus) (
 // forgePublisher changes a repository's visibility with the server token. It
 // is the optional forge half of making a project public (006f) and of
 // withdrawing it (006o), and never runs inside the sandbox. The owner is fixed
-// to the organisation the reproductions live under.
+// to the organization the reproductions live under.
 type forgePublisher struct {
 	client *github.Client
 	owner  string
@@ -573,7 +573,7 @@ func (p *forgePublisher) SetPrivate(ctx context.Context, repo string) error {
 // registryReader adapts the derived registry (003) to the read surface's
 // internal checks: the publish gate's manifest-clear read and the session
 // transcript reader. It is not a user-facing list: the project is the unit of
-// visibility (006f), so there is no unscoped organisation-wide listing of
+// visibility (006f), so there is no unscoped organization-wide listing of
 // reproductions.
 type registryReader struct{ source registry.Source }
 

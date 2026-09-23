@@ -49,8 +49,8 @@ The skip is **structural, not a flag**. The store gains a distinct entry point, 
 
 Three consequences to state, because a reader of a bill will notice all three:
 
-- **`SpendSince` does not count a local session.** The project rail's thirty-day spend is what this deployment charged, and it charged nothing. [035](035-a-paper-can-move-to-another-project.md) settled the neighbouring case (a moved session keeps counting because the ledger holds a real charge) and the same reasoning gives the opposite answer here, because there is no entry.
-- **The session shows its usage, not a price.** Tokens and the vendor's own reported cost where the harness gave one, labelled as the vendor's figure.
+- **`SpendSince` does not count a local session.** The project rail's thirty-day spend is what this deployment charged, and it charged nothing. [035](035-a-paper-can-move-to-another-project.md) settled the neighboring case (a moved session keeps counting because the ledger holds a real charge) and the same reasoning gives the opposite answer here, because there is no entry.
+- **The session shows its usage, not a price.** Tokens and the vendor's own reported cost where the harness gave one, labeled as the vendor's figure.
 - **A frozen account can still import.** The freeze is a spending control ([022d](022d-a-negative-wallet-is-frozen.md)) and importing spends nothing. It cannot start a platform session, and that stays true.
 
 ## What is imported
@@ -89,7 +89,7 @@ Papers are filed by identity through the existing project path ([012](012-a-proj
 
 ## What the reader sees
 
-A local session is labelled as such wherever a session is shown: the rail, the session header, the public page if it is published. Not as a warning: the verdict was produced by the same method and graded against the same rubric. The label is there because `environment.json` says the run happened somewhere this deployment did not control, and a reader comparing two reproductions is entitled to know that before they compare.
+A local session is labeled as such wherever a session is shown: the rail, the session header, the public page if it is published. Not as a warning: the verdict was produced by the same method and graded against the same rubric. The label is there because `environment.json` says the run happened somewhere this deployment did not control, and a reader comparing two reproductions is entitled to know that before they compare.
 
 Publishing and sign-off are unchanged. An owner's deliberate act with a recorded sign-off ([006n](006n-who-signed-off.md)) is what publishes a session, imported or not; ingesting is not publishing.
 
@@ -103,7 +103,7 @@ Publishing and sign-off are unchanged. An owner's deliberate act with a recorded
 6. Re-importing an identical payload is a 200 and changes no row; re-importing a changed payload updates the same row; two imports of different sessions create two rows.
 7. The stored row carries no locator, and a test asserts no host path reaches the database.
 8. A transcript over the cap is refused with a 413 naming the size, and the CLI reports it without truncating.
-9. An imported session renders on the verdict screen, the transcript viewer and the rail with no handler special-casing `origin`, and is labelled as locally executed.
+9. An imported session renders on the verdict screen, the transcript viewer and the rail with no handler special-casing `origin`, and is labeled as locally executed.
 10. An imported session can be published and signed off through the existing path, and the publish gate reads it exactly as it reads a platform session.
 11. `replichai push` on a batch uploads every terminal entry, records failures in `batch.json`, and is resumable.
 
@@ -120,4 +120,4 @@ Built as `job.Origin`, `ImportLocal` on both stores, migration 9, one gated rout
 
 **Evidence is not uploaded; it stays in the repository.** This spec listed the transcript, the environment record and the grade file among what is ingested, with a 32 MiB cap. What ships carries the record (identity, execution, model, usage, verdict, repository) and nothing else, because the evidence is already in the pushed repository and this deployment has no blob store to put a second copy in. The cap that shipped is 1 MiB on the record itself. A session pushed without `--publish` therefore reaches the app as a verdict with no evidence behind it, which is a real gap rather than a simplification.
 
-**The imported session is not labelled in the UI.** The origin is stored, the API returns it, and no screen shows it. A reader comparing two reproductions cannot yet see that one ran somewhere this deployment did not control.
+**The imported session is not labeled in the UI.** The origin is stored, the API returns it, and no screen shows it. A reader comparing two reproductions cannot yet see that one ran somewhere this deployment did not control.

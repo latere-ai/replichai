@@ -195,7 +195,7 @@ try {
   if (!read.unresolved.some((r) => /latency/i.test(r))) fail('the blocked claim is not listed as unresolved')
 
   // One verdict word on the screen, and it is the paper's. The manifest's grade
-  // is the rubric's judgement of the run, which a careful audit of a paper that
+  // is the rubric's judgment of the run, which a careful audit of a paper that
   // does not reproduce passes, so heading both "Verdict" put two verdicts on
   // one paper and invited the reader to take "Passed" as "it reproduced".
   const verdicts = await page.evaluate(() => {

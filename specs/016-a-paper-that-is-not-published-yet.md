@@ -83,7 +83,7 @@ A manuscript under submission is confidential, and the product is built to publi
 - An uploaded paper is private, and its session is **unpublishable**: barred from the owner's public flip ([006f](006f-taking-a-reproduction-out.md)/[006n](006n-who-signed-off.md)), not merely private by default. A flip is one button and one signature away, and the material behind it is unpublished work.
 - The transcript ([005](005-transcript.md)) quotes the paper. Committed transcript evidence ([014c](014c-publication-requires-evidence.md)) would therefore contain the manuscript, which is a leak through the evidence layer rather than the artifact layer.
 - Bytes never land under a public-read prefix, and never behind `cdn.latere.ai`.
-- **Deletion collides with 012.** "Delete my manuscript" is a request this system must be able to honour, and 012 makes a paper with sessions permanently undeletable *on purpose*, because the record of what was reproduced is not editable. Both rules are right and they cannot both hold for uploaded content. Resolving that is part of taking this spec.
+- **Deletion collides with 012.** "Delete my manuscript" is a request this system must be able to honor, and 012 makes a paper with sessions permanently undeletable *on purpose*, because the record of what was reproduced is not editable. Both rules are right and they cannot both hold for uploaded content. Resolving that is part of taking this spec.
 
 This is a different concern from [BACKLOG](BACKLOG.md) item 4. There the risk is *standing*: a verdict naming authors who never agreed to it. Here the owner **is** the author, and the risk is *leakage*.
 

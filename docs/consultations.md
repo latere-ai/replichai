@@ -24,7 +24,7 @@ recommendation drawn from the notes, not a decision anyone in them has taken:
 | # | Do | Because |
 |---|---|---|
 | 1 | Measure model degradation across tiers on `evals/` | This is the only step that turns "Opus is best" into a number. It settles the budget and the DGX plan at the same time. |
-| 2 | Choose one study, one venue, one corpus | The three plans are not a programme, and the money funds one. |
+| 2 | Choose one study, one venue, one corpus | The three plans are not a program, and the money funds one. |
 | 3 | Add a negative-control case to `evals/` | One file. It guards against the failure mode that would most damage credibility. |
 
 Two linked artifacts, the cost estimation and the outer-loop design, could not
@@ -35,7 +35,7 @@ be opened, so [§5](#5-the-money) is incomplete.
 | Date | Who | Form | Asked for |
 |---|---|---|---|
 | Jul 2026 | — | [`landscape.md`](landscape.md) | (our own sweep, a July snapshot, partly stale; see [below](#a-note-on-landscapemd)) |
-| 3 Aug | Robin Welsch (Aalto), Kasper Hornbæk (Copenhagen) | meeting | 100 behavioural papers, a broad journal, €25k privately raised |
+| 3 Aug | Robin Welsch (Aalto), Kasper Hornbæk (Copenhagen) | meeting | 100 behavioral papers, a broad journal, €25k privately raised |
 | 7–10 Aug | Francesco Chiossi (Nestlé), Robin Welsch | email | Study 1: does the tool work. Study 2: what does CHI look like |
 | 17 Aug | Mark Colley (UCL) | meeting | Research-first, open models on a UCL DGX, controlled evaluation |
 
@@ -97,7 +97,7 @@ hold, but they must be reconciled before either appears in a paper.
 | Decision | Option A | Option B | Option C |
 |---|---|---|---|
 | **Venue** | Nature/Science, explicitly away from CHI (3 Aug) | CHI in three weeks, "rushed but feasible" (17 Aug) | — |
-| **Corpus** | 100 behavioural papers with prior manual replications (Kasper) | 1000 CHI papers, 200/year (Francesco) | Open code, absent from training data, internet severed (Mark) |
+| **Corpus** | 100 behavioral papers with prior manual replications (Kasper) | 1000 CHI papers, 200/year (Francesco) | Open code, absent from training data, internet severed (Mark) |
 | **Ground truth** | Olga's paper (Robin) | Prior manual replication reports (Kasper) | Two coders + ICC (Francesco) |
 | **Model** | Opus: "highest quality" (17 Aug) | Open models self-hosted on a DGX (17 Aug) | Any cheaper model (3 Aug) |
 | **Posture** | Research-first, pivot later (Mark) | Private money buying runs on a deployed product (3 Aug) | — |
@@ -129,18 +129,18 @@ case: it is hand-verified reproduction outcomes for 76 HCI papers, from people i
 these conversations.
 
 **It supplies the checklist too**, which we had assumed it would not. Their
-Table 1 defines ten dimensions for analysing a repository: locate repository,
+Table 1 defines ten dimensions for analyzing a repository: locate repository,
 documentation, data availability, data format, codebook, data clarity,
 programming language, analysis executability, reproducibility, reproduction
 time. Each has its successful outcome and its pitfalls. That is the artifact the
 ICC half of Study 1 needed, already in print. The human and the machine can
 answer identically worded questions, and the human instrument is not one we
-designed to favour our own.
+designed to favor our own.
 
 It also states a **45-minute** troubleshooting budget per repository, which
 gives an effort-matched comparison against our roughly hour-long runs.
 
-Kasper's "papers from previous behavioural science replication studies" most
+Kasper's "papers from previous behavioral science replication studies" most
 plausibly means the Aczel et al. sample ([R1](#references)): 100 studies,
 2009–2018, at least 5 re-analyses each. **That is an inference, not something
 either meeting stated.** Confirm it before anyone selects papers.
@@ -212,7 +212,7 @@ grant round is too slow. At the roughly €25 per session both meetings agreed o
 
 | Scope | Sessions | Inner-loop cost |
 |---|---|---|
-| 100 behavioural papers, once | 100 | ~€2,500 |
+| 100 behavioral papers, once | 100 | ~€2,500 |
 | Study 1: 150 papers × 5 repeat runs | 750 | ~€19,000 |
 | Study 2: 1000 CHI papers, once | 1,000 | ~€25,000 |
 | Outer-loop subset | — | no defensible figure |
@@ -292,10 +292,10 @@ Notes on the three steps that need one:
 - **1** is the only item that converts "Opus is best" from anecdote into a
   number. It needs a runner; today `evals/` is graded by reading.
 - **2** has an evidence-backed answer: Olga's 76-paper set ([R2](#references))
-  is hand-labelled, HCI, and co-authored by people in these conversations. It is
+  is hand-labeled, HCI, and co-authored by people in these conversations. It is
   the cheapest defensible ground truth we will be offered. Study 1 on that set
   is fundable, fast enough for a CHI-scale venue, and a prerequisite for any
-  claim made in a broader one. Study 2 and the behavioural sample are the
+  claim made in a broader one. Study 2 and the behavioral sample are the
   follow-up.
 - **6** turns from a design question into an incident on the day the study
   publishes. Doing it afterwards means doing it in public, under pressure, with
@@ -316,7 +316,7 @@ a crucial effect.**
 
 A reproducibility rate conflates two things: how capable the agent is, and how
 well specified the paper is. That is why it appears non-deterministic. The fix
-is not to stabilise the number. It is to stop reporting a scalar and to relabel
+is not to stabilize the number. It is to stop reporting a scalar and to relabel
 what is being measured: **the dispersion is a property of the paper, not a
 defect of the tool**.
 
@@ -330,7 +330,7 @@ supplies an arbitrarily large analyst pool at about €25 each.
 | The objection | Under this framing |
 |---|---|
 | Non-deterministic one-shot results | The estimator. Dispersion over runs *is* the measurement. |
-| The system prompt has a crucial effect | An experimental facet we can manipulate. Human analyst studies cannot randomise an analyst's priors; we can randomise a prompt. |
+| The system prompt has a crucial effect | An experimental facet we can manipulate. Human analyst studies cannot randomize an analyst's priors; we can randomize a prompt. |
 | "Reproducibility rate" is vague | Replaced by a variance decomposition over named facets. |
 
 The statistical frame is **generalizability theory**: variance components across
@@ -388,7 +388,7 @@ Three things follow from this one change:
 1. The 40%/79% swing is removed at its cause: the denominator no longer moves.
 2. Francesco's two rates come at no extra cost: *claims re-run* and *claims
    matched*, over the same denominator. Conclusion survival is sign plus
-   significance per claim, which needs no extra judgement.
+   significance per claim, which needs no extra judgment.
 3. **The frozen claim list is the same artifact as the human checklist** the ICC
    half of Study 1 needs ([§3](#the-ground-truth-is-closer-to-settled-than-the-notes-suggest)).
    One artifact, two uses.
@@ -439,7 +439,7 @@ an Instrument for Underspecification in HCI Research*.
 Bracketed values are placeholders. The study has not run.
 
 > Automated replication agents are evaluated as though reproducing a paper were a
-> test the agent passes or fails, summarised as a reproducibility rate. We argue
+> test the agent passes or fails, summarized as a reproducibility rate. We argue
 > that this number confounds two things, the agent's competence and the paper's
 > specification, and that collapsing them discards the signal. Run one paper
 > through the same agent repeatedly and it decomposes the work differently, makes
@@ -494,9 +494,9 @@ starts. Three weeks was tight when it was proposed on 17 Aug.
 | Venue | Carries | Why in this order |
 |---|---|---|
 | **CHI** | The instrument: design, validation against human labels, calibration via the prompt facet, HCI as the first field | It is the methods paper the Nature paper cites for instrument validity, which a Nature reviewer will demand |
-| **Nature** | The finding about science: underspecification across the behavioural literature at scale, calibrated against Aczel et al.'s human baseline | Needs the instrument established first |
+| **Nature** | The finding about science: underspecification across the behavioral literature at scale, calibrated against Aczel et al.'s human baseline | Needs the instrument established first |
 
-**Hold back from CHI:** any cross-field claim, and any behavioural-science corpus
+**Hold back from CHI:** any cross-field claim, and any behavioral-science corpus
 result. Publishing "here is how underspecified science is" at CHI spends the
 Nature contribution for a fraction of its value.
 
@@ -504,8 +504,8 @@ Nature contribution for a fraction of its value.
 
 | Framing | Trade |
 |---|---|
-| **"The audit's product is the absence"**: centre the ~1% of CHI papers sharing materials; contribute a census plus the boundary argument | Safer and cheaper, but does not set up the second paper |
-| **"Agent as the reviewer's instrument"**: centre the reviewer and pre-submission use cases | Strong CHI fit and a clear user story, but it becomes a systems paper and non-determinism reverts to a limitations section |
+| **"The audit's product is the absence"**: center the ~1% of CHI papers sharing materials; contribute a census plus the boundary argument | Safer and cheaper, but does not set up the second paper |
+| **"Agent as the reviewer's instrument"**: center the reviewer and pre-submission use cases | Strong CHI fit and a clear user story, but it becomes a systems paper and non-determinism reverts to a limitations section |
 
 The recommended framing is the only one that turns the stated objection into the
 contribution rather than a threat to validity.
@@ -544,14 +544,14 @@ flowchart TB
 ### What stays with the builder
 
 The multi-run unit of work, the comparison harness, the runs, and the money.
-That is the critical path, and it does not parallelise.
+That is the critical path, and it does not parallelize.
 
 ### Three cautions
 
 1. **Two packages are blocking; the rest are not.** The corpus (Kasper) and the
    claim list (Francesco) gate the measurement. Follow up on those two; the
    others can run late without consequence.
-2. **Do not start Kasper's original task yet.** "Choose 100 behavioural papers"
+2. **Do not start Kasper's original task yet.** "Choose 100 behavioral papers"
    presumes a corpus decision nobody has taken ([§3](#3-what-they-disagree-on)),
    and is the item most likely to be redone. Ask for the 76-paper set instead.
 3. **Settle authorship before the work goes out, not after.** Four institutions,
@@ -564,7 +564,7 @@ That is the critical path, and it does not parallelise.
 | Person | Owed |
 |---|---|
 | Robin Welsch | Account details; a DOI to reproduce; budget; contact finance |
-| Kasper Hornbæk | Choose 100 behavioural papers with prior manual replications |
+| Kasper Hornbæk | Choose 100 behavioral papers with prior manual replications |
 | Mark Colley | Test open models on the DGX; run the code sent to them |
 | Changkun Ou | Outer-loop cost analysis; explain top-up; configure access; send code to Mark; add Mark to Slack; follow up with "Stephen" |
 | The group | Run on open-code papers; interview researchers; select papers; schedule the follow-up |
@@ -592,7 +592,7 @@ Checked against a live source on 25 Aug 2026.
 
 | | Work | Why it is here |
 |---|---|---|
-| **R1** | Aczel, Szaszi, Clelland, Kovacs, Holzmeister, van Ravenzwaaij et al. (494 authors). *Investigating the analytical robustness of the social and behavioural sciences.* **Nature** 652(8108), 135–142, 1 Apr 2026. [`10.1038/s41586-025-09844-9`](https://doi.org/10.1038/s41586-025-09844-9) | The 3 Aug paper. 100 studies (2009–2018), at least 5 re-analysts each, peer-evaluated. **34% matched the numbers; 74% matched the conclusion.** The human baseline for repeat-run variance. |
+| **R1** | Aczel, Szaszi, Clelland, Kovacs, Holzmeister, van Ravenzwaaij et al. (494 authors). *Investigating the analytical robustness of the social and behavioral sciences.* **Nature** 652(8108), 135–142, 1 Apr 2026. [`10.1038/s41586-025-09844-9`](https://doi.org/10.1038/s41586-025-09844-9) | The 3 Aug paper. 100 studies (2009–2018), at least 5 re-analysts each, peer-evaluated. **34% matched the numbers; 74% matched the conclusion.** The human baseline for repeat-run variance. |
 | **R2** | Iarygina, O., Hornbæk, K., & Mottelson, A. *On the Computational Reproducibility of Human-Computer Interaction.* **CHI 2026**, pp. 1–16, Barcelona, 13 Apr 2026. [`10.1145/3772318.3791129`](https://doi.org/10.1145/3772318.3791129) | "Olga's paper". Source of the CHI numbers in `landscape.md`: 76 papers ever shared data + code, 37 (49%) fully reproduced, ~1% share materials. Kasper is a co-author. |
 | **R3** | Reproducibility Project: Cancer Biology. About $52,500–75,000 per paper over 8 years; scope cut from 53 to 23 papers on author non-cooperation | The only published per-paper cost of manual replication. Via `landscape.md`; primary source not re-verified. |
 | **R4** | [doesitreproduce.com](https://doesitreproduce.com/), operated by Brainarbeit | See below. |
@@ -600,7 +600,7 @@ Checked against a live source on 25 Aug 2026.
 | **R6** | Nguyen, Soós, Ma, Obadage, Ranjan, Koneru, Errington, Nematova, Rajtmajer, Wu & Jiang. *ReplicatorBench.* arXiv:[2602.11354](https://arxiv.org/abs/2602.11354), 11 Feb 2026 (v3 29 Jun) | Human-verified **replicable and non-replicable** claims in social/behavioural science, evaluating the *process* and not only the outcome. Missing from `landscape.md`. If the 100-paper study runs, this is what it is compared against. |
 | **R7** | Hullman, J., Broska, D., Sun, H., & Shaw, A. *This human study did not involve human subjects.* arXiv:[2602.15785](https://arxiv.org/abs/2602.15785), 17 Feb 2026 | Heuristic substitution vs calibrated validation: the distinction 007's "synthetic pilot, never evidence" rule rests on. |
 | **R8** | Yeykelis, Pichai, Cummings & Reeves. *Using LLMs to Create AI Personas…* arXiv:[2408.16073](https://arxiv.org/abs/2408.16073), 28 Aug 2024 (v2 24 Apr 2025) | `landscape.md` cited it wrongly; corrected below. |
-| **R9** | `reprobe` (Mark Colley): local LLMs analysing code in Docker to check reproducibility | **Unverified.** No public trace; absent from [m-colley.github.io](https://m-colley.github.io/) and from search. Ask them. |
+| **R9** | `reprobe` (Mark Colley): local LLMs analyzing code in Docker to check reproducibility | **Unverified.** No public trace; absent from [m-colley.github.io](https://m-colley.github.io/) and from search. Ask them. |
 
 ### A note on `landscape.md`
 
