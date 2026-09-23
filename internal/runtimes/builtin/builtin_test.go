@@ -40,7 +40,7 @@ func TestCatalogComposesAdaptersExplicitly(t *testing.T) {
 }
 
 // The local runtime is composed from a sandbox driver, a harness and the
-// operator's model catalogue. A machine that cannot run the chosen sandbox is
+// operator's model catalog. A machine that cannot run the chosen sandbox is
 // refused at composition, before a paper is fetched, with instructions for
 // fixing it.
 func TestLocalIsComposedAndRefusesAnUnusableMachine(t *testing.T) {

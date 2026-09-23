@@ -35,7 +35,7 @@ Settings has no destination: it opens only from the person's card at the foot of
 ## Acceptance criteria
 
 - A `Settings` item renders in the rail below Trash, active on any settings sub-tab, and reachable (as an icon) when the rail is folded.
-- `/settings`, `/settings/account`, `/settings/profile`, `/settings/credits` each resolve to the right tab; `/settings/account` canonicalises to `/settings`; `/settings/nonsense` lands on the bare view with the address corrected. Held by `routes.test.ts`, extended with these paths and the no-collision rule.
+- `/settings`, `/settings/account`, `/settings/profile`, `/settings/credits` each resolve to the right tab; `/settings/account` canonicalizes to `/settings`; `/settings/nonsense` lands on the bare view with the address corrected. Held by `routes.test.ts`, extended with these paths and the no-collision rule.
 - Switching tabs updates the address and pushes history; Back returns to the prior tab.
 - The Account tab shows identity, access, appearance, and sign out; Profile shows the researcher form; Credits shows the wallet balance and statement unchanged.
 - `navSettings` and the three tab labels exist in **both** locales (en and zh).

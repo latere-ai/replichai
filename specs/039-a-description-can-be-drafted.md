@@ -27,7 +27,7 @@ Three things are missing, and each is a design question rather than a line of co
 
 **There is no way to charge for one.** Money moves through holds and settlements keyed on a job id: `Hold(ctx, holder, jobID, amount)`, and `Settle` is made exactly-once by a unique index on `job_id`. A draft has no job. The only existing precedent for a debit that is not a session is `RefundPaid`'s wallet-level `adjust`, idempotent on an `external_ref`.
 
-**The model is assumed to be Anthropic's.** `ResolveModel` maps `best/balanced/fast` onto `opus/sonnet/haiku` by substring-matching Anthropic's live catalogue, and the rate card is keyed by Anthropic model id. A deployment that wants its cheap tasks run by something else (a local model, an OpenAI-compatible endpoint, or whatever is cheapest that month) has nowhere to say so.
+**The model is assumed to be Anthropic's.** `ResolveModel` maps `best/balanced/fast` onto `opus/sonnet/haiku` by substring-matching Anthropic's live catalog, and the rate card is keyed by Anthropic model id. A deployment that wants its cheap tasks run by something else (a local model, an OpenAI-compatible endpoint, or whatever is cheapest that month) has nowhere to say so.
 
 ## Decisions
 

@@ -309,7 +309,7 @@ try {
 
     await openIt()
     // Beside the drawer, not through it: the scrim spans the viewport and its
-    // centre is behind the 264px rail, so clicking the element's middle would
+    // center is behind the 264px rail, so clicking the element's middle would
     // land on the rail.
     await page.mouse.click(340, 500)
     await shut('a tap on the scrim')

@@ -89,7 +89,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 // jobColumns is the column list every read selects, in scan order.
 const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, origin, external_id`
 
-// encodeStatus serialises a run status for the status column.
+// encodeStatus serializes a run status for the status column.
 //
 // The error is returned rather than dropped because json.Marshal returns nil
 // bytes when it fails. Writing those would put a NULL over the row's usage,
@@ -113,7 +113,7 @@ func encodeStatus(status provider.RunStatus) (string, error) {
 	return string(raw), nil
 }
 
-// encodePhaseAt serialises the phase timeline for the phase_at column. The
+// encodePhaseAt serializes the phase timeline for the phase_at column. The
 // reasoning is the same as for encodeStatus, on both counts: time.Time fails
 // to encode a year outside [0,9999], and the clock behind these timestamps is
 // injectable, so a bad one must fail the write rather than erase when each
@@ -168,7 +168,7 @@ func scanJob(row pgx.Row) (Job, error) {
 // this project or in any project this principal owns, is returned as
 // ErrActiveSession, which maps to a 409 rather than a 500.
 //
-// The credit gate runs inside the same transaction as the insert, serialised
+// The credit gate runs inside the same transaction as the insert, serialized
 // per project by an advisory lock. Reading the balance outside the transaction
 // would be racy: under READ COMMITTED two concurrent submits at the boundary
 // would each read the other's uncommitted hold as absent, and both would be
@@ -512,7 +512,7 @@ func (s *PGStore) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-// StatusByProjects summarises the named projects' sessions in one query. The
+// StatusByProjects summarizes the named projects' sessions in one query. The
 // running filter uses the same terminal set as Phase.Terminal, so the in-memory
 // and Postgres stores agree.
 func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[string]ProjectStatus, error) {

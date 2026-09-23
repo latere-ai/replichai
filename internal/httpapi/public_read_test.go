@@ -286,7 +286,7 @@ func TestAnonymousIsNobody(t *testing.T) {
 // TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost checks AC4 and AC5: a reader
 // with no stake gets the reproduction and not the credits. The assertions are
 // on the bytes, because what matters is what leaves the process, and a zeroed
-// field that still serialises is still a field on the wire.
+// field that still serializes is still a field on the wire.
 func TestAPublicReaderIsNotToldWhoOwnsItOrWhatItCost(t *testing.T) {
 	d := pricedDeps(allowAll)
 	h := NewRouter(d).Handler()

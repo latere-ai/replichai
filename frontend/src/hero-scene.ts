@@ -16,10 +16,10 @@
 // slab and the page reads as designed.
 
 // The scene has two states, because the slab does (040). What changes between
-// them is the blending arithmetic, not only the colour list.
+// them is the blending arithmetic, not only the color list.
 //
 // In the dark state the mark is light added to a black ground: every layer
-// blends additively, each particle's brightness is in its colour channels, and
+// blends additively, each particle's brightness is in its color channels, and
 // where particles crowd the sum climbs towards white. On a pale ground that
 // does not work, because adding light saturates on the first layer and the
 // mark vanishes. So the light state inks instead: normal blending, the hue held
@@ -32,7 +32,7 @@
 export type HeroTheme = 'light' | 'dark'
 
 type Palette = {
-  /** Clear colour and fog: the slab's own ground. */
+  /** Clear color and fog: the slab's own ground. */
   ground: number
   /** Light adds, paper inks. */
   additive: boolean
@@ -106,7 +106,7 @@ const LIGHT: Palette = {
   hues: { inner: 0x2369bd, runner: 0x0f3b6d, outer: 0xa9373b, wireIn: 0x14477f, wireOut: 0x86282c, rays: 0x3d78bd },
   // Tighter than the dark core on purpose: an additive star reads as light and
   // a wide inked one reads as a smudge, so the paper version keeps its reach
-  // short and spends the contrast at the centre.
+  // short and spends the contrast at the center.
   core: [
     [7.5, 0.05, 0x9ab6d8],
     [4.6, 0.07, 0x6f95c4],
@@ -174,7 +174,7 @@ export async function mountHeroScene(
 
   // A context is not the same as a GPU. Where hardware acceleration is absent
   // the browser hands back a software rasteriser such as SwiftShader or
-  // llvmpipe, which honours every draw call by rasterising 25,000 additively
+  // llvmpipe, which honors every draw call by rasterising 25,000 additively
   // blended particles on the CPU, every frame. The main thread stops yielding,
   // the rest of the document loads slowly, and the reader gets a stuttering
   // first screen where a still one would have been better.
@@ -192,7 +192,7 @@ export async function mountHeroScene(
   renderer.setSize(w, h)
   // The filmic curve is what makes an additive bloom roll off instead of
   // clipping. Inked on paper there is no bloom to roll off, and the curve only
-  // greys the ground, so the light state renders its values as written.
+  // grays the ground, so the light state renders its values as written.
   if (pal.additive) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
@@ -208,7 +208,7 @@ export async function mountHeroScene(
   camera.lookAt(0, 0.1, 0)
 
   // Floor: a plane plus a grid, both faded by fog, so the object appears to sit
-  // in a space rather than on a flat colour.
+  // in a space rather than on a flat color.
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(300, 300),
     new THREE.MeshStandardMaterial({ color: pal.floor, roughness: 0.62, metalness: 0.28 }),
@@ -265,9 +265,9 @@ export async function mountHeroScene(
     })
 
   // Every layer writes its per-particle brightness through here. Additively it
-  // goes into the colour, so the sum climbs; inked it goes into alpha, so the
-  // hue holds and the coverage climbs. The colour attribute is RGBA either way,
-  // because three reads a four-wide colour attribute as vertex alpha, which
+  // goes into the color, so the sum climbs; inked it goes into alpha, so the
+  // hue holds and the coverage climbs. The color attribute is RGBA either way,
+  // because three reads a four-wide color attribute as vertex alpha, which
   // keeps one buffer layout and one code path for both.
   const paint = (col: Float32Array, i: number, c: import('three').Color, b: number) => {
     const k = i * 4
@@ -364,7 +364,7 @@ export async function mountHeroScene(
   rig.add(wireIn, outerWire)
 
   // Radial streaks off the core, bright at the middle and spent well before the
-  // rim, so the field has a centre and no ray ever ends on a visible point.
+  // rim, so the field has a center and no ray ever ends on a visible point.
   const rays = (() => {
     const RAYS = 58
     const PER = 48

@@ -30,7 +30,7 @@ type Comparison struct {
 
 // Subject names what the comparison establishes, so a synthetic calibration can
 // never be rendered as re-analysis of the paper. This is the rendering half of
-// 007c's labelling: a released comparison is about the paper; a synthetic one
+// 007c's labeling: a released comparison is about the paper; a synthetic one
 // is about the model cohort and never about the paper or about people.
 func (c Comparison) Subject() string {
 	switch c.Source {

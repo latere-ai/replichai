@@ -31,13 +31,13 @@ func TestModelResolverIsDeterministic(t *testing.T) {
 		t.Fatalf("ResolveModel = %q, %v", model, err)
 	}
 	if _, err := resolver.ResolveModel(context.Background(), "balanced"); err == nil {
-		t.Fatal("missing preference used a catalogue fallback")
+		t.Fatal("missing preference used a catalog fallback")
 	}
 	runtime.models = append(runtime.models, managed.Model{Ref: managed.ModelRef{Provider: "provider", ID: "another"}, Preferences: []string{"best"}})
 	if _, err := (ModelResolver{Runtime: runtime}).ResolveModel(context.Background(), "best"); err == nil {
 		t.Fatal("ambiguous preference accepted")
 	}
-	injected := errors.New("catalogue unavailable")
+	injected := errors.New("catalog unavailable")
 	if _, err := (ModelResolver{Runtime: modelRuntime{routerRuntime: runtime.routerRuntime, err: injected}}).ResolveModel(context.Background(), "best"); !errors.Is(err, injected) {
 		t.Fatalf("runtime error = %v", err)
 	}

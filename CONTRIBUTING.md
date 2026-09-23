@@ -12,7 +12,7 @@ make lint                 # one gate on its own: golangci-lint against the share
 
 `make check` formats, vets and tests (plain, under the race detector, with only
 the toolchain on PATH, and checking that nothing is left under `TMPDIR`),
-lints, runs `govulncheck`, and checks the licence headers, the spec tree, and
+lints, runs `govulncheck`, and checks the license headers, the spec tree, and
 that every outbound HTTP client carries a tracing transport. Every gate lives
 in lateregate, which is pinned as a tool in `go.mod` and runs golangci-lint
 through `go run` at a pinned version, so nothing beyond the Go toolchain needs
@@ -73,7 +73,7 @@ it. This is how the mobile spill was found: a pane scrolled sideways while
 route table whose event stream answers with a snapshot frame first, as the
 server does) and one runner (`test/run.mjs`) that runs every file and reports
 every failure. Adding a test means adding a file. `node test/run.mjs <substring>`
-runs a subset, and `JOBS=1` serialises them.
+runs a subset, and `JOBS=1` serializes them.
 
 Every string the UI renders lives in `frontend/src/i18n.ts`; today the only
 language is English. Adding a language means adding a code to the `Lang` union

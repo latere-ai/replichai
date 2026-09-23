@@ -13,12 +13,12 @@
 //     link-local, or cloud-metadata address is refused at dial time, after
 //     the name has resolved, so a hostname that resolves to one is refused
 //     the same as a literal address;
-//   - how many redirects it follows: a bounded number, each dialled through
+//   - how many redirects it follows: a bounded number, each dialed through
 //     the same check;
 //   - how much it reads: a body over the cap is an error, never a truncated
 //     success.
 //
-// It uses no proxy. A proxy would be dialled in place of the target, and the
+// It uses no proxy. A proxy would be dialed in place of the target, and the
 // address check would then apply to the proxy rather than to the request's
 // destination.
 package fetch
@@ -102,7 +102,7 @@ type Client struct {
 	maxBytes  int64
 	timeout   time.Duration
 	userAgent string
-	// permit decides whether a resolved address may be dialled. The default
+	// permit decides whether a resolved address may be dialed. The default
 	// admits public addresses only; tests widen it to reach a server on
 	// loopback.
 	permit func(ip net.IP) bool
@@ -191,7 +191,7 @@ func (c *Client) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
 
 // dial resolves the host, refuses any address the client may not reach, and
 // connects to a checked address by its literal IP, so the address that was
-// checked is the address that is dialled.
+// checked is the address that is dialed.
 func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {

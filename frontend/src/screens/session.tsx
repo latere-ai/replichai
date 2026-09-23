@@ -44,7 +44,7 @@ export function verdictLabel(v: string) {
   return words[0].toUpperCase() + words.slice(1)
 }
 
-// manifestTone maps the manifest's grade to a semantic colour, and verdictIcon
+// manifestTone maps the manifest's grade to a semantic color, and verdictIcon
 // to the matching glyph, so a passed reproduction and a failed one are told
 // apart without reading the word. The findings' own verdict has its own tone in
 // `findings.ts`: the vocabularies differ, passed/failed against
@@ -108,7 +108,7 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const tone = manifestTone(repro.verdict)
   // The run's record, which is not the paper's verdict.
   //
-  // `repro.verdict` is the grader's judgement of the run against the method's
+  // `repro.verdict` is the grader's judgment of the run against the method's
   // rubric: passed, needs_revision, exhausted, failed. The findings' verdict is
   // about the paper: reproducible, partial, not_reproducible. Both used to be
   // headed "Verdict", which put two verdict words on one screen for one paper
@@ -264,7 +264,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
           </thead>
           <tbody>
             {f.boundary.map((c, i) => (
-              // An outer row is muted as well as labelled: the inner/outer
+              // An outer row is muted as well as labeled: the inner/outer
               // boundary is the rule this product defends, and it has to be
               // visible without reading the column.
               <tr key={i} className={c.loop === 'outer' ? 'row-outer' : undefined}>
@@ -359,7 +359,7 @@ function MismatchLine({ i18n, m }: { i18n: I18n; m: Mismatch }) {
 }
 
 // Decomposition is the stacked bar behind the rate: verified, partial, blocked.
-// A blocked share is drawn as an empty track rather than a colour, so it reads
+// A blocked share is drawn as an empty track rather than a color, so it reads
 // as work not done rather than as a fourth result.
 export function Decomposition({ c }: { c: Components }) {
   if (!c || c.total <= 0) return null
@@ -543,7 +543,7 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
 }
 
 // FileView renders one artifact by its kind: an image inline, markdown as
-// formatted and sanitised HTML, code syntax-highlighted, anything else as text.
+// formatted and sanitized HTML, code syntax-highlighted, anything else as text.
 function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string; path: string; onNavigate: (target: string) => void }) {
   const { t } = i18n
   const kind = fileKind(path)

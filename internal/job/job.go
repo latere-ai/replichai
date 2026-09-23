@@ -156,7 +156,7 @@ func (j Job) withCost() Job {
 // tell a deliberate stop from a real failure.
 const CancelCause = "cancelled"
 
-// ProjectStatus summarises a project's sessions for the list view: the total,
+// ProjectStatus summarizes a project's sessions for the list view: the total,
 // how many are still running, the newest session's phase, and when any of them
 // last changed.
 //
@@ -217,14 +217,14 @@ type Job struct {
 	// enqueue (011). Settlement prices from it rather than from whatever the
 	// admin console holds when the run ends, so the ceiling a run was measured
 	// against and the amount it is charged are computed from the same numbers.
-	// It is not serialised: the cost of a session is a number the owner may
+	// It is not serialized: the cost of a session is a number the owner may
 	// see, but the price list it was derived from is the admin's policy.
 	Rates credit.Card `json:"-"`
 	// Cost is what this session has cost so far, in micro-USD, and is the same
 	// number settlement charges. It is derived from Rates and the recorded
 	// usage rather than stored, so it cannot disagree with the charge. It is
-	// serialised because the owner of the project that paid for a run is
-	// entitled to know what it cost. The rates it came from are not serialised,
+	// serialized because the owner of the project that paid for a run is
+	// entitled to know what it cost. The rates it came from are not serialized,
 	// because they are the platform's price list rather than the owner's
 	// concern.
 	Cost      int64     `json:"cost"`

@@ -207,7 +207,7 @@ func TestCodexLoginProfile(t *testing.T) {
 		t.Errorf("standing writes = %v, want the scratch area alone", login.Writes)
 	}
 	// Codex does not read an injected certificate authority, so its own
-	// endpoints are tunnelled rather than inspected. They are still subject
+	// endpoints are tunneled rather than inspected. They are still subject
 	// to the allowlist.
 	if len(login.TLSPassthrough) == 0 {
 		t.Error("a client that will not trust the sandbox's authority has no passthrough")

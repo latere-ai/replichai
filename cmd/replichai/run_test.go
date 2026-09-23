@@ -144,7 +144,7 @@ func TestThePublishBlockResolvesInOneOrder(t *testing.T) {
 	}
 }
 
-// TestAResumedPaperReturnsToItsRepository checks the behaviour
+// TestAResumedPaperReturnsToItsRepository checks the behavior
 // docs/local-runs.md documents: "Resume skips what finished and retries what
 // failed, into the repository the first attempt created." Until this test
 // existed the runner allocated a fresh repository on every retry and overwrote

@@ -184,7 +184,7 @@ func TestARejectedCredentialIsCleared(t *testing.T) {
 }
 
 // A refresh response that omits a new refresh token keeps the old one.
-// Omitting it is ordinary OAuth behaviour, and dropping the old one is a
+// Omitting it is ordinary OAuth behavior, and dropping the old one is a
 // common cause of a working client signing itself out after a day.
 func TestARefreshWithoutANewTokenKeepsTheOldOne(t *testing.T) {
 	p := &provider{approved: true}
@@ -232,7 +232,7 @@ func TestTheBearerPrefersAnActorToken(t *testing.T) {
 	}
 }
 
-// Switching organisation goes through the refresh grant, so it needs no second
+// Switching organization goes through the refresh grant, so it needs no second
 // device login, and the context is stored beside the credential.
 func TestSwitchingOrganisationNeedsNoSecondLogin(t *testing.T) {
 	p := &provider{approved: true, refreshNew: "refresh-2"}
@@ -264,7 +264,7 @@ func TestSwitchingOrganisationNeedsNoSecondLogin(t *testing.T) {
 
 // The refresh body is a form, and a value containing a reserved character
 // reaches the provider as one value. If the body were built by
-// concatenation, an organisation id of "a&scope=admin" would arrive as a
+// concatenation, an organization id of "a&scope=admin" would arrive as a
 // second field.
 func TestTheSwitchFormEscapesItsValues(t *testing.T) {
 	p := &provider{approved: true, refreshNew: "refresh 2&x"}
@@ -316,7 +316,7 @@ func TestLogoutIsIdempotent(t *testing.T) {
 func TestScopesAreIdentityOnly(t *testing.T) {
 	for _, scope := range Scopes {
 		if strings.Contains(scope, ":") {
-			t.Errorf("scope %q asks for a permission; authorisation is not the token's", scope)
+			t.Errorf("scope %q asks for a permission; authorization is not the token's", scope)
 		}
 	}
 	if fmt.Sprint(Scopes) != "[openid email profile offline_access]" {

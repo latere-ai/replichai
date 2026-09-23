@@ -11,7 +11,7 @@ import (
 )
 
 // TestFSSourceConfinesRepoAndPath checks that neither a repository name nor an
-// artifact path can read anything the caller was not authorised to see. Both
+// artifact path can read anything the caller was not authorized to see. Both
 // arrive from the read surface: the name from a session record, the path from
 // a query string. The source resolves them inside nested roots, and the
 // operating system refuses a path that escapes.

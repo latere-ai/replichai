@@ -43,7 +43,7 @@ So the first half of this spec is subtraction: stop dropping fields. The second 
 
 **Authors are an ordered list, stored as one.** Author order is part of a citation, and "et al." is a rendering decision rather than a storage one. A `text[]` column keeps the order the source gave and lets the screen decide how many to show.
 
-**Filling in is an action, not a background habit.** An owner's project gets a control that resolves every paper whose record is incomplete; an admin command does the same across every project, for the ones nobody opens. Both are idempotent, both skip edited fields, and both go through the same code as a fresh add: one enrichment path, not three. Crossref and arXiv are shared services with published etiquette: the sweep serialises its requests and identifies itself, rather than opening a connection per paper.
+**Filling in is an action, not a background habit.** An owner's project gets a control that resolves every paper whose record is incomplete; an admin command does the same across every project, for the ones nobody opens. Both are idempotent, both skip edited fields, and both go through the same code as a fresh add: one enrichment path, not three. Crossref and arXiv are shared services with published etiquette: the sweep serializes its requests and identifies itself, rather than opening a connection per paper.
 
 **Correcting is a member's act, and it is scoped to the project.** `PATCH /projects/{id}/papers/{key}` is the first route that writes a paper field at all; today the only writer is a background goroutine (`enrichTitles`). It follows 012's rule for who may act on a project's contents rather than inventing one.
 
@@ -56,7 +56,7 @@ So the first half of this spec is subtraction: stop dropping fields. The second 
 5. `PATCH /projects/{id}/papers/{key}` corrects any field for a member, refuses a stranger, and marks exactly the fields it changed as edited.
 6. A subsequent enrichment (the button, the sweep, or a re-add) leaves every edited field untouched and fills only the empty ones.
 7. An owner's "fill in details" action completes every incomplete paper in the project and reports how many it changed; running it twice changes nothing the second time.
-8. The admin sweep walks every project, is safe to re-run, and serialises its upstream requests.
+8. The admin sweep walks every project, is safe to re-run, and serializes its upstream requests.
 9. A paper moved to another project (035) arrives with its record and its edit marks intact.
 
 ## Out of scope

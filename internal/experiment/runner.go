@@ -56,7 +56,7 @@ type Runner struct {
 type RunnerOption func(*Runner)
 
 // WithMountToken sets the read-only-scoped credential the instrument is mounted
-// with. It must never be the organisation token, because an experiment only
+// with. It must never be the organization token, because an experiment only
 // reads.
 func WithMountToken(token string) RunnerOption {
 	return func(r *Runner) { r.mountToken = token }
@@ -98,7 +98,7 @@ type runReport struct {
 }
 
 // Run executes the experiment against input and returns its outcome. input is
-// the bytes to analyse, the researcher's dataset for an uploaded source or the
+// the bytes to analyze, the researcher's dataset for an uploaded source or the
 // paper's released data for a released one, and is attached outside the mount.
 // Run resolves the instrument's command onto the input path, runs it once, and
 // reads the worker's report back. A command that failed to run is a complete

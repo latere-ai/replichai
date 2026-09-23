@@ -31,7 +31,7 @@ func DevMiddleware(sub, email string) func(http.Handler) http.Handler {
 // CheckDevBypass refuses the dev bypass on a deployment that is not loopback,
 // unless an explicit insecure override is set. A public listen address with the
 // bypass on would admit every request as the synthetic principal, so a
-// non-loopback bind fails closed (AC6). The override exists for a containerised
+// non-loopback bind fails closed (AC6). The override exists for a containerized
 // local run that binds all interfaces; compose sets it. It must never be set in
 // production.
 func CheckDevBypass(addr string, insecureOverride bool) error {

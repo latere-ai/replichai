@@ -200,7 +200,7 @@ ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
 // The lock is taken inside the migration transaction and released with it, so
 // the second process waits, then reads the version the first recorded and
 // skips it. Each namespace has its own id, so the five migrators only ever
-// serialise against another copy of themselves.
+// serialize against another copy of themselves.
 const migrationLock = 5
 
 // Migrate applies the project schema and the one-time backfill. It is safe to

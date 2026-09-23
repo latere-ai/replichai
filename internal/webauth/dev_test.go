@@ -25,7 +25,7 @@ func TestCheckDevBypass(t *testing.T) {
 		if err := CheckDevBypass(addr, false); err == nil {
 			t.Errorf("non-loopback %q must be refused without the override", addr)
 		}
-		// The explicit override permits it, for a containerised local run.
+		// The explicit override permits it, for a containerized local run.
 		if err := CheckDevBypass(addr, true); err != nil {
 			t.Errorf("override should permit %q: %v", addr, err)
 		}

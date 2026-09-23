@@ -64,7 +64,7 @@ func TestAProjectIsOpenedRunPushedAndFiled(t *testing.T) {
 	// is a retain hook rather than something done to a released session.
 	//
 	// The repository and the credential come from the platform (045l): the
-	// terminal never names either, and holds no organisation token. The remote
+	// terminal never names either, and holds no organization token. The remote
 	// is a bare repository rather than GitHub, which is the same git push over
 	// a different URL, and the forge API the evidence commit uses is answered
 	// in process.

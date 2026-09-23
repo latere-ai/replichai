@@ -28,7 +28,7 @@ import (
 // This file makes github.Client authenticate as a GitHub App instead of with a
 // personal access token. The App is the only credential that can mint a
 // scoped, short-lived token, which is what lets the mount carry a
-// per-repository token instead of the organisation's (009). Every server-side
+// per-repository token instead of the organization's (009). Every server-side
 // call keeps its existing shape: the Client mints, caches, and refreshes the
 // App's installation token and sends it as the Bearer, so no caller changes.
 //
@@ -138,7 +138,7 @@ func (a *appAuth) mintLocked(ctx context.Context, scope map[string]any) (string,
 }
 
 // installationID resolves and caches the id of the App's installation on the
-// owner organisation, so token minting knows which installation to mint for.
+// owner organization, so token minting knows which installation to mint for.
 func (a *appAuth) installationID(ctx context.Context) (int64, error) {
 	if a.instID != 0 {
 		return a.instID, nil

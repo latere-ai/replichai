@@ -28,7 +28,7 @@ const funded = { wallet: 40 * MICRO, start_reserve: 5 * MICRO }
 // go wrong per reference is the reference. Everything the old outcome had to
 // explain, a paper refused for credits, a partial batch, a project rolled back
 // because nothing started, was removed with the enqueue that caused it.
-test('a create reports the references the server did not recognise', () => {
+test('a create reports the references the server did not recognize', () => {
   const data: CreatedProject = {
     project_id: 'p1',
     papers: [
@@ -64,7 +64,7 @@ test('a create with neither a name nor a paper names both fixes', () => {
   expect(out.banner).toBe('nameOrPaper')
 })
 
-// Every reference recognised: nothing to say, so the screen goes through.
+// Every reference recognized: nothing to say, so the screen goes through.
 test('a clean create says nothing', () => {
   const data: CreatedProject = { project_id: 'p1', papers: [{ ref: 'a', key: 'doi:a' }] }
   const out = createOutcome(t, 201, data)

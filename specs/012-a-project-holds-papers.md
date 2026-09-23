@@ -106,7 +106,7 @@ Removed: `POST /papers`.
 
 ## Frontend
 
-**The New-project screen stops being a launcher.** It creates and records; the "Nothing runs until the session starts" line under its button becomes literally true rather than nearly true. Every part of `createOutcome`'s partial-success handling goes with the behaviour that needed it: a create either records the papers or reports which references were not recognised, and there is no such thing as a paper that was recorded but did not start.
+**The New-project screen stops being a launcher.** It creates and records; the "Nothing runs until the session starts" line under its button becomes literally true rather than nearly true. Every part of `createOutcome`'s partial-success handling goes with the behavior that needed it: a create either records the papers or reports which references were not recognized, and there is no such thing as a paper that was recorded but did not start.
 
 **The project screen gains a Papers section** above Sessions: each paper with its title, its session count, and a Start button, disabled with the reason when the pot cannot cover the reserve, which is the same sentence `creditsShort` already carries. `ProjectSubmit` ("Replicate again") becomes "add a paper", posting to `/projects/{id}/papers`; starting is the paper row's own button.
 
@@ -142,7 +142,7 @@ Removed: `POST /papers`.
 
 Every acceptance criterion holds, and two defects the decoupling introduced were found and fixed before it shipped.
 
-**The project title was orphaned by the split.** The worker enriched a project's placeholder title only when it equalled the *running job's* ref. That was right while every paper started at create: the first paper's session always ran, so it always did the naming. Once starting became its own act, a project created around papers A and B and started at B compared B's ref to A's, declined, and kept a URL nobody chose as the project name forever. `isPlaceholderTitle` now recognises the ref of any paper the project holds, and the create resolves titles itself so the worker's pass is a fallback rather than the primary path. Neither case had a test; both do now.
+**The project title was orphaned by the split.** The worker enriched a project's placeholder title only when it equaled the *running job's* ref. That was right while every paper started at create: the first paper's session always ran, so it always did the naming. Once starting became its own act, a project created around papers A and B and started at B compared B's ref to A's, declined, and kept a URL nobody chose as the project name forever. `isPlaceholderTitle` now recognizes the ref of any paper the project holds, and the create resolves titles itself so the worker's pass is a fallback rather than the primary path. Neither case had a test; both do now.
 
 **Title resolution was blocking the create.** The first implementation waited on N source fetches inside the request, exactly the half-failure `paper.Key`'s offline key was chosen to avoid, since a client timing out would leave the papers recorded and the caller with nothing. It moved after the response, onto a context of its own so a client hanging up cannot cancel a half-done write; tests wait on it through `WaitBackground` rather than polling. Only a *derived* placeholder is ever replaced, so a project somebody named keeps its name.
 

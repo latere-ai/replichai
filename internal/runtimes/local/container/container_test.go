@@ -120,7 +120,7 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
-		for _, want := range []string{"podman machine start", "never initialised", "cannot connect"} {
+		for _, want := range []string{"podman machine start", "never initialized", "cannot connect"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("message missing %q:\n%s", want, err)
 			}

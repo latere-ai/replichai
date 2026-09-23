@@ -184,7 +184,7 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Sign-in is the one step every principal passes through, so it is where a
 	// project invitation addressed to an email becomes this principal's
-	// membership. The bind cannot live in an authorisation check: every one of
+	// membership. The bind cannot live in an authorization check: every one of
 	// those short-circuits for an owner or a public project, which would leave
 	// an invitee unbound, absent from "shared with me" and permanently
 	// "pending" in the members view. The bind is best-effort and logged: a

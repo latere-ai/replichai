@@ -104,7 +104,7 @@ export function phaseBands(phaseAt: Record<string, string> | undefined, span: Sp
 // are different questions and the bars must not silently switch between them.
 type Histogram = { bars: number[]; weighted: boolean }
 
-// histogram buckets events across the span. Heights are normalised to the
+// histogram buckets events across the span. Heights are normalized to the
 // tallest bucket, so a bar is a fraction of the peak in [0, 1].
 export function histogram(events: Event[], span: Span, buckets: number): Histogram {
   const weighted = events.some((e) => e.usage)
@@ -202,7 +202,7 @@ export function matches(e: Event, q: string): boolean {
 
 // splitTitle divides an event's content into the line a reader scans and the
 // rest. The split is typographic and nothing else: the title is the event's own
-// first line, verbatim. A transcript is evidence, so nothing here summarises,
+// first line, verbatim. A transcript is evidence, so nothing here summarizes,
 // rewrites, or infers.
 //
 // A first line long enough to be a paragraph is left as the body with no title,

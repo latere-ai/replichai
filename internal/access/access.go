@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package access is the deployment's own authorisation: who may sign in, who may
+// Package access is the deployment's own authorization: who may sign in, who may
 // operate, and at what tier. Authentication is delegated to an OIDC provider,
-// which proves who someone is. Authorisation is decided here, against the
+// which proves who someone is. Authorization is decided here, against the
 // access_grants table this package owns, and never from a claim read out of a
 // token (006c).
 //
@@ -27,7 +27,7 @@ import (
 // There are two grantable tiers, User and PlatformAdmin (006c). Values are
 // explicit and stable across the two-tier rework: an invited user stays 1 and
 // an admin stays 3, so no grant row is renumbered. Value 2 was the removed
-// "trusted" tier; publishing is now authorised by project ownership plus a
+// "trusted" tier; publishing is now authorized by project ownership plus a
 // sign-off (006f), not a tier, and a defensive migration folds any stray 2 to
 // User.
 type Tier uint8
@@ -54,7 +54,7 @@ func (t Tier) String() string {
 // Granted reports whether the tier admits a principal to the operator surface.
 func (t Tier) Granted() bool { return t >= TierUser }
 
-// Principal is everything an authorisation decision may consume: the stable
+// Principal is everything an authorization decision may consume: the stable
 // subject and, for seeding a not-yet-bound grant, the IdP-authenticated email.
 // There is deliberately no field for a role, scope, or org claim, because
 // reading one would tie the beta to a single issuer's schema. The email is
@@ -97,7 +97,7 @@ type Grant struct {
 // Revoked reports whether this grant has been revoked.
 func (g Grant) Revoked() bool { return g.RevokedAt != nil }
 
-// Access is the grant side of authorisation. Resolve binds on first login and is
+// Access is the grant side of authorization. Resolve binds on first login and is
 // the only place a principal is learned; an admin drives everything else.
 type Access interface {
 	// Resolve returns a principal's tier, binding a seeded grant to it on first
@@ -210,7 +210,7 @@ type Membership interface {
 	// BindAll binds every unbound membership seeded against this principal's
 	// verified email, across all projects, and reports how many it bound.
 	//
-	// It exists because binding cannot be a side effect of an authorisation
+	// It exists because binding cannot be a side effect of an authorization
 	// check: every predicate that would do it short-circuits for an owner or a
 	// public project, so an invitee stayed unbound, invisible in "shared with
 	// me" and permanently "pending" in the members view. Login is the one event
@@ -222,13 +222,13 @@ type Membership interface {
 	BindAll(ctx context.Context, p Principal) (int, error)
 	// SeedLead creates a project's lead with no lead check. Project creation
 	// uses it as the bootstrap seed, and the owner-driven members API (006f)
-	// uses it to seed the project owner as its lead before an owner-authorised
+	// uses it to seed the project owner as its lead before an owner-authorized
 	// add or remove.
 	//
 	// It takes a principal, not an email, because a lead is never only an
 	// invitation: the person is signed in at the moment their project is
 	// created, so the row is bound immediately rather than waiting for a login
-	// that, for an owner, no authorisation check would ever bind on.
+	// that, for an owner, no authorization check would ever bind on.
 	SeedLead(ctx context.Context, project string, lead Principal) error
 }
 

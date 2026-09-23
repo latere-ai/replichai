@@ -150,7 +150,7 @@ type repositorySource interface {
 }
 
 // githubRepositories is the production source: names are allocated through
-// the registry in the owner's organisation and the repositories are created
+// the registry in the owner's organization and the repositories are created
 // there, over REPLICHAI_GITHUB_TOKEN.
 type githubRepositories struct {
 	owner        string
@@ -170,7 +170,7 @@ func (g githubRepositories) Reattach(ctx context.Context, repo, paperRef string)
 // Prepare claims the repository for one paper. A first attempt allocates a
 // name and creates the repository. A retry returns to the repository its
 // first attempt created, which is what --resume promises; a second repository
-// for the same paper would be an unwanted sibling. The batch serialises
+// for the same paper would be an unwanted sibling. The batch serializes
 // Prepare, because allocation reads what already exists, and two concurrent
 // papers whose slugs collide would otherwise choose the same name.
 func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved, prior batch.EntryState) error {

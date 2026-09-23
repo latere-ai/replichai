@@ -374,7 +374,7 @@ func (s *MemStore) SpendSince(_ context.Context, ids []string, since time.Time) 
 	return out, nil
 }
 
-// StatusByProjects summarises the sessions of each named project: how many
+// StatusByProjects summarizes the sessions of each named project: how many
 // there are, how many are still running, how many have a repository name,
 // which is set once publishing begins, and the newest one's phase.
 //

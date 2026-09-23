@@ -89,11 +89,11 @@ type Session struct {
 
 // ErrSessionExists reports a session id that already has a directory. It is
 // returned rather than ignored, because creating into an existing directory
-// would re-initialise another session's workspace as if it were new.
+// would re-initialize another session's workspace as if it were new.
 var ErrSessionExists = errors.New("session already exists")
 
 // CreateSession makes a fresh session directory under root, 0700, and the
-// subdirectories a run needs. The workspace is initialised as a git repository
+// subdirectories a run needs. The workspace is initialized as a git repository
 // with a committer already configured, so a run cannot stall on git refusing
 // an empty user.email, and with no remote, because the host pushes (045g).
 // The git that does it runs with the same allowlisted environment a stage
@@ -483,9 +483,9 @@ func initRepository(workspace string, environ []string) error {
 var vendoredDirs = []string{"venv", ".venv", "node_modules", "__pycache__"}
 
 // isVendoredDir reports whether a directory holds installed dependencies
-// rather than the reproduction. A virtualenv is recognised by the marker
+// rather than the reproduction. A virtualenv is recognized by the marker
 // Python itself writes, so one under any name is caught; the other trees have
-// no marker and are recognised by name.
+// no marker and are recognized by name.
 func isVendoredDir(path, name string) bool {
 	if slices.Contains(vendoredDirs, name) {
 		return true

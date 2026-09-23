@@ -32,7 +32,7 @@ method/  evals/               unchanged, shared by both implementations
 reference/python/             the Python implementation
 ```
 
-**Service-shaped from the start, without building the service.** Every call that can block takes a `context.Context` as its first parameter and honours cancellation. The audit core returns values and errors; it never prints, never reads flags, never calls `os.Exit`. An HTTP handler must be able to wrap it with no changes to it. Auth, persistence, and multi-tenancy are explicitly not in this spec.
+**Service-shaped from the start, without building the service.** Every call that can block takes a `context.Context` as its first parameter and honors cancellation. The audit core returns values and errors; it never prints, never reads flags, never calls `os.Exit`. An HTTP handler must be able to wrap it with no changes to it. Auth, persistence, and multi-tenancy are explicitly not in this spec.
 
 **One dependency: the backend's official SDK.** The Python deliberately had zero runtime dependencies, and the port drops that rule for the adapter alone. The SDK brings typed payloads, retry on rate limits and server errors, and correct protocol headers, all of which the hand-rolled client had to carry itself and got subtly wrong (see the union-discriminator and resting-state bugs below). The cost is that the vendor's name now appears in `go.mod`, which is more visible than a single adapter file; that is recorded in `docs/architecture.md` rather than hidden. Everything above the seam stays standard library.
 
@@ -50,7 +50,7 @@ reference/python/             the Python implementation
 | `close_run(handle)` | `CloseRun(ctx, RunHandle) error` |
 | `output_dir` property | `OutputDir() string` |
 
-**Behaviour that must survive the port.** These are properties, not implementation details, and each already has a Python test that must have a Go counterpart:
+**Behavior that must survive the port.** These are properties, not implementation details, and each already has a Python test that must have a Go counterpart:
 
 1. An artifact path resolving outside the destination directory is refused; sandbox output is untrusted.
 2. Compiled residue is never collected.

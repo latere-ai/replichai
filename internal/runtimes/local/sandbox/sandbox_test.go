@@ -37,7 +37,7 @@ func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 		{hostsandbox.Linux, Container, hostsandbox.ConditionMissing, []string{"docker"},
 			[]string{"apt-get install -y docker.io", "docker info"}},
 		{hostsandbox.Darwin, Container, ConditionStopped, []string{"podman"},
-			[]string{"podman machine start", "never initialised", "podman info"}},
+			[]string{"podman machine start", "never initialized", "podman info"}},
 		{hostsandbox.Darwin, Container, ConditionStopped, []string{"docker"},
 			[]string{"open -a Docker", "docker info"}},
 		{hostsandbox.Linux, Container, ConditionStopped, []string{"podman"},

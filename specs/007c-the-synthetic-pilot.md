@@ -6,7 +6,7 @@ status: implemented
 # 007c — The synthetic pilot
 
 **Status:** implemented (engine half; the Postgres `NOT NULL cohort_kind` column and the HTTP/UI surface remain, per Out of scope)
-**Scope:** the `synthetic` data source: driving a cohort through an extracted protocol without any people, in two sub-kinds, a deterministic data generator that exercises the pipeline, and a model cohort that answers the protocol's task. Plus the labelling that keeps neither from ever being read as evidence about people. A child of [007](007-from-reproduction-to-replication.md).
+**Scope:** the `synthetic` data source: driving a cohort through an extracted protocol without any people, in two sub-kinds, a deterministic data generator that exercises the pipeline, and a model cohort that answers the protocol's task. Plus the labeling that keeps neither from ever being read as evidence about people. A child of [007](007-from-reproduction-to-replication.md).
 **Depends on:** [007b](007b-experiments-over-instruments.md) (the experiment model and runner), [007a](007a-the-study-protocol-as-an-artifact.md) (the protocol and its reported ground truth).
 
 ## Problem
@@ -19,7 +19,7 @@ That is the case for a cohort with no people in it, and it is a smaller case tha
 |---|---|
 | Apparatus and pipeline shakedown | An end-to-end run producing data of the declared shape debugs the page and the analysis before a human sees either. This is the primary value. |
 | Positive control on the analysis | A cohort built to carry a *stated* effect tests whether the pipeline detects an effect it is known to contain. This is a claim about the instrument, not the paper. |
-| Distribution and sensitivity exploration | Sweeping the instrument across parameter ranges, condition orderings, and response distributions the paper never sampled, to find where its analysis becomes unstable. A finding about the *instrument's* behaviour, cheap to run because no one is inconvenienced by it. |
+| Distribution and sensitivity exploration | Sweeping the instrument across parameter ranges, condition orderings, and response distributions the paper never sampled, to find where its analysis becomes unstable. A finding about the *instrument's* behavior, cheap to run because no one is inconvenienced by it. |
 | Protocol comprehensibility | Instructions a model cannot follow are a weak but real signal that participants will struggle too. |
 | Calibration as its own research question | How closely model cohorts track human data is a question worth measuring, and a platform holding both is well placed to measure it. The answer is about models, not about the paper. |
 
@@ -44,7 +44,7 @@ Separating them keeps the strong uses from borrowing credibility they do not nee
 
 This is the sequencing argument from [007](007-from-reproduction-to-replication.md) made structural rather than advisory. A model cohort on a paper with no released data produces numbers no one can falsify, which is how this feature would fail. The restriction is a gate to relax deliberately once calibration has been measured on papers where it can be, not a permanent property.
 
-**The gate binds `synthetic:model` only, and that is why it costs little.** `synthetic:generated` is ungated: it is declared synthetic data from a declared seed, claiming nothing about responders, so there is nothing to falsify and nothing to calibrate. Which means the distribution and sensitivity sweeps, the use with the widest appetite for runs, are served by the *unrestricted, free, deterministic* half of this spec, and the gate applies only where a model's behaviour is being read as informative. The restriction lands on the one use that needs ground truth and leaves the others alone.
+**The gate binds `synthetic:model` only, and that is why it costs little.** `synthetic:generated` is ungated: it is declared synthetic data from a declared seed, claiming nothing about responders, so there is nothing to falsify and nothing to calibrate. Which means the distribution and sensitivity sweeps, the use with the widest appetite for runs, are served by the *unrestricted, free, deterministic* half of this spec, and the gate applies only where a model's behavior is being read as informative. The restriction lands on the one use that needs ground truth and leaves the others alone.
 
 **A model cohort requires servable *components*, not a servable protocol.** [007a](007a-the-study-protocol-as-an-artifact.md)'s servability is per component, and that resolution matters here: gating on the roll-up would make the feature unreachable. If a component cannot be presented on a screen without an experimenter or a physical rig, a model cannot be driven through it either, but a study with one unservable manipulation and a perfectly servable task still has a task worth piloting.
 
@@ -92,7 +92,7 @@ type Pilot struct {
 }
 ```
 
-`Pilot` being a distinct type from `Result` is the structural half of the labelling decision: the compiler, not a code review, is what stops a pilot from flowing into a path that reports findings about people.
+`Pilot` being a distinct type from `Result` is the structural half of the labeling decision: the compiler, not a code review, is what stops a pilot from flowing into a path that reports findings about people.
 
 ## Acceptance criteria
 
@@ -114,4 +114,4 @@ type Pilot struct {
 
 ## Out of scope
 
-Any use of a pilot to plan a real study's sample size. Demographic personas and subgroup analysis, refused above, not deferred. Fine-tuning or prompt-optimising a cohort to match human data more closely: that is training a model to produce a target result, and the target is the thing under study. Multi-turn or conversational protocols, and anything the servability criteria exclude. Publishing calibration findings as research: the platform records them; whether they are a paper is the researchers' decision. Relaxing the ground-truth gate, which is a later decision to make on evidence.
+Any use of a pilot to plan a real study's sample size. Demographic personas and subgroup analysis, refused above, not deferred. Fine-tuning or prompt-optimizing a cohort to match human data more closely: that is training a model to produce a target result, and the target is the thing under study. Multi-turn or conversational protocols, and anything the servability criteria exclude. Publishing calibration findings as research: the platform records them; whether they are a paper is the researchers' decision. Relaxing the ground-truth gate, which is a later decision to make on evidence.

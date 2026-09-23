@@ -119,9 +119,9 @@ func TestLoginWhoamiAndLogoutFromTheTerminal(t *testing.T) {
 	}
 }
 
-// TestOrgShowsAndSwitchesTheContext checks that switching organisation goes
+// TestOrgShowsAndSwitchesTheContext checks that switching organization goes
 // through the refresh grant and is reflected by whoami, and that switching back
-// is the same grant with no organisation.
+// is the same grant with no organization.
 func TestOrgShowsAndSwitchesTheContext(t *testing.T) {
 	_, provider := signedInHome(t)
 
@@ -134,7 +134,7 @@ func TestOrgShowsAndSwitchesTheContext(t *testing.T) {
 		t.Fatalf("org %s = %q, %v", org, stdout, err)
 	}
 	if last := provider.forms[len(provider.forms)-1]; !strings.Contains(last, "organization_id="+org) {
-		t.Fatalf("the switch did not name the organisation in the grant: %q", last)
+		t.Fatalf("the switch did not name the organization in the grant: %q", last)
 	}
 	if stdout, _, err = capture(t, "whoami"); err != nil || !strings.Contains(stdout, "context: "+org) {
 		t.Fatalf("whoami after the switch = %q, %v", stdout, err)
@@ -158,7 +158,7 @@ func TestOrgRefusesMoreThanOneChoice(t *testing.T) {
 		if !errors.Is(err, errExitQuiet) {
 			t.Errorf("%v: err = %v, want a refusal", args, err)
 		}
-		if !strings.Contains(stderr, "one organisation") {
+		if !strings.Contains(stderr, "one organization") {
 			t.Errorf("%v: stderr %q does not explain", args, stderr)
 		}
 	}

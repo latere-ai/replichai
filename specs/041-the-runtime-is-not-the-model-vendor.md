@@ -5,9 +5,9 @@ status: implemented
 
 # 041 — The runtime is not the model vendor
 
-**Status:** normalisation implemented; alternative adapters remain designed. Children 041a–041e refactor the existing Anthropic implementation without changing product behaviour. 041f and 041g remain unimplemented by design.
+**Status:** normalization implemented; alternative adapters remain designed. Children 041a–041e refactor the existing Anthropic implementation without changing product behavior. 041f and 041g remain unimplemented by design.
 
-**Scope:** managed reproduction and experiment sessions only. Replace the Anthropic-shaped resource choreography exposed to the application with a durable, provider-neutral session contract; route every operation by the runtime recorded on that session; normalise usage and pricing; preserve the existing Anthropic path; then make OpenAI and the Latere platform possible adapters.
+**Scope:** managed reproduction and experiment sessions only. Replace the Anthropic-shaped resource choreography exposed to the application with a durable, provider-neutral session contract; route every operation by the runtime recorded on that session; normalize usage and pricing; preserve the existing Anthropic path; then make OpenAI and the Latere platform possible adapters.
 
 **Depends on:** [004](004-go-port.md) (the first provider seam), [005](005-transcript.md) (the transcript contract), [006b](006b-job-model-and-persistence.md) (durable jobs and restart), [011](011-what-a-session-costs.md) (rate snapshots and settlement), [014a](014a-managed-runs-close-truthfully.md) (terminal truth), [031](031-the-model-is-a-choice.md) (the user-facing tier). [039](039-a-description-can-be-drafted.md) is adjacent but deliberately separate: drafting is a single model call, not a managed session.
 
@@ -17,7 +17,7 @@ The package is named `provider`, but the public lifecycle is Anthropic Managed A
 
 The more serious leak is in durable state. A job stores only a session id. Resume, transcript, publication, cancellation, and cleanup send that id to whichever single provider the new process selected. Switching a deployment from Anthropic to OpenAI while a run is live would route an Anthropic id to OpenAI, and the current record has nowhere to retain an OpenAI container id or a Latere trace locator.
 
-Usage looks normalised at the run boundary but is decoded from Anthropic's raw transcript again in the HTTP layer. Models and prices are keyed by a bare string. Two providers may use the same model id, OpenAI cache accounting is inclusive where Anthropic's is additive, and hosted tools can carry non-token meters. A provider-neutral runtime that misprices the result is not neutral.
+Usage looks normalized at the run boundary but is decoded from Anthropic's raw transcript again in the HTTP layer. Models and prices are keyed by a bare string. Two providers may use the same model id, OpenAI cache accounting is inclusive where Anthropic's is additive, and hosted tools can carry non-token meters. A provider-neutral runtime that misprices the result is not neutral.
 
 Finally, “provider” now names two independent choices:
 
@@ -47,7 +47,7 @@ latere-topos ---- Topos (orchestration)
 
 `runtime` is the routing key for lifecycle operations. `ModelRef.Provider` is the billing/model provenance. Neither is inferred from the other, from a model name, from an id prefix, or from the deployment's current default.
 
-The normalised contract is intentionally semantic rather than lowest-common-denominator. An adapter must implement the requested evaluation, repository, network, artifact-retention, and cancellation guarantees or return a typed unsupported error **before its first remote write**. It may not silently omit a field or report a weaker run as equivalent.
+The normalized contract is intentionally semantic rather than lowest-common-denominator. An adapter must implement the requested evaluation, repository, network, artifact-retention, and cancellation guarantees or return a typed unsupported error **before its first remote write**. It may not silently omit a field or report a weaker run as equivalent.
 
 ## Sequence
 
@@ -61,7 +61,7 @@ The normalised contract is intentionally semantic rather than lowest-common-deno
 | [041f](041f-openai-responses-runs-a-session.md) | Direct OpenAI Responses plus hosted-shell/container adapter | 041e |
 | [041g](041g-latere-runs-a-session.md) | Platform-native Topos + Cella + Lux adapter | 041e |
 
-041a–041e are the requested refactor. They leave Anthropic as the only production runtime but make that a matter of composition configuration instead of an application assumption. 041f and 041g are independent after the seam: either may land first, and installing both is not required to prove the normalisation.
+041a–041e are the requested refactor. They leave Anthropic as the only production runtime but make that a matter of composition configuration instead of an application assumption. 041f and 041g are independent after the seam: either may land first, and installing both is not required to prove the normalization.
 
 ## Global invariants
 
@@ -70,10 +70,10 @@ The normalised contract is intentionally semantic rather than lowest-common-deno
 3. A session's runtime, id, and resolved model identity are immutable. Changing a deployment default affects new sessions only.
 4. `Evaluation == nil` means ungraded. A requested evaluation is either implemented with equivalent semantics or refused; zero values never create an empty vendor evaluator.
 5. Startup owns rollback of every partial remote resource. Terminal evidence is retained before release. Cancellation and release are separate, idempotent operations.
-6. Usage is cumulative, monotonic, and normalised at the adapter boundary. Raw event JSON is evidence only, never a billing or UI input.
+6. Usage is cumulative, monotonic, and normalized at the adapter boundary. Raw event JSON is evidence only, never a billing or UI input.
 7. Prices are selected by provider-qualified model and billing variant. No fallback crosses provider boundaries; no reported billable meter is silently discarded.
 8. Existing production records with no runtime/provider provenance decode explicitly as Anthropic, because that is the historical production invariant. An empty field never means “today's default.”
-9. The current memory and Anthropic end-to-end flows remain behaviourally unchanged through 041e, including live publication, transcript retention, verdicts, restart, cancellation, and exactly-once settlement.
+9. The current memory and Anthropic end-to-end flows remain behaviorally unchanged through 041e, including live publication, transcript retention, verdicts, restart, cancellation, and exactly-once settlement.
 
 ## Latere platform boundary
 
@@ -96,6 +96,6 @@ The direct OpenAI adapter remains useful for a deployment that does not run the 
 
 ## Outcome
 
-The application now describes one managed session, executes it through one controller, persists its runtime-tagged opaque reference before polling, and routes later operations by that reference. Audit, experiments, cohorts, server, and CLI no longer assemble Anthropic environments/agents/sessions. Model and rate identities are provider-qualified; transcript usage is normalised inside the adapter; runtime construction is explicit and credential-scoped. The existing Anthropic protocol implementation remains isolated behind a compatibility adapter while its startup and release paths are transactional. No OpenAI or Latere network adapter was added.
+The application now describes one managed session, executes it through one controller, persists its runtime-tagged opaque reference before polling, and routes later operations by that reference. Audit, experiments, cohorts, server, and CLI no longer assemble Anthropic environments/agents/sessions. Model and rate identities are provider-qualified; transcript usage is normalized inside the adapter; runtime construction is explicit and credential-scoped. The existing Anthropic protocol implementation remains isolated behind a compatibility adapter while its startup and release paths are transactional. No OpenAI or Latere network adapter was added.
 
 `internal/provider` did not disappear with the seam, although the Problem section above suggests it would. Its Anthropic-shaped resource half (`WorkspaceRef`, `WorkerRef`, `RunHandle`) is now reached only through `internal/managed/legacy`, wired by the composition root in `internal/runtimes/builtin` and nowhere else. Its neutral half (`Event`, `RunSpec`, `RunStatus`, `Attachment`, `RepoMount`) is still the shared vocabulary that HTTP, jobs, credit, audit, publication, and draft import. Folding that vocabulary into `internal/managed` is leftover work, not part of 041a-041e.

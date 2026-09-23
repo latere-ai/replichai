@@ -12,7 +12,7 @@ import (
 // documents: "REPLICHAI_RUNTIME selects the managed execution runtime, and
 // --runtime overrides it per command." Before this rule existed, only the
 // server read the variable; the CLI hard-coded its default, so the documented
-// behaviour was false for every subcommand.
+// behavior was false for every subcommand.
 func TestTheRuntimeResolvesInOneOrder(t *testing.T) {
 	env := func(value string) func(string) string {
 		return func(key string) string {

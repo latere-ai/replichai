@@ -7,13 +7,13 @@ status: built
 
 **Status:** built.
 
-**Scope:** how a session run on somebody's machine gets a GitHub repository and the credential to push it, without that person holding an organisation credential. Closes [009](009-secret-containment-when-the-agent-commits-live.md)'s deferred commit 3 for the local path only; the mounted path keeps the PAT and the constraint that deferred it stands.
+**Scope:** how a session run on somebody's machine gets a GitHub repository and the credential to push it, without that person holding an organization credential. Closes [009](009-secret-containment-when-the-agent-commits-live.md)'s deferred commit 3 for the local path only; the mounted path keeps the PAT and the constraint that deferred it stands.
 
 **Depends on:** [045g](045g-the-host-pushes.md), [045j](045j-a-bearer-the-api-accepts.md), [045k](045k-a-local-session-reaches-the-cloud.md), [009](009-secret-containment-when-the-agent-commits-live.md), [006f](006f-taking-a-reproduction-out.md), [003](003-the-registry-of-reproductions.md).
 
 ## Problem
 
-`replichai audit <paper> --publish --runtime local` needs `REPLICHAI_GITHUB_TOKEN` on the machine that runs it. That variable holds an organisation-scoped personal access token: it can create, read, write and delete every repository under `open-hai`, and it does not expire.
+`replichai audit <paper> --publish --runtime local` needs `REPLICHAI_GITHUB_TOKEN` on the machine that runs it. That variable holds an organization-scoped personal access token: it can create, read, write and delete every repository under `open-hai`, and it does not expire.
 
 So the local path asks each operator to keep the broadest credential in the system on a laptop, in a shell profile, for the length of their employment. The hosted path asks nobody for anything: the server holds the credential and the operator never sees it.
 
@@ -55,7 +55,7 @@ Let `T` be the token's life and `P` the push's duration. The hosted path needs `
 
 The route is on the project, not on a session: the repository is allocated from the paper's identity, and the session that fills it does not exist yet.
 
-**A deployment with no App refuses.** `newForgeClient` falls back to a PAT when `REPLICHAI_GITHUB_APP_ID`/`_KEY` are unset, and a PAT cannot mint a sub-token; GitHub offers no such thing. Handing the organisation PAT back over HTTP would be strictly worse than the variable it replaces, because it would put the same credential on the same laptop and in a response body. So the route answers `501 minting_unavailable`, and the CLI says which variable to set and falls back to `REPLICHAI_GITHUB_TOKEN` if it is present.
+**A deployment with no App refuses.** `newForgeClient` falls back to a PAT when `REPLICHAI_GITHUB_APP_ID`/`_KEY` are unset, and a PAT cannot mint a sub-token; GitHub offers no such thing. Handing the organization PAT back over HTTP would be strictly worse than the variable it replaces, because it would put the same credential on the same laptop and in a response body. So the route answers `501 minting_unavailable`, and the CLI says which variable to set and falls back to `REPLICHAI_GITHUB_TOKEN` if it is present.
 
 **The CLI revokes the token when the push is done.** The token expires within the hour regardless, but expiry is not a completion signal and the push is over in seconds. The holder revokes what it holds: `DELETE /installation/token` is authenticated by the token itself, so revocation needs no further credential and cannot be used against anybody else's.
 
@@ -113,7 +113,7 @@ replichai audit <paper> --publish --runtime local
   └─ POST /projects/{id}/sessions/import   { …, repo }
 ```
 
-`--publish` without `--project` keeps today's behaviour: there is no project to provision against, so the environment variable is the only path and the CLI says so.
+`--publish` without `--project` keeps today's behavior: there is no project to provision against, so the environment variable is the only path and the CLI says so.
 
 ## Acceptance criteria
 

@@ -229,7 +229,7 @@ func TestMovingAPaperIsRefused(t *testing.T) {
 }
 
 // TestMovingAPaperIsTheLeads covers 035: a move is a removal from one project
-// and an addition to the other, so it is authorised like a removal. Only a
+// and an addition to the other, so it is authorized like a removal. Only a
 // lead may do it, matching who may move credits out, and the check applies to
 // both projects, not only the one in the path.
 func TestMovingAPaperIsTheLeads(t *testing.T) {
@@ -261,7 +261,7 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 		t.Fatalf("a collaborator moving a paper: status %d, body %s", w.Code, w.Body)
 	}
 
-	// Authorisation is checked before state. A destination the caller may not
+	// Authorization is checked before state. A destination the caller may not
 	// move into must not first report that it is published. The caller may
 	// name any project they are a member of, so the order of these two checks
 	// decides whether the response is a refusal or a disclosure.

@@ -608,7 +608,7 @@ function EditPaperDialog({
 //
 // The destinations are the caller's own projects that are private and not in
 // the trash. Those are the same three things the server checks, so the list
-// offers nothing that would be refused. The server still decides: it authorises
+// offers nothing that would be refused. The server still decides: it authorizes
 // a lead of either end, which this picker does not yet surface.
 function MovePaperDialog({
   i18n,

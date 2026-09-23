@@ -7,7 +7,7 @@
 // rather than a full SDK to keep the dependency list small; it covers only
 // these endpoints, and none of them is on a hot path.
 //
-// All of these run server-side with the organisation's token. None of them
+// All of these run server-side with the organization's token. None of them
 // belongs inside the sandbox; the sandbox gets only a scoped mount token (006f).
 package github
 
@@ -74,7 +74,7 @@ func New(token string, opts ...Option) *Client {
 	return c
 }
 
-// CreateRepo creates a private (or public) repository in an organisation. A
+// CreateRepo creates a private (or public) repository in an organization. A
 // name that already exists returns ErrRepoExists rather than failing, so a
 // republish is the caller's decision.
 func (c *Client) CreateRepo(ctx context.Context, owner, name string, private bool) (Repo, error) {
@@ -87,7 +87,7 @@ func (c *Client) CreateRepo(ctx context.Context, owner, name string, private boo
 	// repository makes that push the first commit.
 	//
 	// A mounted run is unaffected: the identity is recorded through the
-	// contents API before the agent clones, and that call initialises an
+	// contents API before the agent clones, and that call initializes an
 	// empty repository the same way GitHub's own checkbox would.
 	body := map[string]any{
 		"name":      name,
@@ -97,7 +97,7 @@ func (c *Client) CreateRepo(ctx context.Context, owner, name string, private boo
 	var repo Repo
 	status, err := c.do(ctx, http.MethodPost, "/orgs/"+owner+"/repos", body, &repo)
 	// GitHub answers 422 to every validation failure, including an invalid
-	// name, a blocked organisation and a plan limit, and only one of them
+	// name, a blocked organization and a plan limit, and only one of them
 	// means the repository exists to be reused. The body says which.
 	var refused *APIError
 	if errors.As(err, &refused) && refused.saysAlreadyExists() {
@@ -113,8 +113,8 @@ func (c *Client) CreateRepo(ctx context.Context, owner, name string, private boo
 	return repo, nil
 }
 
-// ListRepos returns the names of every repository in an organisation, following
-// pagination. The registry (003) enumerates the organisation this way.
+// ListRepos returns the names of every repository in an organization, following
+// pagination. The registry (003) enumerates the organization this way.
 func (c *Client) ListRepos(ctx context.Context, owner string) ([]string, error) {
 	var names []string
 	for page := 1; ; page++ {
@@ -152,7 +152,7 @@ func (c *Client) GetRepo(ctx context.Context, owner, name string) (Repo, error) 
 	return repo, nil
 }
 
-// Invite adds login as a collaborator. For a user outside the organisation this
+// Invite adds login as a collaborator. For a user outside the organization this
 // creates an invitation they must accept; for an existing collaborator it is a
 // no-op. It never requests any scope from the invited user.
 func (c *Client) Invite(ctx context.Context, owner, name, login string) error {

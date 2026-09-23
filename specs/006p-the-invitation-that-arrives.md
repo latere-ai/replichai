@@ -29,9 +29,9 @@ Selection stays as auth wrote it: Mailgun when an API key is set and is not `"te
 
 Templates, copy, and the domain verbs stay in each service. auth keeps `SendCode`/`SendInvitation` as a thin local wrapper over `Send`, with its own `renderCodeEmail`/`renderInvitationEmail` unchanged. The shared package therefore knows nothing about orgs, projects, codes, or accept tokens, and adding a new kind of mail is a change in one service only.
 
-This is the cut that makes the three-repo change small and provable. auth's existing `mailgun_test.go`, `smtp_test.go`, and `otel_transport_test.go` move with the code they test, so the extraction is verifiable as behaviour-preserving rather than asserted to be.
+This is the cut that makes the three-repo change small and provable. auth's existing `mailgun_test.go`, `smtp_test.go`, and `otel_transport_test.go` move with the code they test, so the extraction is verifiable as behavior-preserving rather than asserted to be.
 
-**replichai's invitation has no token and no accept flow.** auth's org invitation mints a token, mails an accept URL, and creates the membership when the link is followed. replichai's does not, and must not be made to: `Add` already created the membership, authorised by project ownership. There is nothing to accept. The mail is an announcement with a link to the project, and the invitee's authorisation is decided on arrival by the same predicate that decides it for every other read. A token here would add a second authority for the same fact.
+**replichai's invitation has no token and no accept flow.** auth's org invitation mints a token, mails an accept URL, and creates the membership when the link is followed. replichai's does not, and must not be made to: `Add` already created the membership, authorized by project ownership. There is nothing to accept. The mail is an announcement with a link to the project, and the invitee's authorization is decided on arrival by the same predicate that decides it for every other read. A token here would add a second authority for the same fact.
 
 **Sending is best-effort and never fails the invite.** A mail failure is logged and the request still returns `204`, mirroring `seedCollaborators` (which reports a failure by omission) and the publish path's forge flip (logged, non-fatal). The membership is the durable thing; the mail is a courtesy that can be retried by re-inviting. The alternative, failing the invite when Mailgun is down, would make an outage at a third party look like a bug in membership.
 
@@ -43,13 +43,13 @@ This is the cut that makes the three-repo change small and provable. auth's exis
 
 ## Acceptance criteria
 
-1. `latere.ai/x/pkg/email` exposes `New` and `Sender.Send`, selects Mailgun → SMTP → log in that order, rejects CRLF in the subject, and carries auth's transport tests unchanged in behaviour.
+1. `latere.ai/x/pkg/email` exposes `New` and `Sender.Send`, selects Mailgun → SMTP → log in that order, rejects CRLF in the subject, and carries auth's transport tests unchanged in behavior.
 2. auth compiles and passes its full suite against the shared package, with `SendCode`/`SendInvitation` and their rendered copy unchanged, asserted by the existing tests, not by inspection.
 3. replichai builds a `Sender` at startup from the environment; a deployment with no mail configuration gets the log sender and starts normally.
 4. `POST /projects/{id}/members` sends the invitation to the added email: subject names the project, body names the inviter and links to `{BASE_URL}/projects/{id}`.
 5. A send failure is logged and the response is still `204`, with the membership row present, asserted with a failing sender.
 6. An invite that adds nobody new (already a member) does not re-send. Re-inviting a removed member does.
-7. The email address is taken from the request body after normalisation, and the inviter's name from the session, never from the body.
+7. The email address is taken from the request body after normalization, and the inviter's name from the session, never from the body.
 8. Every new environment variable appears in `example.env`, `docker-compose.yml`, `deploy/base/deployment.yaml`, and `deploy/README.md`.
 9. The invitation copy matches the sign-in rules in force. If 006p lands first, the mail and the frontend's invite hint still say the invitee needs a platform invitation from an admin, because they do; [006q](006q-sign-in-is-open-budget-is-not.md) is what makes that sentence false, and removing it is that spec's acceptance criterion, not this one's. Landing them together is preferred precisely so the sentence is written once.
 

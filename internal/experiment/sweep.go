@@ -26,7 +26,7 @@ type SweepPoint struct {
 }
 
 // SweepReport is a distribution-and-sensitivity finding about the instrument.
-// Every statement in it is about the instrument's own behaviour across ranges
+// Every statement in it is about the instrument's own behavior across ranges
 // the paper never sampled, and never about the paper or about people.
 type SweepReport struct {
 	Points   []SweepPoint `json:"points"`

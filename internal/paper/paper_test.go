@@ -200,7 +200,7 @@ func TestResolvePleaSQLarifyTitleDriftOneIdentity(t *testing.T) {
 // that coverage does not rest on the PleaSQLarify case.
 func TestSlugTracksTitleWhenDifferenceIsInWindow(t *testing.T) {
 	a := Slug("Retrieval Augmented Generation")
-	b := Slug("Retrieval Augmented Summarisation")
+	b := Slug("Retrieval Augmented Summarization")
 	if a == b {
 		t.Errorf("slugs should differ: %q vs %q", a, b)
 	}

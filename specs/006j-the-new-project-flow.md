@@ -26,7 +26,7 @@ POST /projects  { title?, papers: [url, …], collaborators: [email, …] }
   → 201 { project_id, title, sessions: [ {url, job_id} | {url, error} ], members: [email…] }
 ```
 
-**Best-effort per paper; never leave an empty project.** Each paper is enqueued independently and reported in `sessions[]` as either a `job_id` or an `error` (a bad reference, or the double-trigger guard catching a duplicate). The project is kept if **≥1** session started; if **every** paper failed, the just-created project is deleted and the call is a 422 carrying the per-paper errors. This is the same compensating rule `submitToNewProject` already applies, generalised to N papers. The Resolve preview catches most bad links before this point.
+**Best-effort per paper; never leave an empty project.** Each paper is enqueued independently and reported in `sessions[]` as either a `job_id` or an `error` (a bad reference, or the double-trigger guard catching a duplicate). The project is kept if **≥1** session started; if **every** paper failed, the just-created project is deleted and the call is a 422 carrying the per-paper errors. This is the same compensating rule `submitToNewProject` already applies, generalized to N papers. The Resolve preview catches most bad links before this point.
 
 **A `POST /resolve` preview over the server's HTTP fetcher.** `POST /resolve {url}` runs `paper.Resolve` with the same `newHTTPFetcher` the worker uses, returning `{key, title, scheme, slug}` with real metadata (an arXiv title, a DOI), so the operator sees what they are about to reproduce. It is behind a `PaperResolver` seam in `Deps`, so the handlers stay off `internal/paper`. A reference that is not a DOI/arXiv/URL is a 400 (`unresolvable_paper`); a source that cannot be reached is a 502 (`resolve_failed`), kept distinct so the UI can say "couldn't reach the source" rather than "bad link." The call is bounded by the fetcher's timeout.
 
@@ -51,4 +51,4 @@ POST /projects  { title?, papers: [url, …], collaborators: [email, …] }
 
 - **PDF upload** at create time (multipart): 006d; the URL/DOI/arXiv path is this spec's.
 - **Editing papers/collaborators after create** beyond what the existing members API and `POST /papers` already allow (add a paper, add/remove a member). No bulk edit screen.
-- **A resolve cache.** Each preview hits the source through the fetcher's timeout; caching identical lookups is a later optimisation, not needed for correctness.
+- **A resolve cache.** Each preview hits the source through the fetcher's timeout; caching identical lookups is a later optimization, not needed for correctness.

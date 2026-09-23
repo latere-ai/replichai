@@ -28,7 +28,7 @@ type command struct {
 // commands is every subcommand, in the order usage lists them. It is a
 // function rather than a variable because the run functions it names build
 // their help from the registry, and a package-level variable that refers to
-// functions referring back to it is an initialisation cycle.
+// functions referring back to it is an initialization cycle.
 func commands() []command {
 	return []command{
 		{"audit", "<paper-ref> [flags]", "audit one paper and write its reproduction", runAudit},
@@ -39,7 +39,7 @@ func commands() []command {
 		{"login", "[flags]", "sign in at auth.latere.ai with a device code", runLogin},
 		{"whoami", "", "show who is signed in and the current context", runWhoami},
 		{"logout", "", "remove the stored credential", runLogout},
-		{"org", "[<org-uuid> | --personal]", "show or switch the organisation context", runOrg},
+		{"org", "[<org-uuid> | --personal]", "show or switch the organization context", runOrg},
 		{"sessions", "ls | prune [flags]", "list or remove the session directories left by local runs", runSessions},
 		{"project", "create <title> | ls | sessions <id> | rm-session <id>...", "manage projects in the app", runProject},
 		{"push", "<project-file> --project <id>", "add a local run's sessions to a project in the app", runPush},

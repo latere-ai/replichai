@@ -39,7 +39,7 @@ That is more than an inconvenience. A run that has gone wrong (stuck on a downlo
 
 ## Acceptance criteria
 
-Struck through are the ones 006h/006s already satisfied before this spec was written. They are kept rather than deleted, because the record of a spec that specified existing behaviour is worth keeping.
+Struck through are the ones 006h/006s already satisfied before this spec was written. They are kept rather than deleted, because the record of a spec that specified existing behavior is worth keeping.
 
 1. ~~While a job runs, new provider events reach the client.~~ Already true: the transcript route reads the live stream by run id.
 2. ~~No fetch is issued for an unwatched job.~~ Already true: the read is request-driven, so nothing polls unless a reader is looking.

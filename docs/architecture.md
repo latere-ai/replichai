@@ -84,7 +84,7 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship today: `anthropic-managed`, which adapts the existing Managed Agents backend; `memory`, a deterministic reference runtime; and `local`, which runs a session on the operator's own machine. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
-Every operation that can block takes a `context.Context` and honours cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are designed separately and are intentionally not part of this refactor.
+Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are designed separately and are intentionally not part of this refactor.
 
 **The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed`, held to the same conformance suite, and the choices that vary inside it are not part of its name:
 
@@ -105,13 +105,13 @@ managed session ────┼─ worker stage      the harness, confined to on
 - **The session directory is the durable state.** `workspace/` becomes the repository; `tmp/` and `venv/` are what the agent needs and must not publish; `session/` is host-authored evidence no stage can write. A detached run is recovered from the directory and a process handle alone.
 - **Nothing local touches the ledger.** The compute was bought from the vendor by the person who ran it.
 
-**Batching** (`internal/batch/`) runs a whole project: a list of papers, a concurrency cap, one isolated session each, resumable state, and a report. Preparation is serialised and execution is not, because allocating a repository name is a read of what exists followed by a decision.
+**Batching** (`internal/batch/`) runs a whole project: a list of papers, a concurrency cap, one isolated session each, resumable state, and a report. Preparation is serialized and execution is not, because allocating a repository name is a read of what exists followed by a decision.
 
 **The terminal's identity** (`internal/cloud/`) is the device-code flow against `auth.latere.ai`, with its own client and its own credential file. `internal/webauth`'s bearer middleware is the other half: one principal, two credential sources, and a request carrying a bearer never consults a cookie. A locally executed session reaches the app as an ordinary `jobs` row with `origin = local`, filed through `ImportLocal`, which has no path to the credit ledger.
 
 **Publishing** (`internal/publish/`) owns the manifest, the redistribution gate, repository naming, and the transcript rendering. It is split so that everything decidable without a network is pure: `Classify` and `PlanPublication` touch no repository and no clock; `Publish` and `FinalizeLive` are the only parts that create anything, and they do so through `Forge`, a seam over repository hosting that mirrors the provider seam.
 
-**The registry** (`internal/registry/`) derives the set of published reproductions by reading their manifests, so there is no second source of truth to drift. It answers three questions: has this paper been reproduced before, what slug did its first reproduction fix, and what unique name should the next one get. Reproductions of one paper are related by identity, never by slug or title. It reads through a `Source`: an organisation on GitHub, or a directory on disk.
+**The registry** (`internal/registry/`) derives the set of published reproductions by reading their manifests, so there is no second source of truth to drift. It answers three questions: has this paper been reproduced before, what slug did its first reproduction fix, and what unique name should the next one get. Reproductions of one paper are related by identity, never by slug or title. It reads through a `Source`: an organization on GitHub, or a directory on disk.
 
 **GitHub** (`internal/github/`) is a small hand-written client for the few operations publishing needs: create a private repository, read the head commit and its tree, put a file, invite a collaborator, change visibility. It runs server-side, and none of it belongs inside the sandbox.
 
@@ -138,7 +138,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Projects** (`internal/project/`) are what a person owns and works inside: a container holding papers, and per paper the replication sessions run against it. A paper is a row a project holds, keyed by the paper identity a session already carries; starting a session is a separate act from filing the paper, and each act meets its own credit check.
 
-**Access** (`internal/access/`) is this deployment's own authorisation (who may sign in, who may operate, at what tier), decided against a table and never read out of a token. Signing in self-grants the ordinary user tier; what limits a person is the meter, not a guest list. Revocation is recorded state rather than a deleted row, because a self-granting sign-in would re-create a deleted row and turn a ban into a logout.
+**Access** (`internal/access/`) is this deployment's own authorization (who may sign in, who may operate, at what tier), decided against a table and never read out of a token. Signing in self-grants the ordinary user tier; what limits a person is the meter, not a guest list. Revocation is recorded state rather than a deleted row, because a self-granting sign-in would re-create a deleted row and turn a ban into a logout.
 
 **Web auth** (`internal/webauth/`) wires that model to HTTP: the OIDC login and the session cookie holding only the subject and email, the gate policy the API mounts, the admin routes behind a tier guard, the freeze gate that turns a negative wallet into a view-only account, and a dev bypass that refuses to run off loopback. It is the one place that imports both `httpapi` and `access`, so neither imports the other.
 
@@ -146,7 +146,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **The ledger** (`internal/credit/`) is append-only, in micro-USD, and no balance is stored anywhere: every number in the product is computed by summing the table. A session takes a reserve inside the transaction that inserts it and settles in the transaction that ends it. There is no payment package of its own: the card processor is the shared `latere.ai/x/pay` seam (open a hosted checkout, verify and read a webhook) with its Stripe adapter composed in `cmd/server`. `internal/httpapi/payments.go` holds the checkout and webhook routes. The webhook is the only thing that posts a credit, and it dedupes on an external reference so a retried delivery cannot double it. `internal/webauth/freeze.go` is where a negative wallet turns into a view-only account.
 
-**Profiles** (`internal/profile/`) are who a principal says they are: the researcher identity a public sign-off is published under, and the handle a public page resolves. It is deliberately not part of `access`: a grant is an authorisation, a profile is an assertion, and they have different lifetimes.
+**Profiles** (`internal/profile/`) are who a principal says they are: the researcher identity a public sign-off is published under, and the handle a public page resolves. It is deliberately not part of `access`: a grant is an authorization, a profile is an assertion, and they have different lifetimes.
 
 **Notification** (`internal/notify/`) sends messages to people who are not using the app. A project invitation is the one place the platform asserts something about an absent person, and it needs a way to reach them. Sending is best-effort, because the membership is the durable thing.
 
@@ -176,7 +176,7 @@ A published reproduction is three things, each with a different author. The sepa
 | Evidence | the backend's own event log, fetched by the system | `transcript.jsonl` and `TRANSCRIPT.md` |
 | Verdict | the system, outside the sandbox | `replication.json` |
 
-The transcript is rendered from the same events into two forms. `transcript.jsonl` is canonical and machine-readable: one normalised event per line, typed fields first and the backend's original event nested under `raw`, so it is both consistent to parse and lossless. The narrative is chunked: `TRANSCRIPT.md` is an index over `transcript/NNN.md` parts of forty events each, linked previous/index/next, with per-event content capped. A full run produces many megabytes, and one file that size is neither readable nor committable through an ordinary contents API.
+The transcript is rendered from the same events into two forms. `transcript.jsonl` is canonical and machine-readable: one normalized event per line, typed fields first and the backend's original event nested under `raw`, so it is both consistent to parse and lossless. The narrative is chunked: `TRANSCRIPT.md` is an index over `transcript/NNN.md` parts of forty events each, linked previous/index/next, with per-event content capped. A full run produces many megabytes, and one file that size is neither readable nor committable through an ordinary contents API.
 
 The whole set is committed in a single commit through the Git Data API (blob, tree, commit, ref), so the evidence lands atomically rather than as many per-file commits, with no inline size limit. It is idempotent by blob sha: re-finishing a reproduction whose transcript has not changed commits nothing.
 
@@ -196,14 +196,14 @@ Artifact paths and file contents come out of a sandbox that has just executed co
 
 Publication fails closed. A repository is created private and stays private. A tree carrying third-party paths is recorded in the manifest as a redistribution that did not clear; a transcript carrying a foreign secret blocks the change to public under a `secret_in_transcript` review. A project goes public only as the owner's deliberate act, with a responsibility sign-off snapshotted onto the project so a later profile edit cannot rewrite a published attestation, and a publication can be withdrawn back to private with the retraction recorded beside the sign-off rather than erasing it.
 
-Ownership is granted by invitation (the organisation invites a GitHub login as a collaborator), so the service never holds anyone's repository credentials.
+Ownership is granted by invitation (the organization invites a GitHub login as a collaborator), so the service never holds anyone's repository credentials.
 
-The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and a test asserts that. Every server-side GitHub operation runs as a GitHub App installation rather than an organisation PAT. The one remaining exception is the mount credential the sandbox itself holds: an installation token lives at most an hour, shorter than a long run, so the mount keeps a non-expiring token until runs are bounded under that or the backend can refresh one mid-session. That is [009](../specs/009-secret-containment-when-the-agent-commits-live.md)'s open commitment, and it is recorded rather than assumed away.
+The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and a test asserts that. Every server-side GitHub operation runs as a GitHub App installation rather than an organization PAT. The one remaining exception is the mount credential the sandbox itself holds: an installation token lives at most an hour, shorter than a long run, so the mount keeps a non-expiring token until runs are bounded under that or the backend can refresh one mid-session. That is [009](../specs/009-secret-containment-when-the-agent-commits-live.md)'s open commitment, and it is recorded rather than assumed away.
 
 The app fails closed by the same rule. An empty grants table admits nobody, the gate resolves per request, and the router's own gated set is asserted in a test so a new route cannot ship open. The release smoke (`test/release-smoke.sh`) drives the deployed gate after every tagged deploy and fails if `/projects` answers anything but a refusal, so the dev bypass reaching production is a failed release rather than a silent hole.
 
 ## What is not here
 
-Reproduction artifacts are not committed to this repository. An audit's output is the paper's reproduction, not this tool's source, and the two have different lifecycles, different licences, and different audiences. That is why each reproduction gets its own repository under its own organisation.
+Reproduction artifacts are not committed to this repository. An audit's output is the paper's reproduction, not this tool's source, and the two have different lifecycles, different licenses, and different audiences. That is why each reproduction gets its own repository under its own organization.
 
 What is designed but not built is the replication track past the inner loop as a product: the engine for experiments over instruments exists and nothing user-facing reaches it ([`specs/023`](../specs/023-the-outer-loop-as-a-product.md) and its children), and hosting a study with real participants ([`specs/007d`](../specs/007d-hosting-a-study.md)) is blocked on corpus rather than on code. [`specs/README.md`](../specs/README.md) is the map of what is built and what is not.

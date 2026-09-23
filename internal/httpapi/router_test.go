@@ -846,7 +846,7 @@ func TestRepublishAfterWithdrawal(t *testing.T) {
 
 // TestWithdrawSurvivesForgeFailure covers 006o AC6: the forge is best-effort.
 // A repository GitHub refuses to close, for example because of a fork network
-// or an organisation policy, must not fail the withdrawal. The project is
+// or an organization policy, must not fail the withdrawal. The project is
 // already private in the app, and leaving the owner with a half-finished
 // withdrawal would be worse than a repository left open.
 func TestWithdrawSurvivesForgeFailure(t *testing.T) {
@@ -990,7 +990,7 @@ func TestProfileAPI(t *testing.T) {
 
 	// It is the caller's own profile: another principal sees their own, empty
 	// one. A fresh value is used because every field is omitempty, and
-	// unmarshalling `{}` over a populated struct would leave the previous
+	// unmarshaling `{}` over a populated struct would leave the previous
 	// profile in place.
 	got = profile.Profile{}
 	w = do(t, h, "GET", "/me/profile", "", "someone-else")

@@ -307,7 +307,7 @@ func TestADeletedSessionLeavesThePublicSurface(t *testing.T) {
 }
 
 // TestOneTitleAndATabThatFoldsToItsRecord checks AC5: one title, one
-// canonical link, and a tab canonicalises to the record it is a view of.
+// canonical link, and a tab canonicalizes to the record it is a view of.
 func TestOneTitleAndATabThatFoldsToItsRecord(t *testing.T) {
 	d := seoDeps()
 	p := describedProject(t, d)
@@ -323,7 +323,7 @@ func TestOneTitleAndATabThatFoldsToItsRecord(t *testing.T) {
 			t.Errorf("%s: %d canonical links, want 1", path, n)
 		}
 		if !strings.Contains(body, want) {
-			t.Errorf("%s: tab did not canonicalise to the project's own address", path)
+			t.Errorf("%s: tab did not canonicalize to the project's own address", path)
 		}
 	}
 }

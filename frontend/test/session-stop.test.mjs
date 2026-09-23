@@ -4,7 +4,7 @@
 // A browser regression test for the Stop control on a running session.
 //
 // The bug it guards: stopping is not instant. POST /jobs/{id}/cancel returns as
-// soon as the worker has been signalled, and the session it reads back can still
+// soon as the worker has been signaled, and the session it reads back can still
 // be running because the backend run has yet to come down. The row cleared its
 // "stopping" flag the moment that response landed, so the button snapped back to
 // a live, red "Stop" over a session still badged RUNNING, and a second click

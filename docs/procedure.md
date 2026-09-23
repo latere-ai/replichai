@@ -14,7 +14,7 @@ The workspace boundary keeps the result clean. The agent writes its reproduction
 
 ## 1. Acquire the paper
 
-Fetch the reference. If only an abstract comes back, download the PDF and extract the full text. Read all of it: appendices, footnotes, the data-availability statement, acknowledgements.
+Fetch the reference. If only an abstract comes back, download the PDF and extract the full text. Read all of it: appendices, footnotes, the data-availability statement, acknowledgments.
 
 The artifact pointer is often not where you would expect. In one audited paper the only code link was a page-one footnote; the landing page carried no availability statement at all. A procedure that reads landing pages and stops will report "no code released" for papers that did release code.
 
@@ -37,7 +37,7 @@ Getting this wrong in either direction ruins the verdict. Too much marked outer,
 
 ## 4. Enumerate the hidden decisions
 
-List the choices a reimplementation must make but the paper never states: hyperparameters, prompt text, model versions and snapshot dates, data filtering and splits, thresholds, tie-breaks, normalisation, seeds, stopping conditions, interface defaults, exclusion rules, scale scoring, covariates entered into a model.
+List the choices a reimplementation must make but the paper never states: hyperparameters, prompt text, model versions and snapshot dates, data filtering and splits, thresholds, tie-breaks, normalization, seeds, stopping conditions, interface defaults, exclusion rules, scale scoring, covariates entered into a model.
 
 Each entry carries three things: where the paper leaves it open, what the reproduction assumed instead, and how sensitive the result is to that choice. The third is what makes the list useful: a dozen low-sensitivity gaps matter less than one high-sensitivity gap that silently decides the headline result.
 
@@ -49,7 +49,7 @@ Where reproduction is blocked, the blocker is the finding: "blocked because the 
 
 ## 6. Score open science
 
-Code, data, licence, preregistration, supplementary artifacts: each with a URL that was actually fetched, or an explicit "none found" naming where the search went.
+Code, data, license, preregistration, supplementary artifacts: each with a URL that was actually fetched, or an explicit "none found" naming where the search went.
 
 Score separately whether released code still runs. Code that exists but no longer runs against its own dependencies is a different, and much more common, condition than code that was never published.
 
@@ -57,7 +57,7 @@ Score separately whether released code still runs. Code that exists but no longe
 
 A per-component reproduction table for the inner loop: each component the boundary marked inner, scored *reproduced*, *partial*, or *blocked*, with the evidence or the specific blocker. This table is the result, not a single number.
 
-How many components an inner loop has is itself a judgment, so the scalar rate is treated as a summary, not a measurement. The same paper, audited twice under an identical method, decomposes into different counts (in one pair of runs, five and seven), and any rate derived from it changes with the decomposition (there, 40% and 79%) while the verdict, the boundary, and the component-level conclusions stay the same. A rate is therefore reported only as a derived footnote to the table, labelled as a summary of one particular decomposition, and never compared across papers or across runs. The rubric grades the table, not the number.
+How many components an inner loop has is itself a judgment, so the scalar rate is treated as a summary, not a measurement. The same paper, audited twice under an identical method, decomposes into different counts (in one pair of runs, five and seven), and any rate derived from it changes with the decomposition (there, 40% and 79%) while the verdict, the boundary, and the component-level conclusions stay the same. A rate is therefore reported only as a derived footnote to the table, labeled as a summary of one particular decomposition, and never compared across papers or across runs. The rubric grades the table, not the number.
 
 The verdict must also separate **re-analysis** from **re-observation**. Reproducing a paper's statistics from its released data does not re-validate its claim about the world; that claim rests on the outer loop and on the sample that was collected. An audit that blurs the two overstates what it proved.
 
@@ -90,6 +90,6 @@ Because the agent commits independently of the process that started it, finalizi
 | Case | Condition | Failure it catches |
 |---|---|---|
 | 01 | Repository exists but is empty | Crediting code that was promised but not delivered |
-| 02 | Data and analysis genuinely released | Penalising a study paper for being a study |
+| 02 | Data and analysis genuinely released | Penalizing a study paper for being a study |
 
 Run both after any change to the method. A change that games one case tends to show up in the other, which is why they are chosen to pull in opposite directions.

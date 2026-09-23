@@ -23,7 +23,7 @@ It does not arrive on every poll. The controller calls the `Status` hook only wh
 if hooks.Status != nil && !sameObservation(previous, status) { … }
 ```
 
-A run that is thinking, with no state change and no new usage, is silent, and silence is indistinguishable from a dead process. `LeaseTTL` is five minutes. In the incident `pjtqq` claimed the job at 07:39 and drove it correctly; at 07:44:35 `b6xzt` swept, found a lease five minutes and twenty-six seconds old, and adopted a run that was healthy. From then on two processes polled one backend session, and both of them finalised it:
+A run that is thinking, with no state change and no new usage, is silent, and silence is indistinguishable from a dead process. `LeaseTTL` is five minutes. In the incident `pjtqq` claimed the job at 07:39 and drove it correctly; at 07:44:35 `b6xzt` swept, found a lease five minutes and twenty-six seconds old, and adopted a run that was healthy. From then on two processes polled one backend session, and both of them finalized it:
 
 ```
 07:59:00  A: PutFile   replication.json      → ok

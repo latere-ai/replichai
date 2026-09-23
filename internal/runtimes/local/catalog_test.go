@@ -67,7 +67,7 @@ func goodEnv() LookupEnv {
 	return env(map[string]string{"ANTHROPIC_API_KEY": "sk-ant", "LUX_API_KEY": "sk-lux"})
 }
 
-// One harness's catalogue is the rows for that harness, and every tier
+// One harness's catalog is the rows for that harness, and every tier
 // resolves to exactly one qualified reference.
 func TestCatalogResolvesEachTierOnce(t *testing.T) {
 	catalog, err := NewCatalog(parse(t, goodCatalog), testRegistry(t), goodEnv())
@@ -75,7 +75,7 @@ func TestCatalogResolvesEachTierOnce(t *testing.T) {
 		t.Fatalf("NewCatalog: %v", err)
 	}
 	if models := catalog.Models(harness.ClaudeCode); len(models) != 2 {
-		t.Fatalf("claude-code catalogue = %+v", models)
+		t.Fatalf("claude-code catalog = %+v", models)
 	}
 	for _, c := range []struct{ preference, id string }{
 		{"best", "claude-opus-5"}, {"balanced", "claude-sonnet-5"}, {"fast", "claude-sonnet-5"},
@@ -109,7 +109,7 @@ func TestCatalogRefusesAnUndeclaredExactModel(t *testing.T) {
 	}
 	undeclared := managed.ModelRef{Provider: "anthropic", ID: "claude-opus-9"}
 	_, _, err = catalog.Resolve(harness.ClaudeCode, managed.ModelSelector{Exact: &undeclared})
-	if err == nil || !strings.Contains(err.Error(), "model catalogue") {
+	if err == nil || !strings.Contains(err.Error(), "model catalog") {
 		t.Fatalf("an undeclared model resolved: %v", err)
 	}
 	// The row belongs to another harness, so this harness cannot reach it.
@@ -213,7 +213,7 @@ func TestTheDefaultCatalogNeedsNoCredential(t *testing.T) {
 	}
 	catalog, err := NewCatalog(file, testRegistry(t), env(nil))
 	if err != nil {
-		t.Fatalf("the default catalogue does not validate: %v", err)
+		t.Fatalf("the default catalog does not validate: %v", err)
 	}
 	for _, preference := range []string{"best", "balanced", "fast"} {
 		ref, gateway, err := catalog.Resolve(harness.ClaudeCode, managed.ModelSelector{Preference: preference})
@@ -225,7 +225,7 @@ func TestTheDefaultCatalogNeedsNoCredential(t *testing.T) {
 		}
 	}
 	if len(catalog.Credentials()) != 0 {
-		t.Error("the default catalogue holds a credential")
+		t.Error("the default catalog holds a credential")
 	}
 }
 
@@ -245,7 +245,7 @@ func TestCatalogReportsItsCredentialsForRedaction(t *testing.T) {
 // A malformed file is an error; a missing one falls back to the default.
 func TestAMalformedCatalogueFailsRatherThanDefaulting(t *testing.T) {
 	if _, err := ReadCatalogFile(parseTempFile(t, "gateways: [this is not a map\n")); err == nil {
-		t.Fatal("a malformed catalogue was accepted")
+		t.Fatal("a malformed catalog was accepted")
 	}
 }
 

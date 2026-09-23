@@ -169,7 +169,7 @@ papers:
 }
 
 // TestPreparationIsSerialisedAndExecutionIsCapped checks that the pool never
-// exceeds its cap and that Prepare is serialised even though Execute is not.
+// exceeds its cap and that Prepare is serialized even though Execute is not.
 // Allocating a repository name is a read followed by a decision, and two
 // concurrent readers would decide the same name.
 //
@@ -477,7 +477,7 @@ func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
 }
 
 // TestTheReportTotalsTheEntries checks that the report's totals equal the sum
-// of the entries, and that the vendor's cost is labelled as the vendor's
+// of the entries, and that the vendor's cost is labeled as the vendor's
 // rather than as a replichai charge.
 func TestTheReportTotalsTheEntries(t *testing.T) {
 	r := newRunner()

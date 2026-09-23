@@ -106,7 +106,7 @@ test('a trailing slash is the same address', () => {
 
 // A handle is stored and compared lowercased, and a browser hands it back
 // percent-encoded (006r).
-test('a handle is normalised the way the profile stores it', () => {
+test('a handle is normalized the way the profile stores it', () => {
   expect(viewOf('/u/Ada')).toEqual({ name: 'profile', handle: 'ada' })
   expect(viewOf('/u/' + encodeURIComponent('ada-lovelace'))).toEqual({ name: 'profile', handle: 'ada-lovelace' })
 })

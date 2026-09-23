@@ -13,7 +13,7 @@
 // Clipping does not change an element's own box, so "the bubble exists and has a
 // size" passes against the broken code too. The discriminating assertion is hit
 // testing, which Chrome resolves against what is painted: at the bubble's own
-// centre, the topmost element must be the bubble. That plus "no ancestor of the
+// center, the topmost element must be the bubble. That plus "no ancestor of the
 // bubble clips it" is what a container can break. It needs a real layout engine,
 // so it drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -57,7 +57,7 @@ try {
   await settled(page)
 
   // hover moves a real pointer onto the element and reports what the tip is,
-  // where it sits, and what is painted at its centre, which is the part that
+  // where it sits, and what is painted at its center, which is the part that
   // catches clipping.
   const hover = async (selector, label) => {
     const el = await page.$(selector)
@@ -96,7 +96,7 @@ try {
         text: b.textContent.trim(),
         rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height },
         clipper,
-        // The bubble is the topmost painted thing at its own centre only if
+        // The bubble is the topmost painted thing at its own center only if
         // nothing clipped it away.
         painted: !!hit && (hit === b || b.contains(hit)),
         inViewport: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,

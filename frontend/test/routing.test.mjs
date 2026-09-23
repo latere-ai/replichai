@@ -163,7 +163,7 @@ try {
     await page.waitForSelector('.file-row')
     const got = await filesShown()
     if (JSON.stringify(got) !== JSON.stringify(want)) fail(`session ${id} listed ${JSON.stringify(got)}, want ${JSON.stringify(want)}`)
-    // And the pane renders that session's file, not a neighbour's.
+    // And the pane renders that session's file, not a neighbor's.
     await waitForText(page, '.markdown-body, .event-io', id, { timeout: 3000 }).catch(() => {})
     const body = await page.evaluate(() => document.querySelector('.markdown-body, .event-io')?.textContent ?? '')
     if (!body.includes(id)) fail(`the artifact pane of session ${id} rendered ${JSON.stringify(body.slice(0, 60))}`)
@@ -172,7 +172,7 @@ try {
 
   // Each session's record is its own, too. The grade lives on the run record
   // rather than under a "Verdict" heading now, because it is the rubric's
-  // judgement of the run rather than the paper's verdict, but the invariant 015
+  // judgment of the run rather than the paper's verdict, but the invariant 015
   // wrote this for is unchanged: one session's pane must never show another's.
   for (const id of [JOB, JOB_B]) {
     await page.open(`/p/${PROJECT}/s/${id}/verdict`)

@@ -7,13 +7,13 @@ status: built
 
 **Superseded by [029](029-the-landing-is-a-place.md), [033](033-the-landing-rebuilt-from-the-design.md) and [040](040-the-landing-in-light.md).** The mark and `index.html`'s description, icon and social card stand. The two-column landing below does not: it moved into its own module, was rebuilt from a design, and was restyled for light mode. `SignIn` is now `Landing`, the page links to the registry, which a signed-out reader can now read ([028](028-the-registry-opens.md)), and the webfont this spec put out of scope is self-hosted.
 
-**Status:** built. Every acceptance criterion holds. `frontend/src/brand.tsx` owns `Mark`, `Wordmark`, and `Lockup`; the letter-`r` `Logo` and its two tile rules are gone; `SignIn` is the two-column landing, and the three failure cards keep the centred one. `frontend/test/landing.test.mjs` drives criteria 1 and 3 to 6 in Chrome (the geometry at 1440×900 and 390×844, the area reorder, the fold, the `/login?next=` round trip, and the mark painting in both themes) and was verified to fail with the change stashed. The browser suite is green (8 files) and the 83 unit tests still pass.
+**Status:** built. Every acceptance criterion holds. `frontend/src/brand.tsx` owns `Mark`, `Wordmark`, and `Lockup`; the letter-`r` `Logo` and its two tile rules are gone; `SignIn` is the two-column landing, and the three failure cards keep the centered one. `frontend/test/landing.test.mjs` drives criteria 1 and 3 to 6 in Chrome (the geometry at 1440×900 and 390×844, the area reorder, the fold, the `/login?next=` round trip, and the mark painting in both themes) and was verified to fail with the change stashed. The browser suite is green (8 files) and the 83 unit tests still pass.
 
-Two things changed during the build. The mark lives in `brand.tsx`, not `icons.tsx` as this spec said: an icon inherits `currentColor` so one glyph can sit in a brand button and a muted row, while the mark owns its colour everywhere, and putting it in the icon set would have contradicted that file's first line. The outer ring draws six dashes rather than the ten first drawn; at 26px ten dashes read as a loading spinner, which this app shows a few pixels away. The favicon and the generated rasters use the same six, so the three are one mark.
+Two things changed during the build. The mark lives in `brand.tsx`, not `icons.tsx` as this spec said: an icon inherits `currentColor` so one glyph can sit in a brand button and a muted row, while the mark owns its color everywhere, and putting it in the icon set would have contradicted that file's first line. The outer ring draws six dashes rather than the ten first drawn; at 26px ten dashes read as a loading spinner, which this app shows a few pixels away. The favicon and the generated rasters use the same six, so the three are one mark.
 
 One fix outside the spec's scope came with it: `/internal/spa/dist/` was ignored one artifact at a time (`index.html`, `assets/`), so the three new static files landed untracked and would have been left out of the commit without an explicit `git add`. The rule now ignores the directory and un-ignores `PLACEHOLDER`.
 
-**Superseded in part by [029](029-the-landing-is-a-place.md).** Criteria 3 and 4 (the two-column grid, the one-column reorder, and the sign-in button inside the fold at 900px and 844px) are gone with the fold itself: the landing is a page that scrolls, so it cannot guarantee a fold. The replacement guarantee is stronger and independent of page length: a sticky header carrying the sign-in, asserted at the top of the page and at the bottom, on both viewports. `landing.test.mjs` now drives that. Criterion 5's deep link moved too: a public `/p/{id}` renders the app signed out since [028](028-the-registry-opens.md), so the landing's round trip is asserted from an address that still needs an account. Everything else here still holds: the mark, the wordmark, the copy, the head metadata, and the two failure screens keeping their centred card.
+**Superseded in part by [029](029-the-landing-is-a-place.md).** Criteria 3 and 4 (the two-column grid, the one-column reorder, and the sign-in button inside the fold at 900px and 844px) are gone with the fold itself: the landing is a page that scrolls, so it cannot guarantee a fold. The replacement guarantee is stronger and independent of page length: a sticky header carrying the sign-in, asserted at the top of the page and at the bottom, on both viewports. `landing.test.mjs` now drives that. Criterion 5's deep link moved too: a public `/p/{id}` renders the app signed out since [028](028-the-registry-opens.md), so the landing's round trip is asserted from an address that still needs an account. Everything else here still holds: the mark, the wordmark, the copy, the head metadata, and the two failure screens keeping their centered card.
 
 **Scope:** the surface an unauthenticated visitor lands on, and the mark it carries. Replaces the 440px sign-in card with a split screen: what replichai is on the left, the sign-in card on the right. Replaces the letter-`r` gradient tile with a drawn mark and a wordmark lockup. Adds the head metadata the app has never had (description, favicon, `og:`/`twitter:` cards). Frontend only: no route, no API, no schema.
 
@@ -21,7 +21,7 @@ One fix outside the spec's scope came with it: `/internal/spa/dist/` was ignored
 
 ## Problem
 
-The first thing a visitor sees is a centred card holding a gradient tile with the letter `r`, the word `replichai`, one sentence (*"Audit the reproducibility of a research paper."*), and a button (`frontend/src/App.tsx:307-321`). Nothing on that screen says what the product does that other tools do not, and the one sentence is the only claim it makes.
+The first thing a visitor sees is a centered card holding a gradient tile with the letter `r`, the word `replichai`, one sentence (*"Audit the reproducibility of a research paper."*), and a button (`frontend/src/App.tsx:307-321`). Nothing on that screen says what the product does that other tools do not, and the one sentence is the only claim it makes.
 
 That matters more here than for most products, because the differentiator is a boundary rather than a category. `docs/landscape.md` states it: every tool in the field reads a paper's text and images, and none of them re-runs a line of its code. The first screen should say that this product executes the paper, and that it refuses to execute the half of the paper a machine cannot honestly execute. A card with room for one sentence cannot say either.
 
@@ -31,9 +31,9 @@ There is also nothing in `<head>`: no description, no icon, no social card (`fro
 
 ## Decisions
 
-**The mark represents the boundary the product defends.** A closed solid ring inside a dashed open one: the inner loop is mechanically re-runnable, so it is drawn closed; the outer loop is the study with human participants, so it is drawn open, and the product never closes it. The mark is an inline SVG in its own `brand.tsx`, coloured from `--brand` and scaled by an explicit `size`, so it works in dark mode and needs no font and no raster. It is not in `icons.tsx`: an icon there inherits `currentColor` on purpose, and the mark must look the same in every context it is used in.
+**The mark represents the boundary the product defends.** A closed solid ring inside a dashed open one: the inner loop is mechanically re-runnable, so it is drawn closed; the outer loop is the study with human participants, so it is drawn open, and the product never closes it. The mark is an inline SVG in its own `brand.tsx`, colored from `--brand` and scaled by an explicit `size`, so it works in dark mode and needs no font and no raster. It is not in `icons.tsx`: an icon there inherits `currentColor` on purpose, and the mark must look the same in every context it is used in.
 
-**The wordmark carries the same seam.** `replichai` is `replic` (replication) and `hai` (human–AI, the lineage the `open-hai` forge account already names). The lockup sets it as one word with a hairline optical gap at that seam and tightened tracking. It is *not* tinted: the stylesheet's rule is that one brand hue marks what the operator can act on (`styles.css:1-9`), and a two-tone wordmark would spend that hue on decoration. The colour goes on the mark.
+**The wordmark carries the same seam.** `replichai` is `replic` (replication) and `hai` (human–AI, the lineage the `open-hai` forge account already names). The lockup sets it as one word with a hairline optical gap at that seam and tightened tracking. It is *not* tinted: the stylesheet's rule is that one brand hue marks what the operator can act on (`styles.css:1-9`), and a two-tone wordmark would spend that hue on decoration. The color goes on the mark.
 
 **The landing is two columns, and the sign-in card stays inside the fold.** Left: the lockup, the claim, the lead paragraph, and three lines naming the inner loop, the outer loop, and the verdict. Right: the sign-in card. Below 900px the grid becomes one column ordered brand, then card, then the three lines, so the button is reachable on a phone without scrolling past the argument.
 
@@ -41,7 +41,7 @@ There is also nothing in `<head>`: no description, no icon, no social card (`fro
 
 **The copy promises exactly what 006q made true.** Signing in is open and costs nothing; a session is what spends credits. The card says that rather than "get started free", which would be a claim about credits a new account does not have.
 
-**`AuthUnavailable` and `NoAccess` keep the centred card.** They are failure screens, not invitations, and an argument for the product is the wrong content for somebody whose session just broke. They inherit the new mark and lockup and nothing else.
+**`AuthUnavailable` and `NoAccess` keep the centered card.** They are failure screens, not invitations, and an argument for the product is the wrong content for somebody whose session just broke. They inherit the new mark and lockup and nothing else.
 
 ## The copy
 
@@ -67,7 +67,7 @@ Every string lives in `i18n.ts` under the `auth` section. `Lang` is `'en'` only 
 3. At 1440×900 the landing renders two columns, and the sign-in button's bounding box lies entirely above 900px.
 4. At 390×844 the landing renders one column, the order is brand → card → points, and the sign-in button is entirely above 844px.
 5. The sign-in button still links to `/login?next={current path}`, and the deep-link case (`/p/{id}` signed out) still round-trips.
-6. `AuthUnavailable` and `NoAccess` still render their centred card with the new mark.
+6. `AuthUnavailable` and `NoAccess` still render their centered card with the new mark.
 7. `index.html` carries a description, an `og:image`, and an icon; `favicon.svg`, `apple-touch-icon.png`, and `og.png` are served from the built bundle's root.
 8. A browser test (`frontend/test/landing.test.mjs`) drives 3, 4, 5, and 6 in Chrome against a mocked `/me`, and fails without the change.
 

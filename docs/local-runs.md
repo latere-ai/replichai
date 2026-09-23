@@ -86,7 +86,7 @@ own evidence.
 `workspace/` is both the build directory and the deliverable, so replichai
 keeps installed dependencies out of it by rules the agent does not control: the
 repository ignores them, the harvest skips them, and publication refuses a tree
-that carries one. A virtualenv is recognised by the `pyvenv.cfg` file Python
+that carries one. A virtualenv is recognized by the `pyvenv.cfg` file Python
 writes, so one under any name is caught.
 
 Directories are kept after a run, because the workspace is the reproduction:
@@ -153,7 +153,7 @@ The platform allocates the repository, from the same registry a session started
 in the app allocates from, and hands back a credential that can write to that
 one repository and expires within the hour. Your machine pushes with it and
 returns it when the run is finalized. Without `--project`, `--publish` uses
-`REPLICHAI_GITHUB_TOKEN` as before. That is an organisation token, so prefer
+`REPLICHAI_GITHUB_TOKEN` as before. That is an organization token, so prefer
 the project path where you have one.
 
 Two things that credential cannot do: `--invite` needs permission to administer
@@ -330,7 +330,7 @@ assuming them:
   workspace is a repository it has never seen, so the trust check is skipped.
   The sandbox is the boundary; Codex's own prompt is not.
 - It is a Rust binary and will not trust the sandbox's certificate authority,
-  so its endpoints are tunnelled rather than inspected.
+  so its endpoints are tunneled rather than inspected.
 
 `~/.codex/AGENTS.md` is withheld like any standing instruction, and Codex
 reports that as an error line in its transcript. The run continues.
@@ -388,7 +388,7 @@ success. An empty repository is a real outcome, and the transcript in
 | `--sandbox` | `host` | `host` (srt) or `container` (podman, docker) |
 | `--harness` | `claude-code` | `claude-code` or `codex` |
 | `--model` | `best` | a tier (`best`, `balanced`, `fast`) or `provider/id` |
-| `--models` | `~/.config/replichai/models.yaml` | the model catalogue |
+| `--models` | `~/.config/replichai/models.yaml` | the model catalog |
 | `--session-root` | `~/.replichai/sessions` | where session directories are made |
 | `--retention` | `keep` | `keep`, `on-failure`, or `discard` |
 | `--engine` | podman, then docker | with `--sandbox container` |

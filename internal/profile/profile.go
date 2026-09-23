@@ -8,7 +8,7 @@
 // rather than a username (006n).
 //
 // The package is deliberately separate from internal/access. A grant is an
-// authorisation record and stores no display data; a profile is display data
+// authorization record and stores no display data; a profile is display data
 // and grants nothing. Nothing in a profile is verified. The platform does not
 // check that someone works where they say they work, just as a preprint
 // server does not. What the package does guarantee is the binding: a profile
@@ -133,7 +133,7 @@ var orcidPattern = regexp.MustCompile(`^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$`)
 // scholar.google.co.uk.
 var scholarHostPattern = regexp.MustCompile(`^scholar\.google(\.[a-z]{2,3}){1,2}$`)
 
-// Normalize trims every field and canonicalises what has a canonical form, so a
+// Normalize trims every field and canonicalizes what has a canonical form, so a
 // pasted address with a trailing space and a typed one compare equal.
 func (p Profile) Normalize() Profile {
 	p.DisplayName = strings.TrimSpace(p.DisplayName)

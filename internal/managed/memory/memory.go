@@ -46,7 +46,7 @@ const (
 	FailRelease  FailurePoint = "release"
 )
 
-// Config is the scripted behaviour of one Runtime: which model it advertises,
+// Config is the scripted behavior of one Runtime: which model it advertises,
 // how many polls a session runs for, what verdict and artifacts it produces,
 // and where it fails. NewWithStore fills in the zero values, so the zero
 // Config is a usable success path.
@@ -61,7 +61,7 @@ type Config struct {
 
 // Store holds the sessions. It is deliberately separate from Runtime, which
 // is what makes this runtime restartable: a Runtime rebuilt around the same
-// Store, as the builtin catalogue does on every lookup, still finds the
+// Store, as the builtin catalog does on every lookup, still finds the
 // sessions an earlier Runtime started. Keeping the map on Runtime would make
 // every rebuild lose them.
 type Store struct {
@@ -161,7 +161,7 @@ func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 }
 
 // Validate checks the spec against the advertised capabilities and rejects an
-// exact model that is not the configured one. It has no context to honour, so
+// exact model that is not the configured one. It has no context to honor, so
 // it reads the capabilities directly rather than through Capabilities.
 func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if err := r.failure(FailValidate); err != nil {

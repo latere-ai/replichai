@@ -7,7 +7,7 @@
 // keyboard stayed on the button that opened the dialog, behind the backdrop,
 // so Tab walked the page underneath, Enter re-fired the opener, and nothing
 // brought focus back when the dialog closed. Every dialog in the app is one
-// Modal, so the behaviour is asserted there once: focus lands inside on open,
+// Modal, so the behavior is asserted there once: focus lands inside on open,
 // Tab and Shift+Tab wrap within it, and Escape returns it to the opener. Run it
 // with `bun run test:browser`.
 import { check, fail, start } from './harness.mjs'

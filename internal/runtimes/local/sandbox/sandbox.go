@@ -110,7 +110,7 @@ func stoppedText(platform hostsandbox.Platform, components []string) string {
 		fmt.Fprintf(&b, "%s is installed but is not running.\n\n", component)
 		switch {
 		case component == "podman" && platform == hostsandbox.Darwin:
-			b.WriteString("    podman machine start\n\nIf you have never initialised one:\n\n")
+			b.WriteString("    podman machine start\n\nIf you have never initialized one:\n\n")
 			b.WriteString("    podman machine init --cpus 4 --memory 8192 --disk-size 100\n    podman machine start\n")
 		case component == "docker" && platform == hostsandbox.Darwin:
 			b.WriteString("    open -a Docker\n")

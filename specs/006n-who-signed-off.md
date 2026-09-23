@@ -21,7 +21,7 @@ The publish control is also thinner than the act it performs: one checkbox in a 
 
 ## Decisions
 
-**A researcher profile, self-asserted, in its own package.** `internal/profile` owns one row per principal: display name, institution, public contact email, ORCID, and a Google Scholar profile. It is deliberately *not* in `internal/access`: a grant is an authorisation record and its “no display data” rule stays true. Nothing here is authenticated: the platform does not verify that someone works where they say they work, exactly as a preprint server does not. What the platform *does* guarantee is the binding between the claim and the principal who made it.
+**A researcher profile, self-asserted, in its own package.** `internal/profile` owns one row per principal: display name, institution, public contact email, ORCID, and a Google Scholar profile. It is deliberately *not* in `internal/access`: a grant is an authorization record and its “no display data” rule stays true. Nothing here is authenticated: the platform does not verify that someone works where they say they work, exactly as a preprint server does not. What the platform *does* guarantee is the binding between the claim and the principal who made it.
 
 ```
 GET   /me/profile → { display_name, institution, contact_email, orcid, scholar_url }

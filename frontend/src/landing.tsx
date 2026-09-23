@@ -234,7 +234,7 @@ function LoopFigure() {
         <circle className="lp-ring-outer" cx="120" cy="120" r="92" strokeDasharray="60 36.87" />
         {/* The inner loop: closed, because it is the half that re-runs. */}
         <circle className="lp-ring-inner" cx="120" cy="120" r="50" />
-        {/* The runner: one arc travelling the closed loop. It is what "re-runs"
+        {/* The runner: one arc traveling the closed loop. It is what "re-runs"
             looks like. */}
         <circle className="lp-ring-runner" cx="120" cy="120" r="50" strokeDasharray="40 274" />
       </svg>

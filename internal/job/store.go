@@ -131,7 +131,7 @@ type Store interface {
 	// puts the running-session refusal in the handler rather than in the
 	// project store.
 	Delete(ctx context.Context, id string) error
-	// StatusByProjects summarises the sessions of each named project: the total,
+	// StatusByProjects summarizes the sessions of each named project: the total,
 	// how many are still running, the newest session's phase, and when one last
 	// changed. A project list shows status from one query.
 	//

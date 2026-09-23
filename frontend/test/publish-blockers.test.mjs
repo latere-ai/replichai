@@ -53,7 +53,7 @@ const routes = [
   ['POST', /^\/projects\/[^/]+\/public$/, json(refusal, 409)],
   ['PATCH /me/profile', profile],
   // The flagged session's manifest: the review is what the verdict pane has
-  // to say out loud, not just colour a pill with.
+  // to say out loud, not just color a pill with.
   [
     /^\/jobs\/([^/]+)\/reproduction$/,
     ({ params: [id] }) => (id === UNFINISHED ? json({ error: 'not_found' }, 404) : { id, repo: `open-hai/${id}`, title: 't', verdict: 'passed', review: 'excluded', can_publish: false }),

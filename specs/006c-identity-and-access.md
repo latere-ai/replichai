@@ -5,7 +5,7 @@ status: implemented
 
 # 006c — Identity, tiers, and the access gate
 
-**The forge-account link below is gone, and the tier table has one wrong row.** The link was deferred to [006f](006f-taking-a-reproduction-out.md) as its only consumer; 006f invites the login the request names instead, and ownership is granted by the organisation's invitation. Nothing ever wrote or read it, so its two `Access` methods, both store implementations, the `forge_links` table (dropped in migration 5) and `/me`'s always-empty `linked_accounts` are all removed, and with them the `/{forge}` routes and acceptance criterion 5. Separately, [006q](006q-sign-in-is-open-budget-is-not.md) made a first sign-in self-grant `TierUser`, so the table below is wrong to say an admin sets it; migration 3 also added `revoked_at`/`revoked_by`, because a self-granting sign-in turns a deleted grant into a logout. The fail-closed gate, the two portable claims, seed-and-bind, and the one-way binding all hold.
+**The forge-account link below is gone, and the tier table has one wrong row.** The link was deferred to [006f](006f-taking-a-reproduction-out.md) as its only consumer; 006f invites the login the request names instead, and ownership is granted by the organization's invitation. Nothing ever wrote or read it, so its two `Access` methods, both store implementations, the `forge_links` table (dropped in migration 5) and `/me`'s always-empty `linked_accounts` are all removed, and with them the `/{forge}` routes and acceptance criterion 5. Separately, [006q](006q-sign-in-is-open-budget-is-not.md) made a first sign-in self-grant `TierUser`, so the table below is wrong to say an admin sets it; migration 3 also added `revoked_at`/`revoked_by`, because a self-granting sign-in turns a deleted grant into a logout. The fail-closed gate, the two portable claims, seed-and-bind, and the one-way binding all hold.
 
 **Status:** implemented; the forge-account link is removed (it never gained the consumer it was deferred to)
 **Scope:** who may sign in, who may operate, and how a reproduction gets granted: the OIDC login, the fail-closed `access_grants` gate, the two tiers, and the proven forge-account link. A child of [006](006-web-application.md).
@@ -18,18 +18,18 @@ Binding is on the **IdP-authenticated email**: latere auth vouches for the email
 
 ## Problem
 
-One shared credential pays for every run, so access starts closed. Signing in must prove who someone is without coupling this product to the identity provider's own authorisation model, and operating must be gated on a decision this deployment owns, not one read out of someone else's token. And the one place a reproduction leaves the organisation, a collaborator invitation, needs the user's forge account to be *proven*, never typed.
+One shared credential pays for every run, so access starts closed. Signing in must prove who someone is without coupling this product to the identity provider's own authorization model, and operating must be gated on a decision this deployment owns, not one read out of someone else's token. And the one place a reproduction leaves the organization, a collaborator invitation, needs the user's forge account to be *proven*, never typed.
 
 ## Decisions
 
-**Authentication is portable; authorisation is ours.** The identity provider is an OIDC provider and nothing more. The login is a standard public PKCE flow; from the ID token we keep exactly two things and discard the rest:
+**Authentication is portable; authorization is ours.** The identity provider is an OIDC provider and nothing more. The login is a standard public PKCE flow; from the ID token we keep exactly two things and discard the rest:
 
 | Claim | Use |
 |---|---|
 | `sub` | the stable principal every row keys on |
 | `email` | seeding a grant for someone not yet signed in — nothing else |
 
-No IDP-issued role, scope, org membership, or admin flag reaches an authorisation decision. Reading them would couple the beta to one issuer's schema; swapping issuers must be a config change. The library is a conformant OIDC client, not a vendor SDK whose value is the claims we just refused. Rejected: gating on an IDP `replichai:operate` scope or seed-org membership, because it puts our access policy in another service's admin UI.
+No IDP-issued role, scope, org membership, or admin flag reaches an authorization decision. Reading them would couple the beta to one issuer's schema; swapping issuers must be a config change. The library is a conformant OIDC client, not a vendor SDK whose value is the claims we just refused. Rejected: gating on an IDP `replichai:operate` scope or seed-org membership, because it puts our access policy in another service's admin UI.
 
 **The gate is a single structural check, fail-closed.** The `access_grants` table is the whole model: an empty table admits nobody. The operator routes (006a) are mounted behind one gate they cannot be served without, not a condition repeated through handlers. This is the same shape as 002's redistribution gate. `GET /me` sits *outside* it, so the frontend can render the not-invited screen; everything else answers `403` with a reason (`not_granted` for an ungranted principal, which was `not_invited` until [006q](006q-sign-in-is-open-budget-is-not.md) renamed a state that no longer exists; `not_owner` for a caller reaching another owner's project actions), read surfaces included, because a private project's repositories are private.
 
@@ -46,7 +46,7 @@ No IDP-issued role, scope, org membership, or admin flag reaches an authorisatio
 | **Platform admin** | bootstrap admin-email list in the env, seeded at startup; admins promote others | grant, revoke, promote — and all below |
 | **User** (invited) | a platform admin | sign in, own projects, submit, watch, read results and transcripts, invite collaborators to their own projects, claim ownership if a forge account is linked, and make *their own* project public with a responsibility sign-off ([006f](006f-taking-a-reproduction-out.md)) |
 
-There is no self-serve path up the tiers. The public flip is authorised by *project ownership* plus a sign-off, not by a platform tier, so it lives with the project (006f), not here.
+There is no self-serve path up the tiers. The public flip is authorized by *project ownership* plus a sign-off, not by a platform tier, so it lives with the project (006f), not here.
 
 **Project membership reuses the seed-and-bind rule, and admits nobody to the platform.** [007](007-from-reproduction-to-replication.md) needs replication projects led by researchers named by email. That is this table's *shape* applied to a second relation, `(principal, project, role)` with roles *lead* and *collaborator*, seeded by email and bound one-way on first login. It is not a second membership system, and not an extension of the tier ladder.
 
@@ -86,7 +86,7 @@ func Gate(a Access) func(http.Handler) http.Handler
 
 ## Acceptance criteria
 
-1. Only `sub` and the IdP-authenticated email are consumed; a test drives login against a stub issuer whose token also carries roles/scopes/org claims and asserts none reach an authorisation decision.
+1. Only `sub` and the IdP-authenticated email are consumed; a test drives login against a stub issuer whose token also carries roles/scopes/org claims and asserts none reach an authorization decision.
 2. With an empty `access_grants` table, an authenticated session reaches no operator route. The gate enumerates 006a's gated routes and each answers `not_granted`; a route added without the gate fails the test.
 3. A grant seeded by email admits on first sign-in and binds to the principal; a second principal presenting that email afterwards is refused; revoking locks the holder out on the next request with no session left standing.
 4. Tier is enforced server-side: only a platform admin may grant, revoke, or promote, refused even when the request is forged past the UI. (The public flip's owner check lives with the project, 006f.)
@@ -97,4 +97,4 @@ func Gate(a Access) func(http.Handler) http.Handler
 
 ## Out of scope
 
-The routes themselves and their mounting (006a). The collaborator invitation and the owner's public flip that consume the link and project ownership (006f). Any use of the IDP beyond the two claims; its roles, orgs, billing are another product's model. Multi-tenant authorisation, org RBAC, and per-user credentials, deferred with the rest of multi-tenancy. The frontend's not-invited screen (006e); this spec makes the state, that spec renders it.
+The routes themselves and their mounting (006a). The collaborator invitation and the owner's public flip that consume the link and project ownership (006f). Any use of the IDP beyond the two claims; its roles, orgs, billing are another product's model. Multi-tenant authorization, org RBAC, and per-user credentials, deferred with the rest of multi-tenancy. The frontend's not-invited screen (006e); this spec makes the state, that spec renders it.

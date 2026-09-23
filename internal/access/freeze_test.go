@@ -33,13 +33,13 @@ func runFreezeContract(t *testing.T, ov interface {
 		t.Fatalf("fresh override active = %v, %v; want inactive", active, err)
 	}
 
-	// A grant is in force, and is keyed by normalised email so a differently
+	// A grant is in force, and is keyed by normalized email so a differently
 	// cased read finds it.
 	if err := ov.GrantOverride(ctx, admin, who); err != nil {
 		t.Fatalf("GrantOverride: %v", err)
 	}
 	if active, _ := ov.OverrideActive(ctx, "debtor@example.com "); !active {
-		t.Fatal("granted override not active under the normalised email")
+		t.Fatal("granted override not active under the normalized email")
 	}
 	// Re-granting an active override is a no-op, not an error.
 	if err := ov.GrantOverride(ctx, admin, who); err != nil {

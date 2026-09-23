@@ -4,7 +4,7 @@
 // The identity: one drawn mark and one wordmark, used wherever the product
 // names itself. It is kept apart from `icons.tsx` because an icon inherits
 // `currentColor` so the same glyph can sit in a brand button and a muted row,
-// while the mark owns its colour and must look the same in every context.
+// while the mark owns its color and must look the same in every context.
 //
 // Nothing here depends on a font. The mark it replaced was the character `r`
 // set in `--font-serif: 'Instrument Serif'`, which the app did not ship, so the
@@ -40,7 +40,7 @@ export function Mark({ size = 24, className }: { size?: number; className?: stri
 
 // Wordmark sets the name as one word with a hairline gap at its seam between
 // `Replic`, for replication, and `HAI`, for human-AI, the lineage the
-// `open-hai` forge account already carries. The seam is spacing, not colour:
+// `open-hai` forge account already carries. The seam is spacing, not color:
 // the stylesheet reserves the brand hue for what the operator can act on, and a
 // two-tone wordmark would spend it on decoration.
 export function Wordmark({ className }: { className?: string }) {

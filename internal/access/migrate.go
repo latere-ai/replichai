@@ -13,7 +13,7 @@ import (
 
 // migrations is the access schema, versioned and applied at startup alongside
 // the job schema. The access tables are in the same database the deployment
-// owns, and hold grants and the authorisation trail, never a reproduction.
+// owns, and hold grants and the authorization trail, never a reproduction.
 var migrations = []struct {
 	version int
 	sql     string
@@ -93,7 +93,7 @@ DROP TABLE IF EXISTS forge_links;
 // The lock is taken inside the migration transaction and released with it, so
 // the second process waits, then reads the version the first recorded and
 // skips it. Each namespace has its own id, so the five migrators only ever
-// serialise against another copy of themselves.
+// serialize against another copy of themselves.
 const migrationLock = 2
 
 // Migrate applies the access schema. It uses its own version namespace table so

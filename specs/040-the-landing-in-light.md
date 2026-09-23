@@ -11,9 +11,9 @@ status: built
 
 **Depends on:** [033](033-the-landing-rebuilt-from-the-design.md) (the page this changes), latere-ui v1.28.0 (the React `SiteFooter`).
 
-The scene rewrite turned out to be one substitution rather than a second renderer. Additive blending and normal blending store a particle's strength in different places: the colour channels in one, the alpha channel in the other. So the layers write their brightness through a single `paint()` and the buffers became RGBA (three reads a four-wide colour attribute as vertex alpha). Everything downstream, the six orbit builders and the whole animation, is unchanged.
+The scene rewrite turned out to be one substitution rather than a second renderer. Additive blending and normal blending store a particle's strength in different places: the color channels in one, the alpha channel in the other. So the layers write their brightness through a single `paint()` and the buffers became RGBA (three reads a four-wide color attribute as vertex alpha). Everything downstream, the six orbit builders and the whole animation, is unchanged.
 
-Two things the design did not anticipate. The filmic tone curve exists to roll off an additive bloom; in light mode there is no bloom and the curve only greys the ground, so the light state renders its values as written. And the material's quietest ink had to go a step darker than the page's `--fg-3`: a 10px plate label inside a card inside a panel does not meet the contrast the page's own quiet tier ships at. The new browser assertion caught this rather than a reviewer.
+Two things the design did not anticipate. The filmic tone curve exists to roll off an additive bloom; in light mode there is no bloom and the curve only grays the ground, so the light state renders its values as written. And the material's quietest ink had to go a step darker than the page's `--fg-3`: a 10px plate label inside a card inside a panel does not meet the contrast the page's own quiet tier ships at. The new browser assertion caught this rather than a reviewer.
 
 ## Problem
 
@@ -29,11 +29,11 @@ Separately, the page ends in `.lp-foot`: a lockup and a tagline. Every other Lat
 
 ## Decisions
 
-**The blocks are a material with two states, not one colour.** The `--slab-*` locals on `.landing` stay the single place the material is defined, and gain a light half. Light is the default and dark is the override, matching how the rest of the stylesheet is written. Nothing outside `.landing` changes.
+**The blocks are a material with two states, not one color.** The `--slab-*` locals on `.landing` stay the single place the material is defined, and gain a light half. Light is the default and dark is the override, matching how the rest of the stylesheet is written. Nothing outside `.landing` changes.
 
 **The class names describe what they do.** `.lp-dark` becomes `.lp-block` and `.lp-on-dark` becomes `.lp-on-slab`. A class called "dark" that renders light half the time is misleading, and worse than no name.
 
-**The scene uses ink on a light ground rather than light on a dark one.** The light hero keeps every particle, every orbit and the whole motion; what changes is the arithmetic. Additive blending becomes normal blending, the per-vertex brightness moves from the colour channels into an alpha channel, and the hues become ink colours. Density then reads the same way it does in dark mode: many faint particles converge on full ink instead of on white, so the figure keeps its meaning. One palette object holds every value the two states disagree about; the geometry code reads it and never branches.
+**The scene uses ink on a light ground rather than light on a dark one.** The light hero keeps every particle, every orbit and the whole motion; what changes is the arithmetic. Additive blending becomes normal blending, the per-vertex brightness moves from the color channels into an alpha channel, and the hues become ink colors. Density then reads the same way it does in dark mode: many faint particles converge on full ink instead of on white, so the figure keeps its meaning. One palette object holds every value the two states disagree about; the geometry code reads it and never branches.
 
 **The footer comes from latere-ui.** `SiteFooter` from `latere-ui/react`, full variant, wired to the app's own theme store. Its stylesheet expects a palette this app does not have (`--text`, `--accent`, and others), so those are aliased on `.site-footer`. They are never provided by importing `latere-ui/tokens`, which would redefine `--bg-*` for the whole page.
 
@@ -46,7 +46,7 @@ One thing shipped as it is rather than as the shared component intends. The foot
 1. In light mode none of the four blocks paints a near-black ground; each reads as raised paper with a hairline.
 2. In dark mode all four render as they did before 040 — same grounds, same inks, same washes.
 3. The hero scene picks its palette from the resolved theme and re-mounts when the theme changes.
-4. `.lp-walk-panel` carries no colour of its own; it takes the block's.
+4. `.lp-walk-panel` carries no color of its own; it takes the block's.
 5. The page ends in the shared Latere footer, full variant, showing the product lineup and the legal links.
 6. The footer's theme control drives the app's theme, and the active one is marked.
 7. The footer's language control offers English only.

@@ -11,13 +11,13 @@ status: implemented
 
 ## Problem
 
-An audit currently ends with files in a local directory. They should end up as a repository under the `open-hai` organisation, one per reproduction, so each is independently citable, forkable, and versioned.
+An audit currently ends with files in a local directory. They should end up as a repository under the `open-hai` organization, one per reproduction, so each is independently citable, forkable, and versioned.
 
 ## Decisions
 
 **One reproduction, one repository.** Named `<slug>-<suffix>`, where `slug` comes from 001 and `suffix` is four lowercase base-32 characters. Every repository carries a suffix, including the first, so no reproduction is privileged and adding a second never requires renaming the first.
 
-**Visibility: private.** All published repositories are created private. Making them public is a deliberate, separate decision per repository, taken by a human, and is gated on the licence check below. This spec never makes anything public; [006](006-web-application.md) gives that human decision a surface, restricted to trusted users and refused for any repository whose manifest does not show it was published under this gate.
+**Visibility: private.** All published repositories are created private. Making them public is a deliberate, separate decision per repository, taken by a human, and is gated on the license check below. This spec never makes anything public; [006](006-web-application.md) gives that human decision a surface, restricted to trusted users and refused for any repository whose manifest does not show it was published under this gate.
 
 **Every repository carries a manifest.** `replication.json` at the root:
 
@@ -45,7 +45,7 @@ The manifest is what makes 003 possible without a separate database: the registr
 
 **`method_digest`** pins which version of the method produced the reproduction. Two reproductions of one paper are only comparable if they were produced by the same method, and the digest is how that is checked.
 
-**How the manifest maps onto the port.** `paper.{key, scheme, title, slug}` comes straight from the `paper.Identity` of 001. `verdict` is `provider.Grade`; it already marshals to `"passed"`, so `audit.Result.Grade()` fills it directly, with no translation. `rate` is the one field the port does not produce as a value: the reproducibility rate is prose the worker writes into `REPRODUCIBILITY.md`, and it is deliberately run-dependent (a re-decomposed inner loop scored 40% over 5 components where the reference scored 79% over 7; see [004](004-go-port.md), commit `8aedf19`). The port checks conformance on the verdict, not the rate. So `rate` in the manifest is an **open mapping**: the publisher either parses the decomposed rate out of `REPRODUCIBILITY.md` and records it, or omits the field when it cannot. It is therefore modelled as a nil-able `*Rate`, never a fabricated zero. Deciding the parse is left to implementation; the manifest schema tolerates its absence.
+**How the manifest maps onto the port.** `paper.{key, scheme, title, slug}` comes straight from the `paper.Identity` of 001. `verdict` is `provider.Grade`; it already marshals to `"passed"`, so `audit.Result.Grade()` fills it directly, with no translation. `rate` is the one field the port does not produce as a value: the reproducibility rate is prose the worker writes into `REPRODUCIBILITY.md`, and it is deliberately run-dependent (a re-decomposed inner loop scored 40% over 5 components where the reference scored 79% over 7; see [004](004-go-port.md), commit `8aedf19`). The port checks conformance on the verdict, not the rate. So `rate` in the manifest is an **open mapping**: the publisher either parses the decomposed rate out of `REPRODUCIBILITY.md` and records it, or omits the field when it cannot. It is therefore modeled as a nil-able `*Rate`, never a fabricated zero. Deciding the parse is left to implementation; the manifest schema tolerates its absence.
 
 ## The redistribution gate — mandatory, blocking
 
@@ -63,13 +63,13 @@ The gate is therefore **structural and fails closed**:
 3. Compiled residue and files with known-secret names never enter the plan at all, neither included nor quarantined. A content sweep at publish time is the backstop for a secret that slips through under an innocent name.
 4. Quarantined files are listed in `EXCLUDED.md` in the published repository, with the reason, so the gap is documented rather than silent.
 
-Failing open would mean publishing someone else's gated data under the organisation's name. The gate fails closed: the gated benchmark of the motivating case is third-party, so it is quarantined **by origin**, with no term-reading required.
+Failing open would mean publishing someone else's gated data under the organization's name. The gate fails closed: the gated benchmark of the motivating case is third-party, so it is quarantined **by origin**, with no term-reading required.
 
 **Deferred to a later spec:** clearing a specific third-party file for redistribution, and catching a no-redistribution term on a file that *is* worker-written, both need per-artifact provenance the method does not emit. Until that exists, third-party is never published, which is the safe default.
 
 ## Interface
 
-Package `internal/publish`. The manifest serialises to exactly the JSON above;
+Package `internal/publish`. The manifest serializes to exactly the JSON above;
 `Rate` is a pointer because it may be absent (see the open mapping), and
 `Created` is stamped at publish time, so a plan's manifest carries a zero time
 until then. `PlanPublication` is pure and does no I/O (classification is by

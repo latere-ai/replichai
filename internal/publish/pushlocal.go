@@ -20,7 +20,7 @@ var (
 	// nothing, and that is recorded rather than reported as success.
 	ErrNothingCommitted = errors.New("the run committed nothing")
 	// ErrNoWorkspace reports that there is no repository to push: the
-	// directory is gone or was never initialised. It is a failure of the
+	// directory is gone or was never initialized. It is a failure of the
 	// push and not a finding about the run, which is why it is distinct from
 	// ErrNothingCommitted.
 	ErrNoWorkspace = errors.New("the workspace is not a git repository")

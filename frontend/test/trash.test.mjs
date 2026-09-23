@@ -149,7 +149,7 @@ try {
   const purgeText = await page.evaluate(() => document.querySelector('.modal').textContent)
   if (!/cannot be brought back/i.test(purgeText)) fail('the permanent-delete dialog does not say it is irreversible')
   if (!/made private, not deleted/i.test(purgeText)) fail('the permanent-delete dialog does not say the repositories survive')
-  // Escape, not a click on the backdrop: the backdrop's centre is the dialog.
+  // Escape, not a click on the backdrop: the backdrop's center is the dialog.
   await page.keyboard.press('Escape')
   await page.waitForFunction(() => !document.querySelector('.modal-backdrop'))
 

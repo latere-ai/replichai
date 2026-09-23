@@ -39,7 +39,7 @@ const plumbingKinds = new Set(['status_idle', 'status_running', 'thread_status_i
 
 // Card is an event with its place in the whole transcript. The place is the
 // event's identity on screen: cards were keyed by their position in the
-// filtered list, so a search that dropped one card handed its neighbour's open
+// filtered list, so a search that dropped one card handed its neighbor's open
 // disclosure to whichever event moved into that position.
 type Card = { e: Event; n: number }
 // gradeKinds is the whole outcome family, which the filter rail folds into one
@@ -620,7 +620,7 @@ function kindColor(kind: string) {
   return 'var(--fg-2)'
 }
 // kindIcon pairs each event kind with a glyph, so a filter row and the event it
-// filters are recognisable as the same thing.
+// filters are recognizable as the same thing.
 function kindIcon(kind: string): IconName {
   if (kind === 'grade') return 'gauge'
   if (kind === 'tool_use') return 'wrench'

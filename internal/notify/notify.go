@@ -48,7 +48,7 @@ func New(tx Transport, baseURL string) *Notifier {
 // ProjectInvitation tells someone they have been added to a project.
 //
 // It is an announcement, not an offer. The membership already exists, created
-// by an owner who was authorised to create it, so there is nothing to accept
+// by an owner who was authorized to create it, so there is nothing to accept
 // and no token to carry. The message names who added them and links to the
 // project.
 //

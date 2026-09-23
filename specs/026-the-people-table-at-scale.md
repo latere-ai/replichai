@@ -51,17 +51,17 @@ The frozen flag joins `freeze_overrides` the same way, so the whole row (identit
 
 ### No stored balance, and no user table yet
 
-011 rejected a materialised balance column outright: *"a materialised total is a second source of truth, and it drifts the first time a row is corrected."* That argument still holds, and the aggregated query above honours it: the balance is still a fold, computed on read, once instead of N times. It carries comfortably into the low thousands.
+011 rejected a materialized balance column outright: *"a materialized total is a second source of truth, and it drifts the first time a row is corrected."* That argument still holds, and the aggregated query above honors it: the balance is still a fold, computed on read, once instead of N times. It carries comfortably into the low thousands.
 
-**When the aggregate itself gets slow** (a ledger of millions of entries, a hot admin screen), the next step is a **materialised view** or a maintained per-holder aggregate. That *does* reintroduce 011's drift risk and therefore must carry a rebuild-from-ledger reconciliation, so the derived total can always be checked against the ledger. That is deferred *within* this spec: name the trigger (row count / p95 latency), do not build it speculatively.
+**When the aggregate itself gets slow** (a ledger of millions of entries, a hot admin screen), the next step is a **materialized view** or a maintained per-holder aggregate. That *does* reintroduce 011's drift risk and therefore must carry a rebuild-from-ledger reconciliation, so the derived total can always be checked against the ledger. That is deferred *within* this spec: name the trigger (row count / p95 latency), do not build it speculatively.
 
 A **dedicated user/account table**, a read-model projection of identity + balance + frozen, is heavier still and is **not** proposed. Today a "user" is `access_grants` joined to a folded balance; that projection is a query, not a table, until the query cannot keep up. Introducing a table before then is a second source of truth to keep in sync for no measured gain.
 
 ## Open questions (close before building)
 
 1. **Cursor key.** `(granted_at, email)` (chronological) or `email` (alphabetical, matches a lookup habit)? Affects the default order the operator scrolls.
-2. **Materialisation trigger.** What row count or query latency justifies moving from the live aggregate to a maintained one? Pick a number to watch rather than a guess.
-3. **Owing at scale.** Is `HAVING SUM < 0` over the full ledger fast enough with the right index, or does *the owing view specifically* need the materialised aggregate first (few rows, but scans everything to find them)?
+2. **Materialization trigger.** What row count or query latency justifies moving from the live aggregate to a maintained one? Pick a number to watch rather than a guess.
+3. **Owing at scale.** Is `HAVING SUM < 0` over the full ledger fast enough with the right index, or does *the owing view specifically* need the materialized aggregate first (few rows, but scans everything to find them)?
 
 ## Out of scope (deliberately)
 
@@ -75,4 +75,4 @@ A **dedicated user/account table**, a read-model projection of identity + balanc
 - `GET /admin/access` returns a **page** (cursor + limit), computes every row's balance in **one** aggregate query (no per-row `SUM`), and joins the frozen flag in the same pass, asserted by a test that counts queries or drives a few hundred accounts and checks latency/shape.
 - `?q=` finds an account by email substring; `?filter=negative` returns only negative-wallet accounts **from the query**, not a client filter; both are tested.
 - The frontend paginates (load-more or pages) and offers search, with the "Only owing" toggle mapped to the server filter.
-- Balances remain a fold over the ledger with no stored balance introduced (a test or a note pins the invariant), and the materialisation path is documented with its trigger rather than built.
+- Balances remain a fold over the ledger with no stored balance introduced (a test or a note pins the invariant), and the materialization path is documented with its trigger rather than built.

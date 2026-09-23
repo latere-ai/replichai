@@ -88,7 +88,7 @@ func runLogout(_ context.Context, args []string, stdout, stderr *os.File) error 
 	return nil
 }
 
-// runOrg shows or switches the organisation a project belongs to. Switching
+// runOrg shows or switches the organization a project belongs to. Switching
 // goes through the refresh grant, so it needs no second device login.
 func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("org", stderr)
@@ -97,11 +97,11 @@ func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if err != nil {
 		return err
 	}
-	// Exactly one organisation or the personal context is accepted, never
+	// Exactly one organization or the personal context is accepted, never
 	// both and never several. `org a b` used to switch silently to the
 	// personal context, which is the opposite of what was typed.
 	if len(positional) > 1 || (len(positional) == 1 && *personal) {
-		_, _ = fmt.Fprintln(stderr, "org takes one organisation id, or --personal")
+		_, _ = fmt.Fprintln(stderr, "org takes one organization id, or --personal")
 		return errExitQuiet
 	}
 	session := cloud.New(homeDir(), envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL))

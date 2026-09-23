@@ -51,7 +51,7 @@ type EvidenceReader struct {
 	// Status is the terminal observation, or the last partial one when the
 	// session was cancelled or abandoned before it settled.
 	Status Status
-	// Events is the transcript as the runtime normalised it, in the order the
+	// Events is the transcript as the runtime normalized it, in the order the
 	// runtime reports; the controller neither filters nor reorders it.
 	Events []Event
 	// Artifacts is the metadata for every file the session produced; the bytes

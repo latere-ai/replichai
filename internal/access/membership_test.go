@@ -85,7 +85,7 @@ func TestMembershipLeadOnly(t *testing.T) {
 // drift on the invariant a project invitation depends on.
 //
 // Before the fix this whole contract failed: binding was a side effect of the
-// authorisation checks, every one of which short-circuits for an owner or a
+// authorization checks, every one of which short-circuits for an owner or a
 // public project, so an owner was shown as "pending" permanently and an
 // invitee never appeared under "shared with me".
 func bindingContract(t *testing.T, m Membership, project string) {
@@ -96,7 +96,7 @@ func bindingContract(t *testing.T, m Membership, project string) {
 	collabEmail := "collab-" + project + "@example.com"
 
 	// An owner is bound the moment their project is seeded, with no login,
-	// project read, or authorisation check in between.
+	// project read, or authorization check in between.
 	if err := m.SeedLead(ctx, project, lead); err != nil {
 		t.Fatalf("SeedLead: %v", err)
 	}

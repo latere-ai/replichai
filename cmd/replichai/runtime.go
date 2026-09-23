@@ -67,7 +67,7 @@ func (options *localOptions) bind(fs *flag.FlagSet) {
 	fs.StringVar(&options.image, "image", envOr("REPLICHAI_HARNESS_IMAGE", ""),
 		"with --sandbox container: the container image for the harness")
 	fs.StringVar(&options.models, "models", envOr("REPLICHAI_MODELS_FILE", defaultModelsFile()),
-		"with --runtime local: path to the model catalogue file")
+		"with --runtime local: path to the model catalog file")
 	fs.StringVar(&options.root, "session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()),
 		"with --runtime local: directory where session directories are created")
 	fs.StringVar(&options.retention, "retention", envOr("REPLICHAI_SESSION_RETENTION", "keep"),
@@ -88,7 +88,7 @@ func (options localOptions) config() builtin.LocalConfig {
 	}
 }
 
-// defaultModelsFile is the path of an operator's model catalogue. A missing
+// defaultModelsFile is the path of an operator's model catalog. A missing
 // file is not an error: the harness's own login is used instead, so a first
 // run on a signed-in machine needs no configuration.
 func defaultModelsFile() string {

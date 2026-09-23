@@ -41,7 +41,7 @@ const frontend = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const CHROMES = ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium']
 
-// findChrome honours PUPPETEER_EXECUTABLE_PATH, then looks in the usual places.
+// findChrome honors PUPPETEER_EXECUTABLE_PATH, then looks in the usual places.
 // A path that was asked for and does not exist is an error, not a skip: the
 // person set it on purpose.
 export function findChrome() {

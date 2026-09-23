@@ -69,7 +69,7 @@ func (e *APIError) RetryAfter() time.Duration { return e.wait }
 
 // saysAlreadyExists reports whether a 422 is GitHub refusing to create a
 // repository whose name is taken, as opposed to any other validation failure.
-// An invalid name, a blocked organisation and a plan limit all answer 422 as
+// An invalid name, a blocked organization and a plan limit all answer 422 as
 // well, and none of them means the repository exists to be reused.
 func (e *APIError) saysAlreadyExists() bool {
 	if e.Status != http.StatusUnprocessableEntity {
@@ -112,7 +112,7 @@ func failure(method, path string, resp *http.Response, payload []byte, now time.
 	return e
 }
 
-// rateLimit recognises GitHub's two rate-limit responses: a 429, or a 403 that
+// rateLimit recognizes GitHub's two rate-limit responses: a 429, or a 403 that
 // carries Retry-After, for a secondary limit, or X-RateLimit-Remaining: 0, for
 // the primary one. The wait comes from Retry-After in seconds, else from the
 // reset epoch; a rate limit with neither is temporary with no figure.

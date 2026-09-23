@@ -24,7 +24,7 @@ func bootstrapAdmin(t *testing.T, s *MemStore) Principal {
 }
 
 // TestPrincipalCarriesOnlyIdentity checks AC1: only sub and a verified email
-// may feed authorisation. It is asserted on the type, so a later change cannot
+// may feed authorization. It is asserted on the type, so a later change cannot
 // add a role, scope, or org claim that a login could pass into a grant
 // decision.
 func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
@@ -32,7 +32,7 @@ func TestPrincipalCarriesOnlyIdentity(t *testing.T) {
 	ty := reflect.TypeFor[Principal]()
 	for field := range ty.Fields() {
 		if !allowed[field.Name] {
-			t.Errorf("Principal has field %q — no IDP role/scope/org may reach an authorisation decision", field.Name)
+			t.Errorf("Principal has field %q — no IDP role/scope/org may reach an authorization decision", field.Name)
 		}
 	}
 }

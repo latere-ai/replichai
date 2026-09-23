@@ -82,7 +82,7 @@ export const scoreOf = (f: Findings, c: Criterion): Score | undefined =>
 export const CRITERIA: Criterion[] = ['code', 'data', 'license', 'preregistration', 'supplement']
 
 // tones map a value to the semantic token that carries it. They live here, next
-// to the types, so a new outcome cannot be added without a colour being chosen
+// to the types, so a new outcome cannot be added without a color being chosen
 // for it.
 export const outcomeTone = (o: ClaimOutcome): string =>
   o === 'verified' ? 'var(--ok)' : o === 'partial' ? 'var(--warn)' : o === 'blocked' ? 'var(--err)' : 'var(--fg-3)'

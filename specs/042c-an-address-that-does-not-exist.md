@@ -25,7 +25,7 @@ $ curl -so /dev/null -w '%{http_code}\n' https://replichai.latere.ai/this-page-d
 200
 ```
 
-`viewOf` resolves anything it does not recognise to the dashboard, `useRouter` rewrites the address to `/`, and the server answered 200 with the full shell before either ran. That is an unbounded set of URLs returning success with identical content, which a search engine calls a soft 404. It also misleads a person, who asked for a page and was silently given a different one.
+`viewOf` resolves anything it does not recognize to the dashboard, `useRouter` rewrites the address to `/`, and the server answered 200 with the full shell before either ran. That is an unbounded set of URLs returning success with identical content, which a search engine calls a soft 404. It also misleads a person, who asked for a page and was silently given a different one.
 
 Separately, the operator screens are indexable and empty: `/wallet` and `/console` render nothing for a signed-out reader, which is exactly what a crawler is.
 

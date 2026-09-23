@@ -11,7 +11,7 @@ import (
 	"github.com/latere-ai/replichai/internal/paper"
 )
 
-// DefaultOrg is the GitHub organisation reproductions are published under.
+// DefaultOrg is the GitHub organization reproductions are published under.
 const DefaultOrg = "open-hai"
 
 // Plan is everything that will be published, computed before anything is

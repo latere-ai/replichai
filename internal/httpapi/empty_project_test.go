@@ -99,7 +99,7 @@ func TestAProjectWithNeitherTitleNorPaperIsRefused(t *testing.T) {
 func TestAPaperStillNamesAnUntitledProject(t *testing.T) {
 	h := NewRouter(testDeps(allowAll)).Handler()
 
-	// This is the behaviour from 006j, unchanged: with a paper and no title,
+	// This is the behavior from 006j, unchanged: with a paper and no title,
 	// the first reference is the placeholder name, which enrichment may later
 	// replace.
 	const ref = "https://arxiv.org/abs/2302.03714"

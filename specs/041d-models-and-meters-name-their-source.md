@@ -35,11 +35,11 @@ type ModelRef struct {
 
 `ModelRef` is canonical, comparable, and required in resolved status, usage, rates, and job settlement. A Latere runtime can therefore be `latere-topos` while its model is `openai/gpt-…`; direct Anthropic can be `anthropic-managed` plus `anthropic/claude-…`.
 
-The user-facing `best|balanced|fast` remains a preference. Runtime `Models` returns provider-qualified candidates and the route policy deterministically maps each preference to one `ModelRef`. There is no “first model in the catalogue” fallback. Exact model requests remain operator-only and require a fully qualified reference.
+The user-facing `best|balanced|fast` remains a preference. Runtime `Models` returns provider-qualified candidates and the route policy deterministically maps each preference to one `ModelRef`. There is no “first model in the catalog” fallback. Exact model requests remain operator-only and require a fully qualified reference.
 
 `GET /models` reports the selected runtime and exact provider/id/variant behind each preference, along with the snapshotted price summary. Cache keys include route-policy version and rate-card revision; changing either invalidates the answer.
 
-## Normalised usage
+## Normalized usage
 
 `managed.Usage` retains explicit token fields for compatibility and adds named non-token meters:
 
@@ -57,13 +57,13 @@ type Usage struct {
 }
 ```
 
-- The six token buckets are mutually exclusive billable quantities. `InputFresh + InputCached + CacheWrite + CacheWrite5m + CacheWrite1h` is normalised input; `Output` is normalised output.
+- The six token buckets are mutually exclusive billable quantities. `InputFresh + InputCached + CacheWrite + CacheWrite5m + CacheWrite1h` is normalized input; `Output` is normalized output.
 - `CacheWrite` is a real generic class with its own rate. It is not mapped to Anthropic's 5m/1h classes. A legacy unattributed Anthropic write may use the old fail-expensive lifetime fallback only when its source is explicitly Anthropic.
 - `Extra` carries typed, non-negative billable meters such as `container.second` or `hosted_tool.call`. Each runtime declares the meters it can emit in capabilities.
 - `Details` is non-billable decomposition, for example reasoning tokens already included in `Output`. Pricing never iterates it.
 - Status usage is cumulative and component-wise monotonic. `Event.Usage` is an optional per-event delta. Summing event deltas may lag the status total while a runtime has not emitted detailed events, but no bucket may be interpreted with vendor wire rules outside its adapter.
 
-Adapter normalisation rules are contractual:
+Adapter normalization rules are contractual:
 
 - Anthropic's input, cache-read, and cache-creation fields are additive; cache creation remains split into 5m/1h when reported.
 - OpenAI's cached tokens are part of input, so `InputFresh = input - cached`; negative results are a contract error. Generic cache writes remain `CacheWrite` if reported. Reasoning is a detail of output, not a second billable output.
@@ -106,7 +106,7 @@ Historical settlement fixture tests calculate the old and migrated price and req
 6. Cumulative status usage is monotonic; event deltas use the same buckets; malformed negative/overflow/inclusive counts fail with typed errors.
 7. Legacy settings and job snapshot fixtures decode as Anthropic and preserve exact previous costs, including cache lifetime classes and unattributed legacy writes.
 8. Enqueue card snapshot, terminal exactly-once settlement, cancellation settlement, and restart settlement pass for synthetic Anthropic and OpenAI model refs.
-9. `/models` tests cover provider/runtime display, route/card cache invalidation, deterministic tier mapping, and absence of catalogue-first fallback.
+9. `/models` tests cover provider/runtime display, route/card cache invalidation, deterministic tier mapping, and absence of catalog-first fallback.
 10. New/changed model, usage, and pricing code exceeds 90% statement coverage.
 
 ## Out of scope
@@ -118,4 +118,4 @@ Historical settlement fixture tests calculate the old and migrated price and req
 
 ## Outcome
 
-Managed catalogues, statuses, usage, event deltas, rate rows, coverage reports, job costing, and `/models` carry provider-qualified model identity. Rate fallback is confined to one provider and billing variant; generic cache writes have their own rate; extra meters must be declared and priced. Old model-only card JSON backfills to Anthropic and preserves historical price. The legacy `provider.Usage` bridge remains at existing job/publication seams, but vendor wire usage no longer crosses the adapter boundary.
+Managed catalogs, statuses, usage, event deltas, rate rows, coverage reports, job costing, and `/models` carry provider-qualified model identity. Rate fallback is confined to one provider and billing variant; generic cache writes have their own rate; extra meters must be declared and priced. Old model-only card JSON backfills to Anthropic and preserves historical price. The legacy `provider.Usage` bridge remains at existing job/publication seams, but vendor wire usage no longer crosses the adapter boundary.

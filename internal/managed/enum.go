@@ -72,7 +72,7 @@ func (s *State) UnmarshalJSON(raw []byte) error {
 type Grade uint8
 
 // The grades an evaluator can record. GradeUnknown is the zero value and
-// GradePending is a judgement not yet made, so neither may be read as a pass.
+// GradePending is a judgment not yet made, so neither may be read as a pass.
 // GradeNeedsRevision leaves the revision budget open where GradeExhausted
 // means it is spent, and GradeFailed is a decided rejection of the work.
 const (
@@ -93,7 +93,7 @@ var gradeNames = map[Grade]string{
 	GradeFailed:        "failed",
 }
 
-// Decided reports whether the evaluator has reached a final judgement;
+// Decided reports whether the evaluator has reached a final judgment;
 // GradeUnknown and GradePending have not.
 func (g Grade) Decided() bool {
 	return g == GradePassed || g == GradeNeedsRevision || g == GradeExhausted || g == GradeFailed
@@ -144,7 +144,7 @@ const (
 )
 
 // AccessMode is how a session may use a mounted repository. Runtimes advertise
-// the modes they honour in Capabilities, so a spec asking for more than the
+// the modes they honor in Capabilities, so a spec asking for more than the
 // runtime allows is refused before the session starts.
 type AccessMode string
 

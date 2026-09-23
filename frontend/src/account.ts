@@ -31,7 +31,7 @@ export function initials(email?: string) {
 }
 
 // hueOf turns an address into a stable hue. It is decoration, but the same
-// person gets the same colour in every list, which makes a members table
+// person gets the same color in every list, which makes a members table
 // easier to scan.
 export function hueOf(email?: string): number {
   if (!email) return 240

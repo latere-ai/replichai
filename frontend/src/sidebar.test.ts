@@ -14,7 +14,7 @@ test('a first visit, or a corrupted value, leaves the rail open', () => {
   expect(readFolded('collapsed')).toBe(false)
 })
 
-test('the stored fold is honoured', () => {
+test('the stored fold is honored', () => {
   expect(readFolded('folded')).toBe(true)
 })
 

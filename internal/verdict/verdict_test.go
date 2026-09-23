@@ -213,7 +213,7 @@ func TestComponentsMustAddUpAndMatchTheInnerRows(t *testing.T) {
 	}
 
 	// The counts add up but claim more components than the boundary has
-	// inner rows, so the rate would summarise a decomposition the reader
+	// inner rows, so the rate would summarize a decomposition the reader
 	// cannot see.
 	v = good()
 	v.Components = verdict.Components{Verified: 5, Partial: 0, Blocked: 1, Total: 6}

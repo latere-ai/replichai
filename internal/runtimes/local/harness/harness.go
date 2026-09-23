@@ -65,7 +65,7 @@ func (s Stage) Writes() bool { return s != StageJudge }
 func (s Stage) Agentic() bool { return s != StageBootstrap }
 
 // Dialect is the wire protocol a model endpoint speaks. A harness speaks one
-// family of dialects, and the model catalogue refuses a mismatched pairing
+// family of dialects, and the model catalog refuses a mismatched pairing
 // rather than letting a run fail with a 400 response after it has started.
 type Dialect string
 
@@ -239,7 +239,7 @@ type Harness interface {
 	Binary() string
 
 	// Dialects returns the wire protocols this harness speaks. The model
-	// catalogue refuses a gateway outside this set.
+	// catalog refuses a gateway outside this set.
 	Dialects() []Dialect
 
 	// VersionArgv is the command that prints the installed version, so that
@@ -271,7 +271,7 @@ type Harness interface {
 	Decode(stream string, index int, line []byte) ([]managed.Event, error)
 }
 
-// KindRaw is the event kind for a stream line this build does not recognise.
+// KindRaw is the event kind for a stream line this build does not recognize.
 // The set of event kinds is deliberately open, and a transcript that silently
 // dropped what it could not parse would not be evidence.
 const KindRaw managed.EventKind = "raw"
@@ -332,7 +332,7 @@ func Truncate(content string) string {
 }
 
 // Registry is the set of harnesses a build can drive. Like the runtime
-// catalogue, it is fixed at construction: what a binary can run is decided by
+// catalog, it is fixed at construction: what a binary can run is decided by
 // what its composition root passes in.
 type Registry struct{ byName map[Name]Harness }
 
@@ -353,7 +353,7 @@ func NewRegistry(harnesses ...Harness) (*Registry, error) {
 	return registry, nil
 }
 
-// Canonical normalises operator-supplied text to the one spelling a harness
+// Canonical normalizes operator-supplied text to the one spelling a harness
 // name may take.
 func Canonical(raw string) Name { return Name(strings.ToLower(strings.TrimSpace(raw))) }
 

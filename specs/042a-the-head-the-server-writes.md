@@ -59,7 +59,7 @@ These paths cannot collide with the API: 013 chose `/registry` and `/p/…` beca
 2. The same request for a private, trashed, or unknown project returns the default head and `X-Robots-Tag: noindex`; the project's title appears nowhere in the response.
 3. `GET /u/{handle}` for a public profile names the researcher; a private handle gets the default head and `noindex`.
 4. `GET /p/{id}/s/{job}` for a published session under a public project names the paper it is a run of.
-5. Every injected response carries exactly one `<title>`, one canonical, and an absolute `og:url` equal to it; a tab path canonicalises to its record's path.
+5. Every injected response carries exactly one `<title>`, one canonical, and an absolute `og:url` equal to it; a tab path canonicalizes to its record's path.
 6. Injection is byte-identical to the default shell in every other respect: the theme script, the font preload and the module script are untouched.
 7. A project titled `</script><img onerror=alert(1)>` reaches the client escaped, in both the meta tags and the JSON-LD.
 8. The head injection performs no forge call; a router built with a `ReproReader` that fails every read still serves every page.

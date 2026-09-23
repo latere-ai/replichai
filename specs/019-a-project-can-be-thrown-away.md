@@ -35,7 +35,7 @@ The reason it was never built is visible in 006o's argument: withdrawal was give
 
 **Its cost is that every read path has to filter, so the list is written down here and tested.** Missing one is how a trashed project reappears somewhere its owner does not expect:
 
-| Read path | Behaviour |
+| Read path | Behavior |
 |---|---|
 | `ListByOwner` | excludes trashed |
 | `ListPublic` | excludes trashed |

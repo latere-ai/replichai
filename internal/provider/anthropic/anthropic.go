@@ -106,7 +106,7 @@ func translateState(status string, verdict *provider.Verdict) provider.RunState 
 
 	default:
 		// An unknown status is treated as still running: the run may yet
-		// reach a state this adapter recognises. It is not declared dead,
+		// reach a state this adapter recognizes. It is not declared dead,
 		// even though the caller may be waiting without a deadline, because
 		// a session that has finished reaches "terminated", which is handled
 		// above.

@@ -25,11 +25,11 @@ Repeat reproductions are legitimate and often the point: re-running an audit aft
 
 ## Where the registry lives
 
-**Derived, not stored.** Enumerate the organisation's repositories and read each `replication.json`. There is no second source of truth, so nothing can drift out of sync with the organisation; a repository deleted by hand disappears from the registry.
+**Derived, not stored.** Enumerate the organization's repositories and read each `replication.json`. There is no second source of truth, so nothing can drift out of sync with the organization; a repository deleted by hand disappears from the registry.
 
 Cached locally with a short TTL for speed. The cache is disposable and never authoritative.
 
-Rejected: a registry file inside `replichai`. It would need a commit per publication, would race between concurrent runs, and would silently disagree with the organisation as soon as anyone acted outside the tool.
+Rejected: a registry file inside `replichai`. It would need a commit per publication, would race between concurrent runs, and would silently disagree with the organization as soon as anyone acted outside the tool.
 
 ## Suffix collisions
 
@@ -38,7 +38,7 @@ Four base-32 characters is about 1M values. With a few thousand reproductions th
 ## Interface
 
 Package `internal/registry`. The registry reads through a narrow `Source` seam
-(below): enumerate the organisation, read one repository's manifest. Because
+(below): enumerate the organization, read one repository's manifest. Because
 the registry is derived, `Registry` holds no state of its own beyond the source
 and its cache; every method takes a context and is safe to call concurrently.
 
@@ -75,10 +75,10 @@ func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string,
 **Read seam.** The registry reads through its own narrow `Source`, not 002's
 write-side `Forge`: 006f's real GitHub access went through `internal/github`
 (list, read a file), not `publish.Forge`, so the registry wraps that. A GitHub
-source enumerates the `open-hai` organisation and reads each manifest via
+source enumerates the `open-hai` organization and reads each manifest via
 `internal/github`; a **filesystem source (a directory of `replication.json`
 files) is the local implementation, so the full audit→publish→registry loop
-runs offline** with no organisation and no network (acceptance criterion 7).
+runs offline** with no organization and no network (acceptance criterion 7).
 
 ```go
 // Source enumerates published reproductions and reads their manifests.

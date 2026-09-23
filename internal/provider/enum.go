@@ -88,7 +88,7 @@ var gradeNames = map[Grade]string{
 	GradeFailed:        "failed",
 }
 
-// Decided reports whether the grader has reached a final judgement.
+// Decided reports whether the grader has reached a final judgment.
 func (g Grade) Decided() bool {
 	return g == GradePassed || g == GradeNeedsRevision ||
 		g == GradeExhausted || g == GradeFailed

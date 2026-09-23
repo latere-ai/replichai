@@ -13,7 +13,7 @@ status: draft
 
 ## Problem
 
-A model cohort on a paper with no released data emits numbers nobody can falsify, which is the failure the whole 007 track is built to avoid. [007c](007c-the-synthetic-pilot.md) already decided the defence: `synthetic:model` is available only where the platform holds released data *and* the paper reported its headline result, so every model cohort can be checked against a real answer immediately. `GateModelCohort(inst, releasedAvailable)` exists in the engine. This spec supplies the gate its `releasedAvailable` fact from the store, wires the same fact to enable `released` re-analysis, and turns [023c](023c-running-an-experiment-from-the-app.md)'s disabled options on where it holds.
+A model cohort on a paper with no released data emits numbers nobody can falsify, which is the failure the whole 007 track is built to avoid. [007c](007c-the-synthetic-pilot.md) already decided the defense: `synthetic:model` is available only where the platform holds released data *and* the paper reported its headline result, so every model cohort can be checked against a real answer immediately. `GateModelCohort(inst, releasedAvailable)` exists in the engine. This spec supplies the gate its `releasedAvailable` fact from the store, wires the same fact to enable `released` re-analysis, and turns [023c](023c-running-an-experiment-from-the-app.md)'s disabled options on where it holds.
 
 It is last in the chain for a reason the census makes concrete: across the three real instruments published today, the platform holds **zero** papers' raw released data. So this spec's routes work, and have no live input until a paper that released data is reproduced. That unlock is a corpus action, and this spec records it rather than hiding it.
 

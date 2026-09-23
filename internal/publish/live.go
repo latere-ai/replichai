@@ -37,7 +37,7 @@ const (
 // manifest and transcript beside it. github.Client satisfies it, and a fake
 // replaces it in tests, so this path needs no network. It is addressed by
 // owner and name, unlike the Forge of the snapshot path, which has a fixed
-// organisation, because it acts on a repository that already exists under a
+// organization, because it acts on a repository that already exists under a
 // known owner.
 type LiveForge interface {
 	// HeadCommit returns the repository's current head commit sha, or an empty

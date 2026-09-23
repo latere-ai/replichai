@@ -29,7 +29,7 @@ func NewFSSource(dir string) *FSSource { return &FSSource{Root: dir} }
 // string. Nesting one root inside the other makes those names safe to use.
 // The repository name cannot escape the registry directory, and a file path
 // cannot escape its repository into a sibling one the caller was never
-// authorised to read. The operating system enforces the confinement against
+// authorized to read. The operating system enforces the confinement against
 // the open directory, so it holds against a symlink swapped in during the
 // read, which a string check cannot.
 func (s *FSSource) openRepo(repo string) (*os.Root, bool, error) {
@@ -100,7 +100,7 @@ func (s *FSSource) Manifest(_ context.Context, repo string) (publish.Manifest, e
 
 // File reads one file from a repository directory. A path that would leave the
 // repository is an error, not a miss, because the caller asked for something
-// it was never authorised to see, and reporting not found would hide that.
+// it was never authorized to see, and reporting not found would hide that.
 func (s *FSSource) File(_ context.Context, repo, path string) ([]byte, bool, error) {
 	root, ok, err := s.openRepo(repo)
 	if err != nil || !ok {

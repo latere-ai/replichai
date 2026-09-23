@@ -290,7 +290,7 @@ func (s *PGAccess) GrantsFor(ctx context.Context, byAdmin Principal, emails []st
 
 // errTierRange reports a tier column holding a value no tier of this package
 // names. It is an error rather than a silent TierNone because the grants table
-// is the authorisation decision: a value this package could not have written
+// is the authorization decision: a value this package could not have written
 // is corruption, and corruption in an ACL should be reported, not interpreted.
 var errTierRange = errors.New("access: grant tier out of range")
 

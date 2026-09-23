@@ -26,7 +26,7 @@ The two demand different answers, and the design uses both:
 - `publish.VerifyTree` inspects the committed tree at finalize and its result reaches `replication.json` (`redistribution.review`), which `cmd/server` turns into `Reproduction.CanPublish` (`review == "clear"`), which the public flip reads (`handlers.go:clearedForPublish`). That chain is real, wired, and enforced. It sees the head tree only, not history.
 - `publish.TranscriptLeaks` runs at finalize but its result **only prints a warning** (`cmd/replichai/main.go`); nothing feeds it into `ManifestFor`'s clean flag, so a leaking transcript does **not** bar the public flip. 005 specified that it should. This is the divergence commit 1 closes.
 - `EligibleForPublic`, `github.SetPublic`, and the members API **are wired and deployed** (006f): `POST /projects/{id}/public`, `GET/POST/DELETE /projects/{id}/members`, `GET /public`. (An earlier draft of this spec claimed they had no caller outside tests; that was made stale by 006f and is corrected here.)
-- The mount carries the **server token** (`REPLICHAI_GITHUB_TOKEN`, a plain PAT sent as a Bearer) into the sandbox: `cmd/server/runner.go:mountFor` sets `Token: e.token`. So the credential inside the sandbox is org-scoped: a leak costs the organisation, not one repository. This is the blast radius commits 2–3 reduce.
+- The mount carries the **server token** (`REPLICHAI_GITHUB_TOKEN`, a plain PAT sent as a Bearer) into the sandbox: `cmd/server/runner.go:mountFor` sets `Token: e.token`. So the credential inside the sandbox is org-scoped: a leak costs the organization, not one repository. This is the blast radius commits 2–3 reduce.
 
 ## Decisions
 

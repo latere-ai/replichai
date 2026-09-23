@@ -28,7 +28,7 @@ import (
 const SchemaVersion = 1
 
 // Manifest is replication.json, the record every published repository carries
-// at its root and the only file 003's registry reads. It serialises to the
+// at its root and the only file 003's registry reads. It serializes to the
 // exact shape 003 expects, so the two do not drift.
 type Manifest struct {
 	Schema         int            `json:"schema"`

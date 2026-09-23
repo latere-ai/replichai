@@ -66,7 +66,7 @@ export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (
       setErr(outcome.banner)
       // The project exists either way. It records papers and runs nothing, so
       // there is no partial state to explain and nothing to keep the person here
-      // for. A reference the server did not recognise is reported on its row and
+      // for. A reference the server did not recognize is reported on its row and
       // can be added again from inside the project.
       if (outcome.ok) {
         invalidateProjects()

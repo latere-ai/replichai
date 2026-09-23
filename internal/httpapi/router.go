@@ -163,7 +163,7 @@ type ProjectStore interface {
 // ProfileStore stores the researcher profile (006n), the identity a sign-off is
 // prefilled from. It is only ever the caller's own: every handler passes the
 // principal from the session, never one from a request body, so this interface
-// needs no authorisation of its own.
+// needs no authorization of its own.
 type ProfileStore interface {
 	Get(ctx context.Context, principal string) (profile.Profile, error)
 	Save(ctx context.Context, p profile.Profile) (profile.Profile, error)
@@ -205,7 +205,7 @@ type ResolvedPaper struct {
 var ErrUnresolvable = errors.New("unresolvable paper reference")
 
 // MembershipStore is the part of the project-membership store (006c) the
-// members API needs. The handler authorises on project ownership and seeds the
+// members API needs. The handler authorizes on project ownership and seeds the
 // owner as the project's lead, so the store's own lead check is satisfied
 // without a second authority model.
 type MembershipStore interface {
@@ -256,7 +256,7 @@ type RepoPublisher interface {
 // It is no longer a user-facing list. The project is the unit of visibility
 // (006f), so Get and Transcript serve internal checks only, namely the publish
 // gate's manifest-clear check and the session transcript reader, and never an
-// unscoped organisation-wide listing.
+// unscoped organization-wide listing.
 type ReproReader interface {
 	Get(ctx context.Context, id string) (Reproduction, error)
 	Transcript(ctx context.Context, id string) ([]byte, error)
@@ -473,7 +473,7 @@ func BodyLimit(method, pattern string) int64 {
 // limitBody bounds the body of every registered route. A declared length over
 // the limit is refused before the handler runs; a body that arrives longer
 // than declared, or chunked, is cut off by MaxBytesReader, which makes the
-// handler's read fail with an error tooLarge recognises.
+// handler's read fail with an error tooLarge recognizes.
 func limitBody(method, pattern string, h http.HandlerFunc) http.HandlerFunc {
 	limit := BodyLimit(method, pattern)
 	return func(w http.ResponseWriter, r *http.Request) {

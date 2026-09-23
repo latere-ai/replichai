@@ -47,7 +47,7 @@ test('a refusal with nothing named is an empty list', async () => {
 
 // A 2xx whose body is not JSON, such as the dev server's own HTML for a path it
 // does not proxy or a gateway page in front of the API, used to reach r.json()
-// and reject with a SyntaxError. Nothing downstream recognised that error, so
+// and reject with a SyntaxError. Nothing downstream recognized that error, so
 // every screen reported it as "you appear to be offline", which is wrong: the
 // network answered. It is now reported as a server fault, with its status and a
 // code, so the mappers can name it as one.

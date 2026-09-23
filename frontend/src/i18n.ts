@@ -58,7 +58,7 @@ const en = {
     lpStepPaperBody: 'The link is resolved to one paper key, so two people auditing the same paper audit the same record.',
     lpStepPaperArtifact: 'A paper key',
     lpStepRelease: 'What the authors released',
-    lpStepReleaseBody: 'Code, data, licences and preregistration are looked up and recorded, including what is missing.',
+    lpStepReleaseBody: 'Code, data, licenses and preregistration are looked up and recorded, including what is missing.',
     lpStepReleaseArtifact: 'A release record',
     lpStepRerun: 'The re-run',
     lpStepRerunBody: 'The part a machine can run is implemented and executed. Every decision the paper does not state is written down.',
@@ -73,7 +73,7 @@ const en = {
     lpPartClaimBody: 'What the agent says it reproduced, and how.',
     lpPartClaimBy: 'the agent',
     lpPartEvidence: 'The evidence',
-    lpPartEvidenceBody: 'The full session transcript, committed next to the work rather than summarised.',
+    lpPartEvidenceBody: 'The full session transcript, committed next to the work rather than summarized.',
     lpPartEvidenceBy: 'the record',
     lpPartVerdict: 'The verdict',
     lpPartVerdictBody: 'Written by the system from the claim and the evidence, and signed by a named researcher.',
@@ -342,7 +342,7 @@ const en = {
     ledgerReclaimFrom: 'Taken back from',
     // The merged list (018). Ownership is shown in the row rather than being a
     // place to look, so the owner of your own project reads "You", the common
-    // case, which nobody should have to read a name to recognise.
+    // case, which nobody should have to read a name to recognize.
     colPaper: 'Paper',
     colStatus: 'Status',
     colVisibility: 'Visibility',
@@ -469,13 +469,13 @@ const en = {
     createProjectBtn: 'Create project',
     creatingProject: 'Creating…',
     resolveFailed: 'We could not reach the site this paper is on. It may be down or busy. Try again in a moment.',
-    unresolvablePaper: 'We don’t recognise this link. Paste a DOI, an arXiv link, or the paper’s page on a publisher site.',
+    unresolvablePaper: 'We don’t recognize this link. Paste a DOI, an arXiv link, or the paper’s page on a publisher site.',
     // One mistake with two fixes, so it names both (036).
     nameOrPaper: 'Name the project, or add a paper to name it after.',
     // The short forms sit directly under the paper they belong to, so they only
     // have to say what about it; the row already says which one.
-    errUnresolvable: 'We don’t recognise this link.',
-    somePapersNotRecognised: 'The project was created. We did not recognise the links marked below. You can add those papers again from inside the project.',
+    errUnresolvable: 'We don’t recognize this link.',
+    somePapersNotRecognised: 'The project was created. We did not recognize the links marked below. You can add those papers again from inside the project.',
     createFailed: 'The project was not created because of an error on our side. Try again in a moment.',
     // Working inside a project: adding a paper costs nothing, starting one is
     // the only act that spends.
@@ -622,7 +622,7 @@ const en = {
     selectArtifact: 'Select a file to view it.',
     artifactError: 'Couldn’t open this file. Try again in a moment.',
     graded: 'Graded',
-    // Two different judgements, and conflating them was the defect: the run's
+    // Two different judgments, and conflating them was the defect: the run's
     // grade says whether the audit met the method's bar, the paper's verdict
     // says whether it reproduced. A careful audit of a paper that does not
     // reproduce passes the first and fails the second.
@@ -635,7 +635,7 @@ const en = {
     statSpend30d: 'Spend · last 30 days',
     runningForTitle: 'How long this session has been running. It is charged for the whole time.',
     // The findings (021b). The rate never appears without the decomposition it
-    // summarises, because the rubric is explicit that the per-component table is
+    // summarizes, because the rubric is explicit that the per-component table is
     // the result and the rate is a derived footnote to it.
     boundary: 'Inner / outer boundary',
     claim: 'Claim',

@@ -133,7 +133,7 @@ export function SessionRow({
         </button>
       )}
       {/* The repository, named by the part that differs. Every reproduction of
-          one paper gets the same slug and a different suffix, so a row labelled
+          one paper gets the same slug and a different suffix, so a row labeled
           "GitHub" is indistinguishable from the nine beside it once a paper is
           reproduced more than once, which a repeat study does by design. The
           full name stays in the tooltip. */}

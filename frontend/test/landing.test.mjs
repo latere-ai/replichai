@@ -118,7 +118,7 @@ try {
     await page.close()
   }
 
-  // The mark has to survive the other theme: it owns its colour, so a token that
+  // The mark has to survive the other theme: it owns its color, so a token that
   // resolves to the page background would leave a blank square in dark mode.
   {
     const page = await open({ authenticated: false }, { theme: 'dark' })
@@ -596,7 +596,7 @@ try {
     const href = await page.evaluate(() => document.querySelector('[data-test="lp-signin"]').getAttribute('href'))
     if (href !== '/login?next=%2Fnew') fail(`signed out at /new the button points at ${href}; the address has to survive the round trip`)
     // The button carries the provider's mark, painted in the button's own ink.
-    // A mark that inherited a colour from somewhere else would be invisible on
+    // A mark that inherited a color from somewhere else would be invisible on
     // the brand fill and nothing else here would notice.
     const provider = await page.evaluate(() => {
       const btnEl = document.querySelector('[data-test="lp-signin"]')
@@ -670,7 +670,7 @@ try {
     // 033 built four blocks as a material rather than a theme and painted them
     // near-black in both appearances. In the light theme that is four dark
     // blocks down one page, so 040 gave the material a light half. This guards
-    // that each half is the half it claims: the grounds, and, since a colour
+    // that each half is the half it claims: the grounds, and, since a color
     // swap silently breaks it, that the ink on each ground is still readable.
     const BLOCKS = {
       hero: '.lp-slab',
@@ -762,7 +762,7 @@ try {
     // Instrument Serif. Until 040 this app named that family and shipped no
     // font, so every one of them rendered in Georgia: the same logotype as
     // latere.ai, in a different face. No other check detects it: the markup is
-    // right, the colour is right, and the text is there.
+    // right, the color is right, and the text is there.
     const page = await open({ authenticated: false })
     await page.waitForSelector('.landing .site-footer .logo-text')
     const face = await page.evaluate(async () => {
@@ -809,7 +809,7 @@ try {
         legal: ['/legal/privacy', '/legal/terms', '/legal/impressum'].filter((p) => hrefs.some((h) => h?.endsWith(p))).length,
         rights: /©|\(c\)/i.test(f.querySelector('.footer-bottom')?.textContent ?? ''),
         // A palette the app does not define would leave the ink unset, which
-        // computes to the inherited colour rather than to nothing.
+        // computes to the inherited color rather than to nothing.
         ink: getComputedStyle(f.querySelector('.footer-col a')).color,
         muted: getComputedStyle(f.querySelector('.footer-tagline')).color,
         themes: [...f.querySelectorAll('.footer-seg-btn')].map((b) => b.textContent.trim()),

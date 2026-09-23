@@ -14,11 +14,11 @@ import (
 )
 
 // docGuide is the user-facing guide to running audits locally. Its model
-// catalogue is read from the document rather than copied here, so an example
+// catalog is read from the document rather than copied here, so an example
 // that stops working fails this test rather than misleading a reader.
 const docGuide = "../../../docs/local-runs.md"
 
-// The catalogue the guide shows an operator validates, and resolves to the
+// The catalog the guide shows an operator validates, and resolves to the
 // models the guide says it resolves to.
 func TestTheDocumentedCatalogueWorks(t *testing.T) {
 	body, err := os.ReadFile(docGuide)
@@ -33,7 +33,7 @@ func TestTheDocumentedCatalogueWorks(t *testing.T) {
 	}
 	file, err := local.ReadCatalogFile(path)
 	if err != nil {
-		t.Fatalf("the documented catalogue does not parse: %v", err)
+		t.Fatalf("the documented catalog does not parse: %v", err)
 	}
 	registry, err := harness.NewRegistry(harness.NewClaudeCode(), harness.NewCodex())
 	if err != nil {
@@ -45,7 +45,7 @@ func TestTheDocumentedCatalogueWorks(t *testing.T) {
 		return "a-credential", name == "ANTHROPIC_API_KEY" || name == "LUX_API_KEY"
 	})
 	if err != nil {
-		t.Fatalf("the documented catalogue does not validate: %v", err)
+		t.Fatalf("the documented catalog does not validate: %v", err)
 	}
 
 	for _, c := range []struct {

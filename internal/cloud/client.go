@@ -160,7 +160,7 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 // AddPaper files a paper under a project. A paper already present is not an
 // error: filing is idempotent, so a batch pushed twice does not fail.
 //
-// The conflict is recognised by the machine-readable reason paper_exists,
+// The conflict is recognized by the machine-readable reason paper_exists,
 // not by a word in the message. The message is prose and may change; the
 // reason is the contract.
 func (c *Client) AddPaper(ctx context.Context, projectID, reference string) error {
