@@ -187,7 +187,7 @@ try {
       }
     })
     if (fig.loop !== 'svg') fail('the loop figure is not an svg')
-    if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the colour as much as the dash`)
+    if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the color as much as the dash`)
     if (fig.runnerAnim === 'none') fail('nothing on the closed loop moves; the figure claims a re-run and shows a still')
     if (fig.steps !== 4) fail(`the pipeline figure shows ${fig.steps} steps, want four`)
     if (fig.parts !== 3) fail(`the anatomy figure shows ${fig.parts} parts, want claim, evidence, and verdict`)
@@ -362,7 +362,7 @@ try {
     for (const b of bands.bands) {
       const rightGutter = bands.page - b.right
       if (b.left > 96) fail(`at ${WIDE.width}px the band ${b.name} starts ${Math.round(b.left)}px in; the page has one edge and it is the hero's`)
-      if (Math.abs(b.left - rightGutter) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off centre: ${Math.round(b.left)}px left, ${Math.round(rightGutter)}px right`)
+      if (Math.abs(b.left - rightGutter) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off center: ${Math.round(b.left)}px left, ${Math.round(rightGutter)}px right`)
     }
     // The verdict table is the one element with four columns of real content,
     // and it was the element that made the widening pointless: a 920px box in

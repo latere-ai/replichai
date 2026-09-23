@@ -249,9 +249,9 @@ func (r *resolver) resolveURL(ctx context.Context, ref string) (Identity, error)
 	rec := recordFromBody(body)
 
 	if doi := metaContent(body, citationDOIRe); doi != "" {
-		if normalised, ok := extractDOI(doi); ok {
-			crossTitle, crossRec := r.metaFromCrossref(ctx, normalised)
-			return r.finish(SchemeDOI, normalised, firstNonEmpty(crossTitle, title), ref, mergeRecord(crossRec, rec)), nil
+		if normalized, ok := extractDOI(doi); ok {
+			crossTitle, crossRec := r.metaFromCrossref(ctx, normalized)
+			return r.finish(SchemeDOI, normalized, firstNonEmpty(crossTitle, title), ref, mergeRecord(crossRec, rec)), nil
 		}
 	}
 	if raw := metaContent(body, citationArxivRe); raw != "" {

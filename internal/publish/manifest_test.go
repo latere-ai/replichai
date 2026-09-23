@@ -12,10 +12,10 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
-// TestManifestSerialisesToTheSpecShape asserts the manifest marshals to exactly
+// TestManifestSerializesToTheSpecShape asserts the manifest marshals to exactly
 // the JSON shape 002 documents, for every field except created, which is set at
 // publish time.
-func TestManifestSerialisesToTheSpecShape(t *testing.T) {
+func TestManifestSerializesToTheSpecShape(t *testing.T) {
 	m := Manifest{
 		Schema: SchemaVersion,
 		Paper: ManifestPaper{

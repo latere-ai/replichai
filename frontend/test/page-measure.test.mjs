@@ -98,7 +98,7 @@ try {
     }
   })
 
-  check(Math.abs(wallet.left - wallet.right) <= 2, `the wallet column has ${wallet.left}px to its left and ${wallet.right}px to its right; it is meant to be centred`)
+  check(Math.abs(wallet.left - wallet.right) <= 2, `the wallet column has ${wallet.left}px to its left and ${wallet.right}px to its right; it is meant to be centered`)
   check(wallet.width >= 800, `the wallet column is ${wallet.width}px wide in a 1600px window; the cap is back`)
   check(!wallet.nested, 'the statement scrolls inside the page, which already scrolls')
   check(wallet.rows.length === 4, `the statement shows ${wallet.rows.length} lines, want 4`)
@@ -149,7 +149,7 @@ try {
     }
   })
 
-  check(Math.abs(policy.left - policy.right) <= 2, `the admin column has ${policy.left}px to its left and ${policy.right}px to its right; it is meant to be centred`)
+  check(Math.abs(policy.left - policy.right) <= 2, `the admin column has ${policy.left}px to its left and ${policy.right}px to its right; it is meant to be centered`)
   check(policy.rows.length >= 3, `the policy shows ${policy.rows.length} settings, want at least the reserve, the floor and the drafting model`)
   check(policy.rows.some((r) => r.hint), 'no policy setting carries its explanation; the copy was dropped rather than moved')
   for (const r of policy.rows) {
@@ -177,7 +177,7 @@ try {
   check(!narrow.scrollsSideways, 'at 780px the admin console scrolls sideways')
 
   h.ok(
-    `the wallet centres a ${wallet.width}px column with ${wallet.left}px either side, its statement lines run ${wallet.rows.map((r) => r.lines).join('/')} line each, and the console's policy reads beside its controls until 780px`,
+    `the wallet centers a ${wallet.width}px column with ${wallet.left}px either side, its statement lines run ${wallet.rows.map((r) => r.lines).join('/')} line each, and the console's policy reads beside its controls until 780px`,
   )
 } catch (e) {
   fail(e)

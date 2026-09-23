@@ -243,7 +243,7 @@ func TestCatalogReportsItsCredentialsForRedaction(t *testing.T) {
 }
 
 // A malformed file is an error; a missing one falls back to the default.
-func TestAMalformedCatalogueFailsRatherThanDefaulting(t *testing.T) {
+func TestAMalformedCatalogFailsRatherThanDefaulting(t *testing.T) {
 	if _, err := ReadCatalogFile(parseTempFile(t, "gateways: [this is not a map\n")); err == nil {
 		t.Fatal("a malformed catalog was accepted")
 	}

@@ -168,7 +168,7 @@ papers:
 	}
 }
 
-// TestPreparationIsSerialisedAndExecutionIsCapped checks that the pool never
+// TestPreparationIsSerializedAndExecutionIsCapped checks that the pool never
 // exceeds its cap and that Prepare is serialized even though Execute is not.
 // Allocating a repository name is a read followed by a decision, and two
 // concurrent readers would decide the same name.
@@ -177,7 +177,7 @@ papers:
 // kept in flight until the batch has marked every slot's paper running, so
 // any second Prepare that was going to overlap has had that whole time to do
 // so. Then every Execute is kept in flight until the pool is observed full.
-func TestPreparationIsSerialisedAndExecutionIsCapped(t *testing.T) {
+func TestPreparationIsSerializedAndExecutionIsCapped(t *testing.T) {
 	papers := make([]Entry, 8)
 	for index := range papers {
 		papers[index] = Entry{Paper: "10.1145/paper-" + string(rune('a'+index))}
@@ -241,8 +241,8 @@ func TestPreparationIsSerialisedAndExecutionIsCapped(t *testing.T) {
 	if got := r.maxPrepare.Load(); got > 1 {
 		t.Fatalf("%d preparations overlapped; a name would be allocated twice", got)
 	}
-	if len(r.executed) != 8 || state.Summarise().Done != 8 {
-		t.Fatalf("executed %d, state %+v", len(r.executed), state.Summarise())
+	if len(r.executed) != 8 || state.Summarize().Done != 8 {
+		t.Fatalf("executed %d, state %+v", len(r.executed), state.Summarize())
 	}
 }
 
@@ -259,7 +259,7 @@ func TestOneFailureDoesNotStopTheProject(t *testing.T) {
 	if !errors.Is(err, ErrIncomplete) {
 		t.Fatalf("Run = %v", err)
 	}
-	totals := state.Summarise()
+	totals := state.Summarize()
 	if totals.Done != 2 || totals.Failed != 2 {
 		t.Fatalf("totals = %+v", totals)
 	}
@@ -338,8 +338,8 @@ func TestResumeSkipsWhatFinished(t *testing.T) {
 			t.Fatal("a finished paper was run again")
 		}
 	}
-	if resumed.Summarise().Done != 3 {
-		t.Fatalf("after resuming: %+v", resumed.Summarise())
+	if resumed.Summarize().Done != 3 {
+		t.Fatalf("after resuming: %+v", resumed.Summarize())
 	}
 }
 
@@ -436,7 +436,7 @@ func TestAnInterruptedBatchKeepsWhatRan(t *testing.T) {
 	close(r.holdExecute)
 
 	state := <-done
-	totals := state.Summarise()
+	totals := state.Summarize()
 	if totals.Failed != 0 {
 		t.Fatalf("an interruption was recorded as failure: %+v", totals)
 	}
@@ -461,7 +461,7 @@ func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if got := state.Summarise().Empty; got != 0 {
+	if got := state.Summarize().Empty; got != 0 {
 		t.Fatalf("a run with no publishing reported %d empty repositories", got)
 	}
 	if strings.Contains(state.Report(), "without publishing") {
@@ -471,7 +471,7 @@ func TestAnUnpublishedRunIsNotAnEmptyRepository(t *testing.T) {
 	// and is reported.
 	state, _ = Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, r,
 		Options{Parallel: 1, Publishing: true, StatePath: filepath.Join(t.TempDir(), "batch.json")})
-	if got := state.Summarise().Empty; got != 1 {
+	if got := state.Summarize().Empty; got != 1 {
 		t.Fatalf("a publishing run that produced nothing reported %d empty repositories", got)
 	}
 }
@@ -486,7 +486,7 @@ func TestTheReportTotalsTheEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	totals := state.Summarise()
+	totals := state.Summarize()
 	// The pass count reads the grade's name. Grade is a uint8, so a bare
 	// conversion yields the rune at that code point and every batch reports
 	// zero passes.
@@ -517,8 +517,8 @@ func TestTheDefaultPoolIsSized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if state.Summarise().Done != 2 {
-		t.Fatalf("an unset --parallel ran %+v", state.Summarise())
+	if state.Summarize().Done != 2 {
+		t.Fatalf("an unset --parallel ran %+v", state.Summarize())
 	}
 	if got := r.maxExecute.Load(); got > int32(DefaultParallel()) {
 		t.Fatalf("%d papers ran at once with the default of %d", got, DefaultParallel())

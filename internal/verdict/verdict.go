@@ -97,13 +97,13 @@ type Criterion string
 const (
 	Code            Criterion = "code"
 	Data            Criterion = "data"
-	Licence         Criterion = "license"
+	License         Criterion = "license"
 	Preregistration Criterion = "preregistration"
 	Supplement      Criterion = "supplement"
 )
 
 // Criteria is the closed scorecard list, in the order a reader reads it.
-var Criteria = []Criterion{Code, Data, Licence, Preregistration, Supplement}
+var Criteria = []Criterion{Code, Data, License, Preregistration, Supplement}
 
 // Result is what one search for the authors' artifacts found. NothingFound and
 // Dead are distinct: nothing was published, versus something was published and

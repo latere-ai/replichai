@@ -108,7 +108,7 @@ try {
     if (m.n !== 1) return fail(`hovering the ${label} showed ${m.n} visible tooltips, want exactly 1`)
     check(m.text, `the ${label}'s tooltip is empty`)
     check(!m.clipper, `the ${label}'s tooltip sits inside a clipping ancestor (${m.clipper}) that cuts it off`)
-    check(m.painted, `the ${label}'s tooltip is not painted at its own centre — something covers or clips it (rect ${JSON.stringify(m.rect)})`)
+    check(m.painted, `the ${label}'s tooltip is not painted at its own center — something covers or clips it (rect ${JSON.stringify(m.rect)})`)
     check(m.inViewport, `the ${label}'s tooltip runs off the viewport: ${JSON.stringify(m.rect)}`)
     check(m.fits, `the ${label}'s tooltip clips its own text`)
     check(m.hidden === 'true', `the ${label}'s tooltip is in the accessibility tree; the trigger carries the label`)

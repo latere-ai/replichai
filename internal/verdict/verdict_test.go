@@ -40,7 +40,7 @@ func good() verdict.Verdict {
 		Scorecard: []verdict.Score{
 			{Criterion: verdict.Code, Found: true, URL: "https://github.com/authors/x"},
 			{Criterion: verdict.Data, Found: false, Searched: []string{"OSF", "the link in §5"}},
-			{Criterion: verdict.Licence, Found: true, URL: "https://github.com/authors/x/LICENSE"},
+			{Criterion: verdict.License, Found: true, URL: "https://github.com/authors/x/LICENSE"},
 			{Criterion: verdict.Preregistration, Found: false, Searched: []string{"OSF registries"}},
 			{Criterion: verdict.Supplement, Found: true, URL: "https://dl.acm.org/doi/suppl/10.1145/x"},
 		},
