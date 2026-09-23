@@ -116,7 +116,7 @@ type Totals struct {
 // Summarize totals the entries. The totals count every outcome rather than
 // only successes, because a report that shows only successes reads as if
 // everything completed.
-func (s State) Summarise() Totals {
+func (s State) Summarize() Totals {
 	totals := Totals{Papers: len(s.Entries)}
 	for _, entry := range s.Entries {
 		switch entry.Phase {
@@ -147,7 +147,7 @@ func (s State) Summarise() Totals {
 // do as prominently as what it did.
 func (s State) Report() string {
 	var b strings.Builder
-	totals := s.Summarise()
+	totals := s.Summarize()
 	if s.Project != "" {
 		fmt.Fprintf(&b, "# %s\n\n", s.Project)
 	} else {

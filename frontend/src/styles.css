@@ -1,10 +1,10 @@
 /* Latere v2 design system.
 
-   Text is set in ink; colour carries meaning. One brand hue marks what the
+   Text is set in ink; color carries meaning. One brand hue marks what the
    operator can act on: the primary button, the current page, a focus ring. A
    five-tone semantic ramp marks what the system reports: running, passed,
    needs attention, failed, published. Everything else stays ink on paper, so
-   any colour present has a meaning.
+   any color present has a meaning.
 
    Retinting the product is a two-line change: --brand and its dark variant. */
 
@@ -25,7 +25,7 @@
    the two uses is an `<em>` above the fold inside the console. With the preload
    in index.html the face is in flight with the document, so no swap is visible;
    `swap` only takes effect when that download is slow or fails, which is the
-   correct behaviour then.
+   correct behavior then.
 
    Both faces are declared and only the italic is preloaded. A declared face is
    not downloaded until a rule uses it: nothing sets this family upright today,
@@ -166,7 +166,7 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-/* Anchors inherit colour and carry no decoration by default, so a link looks
+/* Anchors inherit color and carry no decoration by default, so a link looks
    like a link only when it opts in with .link, never because an author forgot
    a class. Without the second declaration the browser underlines every bare
    anchor and the app ends up with two link styles nobody chose between. */
@@ -180,7 +180,7 @@ select,
 textarea {
   font-family: inherit;
 }
-/* One focus ring for every control, brand-coloured, so keyboard focus is
+/* One focus ring for every control, brand-colored, so keyboard focus is
    consistent across the app rather than styled per widget. */
 :where(input, button, select, a, [tabindex]):focus-visible {
   outline: 2px solid var(--brand-ring);
@@ -241,7 +241,7 @@ textarea {
   color: var(--fg-3);
   text-transform: uppercase;
 }
-/* An eyebrow that carries its section's glyph. The colour is set where it is
+/* An eyebrow that carries its section's glyph. The color is set where it is
    used, so one rule serves every tinted section head. */
 .eyebrow-ico {
   display: inline-flex;
@@ -402,7 +402,7 @@ textarea {
    Every destination stays clickable at its icon; only the labels are removed.
    The labels use `display: none` rather than `visibility: hidden`, so the 56px
    column reserves no space for text it does not draw and the icons are
-   centred. */
+   centered. */
 .rail-fold {
   width: 64px;
 }
@@ -435,7 +435,7 @@ textarea {
 .rail-fold .rail-foot {
   padding: 10px 8px;
 }
-/* The identity. The mark sets its own colour rather than inheriting
+/* The identity. The mark sets its own color rather than inheriting
    currentColor: it means the same thing in the rail, on the landing and in a
    browser tab, so its container must not restyle it. Two rings: the inner loop
    is closed because a machine can re-run it; the outer loop is open because the
@@ -447,7 +447,7 @@ textarea {
 /* The mark's two loops use vlag's two poles. The outer ring, the study with
    people that is never simulated, takes the warm crimson, which is vlag's warm
    pole and the hue --err also carries. The inner ring, the part a machine
-   re-runs, takes the cool azure, the brand pole. The colour carries the
+   re-runs, takes the cool azure, the brand pole. The color carries the
    meaning, so the two never swap. */
 .mark-outer {
   stroke: var(--err);
@@ -525,7 +525,7 @@ textarea {
   flex: none;
 }
 /* Each destination has its own hue on the icon, so the rail can be scanned by
-   colour before the label is read. Only the icon is tinted; the label stays ink
+   color before the label is read. Only the icon is tinted; the label stays ink
    until the row is current. */
 .nav-ico {
   display: flex;
@@ -593,7 +593,7 @@ textarea {
   padding-right: 0;
 }
 /* An avatar with no picture takes a hue derived from the address, so the same
-   person is the same colour in every list they appear in. */
+   person is the same color in every list they appear in. */
 .user-avatar {
   width: 22px;
   height: 22px;
@@ -888,7 +888,7 @@ h1.screen-title {
 /* A screen that holds one column of cards used to pin that column to the left
    edge with a narrow cap, so most of a wide display was empty and the content
    that did fit was cramped: a statement's project titles wrapped over three
-   lines beside 900px of empty space. The column is centred and given a usable
+   lines beside 900px of empty space. The column is centered and given a usable
    width here, once, so every single-column screen shares the same measure
    instead of each carrying its own inline cap. Screens that hold a form keep a
    narrower measure, because a text field stretched to 1000px is harder to use
@@ -981,7 +981,7 @@ h1.screen-title {
   flex: none;
   border-radius: 2px;
 }
-/* The remainder is drawn as the bar's unfilled track, not as a second colour
+/* The remainder is drawn as the bar's unfilled track, not as a second color
    competing with the quantity being counted. The class is `-none`, not
    `.empty`: `.empty` is the app's no-content state and carries padding. */
 .legend-swatch-none {
@@ -1532,7 +1532,7 @@ input.text.title-input {
 /* A list of people is read down its columns: tier, amount, then the two
    controls. Sized to content, a USER pill and an ADMIN pill differ by 22px and
    every cell to the right shifted with them. The widths here define the
-   column, and `justify-content` centres a shorter label in it rather than
+   column, and `justify-content` centers a shorter label in it rather than
    leaving the difference at one end. */
 .member-row > .pill {
   min-width: 78px;
@@ -1884,8 +1884,8 @@ input.text.title-input {
 }
 .policy-copy .admin-label {
   flex: none;
-  /* .admin-label centres itself for the flex row it was written for; in this
-     column that would centre the name over its own explanation. */
+  /* .admin-label centers itself for the flex row it was written for; in this
+     column that would center the name over its own explanation. */
   align-self: start;
   font-size: 13px;
   font-weight: 500;
@@ -1931,7 +1931,7 @@ input.text.title-input {
 /* One text control style, whatever the tag. `input.text` alone left every
    textarea in the app with the browser's default box: a white fill in a dark
    theme, a native resize grip, and none of the app's border, radius or focus
-   behaviour. */
+   behavior. */
 input.text,
 textarea.text {
   padding: 0 11px;
@@ -2523,7 +2523,7 @@ input.submit-input {
   flex: none;
   background: currentColor;
 }
-/* A filtered-out kind keeps its swatch as an outline, so the colour still tells
+/* A filtered-out kind keeps its swatch as an outline, so the color still tells
    you which row you switched off. */
 .kind-btn.off .sq {
   background: transparent;
@@ -2557,7 +2557,7 @@ input.submit-input {
 }
 /* Every event carries its kind's tone on the kind label. The stream is read by
    scrolling, and a small tinted chip makes a tool call findable in it without
-   drawing a coloured edge down every card. */
+   drawing a colored edge down every card. */
 .event {
   position: relative;
   display: grid;
@@ -2601,9 +2601,9 @@ input.submit-input {
   color: var(--fg-3);
 }
 /* The kind, as a soft chip in its own tone. The fill is currentColor at low
-   alpha, so setting the text colour per kind tints the whole chip with one
+   alpha, so setting the text color per kind tints the whole chip with one
    rule for five kinds. The default, for an unclassified event, is a neutral
-   grey. */
+   gray. */
 .event-kind {
   display: inline-flex;
   align-items: center;
@@ -2870,7 +2870,7 @@ input.submit-input {
   justify-self: end;
 }
 /* The token-usage rows are a breakdown, so each gets the swatch of the slice it
-   names, in the same colours as the totals. */
+   names, in the same colors as the totals. */
 .usage-dot {
   width: 7px;
   height: 7px;
@@ -2976,7 +2976,7 @@ input.submit-input {
 
    033 rebuilt the page from the design. Two points about how it is written:
 
-   Every colour is a token, including the ones the design wrote as hex. They
+   Every color is a token, including the ones the design wrote as hex. They
    were the tokens already (#2369bd is --brand, #3f7a55 is --ok), and writing
    them as tokens is what makes the page work in dark mode without a second
    palette.
@@ -2991,7 +2991,7 @@ input.submit-input {
    page's own tokens.
 
    Nothing outside .landing reads these, and nothing inside it should bypass
-   them with a literal: a hex value in a rule here is a colour that cannot
+   them with a literal: a hex value in a rule here is a color that cannot
    follow the appearance, which is the bug 040 fixed.
 
    Motion here is opt-in at the system level. Every animation lives inside the
@@ -3008,9 +3008,9 @@ input.submit-input {
      above it. */
   --slab: #eceae5;
   --slab-soft: var(--bg-surface);
-  /* The hero veil, as an rgb triple. It is the slab's own colour at varying
+  /* The hero veil, as an rgb triple. It is the slab's own color at varying
      alpha, so it lightens the copy's ground in light mode and darkens it in
-     dark mode. A triple rather than a colour because it is used inside gradient
+     dark mode. A triple rather than a color because it is used inside gradient
      stops. */
   --slab-veil: 236, 234, 229;
   --slab-ink: var(--fg-1);
@@ -3155,7 +3155,7 @@ input.submit-input {
   width: 100%;
   height: 100%;
 }
-/* The bottom of the slab is blended back towards the slab's own colour so the
+/* The bottom of the slab is blended back towards the slab's own color so the
    copy has a ground, and the top edge likewise so the header does not sit on a
    busy field. Whether that blend darkens or lightens is decided by the veil
    token, not by this rule. */
@@ -3468,7 +3468,7 @@ input.submit-input {
   max-width: 46ch;
 }
 
-/* The two loops, at figure scale. The colours are the mark's own and mean the
+/* The two loops, at figure scale. The colors are the mark's own and mean the
    same thing here: cool for the half a machine re-runs, warm for the study it
    never simulates. */
 .lp-loop {
@@ -4060,8 +4060,8 @@ input.submit-input {
 }
 .lp-card-by {
   display: inline-flex;
-  /* Top-aligned, not centred: a signer's name wraps to two lines on a narrow
-     card, and a centred mark then floats between them instead of marking the
+  /* Top-aligned, not centered: a signer's name wraps to two lines on a narrow
+     card, and a centered mark then floats between them instead of marking the
      line it belongs to. */
   align-items: flex-start;
   gap: 6px;
@@ -4131,7 +4131,7 @@ input.submit-input {
   display: block;
   margin: 0 auto 30px;
 }
-/* The mark sets its own colour, and on the slab it takes the pair adjusted for
+/* The mark sets its own color, and on the slab it takes the pair adjusted for
    a dark ground rather than the page's pair. */
 .lp-close-mark .mark-outer {
   stroke: var(--loop-warm);
@@ -4761,7 +4761,7 @@ input.submit-input {
   vertical-align: top;
   border-top: 1px solid var(--border);
 }
-/* An outer-loop row is muted as well as labelled, so the boundary is visible
+/* An outer-loop row is muted as well as labeled, so the boundary is visible
    without reading the column. */
 .grid-table tr.row-outer td,
 .grid-table tr.row-outer .claim-text {
@@ -4896,7 +4896,7 @@ input.submit-input {
   align-items: center;
   gap: var(--gap-row);
 }
-/* The header is deliberately not a `.row`. Much of the app's list behaviour
+/* The header is deliberately not a `.row`. Much of the app's list behavior
    hangs off that class, including the hover, the pointer and every test that
    reads "the first row", and a heading should have none of it. */
 .project-head {

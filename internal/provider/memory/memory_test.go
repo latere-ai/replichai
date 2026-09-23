@@ -157,7 +157,7 @@ func TestInjectedErrorsSurface(t *testing.T) {
 	}
 }
 
-func TestCancellationIsHonoured(t *testing.T) {
+func TestCancellationIsHonored(t *testing.T) {
 	p := New()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

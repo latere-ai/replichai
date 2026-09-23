@@ -234,7 +234,7 @@ func TestTheBearerPrefersAnActorToken(t *testing.T) {
 
 // Switching organization goes through the refresh grant, so it needs no second
 // device login, and the context is stored beside the credential.
-func TestSwitchingOrganisationNeedsNoSecondLogin(t *testing.T) {
+func TestSwitchingOrganizationNeedsNoSecondLogin(t *testing.T) {
 	p := &provider{approved: true, refreshNew: "refresh-2"}
 	s := session(t, p)
 	if _, err := s.Login(context.Background(), nil); err != nil {

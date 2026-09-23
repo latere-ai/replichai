@@ -20,7 +20,7 @@ const docGuide = "../../../docs/local-runs.md"
 
 // The catalog the guide shows an operator validates, and resolves to the
 // models the guide says it resolves to.
-func TestTheDocumentedCatalogueWorks(t *testing.T) {
+func TestTheDocumentedCatalogWorks(t *testing.T) {
 	body, err := os.ReadFile(docGuide)
 	if err != nil {
 		t.Fatalf("read the guide: %v", err)

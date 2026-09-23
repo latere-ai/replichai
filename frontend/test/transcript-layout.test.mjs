@@ -251,7 +251,7 @@ try {
   h.ok(`no sideways scroll and a one-line topbar from ${widths[0]}px down to ${widths[widths.length - 1]}px`)
   h.ok(
     `${m.n} cards, none clipped or overlapping; scrub moved ${Math.round(scrub.moved)}px restyling 0 cards; ` +
-      `search narrowed ${EVENTS + 1}→${narrowed.cards} and restored; every kind labelled`,
+      `search narrowed ${EVENTS + 1}→${narrowed.cards} and restored; every kind labeled`,
   )
 } catch (e) {
   fail(e)

@@ -92,8 +92,8 @@ func TestRunDrivesAProjectAndWritesItsReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("batch.json: %v", err)
 	}
-	if state.Summarise().Done != 2 {
-		t.Fatalf("state = %+v", state.Summarise())
+	if state.Summarize().Done != 2 {
+		t.Fatalf("state = %+v", state.Summarize())
 	}
 	report, err := os.ReadFile(filepath.Join(dir, "report.md"))
 	if err != nil {
