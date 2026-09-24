@@ -29,6 +29,12 @@ committed. The commit log already holds that.
   succeed. A run that names no image (by `--image` or
   `REPLICHAI_HARNESS_IMAGE`) is now refused before the engine is touched, and
   the message says to build a harness image and name it.
+- The deploy manifests no longer name `ghcr.io/latere-ai/replichai:latest`.
+  The base carries the placeholder tag `unreleased`, which is never pushed,
+  and `deploy/prod` pins the release it runs, which `lateregate release` now
+  moves to each new tag. Applying `deploy/prod` by hand runs that release
+  rather than whatever was published last, and a release no longer rolls
+  production through `:latest` before setting its own tag.
 
 ## v0.30.0 - 2026-09-19
 

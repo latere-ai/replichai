@@ -37,7 +37,10 @@ spec:
         - name: ghcr-secret
       containers:
         - name: replichai
-          image: ghcr.io/latere-ai/replichai:latest
+          # A placeholder tag that is never pushed. The overlay pins the
+          # release, so an overlay that pins nothing fails to pull rather than
+          # running an unknown build.
+          image: ghcr.io/latere-ai/replichai:unreleased
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

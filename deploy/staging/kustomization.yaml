@@ -14,6 +14,9 @@ namespace: latere-staging
 resources:
   - ../base
 
+# No images entry yet: the stub renders the base's `unreleased` placeholder,
+# which never pulls, until staging pins a release of its own.
+
 # Every environment-specific value is set here, not inherited. The base carries
 # no host, client or admin list, so a value missing from this patch is absent
 # rather than silently production's.

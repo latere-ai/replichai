@@ -189,6 +189,15 @@ waive:
       before. Closing it is test work in access, job and project first
     until: 2026-11-30
 
+# The files that name the release. `lateregate release` moves the vX.Y.Z in
+# each match to the tag it cuts, in the same commit as the changelog, so the
+# production overlay never lags the tag. internal/doccheck holds the overlay
+# to the changelog's newest section.
+release:
+  stamp:
+    - file: deploy/prod/kustomization.yaml
+      pattern: 'newTag: v\d+\.\d+\.\d+'
+
 # The identity shape of the family: specs/infrastructure/identity.md in latere-ai/specs
 identity:
   role: service

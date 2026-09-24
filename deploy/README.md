@@ -8,9 +8,11 @@ a prepared stub (see `staging/`).
 
 - `base/`: what every environment shares: the Deployment with the settings
   that are the same everywhere, the Service, the Ingress class and its
-  annotations, the PodDisruptionBudget.
+  annotations, the PodDisruptionBudget. Its image tag is the placeholder
+  `unreleased`, which is never pushed.
 - `prod/`: namespace `latere`, host `replichai.latere.ai`, the OIDC client
-  registered for it, and the bootstrap admin list.
+  registered for it, the bootstrap admin list, and the release it runs, pinned
+  with an `images` entry.
 - `staging/`: a stub for a future `latere-staging` environment, with its own
   placeholders for the same values.
 
@@ -160,7 +162,8 @@ go tool lateregate release v0.31.0
 ```
 
 It refuses while CI is red; otherwise it moves the notes into a
-section for the tag, commits, tags, and pushes.
+section for the tag, rewrites the `newTag` in `deploy/prod/kustomization.yaml`
+to the tag, commits, tags, and pushes.
 
 `.github/workflows/release.yml` hands the tag to the shared `service-release`
 pipeline (`latere-ai/ci`), which builds the image from the root `Dockerfile`,
@@ -187,9 +190,11 @@ kubectl -n latere rollout status deploy/replichai
 test/release-smoke.sh
 ```
 
-The manifests deliberately pin no image tag; the pipeline's `set image` is
-what pins it. So follow an `apply` with the `set image`, as above, rather than
-treating the apply as the deploy.
+`deploy/prod/` pins the last release, so the `apply` alone runs that release;
+the `set image` is what moves production to a build that is not a release. The
+next release's apply moves it back onto the pinned tag. Nothing in `deploy/`
+names `:latest`: the base's placeholder never pulls, so an overlay that pins no
+release fails visibly instead of running whatever was published last.
 
 ## `DEV` stays unset
 
