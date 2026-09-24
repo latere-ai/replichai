@@ -65,7 +65,7 @@ func (options *localOptions) bind(fs *flag.FlagSet) {
 	fs.StringVar(&options.engine, "engine", envOr("REPLICHAI_CONTAINER_ENGINE", ""),
 		"with --sandbox container: podman or docker")
 	fs.StringVar(&options.image, "image", envOr("REPLICHAI_HARNESS_IMAGE", ""),
-		"with --sandbox container: the container image for the harness")
+		"with --sandbox container, required: the harness image to run; none is published")
 	fs.StringVar(&options.models, "models", envOr("REPLICHAI_MODELS_FILE", defaultModelsFile()),
 		"with --runtime local: path to the model catalog file")
 	fs.StringVar(&options.root, "session-root", envOr("REPLICHAI_SESSION_ROOT", defaultSessionRoot()),

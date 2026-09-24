@@ -26,7 +26,8 @@ const (
 	// ConditionStopped is an engine that is installed but not running. On
 	// macOS this is almost always a podman machine that was never started.
 	ConditionStopped hostsandbox.Condition = "stopped"
-	// ConditionImage is an engine that runs but cannot supply the image.
+	// ConditionImage is an engine that runs but cannot supply the image, or
+	// a run that names no image at all.
 	ConditionImage hostsandbox.Condition = "image"
 )
 
@@ -127,15 +128,22 @@ func stoppedText(platform hostsandbox.Platform, components []string) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// imageText is the remedy for an image the driver cannot use. With no
+// component, no image was named at all: none is published, so the operator
+// builds one and names it.
 func imageText(components []string) string {
-	image := "the harness image"
-	if len(components) > 0 {
-		image = components[len(components)-1]
+	if len(components) == 0 {
+		return `No harness image is named, and none is published to pull by default.
+Build one, then name it:
+
+    replichai audit … --sandbox container --image <ref>
+
+or set REPLICHAI_HARNESS_IMAGE=<ref>.`
 	}
 	return fmt.Sprintf(`The engine is running, but the harness image is unavailable.
 
     podman pull %s
 
-The image is public. Behind a proxy, set REPLICHAI_HARNESS_IMAGE to a
-mirror holding the same digest.`, image)
+Behind a proxy, pass --image or set REPLICHAI_HARNESS_IMAGE to a mirror
+holding the same digest.`, components[len(components)-1])
 }

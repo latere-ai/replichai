@@ -23,6 +23,12 @@ committed. The commit log already holds that.
   status, and saving the platform settings that carry the rate card and the
   drafting model. ci-gate v0.46.0 fails a build that binds a json encoding as
   bytes, so the class cannot return.
+- `--sandbox container` no longer falls back to
+  `ghcr.io/latere-ai/replichai-harness:latest`, an image that was never
+  published, so a run without `--image` failed at a pull that could not
+  succeed. A run that names no image (by `--image` or
+  `REPLICHAI_HARNESS_IMAGE`) is now refused before the engine is touched, and
+  the message says to build a harness image and name it.
 
 ## v0.30.0 - 2026-09-19
 

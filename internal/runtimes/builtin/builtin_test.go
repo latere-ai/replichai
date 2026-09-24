@@ -45,8 +45,8 @@ func TestCatalogComposesAdaptersExplicitly(t *testing.T) {
 // fixing it.
 func TestLocalIsComposedAndRefusesAnUnusableMachine(t *testing.T) {
 	catalog, err := Catalog(Config{Local: LocalConfig{
-		Sandbox: sandbox.Container, Engine: "docker", Root: t.TempDir(),
-		Lookup: func(string) (string, bool) { return "", false },
+		Sandbox: sandbox.Container, Engine: "docker", Image: "registry.example/replichai-harness:test",
+		Root: t.TempDir(), Lookup: func(string) (string, bool) { return "", false },
 	}})
 	if err != nil {
 		t.Fatalf("Catalog: %v", err)

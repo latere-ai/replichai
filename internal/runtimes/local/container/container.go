@@ -28,10 +28,6 @@ import (
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 
-// DefaultImage is the harness image, pinned by tag here and by digest in a
-// deployment. It holds the toolchain and both harnesses.
-const DefaultImage = "ghcr.io/latere-ai/replichai-harness:latest"
-
 // Labels the image declares about itself. Capabilities are read from the image
 // rather than repeated in this code, so that a custom image with a different
 // toolchain declares its own, and a specification naming a manager the image
@@ -62,7 +58,8 @@ type Config struct {
 	// A named engine that is unusable is an error, never a fallback. An
 	// operator who named an engine gets that engine or an error message.
 	Engine Engine
-	// Image is the harness image.
+	// Image is the harness image. It is required: no image is published to
+	// fall back to.
 	Image string
 	// Platform is the operating system. It is a parameter so that refusals
 	// can be tested on one machine.
@@ -91,9 +88,6 @@ func New(ctx context.Context, config Config) (*Sandbox, error) {
 	if config.Platform == "" {
 		config.Platform = hostsandbox.CurrentPlatform()
 	}
-	if config.Image == "" {
-		config.Image = DefaultImage
-	}
 	if config.Look == nil {
 		config.Look = exec.LookPath
 	}
@@ -105,6 +99,13 @@ func New(ctx context.Context, config Config) (*Sandbox, error) {
 	}
 	if config.Platform == hostsandbox.Windows {
 		return nil, sandbox.NotReady(config.Platform, sandbox.Container, hostsandbox.ConditionUnsupported, "podman")
+	}
+	// There is no default image: no harness image is published, so a default
+	// would name a pull that cannot succeed. The operator names one, and the
+	// refusal comes before the engine is probed because it is configuration,
+	// not the machine.
+	if strings.TrimSpace(config.Image) == "" {
+		return nil, sandbox.NotReady(config.Platform, sandbox.Container, sandbox.ConditionImage)
 	}
 	driver := &Sandbox{config: config}
 	engine, err := driver.selectEngine(ctx)
