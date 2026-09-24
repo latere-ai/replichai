@@ -82,7 +82,7 @@ Either way the model id must be priced by the rate card on the same screen: an
 exact entry, or a dated snapshot of one (`claude-haiku-4-5-20251001` prices as
 `claude-haiku-4-5`). Without one the deployment refuses to draft rather than
 guessing. The card's "charge the dearest rates" fallback exists for an
-unrecognised *session* model, and applying it here would bill Opus rates for a
+unrecognized *session* model, and applying it here would bill Opus rates for a
 model that costs a fraction of that.
 
 With no model configured, nothing breaks: the app offers no draft control and
@@ -110,9 +110,8 @@ address, so a restart does not undo a ban either.
 **The server checks its own price list at every boot**, and the pod log says what it found:
 
 ```
-rates: best → claude-opus-5-20260901, which the card does NOT name — charged the
-       dearest rates on it ($5.00/$25.00 per Mtok). Add it in Admin → Platform …
-rates: balanced → claude-sonnet-5, priced at its own rates
+{"level":"WARN","msg":"rates: the card does not name this model, so it is charged the dearest rates on the card; add it in Admin, Platform to bill it at its real price","preference":"best","model":"claude-opus-5-20260901","input_per_mtok":5,"output_per_mtok":25}
+{"level":"INFO","msg":"rates: preference priced at its own rates","preference":"balanced","model":"claude-sonnet-5"}
 ```
 
 Read that check after a deploy. It runs in the server because the server is the
@@ -153,11 +152,15 @@ from, so a wrong value sends people to the wrong host.
 
 ## Release
 
-A release is a tag, and the pipeline does the rest:
+A release is a tag, and the pipeline does the rest. Write the release's notes
+under `Unreleased` in `CHANGELOG.md`, then cut it:
 
 ```bash
-git tag v0.29.0 && git push origin v0.29.0
+go tool lateregate release v0.31.0
 ```
+
+It refuses while CI is red; otherwise it moves the notes into a
+section for the tag, commits, tags, and pushes.
 
 `.github/workflows/release.yml` hands the tag to the shared `service-release`
 pipeline (`latere-ai/ci`), which builds the image from the root `Dockerfile`,
