@@ -34,7 +34,7 @@ be opened, so [§5](#5-the-money) is incomplete.
 
 | Date | Who | Form | Asked for |
 |---|---|---|---|
-| Jul 2026 | — | [`landscape.md`](landscape.md) | (our own sweep, a July snapshot, partly stale; see [below](#a-note-on-landscapemd)) |
+| Jul 2026 | the team | [`landscape.md`](landscape.md) | (our own sweep, a July snapshot, partly stale; see [below](#a-note-on-landscapemd)) |
 | 3 Aug | Robin Welsch (Aalto), Kasper Hornbæk (Copenhagen) | meeting | 100 behavioral papers, a broad journal, €25k privately raised |
 | 7–10 Aug | Francesco Chiossi (Nestlé), Robin Welsch | email | Study 1: does the tool work. Study 2: what does CHI look like |
 | 17 Aug | Mark Colley (UCL) | meeting | Research-first, open models on a UCL DGX, controlled evaluation |
@@ -43,7 +43,7 @@ be opened, so [§5](#5-the-money) is incomplete.
 timeline
     title Four consultations, and what each one asked for
     Jul 2026 : landscape.md : our own competitor sweep : the baseline the other three are read against
-    3 Aug : Robin Welsch + Kasper Hornbæk : 100 behavioural papers : a broad journal, not CHI : EUR 25k from five private contributors
+    3 Aug : Robin Welsch + Kasper Hornbæk : 100 behavioral papers : a broad journal, not CHI : EUR 25k from five private contributors
     7-10 Aug : Francesco Chiossi : Study 1, does the tool work : Study 2, what does CHI look like
     17 Aug : Mark Colley : research-first : open models on a UCL DGX : controlled evaluation
 ```
@@ -96,17 +96,17 @@ hold, but they must be reconciled before either appears in a paper.
 
 | Decision | Option A | Option B | Option C |
 |---|---|---|---|
-| **Venue** | Nature/Science, explicitly away from CHI (3 Aug) | CHI in three weeks, "rushed but feasible" (17 Aug) | — |
+| **Venue** | Nature/Science, explicitly away from CHI (3 Aug) | CHI in three weeks, "rushed but feasible" (17 Aug) | none |
 | **Corpus** | 100 behavioral papers with prior manual replications (Kasper) | 1000 CHI papers, 200/year (Francesco) | Open code, absent from training data, internet severed (Mark) |
 | **Ground truth** | Olga's paper (Robin) | Prior manual replication reports (Kasper) | Two coders + ICC (Francesco) |
 | **Model** | Opus: "highest quality" (17 Aug) | Open models self-hosted on a DGX (17 Aug) | Any cheaper model (3 Aug) |
-| **Posture** | Research-first, pivot later (Mark) | Private money buying runs on a deployed product (3 Aug) | — |
+| **Posture** | Research-first, pivot later (Mark) | Private money buying runs on a deployed product (3 Aug) | none |
 
 ### The corpora are mutually exclusive
 
 ```mermaid
 flowchart TB
-    K["Kasper<br/>100 behavioural papers with<br/>prior manual replications"]
+    K["Kasper<br/>100 behavioral papers with<br/>prior manual replications"]
     F["Francesco<br/>1000 CHI papers,<br/>200 per year"]
     M["Mark<br/>open code, internet severed,<br/>absent from training data"]
     X1{{"conflict"}}
@@ -179,8 +179,8 @@ discovering it after the money is spent.
 | A checklist a human fills in the same shape | Francesco | none | no spec |
 | Internet severed, paper absent from training data | Mark | no such run mode | no spec |
 | Open or self-hosted model runtime | Mark, 3 Aug | designed, not built | [041f](../specs/041f-openai-responses-runs-a-session.md)/[041g](../specs/041g-latere-runs-a-session.md) |
-| Practitioner wedge: unreviewed internal UX studies | Francesco | not specced | — |
-| Re-implementing proprietary research for companies | Mark | not specced | — |
+| Practitioner wedge: unreviewed internal UX studies | Francesco | not specced | none |
+| Re-implementing proprietary research for companies | Mark | not specced | none |
 
 ```mermaid
 flowchart TB
@@ -215,7 +215,7 @@ grant round is too slow. At the roughly €25 per session both meetings agreed o
 | 100 behavioral papers, once | 100 | ~€2,500 |
 | Study 1: 150 papers × 5 repeat runs | 750 | ~€19,000 |
 | Study 2: 1000 CHI papers, once | 1,000 | ~€25,000 |
-| Outer-loop subset | — | no defensible figure |
+| Outer-loop subset | none | no defensible figure |
 
 ```mermaid
 xychart-beta
@@ -274,7 +274,7 @@ Ordered by how much each step unblocks for how little.
 | 5 | Split the rate; separate conclusion survival from number movement | a spec | Study 2's real result |
 | 6 | Spec author right-of-reply and correction | a spec | publishing safely |
 | 7 | Build the ICC checklist | small | Study 1's human half |
-| 8 | Repair `landscape.md`: score `doesitreproduce.com`, add ReplicatorBench, resolve [R8](#r8--a-citation-that-was-wrong-now-corrected), date the absence claims | hours | knowing who we compete with |
+| 8 | Repair `landscape.md`: score `doesitreproduce.com`, add ReplicatorBench, resolve [R8](#r8-a-citation-that-was-wrong-now-corrected), date the absence claims | hours | knowing who we compete with |
 
 ```mermaid
 flowchart TB
@@ -539,7 +539,7 @@ flowchart TB
 | **Mark** | The model axis: tier comparison protocol, DGX environment ready, and the "internet severed, not in training data" condition | A protocol and a prepared machine | [§7 step 1](#7-ranked-next-steps) |
 | **Robin + Kasper** | Right-of-reply and correction policy, a question of standing and field norms rather than code ([§6](#6-risks-nobody-raised)) | A stated position | Publishing anything naming third parties |
 | **Francesco + Mark** | Expert and practitioner interviews (agreed 17 Aug) | Transcripts and a coded summary | Nothing; fully parallel |
-| **Anyone with time** | Related work: turn [`landscape.md`](landscape.md) into a related-work section; score `doesitreproduce.com`; resolve the [R8](#r8--a-citation-that-was-wrong-now-corrected) citation | A drafted section | The write-up |
+| **Anyone with time** | Related work: turn [`landscape.md`](landscape.md) into a related-work section; score `doesitreproduce.com`; resolve the [R8](#r8-a-citation-that-was-wrong-now-corrected) citation | A drafted section | The write-up |
 
 ### What stays with the builder
 
@@ -597,7 +597,7 @@ Checked against a live source on 25 Aug 2026.
 | **R3** | Reproducibility Project: Cancer Biology. About $52,500–75,000 per paper over 8 years; scope cut from 53 to 23 papers on author non-cooperation | The only published per-paper cost of manual replication. Via `landscape.md`; primary source not re-verified. |
 | **R4** | [doesitreproduce.com](https://doesitreproduce.com/), operated by Brainarbeit | See below. |
 | **R5** | Liu, H., Tjiaranata, F. A., & Tan, C. *VERITAS: Towards a General-Purpose Replication Tool for Scientific Research.* arXiv:[2607.02931](https://arxiv.org/abs/2607.02931), 3 Jul 2026, U. Chicago | Closest architectural comparison. 65 papers across CS, social science, medicine, astrophysics; importance-weighted Replication Score, severity-rated fix log, patched codebase. Beats a baseline Claude Code implementation on every metric. |
-| **R6** | Nguyen, Soós, Ma, Obadage, Ranjan, Koneru, Errington, Nematova, Rajtmajer, Wu & Jiang. *ReplicatorBench.* arXiv:[2602.11354](https://arxiv.org/abs/2602.11354), 11 Feb 2026 (v3 29 Jun) | Human-verified **replicable and non-replicable** claims in social/behavioural science, evaluating the *process* and not only the outcome. Missing from `landscape.md`. If the 100-paper study runs, this is what it is compared against. |
+| **R6** | Nguyen, Soós, Ma, Obadage, Ranjan, Koneru, Errington, Nematova, Rajtmajer, Wu & Jiang. *ReplicatorBench.* arXiv:[2602.11354](https://arxiv.org/abs/2602.11354), 11 Feb 2026 (v3 29 Jun) | Human-verified **replicable and non-replicable** claims in social/behavioral science, evaluating the *process* and not only the outcome. Missing from `landscape.md`. If the 100-paper study runs, this is what it is compared against. |
 | **R7** | Hullman, J., Broska, D., Sun, H., & Shaw, A. *This human study did not involve human subjects.* arXiv:[2602.15785](https://arxiv.org/abs/2602.15785), 17 Feb 2026 | Heuristic substitution vs calibrated validation: the distinction 007's "synthetic pilot, never evidence" rule rests on. |
 | **R8** | Yeykelis, Pichai, Cummings & Reeves. *Using LLMs to Create AI Personas…* arXiv:[2408.16073](https://arxiv.org/abs/2408.16073), 28 Aug 2024 (v2 24 Apr 2025) | `landscape.md` cited it wrongly; corrected below. |
 | **R9** | `reprobe` (Mark Colley): local LLMs analyzing code in Docker to check reproducibility | **Unverified.** No public trace; absent from [m-colley.github.io](https://m-colley.github.io/) and from search. Ask them. |
@@ -611,8 +611,8 @@ were checked on 25 Aug 2026 while writing this:
 |---|---|
 | The CHI numbers, 76 / 37 / ~1% | Correct, and they are [R2](#references)'s, not the survey's |
 | The VERITAS description | Accurate against the abstract |
-| "No funded startup whose product is agentic paper reproduction" | **Falsified**: [R4](#r4--a-live-competitor-landscapemd-says-does-not-exist) |
-| arXiv 2408.16073 reports 81% / 83% | **Wrong, and inverted the source's meaning**; corrected, see [R8](#r8--a-citation-that-was-wrong-now-corrected) |
+| "No funded startup whose product is agentic paper reproduction" | **Falsified**: [R4](#r4-a-live-competitor-landscapemd-says-does-not-exist) |
+| arXiv 2408.16073 reports 81% / 83% | **Wrong, and inverted the source's meaning**; corrected, see [R8](#r8-a-citation-that-was-wrong-now-corrected) |
 | The benchmark list | Incomplete; missing [R6](#references) |
 
 The document opens by promising that "every entry below was checked against a
@@ -636,7 +636,7 @@ wherever one exists, and re-verify only the three claims a decision rests on:
 the competitor absence, the funding-line absence, and the 007 synthetic-pilot
 citation.
 
-### R4 — a live competitor `landscape.md` says does not exist
+### R4: a live competitor `landscape.md` says does not exist
 
 Autonomous AI re-runs of published computational biomedical pipelines, "end to
 end, without a human in the loop", scoring 0–100. As of 26 Aug 2026: **1,286
@@ -650,7 +650,7 @@ position on both axes we defend**: no human in the loop, and a scalar score as
 the headline output, which `procedure.md` §7 refuses to do. Score it on the
 four axes and add it.
 
-### R8 — a citation that was wrong, now corrected
+### R8: a citation that was wrong, now corrected
 
 `landscape.md` attributed to this arXiv id: "matched up to 81% of real effects
 while also producing significant effects for up to 83% of null findings", and
