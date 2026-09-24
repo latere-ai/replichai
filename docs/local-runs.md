@@ -93,7 +93,7 @@ Directories are kept after a run, because the workspace is the reproduction:
 
 ```bash
 replichai sessions ls
-replichai sessions prune --older-than 7d --dry-run
+replichai sessions prune --older-than 168h --dry-run
 ```
 
 Set `REPLICHAI_SESSION_RETENTION=on-failure` or `discard` if you would rather
@@ -384,10 +384,10 @@ success. An empty repository is a real outcome, and the transcript in
 
 | Flag | Default | What it chooses |
 |---|---|---|
-| `--runtime local` | `anthropic-managed` | run the session on this machine |
+| `--runtime local` | `anthropic-managed` for `audit`, `local` for `run` | run the session on this machine |
 | `--sandbox` | `host` | `host` (srt) or `container` (podman, docker) |
 | `--harness` | `claude-code` | `claude-code` or `codex` |
-| `--model` | `best` | a tier (`best`, `balanced`, `fast`) or `provider/id` |
+| `--model` | `best` | with `replichai audit`: a tier (`best`, `balanced`, `fast`) or `provider/id`; a project file sets it per paper |
 | `--models` | `~/.config/replichai/models.yaml` | the model catalog |
 | `--session-root` | `~/.replichai/sessions` | where session directories are made |
 | `--retention` | `keep` | `keep`, `on-failure`, or `discard` |
@@ -396,7 +396,7 @@ success. An empty repository is a real outcome, and the transcript in
 | `--parallel` | half the cores, capped at 4 | with `replichai run`: papers at once |
 | `--resume` | off | with `replichai run`: skip what finished |
 
-Every flag has an environment variable: `REPLICHAI_RUNTIME`,
+Most of these have an environment variable: `REPLICHAI_RUNTIME`,
 `REPLICHAI_SANDBOX`, `REPLICHAI_HARNESS`, `REPLICHAI_MODELS_FILE`,
 `REPLICHAI_SESSION_ROOT`, `REPLICHAI_SESSION_RETENTION`,
 `REPLICHAI_CONTAINER_ENGINE`, `REPLICHAI_HARNESS_IMAGE`, and
@@ -404,5 +404,4 @@ Every flag has an environment variable: `REPLICHAI_RUNTIME`,
 a machine. A flag given on the command line wins over the variable.
 
 How it is put together, and why, is in
-[`architecture.md`](architecture.md); the design record is
-[`specs/045`](../specs/045-the-run-happens-on-your-machine.md).
+[`architecture.md`](architecture.md).
