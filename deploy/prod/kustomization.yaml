@@ -12,6 +12,13 @@ namespace: latere
 resources:
   - ../base
 
+# The release production runs. `lateregate release` rewrites this tag in the
+# commit it tags, so the release pipeline's apply and its `set image` name the
+# same build, and an apply by hand never rolls production to another one.
+images:
+  - name: ghcr.io/latere-ai/replichai
+    newTag: v0.30.0
+
 patches:
   - target:
       kind: Deployment
