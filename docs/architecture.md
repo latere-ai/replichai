@@ -4,73 +4,40 @@ Two programs share one engine: a CLI that runs a single audit, and a web applica
 
 ## The engine
 
-```
-paper reference
-      │
-      ▼
-┌──────────────┐  DOI, else arXiv upgraded to its DOI, else a content digest
-│ paper        │  a stable identity, plus a slug that is presentation only
-└──────────────┘
-      │
-      ▼
-┌──────────────┐  reads the manifests of everything already published
-│ registry     │  warns about prior reproductions, allocates <slug>-<suffix>
-└──────────────┘
-      │
-      ▼
-┌──────────────┐  creates the private repository the agent will commit into
-│ github       │
-└──────────────┘
-      │  RepoMount
-      ▼
-┌──────────────┐   reads    ┌──────────┐
-│ orchestrator │ ─────────► │ method/  │  instructions · rubric · task template
-└──────────────┘            └──────────┘
-      │
-      │ describes one normalized SessionSpec
-      ▼
-┌────────────────────────────────────────────┐
-│ managed controller + runtime router        │  lifecycle + durable ownership
-└────────────────────────────────────────────┘
-      │
-      ▼
-┌────────────────────────────────────────────┐
-│ runtime adapter                            │  the only backend-aware code
-└────────────────────────────────────────────┘
-      │
-      ▼
-┌────────────────────────────────────────────┐
-│ agent runtime                              │  sandboxed worker + tools + grader
-│   • network access for the artifact hunt   │
-│   • a shell for building and running       │
-│   • the repository mounted at              │
-│     /workspace/repro, committed live       │
-│   • grades output against the rubric       │
-└────────────────────────────────────────────┘
-      │
-      ▼
-┌────────────────────────────────────────────┐
-│ finalize — outside the sandbox             │  verify the committed tree,
-│                                            │  write replication.json,
-│                                            │  commit the transcript, invite
-└────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    ref["paper reference"] --> paper["paper<br/>a stable identity: DOI, else arXiv upgraded to its DOI,<br/>else a content digest; plus a slug that is presentation only"]
+    paper --> registry["registry<br/>reads the manifests of everything already published,<br/>warns about prior reproductions, allocates a unique slug"]
+    registry --> github["github<br/>creates the private repository the agent will commit into"]
+    github -->|RepoMount| orch["orchestrator"]
+    method[("method/<br/>instructions, rubric, task template")] -->|read by| orch
+    orch -->|one normalized SessionSpec| ctrl["managed controller + runtime router<br/>lifecycle and durable ownership"]
+    ctrl --> adapter["runtime adapter<br/>the only backend-aware code"]
+    adapter --> runtime["agent runtime: sandboxed worker, tools, grader<br/>network access for the artifact hunt, a shell for building and running,<br/>the repository mounted at /workspace/repro and committed live,<br/>output graded against the rubric"]
+    runtime --> finalize["finalize, outside the sandbox<br/>verify the committed tree, write replication.json,<br/>commit the transcript, invite"]
 ```
 
 An audit without publishing stops at the agent runtime and collects artifacts into a local directory. Everything above and below the runtime is the publishing path. It is optional per run, not a separate program. The CLI reaches it with `--publish`; the server reaches the same `publish.FinalizeLive` from its worker, so the two paths cannot drift.
 
 ## The application
 
+```mermaid
+flowchart LR
+    browser --> server["cmd/server"]
+    server --> webauth["webauth<br/>OIDC login, session cookie, gate, /admin, freeze gate"]
+    server --> httpapi["httpapi<br/>the operator routes, SSE, the public zone"]
+    server --> spa["spa<br/>the built frontend, embedded"]
+    server --> runner["job.Runner"]
+    runner --> audit["audit"]
+    audit --> controller["managed.Controller"]
+    controller --> router["runtime router"]
+    audit --> finalize["publish.FinalizeLive"]
+    finalize --> github["github"]
 ```
-browser ──► cmd/server ─┬─ webauth   OIDC login, session cookie, gate, /admin, freeze gate
-                        ├─ httpapi   the operator routes, SSE, the public zone
-                        ├─ spa       the built frontend, embedded
-                        └─ job.Runner ──► audit ──► managed.Controller ──► runtime router
-                                              │
-                                              └─► publish.FinalizeLive ──► github
 
-Postgres holds: jobs · projects · project_papers · project_members · access_grants
-                platform_settings · credit_entries · profiles · forge_links
-```
+Postgres holds `jobs`, `projects`, `project_papers`, `project_members`,
+`access_grants`, `platform_settings`, `credit_entries`, `profiles`, and
+`forge_links`.
 
 One binary. The HTTP server and the worker run in the same process; the database lets a session outlive the request, the connection, and a restart. A submitted session becomes a row before anything is spent, and the worker claims it with `SELECT … FOR UPDATE SKIP LOCKED`, so two pods do not run the same audit twice.
 
@@ -84,19 +51,16 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship today: `anthropic-managed`, which adapts the existing Managed Agents backend; `memory`, a deterministic reference runtime; and `local`, which runs a session on the operator's own machine. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
-Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are designed separately and are intentionally not part of this refactor.
+Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are designed separately and are not built.
 
 **The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed`, held to the same conformance suite, and the choices that vary inside it are not part of its name:
 
-```
-                    ┌─ bootstrap stage   the declared packages, into the session's
-                    │                    own environment — never the workspace
-managed session ────┼─ worker stage      the harness, confined to one directory
-   (local)          │                    · srt on the host (default), or a container
-                    ├─ judge stage       the same harness, workspace read-only,
-                    │                    verdict to a directory the worker never sees
-                    └─ host, afterwards  verify the committed tree, push it,
-                                         commit the system's own evidence
+```mermaid
+flowchart LR
+    session["managed session (local)"] --> bootstrap["bootstrap stage<br/>the declared packages, into the session's<br/>own environment, never the workspace"]
+    bootstrap --> worker["worker stage<br/>the harness, confined to one directory:<br/>srt on the host by default, or a container"]
+    worker --> judge["judge stage<br/>the same harness, workspace read-only,<br/>verdict to a directory the worker never sees"]
+    judge --> host["host, afterwards<br/>verify the committed tree, push it,<br/>commit the system's own evidence"]
 ```
 
 - **The sandbox is a driver** (`sandbox/`, `host/`, `container/`). The default is `srt` (Seatbelt on macOS, bubblewrap with seccomp on Linux) around the harness already installed and logged in on the machine: no image, no virtual machine, and an allow-only network policy that the container driver cannot enforce. The container driver is opt-in, for a toolchain pinned identically everywhere.
