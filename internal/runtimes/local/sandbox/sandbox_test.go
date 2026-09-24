@@ -44,7 +44,7 @@ func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 			[]string{"systemctl --user start podman"}},
 		{hostsandbox.Darwin, Container, ConditionImage, []string{"ghcr.io/latere-ai/replichai-harness@sha256:abc"},
 			[]string{"podman pull ghcr.io/latere-ai/replichai-harness@sha256:abc", "REPLICHAI_HARNESS_IMAGE"}},
-		{hostsandbox.Darwin, Container, ConditionImage, nil, []string{"podman pull the harness image"}},
+		{hostsandbox.Darwin, Container, ConditionImage, nil, []string{"--image <ref>", "REPLICHAI_HARNESS_IMAGE", "--sandbox host"}},
 	}
 	for _, c := range cases {
 		err := NotReady(c.platform, c.driver, c.condition, c.components...)

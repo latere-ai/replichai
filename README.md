@@ -78,8 +78,9 @@ replichai audit https://arxiv.org/abs/2603.01795 --runtime local
 On a machine where `claude login` has already been run, this needs no API key
 and no configuration. `--harness codex` runs the same session through Codex,
 and a gateway in `models.yaml` runs an open-weights model. `--sandbox
-container` runs it in Podman or Docker instead, but the harness image it needs
-is not published yet, so point `--image` at one you built.
+container` runs it in Podman or Docker instead. No harness image is published
+for it, so it needs `--image` naming one you built, and refuses to start
+without it.
 
 A whole project at once, with the results filed in the app:
 

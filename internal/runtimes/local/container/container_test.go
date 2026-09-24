@@ -81,8 +81,15 @@ func found(names ...string) func(string) (string, error) {
 	}
 }
 
+// testImage is the image the scripted engine answers for. The driver has no
+// default, so every construction that is meant to succeed names one.
+const testImage = "registry.example/replichai-harness:test"
+
 func build(t *testing.T, config Config, e *engine) *Sandbox {
 	t.Helper()
+	if config.Image == "" {
+		config.Image = testImage
+	}
 	if config.Platform == "" {
 		config.Platform = hostsandbox.Darwin
 	}
@@ -103,7 +110,7 @@ func build(t *testing.T, config Config, e *engine) *Sandbox {
 func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	t.Run("not installed", func(t *testing.T) {
 		e := newEngine()
-		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found(), Run: e.run})
+		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Image: testImage, Look: found(), Run: e.run})
 		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
@@ -116,7 +123,7 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	t.Run("installed but not running", func(t *testing.T) {
 		e := newEngine()
 		e.fail["info"] = errors.New("cannot connect to podman socket")
-		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
+		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Image: testImage, Look: found("podman"), Run: e.run})
 		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
@@ -130,7 +137,7 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 		e := newEngine()
 		e.fail["image inspect"] = errors.New("no such image")
 		e.fail["pull"] = errors.New("network unreachable")
-		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
+		_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Image: testImage, Look: found("podman"), Run: e.run})
 		if !errors.Is(err, hostsandbox.ErrNotReady) {
 			t.Fatalf("New = %v", err)
 		}
@@ -146,7 +153,7 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 		e.answers["image inspect"] = "pip|python 3.13.2"
 		original := e.run
 		driver, err := New(context.Background(), Config{
-			Platform: hostsandbox.Darwin, Look: found("podman"),
+			Platform: hostsandbox.Darwin, Image: testImage, Look: found("podman"),
 			Run: func(ctx context.Context, argv []string, stdin io.Reader) ([]byte, error) {
 				if strings.HasPrefix(strings.Join(argv[1:], " "), "image inspect") {
 					calls++
@@ -169,13 +176,36 @@ func TestTheThreeEngineFailuresAreDistinguished(t *testing.T) {
 	})
 }
 
+// TestNoHarnessImageIsRefusedNamingTheFlag checks that a run naming no image
+// is refused before the engine is asked for anything, with a message naming
+// --image and REPLICHAI_HARNESS_IMAGE. No harness image is published, so a
+// default would send every operator to a pull that cannot succeed.
+func TestNoHarnessImageIsRefusedNamingTheFlag(t *testing.T) {
+	e := newEngine()
+	_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
+	if !errors.Is(err, hostsandbox.ErrNotReady) {
+		t.Fatalf("New with no image = %v", err)
+	}
+	for _, want := range []string{"--image", "REPLICHAI_HARNESS_IMAGE", "--sandbox host"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message missing %q:\n%s", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), ":latest") {
+		t.Errorf("the refusal names an unpublished :latest image:\n%s", err)
+	}
+	if len(e.calls) != 0 {
+		t.Errorf("the engine was run with no image named: %v", e.calls)
+	}
+}
+
 // TestANamedEngineDoesNotFallBack checks that a named engine that cannot run
 // is an error rather than a silent fallback to the other engine. An operator
 // who named an engine gets that engine or an error message.
 func TestANamedEngineDoesNotFallBack(t *testing.T) {
 	e := newEngine()
 	_, err := New(context.Background(), Config{
-		Platform: hostsandbox.Darwin, Engine: Docker, Look: found("podman"), Run: e.run,
+		Platform: hostsandbox.Darwin, Engine: Docker, Image: testImage, Look: found("podman"), Run: e.run,
 	})
 	if !errors.Is(err, hostsandbox.ErrNotReady) || !strings.Contains(err.Error(), "docker") {
 		t.Fatalf("New = %v", err)
@@ -214,7 +244,7 @@ func TestCapabilitiesComeFromTheImage(t *testing.T) {
 
 	e := newEngine()
 	e.answers["image inspect"] = "|"
-	_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Look: found("podman"), Run: e.run})
+	_, err := New(context.Background(), Config{Platform: hostsandbox.Darwin, Image: testImage, Look: found("podman"), Run: e.run})
 	if err == nil || !strings.Contains(err.Error(), ManagersLabel) {
 		t.Fatalf("an image declaring nothing was accepted: %v", err)
 	}
@@ -364,7 +394,7 @@ func TestOutputReadsFromAnOffset(t *testing.T) {
 // TestWindowsIsRefused checks that Windows is refused with a message naming
 // WSL2 rather than the other driver, which is equally unavailable there.
 func TestWindowsIsRefused(t *testing.T) {
-	_, err := New(context.Background(), Config{Platform: hostsandbox.Windows, Look: found("podman"), Run: newEngine().run})
+	_, err := New(context.Background(), Config{Platform: hostsandbox.Windows, Image: testImage, Look: found("podman"), Run: newEngine().run})
 	if !errors.Is(err, hostsandbox.ErrNotReady) || !strings.Contains(err.Error(), "WSL2") {
 		t.Fatalf("New = %v", err)
 	}
@@ -426,7 +456,7 @@ func TestVersionIsReadFromTheImage(t *testing.T) {
 		t.Fatal("an empty version command was accepted")
 	}
 	joined := strings.Join(e.lastMatching("run --rm"), " ")
-	if !strings.Contains(joined, DefaultImage) {
+	if !strings.Contains(joined, testImage) {
 		t.Errorf("the version was not read from the image: %s", joined)
 	}
 }
