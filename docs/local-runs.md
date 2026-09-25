@@ -199,7 +199,7 @@ gateways:
     dialect: anthropic
     key_env: ANTHROPIC_API_KEY
   lux:                                    # any OpenAI-compatible gateway
-    base_url: https://lux.latere.ai/v1
+    base_url: https://api.latere.ai/v1/models/openai/v1
     dialect: openai-responses
     key_env: LUX_API_KEY
   local:                                  # something you run yourself

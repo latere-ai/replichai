@@ -119,7 +119,7 @@ func TestCodexConfigCarriesTheGatewayNotTheKey(t *testing.T) {
 	request := Request{
 		Instructions: "ROLE", Task: "TASK",
 		Model:   managed.ModelRef{Provider: "qwen", ID: "qwen3-coder-480b"},
-		Gateway: Gateway{Name: "lux", BaseURL: "https://lux.latere.ai/v1", Dialect: DialectOpenAIResponses, Auth: AuthAPIKey, Key: "sk-secret"},
+		Gateway: Gateway{Name: "lux", BaseURL: "https://api.latere.ai/v1/models/openai/v1", Dialect: DialectOpenAIResponses, Auth: AuthAPIKey, Key: "sk-secret"},
 		Paths:   Paths{Workspace: "/s/workspace", Home: "/s/home", Evidence: "/s/evidence", Grade: "/s/grade"},
 	}
 	files, err := h.Files(StageWorker, request)
@@ -138,7 +138,7 @@ func TestCodexConfigCarriesTheGatewayNotTheKey(t *testing.T) {
 			config = string(file.Body)
 		}
 	}
-	for _, want := range []string{`base_url = "https://lux.latere.ai/v1"`, `wire_api = "responses"`, `env_key = "REPLICHAI_MODEL_KEY"`} {
+	for _, want := range []string{`base_url = "https://api.latere.ai/v1/models/openai/v1"`, `wire_api = "responses"`, `env_key = "REPLICHAI_MODEL_KEY"`} {
 		if !strings.Contains(config, want) {
 			t.Errorf("config missing %q:\n%s", want, config)
 		}
@@ -252,7 +252,7 @@ func TestCodexCarriesItsRoleWhenNoFileCan(t *testing.T) {
 	// the same role twice in one session would be a prompt the operator did
 	// not write.
 	keyed := request
-	keyed.Gateway = Gateway{Name: "lux", BaseURL: "https://lux.latere.ai/v1", Dialect: DialectOpenAIResponses, Auth: AuthAPIKey, Key: "sk-x"}
+	keyed.Gateway = Gateway{Name: "lux", BaseURL: "https://api.latere.ai/v1/models/openai/v1", Dialect: DialectOpenAIResponses, Auth: AuthAPIKey, Key: "sk-x"}
 	argv, err = NewCodex().Argv(StageWorker, keyed)
 	if err != nil {
 		t.Fatalf("Argv: %v", err)
