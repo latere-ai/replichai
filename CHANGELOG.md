@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.30.1 - 2026-09-25
+
 ### Fixed
 
 - Every json value the server writes now reaches its column as text rather
