@@ -10,6 +10,10 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- A release no longer fails requests at the moment an old pod stops. The pod keeps serving for five seconds after it is told to stop, until the ingress has stopped sending it traffic; before, requests in that second could get a 502.
+
 ## v0.30.1 - 2026-09-25
 
 ### Fixed
