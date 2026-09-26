@@ -37,6 +37,16 @@ spec:
         - name: ghcr-secret
       containers:
         - name: replichai
+          # The pod keeps serving for five seconds after Kubernetes decides to
+          # stop it, the time the ingress and Service endpoints take to drop its
+          # address. Without the pause the server closes its listener the
+          # moment the stop signal arrives while traffic is still routed to it,
+          # and a rollout answers 502 for about a second. The native sleep
+          # action needs no binary in the image.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           # A placeholder tag that is never pushed. The overlay pins the
           # release, so an overlay that pins nothing fails to pull rather than
           # running an unknown build.
