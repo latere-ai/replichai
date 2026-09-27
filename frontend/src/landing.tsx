@@ -763,7 +763,7 @@ export function Landing({
           control, none of which this page should implement itself.
 
           One language, because the app has one: an app that ships English only
-          must not offer a dropdown that pretends otherwise, and the shared
+          must not offer a language menu that pretends otherwise, and the shared
           component cannot know which languages its host actually has. */}
       <SiteFooter
         theme={theme.mode}
