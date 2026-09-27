@@ -12,7 +12,7 @@ committed. The commit log already holds that.
 
 ### Changed
 
-- The footer at the end of the landing page is redrawn, from latere-ui v1.30.0.
+- The footer at the end of the landing page is redrawn, from latere-ui v1.30.1.
   A lead block holds the Latere AI lockup, icon links to Latere's Discord,
   LinkedIn, X and GitHub profiles, and two icon buttons: one opens a menu of
   the Light, Dark and System appearances, the other a language menu that
@@ -20,7 +20,8 @@ committed. The commit log already holds that.
   language select. Four link columns sit beside it: Applications (Wallfacer,
   Lectio) with Research (ReplicHAI) below it, Platform (Latere Platform,
   Identity), Company (About, Why Latere, Blog, Open Source, Contact) and Legal
-  (Privacy, Terms, Impressum). ReplicHAI is now listed in the footer. Drive,
+  (Privacy, Terms, Impressum), each under a semibold heading in the full text
+  tone. ReplicHAI is now listed in the footer. Drive,
   Topos, Cella and Lux no longer have entries of their own: they are sections
   of the platform console, which the one Latere Platform link opens. The
   tagline and the Community column are gone. Below 1024px the lead block moves
