@@ -758,11 +758,11 @@ try {
   /* ── The footer's logotype is set in the face it names (040) ── */
 
   {
-    // The shared footer sets "Latere AI" and all six product wordmarks in
-    // Instrument Serif. Until 040 this app named that family and shipped no
-    // font, so every one of them rendered in Georgia: the same logotype as
-    // latere.ai, in a different face. No other check detects it: the markup is
-    // right, the color is right, and the text is there.
+    // The shared footer sets the "Latere AI" lockup in Instrument Serif. Until
+    // 040 this app named that family and shipped no font, so the lockup
+    // rendered in Georgia: the same logotype as latere.ai, in a different face.
+    // No other check detects it: the markup is right, the color is right, and
+    // the text is there.
     const page = await open({ authenticated: false })
     await page.waitForSelector('.landing .site-footer .logo-text')
     const face = await page.evaluate(async () => {
@@ -780,9 +780,6 @@ try {
         style: cs.fontStyle,
         served: faces.map((f) => f.style).sort(),
         loaded: faces.filter((f) => f.status === 'loaded').map((f) => f.style),
-        // The gradient wordmarks, which are spans inside the products column,
-        // not `.footer-brand`, the block that holds the Latere lockup.
-        brands: [...document.querySelectorAll('.landing .footer-cols span[class$="-brand"]')].length,
       }
     })
     if (!/Instrument Serif/.test(face.asked)) fail(`the footer logotype asks for ${face.asked}`)
@@ -791,7 +788,6 @@ try {
     // Declared is not served: a path typo gives a face that is in the set and
     // permanently 'error', and the page looks exactly as it did before 040.
     if (!face.loaded.includes('italic')) fail(`the italic face is declared and did not load (status of the declared faces: ${JSON.stringify(face.loaded)}); check /fonts/`)
-    if (face.brands !== 6) fail(`the footer shows ${face.brands} product wordmarks, want six`)
     await page.close()
   }
 
@@ -802,55 +798,101 @@ try {
     await page.waitForSelector('.landing .site-footer')
     const foot = await page.evaluate(() => {
       const f = document.querySelector('.landing .site-footer')
-      const hrefs = [...f.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+      const hrefs = [...f.querySelectorAll('a')].map((a) => a.getAttribute('href') ?? '')
       return {
-        // The lineup, so the product is placed among the others rather than alone.
-        products: hrefs.filter((h) => /^https:\/\/[a-z]+\.latere\.ai\/$/.test(h)).length,
-        legal: ['/legal/privacy', '/legal/terms', '/legal/impressum'].filter((p) => hrefs.some((h) => h?.endsWith(p))).length,
+        // The lineup, so the product is placed among the others rather than
+        // alone: five groups in four columns, Research under Applications.
+        groups: [...f.querySelectorAll('[data-footer-group]')].map((g) => g.dataset.footerGroup),
+        // Each product link names its product, whose gradient it takes under
+        // the pointer or keyboard focus.
+        brands: [...f.querySelectorAll('.footer-link[data-brand]')].map((a) => a.dataset.brand),
+        ours: f.querySelector('[data-footer-group="research"] a[href="https://replichai.latere.ai/"]')?.textContent.trim() ?? null,
+        platform: hrefs.includes('https://platform.latere.ai/console'),
+        // Drive, Topos, Cella and Lux are sections of the platform console,
+        // reached through its one link, and have no entry of their own.
+        retired: hrefs.filter((h) => /^https:\/\/(drive|topos|cella|lux)\.latere\.ai/.test(h)),
+        legal: ['/legal/privacy', '/legal/terms', '/legal/impressum'].filter((p) => hrefs.some((h) => h.endsWith(p))).length,
         rights: /©|\(c\)/i.test(f.querySelector('.footer-bottom')?.textContent ?? ''),
         // A palette the app does not define would leave the ink unset, which
         // computes to the inherited color rather than to nothing.
-        ink: getComputedStyle(f.querySelector('.footer-col a')).color,
-        muted: getComputedStyle(f.querySelector('.footer-tagline')).color,
-        themes: [...f.querySelectorAll('.footer-seg-btn')].map((b) => b.textContent.trim()),
-        active: [...f.querySelectorAll('.footer-seg-btn.is-active')].map((b) => b.textContent.trim()),
-        langs: [...f.querySelectorAll('.footer-lang-select option')].map((o) => o.value),
+        ink: getComputedStyle(f.querySelector('.footer-link')).color,
+        muted: getComputedStyle(f.querySelector('.footer-bottom p')).color,
         // The old one-line strip is gone, not left behind next to the new one.
         legacy: !!document.querySelector('.lp-foot'),
       }
     })
-    if (foot.products < 6) fail(`the footer lists ${foot.products} products; the shared lineup is six`)
+    if (foot.groups.join() !== 'applications,research,platform,company,legal') fail(`the footer's groups are ${JSON.stringify(foot.groups)}, want applications, research, platform, company and legal`)
+    if (foot.brands.join() !== 'wallfacer,lectio,replichai,platform') fail(`the footer's product links are ${JSON.stringify(foot.brands)}, want wallfacer, lectio, replichai and platform`)
+    if (foot.ours !== 'ReplicHAI') fail(`the research group does not link this product by name (found ${JSON.stringify(foot.ours)})`)
+    if (!foot.platform) fail('the footer does not link the platform console')
+    if (foot.retired.length) fail(`the footer still links ${JSON.stringify(foot.retired)}; those products are platform sections now`)
     if (foot.legal !== 3) fail(`the footer carries ${foot.legal} of the three legal links`)
     if (!foot.rights) fail('the footer has no copyright line')
     if (foot.ink === foot.muted) fail(`the footer's link ink and its muted ink are both ${foot.ink}; the palette aliases did not reach it`)
-    if (foot.themes.length !== 3) fail(`the footer offers ${foot.themes.length} appearances, want light, dark, and auto`)
-    // One language, because the app has one. A dropdown must not offer a
-    // translation that does not exist.
-    if (foot.langs.length !== 1 || foot.langs[0] !== 'en') fail(`the footer offers ${JSON.stringify(foot.langs)}; the app ships English only`)
     if (foot.legacy) fail('the landing still carries its own one-line footer beside the shared one')
-    if (foot.active.length !== 1) fail(`${foot.active.length} appearances are marked active`)
 
-    // The control is wired to the app's own theme, not to a copy of it.
-    const flipped = await page.evaluate(async () => {
-      const before = document.documentElement.dataset.theme
-      const btns = [...document.querySelectorAll('.landing .site-footer .footer-seg-btn')]
-      // ☀ light, ☾ dark, ◐ auto. Pick whichever is not the one showing now.
-      btns[before === 'dark' ? 0 : 1].click()
-      // The switch is waited for rather than given time; one that never comes
-      // is what the first check below reports.
-      for (const t0 = performance.now(); document.documentElement.dataset.theme === before && performance.now() - t0 < 1000; ) {
-        await new Promise((r) => requestAnimationFrame(r))
-      }
-      return {
-        before,
-        after: document.documentElement.dataset.theme,
-        stored: localStorage.getItem('theme'),
-        active: [...document.querySelectorAll('.landing .site-footer .footer-seg-btn.is-active')].map((b) => b.textContent.trim()),
-      }
-    })
-    if (flipped.after === flipped.before) fail(`the footer's appearance control did nothing; <html> stayed ${flipped.before}`)
+    // The appearance and the language controls are icon buttons, each opening
+    // a menu of choices with the current one checked. The items exist only
+    // while the menu is open, so each read opens it first.
+    const menu = async (which) => {
+      await page.click(`.landing .site-footer .lu-${which}-menu .lu-pref-trigger`)
+      await page.waitForSelector(`.landing .site-footer .lu-${which}-menu [role="menuitemradio"]`)
+      return page.evaluate((w) => {
+        const root = document.querySelector(`.landing .site-footer .lu-${w}-menu`)
+        const items = [...root.querySelectorAll('[role="menuitemradio"]')]
+        return {
+          trigger: root.querySelector('.lu-pref-trigger').getAttribute('aria-label'),
+          items: items.map((i) => i.textContent.trim()),
+          checked: items.filter((i) => i.getAttribute('aria-checked') === 'true').map((i) => i.textContent.trim()),
+        }
+      }, which)
+    }
+    const shut = async (which) => {
+      await page.keyboard.press('Escape')
+      await page.waitForFunction((w) => !document.querySelector(`.landing .site-footer .lu-${w}-menu [role="menuitemradio"]`), { timeout: 2000 }, which)
+    }
+
+    // `open` seeds the light appearance, so the trigger names it and the menu
+    // checks it.
+    const themes = await menu('theme')
+    if (themes.items.join() !== 'Light,Dark,System') fail(`the footer offers the appearances ${JSON.stringify(themes.items)}, want light, dark, and system`)
+    if (themes.checked.length !== 1 || themes.checked[0] !== 'Light') fail(`the appearance menu checks ${JSON.stringify(themes.checked)}, want only Light`)
+    if (themes.trigger !== 'Theme: Light') fail(`the appearance control is labeled "${themes.trigger}", want "Theme: Light"`)
+    await shut('theme')
+
+    // One language, because the app has one. The menu must not offer a
+    // translation that does not exist.
+    const langs = await menu('locale')
+    if (langs.items.join() !== 'English') fail(`the footer offers the languages ${JSON.stringify(langs.items)}; the app ships English only`)
+    if (langs.checked.join() !== 'English') fail(`the language menu checks ${JSON.stringify(langs.checked)}, want English`)
+    if (langs.trigger !== 'Language: English') fail(`the language control is labeled "${langs.trigger}", want "Language: English"`)
+    await shut('locale')
+
+    // The control is wired to the app's own theme, not to a copy of it. The
+    // choice is made by name: the menu lists Light, Dark and System, and picks
+    // whichever of Light and Dark is not showing now.
+    const before = await page.evaluate(() => document.documentElement.dataset.theme)
+    const want = before === 'dark' ? 'Light' : 'Dark'
+    await menu('theme')
+    await page.evaluate((label) => {
+      const items = [...document.querySelectorAll('.landing .site-footer .lu-theme-menu [role="menuitemradio"]')]
+      items.find((i) => i.textContent.trim() === label).click()
+    }, want)
+    // The switch is waited for rather than given time; one that never comes is
+    // what the first check below reports.
+    await page.waitForFunction((b) => document.documentElement.dataset.theme !== b, { timeout: 1000 }, before).catch(() => {})
+    const flipped = await page.evaluate(() => ({
+      after: document.documentElement.dataset.theme,
+      stored: localStorage.getItem('theme'),
+      open: !!document.querySelector('.landing .site-footer .lu-theme-menu [role="menuitemradio"]'),
+    }))
+    if (flipped.after === before) fail(`the footer's appearance control did nothing; <html> stayed ${before}`)
     if (flipped.stored !== flipped.after) fail(`the footer changed the appearance to ${flipped.after} and stored ${flipped.stored}`)
-    if (flipped.active.length !== 1) fail(`after the switch ${flipped.active.length} appearances are marked active`)
+    if (flipped.open) fail('the appearance menu stayed open after a choice')
+    const again = await menu('theme')
+    if (again.checked.length !== 1 || again.checked[0] !== want) fail(`after the switch the appearance menu checks ${JSON.stringify(again.checked)}, want only ${want}`)
+    if (again.trigger !== `Theme: ${want}`) fail(`after the switch the appearance control is labeled "${again.trigger}", want "Theme: ${want}"`)
+    await shut('theme')
     await page.close()
   }
 

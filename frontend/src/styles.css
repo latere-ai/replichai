@@ -14,11 +14,10 @@
 
    Until 040 this app named the family and shipped no files, so `--font-serif`
    always rendered in Georgia. That was invisible while the only use was one
-   `<em>`. The shared footer sets Latere's own logotype and all six product
-   wordmarks in it, and a logotype in the wrong face is a different mark, not a
-   fallback. 033 solved the same problem for replichai's own identity by drawing
-   the mark instead, which is why the wordmark beside this depends on no font and
-   must stay that way.
+   `<em>`. The shared footer sets Latere's own logotype in it, and a logotype in
+   the wrong face is a different mark, not a fallback. 033 solved the same
+   problem for replichai's own identity by drawing the mark instead, which is
+   why the wordmark beside this depends on no font and must stay that way.
 
    `swap` rather than latere.ai's `block`, because this is an app and that is a
    marketing site: `block` blanks the text for up to three seconds, and one of
