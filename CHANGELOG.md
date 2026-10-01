@@ -12,6 +12,12 @@ committed. The commit log already holds that.
 
 ### Changed
 
+- OpenTelemetry Go v1.46.0, with the log modules at v0.22.0, the slog bridge at
+  v0.20.1 and otelhttp at v0.71.0, past GO-2026-6615 and GO-2026-6505, and
+  `latere.ai/x/pkg` v0.90.2. pkg v0.90.2 names the service resource with
+  semantic conventions v1.43.0, the schema of this SDK; with an older schema
+  the two conflict when merged and the server disables telemetry export at start.
+
 - The footer at the end of the landing page is redrawn, from latere-ui v1.30.1.
   A lead block holds the Latere AI lockup, icon links to Latere's Discord,
   LinkedIn, X and GitHub profiles, and two icon buttons: one opens a menu of
@@ -26,6 +32,13 @@ committed. The commit log already holds that.
   of the platform console, which the one Latere Platform link opens. The
   tagline and the Community column are gone. Below 1024px the lead block moves
   above the columns, and on a phone the columns sit two across, above it.
+
+### Fixed
+
+- On Linux the host sandbox's readiness check finds Bubblewrap by its program,
+  `bwrap`, and names it so when it is missing. It looked for an executable
+  named `bubblewrap`, which no package installs, so a machine with Bubblewrap
+  installed was refused.
 
 ## v0.30.2 - 2026-09-27
 
