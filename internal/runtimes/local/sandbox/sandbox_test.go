@@ -24,7 +24,7 @@ func TestEveryRefusalNamesItsRemedy(t *testing.T) {
 	}{
 		{hostsandbox.Darwin, hostsandbox.Host, hostsandbox.ConditionMissing, []string{"srt"},
 			[]string{"npm install -g @anthropic-ai/sandbox-runtime", "brew install ripgrep", "srt echo ok", "--sandbox container"}},
-		{hostsandbox.Linux, hostsandbox.Host, hostsandbox.ConditionMissing, []string{"bubblewrap", "socat"},
+		{hostsandbox.Linux, hostsandbox.Host, hostsandbox.ConditionMissing, []string{"bwrap", "socat"},
 			[]string{"apt-get install -y bubblewrap", "apt-get install -y socat", "--sandbox container"}},
 		{hostsandbox.Darwin, hostsandbox.Host, hostsandbox.ConditionMissing, []string{"claude"},
 			[]string{"npm install -g @anthropic-ai/claude-code", "claude login", "claude --version"}},
