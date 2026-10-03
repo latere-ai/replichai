@@ -12,6 +12,7 @@ committed. The commit log already holds that.
 
 ### Changed
 
+- `latere.ai/x/pay` v0.2.0. Nothing changes for a payment: checkouts were already in USD, and the off-session charge whose 3-D Secure case v0.2.0 fixes is not one this service makes.
 - OpenTelemetry Go v1.46.0, with the log modules at v0.22.0, the slog bridge at
   v0.20.1 and otelhttp at v0.71.0, past GO-2026-6615 and GO-2026-6505, and
   `latere.ai/x/pkg` v0.90.2. pkg v0.90.2 names the service resource with
