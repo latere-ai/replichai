@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.30.3 - 2026-10-08
+
 ### Changed
 
 - `latere.ai/x/pay` v0.2.0. Nothing changes for a payment: checkouts were already in USD, and the off-session charge whose 3-D Secure case v0.2.0 fixes is not one this service makes.
