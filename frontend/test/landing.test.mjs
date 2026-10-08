@@ -95,10 +95,10 @@ try {
         // The outer loop is drawn open. Losing the dash array turns the mark
         // into two concentric rings and the drawing loses its meaning.
         dashed: (inner.getAttribute('stroke-dasharray') || '') === '' && (outer.getAttribute('stroke-dasharray') || '') !== '',
-        // The product's own wordmark stays font-independent. 040 self-hosts
-        // Instrument Serif for the shared footer, so "the app does not ship it"
-        // is no longer the reason. The reason is that an identity that waits on
-        // a download can be missing.
+        // The product's own wordmark stays font-independent. The app self-hosts
+        // Instrument Serif, so "the app does not ship it" is no longer the
+        // reason. The reason is that an identity that waits on a download can
+        // be missing.
         font: cs(document.querySelector('.wordmark')).fontFamily,
         seam: !!document.querySelector('.wordmark .wordmark-seam'),
         word: document.querySelector('.wordmark').textContent.trim(),
@@ -755,39 +755,41 @@ try {
     }
   }
 
-  /* ── The footer's logotype is set in the face it names (040) ── */
+  /* ── The footer opens with the product's own lockup ── */
 
   {
-    // The shared footer sets the "Latere AI" lockup in Instrument Serif. Until
-    // 040 this app named that family and shipped no font, so the lockup
-    // rendered in Georgia: the same logotype as latere.ai, in a different face.
-    // No other check detects it: the markup is right, the color is right, and
-    // the text is there.
+    // The shared footer is one shape on every Latere site, and a site passes it
+    // only its lockup. This one is the header's: the drawn mark and the
+    // wordmark, linked home. A footer that fell back to the package's default
+    // would read "Latere AI" here, on a page that names ReplicHAI everywhere
+    // else.
     const page = await open({ authenticated: false })
-    await page.waitForSelector('.landing .site-footer .logo-text')
-    const face = await page.evaluate(async () => {
-      await document.fonts.ready
-      const el = document.querySelector('.landing .site-footer .logo-text')
-      const cs = getComputedStyle(el)
-      // The FontFaceSet holds only the faces the document declared. A family
-      // that only exists on the reader's machine is not in it, and neither is
-      // one that was named and never served. `fonts.check()` is not the right
-      // call here: it answers whether the text can be painted, which is true of
-      // any family, spelled correctly or not.
-      const faces = [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Instrument Serif')
+    await page.waitForSelector('.landing footer.lu-footer')
+    const lock = await page.evaluate(() => {
+      const head = document.querySelector('.lp-bar .landing-lockup')
+      const foot = document.querySelector('.landing footer.lu-footer .lu-footer-lockup')
+      const ours = foot?.querySelector('.landing-lockup')
+      const mark = ours?.querySelector('svg.mark')
+      const cs = (e) => getComputedStyle(e)
       return {
-        asked: cs.fontFamily,
-        style: cs.fontStyle,
-        served: faces.map((f) => f.style).sort(),
-        loaded: faces.filter((f) => f.status === 'loaded').map((f) => f.style),
+        href: foot?.querySelector('a')?.getAttribute('href') ?? null,
+        word: ours?.querySelector('.wordmark')?.textContent.trim() ?? null,
+        rings: !!mark?.querySelector('.mark-outer') && !!mark?.querySelector('.mark-inner'),
+        // The same element as the header's, so it is set at the same size and
+        // in the same face.
+        same:
+          !!head &&
+          !!ours &&
+          cs(head).fontSize === cs(ours).fontSize &&
+          cs(head.querySelector('.wordmark')).fontFamily === cs(ours.querySelector('.wordmark')).fontFamily,
+        fallback: !!foot?.querySelector('.lu-footer-word'),
       }
     })
-    if (!/Instrument Serif/.test(face.asked)) fail(`the footer logotype asks for ${face.asked}`)
-    if (face.style !== 'italic') fail(`the footer logotype is ${face.style}, and the Latere logotype is italic`)
-    if (!face.served.includes('italic')) fail(`the footer logotype names Instrument Serif and the app declares ${JSON.stringify(face.served)}; it renders in the fallback serif`)
-    // Declared is not served: a path typo gives a face that is in the set and
-    // permanently 'error', and the page looks exactly as it did before 040.
-    if (!face.loaded.includes('italic')) fail(`the italic face is declared and did not load (status of the declared faces: ${JSON.stringify(face.loaded)}); check /fonts/`)
+    if (lock.href !== '/') fail(`the footer's lockup links ${JSON.stringify(lock.href)}, want the product's home`)
+    if (lock.word !== 'ReplicHAI') fail(`the footer's lockup reads ${JSON.stringify(lock.word)}, want ReplicHAI`)
+    if (!lock.rings) fail("the footer's lockup has no drawn mark with both loops")
+    if (!lock.same) fail("the footer's lockup is not set as the header's")
+    if (lock.fallback) fail("the footer draws latere-ui's default lockup beside or instead of the product's")
     await page.close()
   }
 
@@ -795,9 +797,9 @@ try {
 
   {
     const page = await open({ authenticated: false })
-    await page.waitForSelector('.landing .site-footer')
+    await page.waitForSelector('.landing footer.lu-footer')
     const foot = await page.evaluate(() => {
-      const f = document.querySelector('.landing .site-footer')
+      const f = document.querySelector('.landing footer.lu-footer')
       const hrefs = [...f.querySelectorAll('a')].map((a) => a.getAttribute('href') ?? '')
       return {
         // The lineup, so the product is placed among the others rather than
@@ -805,24 +807,26 @@ try {
         groups: [...f.querySelectorAll('[data-footer-group]')].map((g) => g.dataset.footerGroup),
         // Each product link names its product, whose gradient it takes under
         // the pointer or keyboard focus.
-        brands: [...f.querySelectorAll('.footer-link[data-brand]')].map((a) => a.dataset.brand),
+        brands: [...f.querySelectorAll('.lu-footer-link[data-brand]')].map((a) => a.dataset.brand),
+        gallery: hrefs.includes('https://latere.site/'),
         ours: f.querySelector('[data-footer-group="research"] a[href="https://replichai.latere.ai/"]')?.textContent.trim() ?? null,
         platform: hrefs.includes('https://platform.latere.ai/console'),
         // Drive, Topos, Cella and Lux are sections of the platform console,
         // reached through its one link, and have no entry of their own.
         retired: hrefs.filter((h) => /^https:\/\/(drive|topos|cella|lux)\.latere\.ai/.test(h)),
         legal: ['/legal/privacy', '/legal/terms', '/legal/impressum'].filter((p) => hrefs.some((h) => h.endsWith(p))).length,
-        rights: /©|\(c\)/i.test(f.querySelector('.footer-bottom')?.textContent ?? ''),
+        rights: /©|\(c\)/i.test(f.querySelector('.lu-footer-bottom')?.textContent ?? ''),
         // A palette the app does not define would leave the ink unset, which
         // computes to the inherited color rather than to nothing.
-        ink: getComputedStyle(f.querySelector('.footer-link')).color,
-        muted: getComputedStyle(f.querySelector('.footer-bottom p')).color,
+        ink: getComputedStyle(f.querySelector('.lu-footer-link')).color,
+        muted: getComputedStyle(f.querySelector('.lu-footer-bottom p')).color,
         // The old one-line strip is gone, not left behind next to the new one.
         legacy: !!document.querySelector('.lp-foot'),
       }
     })
     if (foot.groups.join() !== 'applications,research,platform,company,legal') fail(`the footer's groups are ${JSON.stringify(foot.groups)}, want applications, research, platform, company and legal`)
-    if (foot.brands.join() !== 'wallfacer,lectio,replichai,platform') fail(`the footer's product links are ${JSON.stringify(foot.brands)}, want wallfacer, lectio, replichai and platform`)
+    if (foot.brands.join() !== 'chat,replichai,platform') fail(`the footer's product links are ${JSON.stringify(foot.brands)}, want chat, replichai and platform`)
+    if (!foot.gallery) fail('the footer does not link the gallery')
     if (foot.ours !== 'ReplicHAI') fail(`the research group does not link this product by name (found ${JSON.stringify(foot.ours)})`)
     if (!foot.platform) fail('the footer does not link the platform console')
     if (foot.retired.length) fail(`the footer still links ${JSON.stringify(foot.retired)}; those products are platform sections now`)
@@ -831,14 +835,14 @@ try {
     if (foot.ink === foot.muted) fail(`the footer's link ink and its muted ink are both ${foot.ink}; the palette aliases did not reach it`)
     if (foot.legacy) fail('the landing still carries its own one-line footer beside the shared one')
 
-    // The appearance and the language controls are icon buttons, each opening
-    // a menu of choices with the current one checked. The items exist only
-    // while the menu is open, so each read opens it first.
+    // The appearance control is an icon button opening a menu of choices with
+    // the current one checked. The items exist only while the menu is open, so
+    // each read opens it first.
     const menu = async (which) => {
-      await page.click(`.landing .site-footer .lu-${which}-menu .lu-pref-trigger`)
-      await page.waitForSelector(`.landing .site-footer .lu-${which}-menu [role="menuitemradio"]`)
+      await page.click(`.landing footer.lu-footer .lu-${which}-menu .lu-pref-trigger`)
+      await page.waitForSelector(`.landing footer.lu-footer .lu-${which}-menu [role="menuitemradio"]`)
       return page.evaluate((w) => {
-        const root = document.querySelector(`.landing .site-footer .lu-${w}-menu`)
+        const root = document.querySelector(`.landing footer.lu-footer .lu-${w}-menu`)
         const items = [...root.querySelectorAll('[role="menuitemradio"]')]
         return {
           trigger: root.querySelector('.lu-pref-trigger').getAttribute('aria-label'),
@@ -849,7 +853,7 @@ try {
     }
     const shut = async (which) => {
       await page.keyboard.press('Escape')
-      await page.waitForFunction((w) => !document.querySelector(`.landing .site-footer .lu-${w}-menu [role="menuitemradio"]`), { timeout: 2000 }, which)
+      await page.waitForFunction((w) => !document.querySelector(`.landing footer.lu-footer .lu-${w}-menu [role="menuitemradio"]`), { timeout: 2000 }, which)
     }
 
     // `open` seeds the light appearance, so the trigger names it and the menu
@@ -860,13 +864,11 @@ try {
     if (themes.trigger !== 'Theme: Light') fail(`the appearance control is labeled "${themes.trigger}", want "Theme: Light"`)
     await shut('theme')
 
-    // One language, because the app has one. The menu must not offer a
-    // translation that does not exist.
-    const langs = await menu('locale')
-    if (langs.items.join() !== 'English') fail(`the footer offers the languages ${JSON.stringify(langs.items)}; the app ships English only`)
-    if (langs.checked.join() !== 'English') fail(`the language menu checks ${JSON.stringify(langs.checked)}, want English`)
-    if (langs.trigger !== 'Language: English') fail(`the language control is labeled "${langs.trigger}", want "Language: English"`)
-    await shut('locale')
+    // One language, because the app has one: the footer offers no language
+    // menu at all, rather than a menu that pretends to a choice.
+    if (await page.evaluate(() => !!document.querySelector('.landing footer.lu-footer .lu-locale-menu'))) {
+      fail('the footer offers a language menu; the app ships English only')
+    }
 
     // The control is wired to the app's own theme, not to a copy of it. The
     // choice is made by name: the menu lists Light, Dark and System, and picks
@@ -875,7 +877,7 @@ try {
     const want = before === 'dark' ? 'Light' : 'Dark'
     await menu('theme')
     await page.evaluate((label) => {
-      const items = [...document.querySelectorAll('.landing .site-footer .lu-theme-menu [role="menuitemradio"]')]
+      const items = [...document.querySelectorAll('.landing footer.lu-footer .lu-theme-menu [role="menuitemradio"]')]
       items.find((i) => i.textContent.trim() === label).click()
     }, want)
     // The switch is waited for rather than given time; one that never comes is
@@ -884,7 +886,7 @@ try {
     const flipped = await page.evaluate(() => ({
       after: document.documentElement.dataset.theme,
       stored: localStorage.getItem('theme'),
-      open: !!document.querySelector('.landing .site-footer .lu-theme-menu [role="menuitemradio"]'),
+      open: !!document.querySelector('.landing footer.lu-footer .lu-theme-menu [role="menuitemradio"]'),
     }))
     if (flipped.after === before) fail(`the footer's appearance control did nothing; <html> stayed ${before}`)
     if (flipped.stored !== flipped.after) fail(`the footer changed the appearance to ${flipped.after} and stored ${flipped.stored}`)
