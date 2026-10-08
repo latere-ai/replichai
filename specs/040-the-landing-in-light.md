@@ -49,6 +49,18 @@ One thing shipped as it is rather than as the shared component intends. The foot
 4. `.lp-walk-panel` carries no color of its own; it takes the block's.
 5. The page ends in the shared Latere footer, full variant, showing the product lineup and the legal links.
 6. The footer's theme control drives the app's theme, and the active one is marked.
-7. The footer's language control offers English only.
+7. The footer's language control offers English only. Amended 2026-10-08: the footer shows no language control (see below).
 8. `lpFootTagline` and the `.lp-foot` rules are gone, not deprecated.
 9. `frontend/test/landing.test.mjs` asserts 1, 2, 5 and 6 in a real browser.
+
+## Amendment, 2026-10-08
+
+latere-ui v2.0.0 makes the footer one shape on every Latere site: the full footer as latere.ai shows it, with a site passing only its lockup and its theme and language wiring. Three decisions above change with it.
+
+**The footer opens with replichai's own lockup.** The landing passes the header's lockup, the drawn mark and the wordmark linked home, one component drawing both, in place of the Latere AI lockup the package draws by default.
+
+**The aliases move to a wrapper of the app's own.** The footer's classes are `lu-footer*` in v2 and no sheet of the app names them; a unit test fails on one that does. The palette aliases (`--text`, `--text-secondary`, `--text-muted`, `--accent`) sit on `.lp-footer-wrap`, the element around the footer, which also sets its distance from the close. It aliases `--font-ui` to the app's `--font-sans` as well, so the lockup at the head of the footer is set in the same face as the header's.
+
+**No language control.** v2 shows a language menu only to a site that passes a language change and two languages or more, so this app passes neither and the footer shows none. Criterion 7 now reads: the footer shows no language control, and the browser test asserts it.
+
+The paragraph on Instrument Serif no longer applies to the footer: with the product's own lockup at its head, the footer sets no serif. The self-hosted face stays for the serif `<em>` in a screen's description.
