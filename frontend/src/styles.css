@@ -4164,26 +4164,25 @@ input.submit-input {
 }
 
 /* ── The shared footer ────────────────────────────────────────────────────────
-   latere-ui's SiteFooter ships its own stylesheet, written against the platform
-   palette of --text, --accent and so on. This app has its own palette of
-   --fg-1, --brand and so on, so the two are joined here by aliasing on the
-   footer element itself.
+   latere-ui's SiteFooter is one shape on every Latere site and ships its own
+   stylesheet, which this app does not restyle. That sheet reads the platform
+   palette of --text, --accent and so on; this app has its own palette of
+   --fg-1, --brand and so on, so the wrapper around the footer joins the two by
+   aliasing, and the footer and its menus inherit the names from it. The
+   wrapper also sets the footer's distance from the close.
 
    The alternative, importing `latere-ui/tokens`, is not used: that sheet
    defines --bg, --bg-surface and --bg-raised at :root, which this app also
    defines, and the import would restyle every screen in the product to make
    one footer work. */
-.site-footer {
+.lp-footer-wrap {
   --text: var(--fg-1);
   --text-secondary: var(--fg-2);
   --text-muted: var(--fg-3);
   --accent: var(--brand);
-  /* --shadow and --focus-outline are deliberately not aliased. The sheet's own
-     fallbacks are a 1px chip shadow and a solid 2px --accent ring, which is
-     what those two are for. This app's nearest tokens are a 30px popover shadow
-     and a 30%-alpha spread ring, and both are wrong at chip scale. */
-}
-.landing .site-footer {
+  /* --focus-outline is deliberately not aliased. The sheet's own fallback is
+     a solid 2px --accent ring; this app's nearest token is a 30%-alpha spread
+     ring, which is wrong at the scale of a footer link. */
   margin-top: 72px;
 }
 
