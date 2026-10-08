@@ -8,10 +8,10 @@
 //
 // Nothing here depends on a font. The mark it replaced was the character `r`
 // set in `--font-serif: 'Instrument Serif'`, which the app did not ship, so the
-// identity had always rendered in Georgia without anyone deciding that. 040
-// self-hosts the face, and the shared footer sets Latere's logotype in it, but
-// this file still uses no font: a wordmark that waits on a download can be
-// missing, whether or not the download is in the repo.
+// identity had always rendered in Georgia without anyone deciding that. The
+// app self-hosts the face now, but this file still uses no font: a wordmark
+// that waits on a download can be missing, whether or not the download is in
+// the repo. The shared footer opens with this lockup too, as the header sets it.
 
 // Mark draws the boundary the product defends. The inner loop, the algorithm,
 // model or analysis pipeline, is mechanically re-runnable, so it is a closed
