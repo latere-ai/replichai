@@ -699,6 +699,16 @@ function PaperCite({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
 
 // ── The page ────────────────────────────────────────────────────────────────
 
+// HomeLockup is the product's lockup linked home, as the header sets it. The
+// shared footer opens with the same element, so the two never disagree.
+function HomeLockup() {
+  return (
+    <a className="lp-bar-brand" href="/">
+      <Lockup size={20} className="landing-lockup" />
+    </a>
+  )
+}
+
 export function Landing({
   i18n,
   next,
@@ -717,9 +727,7 @@ export function Landing({
           fold: a page that scrolls cannot keep a button above the fold, and a
           sticky header keeps it visible at every position. */}
       <header className="lp-bar">
-        <a className="lp-bar-brand" href="/">
-          <Lockup size={20} className="landing-lockup" />
-        </a>
+        <HomeLockup />
         <nav className="lp-bar-actions">
           <a className="btn ghost sm lp-bar-registry" href="/registry">
             <Ico name="globe" size={13} /> {t('browseRegistry')}
@@ -758,19 +766,24 @@ export function Landing({
         </div>
       </section>
 
-      {/* The footer every Latere surface ends in, from latere-ui. It is the
-          product's place in a lineup, the legal links, and the appearance
-          control, none of which this page should implement itself.
+      {/* The footer every Latere site ends in, from latere-ui, in the one
+          shape every site shares. It is the product's place in the lineup,
+          the legal links and the appearance control, none of which this page
+          implements itself. The page passes its own lockup and its theme, and
+          nothing else; the wrapper places the footer and joins the app's
+          palette to the names the footer reads.
 
-          One language, because the app has one: an app that ships English only
-          must not offer a language menu that pretends otherwise, and the shared
-          component cannot know which languages its host actually has. */}
-      <SiteFooter
-        theme={theme.mode}
-        onThemeChange={(m) => theme.setMode(m as ThemeMode)}
-        locale="en"
-        locales={[{ code: 'en', label: 'EN', name: 'English' }]}
-      />
+          No language menu: the app ships English only, and the footer offers
+          one only to a site that passes a language change and two languages
+          or more. */}
+      <div className="lp-footer-wrap">
+        <SiteFooter
+          brand={<HomeLockup />}
+          theme={theme.mode}
+          onThemeChange={(m) => theme.setMode(m as ThemeMode)}
+          locale="en"
+        />
+      </div>
     </div>
   )
 }
