@@ -4180,6 +4180,9 @@ input.submit-input {
   --text-secondary: var(--fg-2);
   --text-muted: var(--fg-3);
   --accent: var(--brand);
+  /* The footer sets its type in --font-ui, so the lockup at its head is set
+     in the same face as the header's, and the links in the app's sans. */
+  --font-ui: var(--font-sans);
   /* --focus-outline is deliberately not aliased. The sheet's own fallback is
      a solid 2px --accent ring; this app's nearest token is a 30%-alpha spread
      ring, which is wrong at the scale of a footer link. */
