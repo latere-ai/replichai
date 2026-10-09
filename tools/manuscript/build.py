@@ -20,6 +20,7 @@ one is rewritten below by an exact match, and the build stops when a page gains
 one this script does not know.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -65,6 +66,19 @@ CHECKED_FROM = "The tables on this page come from"
 CHECKED_TO = "The fetch-refusal quotes,"
 CHECKED_TEXT = ("The tables in this appendix were computed from the records each run published, "
                 "by a script kept with the ReplicHAI source.\n\n")
+
+# The model page draws its diagrams in mermaid, which LaTeX cannot set. Each has
+# a drawing of its own beside this script, in the order the page shows them.
+# The digest is of the mermaid source the drawing was made from: when the page's
+# diagram changes, the build stops until the drawing is brought into line and
+# its digest here updated.
+FIGURES = [
+    {"file": "figure-flow.tex", "mermaid": "fd3ce93ffcf18ab1",
+     "caption": "The study in one picture. The shaded boxes are fixed before any run."},
+    {"file": "figure-model.tex", "mermaid": "68ab8e6c0f2db514",
+     "caption": "What moves a claim's outcome in the model. The dashed box is where a paper gets a dispersion "
+                "of its own: $\\omega_p$ is what the third research question asks about."},
+]
 
 # The longest table the manuscript sets as one unbreakable block.
 MAX_TABLE_ROWS = 12
@@ -113,8 +127,23 @@ def no_repository_links(text, page):
             sys.exit(f"{page}: the link [{label}]({target}) points into the repository; add a rewrite for it")
 
 
+def place_figures(text):
+    """Swaps each mermaid diagram for a marker that typeset() replaces with its drawing."""
+    blocks = re.findall(r"```mermaid\n(.*?)\n```", text, flags=re.S)
+    if len(blocks) != len(FIGURES):
+        sys.exit(f"the model page has {len(blocks)} diagrams and this script has {len(FIGURES)} drawings")
+    for index, (block, figure) in enumerate(zip(blocks, FIGURES)):
+        digest = hashlib.sha256(block.encode()).hexdigest()[:16]
+        if digest != figure["mermaid"]:
+            sys.exit(f"diagram {index + 1} of the model page changed (now {digest}); redraw "
+                     f"tools/manuscript/{figure['file']} to match and update its digest in FIGURES")
+        text = text.replace("```mermaid\n" + block + "\n```", f"FIGUREMARKER{index}", 1)
+    return text
+
+
 def prepare():
     model = rewrite(open(MODEL, encoding="utf-8").read(), MODEL_REWRITES, "the model page")
+    model = place_figures(model)
 
     pilot = rewrite(open(PILOT, encoding="utf-8").read(), PILOT_REWRITES, "the pilot page")
     start, end = pilot.index(CHECKED_FROM), pilot.index(CHECKED_TO)
@@ -188,6 +217,19 @@ def typeset(tex, final):
     if tex.count("\\begin{longtable}") != 0 or tex.count("\\begin{tabular}") != tables:
         sys.exit("a table was not in the shape pandoc usually writes, and was left as a longtable")
 
+    # Each diagram is one block that cannot break, kept on the page of the line
+    # that introduces it, with its caption.
+    here = os.path.dirname(os.path.abspath(__file__))
+    for index, figure in enumerate(FIGURES):
+        marker = f"FIGUREMARKER{index}"
+        if tex.count(marker) != 1:
+            sys.exit(f"the marker for {figure['file']} did not come through pandoc")
+        drawing = open(os.path.join(here, figure["file"]), encoding="utf-8").read()
+        drawing = "".join(line for line in drawing.splitlines(keepends=True) if not line.startswith("%"))
+        tex = tex.replace(marker, "\\par\\nobreak\\addvspace{\\medskipamount}\\noindent\\begin{minipage}{\\linewidth}\\centering\n"
+                          + drawing + "\\captionof{figure}{" + figure["caption"] + "}\n"
+                          "\\end{minipage}\\par\\addvspace{\\medskipamount}")
+
     # A section whose table would otherwise start on the next page moves there
     # whole, so its heading and lead-in stay with the table. \Needspace decides
     # the break at once. The lowercase form only makes an earlier break
@@ -206,7 +248,8 @@ def typeset(tex, final):
     tex = tex.replace(byline, "\\author{" + AUTHOR + "\\\\[3pt]\n{\\normalsize " + INSTITUTE + "}\\\\[1pt]\n"
                       "{\\normalsize\\href{https://" + WEBSITE + "}{" + WEBSITE + "}}}")
 
-    preamble = "\\usepackage{needspace}\n"
+    preamble = ("\\usepackage{needspace}\n\\usepackage{caption}\n\\usepackage{tikz}\n"
+                "\\usetikzlibrary{positioning,calc,arrows.meta,shapes.geometric}\n")
     if not final:
         # A light DRAFT mark behind the text of every page.
         preamble += "\\usepackage{draftwatermark}\n\\DraftwatermarkOptions{text=DRAFT, angle=45, color={[gray]{0.90}}}\n"

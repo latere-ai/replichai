@@ -1,0 +1,34 @@
+% The study from its inputs to what an audit may report. It is the LaTeX drawing
+% of the first mermaid diagram in docs/dispersion-model.md; build.py puts it in
+% that diagram's place and stops when the two no longer match.
+\begin{tikzpicture}[
+  font=\small, >=Stealth,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=5pt, minimum height=10mm, text width=#1},
+  box/.default=52mm,
+  given/.style={box=#1, fill=black!6},
+  given/.default=52mm,
+  flow/.style={->, semithick},
+]
+  \node[given] (paper) {a paper and what\\its authors released};
+  \node[given, right=10mm of paper] (env) {an environment profile:\\agent system, network, inputs};
+  \node[box=88mm, below=9mm of $(paper.south)!0.5!(env.south)$] (runs) {$k$ runs, each a fresh session};
+  \node[box=58mm, below=8mm of runs] (y) {per claim and run: reproduced or not,\\decided by the system \ $Y_{pcer}\in\{0,1\}$};
+  \node[given=40mm, right=9mm of y] (claims) {the paper's claims,\\listed by two coders};
+  \node[box=58mm, below=8mm of y] (h) {disagreement between runs:\\per claim $h_{pce}$, per paper $H_{pe}$};
+  \node[box=58mm, below=8mm of h] (model) {the model splits it between\\paper, environment and run};
+  \node[draw, diamond, aspect=2.6, align=center, inner sep=1pt, below=8mm of model] (test) {three tests: is it\\a property of the paper?};
+  \coordinate (split) at ($(test.south)+(0,-5mm)$);
+  \node[box=54mm, anchor=north east] (yes) at ($(split)+(-4mm,-7mm)$) {report $H$ as how completely the\\paper pins down its own analysis};
+  \node[box=54mm, anchor=north west] (no) at ($(split)+(4mm,-7mm)$) {report a run as one draw\\under stated conditions};
+
+  \draw[flow] (paper.south) -- (runs.north -| paper.south);
+  \draw[flow] (env.south) -- (runs.north -| env.south);
+  \draw[flow] (runs) -- (y);
+  \draw[flow] (claims) -- (y);
+  \draw[flow] (y) -- (h);
+  \draw[flow] (h) -- (model);
+  \draw[flow] (model) -- (test);
+  \draw[semithick] (test.south) -- (split);
+  \draw[flow] (split) -| node[pos=0.25, above] {yes} (yes.north);
+  \draw[flow] (split) -| node[pos=0.25, above] {no} (no.north);
+\end{tikzpicture}
