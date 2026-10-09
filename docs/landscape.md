@@ -1,10 +1,12 @@
 # Landscape
 
-Who else is building something like this, as of July 2026.
+Who else was building something like this in July 2026, with the corrections found on
+25 and 26 August 2026 folded in.
 
-Every entry below was checked against a live source with a date. Where a search came back
-empty, the empty result is recorded too. "No funded competitor exists in this niche" is a
-finding we depend on, and recording it saves re-deriving it.
+This is a dated snapshot, and it has not been swept again since August. Each entry was
+checked against a live source on the date it carries. A statement that something does not
+exist was true on that date and may not be true now, so check it again before relying on
+it.
 
 ## The four axes
 
@@ -22,7 +24,7 @@ every player below is scored on the same four:
 
 ## What the map shows
 
-**Nobody in production executes the paper.** The integrity industry is real, funded and
+**The integrity industry reads papers. One service runs them.** The integrity industry is real, funded and
 multi-year: Papermill Alarm (Clear Skies, in Editorial Manager and ScholarOne), Argos
 (Scitility, 40k papers flagged high-risk by Oct 2024), ImageTwin and Proofig on 150M-image
 corpora, Cactus Paperpal Preflight at APS and Frontiers, Signals ($1.1M seed from ACS
@@ -34,23 +36,30 @@ JATSdecoder, and the new [metacheck](https://www.scienceverse.org/metacheck/), b
 piloted at STOC and ICML) flags flaws in proofs and experiment design and explicitly does
 not execute anything.
 
+The exception is [doesitreproduce.com](https://doesitreproduce.com/), operated by
+Brainarbeit: autonomous AI re-runs of published computational biomedical pipelines, "end
+to end, without a human in the loop", each scored from 0 to 100. On 26 Aug 2026 it listed
+1,286 papers assessed, 648 of them scoring 75 or more, and 7,716 indexed. It calls itself
+"not peer review, not an audit", and no paper or preprint about it was found. On the four
+axes: it judges published work (axis 1), and the outer-loop question does not arise in its
+field (axis 3). Who authors its score, and whether a paper gets a repository and a
+transcript, were not recorded when it was found (axes 2 and 4). It takes the opposite
+position to ours on two points: no human in the loop, and one score as the headline.
+
 The market has spent a decade establishing that a machine may render a verdict on a
-published paper. It has not yet established that the machine may run it.
+published paper. Running the paper is new, and one service already does it at a scale we
+have not reached.
 
 **The institutions that could have the mandate have not moved.** AEA's Data Editor, cascad,
 CODECHECK, ReScience C, AJPS/Odum (median 20-day human turnaround), the Biostatistics
 reproducibility editor, ACM's artifact badging: all active, all bound by human labor, and no
-LLM agent found in any of their published processes. The one exception is
-**[Code Ocean](https://codeocean.com/blog/trusted-agents)**, which shipped an agent (Aqua,
+LLM agent found in any of their published processes.
+**[Code Ocean](https://codeocean.com/blog/trusted-agents)** shipped an agent (Aqua,
 Oct 2025) into a platform that already holds verification contracts with Nature-family,
-Springer and SAGE. Aqua runs analyses with logged provenance; humans still gate the
-"verified reproducible" badge. That is one product decision away from being a competitor.
-
-**Corrected 25 Aug 2026.** Aqua is **not** a replication agent. It is a general
-in-platform research assistant for the user's own work: it does not audit a third
-party's paper and it does not gate the badge. The "one product decision away"
-reading above rests on a misreading of what shipped, and the paragraph should be
-rewritten before it is used in a pitch.
+Springer and SAGE. Aqua is not a replication agent. It is a general research assistant
+for a user's own work inside the platform: it runs analyses with logged provenance, it
+does not audit a third party's paper, and humans still gate the "verified reproducible"
+badge (checked 25 Aug 2026).
 
 **The generation-side labs are working on a different thesis, for structural reasons.**
 Claude Science (relaunched 30 Jun 2026), Gemini for Science (I/O, May 2026),
@@ -83,18 +92,11 @@ substitution from calibrated validation, and Yeykelis et al.
 ([arXiv 2408.16073](https://arxiv.org/abs/2408.16073)) built 19,447 AI personas to
 re-run 133 experiments from 14 *Journal of Marketing* papers.
 
-**Corrected 25 Aug 2026.** This paragraph previously said that study "matched up to 81% of
-real effects while also producing significant effects for up to 83% of null findings". Both
-figures were wrong, and the second inverted the paper's meaning. Checked against the PDF:
-81% appears nowhere, and 83% is the *success* rate on strongly significant findings ("with
-83% of the findings (54 out of 65) successfully replicated", for p < 0.001), not a
-false-positive rate on nulls.
-
-What the paper actually reports is a better argument for
+What that paper reports (checked against the PDF, 25 Aug 2026) is the argument for
 [007](../specs/007-from-reproduction-to-replication.md)'s "synthetic pilot, never evidence"
-rule than the invented number was, because it is a pattern rather than one alarming
-figure. Personas reproduce 76% of original main effects (84/111) and 68% overall including
-interactions (90/133), but accuracy tracks how strong the original effect was:
+rule, and it is a pattern rather than one figure. Personas reproduce 76% of original main
+effects (84/111) and 68% overall including interactions (90/133), but accuracy tracks how
+strong the original effect was:
 
 | Original finding | Replicated by personas |
 |---|---|
@@ -113,23 +115,21 @@ never in doubt, where it is least needed, and least reliable on weak effects, nu
 and interactions, which are what a pilot exists to test. Nobody can know in advance which
 regime a new study is in, so the pilot can never be the evidence.
 
-**Corrected 25 Aug 2026: HCI is no longer unclaimed.** Adar, Lee, Lei, Liao & Peng,
+**HCI has one entrant, and a small corpus.** Adar, Lee, Lei, Liao & Peng,
 *Revibing Code from Papers: Reimplementing HCI Artifacts*, UIST 2026
 ([arXiv 2608.00450](https://arxiv.org/abs/2608.00450), 1 Aug 2026) reimplements HCI artifacts
-from papers and releases 27 of them. It also draws the inner/outer boundary explicitly, which
-this document elsewhere claims nobody does: the machine rebuilds the interactive system, and
-participants are needed for the study that system is a baseline for. It stops at the artifact
-and neither runs the participant half nor authors an independent verdict. The paragraph below
-was written before it existed and is now false as stated.
+from papers and releases 27 of them. It draws the inner/outer boundary explicitly: the
+machine rebuilds the interactive system, and participants are needed for the study that
+system is a baseline for. It stops at the artifact, and neither runs the participant half
+nor authors an independent verdict.
 
-**HCI was unclaimed until Aug 2026, and the reason is a small corpus.** [On the Computational
+The corpus is small. [On the Computational
 Reproducibility of HCI](https://dl.acm.org/doi/full/10.1145/3772318.3791129) (CHI 2026,
 13 Apr 2026) found that only **76 CHI papers have ever shared both data and code**; 37 of
 those (49%) fully reproduced. Roughly **1% of CHI papers share reproducible materials at
 all**, against 31% in *Cognition*. RepliCHI ran 2011–2014 and has no successor; CHI's
-artifact badge is self-asserted with no external review. No agent-driven reproduction tool
-for HCI was found anywhere. ML and economics already have pilots running, so HCI is late
-rather than early.
+artifact badge is self-asserted with no external review. ML and economics already have
+pilots running, so HCI is late rather than early.
 
 The consequence: a corpus where 1% of papers share materials is a small inner loop to sell.
 It is also why the boundary table and "nothing found is a finding" matter more here than
@@ -144,7 +144,7 @@ only 24%. We could not find a published per-paper cost for any other program (no
 Psychology, not Many Labs, not SCORE). That absence is itself informative: the field appears
 to have no unit-economics discipline, and a platform can supply one.
 
-## The closest three
+## The closest four
 
 **[VERITAS](https://arxiv.org/abs/2607.02931)** (Liu, Tjiaranata & Tan, U. Chicago,
 3 Jul 2026). Abstract read directly. "Given a paper, a code repository, or both, VERITAS
@@ -164,6 +164,12 @@ repository, or both", which presumes released code, an assumption that fails for
 sensitivity to how a paper is decomposed into claims. Both are absences from the abstract
 rather than confirmed absences from the paper; read the full text before relying on either
 in a pitch.
+
+**[doesitreproduce.com](https://doesitreproduce.com/)** (Brainarbeit, seen 26 Aug 2026).
+The only production service found that executes published papers, described above. *How we
+differ:* it runs biomedical pipelines whose code is released, with no human in the loop, and
+leads with one score. We work on papers whose evidence rests on participants, place the
+inner/outer boundary, and lead with a per-component table.
 
 **[I4R's AI Replication Engine](https://i4replication.org/the-ai-replication-engine-first-experiments-and-whats-next/)**
 (Institute for Replication, ongoing, NeurIPS 2026 target). Three agents (reproducibility,
@@ -186,23 +192,24 @@ evidence-grounded reports on real packages), **[coding agents replicating sci-ML
 papers](https://arxiv.org/abs/2607.02134)** (Jul 2026, per-claim evidence tracking),
 **[AutoReproduce](https://github.com/AI9Stars/AutoReproduce)** (ACL 2026, mines cited
 references for implicit implementation detail, a technique we should adopt for step 4),
-and the live **[ICML 2026 Agent Reproduction Challenge](https://huggingface.co/spaces/ICML-2026-agent-repro/challenge)**
-(15 Jul – 2 Aug 2026, $4,000 in GPU credits, bring your own coding agent, claims from every
-ICML 2026 paper, logbooks reviewed by organizers rather than scored automatically, and
+and the **[ICML 2026 Agent Reproduction Challenge](https://huggingface.co/spaces/ICML-2026-agent-repro/challenge)**
+(ran 15 Jul to 2 Aug 2026, $4,000 in GPU credits, bring your own coding agent, claims from
+every ICML 2026 paper, logbooks reviewed by organizers rather than scored automatically, and
 coverage acknowledged upfront as "uneven" depending on code and data availability). One
 sweep reported ~6,800 papers and 20,594 logged verdicts; neither number survived a direct
-check of the writeup, so treat them as unconfirmed. The window closes 2 Aug 2026 and the
-logbooks are the field's only public record of what agents actually achieve on real papers
-at scale. Capture them before they are archived. The benchmark
+check of the writeup, so treat them as unconfirmed. In July its logbooks were the only
+public record we found of what agents achieve on real papers at scale. Whether they stayed
+online after the challenge closed has not been checked. The benchmark
 set proper (PaperBench, CORE-Bench, SUPER, REPRO-Bench, SciReplicate-Bench, PRBench,
 ReplicatorBench, LMR-Bench, ResearchCodeBench, AutoExperiment) measures agents. It does not
 produce an artifact for a paper anyone owns. These are measurement competitors, not product
 competitors: they are where our method should be benchmarked, not where our product competes.
 
-## Who could ship this next quarter
+## Who could ship this next, as judged in July 2026
 
-**Code Ocean**, by extending Aqua from "run this for the author" to "certify this for the
-editor". Platform exists, contracts exist, agent exists. This is the most likely entrant.
+**Code Ocean**, by building an agent that certifies for an editor. The platform and the
+publisher contracts exist. Aqua as shipped assists an author with their own work, so this
+would be a new product and not an extension of that one.
 
 **cascad and CODECHECK**, by putting an agent underneath existing human sign-off. Their
 bottleneck is reviewer hours, not authority, and triage is the natural first use. They would
@@ -227,16 +234,21 @@ Among benchmarks, axis 2 is the baseline, not a differentiator. What is actually
 paper, with the transcript published as the evidence behind it. The differentiator is
 [`procedure.md`](procedure.md) §8 as a delivered artifact, not as a design principle.
 
-**Three things are unclaimed.** The inner/outer boundary as a first-class, defended output:
-nothing in the field draws it, and every benchmark sidesteps it by living in ML, where the
-question does not arise. Deriving a hosted participant study from an audited paper's protocol
-([007d](../specs/007d-hosting-a-study.md)). And HCI as a domain.
+**One thing is unclaimed, and two are shared.** Deriving a hosted participant study from an
+audited paper's protocol ([007d](../specs/007d-hosting-a-study.md)) is open ground. The
+inner/outer boundary is no longer ours alone: *Revibing Code from Papers* draws it too,
+though it stops at the rebuilt artifact, and every benchmark still sidesteps it by living
+in ML, where the question does not arise. HCI as a domain has that one entrant, which
+authors no independent verdict.
 
-**Our known weakness is already public.** [`procedure.md`](procedure.md) §7 records that the
-same paper decomposes into five components or seven across two runs, swinging the rate from
-40% to 79%. VERITAS ships an importance-weighted Replication Score without, as far as the
-paper shows, that caveat. Our treatment of the rate as a footnote to the table is more
-defensible and less marketable. Make that trade deliberately rather than discovering it later.
+**Our known weakness is larger than first recorded.** One audit is one draw. Across repeat
+runs of one paper the component count ranged from 14 to 22, the runs placed the boundary
+differently, and the agent system and the network moved the result more than the paper did
+([`repeat-runs-pilot.md`](repeat-runs-pilot.md), October 2026). VERITAS ships an
+importance-weighted Replication Score without, as far as the paper shows, that caveat.
+Treating the rate as a footnote to the table is more defensible and less marketable, and the
+same now holds for a single run's verdict. Make that trade deliberately rather than
+discovering it later.
 
 **Publishing a negative verdict against named work is an open question we have not asked.**
 This research is the first evidence that better-funded players consider it a real risk: the
@@ -254,13 +266,16 @@ Sloan's Metascience & AI stream, Renaissance Philanthropy, the UK metascience gr
 (£6M pool, round 2 opened Feb 2026), and NIH's new central replication resource (Feb 2026)
 as an adopter rather than a funder. We would be defining a line rather than entering one.
 
-## Searched, found nothing
+## Searched in July 2026, found nothing
 
-Recorded so it need not be re-searched: no funded startup whose product is agentic paper
-reproduction sold to researchers; no Product Hunt launch in the category; no Chinese,
-Japanese or European entrant (Chinese-language searches returned only the same English
-arXiv papers); no defunct player under this branding; no agent-driven reproduction tool for
-HCI specifically; no hosting platform deriving a study from a paper.
+Recorded with its date, so a later sweep knows what was already looked for: no Product Hunt
+launch in the category; no Chinese or Japanese entrant (Chinese-language searches returned
+only the same English arXiv papers); no defunct player under this branding; no hosting
+platform deriving a study from a paper.
+
+Two absences on the July list did not hold and are described above: a production service
+that reproduces papers exists (doesitreproduce.com), and HCI has an entrant (*Revibing Code
+from Papers*).
 
 Two name collisions to remember: **RepliBench** (UK AISI) measures whether a *model*
 can self-replicate, an AI-safety eval, unrelated. **UL Solutions' AI Algorithm
