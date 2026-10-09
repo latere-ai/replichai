@@ -29,6 +29,7 @@
 // GET /jobs/{id}, then nothing more until the browser reconnects.
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { createServer as createHttpServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { dirname, resolve } from 'node:path'
@@ -261,20 +262,57 @@ function freePort() {
   })
 }
 
+// STAND_IN_HEADER marks an answer that came from the suite's own backend.
+export const STAND_IN_HEADER = 'x-web-test-backend'
+
+// startBackend is the backend the dev server proxies to while the suite runs.
+// It refuses every request at once, with the 500 the proxy itself gives when
+// nothing listens, so the app sees what it saw before.
+//
+// The dev server's default backend is localhost:8080, which the suite does not
+// own. A request no route mocks is passed on to the proxy, so its answer used to
+// depend on whatever held that port: nothing on a developer's machine, and on a
+// shared CI runner sometimes another job's service. One that accepted the
+// connection and did not answer left a screen waiting, and the suite reported a
+// timeout naming an element. Owning the port the proxy points at removes that.
+async function startBackend() {
+  const server = createHttpServer((req, res) => {
+    req.resume()
+    res.writeHead(500, { 'content-type': 'text/plain', [STAND_IN_HEADER]: 'stand-in' })
+    res.end()
+  })
+  await new Promise((res, rej) => {
+    server.on('error', rej)
+    server.listen(0, '127.0.0.1', res)
+  })
+  // The suite ends when its tests do, not when this server has no clients left.
+  server.unref()
+  return { url: `http://127.0.0.1:${server.address().port}`, stop: () => server.close() }
+}
+
 // startVite serves the app on a free port, unless a runner already serves it
 // and says so in WEB_TEST_BASE, in which case the whole suite shares one server.
 export async function startVite() {
   if (process.env.WEB_TEST_BASE) return { base: process.env.WEB_TEST_BASE, stop() {} }
   const port = await freePort()
   const base = `http://localhost:${port}`
-  const proc = spawn('npx', ['vite', '--port', String(port), '--strictPort'], { stdio: 'ignore', cwd: frontend })
+  const backend = await startBackend()
+  const stop = () => {
+    proc.kill('SIGTERM')
+    backend.stop()
+  }
+  const proc = spawn('npx', ['vite', '--port', String(port), '--strictPort'], {
+    stdio: 'ignore',
+    cwd: frontend,
+    env: { ...process.env, VITE_BACKEND: backend.url },
+  })
   try {
     await waitUntil(() => fetch(base).then((r) => r.ok, () => false), { timeout: 60_000, every: 250, what: 'vite to start' })
   } catch (e) {
-    proc.kill('SIGTERM')
+    stop()
     throw e
   }
-  return { base, stop: () => proc.kill('SIGTERM') }
+  return { base, stop }
 }
 
 /* ── Chrome, one for the suite ── */
