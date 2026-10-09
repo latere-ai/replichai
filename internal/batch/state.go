@@ -61,37 +61,73 @@ func LoadState(path string) (State, error) {
 }
 
 // mergedWith carries a previous run's outcomes onto the current entry list,
-// matching by paper reference so an edited project file resumes rather than
-// starting over.
+// matching by paper reference and run ordinal so an edited project file
+// resumes rather than starting over. Matched by paper alone, the runs of one
+// paper would all take the first run's record. One previous entry is matched
+// to at most one current entry, so a paper whose runs were raised runs only
+// the runs added.
 //
-// Only a finished paper is skipped. A failed one is retried, because retrying
+// Only a finished run is skipped. A failed one is retried, because retrying
 // what failed is the reason to resume. It keeps its repository and its
 // session reference, so the retry publishes into the repository the first
-// attempt created rather than allocating a second one for the same paper.
+// attempt created rather than allocating a second one for the same run.
 func (s State) mergedWith(entries []Resolved, now time.Time) State {
 	merged := State{Version: stateVersion, Project: s.Project, StartedAt: now, Entries: make([]EntryState, len(entries))}
-	for index, entry := range entries {
-		merged.Entries[index] = EntryState{Paper: entry.Reference(), Phase: Pending}
-		for _, previous := range s.Entries {
-			if previous.Paper != entry.Reference() {
-				continue
-			}
-			if previous.Phase == Done {
-				merged.Entries[index] = previous
-				break
-			}
-			// Failed, running or pending: keep what is needed to
-			// reattach and drop the phase, so the paper is tried again
-			// against the repository it already has.
-			merged.Entries[index].PaperKey = previous.PaperKey
-			merged.Entries[index].Session = previous.Session
-			merged.Entries[index].Directory = previous.Directory
-			merged.Entries[index].Repo = previous.Repo
-			merged.Entries[index].Ref = previous.Ref
-			break
+	// A state edited by hand may name one run twice. The first record wins,
+	// as the first match did when entries were matched by paper alone.
+	previous := make(map[runKey]EntryState, len(s.Entries))
+	for _, entry := range s.numbered() {
+		key := runKey{entry.Paper, entry.Run}
+		if _, seen := previous[key]; !seen {
+			previous[key] = entry
 		}
 	}
+	for index, entry := range entries {
+		merged.Entries[index] = EntryState{Paper: entry.Reference(), Run: entry.Run, Phase: Pending}
+		key := runKey{entry.Reference(), entry.Run}
+		earlier, ok := previous[key]
+		if !ok {
+			continue
+		}
+		delete(previous, key)
+		if earlier.Phase == Done {
+			merged.Entries[index] = earlier
+			continue
+		}
+		// Failed, running or pending: keep what is needed to reattach and
+		// drop the phase, so the run is tried again against the repository
+		// it already has.
+		merged.Entries[index].PaperKey = earlier.PaperKey
+		merged.Entries[index].Session = earlier.Session
+		merged.Entries[index].Directory = earlier.Directory
+		merged.Entries[index].Repo = earlier.Repo
+		merged.Entries[index].Ref = earlier.Ref
+	}
 	return merged
+}
+
+// runKey is how a resume finds an entry's earlier record: the paper and the
+// run's ordinal among the runs of that paper.
+type runKey struct {
+	paper string
+	run   int
+}
+
+// numbered returns the entries with every run ordinal filled in. A state file
+// written before runs were recorded has no ordinals and names a paper once
+// per run, in the order its runs were listed, so an entry without one is
+// numbered by its occurrence among the entries for its paper. A single-run
+// state therefore resumes exactly as it did before runs existed.
+func (s State) numbered() []EntryState {
+	entries := slices.Clone(s.Entries)
+	occurrence := map[string]int{}
+	for index := range entries {
+		occurrence[entries[index].Paper]++
+		if entries[index].Run == 0 {
+			entries[index].Run = occurrence[entries[index].Paper]
+		}
+	}
+	return entries
 }
 
 func (s State) clone() State {
