@@ -1884,6 +1884,56 @@ func TestSessionFindings(t *testing.T) {
 	}
 }
 
+// TestSessionFindingsLegacyMismatch checks that a schema 1 file, which every
+// session from before schema 2 holds, is served in schema 2's shape: its
+// mismatch and the extra list agents added beside it arrive as one list, with
+// the delta as the note, so the pane reads one shape whatever version a session
+// wrote. The second entry's observed value is an object, a shape that used to
+// make the whole file unreadable.
+func TestSessionFindingsLegacyMismatch(t *testing.T) {
+	d := testDeps(allowAll)
+	d.Reproductions.(*fakeRepro).findings = []byte(`{
+  "schema": 1,
+  "verdict": "partial",
+  "summary": "Retrains and matches within 1.8 pp.",
+  "graded_at": "2026-07-14T10:41:00Z",
+  "components": {"verified": 1, "partial": 0, "blocked": 0, "total": 1},
+  "boundary": [{
+    "claim": "Accuracy 91.4%", "loop": "inner", "outcome": "verified", "evidence": "89.6% retrained", "citation": "§6.1",
+    "mismatch": {"kind": "numeric", "reported": "91.4%", "observed": "89.6%", "delta": "-1.8 pp"},
+    "additional_mismatches": [{"kind": "numeric", "reported": "n = 24", "observed": {"n": 22, "excluded": 2}}]
+  }]
+}`)
+	h := NewRouter(d).Handler()
+	j := publishedSession(t, d, "me", "r1", nil)
+
+	w := do(t, h, "GET", "/jobs/"+j.ID+"/verdict", "", "me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("legacy findings = %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Boundary []map[string]json.RawMessage `json:"boundary"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Boundary) != 1 {
+		t.Fatalf("boundary = %s", w.Body.String())
+	}
+	row := body.Boundary[0]
+	if _, ok := row["mismatch"]; ok {
+		t.Errorf("the legacy field reached the response: %s", w.Body.String())
+	}
+	var ms []verdict.Mismatch
+	if err := json.Unmarshal(row["mismatches"], &ms); err != nil {
+		t.Fatalf("mismatches: %v in %s", err, w.Body.String())
+	}
+	if len(ms) != 2 || ms[0].Reported != "91.4%" || ms[0].Observed != "89.6%" || ms[0].Note != "-1.8 pp" ||
+		ms[1].Observed != `{"n":22,"excluded":2}` {
+		t.Errorf("mismatches = %+v, want both legacy entries in one list", ms)
+	}
+}
+
 // TestSessionFindingsAbsent checks that a run that never wrote the file is a
 // 404 with a reason, not an empty object that a pane would render as a paper
 // with no boundary.
