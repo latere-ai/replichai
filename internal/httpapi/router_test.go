@@ -1843,7 +1843,7 @@ func validFindings(t *testing.T) []byte {
 		Components: verdict.Components{Verified: 1, Blocked: 1, Total: 2},
 		Boundary: []verdict.Claim{
 			{Claim: "Accuracy 91.4%", Loop: verdict.Inner, Outcome: verdict.Verified, Citation: "§6.1", Evidence: "89.6% retrained",
-				Mismatch: &verdict.Mismatch{Kind: verdict.Numeric, Reported: "91.4%", Observed: "89.6%", Delta: "-1.8 pp"}},
+				Mismatches: []verdict.Mismatch{{Kind: verdict.Numeric, Reported: "91.4%", Observed: "89.6%", Note: "-1.8 pp"}}},
 			{Claim: "Latency under 40 ms", Loop: verdict.Inner, Outcome: verdict.Blocked, Citation: "§6.3", Evidence: "needs the authors' tablet"},
 			{Claim: "Preferred by participants", Loop: verdict.Outer, Outcome: verdict.NotScored, Citation: "§7", Evidence: "human study"},
 		},
@@ -1875,7 +1875,7 @@ func TestSessionFindings(t *testing.T) {
 	}
 	// The mismatch survives the round trip: it is the one field a reader cannot
 	// reconstruct from the outcome.
-	if got.Boundary[0].Mismatch == nil || got.Boundary[0].Mismatch.Observed != "89.6%" {
+	if len(got.Boundary[0].Mismatches) != 1 || got.Boundary[0].Mismatches[0].Observed != "89.6%" {
 		t.Errorf("mismatch lost: %+v", got.Boundary[0])
 	}
 	// Scoped like every other session read.

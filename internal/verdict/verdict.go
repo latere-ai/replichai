@@ -38,8 +38,17 @@ import (
 	"time"
 )
 
-// Schema is the version this package reads and writes.
-const Schema = 1
+// Schema is the version this package writes and the method asks agents for.
+// Schema 2 replaced the single mismatch object with a list that also carries
+// the numbers, after a pilot in which agents had to invent a second list to
+// record a second disagreement and wrote values in shapes schema 1 refused.
+const Schema = 2
+
+// oldestSchema is the oldest version Validate still accepts. Sessions already
+// in the app hold schema 1 files, and refusing them would turn every existing
+// findings pane into an error. Parse reads both the same way, so nothing past
+// it sees which one a file was.
+const oldestSchema = 1
 
 // File is the path of the findings in a reproduction repository. It is defined
 // here rather than in the publisher because a reader of the schema needs the
@@ -150,15 +159,35 @@ type Claim struct {
 	Outcome  ClaimOutcome `json:"outcome"`
 	Evidence string       `json:"evidence"` // the evidence, or the specific blocker
 	Citation string       `json:"citation"` // section, figure, or table
-	Mismatch *Mismatch    `json:"mismatch,omitempty"`
+
+	// Mismatches has one entry per quantity on which the run and the paper
+	// disagree. Parse folds schema 1's single mismatch object, and the
+	// additional_mismatches list agents invented when only one was allowed,
+	// into this list, so nothing downstream reads either.
+	Mismatches []Mismatch `json:"mismatches,omitempty"`
 }
 
-// Mismatch records that the run and the paper disagree, whatever the outcome.
+// Mismatch records that the run and the paper disagree on one quantity,
+// whatever the outcome.
+//
+// Reported and Observed are text because what a paper states is often not one
+// number: a range, a row of a table, "approximately 45%". ReportedValue and
+// ObservedValue carry the number when it is one, so a reader can compute with
+// it without parsing prose, and are nil when it is not.
+//
+// Every text field accepts any JSON value. An agent asked what the paper
+// reported often wrote the table row itself as an object, and that row, kept as
+// its compact JSON, says more to a reader than a refusal does. The two values
+// are strict, since a value that is not a number cannot be computed with.
 type Mismatch struct {
-	Kind     MismatchKind `json:"kind"`
-	Reported string       `json:"reported"`
-	Observed string       `json:"observed"`
-	Delta    string       `json:"delta,omitempty"`
+	Kind          MismatchKind `json:"kind"`
+	What          string       `json:"what,omitempty"` // which quantity is compared
+	Reported      string       `json:"reported"`       // as the paper states it
+	Observed      string       `json:"observed"`       // as the run got it
+	ReportedValue *float64     `json:"reported_value,omitempty"`
+	ObservedValue *float64     `json:"observed_value,omitempty"`
+	Unit          string       `json:"unit,omitempty"`
+	Note          string       `json:"note,omitempty"` // the interpretation, or the cause
 }
 
 // Decision is one thing the paper left unwritten. All four fields are required:
@@ -267,8 +296,11 @@ type parsed struct {
 
 	// The path each kept row was read from. A row that does not decode is left
 	// out, so a later row's place in the slice is not its place in the file,
-	// and a problem has to name the one the author can find.
+	// and a problem has to name the one the author can find. mismatchAt holds,
+	// for each kept claim, the path each of its mismatches was read from,
+	// which for a schema 1 file is mismatch rather than mismatches[0].
 	claimAt, decisionAt, scoreAt, releaseAt []string
+	mismatchAt                              [][]string
 }
 
 func (p *parsed) add(field, msg string) {
@@ -380,6 +412,14 @@ func (p *parsed) components(top map[string]json.RawMessage) {
 	}
 }
 
+// mismatchKeys are the claim fields a disagreement is read from, in the order
+// their entries join the list: schema 1's single object, schema 2's list, and
+// the list agents added beside schema 1's object when they had a second
+// disagreement to record.
+var mismatchKeys = []string{"mismatch", "mismatches", "additional_mismatches"}
+
+// claim decodes one boundary row. A mismatch that does not decode is a problem
+// at its own path and does not cost the claim its row.
 func (p *parsed) claim(raw json.RawMessage, at string) (Claim, bool) {
 	obj, ok := p.object(raw, at)
 	if !ok {
@@ -391,22 +431,123 @@ func (p *parsed) claim(raw json.RawMessage, at string) (Claim, bool) {
 	ok = p.field(obj, at, "outcome", &c.Outcome) && ok
 	ok = p.field(obj, at, "evidence", &c.Evidence) && ok
 	ok = p.field(obj, at, "citation", &c.Citation) && ok
-	if m, present := obj["mismatch"]; present && !isNull(m) {
-		mobj, mok := p.object(m, join(at, "mismatch"))
-		if mok {
-			var mm Mismatch
-			mat := join(at, "mismatch")
-			mok = p.field(mobj, mat, "kind", &mm.Kind)
-			mok = p.field(mobj, mat, "reported", &mm.Reported) && mok
-			mok = p.field(mobj, mat, "observed", &mm.Observed) && mok
-			mok = p.field(mobj, mat, "delta", &mm.Delta) && mok
-			if mok {
-				c.Mismatch = &mm
+
+	var paths []string
+	for _, key := range mismatchKeys {
+		raw, present := obj[key]
+		if !present || isNull(raw) {
+			continue
+		}
+		items, itemPaths, listed := p.objects(raw, join(at, key))
+		if !listed {
+			continue
+		}
+		for j, item := range items {
+			if m, ok := p.mismatch(item, itemPaths[j]); ok {
+				c.Mismatches = append(c.Mismatches, m)
+				paths = append(paths, itemPaths[j])
 			}
 		}
-		ok = mok && ok
+	}
+	// rows keeps this claim exactly when ok is true, so the paths are recorded
+	// under the same condition to stay aligned with p.claimAt.
+	if ok {
+		p.mismatchAt = append(p.mismatchAt, paths)
 	}
 	return c, ok
+}
+
+// objects reads raw as a list of values, or as a single object standing for a
+// list of one, which is how schema 1 wrote a mismatch. Each value comes back
+// with the path it was read from.
+func (p *parsed) objects(raw json.RawMessage, at string) ([]json.RawMessage, []string, bool) {
+	if describe(raw) == "an object" {
+		return []json.RawMessage{raw}, []string{at}, true
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		p.add(at, fmt.Sprintf("is %s, want a list of objects", describe(raw)))
+		return nil, nil, false
+	}
+	paths := make([]string, len(items))
+	for j := range items {
+		paths[j] = fmt.Sprintf("%s[%d]", at, j)
+	}
+	return items, paths, true
+}
+
+// mismatch decodes one disagreement, reading schema 1's delta into the note
+// and its units into the unit. Only a kind that is not a string costs the
+// entry, since without a kind there is nothing to say about it; a value that
+// is not a number is a problem on that field and the entry is kept without it.
+func (p *parsed) mismatch(raw json.RawMessage, at string) (Mismatch, bool) {
+	obj, ok := p.object(raw, at)
+	if !ok {
+		return Mismatch{}, false
+	}
+	var m Mismatch
+	ok = p.field(obj, at, "kind", &m.Kind)
+	m.What = p.text(obj, at, "what")
+	m.Reported = p.text(obj, at, "reported")
+	m.Observed = p.text(obj, at, "observed")
+	m.ReportedValue = p.number(obj, at, "reported_value")
+	m.ObservedValue = p.number(obj, at, "observed_value")
+	if m.Unit = p.text(obj, at, "unit"); m.Unit == "" {
+		m.Unit = p.text(obj, at, "units")
+	}
+	m.Note = note(p.text(obj, at, "delta"), p.text(obj, at, "note"))
+	return m, ok
+}
+
+// text reads a field that holds words. A string is kept as written, and any
+// other value as its compact JSON, so a table row an agent wrote as an object
+// reaches the reader as that row.
+func (p *parsed) text(obj map[string]json.RawMessage, at, name string) string {
+	raw, ok := obj[name]
+	if !ok || isNull(raw) {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var b bytes.Buffer
+	if err := json.Compact(&b, raw); err != nil {
+		p.add(join(at, name), "could not be read as text: "+err.Error())
+		return ""
+	}
+	return b.String()
+}
+
+// number reads a field that holds one number, or null when the quantity is
+// not a single number.
+func (p *parsed) number(obj map[string]json.RawMessage, at, name string) *float64 {
+	raw, ok := obj[name]
+	if !ok || isNull(raw) {
+		return nil
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		if describe(raw) == "a number" {
+			p.add(join(at, name), "is a number out of range")
+		} else {
+			p.add(join(at, name), fmt.Sprintf("is %s, want a number, or null when the quantity is not a single number", describe(raw)))
+		}
+		return nil
+	}
+	return &f
+}
+
+// note joins schema 1's delta and a note into one line, the delta first, since
+// the delta is the figure and the note says what it means.
+func note(delta, note string) string {
+	switch {
+	case delta == "":
+		return note
+	case note == "":
+		return delta
+	}
+	return delta + "; " + note
 }
 
 func (p *parsed) decision(raw json.RawMessage, at string) (Decision, bool) {
@@ -453,7 +594,7 @@ func (p *parsed) check() {
 	v := p.v
 	add := p.add
 
-	if !p.incomplete["schema"] && v.Schema != Schema {
+	if !p.incomplete["schema"] && (v.Schema < oldestSchema || v.Schema > Schema) {
 		add("schema", fmt.Sprintf("is %d, want %d", v.Schema, Schema))
 	}
 	if !p.incomplete["verdict"] && !knownOutcome[v.Verdict] {
@@ -494,13 +635,13 @@ func (p *parsed) check() {
 		if strings.TrimSpace(c.Evidence) == "" {
 			add(at("evidence"), "has neither evidence nor a specific blocker")
 		}
-		if c.Mismatch != nil {
-			m := c.Mismatch
+		for j, m := range c.Mismatches {
+			mat := p.mismatchAt[i][j]
 			if !knownKind[m.Kind] {
-				add(at("mismatch.kind"), fmt.Sprintf("%q is not one of numeric, ordering, contradiction, typo", m.Kind))
+				add(join(mat, "kind"), fmt.Sprintf("%q is not one of numeric, ordering, contradiction, typo", m.Kind))
 			}
 			if strings.TrimSpace(m.Reported) == "" || strings.TrimSpace(m.Observed) == "" {
-				add(at("mismatch"), "records a disagreement without both what the paper reported and what the run observed")
+				add(mat, "records a disagreement without both what the paper reported and what the run observed")
 			}
 		}
 		if c.Loop == Inner {
