@@ -66,6 +66,9 @@ CHECKED_TO = "The fetch-refusal quotes,"
 CHECKED_TEXT = ("The tables in this appendix were computed from the records each run published, "
                 "by a script kept with the ReplicHAI source.\n\n")
 
+# The longest table the manuscript sets as one unbreakable block.
+MAX_TABLE_ROWS = 12
+
 # pandoc takes a wrapped table's relative column widths from the dashes of its
 # rule. The pages write every rule as three dashes, which would give equal
 # columns, so each table's rule is given here, keyed by its header row.
@@ -160,6 +163,31 @@ def typeset(tex, final):
     if squash(before) != squash(env.sub(lambda m: "\n\n".join(["<DISPLAY>"] * rows_in(m)), tex)):
         sys.exit("the prose changed while numbering equations")
 
+    # Every table here is a few rows, so each is set as one block that cannot
+    # break across pages. pandoc writes a longtable, which can: it split a
+    # four-row table over two pages, and it starts a new page on its own terms,
+    # which left a heading alone at the foot of the page before it.
+    table = re.compile(
+        r"\\begin\{longtable\}\[\]\{(?P<cols>.*?)\}\n\\toprule\\noalign\{\}\n(?P<head>.*?)"
+        r"\\midrule\\noalign\{\}\n\\endhead\n\\bottomrule\\noalign\{\}\n\\endlastfoot\n"
+        r"(?P<body>.*?)\\end\{longtable\}", re.S)
+
+    def block(match):
+        rows = match.group("body").count("\\\\\n")
+        if rows > MAX_TABLE_ROWS:
+            sys.exit(f"a table has {rows} rows; one that long has to be allowed to break across pages")
+        # The \\nobreak keeps the block on the page of the line that introduces
+        # it, so a page never ends on "was:" with the table overleaf.
+        return ("\\par\\nobreak\\addvspace{\\medskipamount}\\noindent\\begin{minipage}{\\linewidth}\n"
+                "\\begin{tabular}{" + match.group("cols") + "}\n\\toprule\\noalign{}\n" + match.group("head")
+                + "\\midrule\\noalign{}\n" + match.group("body") + "\\bottomrule\\noalign{}\n"
+                "\\end{tabular}\n\\end{minipage}\\par\\addvspace{\\medskipamount}")
+
+    tables = tex.count("\\begin{longtable}")
+    tex = table.sub(block, tex)
+    if tex.count("\\begin{longtable}") != 0 or tex.count("\\begin{tabular}") != tables:
+        sys.exit("a table was not in the shape pandoc usually writes, and was left as a longtable")
+
     # A section whose table would otherwise start on the next page moves there
     # whole, so its heading and lead-in stay with the table. \Needspace decides
     # the break at once. The lowercase form only makes an earlier break
@@ -168,7 +196,7 @@ def typeset(tex, final):
     heading = "\\section{Sample size}"
     if tex.count(heading) != 1:
         sys.exit("the Sample size section is missing or repeated")
-    tex = tex.replace(heading, "\\Needspace{20\\baselineskip}\n" + heading)
+    tex = tex.replace(heading, "\\Needspace{24\\baselineskip}\n" + heading)
 
     # The author is a group, so the title block carries its institute and its
     # website on the lines below the name.
