@@ -10,6 +10,43 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- A project file can run one paper more than once. `runs: 3` on the file or on
+  one paper starts three sessions of it, each with its own repository and its
+  own output directory (`<paper>-run-2`, and so on), and listing a paper twice
+  means the same as `runs: 2`. The report counts runs and names the run beside
+  a repeated paper.
+- The findings pane shows every disagreement a claim has with the paper, not
+  one: each names the quantity it compares, the paper's value and the run's,
+  and a note on the size or cause of the gap.
+- "What the authors released" marks a place the run could not look at, because
+  the sandbox refused the address or the fetch failed, as NOT FETCHED. It used
+  to have no way to say so, apart from reporting that nothing was found.
+
+### Changed
+
+- `verdict.json` is at schema 2. A claim carries a `mismatches` list in place
+  of one `mismatch` object. Each entry holds the two values as text and, when
+  each is a single number, as numbers in `reported_value` and `observed_value`,
+  with a `unit` and a `note`. `released` accepts `not_fetched`. Findings
+  written under schema 1 still read, and the app shows them the same way.
+- The method changed with the schema, so its digest moved. A reproduction made
+  from this release on is not comparable under one digest with an earlier one.
+
+### Fixed
+
+- Resuming a project that lists one paper several times runs the runs that
+  failed or never started. It used to match by paper alone, so it ran none of
+  them and reported every run as done with the first run's repository.
+- Two runs of one paper started together no longer take each other's
+  repository or write into the same output directory.
+- One field of the wrong type in `verdict.json` no longer costs the whole
+  file. The findings are read row by row, the problem names the row, and the
+  rest is kept. Before, such a file was reported as not valid JSON, which was
+  false, and nothing in it was read: 14 of the 27 findings files from a 49-run
+  pilot were lost this way, and 27 of the 29 files those runs wrote now read.
+
 ### Security
 
 - Built with Go 1.27.2 and golang.org/x/net v0.60.0, which fix GO-2026-6611, GO-2026-6612, GO-2026-6613 and GO-2026-6617.
