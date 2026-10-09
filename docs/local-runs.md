@@ -277,9 +277,12 @@ papers:
   - https://arxiv.org/abs/2603.01795
   - doi: 10.1145/3654777.3676417
     model: fast
+    runs: 3
 ```
 
-Each paper gets its own session, its own sandbox and its own repository. One
+Each paper gets its own session, its own sandbox and its own repository.
+`runs: 3` reproduces a paper three times, each run in its own session with its
+own repository; put `runs` at the top of the file to set it for every paper. One
 paper failing never stops the rest; the exit code is non-zero if any failed, so
 CI reads the exit code and you read the report.
 

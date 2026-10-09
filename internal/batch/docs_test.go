@@ -36,16 +36,22 @@ func TestTheDocumentedProjectFileWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Entries: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("%d papers, want 2", len(entries))
+	// The second paper runs three times, so two papers are four runs.
+	if len(entries) != 4 {
+		t.Fatalf("%d runs, want 4: one of the first paper and three of the second", len(entries))
 	}
 	// The guide says the file's defaults apply to every paper and a paper
 	// may override any of them. Both halves are in the example.
-	if entries[0].Model != "best" || entries[0].Harness != "claude-code" {
+	if entries[0].Model != "best" || entries[0].Harness != "claude-code" || entries[0].Runs != 1 {
 		t.Errorf("the file's defaults did not reach the first paper: %+v", entries[0])
 	}
-	if entries[1].Model != "fast" || entries[1].Reference() != "10.1145/3654777.3676417" {
-		t.Errorf("the per-paper override did not apply: %+v", entries[1])
+	for run, entry := range entries[1:] {
+		if entry.Model != "fast" || entry.Reference() != "10.1145/3654777.3676417" {
+			t.Errorf("the per-paper override did not apply: %+v", entry)
+		}
+		if entry.Run != run+1 || entry.Runs != 3 {
+			t.Errorf("the second paper's run %d is numbered %d of %d, want %d of 3", run+1, entry.Run, entry.Runs, run+1)
+		}
 	}
 }
 
