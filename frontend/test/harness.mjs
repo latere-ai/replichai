@@ -72,15 +72,39 @@ export function check(cond, msg) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// SLOW stretches every wait in the suite. Each wait is written with the budget
+// it needs on a developer's machine. The CI runner loads the same page about
+// twenty times slower, so the written budgets left it about twice the usual
+// time, and a busy moment ran one out: a timeout naming an element, in a
+// different file each time. One factor, applied where waits are made, keeps the
+// budgets in the tests readable and gives a slow machine the same headroom.
+// WEB_TEST_SLOW sets it; without it the factor is 4 on CI and 1 elsewhere.
+export const SLOW = Number(process.env.WEB_TEST_SLOW) || (process.env.CI ? 4 : 1)
+
+// PAGE_WAIT is puppeteer's own default for a wait that names no budget.
+const PAGE_WAIT = 30_000
+
+// stretch applies SLOW to a page: to the default budget, and to the budget a
+// call names. A budget of zero means wait forever and is left alone.
+function stretch(page) {
+  page.setDefaultTimeout(PAGE_WAIT * SLOW)
+  const scaled = (options) => (options && typeof options.timeout === 'number' && options.timeout > 0 ? { ...options, timeout: options.timeout * SLOW } : options)
+  for (const name of ['waitForSelector', 'waitForFunction', 'waitForResponse', 'waitForRequest']) {
+    const wait = page[name].bind(page)
+    page[name] = (subject, options, ...rest) => wait(subject, scaled(options), ...rest)
+  }
+}
+
 // waitUntil polls a condition on the node side, such as a request counter or a
 // mock's state, until it holds or the time is up. Its message says what it
 // waited for.
 export async function waitUntil(cond, { timeout = 5000, every = 25, what = 'condition' } = {}) {
-  const until = Date.now() + timeout
+  const budget = timeout * SLOW
+  const until = Date.now() + budget
   for (;;) {
     const v = await cond()
     if (v) return v
-    if (Date.now() > until) throw new Error(`timed out after ${timeout}ms waiting for ${what}`)
+    if (Date.now() > until) throw new Error(`timed out after ${budget}ms waiting for ${what}`)
     await sleep(every)
   }
 }
@@ -387,6 +411,7 @@ export async function start() {
     // page, so a test that needs a different server later opens a second page.
     async page({ viewport = DESKTOP, ...mocking } = {}) {
       const page = await context.newPage()
+      stretch(page)
       await page.setViewport(viewport)
       const { calls, pageErrors } = await mock(page, vite.base, mocking)
       page.calls = calls
