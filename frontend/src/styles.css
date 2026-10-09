@@ -4805,6 +4805,20 @@ input.submit-input {
   color: var(--fg-1);
   font-weight: 600;
 }
+.mismatch-what {
+  color: var(--fg-1);
+  font-weight: 500;
+}
+/* A value an agent wrote as a table row arrives as compact JSON with no spaces,
+   which would otherwise run past the edge of the cell. */
+.mismatch-values,
+.mismatch-note {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mismatch-note {
+  color: var(--fg-2);
+}
 
 .unresolved-row {
   display: flex;

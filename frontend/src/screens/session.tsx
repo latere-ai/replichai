@@ -280,7 +280,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
                 </td>
                 <td className="small muted">
                   {c.evidence}
-                  {c.mismatch && <MismatchLine i18n={i18n} m={c.mismatch} />}
+                  {c.mismatches?.map((m, j) => <MismatchLine key={j} i18n={i18n} m={m} />)}
                 </td>
               </tr>
             ))}
@@ -306,7 +306,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
                 <div className="stack" style={{ gap: 3, minWidth: 0 }}>
                   <span className="claim-text">{c.claim}</span>
                   <span className="small muted">{c.evidence}</span>
-                  {c.mismatch && <MismatchLine i18n={i18n} m={c.mismatch} />}
+                  {c.mismatches?.map((m, j) => <MismatchLine key={j} i18n={i18n} m={m} />)}
                 </div>
                 <span className="mono small muted" style={{ marginLeft: 'auto' }}>{c.citation}</span>
               </div>
@@ -338,8 +338,11 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
   )
 }
 
-// MismatchLine prints both numbers. An outcome alone cannot say that a run
-// reproduced a claim and still found the paper's figure wrong.
+// MismatchLine prints both values of one disagreement. An outcome alone cannot
+// say that a run reproduced a claim and still found the paper's figure wrong.
+// A claim can disagree on several quantities, one line each, so the line names
+// the quantity it compares when the run said which, and carries the note that
+// says how large the gap is or what caused it.
 function MismatchLine({ i18n, m }: { i18n: I18n; m: Mismatch }) {
   const { t } = i18n
   const kind =
@@ -350,10 +353,11 @@ function MismatchLine({ i18n, m }: { i18n: I18n; m: Mismatch }) {
   return (
     <div className="mismatch">
       <span className="mismatch-kind">{kind}</span>
-      <span className="mono small">
+      {m.what && <span className="mismatch-what small">{m.what}</span>}
+      <span className="mismatch-values mono small">
         {t('reportedIs')} <b>{m.reported}</b> · {t('observedIs')} <b>{m.observed}</b>
-        {m.delta ? ` · ${m.delta}` : ''}
       </span>
+      {m.note && <span className="mismatch-note small">{m.note}</span>}
     </div>
   )
 }
@@ -473,7 +477,11 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
   const scores = findings.scorecard ?? []
   if (!released.length && !scores.length) return null
   const label = (r: ReleaseResult) =>
-    r === 'found' ? t('resFound') : r === 'partial' ? t('resPartial') : r === 'dead' ? t('resDead') : t('resNone')
+    r === 'found' ? t('resFound')
+      : r === 'partial' ? t('resPartial')
+        : r === 'dead' ? t('resDead')
+          : r === 'not_fetched' ? t('resNotFetched')
+            : t('resNone')
   const critLabel: Record<Criterion, string> = {
     code: t('critCode'),
     data: t('critData'),

@@ -41,9 +41,23 @@ test('unresolved is what did not cleanly reproduce', () => {
 // found a number the paper got wrong.
 test('a verified claim that disagrees with the paper is unresolved', () => {
   const f = findings({
-    boundary: [claim({ claim: 'accuracy', mismatch: { kind: 'numeric', reported: '91.4%', observed: '89.6%', delta: '-1.8 pp' } })],
+    boundary: [
+      claim({
+        claim: 'accuracy',
+        mismatches: [
+          { kind: 'numeric', what: 'held-out accuracy', reported: '91.4%', observed: '89.6%', reported_value: 91.4, observed_value: 89.6, unit: '%', note: '-1.8 pp' },
+        ],
+      }),
+    ],
   })
   expect(unresolved(f).map((c) => c.claim)).toEqual(['accuracy'])
+})
+
+// The list is how the server sends a claim's disagreements, and an empty list
+// is a claim that agreed with the paper.
+test('an empty list of mismatches leaves a verified claim resolved', () => {
+  const f = findings({ boundary: [claim({ claim: 'accuracy', mismatches: [] })] })
+  expect(unresolved(f)).toEqual([])
 })
 
 // An outer claim was never scored, so there is nothing about it to resolve.
@@ -86,6 +100,15 @@ test('the scorecard order is the five the rubric scores', () => {
 test('a dead link and nothing published are toned differently', () => {
   expect(releaseTone('dead')).not.toBe(releaseTone('none'))
   expect(releaseTone('found')).toBe('var(--ok)')
+})
+
+// A page the run was not allowed to fetch says nothing about the authors. It
+// is neutral, since nothing is known to be wrong, and never the tone of
+// nothing published, which is a finding about the authors.
+test('a page the run could not fetch is toned apart from every finding', () => {
+  const tone = releaseTone('not_fetched')
+  for (const other of ['found', 'partial', 'none', 'dead'] as const) expect(tone).not.toBe(releaseTone(other))
+  expect(tone).toBe('var(--fg-2)')
 })
 
 // A boundary the server has not sent yet must not throw on the way in.

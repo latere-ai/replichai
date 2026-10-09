@@ -50,9 +50,10 @@ const sessionOf = (id) => ({
 })
 
 // One findings file exercising every rule the panes have to respect: a verified
-// claim that still disagrees with the paper, a blocked one, and an outer one.
+// claim that still disagrees with the paper on two quantities, a blocked one,
+// and an outer one.
 const findings = {
-  schema: 1,
+  schema: 2,
   verdict: 'partial',
   summary: 'The classifier retrains from the released code and matches the reported accuracy within 1.8 pp.',
   graded_at: at(0),
@@ -64,7 +65,10 @@ const findings = {
       outcome: 'verified',
       evidence: 'Retrained from released code',
       citation: '§6.1',
-      mismatch: { kind: 'numeric', reported: '91.4%', observed: '89.6%', delta: '-1.8 pp' },
+      mismatches: [
+        { kind: 'numeric', what: 'held-out accuracy', reported: '91.4%', observed: '89.6%', reported_value: 91.4, observed_value: 89.6, unit: '%', note: '-1.8 pp' },
+        { kind: 'contradiction', what: 'participant count', reported: 'n = 24 in §5', observed: 'n = 22 in Table 1', reported_value: null, observed_value: null },
+      ],
     },
     { claim: 'End-to-end latency under 40 ms', loop: 'inner', outcome: 'blocked', evidence: "Requires the authors' tablet", citation: '§6.3' },
     { claim: 'Technique preferred over baseline (n=24)', loop: 'outer', outcome: 'not_scored', evidence: 'Human study — reported, never scored', citation: '§7' },
@@ -81,6 +85,7 @@ const findings = {
     { where: 'GitHub', what: 'authors/posture-pen-touch — code, no data', result: 'found', url: 'https://github.com/authors/posture-pen-touch' },
     { where: 'OSF', what: 'Searched by title and by all four author names', result: 'none' },
     { where: 'Dataset link in §5', what: 'https://tabletgrip.example/data — 404', result: 'dead' },
+    { where: 'Zenodo', what: 'not fetched, the sandbox refused zenodo.org', result: 'not_fetched' },
   ],
 }
 
@@ -140,7 +145,7 @@ try {
         outcomeColor: getComputedStyle(tds[2]).color,
         outer: tr.classList.contains('row-outer'),
         claimColor: getComputedStyle(tds[0].querySelector('.claim-text')).color,
-        mismatch: txt(tr.querySelector('.mismatch')),
+        mismatches: [...tr.querySelectorAll('.mismatch')].map(txt),
       }
     })
     return {
@@ -178,12 +183,18 @@ try {
     if (results.includes(outer.outcomeColor)) fail(`the outer row is toned like a result (${outer.outcomeColor})`)
   }
 
-  // The case a table of outcomes hides.
+  // The case a table of outcomes hides. A claim can disagree with the paper on
+  // more than one quantity, and every one of them is printed, each naming what
+  // it compares.
   const verified = read.rows.find((r) => /VERIFIED/.test(r.outcome || ''))
-  if (!verified?.mismatch) fail('a verified claim that disagrees with the paper shows no mismatch')
+  if (!verified?.mismatches.length) fail('a verified claim that disagrees with the paper shows no mismatch')
+  else if (verified.mismatches.length !== 2) fail(`the claim shows ${verified.mismatches.length} mismatches, want both`)
   else {
-    for (const want of ['91.4%', '89.6%', '-1.8 pp']) {
-      if (!verified.mismatch.includes(want)) fail(`the mismatch does not print ${want}: ${verified.mismatch}`)
+    for (const want of ['held-out accuracy', '91.4%', '89.6%', '-1.8 pp']) {
+      if (!verified.mismatches[0].includes(want)) fail(`the first mismatch does not print ${want}: ${verified.mismatches[0]}`)
+    }
+    for (const want of ['participant count', 'n = 24 in §5', 'n = 22 in Table 1']) {
+      if (!verified.mismatches[1].includes(want)) fail(`the second mismatch does not print ${want}: ${verified.mismatches[1]}`)
     }
   }
 
@@ -193,6 +204,7 @@ try {
     fail('an outer-loop claim is listed as unresolved; it was never scored, so there is nothing to resolve')
   }
   if (!read.unresolved.some((r) => /latency/i.test(r))) fail('the blocked claim is not listed as unresolved')
+  if (!read.unresolved.some((r) => r.includes('n = 22 in Table 1'))) fail('unresolved does not repeat every mismatch of the disagreeing claim')
 
   // One verdict word on the screen, and it is the paper's. The manifest's grade
   // is the rubric's judgment of the run, which a careful audit of a paper that
@@ -278,7 +290,7 @@ try {
     }
   })
 
-  if (art.rows.length !== 3) fail(`the released list rendered ${art.rows.length} rows, want 3`)
+  if (art.rows.length !== 4) fail(`the released list rendered ${art.rows.length} rows, want 4`)
   if (!art.browser) fail('the reproduction repository browser disappeared')
   if (!art.authorsFirst) fail('the reproduction repository renders above what the authors released')
 
@@ -287,6 +299,14 @@ try {
   if (!none || !dead) fail('the none and dead rows did not both render')
   else if (none.dot === dead.dot) {
     fail(`nothing-published and a dead link share a tone (${dead.dot}); the second is one an author can still fix`)
+  }
+  // A page the run was not allowed to fetch says nothing about the authors, so
+  // it must not read as nothing published.
+  const unfetched = art.rows.find((r) => /Zenodo/.test(r.where || ''))
+  if (!unfetched) fail('the not-fetched row did not render')
+  else {
+    if (!/NOT FETCHED/.test(unfetched.text || '')) fail(`the not-fetched row reads ${unfetched.text}`)
+    if (none && unfetched.dot === none.dot) fail(`a page the run could not fetch shares the tone of nothing published (${none.dot})`)
   }
 
   if (art.scores.length !== 5) fail(`the scorecard rendered ${art.scores.length} criteria, want 5`)

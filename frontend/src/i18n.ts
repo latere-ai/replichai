@@ -676,6 +676,7 @@ const en = {
     resPartial: 'PARTIAL',
     resNone: 'NONE',
     resDead: 'DEAD',
+    resNotFetched: 'NOT FETCHED',
     critCode: 'Code',
     critData: 'Data',
     critLicense: 'License',
