@@ -694,13 +694,60 @@ func TestTheReportTotalsTheEntries(t *testing.T) {
 	// conversion yields the rune at that code point and every batch reports
 	// zero passes.
 	if totals.Passed != 2 {
-		t.Fatalf("passed = %d of %d", totals.Passed, totals.Papers)
+		t.Fatalf("passed = %d of %d", totals.Passed, totals.Runs)
 	}
 	if totals.Usage.InputFresh != 200 || totals.Usage.Output != 40 {
 		t.Fatalf("totals = %+v", totals.Usage)
 	}
 	report := state.Report()
-	for _, want := range []string{"chi-2026", "2 papers", "open-hai/", "vendor cost", "Nothing here was billed by replichai"} {
+	for _, want := range []string{"chi-2026", "2 runs", "open-hai/", "vendor cost", "Nothing here was billed by replichai"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("the report is missing %q:\n%s", want, report)
+		}
+	}
+}
+
+// TestTheReportNamesTheRunOfARepeatedPaper checks that the report tells the
+// runs of one paper apart, in the table and in what did not happen, and that
+// a paper that runs once reads as it always did. Three rows naming the same
+// paper, one of them failed, do not say which run to look at.
+func TestTheReportNamesTheRunOfARepeatedPaper(t *testing.T) {
+	r := newRunner()
+	r.fail["10.1/a#2"] = errors.New("the sandbox is not ready")
+	state, err := Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a", Runs: 3}, {Paper: "10.1/b"}}}, r,
+		Options{Parallel: 1, StatePath: filepath.Join(t.TempDir(), "batch.json")})
+	if !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("Run = %v", err)
+	}
+	report := state.Report()
+	for _, want := range []string{
+		"4 runs: 3 done, 1 failed, 0 not run.",
+		"| 10.1/a (run 1 of 3) | done |",
+		"| 10.1/a (run 2 of 3) | failed |",
+		"| 10.1/a (run 3 of 3) | done |",
+		"| 10.1/b | done |",
+		"- 10.1/a (run 2 of 3) failed: the sandbox is not ready",
+		"across 4 runs",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("the report is missing %q:\n%s", want, report)
+		}
+	}
+	if strings.Contains(report, "10.1/b (run") {
+		t.Errorf("a paper that runs once is labeled with a run:\n%s", report)
+	}
+
+	// The runs that did not run, and a run that published nothing, are
+	// named the same way.
+	unfinished := State{Publishing: true, Entries: []EntryState{
+		{Paper: "10.1/a", Run: 1, Phase: Pending},
+		{Paper: "10.1/a", Run: 2, Phase: Done},
+	}}
+	report = unfinished.Report()
+	for _, want := range []string{
+		"- 10.1/a (run 1 of 2) did not run.",
+		"- 10.1/a (run 2 of 2) finished without publishing a repository.",
+	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("the report is missing %q:\n%s", want, report)
 		}

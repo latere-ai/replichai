@@ -138,7 +138,9 @@ func (s State) clone() State {
 
 // Totals is the summary reported at the end of a batch.
 type Totals struct {
-	Papers   int
+	// Runs counts every run, which in a project without repeat runs is one
+	// per paper.
+	Runs     int
 	Done     int
 	Failed   int
 	Pending  int
@@ -153,7 +155,7 @@ type Totals struct {
 // only successes, because a report that shows only successes reads as if
 // everything completed.
 func (s State) Summarize() Totals {
-	totals := Totals{Papers: len(s.Entries)}
+	totals := Totals{Runs: len(s.Entries)}
 	for _, entry := range s.Entries {
 		switch entry.Phase {
 		case Done:
@@ -189,12 +191,15 @@ func (s State) Report() string {
 	} else {
 		b.WriteString("# Replication batch\n\n")
 	}
-	fmt.Fprintf(&b, "%d papers: %d done, %d failed, %d not run. %d passed the rubric.\n\n",
-		totals.Papers, totals.Done, totals.Failed, totals.Pending, totals.Passed)
+	// The count is of runs, because that is what the rows are: one paper
+	// with three runs is three rows and three sessions.
+	fmt.Fprintf(&b, "%d runs: %d done, %d failed, %d not run. %d passed the rubric.\n\n",
+		totals.Runs, totals.Done, totals.Failed, totals.Pending, totals.Passed)
+	labels := s.labels()
 
 	b.WriteString("| paper | state | verdict | repository | model | tokens | wall |\n")
 	b.WriteString("|---|---|---|---|---|---|---|\n")
-	for _, entry := range s.Entries {
+	for index, entry := range s.Entries {
 		model := entry.Model.ID
 		if model == "" {
 			model = "—"
@@ -208,11 +213,11 @@ func (s State) Report() string {
 			grade = "—"
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %d | %s |\n",
-			entry.Paper, entry.Phase, grade, repo, model, entry.Usage.TotalTokens(), round(entry.Wall()))
+			labels[index], entry.Phase, grade, repo, model, entry.Usage.TotalTokens(), round(entry.Wall()))
 	}
 
-	fmt.Fprintf(&b, "\nTotal: %d tokens across %d papers, %s of wall clock.\n",
-		totals.Usage.TotalTokens(), totals.Papers, round(totals.Wall))
+	fmt.Fprintf(&b, "\nTotal: %d tokens across %d runs, %s of wall clock.\n",
+		totals.Usage.TotalTokens(), totals.Runs, round(totals.Wall))
 	if totals.VendorUS > 0 {
 		fmt.Fprintf(&b, "The harness reported $%.2f of vendor cost. Nothing here was billed by replichai.\n",
 			float64(totals.VendorUS)/1e6)
@@ -222,18 +227,36 @@ func (s State) Report() string {
 	// lists only successes reads as if everything completed.
 	if totals.Failed > 0 || totals.Pending > 0 || totals.Empty > 0 {
 		b.WriteString("\n## Not done\n\n")
-		for _, entry := range s.Entries {
+		for index, entry := range s.Entries {
 			switch {
 			case entry.Phase == Failed:
-				fmt.Fprintf(&b, "- %s failed: %s\n", entry.Paper, oneLine(entry.Error))
+				fmt.Fprintf(&b, "- %s failed: %s\n", labels[index], oneLine(entry.Error))
 			case !entry.Phase.Terminal():
-				fmt.Fprintf(&b, "- %s did not run.\n", entry.Paper)
+				fmt.Fprintf(&b, "- %s did not run.\n", labels[index])
 			case s.Publishing && entry.Repo == "":
-				fmt.Fprintf(&b, "- %s finished without publishing a repository.\n", entry.Paper)
+				fmt.Fprintf(&b, "- %s finished without publishing a repository.\n", labels[index])
 			}
 		}
 	}
 	return b.String()
+}
+
+// labels names each entry as the report shows it: the paper, with the run
+// beside it when the paper runs more than once, as in "10.1/a (run 2 of 3)".
+// A paper that runs once reads as it always did.
+func (s State) labels() []string {
+	runs := map[string]int{}
+	for _, entry := range s.Entries {
+		runs[entry.Paper]++
+	}
+	labels := make([]string, len(s.Entries))
+	for index, entry := range s.numbered() {
+		labels[index] = entry.Paper
+		if runs[entry.Paper] > 1 {
+			labels[index] = fmt.Sprintf("%s (run %d of %d)", entry.Paper, entry.Run, runs[entry.Paper])
+		}
+	}
+	return labels
 }
 
 func round(d time.Duration) string {
