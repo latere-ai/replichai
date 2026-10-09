@@ -12,6 +12,7 @@
 package batch
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -39,6 +40,11 @@ type Entry struct {
 	Model   string `yaml:"model"`
 	Harness string `yaml:"harness"`
 	Sandbox string `yaml:"sandbox"`
+	// Runs is how many times the paper is reproduced, each run in its own
+	// session with its own repository, which is what a study measuring how
+	// much reproductions of one paper vary asks for. Zero means the file's
+	// default.
+	Runs int `yaml:"runs"`
 }
 
 // UnmarshalYAML accepts either spelling of one paper: a bare reference, which
@@ -76,29 +82,53 @@ type PublishConfig struct {
 // File is a replication project as it is written on disk. The defaults apply
 // to every paper; an entry may override any of them.
 type File struct {
-	Project string        `yaml:"project"`
-	Model   string        `yaml:"model"`
-	Harness string        `yaml:"harness"`
-	Sandbox string        `yaml:"sandbox"`
+	Project string `yaml:"project"`
+	Model   string `yaml:"model"`
+	Harness string `yaml:"harness"`
+	Sandbox string `yaml:"sandbox"`
+	// Runs is how many times each paper is reproduced unless the paper says
+	// otherwise. Zero means once.
+	Runs    int           `yaml:"runs"`
 	Publish PublishConfig `yaml:"publish"`
 	Papers  []Entry       `yaml:"papers"`
 }
 
-// Resolved is one entry with the file's defaults applied, which is what a
-// runner is handed.
+// Resolved is one run of one entry with the file's defaults applied, which is
+// what a runner is handed.
 type Resolved struct {
 	Entry
+	// Index is the run's position in the expanded list, and so the one value
+	// that tells two runs of one paper apart within a batch.
 	Index int
+	// Run is the run's ordinal among the runs of the same reference, from 1,
+	// in file order.
+	Run int
+	// Runs is how many runs of the same reference the project has in total.
+	// It shadows Entry.Runs, which Entries sets to the same total, so either
+	// field reads the same.
+	Runs int
 }
 
-// Entries applies the file's defaults to every paper. An entry that names no
-// paper is an error rather than a skipped line: a project of twenty papers
-// that runs nineteen without notice is worse than one that refuses to run.
+// Entries applies the file's defaults to every paper and expands each paper
+// into its runs. An entry that names no paper is an error rather than a
+// skipped line: a project of twenty papers that runs nineteen without notice
+// is worse than one that refuses to run. A negative run count is an error for
+// the same reason.
+//
+// A reference listed twice counts as two runs of that paper, so `runs: 2` and
+// listing the paper twice resolve to the same entries, and so to the same
+// state. Ordinals are assigned per reference in file order.
 func (f File) Entries() ([]Resolved, error) {
+	if f.Runs < 0 {
+		return nil, fmt.Errorf("runs is %d; a project runs each paper at least once", f.Runs)
+	}
 	resolved := make([]Resolved, 0, len(f.Papers))
 	for index, entry := range f.Papers {
 		if entry.Reference() == "" {
 			return nil, fmt.Errorf("papers[%d]: names no paper", index)
+		}
+		if entry.Runs < 0 {
+			return nil, fmt.Errorf("papers[%d]: runs is %d; a paper runs at least once", index, entry.Runs)
 		}
 		if entry.Model == "" {
 			entry.Model = f.Model
@@ -109,7 +139,25 @@ func (f File) Entries() ([]Resolved, error) {
 		if entry.Sandbox == "" {
 			entry.Sandbox = f.Sandbox
 		}
-		resolved = append(resolved, Resolved{Entry: entry, Index: index})
+		runs := cmp.Or(entry.Runs, f.Runs, 1)
+		for range runs {
+			resolved = append(resolved, Resolved{Entry: entry, Index: len(resolved)})
+		}
+	}
+
+	// The ordinals and the totals are counted over the expanded list, because
+	// the runs of one reference may be spread across several entries.
+	totals := map[string]int{}
+	for _, entry := range resolved {
+		totals[entry.Reference()]++
+	}
+	ordinals := map[string]int{}
+	for index := range resolved {
+		reference := resolved[index].Reference()
+		ordinals[reference]++
+		resolved[index].Run = ordinals[reference]
+		resolved[index].Runs = totals[reference]
+		resolved[index].Entry.Runs = totals[reference]
 	}
 	return resolved, nil
 }

@@ -6,8 +6,10 @@ package batch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -165,6 +167,90 @@ papers:
 	empty := File{Papers: []Entry{{Model: "best"}}}
 	if _, err := empty.Entries(); err == nil {
 		t.Fatal("an entry naming no paper was accepted")
+	}
+}
+
+// TestRepeatRunsReadTheSameEitherWay checks that the three ways to ask for
+// repeat runs of one paper describe the same project: runs on the paper, runs
+// as the file's default, and the paper listed once per run. A repeat-run study
+// may be written any of the three ways, and its state must not depend on which.
+func TestRepeatRunsReadTheSameEitherWay(t *testing.T) {
+	spellings := map[string]string{
+		"runs on the paper":   "papers:\n  - paper: 10.1/a\n    runs: 3\n  - paper: 10.1/b\n    runs: 1\n",
+		"runs as the default": "runs: 3\npapers:\n  - 10.1/a\n",
+		"listed three times":  "papers:\n  - 10.1/a\n  - 10.1/a\n  - 10.1/a\n  - 10.1/b\n",
+	}
+	resolved := map[string][]Resolved{}
+	for name, body := range spellings {
+		file, err := ReadFile(project(t, body, "project.yaml"))
+		if err != nil {
+			t.Fatalf("%s: ReadFile: %v", name, err)
+		}
+		entries, err := file.Entries()
+		if err != nil {
+			t.Fatalf("%s: Entries: %v", name, err)
+		}
+		resolved[name] = entries
+	}
+	want := resolved["listed three times"]
+	if len(want) != 4 {
+		t.Fatalf("listing a paper three times gave %d entries, want 4: %+v", len(want), want)
+	}
+	if got := resolved["runs on the paper"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("runs on the paper resolved differently from listing it:\n got %+v\nwant %+v", got, want)
+	}
+	// The default applies to every paper, so its file holds only the one.
+	if got := resolved["runs as the default"]; !reflect.DeepEqual(got, want[:3]) {
+		t.Errorf("runs as the default resolved differently from listing it:\n got %+v\nwant %+v", got, want[:3])
+	}
+	for index, entry := range want {
+		wantRun, wantRuns := index+1, 3
+		if entry.Reference() == "10.1/b" {
+			wantRun, wantRuns = 1, 1
+		}
+		if entry.Index != index || entry.Run != wantRun || entry.Runs != wantRuns {
+			t.Errorf("entry %d is %s index %d, run %d of %d; want index %d, run %d of %d",
+				index, entry.Reference(), entry.Index, entry.Run, entry.Runs, index, wantRun, wantRuns)
+		}
+	}
+
+	// Ordinals follow the file, so a paper listed apart from its other runs
+	// still counts them in the order they were written.
+	interleaved, err := File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}, {Paper: "10.1/a", Runs: 2}}}.Entries()
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	var order []string
+	for _, entry := range interleaved {
+		order = append(order, fmt.Sprintf("%s %d/%d", entry.Reference(), entry.Run, entry.Runs))
+	}
+	if got := strings.Join(order, ", "); got != "10.1/a 1/3, 10.1/b 1/1, 10.1/a 2/3, 10.1/a 3/3" {
+		t.Fatalf("interleaved runs = %s", got)
+	}
+}
+
+// TestANegativeRunCountIsRefused checks that a negative runs value fails the
+// project, on a paper and as the file's default. Read as zero it would run
+// the paper once, which is not what was written.
+func TestANegativeRunCountIsRefused(t *testing.T) {
+	for name, body := range map[string]string{
+		"on a paper":     "papers:\n  - 10.1/a\n  - paper: 10.1/b\n    runs: -1\n",
+		"as the default": "runs: -2\npapers:\n  - 10.1/a\n",
+	} {
+		file, err := ReadFile(project(t, body, "project.yaml"))
+		if err != nil {
+			t.Fatalf("%s: ReadFile: %v", name, err)
+		}
+		if entries, err := file.Entries(); err == nil || !strings.Contains(err.Error(), "runs") {
+			t.Errorf("%s: a negative runs was accepted as %d entries (err %v)", name, len(entries), err)
+		}
+		r := newRunner()
+		if _, err := Run(context.Background(), file, r, Options{Parallel: 1}); err == nil {
+			t.Errorf("%s: Run started a project with a negative runs", name)
+		}
+		if len(r.executed) != 0 {
+			t.Errorf("%s: Run executed %v for a refused project", name, r.executed)
+		}
 	}
 }
 
