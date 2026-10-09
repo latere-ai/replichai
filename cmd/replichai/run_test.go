@@ -255,3 +255,41 @@ func TestTwoRunsOfOnePaperKeepTheirOwnRepositoryAndDirectory(t *testing.T) {
 		}
 	}
 }
+
+// TestRunRunsAPaperAsManyTimesAsAsked drives `replichai run` on a project
+// file that asks for two runs of one paper: both run, each writes into a
+// directory of its own, and the report counts the runs and names each one.
+func TestRunRunsAPaperAsManyTimesAsAsked(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "papers.yaml")
+	if err := os.WriteFile(project, []byte("papers:\n  - paper: 10.1145/3654777.3676417\n    runs: 2\n"), 0o600); err != nil {
+		t.Fatalf("write project: %v", err)
+	}
+	stdout, stderr, err := capture(t, "run", project,
+		"--runtime", "memory", "--method", writeMethod(t), "--out", filepath.Join(dir, "runs"),
+		"--interval", "0", "--parallel", "2")
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, stderr)
+	}
+	for _, want := range []string{"2 runs: 2 done, 0 failed", "10.1145/3654777.3676417 (run 1 of 2)", "10.1145/3654777.3676417 (run 2 of 2)"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the report is missing %q:\n%s", want, stdout)
+		}
+	}
+	state, err := batch.LoadState(filepath.Join(dir, "batch.json"))
+	if err != nil {
+		t.Fatalf("batch.json: %v", err)
+	}
+	if len(state.Entries) != 2 {
+		t.Fatalf("two runs recorded %d entries: %+v", len(state.Entries), state.Entries)
+	}
+	for index, entry := range state.Entries {
+		want := filepath.Join(dir, "runs", fmt.Sprintf("%s-run-%d", slugify(entry.Paper), index+1))
+		if entry.Run != index+1 || entry.Directory != want {
+			t.Errorf("entry %d is run %d in %q, want run %d in %q", index, entry.Run, entry.Directory, index+1, want)
+		}
+		if _, err := os.Stat(want); err != nil {
+			t.Errorf("run %d left nothing in its directory: %v", index+1, err)
+		}
+	}
+}
