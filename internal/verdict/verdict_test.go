@@ -421,3 +421,21 @@ func TestParseFailsOnlyWhenThereIsNoObject(t *testing.T) {
 		t.Fatalf("Parse lost the rows that decoded: %+v", v)
 	}
 }
+
+// A list the file wrote as empty stays an empty list for the API to serve,
+// rather than becoming null on the way through.
+func TestAnEmptyListStaysAList(t *testing.T) {
+	v := good()
+	v.Decisions = []verdict.Decision{}
+	got, ps, err := verdict.Validate(raw(t, v))
+	if err != nil || len(ps) != 0 {
+		t.Fatalf("Validate: %v %v", ps, err)
+	}
+	out, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(out), `"decisions":[]`) {
+		t.Fatalf("an empty decisions list was served as %s", out)
+	}
+}
