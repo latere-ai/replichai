@@ -5,11 +5,13 @@ package batch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,7 +21,8 @@ import (
 )
 
 // runner is a scripted project runner. It records the order and the overlap
-// of what the batch asked it to do.
+// of what the batch asked it to do. What it records, fails and reports is
+// keyed by run, as runName names one.
 //
 // Concurrency is observed and never timed. Entering and leaving Prepare and
 // Execute are counted; holdPrepare and holdExecute, when set, keep a call in
@@ -47,8 +50,19 @@ type runner struct {
 	preparing chan string
 	entered   chan string
 	repoless  bool
-	// priors is what Prepare was told an earlier attempt recorded, by paper.
+	// priors is what Prepare was told an earlier attempt recorded, by run.
 	priors map[string]EntryState
+}
+
+// runName names one run for the scripted runner: the reference alone for a
+// paper that runs once, so the single-run tests read as plain references, and
+// the reference with its ordinal, as in 10.1/a#2, for a paper that runs more
+// than once.
+func runName(entry Resolved) string {
+	if entry.Runs > 1 {
+		return fmt.Sprintf("%s#%d", entry.Reference(), entry.Run)
+	}
+	return entry.Reference()
 }
 
 func newRunner() *runner {
@@ -76,10 +90,10 @@ func (r *runner) Prepare(_ context.Context, entry Resolved, prior EntryState) er
 	}
 	r.inPrepare.Add(-1)
 	r.mu.Lock()
-	r.prepared = append(r.prepared, entry.Reference())
-	r.priors[entry.Reference()] = prior
+	r.prepared = append(r.prepared, runName(entry))
+	r.priors[runName(entry)] = prior
 	r.mu.Unlock()
-	if err, ok := r.fail["prepare:"+entry.Reference()]; ok {
+	if err, ok := r.fail["prepare:"+runName(entry)]; ok {
 		return err
 	}
 	return nil
@@ -93,17 +107,17 @@ func (r *runner) Execute(_ context.Context, entry Resolved) (Outcome, error) {
 	}
 	r.inExecute.Add(-1)
 	r.mu.Lock()
-	r.executed = append(r.executed, entry.Reference())
+	r.executed = append(r.executed, runName(entry))
 	r.mu.Unlock()
-	if err, ok := r.fail[entry.Reference()]; ok {
+	if err, ok := r.fail[runName(entry)]; ok {
 		return Outcome{}, err
 	}
-	repo := "open-hai/" + strings.TrimPrefix(entry.Reference(), "10.")
+	repo := "open-hai/" + strings.TrimPrefix(runName(entry), "10.")
 	if r.repoless {
 		repo = ""
 	}
 	return Outcome{
-		Session: "s-" + entry.Reference(), Repo: repo,
+		Session: "s-" + runName(entry), Repo: repo,
 		Grade: "passed", Model: managed.ModelRef{Provider: "anthropic", ID: entry.Model},
 		Usage: managed.Usage{InputFresh: 100, Output: 20, Details: map[string]int64{"vendor_cost_micro_usd": 1000}},
 	}, nil
@@ -463,6 +477,109 @@ func TestAResumedPaperIsHandedItsFirstAttempt(t *testing.T) {
 	}
 	if got := fresh.priors["10.1/c"]; got.Repo != "" || got.Session != "" {
 		t.Fatalf("a first attempt was handed a prior record: %+v", got)
+	}
+}
+
+// resumeOnce saves previous as the state of an earlier pass, resumes file
+// against it, and returns the scripted runner and what the resume recorded,
+// with the runs the resume executed sorted, because the pool does not fix
+// their order.
+func resumeOnce(t *testing.T, file File, previous []byte) (*runner, State, []string) {
+	t.Helper()
+	statePath := filepath.Join(t.TempDir(), "batch.json")
+	if err := os.WriteFile(statePath, previous, 0o600); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+	r := newRunner()
+	state, err := Run(context.Background(), file, r, Options{Parallel: 1, StatePath: statePath, Resume: true})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	saved, err := LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if !reflect.DeepEqual(saved.Entries, state.Entries) {
+		t.Fatalf("the saved state differs from the returned one:\n%+v\n%+v", saved.Entries, state.Entries)
+	}
+	return r, state, slices.Sorted(slices.Values(r.executed))
+}
+
+// checkThreeRunsResumed checks a resume of three runs of 10.1/a whose earlier
+// pass left run 1 done, run 2 failed and run 3 pending: the finished run is
+// skipped, the failed run is retried into its own repository, the pending run
+// starts fresh, and every run keeps a record of its own.
+func checkThreeRunsResumed(t *testing.T, r *runner, state State, executed []string) {
+	t.Helper()
+	if got := strings.Join(executed, ", "); got != "10.1/a#2, 10.1/a#3" {
+		t.Fatalf("resume executed [%s], want the failed and the pending run", got)
+	}
+	if prior := r.priors["10.1/a#2"]; prior.Repo != "open-hai/a-2222" || prior.Session != "s2" {
+		t.Errorf("the failed run was handed %+v; want its own repository and session", prior)
+	}
+	if prior := r.priors["10.1/a#3"]; prior.Repo != "" || prior.Session != "" {
+		t.Errorf("the pending run was handed another run's record: %+v", prior)
+	}
+	if first := state.Entries[0]; first.Phase != Done || first.Repo != "open-hai/a-1111" || first.Session != "s1" {
+		t.Errorf("the finished run lost its record: %+v", first)
+	}
+	for index, entry := range state.Entries {
+		if entry.Paper != "10.1/a" || entry.Run != index+1 || entry.Phase != Done {
+			t.Errorf("entry %d = %s run %d %s, want 10.1/a run %d done", index, entry.Paper, entry.Run, entry.Phase, index+1)
+		}
+	}
+	if state.Entries[1].Session == state.Entries[2].Session {
+		t.Errorf("two runs share session %s", state.Entries[1].Session)
+	}
+}
+
+// TestRepeatRunsResumeAsSeparateRuns checks that a resume of three runs of one
+// paper treats them as three runs. Matched by paper alone, every run took the
+// first run's record, so the resume ran nothing and reported the failed and
+// the pending run as done, with the first run's repository.
+func TestRepeatRunsResumeAsSeparateRuns(t *testing.T) {
+	previous, err := json.Marshal(State{Version: stateVersion, Entries: []EntryState{
+		{Paper: "10.1/a", Run: 1, Phase: Done, Repo: "open-hai/a-1111", Session: "s1"},
+		{Paper: "10.1/a", Run: 2, Phase: Failed, Repo: "open-hai/a-2222", Session: "s2", Error: "interrupted"},
+		{Paper: "10.1/a", Run: 3, Phase: Pending},
+	}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	r, state, executed := resumeOnce(t, File{Papers: []Entry{{Paper: "10.1/a", Runs: 3}}}, previous)
+	checkThreeRunsResumed(t, r, state, executed)
+}
+
+// TestALegacyStateResumesByOccurrence checks that a state file written before
+// runs were recorded, which names a paper once per run and no run at all, is
+// read in occurrence order: the first entry for a paper is its first run.
+func TestALegacyStateResumesByOccurrence(t *testing.T) {
+	previous := []byte(`{"version": 1, "started_at": "2026-09-01T00:00:00Z", "entries": [
+  {"paper": "10.1/a", "state": "done", "session": "s1", "repo": "open-hai/a-1111"},
+  {"paper": "10.1/a", "state": "failed", "session": "s2", "repo": "open-hai/a-2222", "error": "interrupted"},
+  {"paper": "10.1/a", "state": "pending"}
+]}`)
+	file := File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/a"}, {Paper: "10.1/a"}}}
+	r, state, executed := resumeOnce(t, file, previous)
+	checkThreeRunsResumed(t, r, state, executed)
+}
+
+// TestMoreRunsOfAFinishedPaperRunOnlyTheNewOnes checks that raising the runs
+// of a paper that already finished once runs only the runs added. The one
+// finished record is the first run's, and it is not also the second's.
+func TestMoreRunsOfAFinishedPaperRunOnlyTheNewOnes(t *testing.T) {
+	previous := []byte(`{"version": 1, "started_at": "2026-09-01T00:00:00Z", "entries": [
+  {"paper": "10.1/a", "state": "done", "session": "s1", "repo": "open-hai/a-1111"}
+]}`)
+	r, state, executed := resumeOnce(t, File{Papers: []Entry{{Paper: "10.1/a", Runs: 2}}}, previous)
+	if got := strings.Join(executed, ", "); got != "10.1/a#2" {
+		t.Fatalf("resume executed [%s], want only the added run", got)
+	}
+	if prior := r.priors["10.1/a#2"]; prior.Repo != "" || prior.Session != "" {
+		t.Errorf("the added run was handed the finished run's record: %+v", prior)
+	}
+	if first := state.Entries[0]; first.Run != 1 || first.Repo != "open-hai/a-1111" || first.Session != "s1" {
+		t.Errorf("the finished run lost its record: %+v", first)
 	}
 }
 

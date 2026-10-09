@@ -232,9 +232,13 @@ const (
 // Terminal reports whether an entry needs no further work.
 func (p Phase) Terminal() bool { return p == Done || p == Failed }
 
-// EntryState is what happened to one paper.
+// EntryState is what happened to one run of one paper.
 type EntryState struct {
 	Paper string `json:"paper"`
+	// Run is the run's ordinal among the runs of Paper, from 1. With Paper it
+	// is the key a resume matches on. A state file written before runs were
+	// recorded has none, and a resume numbers its entries by occurrence.
+	Run int `json:"run,omitempty"`
 	// PaperKey is the offline paper identity, carried so a push files the
 	// record against the paper without resolving it again.
 	PaperKey  string             `json:"paper_key,omitempty"`
@@ -304,9 +308,9 @@ type Outcome struct {
 type Runner interface {
 	// Prepare claims whatever must be claimed exactly once before the work
 	// starts, such as a repository name or a repository. prior is what an
-	// earlier attempt at the same paper recorded, or the zero value for a
-	// first attempt. A resumed paper is expected to return to the repository
-	// the first attempt created rather than claim a second one.
+	// earlier attempt at the same run of the same paper recorded, or the zero
+	// value for a first attempt. A resumed run is expected to return to the
+	// repository its first attempt created rather than claim a second one.
 	Prepare(ctx context.Context, entry Resolved, prior EntryState) error
 	// Execute runs the audit and publishes it.
 	Execute(ctx context.Context, entry Resolved) (Outcome, error)
@@ -377,7 +381,7 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 	if len(state.Entries) != len(entries) {
 		state.Entries = make([]EntryState, len(entries))
 		for index, entry := range entries {
-			state.Entries[index] = EntryState{Paper: entry.Reference(), Phase: Pending}
+			state.Entries[index] = EntryState{Paper: entry.Reference(), Run: entry.Run, Phase: Pending}
 		}
 	}
 
