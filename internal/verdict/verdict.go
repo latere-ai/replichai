@@ -30,8 +30,10 @@
 package verdict
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -210,18 +212,32 @@ var (
 )
 
 // Parse decodes verdict.json without judging it. Use Validate for the rules.
-func Parse(raw []byte) (Verdict, error) {
-	var v Verdict
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return Verdict{}, fmt.Errorf("verdict.json is not valid JSON: %w", err)
+//
+// The error is non-nil only when raw is not JSON, or is JSON but not an
+// object, since then there is nothing to read a field from. Anything else is
+// read as far as it goes: each header field and each row of boundary,
+// decisions, scorecard and released is decoded on its own, a field or row that
+// cannot be decoded is reported as a Problem at its path, and every other row
+// survives. One mistyped field therefore costs its own row and nothing else,
+// and the file is never called invalid JSON when it is valid JSON of the wrong
+// shape.
+//
+// A row that does not decode is left out of the returned verdict, so a caller
+// that receives problems is holding a partial file.
+func Parse(raw []byte) (Verdict, []Problem, error) {
+	p, err := parse(raw)
+	if err != nil {
+		return Verdict{}, nil, err
 	}
-	return v, nil
+	return p.v, p.problems, nil
 }
 
-// Validate reports every way raw departs from the schema in one pass, so a
-// worker's revision receives all of them together. An empty result means the
-// file is well-formed. The returned error is non-nil only when raw is not JSON
-// at all, which no revision of the content can fix.
+// Validate decodes raw as Parse does and reports every way it departs from the
+// schema in one pass, so a worker's revision receives all of them together: the
+// fields and rows that did not decode, then every rule the decoded content
+// breaks. An empty list means the file is well-formed and the returned verdict
+// is all of it. The error is the one Parse returns, for a file that is not a
+// JSON object at all, which no revision of a field can fix.
 //
 // It enforces invariants only: an outer-loop claim is never scored, every
 // claim carries a citation, every decision carries its sensitivity, a scored
@@ -229,33 +245,233 @@ func Parse(raw []byte) (Verdict, error) {
 // the component counts add up to the total they claim. Whether the boundary
 // was drawn in the right place is judged by the grader's honesty criterion,
 // not here.
-func Validate(raw []byte) ([]Problem, error) {
-	v, err := Parse(raw)
+func Validate(raw []byte) (Verdict, []Problem, error) {
+	p, err := parse(raw)
 	if err != nil {
-		return nil, err
+		return Verdict{}, nil, err
 	}
-	var ps []Problem
-	add := func(field, msg string) { ps = append(ps, Problem{Field: field, Message: msg}) }
+	p.check()
+	return p.v, p.problems, nil
+}
 
-	if v.Schema != Schema {
+// parsed is a decoded file and what the decoding found wrong with it.
+type parsed struct {
+	v        Verdict
+	problems []Problem
+
+	// incomplete names the header fields and lists that did not decode in
+	// full. Their rules are not checked: the decode problem already names
+	// them, and a list missing a row would fail a count that the file as
+	// written may well pass.
+	incomplete map[string]bool
+
+	// The path each kept row was read from. A row that does not decode is left
+	// out, so a later row's place in the slice is not its place in the file,
+	// and a problem has to name the one the author can find.
+	claimAt, decisionAt, scoreAt, releaseAt []string
+}
+
+func (p *parsed) add(field, msg string) {
+	p.problems = append(p.problems, Problem{Field: field, Message: msg})
+}
+
+func parse(raw []byte) (*parsed, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		if !json.Valid(raw) {
+			return nil, fmt.Errorf("%s is not JSON: %w", File, err)
+		}
+		return nil, fmt.Errorf("%s is %s, not a JSON object", File, describe(raw))
+	}
+	if top == nil {
+		return nil, fmt.Errorf("%s is null, not a JSON object", File)
+	}
+
+	p := &parsed{incomplete: map[string]bool{}}
+	header := func(name string, dst any) {
+		if !p.field(top, "", name, dst) {
+			p.incomplete[name] = true
+		}
+	}
+	header("schema", &p.v.Schema)
+	header("verdict", &p.v.Verdict)
+	header("summary", &p.v.Summary)
+	header("graded_at", &p.v.GradedAt)
+	p.components(top)
+	p.v.Boundary, p.claimAt = rows(p, top, "boundary", p.claim)
+	p.v.Decisions, p.decisionAt = rows(p, top, "decisions", p.decision)
+	p.v.Scorecard, p.scoreAt = rows(p, top, "scorecard", p.score)
+	p.v.Released, p.releaseAt = rows(p, top, "released", p.release)
+	return p, nil
+}
+
+// field decodes obj[name] into dst and reports whether it could. An absent or
+// null field leaves dst at its zero value for the rules to judge; a field of
+// the wrong type is a problem at its path.
+func (p *parsed) field(obj map[string]json.RawMessage, at, name string, dst any) bool {
+	raw, ok := obj[name]
+	if !ok || isNull(raw) {
+		return true
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		p.add(join(at, name), mistyped(raw, dst))
+		return false
+	}
+	return true
+}
+
+// object decodes raw as a JSON object, or reports at the path that it is not
+// one.
+func (p *parsed) object(raw json.RawMessage, at string) (map[string]json.RawMessage, bool) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+		p.add(at, fmt.Sprintf("is %s, want an object", describe(raw)))
+		return nil, false
+	}
+	return obj, true
+}
+
+// rows decodes the list top[name] one row at a time, keeping each row that
+// decodes and the path it was read from.
+func rows[T any](p *parsed, top map[string]json.RawMessage, name string, decode func(json.RawMessage, string) (T, bool)) ([]T, []string) {
+	raw, ok := top[name]
+	if !ok || isNull(raw) {
+		return nil, nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		p.add(name, fmt.Sprintf("is %s, want a list", describe(raw)))
+		p.incomplete[name] = true
+		return nil, nil
+	}
+	var out []T
+	var paths []string
+	for i, item := range items {
+		at := fmt.Sprintf("%s[%d]", name, i)
+		row, ok := decode(item, at)
+		if !ok {
+			p.incomplete[name] = true
+			continue
+		}
+		out = append(out, row)
+		paths = append(paths, at)
+	}
+	return out, paths
+}
+
+func (p *parsed) components(top map[string]json.RawMessage) {
+	raw, ok := top["components"]
+	if !ok || isNull(raw) {
+		return
+	}
+	obj, ok := p.object(raw, "components")
+	if !ok {
+		p.incomplete["components"] = true
+		return
+	}
+	c := &p.v.Components
+	for _, f := range []struct {
+		name string
+		dst  *int
+	}{{"verified", &c.Verified}, {"partial", &c.Partial}, {"blocked", &c.Blocked}, {"total", &c.Total}} {
+		if !p.field(obj, "components", f.name, f.dst) {
+			p.incomplete["components"] = true
+		}
+	}
+}
+
+func (p *parsed) claim(raw json.RawMessage, at string) (Claim, bool) {
+	obj, ok := p.object(raw, at)
+	if !ok {
+		return Claim{}, false
+	}
+	var c Claim
+	ok = p.field(obj, at, "claim", &c.Claim)
+	ok = p.field(obj, at, "loop", &c.Loop) && ok
+	ok = p.field(obj, at, "outcome", &c.Outcome) && ok
+	ok = p.field(obj, at, "evidence", &c.Evidence) && ok
+	ok = p.field(obj, at, "citation", &c.Citation) && ok
+	if m, present := obj["mismatch"]; present && !isNull(m) {
+		mobj, mok := p.object(m, join(at, "mismatch"))
+		if mok {
+			var mm Mismatch
+			mat := join(at, "mismatch")
+			mok = p.field(mobj, mat, "kind", &mm.Kind)
+			mok = p.field(mobj, mat, "reported", &mm.Reported) && mok
+			mok = p.field(mobj, mat, "observed", &mm.Observed) && mok
+			mok = p.field(mobj, mat, "delta", &mm.Delta) && mok
+			if mok {
+				c.Mismatch = &mm
+			}
+		}
+		ok = mok && ok
+	}
+	return c, ok
+}
+
+func (p *parsed) decision(raw json.RawMessage, at string) (Decision, bool) {
+	obj, ok := p.object(raw, at)
+	if !ok {
+		return Decision{}, false
+	}
+	var d Decision
+	ok = p.field(obj, at, "question", &d.Question)
+	ok = p.field(obj, at, "where", &d.Where) && ok
+	ok = p.field(obj, at, "assumed", &d.Assumed) && ok
+	ok = p.field(obj, at, "sensitivity", &d.Sensitivity) && ok
+	return d, ok
+}
+
+func (p *parsed) score(raw json.RawMessage, at string) (Score, bool) {
+	obj, ok := p.object(raw, at)
+	if !ok {
+		return Score{}, false
+	}
+	var s Score
+	ok = p.field(obj, at, "criterion", &s.Criterion)
+	ok = p.field(obj, at, "found", &s.Found) && ok
+	ok = p.field(obj, at, "url", &s.URL) && ok
+	ok = p.field(obj, at, "searched", &s.Searched) && ok
+	return s, ok
+}
+
+func (p *parsed) release(raw json.RawMessage, at string) (Release, bool) {
+	obj, ok := p.object(raw, at)
+	if !ok {
+		return Release{}, false
+	}
+	var r Release
+	ok = p.field(obj, at, "where", &r.Where)
+	ok = p.field(obj, at, "what", &r.What) && ok
+	ok = p.field(obj, at, "result", &r.Result) && ok
+	ok = p.field(obj, at, "url", &r.URL) && ok
+	return r, ok
+}
+
+// check adds a problem for every rule the decoded content breaks.
+func (p *parsed) check() {
+	v := p.v
+	add := p.add
+
+	if !p.incomplete["schema"] && v.Schema != Schema {
 		add("schema", fmt.Sprintf("is %d, want %d", v.Schema, Schema))
 	}
-	if !knownOutcome[v.Verdict] {
+	if !p.incomplete["verdict"] && !knownOutcome[v.Verdict] {
 		add("verdict", fmt.Sprintf("%q is not one of reproducible, partial, not_reproducible", v.Verdict))
 	}
-	if strings.TrimSpace(v.Summary) == "" {
+	if !p.incomplete["summary"] && strings.TrimSpace(v.Summary) == "" {
 		add("summary", "is empty; the verdict has to be stated in words as well as scored")
 	}
-	if v.GradedAt.IsZero() {
+	if !p.incomplete["graded_at"] && v.GradedAt.IsZero() {
 		add("graded_at", "is missing")
 	}
 
-	if len(v.Boundary) == 0 {
+	if !p.incomplete["boundary"] && len(v.Boundary) == 0 {
 		add("boundary", "is empty; the per-component table is the result, not the rate")
 	}
 	inner := 0
 	for i, c := range v.Boundary {
-		at := func(f string) string { return fmt.Sprintf("boundary[%d].%s", i, f) }
+		at := func(f string) string { return join(p.claimAt[i], f) }
 		if strings.TrimSpace(c.Claim) == "" {
 			add(at("claim"), "is empty")
 		}
@@ -293,15 +509,19 @@ func Validate(raw []byte) ([]Problem, error) {
 	}
 
 	// The counts summarize the inner rows, so they cannot disagree with them.
-	if got := v.Components.Verified + v.Components.Partial + v.Components.Blocked; got != v.Components.Total {
-		add("components", fmt.Sprintf("verified+partial+blocked is %d but total is %d", got, v.Components.Total))
-	}
-	if len(v.Boundary) > 0 && v.Components.Total != inner {
-		add("components.total", fmt.Sprintf("is %d but the boundary has %d inner-loop claims", v.Components.Total, inner))
+	// A row that did not decode has no loop to count, so the second check
+	// waits for a boundary that decodes in full.
+	if !p.incomplete["components"] {
+		if got := v.Components.Verified + v.Components.Partial + v.Components.Blocked; got != v.Components.Total {
+			add("components", fmt.Sprintf("verified+partial+blocked is %d but total is %d", got, v.Components.Total))
+		}
+		if !p.incomplete["boundary"] && len(v.Boundary) > 0 && v.Components.Total != inner {
+			add("components.total", fmt.Sprintf("is %d but the boundary has %d inner-loop claims", v.Components.Total, inner))
+		}
 	}
 
 	for i, d := range v.Decisions {
-		at := func(f string) string { return fmt.Sprintf("decisions[%d].%s", i, f) }
+		at := func(f string) string { return join(p.decisionAt[i], f) }
 		if strings.TrimSpace(d.Question) == "" {
 			add(at("question"), "is empty")
 		}
@@ -315,7 +535,7 @@ func Validate(raw []byte) ([]Problem, error) {
 
 	seen := map[Criterion]bool{}
 	for i, s := range v.Scorecard {
-		at := func(f string) string { return fmt.Sprintf("scorecard[%d].%s", i, f) }
+		at := func(f string) string { return join(p.scoreAt[i], f) }
 		if !knownCrit[s.Criterion] {
 			add(at("criterion"), fmt.Sprintf("%q is not one of code, data, license, preregistration, supplement", s.Criterion))
 			continue
@@ -331,7 +551,8 @@ func Validate(raw []byte) ([]Problem, error) {
 			add(at("searched"), "is marked not found without naming where it looked")
 		}
 	}
-	if len(v.Scorecard) > 0 {
+	// A row that did not decode may be the criterion that looks missing.
+	if len(v.Scorecard) > 0 && !p.incomplete["scorecard"] {
 		for _, c := range Criteria {
 			if !seen[c] {
 				add("scorecard", fmt.Sprintf("does not score %q", c))
@@ -340,7 +561,7 @@ func Validate(raw []byte) ([]Problem, error) {
 	}
 
 	for i, r := range v.Released {
-		at := func(f string) string { return fmt.Sprintf("released[%d].%s", i, f) }
+		at := func(f string) string { return join(p.releaseAt[i], f) }
 		if strings.TrimSpace(r.Where) == "" {
 			add(at("where"), "does not say where it looked")
 		}
@@ -351,6 +572,69 @@ func Validate(raw []byte) ([]Problem, error) {
 			add(at("url"), "found something with no URL to it")
 		}
 	}
+}
 
-	return ps, nil
+// join names a field inside the value at path.
+func join(path, field string) string {
+	if path == "" {
+		return field
+	}
+	return path + "." + field
+}
+
+func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
+
+// describe names the kind of a JSON value the way a problem reads it.
+func describe(raw json.RawMessage) string {
+	s := bytes.TrimSpace(raw)
+	if len(s) == 0 {
+		return "empty"
+	}
+	switch s[0] {
+	case '{':
+		return "an object"
+	case '[':
+		return "a list"
+	case '"':
+		return "a string"
+	case 't', 'f':
+		return "a boolean"
+	case 'n':
+		return "null"
+	}
+	return "a number"
+}
+
+var timeType = reflect.TypeFor[time.Time]()
+
+// mistyped says why raw could not be decoded into dst, in terms of what was
+// written and what the schema wants there.
+func mistyped(raw json.RawMessage, dst any) string {
+	t := reflect.TypeOf(dst).Elem()
+	if t == timeType {
+		if describe(raw) == "a string" {
+			return "is not a time written like 2026-07-14T10:41:00Z"
+		}
+		return fmt.Sprintf("is %s, want a time written like 2026-07-14T10:41:00Z", describe(raw))
+	}
+	var want string
+	switch t.Kind() {
+	case reflect.String:
+		want = "a string"
+	case reflect.Bool:
+		want = "a boolean"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		want = "a whole number"
+	case reflect.Float32, reflect.Float64:
+		want = "a number"
+	case reflect.Slice:
+		want = "a list"
+	default:
+		want = "an object"
+	}
+	got := describe(raw)
+	if got == want {
+		return fmt.Sprintf("is %s out of range", got)
+	}
+	return fmt.Sprintf("is %s, want %s", got, want)
 }

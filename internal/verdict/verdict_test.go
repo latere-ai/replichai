@@ -74,7 +74,7 @@ func only(ps []verdict.Problem, prefix string) []verdict.Problem {
 }
 
 func TestValidateAcceptsAWellFormedFile(t *testing.T) {
-	ps, err := verdict.Validate(raw(t, good()))
+	_, ps, err := verdict.Validate(raw(t, good()))
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestValidateAcceptsAWellFormedFile(t *testing.T) {
 }
 
 func TestValidateRejectsNonJSON(t *testing.T) {
-	if _, err := verdict.Validate([]byte("# Reproducibility\n")); err == nil {
+	if _, _, err := verdict.Validate([]byte("# Reproducibility\n")); err == nil {
 		t.Fatal("markdown validated as verdict.json")
 	}
 }
@@ -95,7 +95,7 @@ func TestOuterLoopIsNeverScored(t *testing.T) {
 	for _, o := range []verdict.ClaimOutcome{verdict.Verified, verdict.PartlyVerified, verdict.Blocked} {
 		v := good()
 		v.Boundary[3].Outcome = o
-		ps, err := verdict.Validate(raw(t, v))
+		_, ps, err := verdict.Validate(raw(t, v))
 		if err != nil {
 			t.Fatalf("Validate: %v", err)
 		}
@@ -111,7 +111,7 @@ func TestInnerLoopIsAlwaysScored(t *testing.T) {
 	v := good()
 	v.Boundary[2].Outcome = verdict.NotScored
 	v.Components = verdict.Components{Verified: 2, Blocked: 0, Total: 3}
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "boundary[2].outcome")) == 0 {
 		t.Fatal("an inner-loop claim marked not_scored was accepted")
 	}
@@ -120,7 +120,7 @@ func TestInnerLoopIsAlwaysScored(t *testing.T) {
 func TestEveryClaimCarriesACitation(t *testing.T) {
 	v := good()
 	v.Boundary[1].Citation = "  "
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "boundary[1].citation")) == 0 {
 		t.Fatal("a claim with no citation was accepted")
 	}
@@ -129,7 +129,7 @@ func TestEveryClaimCarriesACitation(t *testing.T) {
 func TestEveryClaimCarriesEvidenceOrABlocker(t *testing.T) {
 	v := good()
 	v.Boundary[2].Evidence = ""
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "boundary[2].evidence")) == 0 {
 		t.Fatal("a blocked claim with no stated blocker was accepted")
 	}
@@ -138,14 +138,14 @@ func TestEveryClaimCarriesEvidenceOrABlocker(t *testing.T) {
 func TestAMismatchNeedsBothNumbers(t *testing.T) {
 	v := good()
 	v.Boundary[0].Mismatch.Observed = ""
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "boundary[0].mismatch")) == 0 {
 		t.Fatal("a mismatch with no observed value was accepted")
 	}
 
 	v = good()
 	v.Boundary[0].Mismatch.Kind = "wrong"
-	ps, _ = verdict.Validate(raw(t, v))
+	_, ps, _ = verdict.Validate(raw(t, v))
 	if len(only(ps, "boundary[0].mismatch.kind")) == 0 {
 		t.Fatal("a mismatch of an unknown kind was accepted")
 	}
@@ -154,7 +154,7 @@ func TestAMismatchNeedsBothNumbers(t *testing.T) {
 func TestEveryDecisionStatesItsSensitivity(t *testing.T) {
 	v := good()
 	v.Decisions[0].Sensitivity = ""
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "decisions[0].sensitivity")) == 0 {
 		t.Fatal("a decision with no stated sensitivity was accepted")
 	}
@@ -163,14 +163,14 @@ func TestEveryDecisionStatesItsSensitivity(t *testing.T) {
 func TestScorecardNeedsAURLOrThePlacesItLooked(t *testing.T) {
 	v := good()
 	v.Scorecard[0].URL = ""
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "scorecard[0].url")) == 0 {
 		t.Fatal("a criterion marked found with no URL was accepted")
 	}
 
 	v = good()
 	v.Scorecard[1].Searched = nil
-	ps, _ = verdict.Validate(raw(t, v))
+	_, ps, _ = verdict.Validate(raw(t, v))
 	if len(only(ps, "scorecard[1].searched")) == 0 {
 		t.Fatal("a criterion marked not found without naming where it looked was accepted")
 	}
@@ -179,14 +179,14 @@ func TestScorecardNeedsAURLOrThePlacesItLooked(t *testing.T) {
 func TestScorecardCoversEveryCriterionExactlyOnce(t *testing.T) {
 	v := good()
 	v.Scorecard = v.Scorecard[:4] // drop the supplement
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "scorecard")) == 0 {
 		t.Fatal("a scorecard missing a criterion was accepted")
 	}
 
 	v = good()
 	v.Scorecard = append(v.Scorecard, verdict.Score{Criterion: verdict.Code, Found: true, URL: "https://x"})
-	ps, _ = verdict.Validate(raw(t, v))
+	_, ps, _ = verdict.Validate(raw(t, v))
 	if len(only(ps, "scorecard[5].criterion")) == 0 {
 		t.Fatal("a criterion scored twice was accepted")
 	}
@@ -198,7 +198,7 @@ func TestScorecardCoversEveryCriterionExactlyOnce(t *testing.T) {
 func TestAnEmptyScorecardIsNotAMissingCriterion(t *testing.T) {
 	v := good()
 	v.Scorecard = nil
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "scorecard")) != 0 {
 		t.Fatalf("an empty scorecard reported per-criterion problems: %v", only(ps, "scorecard"))
 	}
@@ -207,7 +207,7 @@ func TestAnEmptyScorecardIsNotAMissingCriterion(t *testing.T) {
 func TestComponentsMustAddUpAndMatchTheInnerRows(t *testing.T) {
 	v := good()
 	v.Components.Total = 9
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "components")) == 0 {
 		t.Fatal("counts that do not add up were accepted")
 	}
@@ -217,7 +217,7 @@ func TestComponentsMustAddUpAndMatchTheInnerRows(t *testing.T) {
 	// cannot see.
 	v = good()
 	v.Components = verdict.Components{Verified: 5, Partial: 0, Blocked: 1, Total: 6}
-	ps, _ = verdict.Validate(raw(t, v))
+	_, ps, _ = verdict.Validate(raw(t, v))
 	if len(only(ps, "components.total")) == 0 {
 		t.Fatal("a total disagreeing with the inner-loop rows was accepted")
 	}
@@ -227,7 +227,7 @@ func TestTheBoundaryIsRequired(t *testing.T) {
 	v := good()
 	v.Boundary = nil
 	v.Components = verdict.Components{}
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "boundary")) == 0 {
 		t.Fatal("a verdict with no per-component table was accepted; the table is the result")
 	}
@@ -239,7 +239,7 @@ func TestHeaderFieldsAreRequired(t *testing.T) {
 	v.Summary = " "
 	v.GradedAt = time.Time{}
 	v.Schema = 99
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	for _, f := range []string{"verdict", "summary", "graded_at", "schema"} {
 		if len(only(ps, f)) == 0 {
 			t.Errorf("%s was accepted as invalid", f)
@@ -250,7 +250,7 @@ func TestHeaderFieldsAreRequired(t *testing.T) {
 func TestAReleaseThatFoundSomethingLinksToIt(t *testing.T) {
 	v := good()
 	v.Released[0].URL = ""
-	ps, _ := verdict.Validate(raw(t, v))
+	_, ps, _ := verdict.Validate(raw(t, v))
 	if len(only(ps, "released[0].url")) == 0 {
 		t.Fatal("a found artifact with no URL was accepted")
 	}
@@ -258,7 +258,7 @@ func TestAReleaseThatFoundSomethingLinksToIt(t *testing.T) {
 	// A dead link is recorded in What. Requiring a URL as well would make the
 	// audit repeat an address it has reported as unresolvable.
 	v = good()
-	ps, _ = verdict.Validate(raw(t, v))
+	_, ps, _ = verdict.Validate(raw(t, v))
 	if len(only(ps, "released[2]")) != 0 {
 		t.Fatalf("a dead result was rejected: %v", only(ps, "released[2]"))
 	}
@@ -266,14 +266,130 @@ func TestAReleaseThatFoundSomethingLinksToIt(t *testing.T) {
 
 func TestParseRoundTrips(t *testing.T) {
 	want := good()
-	got, err := verdict.Parse(raw(t, want))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
+	got, ps, err := verdict.Parse(raw(t, want))
+	if err != nil || len(ps) != 0 {
+		t.Fatalf("Parse: %v %v", ps, err)
 	}
 	if got.Verdict != want.Verdict || len(got.Boundary) != len(want.Boundary) || got.Boundary[0].Mismatch == nil {
 		t.Fatalf("round trip lost content: %+v", got)
 	}
 	if !got.GradedAt.Equal(want.GradedAt) {
 		t.Fatalf("graded_at round-tripped as %v, want %v", got.GradedAt, want.GradedAt)
+	}
+}
+
+// edit returns good() as JSON after f has changed it as a generic document, so
+// a test can write what an agent wrote, including shapes the Go types refuse.
+func edit(t *testing.T, f func(doc map[string]any)) []byte {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(raw(t, good()), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	f(doc)
+	b, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return b
+}
+
+func row(doc map[string]any, list string, i int) map[string]any {
+	return doc[list].([]any)[i].(map[string]any)
+}
+
+// One row the decoder cannot read used to fail the whole file, under a message
+// that called it invalid JSON. It is a problem at that row, and only there:
+// the rows around it are still read and checked, and the counts are not
+// checked against a boundary that is missing a row.
+func TestOneRowThatDoesNotDecodeIsAProblemAtThatRow(t *testing.T) {
+	b := edit(t, func(doc map[string]any) {
+		doc["boundary"].([]any)[1] = "Grip features outperform the IMU-only baseline"
+	})
+	v, ps, err := verdict.Validate(b)
+	if err != nil {
+		t.Fatalf("one undecodable row failed the whole file: %v", err)
+	}
+	if len(ps) != 1 || ps[0].Field != "boundary[1]" {
+		t.Fatalf("problems = %v, want exactly one, at boundary[1]", ps)
+	}
+	if len(v.Boundary) != 3 || v.Components.Total != 3 || len(v.Scorecard) != 5 {
+		t.Fatalf("the rest of the file did not survive: %+v", v)
+	}
+
+	// A problem in a later row is named by its place in the file, not by its
+	// place among the rows that survived.
+	b = edit(t, func(doc map[string]any) {
+		doc["boundary"].([]any)[1] = 42
+		row(doc, "boundary", 2)["citation"] = ""
+	})
+	_, ps, _ = verdict.Validate(b)
+	if len(only(ps, "boundary[2].citation")) != 1 || len(ps) != 2 {
+		t.Fatalf("problems = %v, want boundary[1] and boundary[2].citation", ps)
+	}
+}
+
+// A field of the wrong type is a problem at its path, with the rule for that
+// field left unchecked, since the decode problem already says what is wrong.
+func TestAMistypedFieldIsAProblemAtItsPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		edit  func(doc map[string]any)
+		field string
+	}{
+		{"schema as a string", func(d map[string]any) { d["schema"] = "1" }, "schema"},
+		{"graded_at not a time", func(d map[string]any) { d["graded_at"] = "yesterday" }, "graded_at"},
+		{"summary as an object", func(d map[string]any) { d["summary"] = map[string]any{"text": "x"} }, "summary"},
+		{"a count as a string", func(d map[string]any) { d["components"].(map[string]any)["total"] = "3" }, "components.total"},
+		{"components as a list", func(d map[string]any) { d["components"] = []any{1, 2} }, "components"},
+		{"a decision field as an object", func(d map[string]any) { row(d, "decisions", 0)["sensitivity"] = map[string]any{"pp": 0.4} }, "decisions[0].sensitivity"},
+		{"a scorecard row as a string", func(d map[string]any) { d["scorecard"].([]any)[1] = "data: none" }, "scorecard[1]"},
+		{"searched as a string", func(d map[string]any) { row(d, "scorecard", 1)["searched"] = "OSF" }, "scorecard[1].searched"},
+		{"found as a string", func(d map[string]any) { row(d, "scorecard", 0)["found"] = "yes" }, "scorecard[0].found"},
+		{"released as an object", func(d map[string]any) { d["released"] = map[string]any{"github": "found"} }, "released"},
+		{"a release row as null", func(d map[string]any) { d["released"].([]any)[2] = nil }, "released[2]"},
+		{"a claim field as a number", func(d map[string]any) { row(d, "boundary", 0)["evidence"] = 89.6 }, "boundary[0].evidence"},
+		{"the boundary as a string", func(d map[string]any) { d["boundary"] = "see REPRODUCIBILITY.md" }, "boundary"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ps, err := verdict.Validate(edit(t, tc.edit))
+			if err != nil {
+				t.Fatalf("a mistyped field failed the whole file: %v", err)
+			}
+			if len(ps) != 1 || ps[0].Field != tc.field {
+				t.Fatalf("problems = %v, want exactly one, at %s", ps, tc.field)
+			}
+		})
+	}
+}
+
+// Parse fails only when there is no object to read a field from, and then it
+// says which of the two things is true.
+func TestParseFailsOnlyWhenThereIsNoObject(t *testing.T) {
+	for in, want := range map[string]string{
+		"# Reproducibility\n": "is not JSON",
+		`{"schema": 2,`:       "is not JSON",
+		`[1, 2]`:              "is a list, not a JSON object",
+		`"partial"`:           "is a string, not a JSON object",
+		`null`:                "is null, not a JSON object",
+	} {
+		if _, _, err := verdict.Parse([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%q) = %v, want an error saying it %s", in, err, want)
+		}
+	}
+
+	// Content with problems is not an error: the problems are returned
+	// beside what did decode.
+	b := edit(t, func(doc map[string]any) { doc["boundary"].([]any)[0] = []any{"x"} })
+	v, ps, err := verdict.Parse(b)
+	if err != nil {
+		t.Fatalf("Parse of a JSON object failed: %v", err)
+	}
+	if len(ps) != 1 || ps[0].Field != "boundary[0]" || !strings.Contains(ps[0].Message, "is a list, want an object") {
+		t.Fatalf("problems = %v", ps)
+	}
+	if len(v.Boundary) != 3 || v.Summary == "" {
+		t.Fatalf("Parse lost the rows that decoded: %+v", v)
 	}
 }

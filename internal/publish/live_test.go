@@ -512,3 +512,31 @@ func TestFinalizeRecordsARepositoryWithNoCommit(t *testing.T) {
 		t.Errorf("the manifest claims a reproduction that was never pushed: %+v", m.Findings)
 	}
 }
+
+// TestFinalizeLiveNamesTheRowThatDidNotDecode checks that one unreadable row
+// is recorded as a problem at that row. It used to be recorded as the whole
+// file not being JSON, which sent a reader of UNVERIFIED.md looking for a
+// syntax error that was not there.
+func TestFinalizeLiveNamesTheRowThatDidNotDecode(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", FindingsFile})
+	var doc map[string]any
+	if err := json.Unmarshal(goodFindings(t), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	doc["boundary"].([]any)[1] = "Latency under 40 ms"
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	forge.files[FindingsFile] = raw
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	joined := strings.Join(rep.FindingProblems, "\n")
+	if rep.Findings || !strings.Contains(joined, "boundary[1]") || strings.Contains(joined, "not valid JSON") {
+		t.Fatalf("problems = %q, want the row named and no claim about the JSON", joined)
+	}
+}

@@ -2974,7 +2974,7 @@ func (rt *Router) getSessionFindings(w http.ResponseWriter, r *http.Request) {
 		writeReadError(w, err)
 		return
 	}
-	problems, err := verdict.Validate(raw)
+	v, problems, err := verdict.Validate(raw)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "findings_unreadable")
 		return
@@ -2988,11 +2988,6 @@ func (rt *Router) getSessionFindings(w http.ResponseWriter, r *http.Request) {
 			msgs = append(msgs, p.String())
 		}
 		writeJSONError(w, http.StatusUnprocessableEntity, "findings_invalid", msgs)
-		return
-	}
-	v, err := verdict.Parse(raw)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "findings_unreadable")
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
