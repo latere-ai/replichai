@@ -4,16 +4,45 @@ A proposal for measuring how much repeat runs of one paper disagree, and
 whether that disagreement is a property of the paper. Nothing here has been
 estimated yet. It is written for review before a study is registered.
 
-[`repeat-runs-pilot.md`](repeat-runs-pilot.md) is the evidence it answers: the
-spread between runs is real and large, and most of it in the pilot came from
-the agent system, the network and labeling rather than the paper. The model
-below therefore treats the environment as a facet to estimate, not as noise,
-and gives each paper its own dispersion instead of pooling one.
+The evidence it answers is a pilot of 49 runs of three papers
+([`repeat-runs-pilot.md`](repeat-runs-pilot.md)): the spread between runs is
+real and large, and most of it in the pilot came from the agent system, the
+network and labeling rather than the paper. The model below therefore treats
+the environment as a facet to estimate, not as noise, and gives each paper its
+own dispersion instead of pooling one.
+
+## Setting
+
+ReplicHAI audits the reproducibility of a research paper with a coding agent.
+Given a paper, one **run** finds what the authors released and splits the paper
+into components. It places each component in the inner loop, the part a machine
+can re-run (the analysis, the model or the pipeline), or in the outer loop, the
+study with human participants, which is never re-run or simulated. It re-runs
+the inner loop, marks each inner component verified, partial or blocked, records
+where its numbers disagree with the paper's, and lists the hidden decisions:
+choices a reimplementation has to make that the paper does not state. A second
+stage grades the run against a fixed rubric, and a run that falls short is
+revised.
+
+Three things can differ between two runs of one paper, and the model keeps them
+apart:
+
+- the **paper**, with the materials its authors released;
+- the **environment** of the run: the agent system (the coding agent and the
+  model behind it), the network it may reach, and the copy of the paper and of
+  the artifacts it was given;
+- the **run** itself: a fresh session of the same agent on the same inputs does
+  not make the same choices twice.
+
+A **claim** is one quantitative result the paper reports, such as a test
+statistic, an estimate or a count. Whether a run reproduced a claim is the unit
+the model is built on.
 
 ## Why not plain generalizability theory
 
-A generalizability study over paper × prompt × run, with runs nested in each
-paper and prompt cell, estimates one run variance component for the whole
+A generalizability study over paper × prompt × run, where the prompt is the
+instructions the agent is given and runs are nested in each paper and prompt
+cell, estimates one run variance component for the whole
 corpus, $\sigma^2_{r:pq}$, and treats it as error around each paper's mean.
 That is the right tool for asking how reliably a paper's *mean* outcome is
 measured. It cannot say that one paper's runs disagree more than another's,
@@ -166,8 +195,8 @@ runs into halves, correlating $\hat H_p$ across papers between the halves, and
 applying the Spearman-Brown correction. Require at least 0.8 before reporting
 a single paper's dispersion.
 
-The earlier criterion, "if prompt-level variance exceeds run-level variance we
-do not have an instrument", compares two error terms. A prompt's main effect
+A criterion proposed earlier in this project, "if prompt-level variance exceeds
+run-level variance we do not have an instrument", compares two error terms. A prompt's main effect
 moves every paper equally and does not change a ranking; what matters is the
 paper × prompt interaction relative to $\tau_u^2$, which $E\rho^2$ already
 contains. Three prompts give two degrees of freedom for a prompt main effect,
@@ -176,8 +205,10 @@ tested.
 
 ## Sample size
 
-The human labels cap the corpus at 76 papers, so runs per paper is the lever
-that is left. Pooled components are well estimated at $k = 3$; per-paper
+The intended corpus is the 76 CHI papers that have shared both data and code,
+whose reproduction outcomes were verified by hand (Iarygina, Hornbæk and
+Mottelson, 2026). That caps the corpus at 76 papers, so runs per paper is the
+lever that is left. Pooled components are well estimated at $k = 3$; per-paper
 dispersion is not. A design that can grow into the main study:
 
 | Stage | Papers × runs | Purpose |
@@ -200,3 +231,10 @@ The decision rule between "× 5" and "× 3" is written into the registration.
 - How launch failures are excluded is stated before outcomes are seen.
 - A run's blocker cause is recorded in a closed list, so environment-caused
   zeros can be separated from paper-caused zeros in a sensitivity analysis.
+
+## References
+
+Iarygina, O., Hornbæk, K., and Mottelson, A. (2026). On the Computational
+Reproducibility of Human-Computer Interaction. *Proceedings of the 2026 CHI
+Conference on Human Factors in Computing Systems*, 1–16.
+<https://doi.org/10.1145/3772318.3791129>
