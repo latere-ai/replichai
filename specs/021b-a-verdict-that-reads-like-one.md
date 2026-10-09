@@ -23,7 +23,7 @@ One thing came out of the build. **The manifest's grade and the findings' verdic
 
 **Inner and outer are typographically different, not just labeled.** An outer row is muted and its outcome column reads `NOT SCORED`, never a tone that could be mistaken for a result. The one rule the product exists to defend has to be visible without reading the label.
 
-**What did not reproduce gets its own section, above the table.** The design has a boundary table and nothing else, which buries the interesting rows among the verified ones. `MISMATCHES & UNRESOLVED` lists every inner-loop claim that is not cleanly verified (`blocked`, `partial`, or verified with a `Mismatch`), each with its specific blocker or the reported-versus-observed pair and its delta. A run with none says so explicitly rather than rendering an empty box.
+**What did not reproduce gets its own section, above the table.** The design has a boundary table and nothing else, which buries the interesting rows among the verified ones. `MISMATCHES & UNRESOLVED` lists every inner-loop claim that is not cleanly verified (`blocked`, `partial`, or verified with a `Mismatch`), each with its specific blocker or the reported-versus-observed pair and its delta. A run with none says so explicitly rather than rendering an empty box. Since schema 2 of `verdict.json` ([021a](021a-the-findings-as-data.md)) a claim can carry several mismatches, and each is printed with the quantity it compares and a note in place of the delta.
 
 **A mismatch prints both numbers.** `91.4% reported · 89.6% observed · −1.8 pp`, in tabular figures, with the kind named. A `typo` or `contradiction` kind renders the same way, and is what lets a reader see that the paper was wrong rather than the reproduction.
 
