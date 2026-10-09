@@ -111,7 +111,13 @@ wrote mismatch values as objects and numbers, or a fetch the sandbox refused as
 `not_fetched`, and the schema allowed neither. One mistyped field discarded the
 whole file, with a message saying the file was not valid JSON, which was false.
 Every file was valid JSON. The model grader passed the schema criterion on all
-14. Schema 2 of `verdict.json` fixes the reading; see
+14.
+
+Schema 2 of `verdict.json` reads what the agents wrote. Run over the 29
+findings files the pilot runs published, it accepts 27 and reads all 214 of
+their mismatches. The two it still refuses break a real rule, a search recorded
+as found with no address, and each is reported at its row with the rest of the
+file kept. The schema is described in
 [`../method/instructions.md`](../method/instructions.md).
 
 ## Freezing the denominator does not remove the swing

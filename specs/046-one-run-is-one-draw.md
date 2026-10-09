@@ -29,6 +29,8 @@ The environment moves the result as much as anything the pilot measured. A platf
 
 `runs: N` on the file or on one paper; a paper listed twice is two runs. Each run is its own session, repository and output directory, and resume matches a run by paper and run number. Before this, the batch keyed everything by the paper reference, so a resumed study silently dropped its failed and pending repeats and two concurrent runs could share a repository.
 
+Not yet carried through: `replichai push` files each run as its own session under the paper, which is right, but the record it files has no run number, so the app cannot say which run of a study a session was. That belongs with decision 3.
+
 ### 2. Schema 2 of `verdict.json` (built)
 
 A claim carries a list of mismatches, each with the paper's value and the run's value as text and, where they are single numbers, as numbers with a unit. Text fields accept whatever JSON the agent wrote and keep it. Each row is decoded on its own, so a malformed row is a problem at that row instead of an empty file, and `released` gains `not_fetched` for a fetch the run was not allowed or able to make. Schema 1 files still read. The method changed, so its digest moved: runs before and after are not comparable under one digest, which is what the digest is for.
@@ -70,7 +72,7 @@ The proposal: the primary measure is per-claim reproducibility given the release
 ## Acceptance criteria
 
 1. A project file with `runs: 3` for one paper produces three sessions, three repositories and three output directories, and a resume after one failure runs exactly the failed and pending runs. (Built.)
-2. Every pilot mismatch shape and `not_fetched` validate under schema 2; one malformed row is a problem at that row and the rest of the file survives; schema 1 files still validate. (Built.)
+2. Every pilot mismatch shape and `not_fetched` validate under schema 2; one malformed row is a problem at that row and the rest of the file survives; schema 1 files still validate. (Built. Of the 29 findings files the pilot runs published, 27 validate and all 214 mismatches are read; the other two record a search as found with no address, which is a rule the files break.)
 3. A manifest names system, model, network profile, paper copy hash, prompt digest, study, run number, terminal reason and grading rounds, and one exists for a run that never started.
 4. A study can run with grading and zero revisions, and round 0's findings are on record for every run.
 5. `tools/repeat-runs/analyze.py` reproduces its report from manifests alone, with no transcript reading.
