@@ -150,6 +150,28 @@ about a claim of this paper, under this environment. It has a plain reading and
 a direct estimator, and it does not depend on how an agent decomposes the
 paper, because the claims are frozen.
 
+To read a value: if every result of a paper reproduced in the same share of
+runs, $H$ would be as follows.
+
+| A result reproduces in | Two runs disagree about it with chance |
+|---|---|
+| 99% of runs, or 1% | 0.02 |
+| 95%, or 5% | 0.10 |
+| 90%, or 10% | 0.18 |
+| 80%, or 20% | 0.32 |
+| 70%, or 30% | 0.42 |
+| 50% | 0.50 |
+
+For any paper, a single run agrees with the outcome most runs would give on a
+share of the paper's results between $1 - H$ and $1 - H/2$. At $H = 0.10$ that
+is 90% to 95% of its results.
+
+No cutoff for a low $H$ is proposed here. It has two anchors, both to be fixed
+in the registration before outcomes are seen. One is the $H$ of fully specified
+papers, which is what the agent and the environment produce with no help from
+the paper (the third test below). The other is the use the number is put to,
+for which the share above is the guide.
+
 **Run-shared dispersion.** How much a whole run moves together: a run that
 cannot reach the paper, or loses its dependencies, fails many claims at once.
 This is $s_{pe}$ in the model below.

@@ -92,6 +92,8 @@ TABLE_RULES = {
         "|------|------------------------------|",
     "| Runs per paper $k$ | 95% range of $\\hat H / H$ | Spread | Run-level SD, same data |":
         "|------------------|----------------------|----------|------------------------|",
+    "| A result reproduces in | Two runs disagree about it with chance |":
+        "|------------------------|-----------------------------------------|",
     "| Stage | Papers × runs | Purpose |":
         "|-----------|-------------------|--------------------|",
     "| Paper | Called below | Runs started | With a verdict |":
@@ -208,7 +210,7 @@ def typeset(tex, final):
             sys.exit(f"a table has {rows} rows; one that long has to be allowed to break across pages")
         # The \\nobreak keeps the block on the page of the line that introduces
         # it, so a page never ends on "was:" with the table overleaf.
-        return ("\\par\\nobreak\\addvspace{\\medskipamount}\\noindent\\begin{minipage}{\\linewidth}\n"
+        return ("\\par\\nobreak\\addvspace{\\medskipamount}\\noindent\\begin{minipage}{\\linewidth}\\centering\n"
                 "\\begin{tabular}{" + match.group("cols") + "}\n\\toprule\\noalign{}\n" + match.group("head")
                 + "\\midrule\\noalign{}\n" + match.group("body") + "\\bottomrule\\noalign{}\n"
                 "\\end{tabular}\n\\end{minipage}\\par\\addvspace{\\medskipamount}")
