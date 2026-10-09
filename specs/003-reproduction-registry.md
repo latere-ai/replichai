@@ -117,6 +117,8 @@ $ replichai audit https://arxiv.org/abs/2603.01795 --publish
 
 A repeat under an *unchanged* method digest is the suspicious case, because it means re-running the same method on the same paper, and the prompt says so.
 
+Since [046](046-one-run-is-one-draw.md) it is also a designed case. A study runs one paper several times under one method to see how far the runs land from each other, and `replichai run` does that from a project file (`runs: N`), reporting the earlier reproductions and going on.
+
 ## Out of scope
 
 Comparing two reproductions of one paper (diffing rates, verdicts, hidden-decision lists). That is worth building and is a later spec.
