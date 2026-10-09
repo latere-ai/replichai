@@ -126,4 +126,6 @@ Built as `internal/batch` and `replichai run`. Both input forms, the per-paper o
 
 **The name race is guarded within a batch and not across machines.** Preparation is serialized, so two papers in one batch cannot allocate one name. The cross-machine case (a creation refused for a name in use, retried with the next suffix) is not implemented: `newPublisher` still reuses an existing repository on `ErrRepoExists`, which is right for a re-run of one paper and wrong for a collision between two.
 
+**A paper can run more than once.** `runs:` on a paper, or at the top of the file for every paper, expands it into that many runs, and a paper listed twice is two runs of it. Each run gets its own session, repository and local directory (`<slug>-run-<n>` once a paper has more than one run). `batch.json` keys an entry by paper and run ordinal, so a resume returns each run to its own record; a state file written before runs existed is numbered in the order its entries appear. The report counts runs and names the run beside a repeated paper.
+
 **The pool does not refuse an oversized parallelism.** `--parallel` is honored exactly; nothing compares it against what the machine or the engine can carry.
