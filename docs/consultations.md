@@ -16,7 +16,7 @@ budget that funds one of them**.
 | **The hardest constraint** | €25k raised; about €25 per paper. Any one proposed study fits the budget. Any two do not. |
 | **The unasked question** | A 100–1000 paper study publishes negative verdicts naming third parties. Nothing in the design handles reply, correction, or standing. |
 | **The surprise** | `doesitreproduce.com` is a live agentic-reproduction service with 1,286 papers assessed. `landscape.md` says no such service exists. |
-| **The paper it implies** | Stop reporting a reproducibility rate. Report the variance, and treat it as a property of the paper. [§8](#8-the-paper-if-we-write-one). |
+| **The paper it implies** | Stop reporting a reproducibility rate. Report the variance per claim, and test, rather than assume, whether it describes the paper. [§8](#8-the-paper-if-we-write-one). |
 
 **Top three next steps** (full ranking in [§7](#7-ranked-next-steps)). These are a
 recommendation drawn from the notes, not a decision anyone in them has taken:
@@ -75,7 +75,7 @@ flowchart TB
     K --> V
     F --> V
     V --> P["procedure.md 7<br/>the same instability, recorded<br/>as a weakness of the rate<br/>5 vs 7 components, 40% vs 79%"]
-    V --> G["the tree<br/>nothing computes it"]
+    V --> G["the tree<br/>nothing computed it until<br/>the October pilot analysis"]
     P -.->|"needs reconciling"| G
 ```
 
@@ -172,7 +172,7 @@ discovering it after the money is spent.
 
 | Ask | From | Today | Home |
 |---|---|---|---|
-| Repeat-run variance as an output | Kasper, Robin, Francesco | nothing; §7 calls it a weakness | no spec |
+| Repeat-run variance as an output | Kasper, Robin, Francesco | runs per paper and the pilot analysis ([`repeat-runs-pilot.md`](repeat-runs-pilot.md)) | [046](../specs/046-one-run-is-one-draw.md) |
 | Second rate: how many numbers matched | Francesco | one scalar over components | [BACKLOG 1](../specs/BACKLOG.md) |
 | Conclusion survival vs number movement | Francesco | not in `verdict.json` | no spec |
 | Negative control: strip the links, expect *nothing found* | Francesco | two eval cases, neither tests it | `evals/` |
@@ -270,7 +270,7 @@ Ordered by how much each step unblocks for how little.
 | 1 | Measure model degradation across tiers on `evals/` | days | the budget **and** the DGX plan |
 | 2 | Choose one study, one venue, one corpus | a decision | everything below |
 | 3 | Add a negative-control case to `evals/` | one file | credibility at any venue |
-| 4 | Make repeat-run variance an output | a spec | what three people asked for |
+| 4 | Make repeat-run variance an output | a spec, now [046](../specs/046-one-run-is-one-draw.md) | what three people asked for |
 | 5 | Split the rate; separate conclusion survival from number movement | a spec | Study 2's real result |
 | 6 | Spec author right-of-reply and correction | a spec | publishing safely |
 | 7 | Build the ICC checklist | small | Study 1's human half |
@@ -312,6 +312,18 @@ one objection raised in the project itself: **"reproducibility rate" is vague
 and non-deterministic when an agent one-shots a paper, and the system prompt has
 a crucial effect.**
 
+> **Corrected on 9 October 2026.** Forty-nine runs of three papers, made on 10
+> and 11 September and analyzed in [`repeat-runs-pilot.md`](repeat-runs-pilot.md),
+> contradict several claims below. Most of the spread between runs came from the
+> agent system, the network and the agent's labeling, so dispersion is not yet
+> shown to be a property of the paper. Freezing the denominator does not remove
+> the swing. Generalizability theory pools the run variance that the framing
+> needs per paper, and "about three runs is enough" holds only for pooled
+> components. [`dispersion-model.md`](dispersion-model.md) replaces the
+> statistical frame, and [046](../specs/046-one-run-is-one-draw.md) the platform
+> plan. The text below is kept as written, with each contradicted sentence
+> marked.
+
 ### The diagnosis
 
 A reproducibility rate conflates two things: how capable the agent is, and how
@@ -336,7 +348,9 @@ supplies an arbitrarily large analyst pool at about €25 each.
 The statistical frame is **generalizability theory**: variance components across
 paper × prompt × run. It is an established HCI methods tradition, it yields the
 ICC Francesco asked for directly, and it turns prompt sensitivity into a result
-rather than a limitation.
+rather than a limitation. *(Corrected: it estimates one run variance pooled over
+every paper, so it cannot say one paper disperses more than another. See
+[`dispersion-model.md`](dispersion-model.md).)*
 
 ```mermaid
 flowchart LR
@@ -348,11 +362,17 @@ flowchart LR
 
 The last branch must be stated: if prompt-level variance exceeds run-level
 variance, we do not yet have an instrument. That result is publishable too.
+*(Corrected: that compares two error terms. A prompt's main effect does not
+reorder papers; the test is a reliability coefficient with the paper as the
+object of measurement.)*
 
-### Can we measure the variation today? No.
+### Can we measure the variation today? Partly.
 
-This has to be stated plainly, because the framing above is worthless without
-it. Two runs produce two repositories of prose and code. Nothing compares them.
+When this was written, two runs produced two repositories of prose and code and
+nothing compared them. Since 9 October, a project file can hold several runs of
+one paper, and [`tools/repeat-runs/analyze.py`](../tools/repeat-runs/analyze.py)
+compares them. What is still missing is the unit of analysis and the record of
+what each run ran under ([046](../specs/046-one-run-is-one-draw.md)).
 
 | Exists | Missing |
 |---|---|
@@ -386,6 +406,8 @@ flowchart TB
 Three things follow from this one change:
 
 1. The 40%/79% swing is removed at its cause: the denominator no longer moves.
+   *(Corrected: in the pilot, holding each paper's denominator fixed left the
+   spread as large as before. The numerator moves as much as the denominator.)*
 2. Francesco's two rates come at no extra cost: *claims re-run* and *claims
    matched*, over the same denominator. Conclusion survival is sign plus
    significance per claim, which needs no extra judgment.
@@ -400,7 +422,7 @@ nearly all of it is runs.
 
 | Tier | What it measures | Marginal cost |
 |---|---|---|
-| **0** | Component count, hidden-decision count, open-science items, artifact-found booleans; dispersion and Fleiss' κ across runs | **€0.** Already in `verdict.json`. |
+| **0** | Component count, hidden-decision count, open-science items, artifact-found booleans; dispersion and Fleiss' κ across runs *(corrected: κ breaks when one answer dominates, as 25 of 26 "partial" verdicts did; report prevalence, raw agreement and the flip rate)* | **€0.** Already in `verdict.json`. |
 | **1** | Per claim: re-run, matched within tolerance, sign and significance preserved | One short extraction call per **paper**, not per run: cents, in the shape `internal/draft` already uses |
 | **2** | Variance components across paper × prompt × run | **€0.** Deterministic arithmetic. |
 
@@ -420,7 +442,10 @@ is what powers the design.
 
 Two cost levers are worth taking. Beyond about three runs per paper, extra runs
 add little to a variance-component estimate, so **put the money into papers, not
-repeats**. That is why the table above is cheaper than the 5-run design below.
+repeats**. *(Corrected: true for pooled components, not for a per-paper
+dispersion, which is what this framing claims. With the corpus capped at 76
+papers, runs per paper is the lever left; see
+[`dispersion-model.md`](dispersion-model.md).)* That is why the table above is cheaper than the 5-run design below.
 And one run yields every Tier 0 and Tier 1 measure at once, so measures cost
 nothing after the first.
 
@@ -456,6 +481,11 @@ Bracketed values are placeholders. The study has not run.
 > analyses re-ran and how many reported numbers matched, and find [conclusions
 > survive where individual numbers move]. We argue that a single reproducibility
 > rate is not merely imprecise but measures the wrong object.
+
+*(Corrected: the first bracketed finding is circular as designed. The
+hidden-decision count comes from the same runs, and in the pilot it tracked the
+agent system rather than the paper, so it needs a predictor measured outside the
+runs, such as human coding of each paper's documentation.)*
 
 ### The contributions
 
