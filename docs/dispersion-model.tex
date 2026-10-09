@@ -133,6 +133,14 @@ runs disagree about one result of the paper. It is 0 when every run
 agrees on every result, and at most 0.5, when each result reproduces in
 half of the runs.
 
+A low \(H\) says a run's outcome is repeatable. It does not say the
+outcome is right: every run can agree and be wrong, for instance when
+all of them are refused the same page or make the same mistake. Whether
+outcomes are right is a separate question, answered by comparing them
+with outcomes people verified by hand, which the intended corpus has.
+Repeatability comes first, because an outcome that changes from run to
+run cannot be checked against anything.
+
 The answer to the third question decides what an audit may report. If it
 is yes, \(H\) can be reported as a measure of how completely the paper
 and its materials pin down its own analysis. If not, the disagreement
