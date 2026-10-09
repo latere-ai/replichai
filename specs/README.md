@@ -138,7 +138,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 | `internal/seo` | the head the server writes, the sitemap, and the addresses Go knows (042) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
 | `frontend/` | the researcher UI — bun + React, i18n scaffolding (English only today) (006e) |
-| `cmd/replichai` | the CLI: `audit`, `finish`, `resolve`, `publish`, `providers`, `rates` |
+| `cmd/replichai` | the CLI: `audit`, `run`, `resolve`, `publish`, `finish`, `login`, `whoami`, `logout`, `org`, `sessions`, `project`, `push`, `providers`, `rates` |
 | `cmd/server` | the web app composition root: wires the engine + stores + gate, runs the worker + HTTP server (006a/b) |
 | `deploy/` + `.github/` | k8s kustomize (prod/staging) and the CI/release pipeline (010) |
 
