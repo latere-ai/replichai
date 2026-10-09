@@ -15,17 +15,32 @@ export type ClaimOutcome = 'verified' | 'partial' | 'blocked' | 'not_scored'
 type MismatchKind = 'numeric' | 'ordering' | 'contradiction' | 'typo'
 type FindingsVerdict = 'reproducible' | 'partial' | 'not_reproducible'
 export type Criterion = 'code' | 'data' | 'license' | 'preregistration' | 'supplement'
-export type ReleaseResult = 'found' | 'partial' | 'none' | 'dead'
+export type ReleaseResult = 'found' | 'partial' | 'none' | 'dead' | 'not_fetched'
 
-export type Mismatch = { kind: MismatchKind; reported: string; observed: string; delta?: string }
+// Mismatch is one quantity on which the run and the paper disagree. reported
+// and observed are the two values as text, as the paper states one and the run
+// got the other; the two numeric values repeat them as numbers when each is a
+// single number, and are absent or null when it is not.
+export type Mismatch = {
+  kind: MismatchKind
+  what?: string
+  reported: string
+  observed: string
+  reported_value?: number | null
+  observed_value?: number | null
+  unit?: string
+  note?: string
+}
 
+// mismatches is the only form the app receives. The server reads an older
+// file's single mismatch into this list, so no screen handles two shapes.
 export type Claim = {
   claim: string
   loop: Loop
   outcome: ClaimOutcome
   evidence: string
   citation: string
-  mismatch?: Mismatch
+  mismatches?: Mismatch[]
 }
 
 type Decision = { question: string; where: string; assumed: string; sensitivity: string }
@@ -61,7 +76,7 @@ export const inner = (f: Findings): Claim[] => (f.boundary ?? []).filter((c) => 
 // about them to resolve, and listing them under a heading about what failed
 // would read as an accusation the product does not make.
 export const unresolved = (f: Findings): Claim[] =>
-  inner(f).filter((c) => c.outcome !== 'verified' || !!c.mismatch)
+  inner(f).filter((c) => c.outcome !== 'verified' || !!c.mismatches?.length)
 
 // rate is the derived summary the rubric permits only beside its decomposition,
 // so this returns null rather than 0 when there is nothing to divide: a run with
@@ -91,6 +106,17 @@ export const verdictTone = (v: FindingsVerdict): string =>
   v === 'reproducible' ? 'var(--ok)' : v === 'partial' ? 'var(--warn)' : 'var(--err)'
 
 // A dead link and nothing published are different findings, and only the first
-// is one an author can still fix, so they never share a tone.
-export const releaseTone = (r: ReleaseResult): string =>
-  r === 'found' ? 'var(--ok)' : r === 'partial' ? 'var(--warn)' : r === 'dead' ? 'var(--err)' : 'var(--fg-3)'
+// is one an author can still fix, so they never share a tone. A page the run
+// could not fetch is neither: it is a limit of the run and says nothing about
+// the authors, so it is neutral, and darker than nothing published so the two
+// are not read as one. A record rather than a chain of conditions, so a result
+// added to the type does not compile until it has a tone.
+const RELEASE_TONE: Record<ReleaseResult, string> = {
+  found: 'var(--ok)',
+  partial: 'var(--warn)',
+  none: 'var(--fg-3)',
+  dead: 'var(--err)',
+  not_fetched: 'var(--fg-2)',
+}
+
+export const releaseTone = (r: ReleaseResult): string => RELEASE_TONE[r] ?? 'var(--fg-3)'
