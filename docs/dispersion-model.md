@@ -32,7 +32,21 @@ describes the auditing instrument, and a single run's verdict has to be reported
 as one draw under stated conditions.
 
 The estimands and the model-free estimator below answer the first question, the
-model the second, and the three tests the third.
+model the second, and the three tests the third. The study in one picture:
+
+```mermaid
+flowchart TB
+    P["a paper and what<br/>its authors released"] --> R
+    E["an environment profile:<br/>agent system, network, inputs"] --> R
+    R["k runs, each a fresh session"] --> Y
+    C["the paper's claims,<br/>listed by two coders"] --> Y
+    Y["per claim and run:<br/>reproduced or not,<br/>decided by the system"] --> H
+    H["disagreement between runs:<br/>per claim h, per paper H"] --> M
+    M["the model splits it between<br/>paper, environment and run"] --> T
+    T{"three tests: is it<br/>a property of the paper?"}
+    T -->|yes| A["report H as how completely the<br/>paper pins down its own analysis"]
+    T -->|no| B["report a run as one draw<br/>under stated conditions"]
+```
 
 The evidence that prompted the question is a pilot of 49 runs of three papers
 ([`repeat-runs-pilot.md`](repeat-runs-pilot.md)): the spread between runs is
@@ -168,6 +182,21 @@ $$\operatorname{corr}(u_p, \omega_p) = \rho.$$
 - Claim-specific disagreement between runs, beyond the shared shock, is the
   Bernoulli variation of claims whose $q$ is away from 0 and 1. That is where a
   decision the paper left open shows up: it moves one claim, not the whole run.
+
+The same model as a picture. Each box on the left moves the chance that a claim
+reproduces. The box at the bottom sets how large a run's shock is, and it is
+where a paper gets a dispersion of its own:
+
+```mermaid
+flowchart LR
+    U["paper u<br/>how reproducible the paper is overall"] --> L
+    W["claim w<br/>how hard this claim is"] --> L
+    B["environment β<br/>the shift a profile gives every paper"] --> L
+    V["paper × environment v<br/>which papers a profile helps or hurts"] --> L
+    N["run η<br/>a shock shared by all claims of one run"] --> L
+    S["spread of the run shock s<br/>set by the environment (α)<br/>and by the paper (ω)"] --> N
+    L(["chance that claim c<br/>reproduces in run r"])
+```
 
 The split between the two is the one the pilot points at. On the latent scale,
 the share of a claim's between-run variance that is shared by the whole run is
