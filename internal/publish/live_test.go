@@ -25,6 +25,9 @@ type fakeLiveForge struct {
 	files map[string][]byte
 	puts  int      // PutFile calls
 	msgs  []string // CommitFiles messages, in order
+	// readErr fails GetFileContent for the paths it names, the way a forge
+	// that is down or rate-limited fails a read.
+	readErr map[string]error
 }
 
 func newFakeForge(tree []string) *fakeLiveForge {
@@ -45,6 +48,9 @@ func (f *fakeLiveForge) TreePaths(_ context.Context, _, _, commit string) ([]str
 }
 
 func (f *fakeLiveForge) GetFileContent(_ context.Context, _, _, path string) ([]byte, bool, error) {
+	if err := f.readErr[path]; err != nil {
+		return nil, false, err
+	}
 	b, ok := f.files[path]
 	return b, ok, nil
 }
@@ -538,5 +544,30 @@ func TestFinalizeLiveNamesTheRowThatDidNotDecode(t *testing.T) {
 	joined := strings.Join(rep.FindingProblems, "\n")
 	if rep.Findings || !strings.Contains(joined, "boundary[1]") || strings.Contains(joined, "not valid JSON") {
 		t.Fatalf("problems = %q, want the row named and no claim about the JSON", joined)
+	}
+}
+
+// TestFinalizeLiveFindingsTheForgeCouldNotRead checks that a forge that fails
+// to return verdict.json is recorded as a read failure, which is a different
+// fact from a file the run never wrote, and that the publish still goes ahead.
+// A failure to read UNVERIFIED.md, where that reason is written, does stop it:
+// the note would otherwise replace the agent's own file.
+func TestFinalizeLiveFindingsTheForgeCouldNotRead(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", FindingsFile})
+	forge.readErr = map[string]error{FindingsFile: errors.New("forge unavailable")}
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("a findings read failure aborted the publish: %v", err)
+	}
+	if rep.Findings || len(rep.FindingProblems) != 1 || !strings.Contains(rep.FindingProblems[0], "could not be read: forge unavailable") {
+		t.Fatalf("problems = %q, want the read failure", rep.FindingProblems)
+	}
+
+	forge = newFakeForge([]string{"README.md"})
+	forge.readErr = map[string]error{UnverifiedFile: errors.New("forge unavailable")}
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow()); err == nil || !strings.Contains(err.Error(), UnverifiedFile) {
+		t.Fatalf("FinalizeLive = %v, want the UNVERIFIED.md read failure", err)
 	}
 }
