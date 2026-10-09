@@ -45,12 +45,33 @@ Everything below is content you have already written in `REPRODUCIBILITY.md` and
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "verdict": "partial",
   "summary": "One paragraph: what reproduced, what did not, and what the outer loop means here.",
   "graded_at": "2026-07-14T10:41:00Z",
   "components": { "verified": 8, "partial": 2, "blocked": 3, "total": 13 },
-  "boundary":  [ ... ],
+  "boundary": [
+    {
+      "claim": "The classifier reaches 91.4% accuracy",
+      "loop": "inner",
+      "outcome": "verified",
+      "evidence": "Retrained from the released code: 89.6% on the held-out split",
+      "citation": "§6.1, Table 2",
+      "mismatches": [
+        {
+          "kind": "numeric",
+          "what": "held-out accuracy",
+          "reported": "91.4%",
+          "observed": "89.6%",
+          "reported_value": 91.4,
+          "observed_value": 89.6,
+          "unit": "%",
+          "note": "1.8 points lower; the paper does not say which split it reports"
+        }
+      ]
+    },
+    ...
+  ],
   "decisions": [ ... ],
   "scorecard": [ ... ],
   "released":  [ ... ]
@@ -60,10 +81,18 @@ Everything below is content you have already written in `REPRODUCIBILITY.md` and
 - **`verdict`** — `reproducible`, `partial`, or `not_reproducible`. About the inner loop, always.
 - **`components`** — the counts your per-component table produces. `verified + partial + blocked` must equal `total`, and `total` must equal the number of **inner**-loop rows in `boundary`. These travel with any rate you give, so the decomposition it summarizes is never out of sight.
 - **`boundary`** — one row per component, `{ "claim", "loop", "outcome", "evidence", "citation" }`. `loop` is `inner` or `outer`. `outcome` is `verified`, `partial`, or `blocked` for an inner-loop claim, and **always** `not_scored` for an outer-loop one — you never score the study with human participants, and a file that does is rejected. `evidence` is the evidence or the specific blocker. `citation` is the section, figure, or table, on the same terms as criterion 6.
-- **A mismatch is not an outcome.** When your observation disagrees with the paper, add `"mismatch": { "kind", "reported", "observed", "delta" }` to that row — *including on a row you marked verified*. `kind` is `numeric` (a number differs), `ordering` (a ranking or direction differs), `contradiction` (the paper disagrees with itself), or `typo` (a plain error in the paper). Reproducing 89.6% against a reported 91.4% is verified **and** a numeric mismatch of −1.8 pp. Recording only the outcome would hide the one thing an author most needs to know.
+- **A mismatch is not an outcome.** When your observation disagrees with the paper, add a `mismatches` list to that row, *including on a row you marked verified*, with one entry for each quantity that disagrees. Two quantities are two entries, never one entry holding both. Each entry is an object with these fields:
+  - `kind`, a string: `numeric` (a number differs), `ordering` (a ranking or direction differs), `contradiction` (the paper disagrees with itself), or `typo` (a plain error in the paper).
+  - `what`, a string: the quantity being compared, such as "held-out accuracy". Optional, and worth writing whenever the claim names more than one quantity.
+  - `reported` and `observed`, both strings and both required: the paper's value as the paper states it, and your value as the run got it. Write them as text even when they are numbers: "91.4%", "about 45%", "0.76 to 0.81", "B ranks above A".
+  - `reported_value` and `observed_value`, each a JSON number or `null`: the same two values as plain numbers, `91.4` and `89.6`, when each one is a single number. Use `null` when it is not, as for a range, a ranking, or a sentence.
+  - `unit`, a string: the unit of the two values, such as "%", "ms", or "participants". Optional.
+  - `note`, a string: the size of the gap in words and, when you know it, its cause. Optional.
+
+  Reproducing 89.6% against a reported 91.4% is verified **and** a numeric mismatch of −1.8 pp, written as the entry in the example above. Recording only the outcome would hide the one thing an author most needs to know.
 - **`decisions`** — one per hidden decision, `{ "question", "where", "assumed", "sensitivity" }`. All four are required; an assumption with no stated sensitivity is a risk you took and did not report.
 - **`scorecard`** — exactly one row for each of `code`, `data`, `license`, `preregistration`, `supplement`: `{ "criterion", "found", "url", "searched" }`. When `found` is true, `url` is the address you actually fetched. When it is false, `searched` lists the places you looked.
-- **`released`** — one row per place you searched for the **authors'** artifacts: `{ "where", "what", "result", "url" }`. `result` is `found`, `partial`, `none` (nothing was ever published there), or `dead` (something was published and no longer resolves). Those last two are different findings and must not be collapsed — a dead link is something the authors can still fix.
+- **`released`** has one row per place you searched for the **authors'** artifacts: `{ "where", "what", "result", "url" }`, all strings. `result` is `found`, `partial`, `none` (nothing was ever published there), `dead` (something was published and no longer resolves), or `not_fetched` (you were not allowed or able to look: the sandbox refused the domain, a paywall stood in the way, or the fetch failed; say which in `what`). `none` and `dead` are different findings and must not be collapsed, because a dead link is something the authors can still fix. `not_fetched` is not `none` either: reporting that the authors released nothing when you could not look is the worst error this audit can make. A `not_fetched` row has no `url`.
 
 ## The instrument — `instrument.json`
 
