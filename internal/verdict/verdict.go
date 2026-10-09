@@ -383,8 +383,10 @@ func rows[T any](p *parsed, top map[string]json.RawMessage, name string, decode 
 		p.incomplete[name] = true
 		return nil, nil
 	}
-	var out []T
-	var paths []string
+	// Made rather than declared, so a list the file wrote as [] is served as []
+	// and not as null.
+	out := make([]T, 0, len(items))
+	paths := make([]string, 0, len(items))
 	for i, item := range items {
 		at := fmt.Sprintf("%s[%d]", name, i)
 		row, ok := decode(item, at)
