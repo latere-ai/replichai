@@ -207,6 +207,9 @@ func TestTheWorkspaceProtocolSaysThereIsNoRemote(t *testing.T) {
 		"OUTSIDE /s/workspace",
 		`"$TMPDIR"`,
 		"EGRESS_BLOCKED",
+		// The refusal is recorded with the result the findings schema has for
+		// it, so the system can read a row an agent would otherwise word freely.
+		`the result "not_fetched"`,
 		`"$VIRTUAL_ENV"`,
 		"do not create a virtualenv inside",
 		"never as \"no artifact",
