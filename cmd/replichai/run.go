@@ -67,7 +67,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		owner: owner, invite: invite, publish: *doPublish,
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
-		publishers: make(map[string]*publisher),
+		publishers: make(map[int]*publisher),
 	}
 	statePath := filepath.Join(batch.Root(positional[0]), "batch.json")
 	reportPath := filepath.Join(batch.Root(positional[0]), "report.md")
@@ -116,6 +116,8 @@ func firstNonEmpty(values ...string) string {
 
 // projectRunner runs one paper of a project. It holds the publishers it
 // prepared so an execution reaches the repository its own preparation created.
+// They are kept by the run's index rather than by paper reference, because two
+// runs of one paper may both be prepared before either executes.
 type projectRunner struct {
 	method       method.Method
 	options      localOptions
@@ -135,7 +137,7 @@ type projectRunner struct {
 	repositories repositorySource
 
 	mu         sync.Mutex
-	publishers map[string]*publisher
+	publishers map[int]*publisher
 }
 
 // repositorySource supplies Prepare with the repository for one paper. A batch
@@ -195,7 +197,7 @@ func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved, prior
 		return err
 	}
 	r.mu.Lock()
-	r.publishers[entry.Reference()] = pub
+	r.publishers[entry.Index] = pub
 	r.mu.Unlock()
 	return nil
 }
@@ -224,7 +226,7 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 	}
 
 	r.mu.Lock()
-	pub := r.publishers[entry.Reference()]
+	pub := r.publishers[entry.Index]
 	r.mu.Unlock()
 
 	var outcome batch.Outcome
@@ -273,7 +275,7 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 	}
 
 	auditor := audit.NewSessionAuditor(controller, r.method, opts...)
-	destination := filepath.Join(r.out, slugify(entry.Reference()))
+	destination := filepath.Join(r.out, runDirectory(entry))
 	result, err := auditor.Run(ctx, entry.Reference(), destination)
 	outcome.Session = result.Ref.ID
 	outcome.Model = result.Status.Model
@@ -290,4 +292,15 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		return outcome, fmt.Errorf("%s: %s", result.Status.TerminalReason, strings.TrimSpace(result.Status.Error))
 	}
 	return outcome, nil
+}
+
+// runDirectory names the local directory for one run's artifacts under --out.
+// A paper that runs once keeps the directory it always had; the runs of a
+// paper that runs more than once are told apart by a run suffix, so they do
+// not write over each other's output.
+func runDirectory(entry batch.Resolved) string {
+	if entry.Runs > 1 {
+		return fmt.Sprintf("%s-run-%d", slugify(entry.Reference()), entry.Run)
+	}
+	return slugify(entry.Reference())
 }
