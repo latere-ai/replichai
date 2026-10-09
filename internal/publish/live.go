@@ -205,9 +205,10 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 
 // readFindings reads verdict.json from the committed tree and validates it.
 // It reports whether usable findings are present and, if not, why: an absent
-// file, unparseable JSON, or the specific schema problems. Each reason is
-// phrased so it can be copied into the manifest and into UNVERIFIED.md
-// unchanged.
+// file, a file that is not a JSON object, or the specific schema problems,
+// which name each field or row that could not be read as well as each broken
+// rule. Each reason is phrased so it can be copied into the manifest and into
+// UNVERIFIED.md unchanged.
 func readFindings(ctx context.Context, forge LiveForge, owner, name string) (bool, []string) {
 	raw, present, err := forge.GetFileContent(ctx, owner, name, FindingsFile)
 	if err != nil {
@@ -216,7 +217,7 @@ func readFindings(ctx context.Context, forge LiveForge, owner, name string) (boo
 	if !present {
 		return false, []string{"the run did not write " + FindingsFile}
 	}
-	problems, err := verdict.Validate(raw)
+	_, problems, err := verdict.Validate(raw)
 	if err != nil {
 		return false, []string{err.Error()}
 	}
