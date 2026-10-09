@@ -5,10 +5,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,7 +25,8 @@ import (
 
 // fakeRepositories stands in for GitHub under the project runner: it records
 // what Prepare asked for and answers with publishers over the in-process
-// forge, so the whole of `run --publish` is driven without a network.
+// forge, so the whole of `run --publish` is driven without a network. Each
+// allocation gets a name of its own, as the registry's suffix gives one.
 type fakeRepositories struct {
 	forge      *httptest.Server
 	allocated  []string
@@ -32,7 +35,7 @@ type fakeRepositories struct {
 
 func (f *fakeRepositories) Allocate(_ context.Context, paperRef string) (*publisher, error) {
 	f.allocated = append(f.allocated, paperRef)
-	return f.publisher("open-hai", "fresh-"+slugify(paperRef)), nil
+	return f.publisher("open-hai", fmt.Sprintf("fresh-%s-%d", slugify(paperRef), len(f.allocated))), nil
 }
 
 func (f *fakeRepositories) Reattach(_ context.Context, repo, _ string) (*publisher, error) {
@@ -62,7 +65,7 @@ func testProjectRunner(t *testing.T, repos repositorySource) *projectRunner {
 		method: m, runtimeName: "memory", out: t.TempDir(),
 		owner: "open-hai", publish: true, timeout: time.Minute, maxRevisions: 1,
 		stdout: newTemp(t), stderr: newTemp(t),
-		publishers: make(map[string]*publisher), repositories: repos,
+		publishers: make(map[int]*publisher), repositories: repos,
 	}
 }
 
@@ -102,9 +105,11 @@ func TestRunDrivesAProjectAndWritesItsReport(t *testing.T) {
 	if string(report) != state.Report() {
 		t.Fatalf("report.md is not the final report:\n%s", report)
 	}
+	// A paper that runs once keeps the directory it always had, with no
+	// run suffix.
 	for _, entry := range state.Entries {
-		if entry.Directory == "" || !strings.HasPrefix(entry.Directory, filepath.Join(dir, "runs")) {
-			t.Errorf("%s ran outside --out: %q", entry.Paper, entry.Directory)
+		if want := filepath.Join(dir, "runs", slugify(entry.Paper)); entry.Directory != want {
+			t.Errorf("%s ran in %q, want %q", entry.Paper, entry.Directory, want)
 		}
 	}
 }
@@ -188,5 +193,65 @@ func TestAResumedPaperReturnsToItsRepository(t *testing.T) {
 	}
 	if got := resumed.Entries[0]; got.Repo != first || got.Phase != batch.Done {
 		t.Fatalf("after resuming: %+v, want %s and done", got, first)
+	}
+}
+
+// preparedTogether holds every Execute until every run is prepared, then lets
+// them execute one at a time. Both runs of a pool of two may be prepared
+// before either executes, and in that schedule a publisher kept by paper
+// reference is overwritten by the second run before the first reads it.
+// Executing one at a time keeps the in-process forge to one caller.
+type preparedTogether struct {
+	*projectRunner
+	prepared sync.WaitGroup
+	execute  sync.Mutex
+}
+
+func (p *preparedTogether) Prepare(ctx context.Context, entry batch.Resolved, prior batch.EntryState) error {
+	defer p.prepared.Done()
+	return p.projectRunner.Prepare(ctx, entry, prior)
+}
+
+func (p *preparedTogether) Execute(ctx context.Context, entry batch.Resolved) (batch.Outcome, error) {
+	p.prepared.Wait()
+	p.execute.Lock()
+	defer p.execute.Unlock()
+	return p.projectRunner.Execute(ctx, entry)
+}
+
+// TestTwoRunsOfOnePaperKeepTheirOwnRepositoryAndDirectory checks that two
+// runs of one paper under --parallel 2 each publish into the repository their
+// own preparation allocated and write into a directory of their own. Keyed by
+// paper reference, both runs took the second run's repository and wrote over
+// each other's output.
+func TestTwoRunsOfOnePaperKeepTheirOwnRepositoryAndDirectory(t *testing.T) {
+	const ref = "10.1145/3654777.3676417"
+	repos := &fakeRepositories{forge: fakeForge(t)}
+	runner := &preparedTogether{projectRunner: testProjectRunner(t, repos)}
+	runner.prepared.Add(2)
+	file := batch.File{Papers: []batch.Entry{{Paper: ref, Runs: 2}}}
+
+	state, err := batch.Run(t.Context(), file, runner, batch.Options{
+		Parallel: 2, StatePath: filepath.Join(t.TempDir(), "batch.json"), Publishing: true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v: %+v", err, state.Entries)
+	}
+	if len(repos.allocated) != 2 {
+		t.Fatalf("two runs allocated %d repositories: %v", len(repos.allocated), repos.allocated)
+	}
+	allocated := map[string]bool{
+		"open-hai/fresh-" + slugify(ref) + "-1": true,
+		"open-hai/fresh-" + slugify(ref) + "-2": true,
+	}
+	for index, entry := range state.Entries {
+		if !allocated[entry.Repo] {
+			t.Errorf("run %d published into %q, which was not allocated to it alone", entry.Run, entry.Repo)
+		}
+		delete(allocated, entry.Repo)
+		want := filepath.Join(runner.out, fmt.Sprintf("%s-run-%d", slugify(ref), index+1))
+		if entry.Run != index+1 || entry.Directory != want {
+			t.Errorf("run %d wrote into %q, want %q", entry.Run, entry.Directory, want)
+		}
 	}
 }
