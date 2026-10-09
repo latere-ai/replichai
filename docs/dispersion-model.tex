@@ -84,16 +84,53 @@
 \maketitle
 
 \setstretch{1.08}
-A proposal for measuring how much repeat runs of one paper disagree, and
-whether that disagreement is a property of the paper. Nothing here has
-been estimated yet. It is written for review before a study is
-registered.
+When an AI agent is asked to reproduce the same paper several times, its
+runs do not agree with each other. This note proposes how to measure
+that disagreement and how to tell what causes it. Nothing here has been
+estimated yet. It is written for review before a study is registered.
 
-The evidence it answers is a pilot of 49 runs of three papers (Appendix
-A): the spread between runs is real and large, and most of it in the
-pilot came from the agent system, the network and labeling rather than
-the paper. The model below therefore treats the environment as a facet
-to estimate, not as noise, and gives each paper its own dispersion
+\section{Research question}\label{research-question}
+
+\textbf{When repeat runs of one paper disagree about whether its results
+reproduce, where does the disagreement come from: the paper, the
+conditions the run had, or chance?}
+
+Three questions make that precise:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{How large is it?} For each result a paper reports, how likely
+  is it that two independent runs disagree about whether it reproduced?
+\item
+  \textbf{What does it belong to?} How much of the disagreement comes
+  from the paper and the materials its authors released, how much from
+  the environment of the run (which AI agent ran it, what it could reach
+  on the network, which copy of the paper it was given), and how much is
+  left as chance between runs under the same conditions?
+\item
+  \textbf{Is it a property of the paper?} Does the amount of
+  disagreement differ reliably from paper to paper, does the ranking of
+  papers hold when the environment changes, and does disagreement rise
+  on exactly the results affected when a stated detail is withheld from
+  a paper?
+\end{enumerate}
+
+The answer decides what an audit may report. If the third question is
+answered yes, a paper's disagreement can be reported as a measure of how
+completely the paper and its materials pin down its own analysis. If
+not, the disagreement describes the auditing instrument, and a single
+run's verdict has to be reported as one draw under stated conditions.
+
+The estimands and the model-free estimator below answer the first
+question, the model the second, and the three tests the third.
+
+The evidence that prompted the question is a pilot of 49 runs of three
+papers (Appendix A): the spread between runs is real and large, and most
+of it in the pilot came from the agent system, the network and labeling
+rather than the paper. The model therefore treats the environment as a
+facet to estimate, not as noise, and gives each paper its own dispersion
 instead of pooling one.
 
 \section{Setting}\label{setting}
@@ -147,7 +184,8 @@ own right.
 \section{Data and notation}\label{data-and-notation}
 
 {\def\LTcaptype{none} % do not increment counter
-\begin{longtable}[]{@{}
+\par\nobreak\addvspace{\medskipamount}\noindent\begin{minipage}{\linewidth}
+\begin{tabular}{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{0.1667}}
   >{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{0.8333}}@{}}
 \toprule\noalign{}
@@ -157,9 +195,6 @@ Symbol
 Meaning
 \end{minipage} \\
 \midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
 \(p = 1, \dots, P\) & papers \\
 \(c = 1, \dots, m_p\) & claims of paper \(p\): the paper's reported
 quantitative results, frozen per paper by two human coders before any
@@ -172,7 +207,9 @@ small number of designed levels, crossed with papers \\
 the run's observed value is within the registered tolerance of the
 reported value, decided by the system from the run's reported number,
 never by the agent's label \\
-\end{longtable}
+\bottomrule\noalign{}
+\end{tabular}
+\end{minipage}\par\addvspace{\medskipamount}
 }
 
 A claim the run did not attempt, or could not run, is \(Y = 0\) and also
@@ -226,7 +263,8 @@ unstable (\(q = 0.5\)) and the rest stable (\(q = 0.95\)), the 95\%
 range of \(\hat H / H\) was:
 
 {\def\LTcaptype{none} % do not increment counter
-\begin{longtable}[]{@{}
+\par\nobreak\addvspace{\medskipamount}\noindent\begin{minipage}{\linewidth}
+\begin{tabular}{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2432}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2973}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.1351}}
@@ -242,14 +280,13 @@ Spread
 Run-level SD, same data
 \end{minipage} \\
 \midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
 3 & 0.39 to 1.55 & 4.0× & can be 0; unusable \\
 5 & 0.64 to 1.39 & 2.2× & 0.34 to 1.65 \\
 8 & 0.73 to 1.29 & 1.8× & 0.49 to 1.51 \\
 10 & 0.77 to 1.26 & 1.6× & 0.54 to 1.44 \\
-\end{longtable}
+\bottomrule\noalign{}
+\end{tabular}
+\end{minipage}\par\addvspace{\medskipamount}
 }
 
 For comparison, the 95\% interval on a single paper's run standard
@@ -370,7 +407,7 @@ relative to \(\tau_u^2\), which \(E\rho^2\) already contains. Three
 prompts give two degrees of freedom for a prompt main effect, so prompts
 are a fixed facet, and no claim generalizes beyond the prompts tested.
 
-\Needspace{20\baselineskip}
+\Needspace{24\baselineskip}
 \section{Sample size}\label{sample-size}
 
 The intended corpus is the 76 CHI papers that have shared both data and
@@ -381,7 +418,8 @@ estimated at \(k = 3\); per-paper dispersion is not. A design that can
 grow into the main study:
 
 {\def\LTcaptype{none} % do not increment counter
-\begin{longtable}[]{@{}
+\par\nobreak\addvspace{\medskipamount}\noindent\begin{minipage}{\linewidth}
+\begin{tabular}{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2200}}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3800}}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
@@ -394,9 +432,6 @@ Papers × runs
 Purpose
 \end{minipage} \\
 \midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
 Internal pilot & 16 × 8, one profile & Estimate \(\tau_\omega^2\) and
 the reliability of \(\hat H_p\). These runs count toward the main
 study \\
@@ -407,7 +442,9 @@ Environment facet & 20 × 2 more profiles × 4 & \(\beta_e\),
 \(\alpha_e\), the paper × environment interaction, and test 2 \\
 Noise floor and withholding & 5 to 8 fully specified papers, as
 published and with one detail withheld & Test 3 \\
-\end{longtable}
+\bottomrule\noalign{}
+\end{tabular}
+\end{minipage}\par\addvspace{\medskipamount}
 }
 
 The decision rule between ``× 5'' and ``× 3'' is written into the
@@ -466,7 +503,8 @@ those other sources first. The main text proposes the measurement.
 \subsection{The runs}\label{the-runs}
 
 {\def\LTcaptype{none} % do not increment counter
-\begin{longtable}[]{@{}
+\par\nobreak\addvspace{\medskipamount}\noindent\begin{minipage}{\linewidth}
+\begin{tabular}{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.5814}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.1860}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.1163}}
@@ -482,9 +520,6 @@ Runs started
 With a verdict
 \end{minipage} \\
 \midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
 Johnson, Sengupta, Schöning and Hecht (2016). \emph{The Geography and
 Importance of Localness in Geotagged Social Media.} CHI '16, 515--526.
 \href{https://doi.org/10.1145/2858036.2858122}{10.1145/2858036.2858122}
@@ -498,7 +533,9 @@ Stereotypes in Image Search Results for Occupations.} CHI '15,
 3819--3828.
 \href{https://doi.org/10.1145/2702123.2702520}{10.1145/2702123.2702520}
 & Unequal representation & 21 & 10 \\
-\end{longtable}
+\bottomrule\noalign{}
+\end{tabular}
+\end{minipage}\par\addvspace{\medskipamount}
 }
 
 Each run is its own private repository under \texttt{open-hai}, named
@@ -524,7 +561,8 @@ registry reads, \texttt{replication.json}, records neither, so the mix
 is invisible to anything that reads only the manifest.
 
 {\def\LTcaptype{none} % do not increment counter
-\begin{longtable}[]{@{}
+\par\nobreak\addvspace{\medskipamount}\noindent\begin{minipage}{\linewidth}
+\begin{tabular}{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1905}}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1310}}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.0714}}
@@ -549,9 +587,6 @@ Hidden decisions
 Outer-loop rows
 \end{minipage} \\
 \midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
 Geography & Claude Code & 5 & 14 to 22 & 38\%, SD 18 pp & 12 to 22 & 2
 to 5 \\
 Geography & Codex & 5 & 18 to 21 & 28\%, SD 5 pp & 17 to 28 & 2 to 4 \\
@@ -562,7 +597,9 @@ Unequal representation & Claude Code & 5 & 11 to 16 & 73\%, SD 9 pp & 13
 to 22 & 5 to 6 \\
 Unequal representation & Codex & 4 & 12 to 15 & 61\%, SD 9 pp & 17 to 24
 & 5 \\
-\end{longtable}
+\bottomrule\noalign{}
+\end{tabular}
+\end{minipage}\par\addvspace{\medskipamount}
 }
 
 The verified rate is the share of a run's inner-loop components that the
@@ -682,7 +719,8 @@ The runs already extract the paper's own headline results, in
 tail:
 
 {\def\LTcaptype{none} % do not increment counter
-\begin{longtable}[]{@{}
+\par\nobreak\addvspace{\medskipamount}\noindent\begin{minipage}{\linewidth}
+\begin{tabular}{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.2195}}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1341}}
   >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1341}}
@@ -707,13 +745,12 @@ In at least half
 In one run only
 \end{minipage} \\
 \midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
 Geography & 7 of 10 & 9 to 16 & 83 & 10 & 36 & 21 \\
 Progressive autonomy & 0 of 6 & none & none & & & \\
 Unequal representation & 10 of 10 & 10 to 18 & 94 & 3 & 36 & 24 \\
-\end{longtable}
+\bottomrule\noalign{}
+\end{tabular}
+\end{minipage}\par\addvspace{\medskipamount}
 }
 
 A claim list taken from one extraction would freeze one arbitrary draw.
