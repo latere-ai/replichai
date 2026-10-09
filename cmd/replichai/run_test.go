@@ -86,7 +86,7 @@ func TestRunDrivesAProjectAndWritesItsReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, stderr)
 	}
-	if !strings.Contains(stdout, "2 papers: 2 done, 0 failed") {
+	if !strings.Contains(stdout, "2 runs: 2 done, 0 failed") {
 		t.Fatalf("the report does not account for both papers:\n%s", stdout)
 	}
 	// The state and the report are beside the project file, and the report
