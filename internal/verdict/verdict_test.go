@@ -268,6 +268,30 @@ func TestAReleaseThatFoundSomethingLinksToIt(t *testing.T) {
 	}
 }
 
+// A run that was not allowed to look found nothing about the authors, so a
+// refused fetch is its own result, distinct from none and from dead. Recording
+// it as none would say the authors released nothing when the run never saw.
+// There is no URL to require: the run did not reach one.
+func TestAReleaseTheRunCouldNotFetchIsItsOwnResult(t *testing.T) {
+	v := good()
+	v.Released = append(v.Released, verdict.Release{
+		Where: "Zenodo", What: "not fetched, the sandbox refused zenodo.org", Result: verdict.NotFetched,
+	})
+	_, ps, err := verdict.Validate(raw(t, v))
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if len(ps) != 0 {
+		t.Fatalf("a release the run could not fetch was rejected: %v", ps)
+	}
+
+	v.Released[3].Result = "blocked"
+	_, ps, _ = verdict.Validate(raw(t, v))
+	if len(only(ps, "released[3].result")) != 1 || !strings.Contains(ps[0].Message, "not_fetched") {
+		t.Fatalf("problems = %v, want the result named with not_fetched among the choices", ps)
+	}
+}
+
 func TestParseRoundTrips(t *testing.T) {
 	want := good()
 	got, ps, err := verdict.Parse(raw(t, want))

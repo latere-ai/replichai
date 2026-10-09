@@ -119,6 +119,12 @@ var Criteria = []Criterion{Code, Data, License, Preregistration, Supplement}
 // Result is what one search for the authors' artifacts found. NothingFound and
 // Dead are distinct: nothing was published, versus something was published and
 // no longer resolves. Only the second can be fixed by the author.
+//
+// NotFetched is distinct from both. The run was not allowed or able to look, as
+// when the sandbox refused the domain, a paywall stood in the way, or the fetch
+// failed, so it says nothing about what the authors published. Recording it as
+// NothingFound would report that an author released nothing when the run never
+// saw the page.
 type Result string
 
 // The search results.
@@ -127,6 +133,7 @@ const (
 	PartlyFound  Result = "partial"
 	NothingFound Result = "none"
 	Dead         Result = "dead"
+	NotFetched   Result = "not_fetched"
 )
 
 // Verdict is the whole of verdict.json.
@@ -230,7 +237,7 @@ var (
 	knownLoop    = map[Loop]bool{Inner: true, Outer: true}
 	knownClaim   = map[ClaimOutcome]bool{Verified: true, PartlyVerified: true, Blocked: true, NotScored: true}
 	knownKind    = map[MismatchKind]bool{Numeric: true, Ordering: true, Contradiction: true, Typo: true}
-	knownResult  = map[Result]bool{Found: true, PartlyFound: true, NothingFound: true, Dead: true}
+	knownResult  = map[Result]bool{Found: true, PartlyFound: true, NothingFound: true, Dead: true, NotFetched: true}
 	knownCrit    = func() map[Criterion]bool {
 		m := make(map[Criterion]bool, len(Criteria))
 		for _, c := range Criteria {
@@ -707,7 +714,7 @@ func (p *parsed) check() {
 			add(at("where"), "does not say where it looked")
 		}
 		if !knownResult[r.Result] {
-			add(at("result"), fmt.Sprintf("%q is not one of found, partial, none, dead", r.Result))
+			add(at("result"), fmt.Sprintf("%q is not one of found, partial, none, dead, not_fetched", r.Result))
 		}
 		if (r.Result == Found || r.Result == PartlyFound) && strings.TrimSpace(r.URL) == "" {
 			add(at("url"), "found something with no URL to it")
