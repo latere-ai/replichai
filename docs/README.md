@@ -42,3 +42,4 @@ not documentation of the software.
 | [`consultations.md`](consultations.md) | what researchers advised in August 2026, the decisions it leaves open, and where each stood in October |
 | [`repeat-runs-pilot.md`](repeat-runs-pilot.md) | what 49 runs of three papers showed about run-to-run variation, and where it came from |
 | [`dispersion-model.md`](dispersion-model.md) | a proposed statistical model that gives each paper its own run-to-run dispersion, and the tests that would show it describes the paper |
+| [`dispersion-model.pdf`](dispersion-model.pdf) | the same model as a manuscript that reads on its own, with the pilot as its appendix. [`../tools/manuscript/build.py`](../tools/manuscript/build.py) builds it and its `.tex` from the two pages above; rebuild after editing either |
