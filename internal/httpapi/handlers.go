@@ -2919,8 +2919,8 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 // repoName strips an "owner/" prefix from a repository path, so a session's
 // recorded "open-hai/name" resolves to the "name" the forge source keys on.
 func repoName(full string) string {
-	if i := strings.LastIndex(full, "/"); i >= 0 {
-		return full[i+1:]
+	if _, name, ok := strings.CutLast(full, "/"); ok {
+		return name
 	}
 	return full
 }
