@@ -373,6 +373,7 @@ func TestAMistypedFieldIsAProblemAtItsPath(t *testing.T) {
 		{"a decision field as an object", func(d map[string]any) { row(d, "decisions", 0)["sensitivity"] = map[string]any{"pp": 0.4} }, "decisions[0].sensitivity"},
 		{"a scorecard row as a string", func(d map[string]any) { d["scorecard"].([]any)[1] = "data: none" }, "scorecard[1]"},
 		{"searched as a string", func(d map[string]any) { row(d, "scorecard", 1)["searched"] = "OSF" }, "scorecard[1].searched"},
+		{"searched holding numbers", func(d map[string]any) { row(d, "scorecard", 1)["searched"] = []any{1, 2} }, "scorecard[1].searched"},
 		{"found as a string", func(d map[string]any) { row(d, "scorecard", 0)["found"] = "yes" }, "scorecard[0].found"},
 		{"released as an object", func(d map[string]any) { d["released"] = map[string]any{"github": "found"} }, "released"},
 		{"a release row as null", func(d map[string]any) { d["released"].([]any)[2] = nil }, "released[2]"},
@@ -387,6 +388,11 @@ func TestAMistypedFieldIsAProblemAtItsPath(t *testing.T) {
 			}
 			if len(ps) != 1 || ps[0].Field != tc.field {
 				t.Fatalf("problems = %v, want exactly one, at %s", ps, tc.field)
+			}
+			// The message says what is wrong with what was written, so it
+			// never calls a value of the right kind out of range unless it is.
+			if strings.Contains(ps[0].Message, "list out of range") {
+				t.Fatalf("message = %q", ps[0].Message)
 			}
 		})
 	}
