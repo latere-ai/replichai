@@ -73,8 +73,9 @@ CHECKED_TEXT = ("The tables in this appendix were computed from the records each
 # diagram changes, the build stops until the drawing is brought into line and
 # its digest here updated.
 FIGURES = [
-    {"file": "figure-flow.tex", "mermaid": "fd3ce93ffcf18ab1",
-     "caption": "The study in one picture. The shaded boxes are fixed before any run."},
+    {"file": "figure-flow.tex", "mermaid": "e75651ef05a3420a",
+     "caption": "The study in one picture. $H$ is the chance that two runs disagree about one result of the paper, "
+                "averaged over its results. The shaded boxes are fixed before any run."},
     {"file": "figure-model.tex", "mermaid": "68ab8e6c0f2db514",
      "caption": "What moves a claim's outcome in the model. The dashed box is where a paper gets a dispersion "
                 "of its own: $\\omega_p$ is what the third research question asks about."},

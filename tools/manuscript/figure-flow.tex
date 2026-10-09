@@ -12,13 +12,13 @@
   \node[given] (paper) {a paper and what\\its authors released};
   \node[given, right=10mm of paper] (env) {an environment profile:\\agent system, network, inputs};
   \node[box=88mm, below=9mm of $(paper.south)!0.5!(env.south)$] (runs) {$k$ runs, each a fresh session};
-  \node[box=58mm, below=8mm of runs] (y) {per claim and run: reproduced or not,\\decided by the system \ $Y_{pcer}\in\{0,1\}$};
+  \node[box=58mm, below=8mm of runs] (y) {per claim and run: reproduced or not,\\decided by the system};
   \node[given=40mm, right=9mm of y] (claims) {the paper's claims,\\listed by two coders};
-  \node[box=58mm, below=8mm of y] (h) {disagreement between runs:\\per claim $h_{pce}$, per paper $H_{pe}$};
+  \node[box=58mm, below=8mm of y] (h) {disagreement between runs:\\per claim, then per paper: $H$};
   \node[box=58mm, below=8mm of h] (model) {the model splits it between\\paper, environment and run};
   \node[draw, diamond, aspect=2.6, align=center, inner sep=1pt, below=8mm of model] (test) {three tests: is it\\a property of the paper?};
   \coordinate (split) at ($(test.south)+(0,-5mm)$);
-  \node[box=54mm, anchor=north east] (yes) at ($(split)+(-4mm,-7mm)$) {report $H$ as how completely the\\paper pins down its own analysis};
+  \node[box=54mm, anchor=north east] (yes) at ($(split)+(-4mm,-7mm)$) {report the paper's disagreement $H$\\as how completely the paper\\pins down its own analysis};
   \node[box=54mm, anchor=north west] (no) at ($(split)+(4mm,-7mm)$) {report a run as one draw\\under stated conditions};
 
   \draw[flow] (paper.south) -- (runs.north -| paper.south);

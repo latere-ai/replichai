@@ -32,9 +32,14 @@ Three questions make that precise:
    environment changes, and does disagreement rise on exactly the results
    affected when a stated detail is withheld from a paper?
 
-The answer decides what an audit may report. If the third question is answered
-yes, a paper's disagreement can be reported as a measure of how completely the
-paper and its materials pin down its own analysis. If not, the disagreement
+The answer to the first question, averaged over a paper's results, is the
+paper's disagreement. It is written $H$ below: the chance that two runs
+disagree about one result of the paper. It is 0 when every run agrees on every
+result, and at most 0.5, when each result reproduces in half of the runs.
+
+The answer to the third question decides what an audit may report. If it is
+yes, $H$ can be reported as a measure of how completely the paper and its
+materials pin down its own analysis. If not, the disagreement
 describes the auditing instrument, and a single run's verdict has to be reported
 as one draw under stated conditions.
 
@@ -48,10 +53,10 @@ flowchart TB
     R["k runs, each a fresh session"] --> Y
     C["the paper's claims,<br/>listed by two coders"] --> Y
     Y["per claim and run:<br/>reproduced or not,<br/>decided by the system"] --> H
-    H["disagreement between runs:<br/>per claim h, per paper H"] --> M
+    H["disagreement between runs:<br/>per claim, then per paper: H"] --> M
     M["the model splits it between<br/>paper, environment and run"] --> T
     T{"three tests: is it<br/>a property of the paper?"}
-    T -->|yes| A["report H as how completely the<br/>paper pins down its own analysis"]
+    T -->|yes| A["report the paper's disagreement H<br/>as how completely the paper<br/>pins down its own analysis"]
     T -->|no| B["report a run as one draw<br/>under stated conditions"]
 ```
 
@@ -128,7 +133,8 @@ $$h_{pce} = 2\, q_{pce}\,(1 - q_{pce}).$$
 It is zero for a claim that always or never reproduces, and largest at
 $q = 1/2$.
 
-**Paper instability.** The average over the paper's claims:
+**Paper instability.** The paper's disagreement $H$ from the research question,
+the average over the paper's claims:
 
 $$H_{pe} = \frac{1}{m_p} \sum_{c=1}^{m_p} h_{pce}.$$
 
