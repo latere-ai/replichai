@@ -767,24 +767,31 @@ func mistyped(raw json.RawMessage, dst any) string {
 		}
 		return fmt.Sprintf("is %s, want a time written like 2026-07-14T10:41:00Z", describe(raw))
 	}
-	var want string
+	got, want := describe(raw), wanted(t)
+	if got != want {
+		return fmt.Sprintf("is %s, want %s", got, want)
+	}
+	// The kind is right, so the fault is inside it: an entry of a list, or a
+	// number too large or too precise for the field.
+	if t.Kind() == reflect.Slice {
+		return "has an entry that is not " + wanted(t.Elem())
+	}
+	return fmt.Sprintf("is %s out of range", got)
+}
+
+// wanted names the JSON a field of type t takes.
+func wanted(t reflect.Type) string {
 	switch t.Kind() {
 	case reflect.String:
-		want = "a string"
+		return "a string"
 	case reflect.Bool:
-		want = "a boolean"
+		return "a boolean"
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		want = "a whole number"
+		return "a whole number"
 	case reflect.Float32, reflect.Float64:
-		want = "a number"
+		return "a number"
 	case reflect.Slice:
-		want = "a list"
-	default:
-		want = "an object"
+		return "a list"
 	}
-	got := describe(raw)
-	if got == want {
-		return fmt.Sprintf("is %s out of range", got)
-	}
-	return fmt.Sprintf("is %s, want %s", got, want)
+	return "an object"
 }
