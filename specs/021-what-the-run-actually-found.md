@@ -9,7 +9,7 @@ status: built
 
 **Scope:** turn the reproduction's findings from prose into data, and build the screens that read it, following the operator design (`Replichai Operator.dc.html`). Five tightly scoped children; this page holds the decisions they share and the order they land in.
 
-**Depends on:** [002](002-publishing-a-reproduction.md) (the manifest and the redistribution gate), [005](005-the-transcript-is-the-evidence.md) (the transcript), [007a](007a-the-study-protocol-as-an-artifact.md) (`instrument.json`, the precedent for an agent-authored schema), [011](011-what-a-session-costs.md) (what a session costs), [015](015-a-verdict-belongs-to-a-session.md) (a verdict belongs to the session that produced it), [018](018-one-list-of-projects.md) (the projects list this adds a tile to).
+**Depends on:** [002](002-publishing-reproductions.md) (the manifest and the redistribution gate), [005](005-the-transcript-is-the-evidence.md) (the transcript), [007a](007a-the-study-protocol-as-an-artifact.md) (`instrument.json`, the precedent for an agent-authored schema), [011](011-what-a-session-costs.md) (what a session costs), [015](015-a-verdict-belongs-to-a-session.md) (a verdict belongs to the session that produced it), [018](018-one-list-of-projects.md) (the projects list this adds a tile to).
 
 All five children shipped, one of them revised down: 021d specified a live-transcript relay that already existed, and the record of that mistake is kept in both files rather than edited away. The frontend suite is 102 unit tests and 11 browser files; the Go suite is green.
 

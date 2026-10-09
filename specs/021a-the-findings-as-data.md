@@ -13,7 +13,7 @@ Three things came out of the build. **The manifest schema stayed at 1**: the `fi
 
 **Scope:** `verdict.json`, the reproduction's findings as a validated artifact. A new `internal/verdict` package (schema, parse, validate), a new `method/rubric.md` criterion asking the agent for it, verification at finalize that records rather than blocks, and `GET /jobs/{id}/verdict` so the panes can read it. No frontend.
 
-**Depends on:** [021](021-what-the-run-actually-found.md), [007a](007a-the-study-protocol-as-an-artifact.md) (the package this mirrors), [002](002-publishing-a-reproduction.md) (the manifest and finalize), [006i](006i-server-side-mount-and-publish.md) (`publish.FinalizeLive`, the one finalize both paths share).
+**Depends on:** [021](021-what-the-run-actually-found.md), [007a](007a-the-study-protocol-as-an-artifact.md) (the package this mirrors), [002](002-publishing-reproductions.md) (the manifest and finalize), [006i](006i-server-side-mount-and-publish.md) (`publish.FinalizeLive`, the one finalize both paths share).
 
 ## Problem
 
@@ -46,16 +46,22 @@ type Claim struct {
     Outcome  ClaimOut  `json:"outcome"`           // verified | partial | blocked | not_scored
     Evidence string    `json:"evidence"`          // the evidence, or the specific blocker
     Citation string    `json:"citation"`          // section, figure, or table — rubric 2 and 6
-    Mismatch *Mismatch `json:"mismatch,omitempty"`
+    Mismatches []Mismatch `json:"mismatches,omitempty"` // one per quantity that disagrees
 }
 
 type Mismatch struct {
-    Kind     MismatchKind `json:"kind"`     // numeric | ordering | contradiction | typo
-    Reported string       `json:"reported"` // what the paper says
-    Observed string       `json:"observed"` // what the run got
-    Delta    string       `json:"delta,omitempty"`
+    Kind          MismatchKind `json:"kind"`     // numeric | ordering | contradiction | typo
+    What          string       `json:"what,omitempty"`
+    Reported      string       `json:"reported"` // what the paper says, as text
+    Observed      string       `json:"observed"` // what the run got, as text
+    ReportedValue *float64     `json:"reported_value,omitempty"` // the same, when it is one number
+    ObservedValue *float64     `json:"observed_value,omitempty"`
+    Unit          string       `json:"unit,omitempty"`
+    Note          string       `json:"note,omitempty"` // the size of the gap, or its cause
 }
 ```
+
+These are the schema 2 types. Schema 1 had one `mismatch` object per claim with a `delta` string; the parser still reads it, into this list and the note.
 
 `Mismatch` is what the prose could never surface: a claim can be *verified* and still disagree with the paper (89.6% against a reported 91.4%), and a paper can contain a plain error, such as a transposed number or a figure that contradicts its own caption. Recording the disagreement separately from the outcome is what stops "verified" from meaning "the paper was right" and "blocked" from being the only place a reader learns something went wrong.
 
