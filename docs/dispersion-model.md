@@ -11,6 +11,13 @@ yet. It is written for review before a study is registered.
 where does the disagreement come from: the paper, the conditions the run had,
 or chance?**
 
+This is not the question of whether a paper reproduces. Each run already
+answers that, result by result. The question is how far that answer depends on
+which run gave it. The two come apart: a paper whose results fail in every run
+shows no disagreement at all, exactly like a paper whose results reproduce in
+every run. Disagreement is largest when a result reproduces in about half of
+the runs.
+
 Three questions make that precise:
 
 1. **How large is it?** For each result a paper reports, how likely is it that
