@@ -5,6 +5,7 @@ package verdict_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +29,10 @@ func good() verdict.Verdict {
 				Claim: "Posture classifier reaches 91.4% accuracy", Loop: verdict.Inner,
 				Outcome: verdict.Verified, Citation: "§6.1",
 				Evidence: "Retrained from released code; 89.6%",
-				Mismatch: &verdict.Mismatch{Kind: verdict.Numeric, Reported: "91.4%", Observed: "89.6%", Delta: "-1.8 pp"},
+				Mismatches: []verdict.Mismatch{{
+					Kind: verdict.Numeric, What: "posture accuracy", Reported: "91.4%", Observed: "89.6%",
+					ReportedValue: new(91.4), ObservedValue: new(89.6), Unit: "%", Note: "-1.8 pp",
+				}},
 			},
 			{Claim: "Grip features outperform the IMU-only baseline", Loop: verdict.Inner, Outcome: verdict.Verified, Citation: "§6.2", Evidence: "Ablation reproduced, same ordering"},
 			{Claim: "End-to-end latency under 40 ms", Loop: verdict.Inner, Outcome: verdict.Blocked, Citation: "§6.3", Evidence: "Requires the authors' tablet; model unspecified"},
@@ -137,16 +141,16 @@ func TestEveryClaimCarriesEvidenceOrABlocker(t *testing.T) {
 
 func TestAMismatchNeedsBothNumbers(t *testing.T) {
 	v := good()
-	v.Boundary[0].Mismatch.Observed = ""
+	v.Boundary[0].Mismatches[0].Observed = ""
 	_, ps, _ := verdict.Validate(raw(t, v))
-	if len(only(ps, "boundary[0].mismatch")) == 0 {
+	if len(only(ps, "boundary[0].mismatches[0]")) == 0 {
 		t.Fatal("a mismatch with no observed value was accepted")
 	}
 
 	v = good()
-	v.Boundary[0].Mismatch.Kind = "wrong"
+	v.Boundary[0].Mismatches[0].Kind = "wrong"
 	_, ps, _ = verdict.Validate(raw(t, v))
-	if len(only(ps, "boundary[0].mismatch.kind")) == 0 {
+	if len(only(ps, "boundary[0].mismatches[0].kind")) == 0 {
 		t.Fatal("a mismatch of an unknown kind was accepted")
 	}
 }
@@ -270,7 +274,7 @@ func TestParseRoundTrips(t *testing.T) {
 	if err != nil || len(ps) != 0 {
 		t.Fatalf("Parse: %v %v", ps, err)
 	}
-	if got.Verdict != want.Verdict || len(got.Boundary) != len(want.Boundary) || got.Boundary[0].Mismatch == nil {
+	if got.Verdict != want.Verdict || len(got.Boundary) != len(want.Boundary) || !reflect.DeepEqual(got.Boundary[0].Mismatches, want.Boundary[0].Mismatches) {
 		t.Fatalf("round trip lost content: %+v", got)
 	}
 	if !got.GradedAt.Equal(want.GradedAt) {
