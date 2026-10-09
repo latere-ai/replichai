@@ -1,7 +1,8 @@
 # What repeat runs of one paper showed
 
 Three papers were audited ten to twenty-one times each on 10 and 11 September
-2026, all under one method (digest `sha256:f9af95bb…`). This page records what
+2026, all under one method, meaning one set of instructions and one rubric
+(digest `sha256:f9af95bb…`). This page records what
 those runs show about the idea that run-to-run variation measures what a paper
 left unsaid. The data was analyzed on 9 October 2026.
 
@@ -15,11 +16,11 @@ has to remove or measure those other sources first.
 
 ## The runs
 
-| Paper | Runs started | With a verdict |
-|---|---|---|
-| *Geography and importance of localness in…* | 10 | 10 |
-| *Progressive autonomy as preference learning…* | 18 | 6 |
-| *Unequal representation and gender stereotypes in…* | 21 | 10 |
+| Paper | Called below | Runs started | With a verdict |
+|---|---|---|---|
+| Johnson, Sengupta, Schöning and Hecht (2016). *The Geography and Importance of Localness in Geotagged Social Media.* CHI '16, 515–526. [10.1145/2858036.2858122](https://doi.org/10.1145/2858036.2858122) | Geography | 10 | 10 |
+| Ou (2026). *Progressive Autonomy as Preference Learning: A Formalization of Trust Calibration for Agentic Tool Use.* [arXiv:2605.19151](https://arxiv.org/abs/2605.19151) | Progressive autonomy | 18 | 6 |
+| Kay, Matuszek and Munson (2015). *Unequal Representation and Gender Stereotypes in Image Search Results for Occupations.* CHI '15, 3819–3828. [10.1145/2702123.2702520](https://doi.org/10.1145/2702123.2702520) | Unequal representation | 21 | 10 |
 
 Each run is its own private repository under `open-hai`, named after the paper
 with a four-character suffix. The suffixes below refer to those repositories.
@@ -48,7 +49,9 @@ neither, so the mix is invisible to anything that reads only the manifest.
 | Unequal representation | Claude Code | 5 | 11 to 16 | 73%, SD 9 pp | 13 to 22 | 5 to 6 |
 | Unequal representation | Codex | 4 | 12 to 15 | 61%, SD 9 pp | 17 to 24 | 5 |
 
-One run on the third paper left no `environment.json` and is not in this table.
+The verified rate is the share of a run's inner-loop components that the run
+marked verified. One run on the third paper left no `environment.json` and is
+not in this table.
 
 - **Spread depends on the system.** Within one paper, the component count
   varies about eight times more under Claude Code than under Codex (mean
@@ -77,8 +80,8 @@ differed was the paper they compared against and the label they gave the result.
   through its web reader. The two copies do not agree in every number, so the
   same computation was compared against different reported values.
 - **Identical disagreements, different labels.** Three runs (k38p, qzfk, r82q)
-  recorded the same disagreement on the Table 1 "trustworthy" coefficient:
-  reported −0.1117, observed −0.0463. Two labeled the claim *partial*, one
+  recorded the same disagreement on the "trustworthy" coefficient in the
+  paper's Table 1: reported −0.1117, observed −0.0463. Two labeled the claim *partial*, one
   *verified*.
 - **Factual items answered differently.** Whether the paper's data was
   released is a fact, yet on progressive autonomy three of six runs say yes and
@@ -175,7 +178,7 @@ python3 -I tools/repeat-runs/analyze.py fetch /tmp/pilot \
 python3 -I tools/repeat-runs/analyze.py report /tmp/pilot
 ```
 
-The fetch-refusal quotes, the Table 1 labels, and the before-and-after
-revision counts were read from the files directly. Three statements come from
+The fetch-refusal quotes, the labels on that coefficient, and the
+before-and-after revision counts were read from the files directly. Three statements come from
 independent review passes and were not recomputed: the ranking flips between
 systems, the grading-round counts by system, and the list of genuine gaps.
