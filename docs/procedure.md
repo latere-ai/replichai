@@ -22,9 +22,10 @@ The artifact pointer is often not where you would expect. In one audited paper t
 
 Search the paper's own footnotes and availability statement, the preprint page and its ancillary files, the publisher's artifact and supplementary tabs, the authors' personal and lab pages, code-hosting sites by author name and by system name, and the open research repositories.
 
-Two rules make this useful:
+Three rules make this useful:
 
 - **"Nothing found" is a finding**, but only after a search you can list. The search log is part of the deliverable.
+- **"Could not look" is not "nothing found".** A place the run was not allowed or able to reach, because the sandbox refused the address or the fetch failed, is recorded as not fetched. Reporting that an author released nothing when the run never saw the page is the worst error an audit can make.
 - **Existence is not availability.** A repository that resolves may still be empty, may contain an unmerged draft unrelated to the paper, or may be code that no longer runs. Each of those is a different score.
 
 ## 3. Split the inner loop from the outer loop

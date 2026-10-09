@@ -62,6 +62,11 @@ reproduction rate is a derived footnote to the table, never a figure to compare
 across papers, because how many components a paper decomposes into is itself a
 judgment. [`docs/procedure.md`](docs/procedure.md) explains why.
 
+One audit is one run. A second run of the same paper can split it into
+different components and reach different outcomes for them, and
+[`docs/repeat-runs-pilot.md`](docs/repeat-runs-pilot.md) records how far apart
+runs have landed. A project file can run one paper several times.
+
 ## Run it on your own machine
 
 `--runtime local` runs the whole session on your machine instead: the coding
@@ -161,10 +166,12 @@ for it, so a key can never reach a runtime it was not meant for.
 
 What an audit does is not in the code. `method/` holds the worker's standing
 instructions, the rubric every run is graded against, and the task template,
-and their digest is recorded with every published reproduction, so two audits
-can be compared only when they ran the same method. The grader runs inside the
-loop: a run that falls short of the rubric revises and is graded again, up to
-a budget.
+and their digest is recorded with every published reproduction. Two audits can
+be compared only when they ran the same method, and the same method is not
+enough: the coding agent, the model and the network a run had move its result
+too, and a run on your own machine records them in `environment.json`. The
+grader runs inside the loop: a run that falls short of the rubric revises and is
+graded again, up to a budget.
 
 [`docs/procedure.md`](docs/procedure.md) walks through one audit step by step:
 acquiring the paper, the artifact hunt, splitting the inner loop from the outer

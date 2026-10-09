@@ -38,7 +38,7 @@ not documentation of the software.
 
 | Page | |
 |---|---|
-| [`landscape.md`](landscape.md) | who else builds something adjacent, scored on four axes, as of July 2026 |
-| [`consultations.md`](consultations.md) | what researchers advised in August 2026, and the decisions it leaves open |
+| [`landscape.md`](landscape.md) | who else was building something adjacent in July 2026, scored on four axes, with the August corrections folded in |
+| [`consultations.md`](consultations.md) | what researchers advised in August 2026, the decisions it leaves open, and where each stood in October |
 | [`repeat-runs-pilot.md`](repeat-runs-pilot.md) | what 49 runs of three papers showed about run-to-run variation, and where it came from |
 | [`dispersion-model.md`](dispersion-model.md) | a proposed statistical model that gives each paper its own run-to-run dispersion, and the tests that would show it describes the paper |
