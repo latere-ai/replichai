@@ -1,15 +1,45 @@
 # A per-paper dispersion model
 
-A proposal for measuring how much repeat runs of one paper disagree, and
-whether that disagreement is a property of the paper. Nothing here has been
-estimated yet. It is written for review before a study is registered.
+When an AI agent is asked to reproduce the same paper several times, its runs
+do not agree with each other. This note proposes how to measure that
+disagreement and how to tell what causes it. Nothing here has been estimated
+yet. It is written for review before a study is registered.
 
-The evidence it answers is a pilot of 49 runs of three papers
+## Research question
+
+**When repeat runs of one paper disagree about whether its results reproduce,
+where does the disagreement come from: the paper, the conditions the run had,
+or chance?**
+
+Three questions make that precise:
+
+1. **How large is it?** For each result a paper reports, how likely is it that
+   two independent runs disagree about whether it reproduced?
+2. **What does it belong to?** How much of the disagreement comes from the paper
+   and the materials its authors released, how much from the environment of the
+   run (which AI agent ran it, what it could reach on the network, which copy of
+   the paper it was given), and how much is left as chance between runs under
+   the same conditions?
+3. **Is it a property of the paper?** Does the amount of disagreement differ
+   reliably from paper to paper, does the ranking of papers hold when the
+   environment changes, and does disagreement rise on exactly the results
+   affected when a stated detail is withheld from a paper?
+
+The answer decides what an audit may report. If the third question is answered
+yes, a paper's disagreement can be reported as a measure of how completely the
+paper and its materials pin down its own analysis. If not, the disagreement
+describes the auditing instrument, and a single run's verdict has to be reported
+as one draw under stated conditions.
+
+The estimands and the model-free estimator below answer the first question, the
+model the second, and the three tests the third.
+
+The evidence that prompted the question is a pilot of 49 runs of three papers
 ([`repeat-runs-pilot.md`](repeat-runs-pilot.md)): the spread between runs is
 real and large, and most of it in the pilot came from the agent system, the
-network and labeling rather than the paper. The model below therefore treats
-the environment as a facet to estimate, not as noise, and gives each paper its
-own dispersion instead of pooling one.
+network and labeling rather than the paper. The model therefore treats the
+environment as a facet to estimate, not as noise, and gives each paper its own
+dispersion instead of pooling one.
 
 ## Setting
 
