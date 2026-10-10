@@ -41,14 +41,16 @@ A claim carries a list of mismatches, each with the paper's value and the run's 
 
 A manifest is written for every run that was given a repository, including one that failed before its session existed, whose record says `failed` for `not_started`. The attempt count of a study is then a fact on record rather than an inference from timestamps.
 
-The manifest schema stayed at 1, as it did for the findings block: the record is optional and additive, and every manifest published before it still reads. A finalize that knows nothing about the run, which is what the recovery paths are, keeps the record an earlier finalize wrote.
+The manifest schema stayed at 1, as it did for the findings block: the record is optional and additive, and every manifest published before it still reads.
+
+A run is finalized more than once, and each finalize knows a different amount, so the record is merged rather than overwritten. A finalize that knows nothing keeps the earlier record. One of the same session fills what it does not know from the earlier record: `replichai finish` has the session's status and not the model that was asked for or the prompt, which only the starting process knew. An attempt that never started leaves the record of a session that did run, whose work the repository still holds. A different session replaces the record whole.
 
 Four things the record does not carry, each for a reason:
 
 - **The paper copy and the artifact snapshot.** The system does not hand the run its paper yet (decision 5), and a hash of whatever the agent fetched would misstate who fixed the input.
 - **An error message.** The reason is one of a closed list. A manifest may be made public, and nothing has scanned a runtime's error text for a path or a credential.
 - **The prompt digest of a resumed session.** The specification was fixed by the process that started it. Computing one from the method as it is now would describe a session that may have been given something else, so it is left empty.
-- **A study identifier.** The project and the run number place a run well enough for one project file. A study that spans several needs an identifier of its own, which belongs with the study view (decision 9).
+- **A study identifier.** The project and the run number place a run well enough for one project file. A study that spans several needs an identifier of its own, which belongs with the study view (decision 9). Until then `project` holds two kinds of value: the name a project file gives, for a run on the operator's machine, and the app's project id, for a run the server started.
 
 Still short: a hosted runtime reports no harness version, sandbox or grading rounds, so its record has the model, the times and the ending and little else. A session that started and then never reached the step that finalizes it leaves no manifest, though its reference is kept and `replichai finish` writes one. And the record `replichai push` files with the app has no run number yet.
 
