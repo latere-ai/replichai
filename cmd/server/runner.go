@@ -344,7 +344,12 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 			// reads verdict.json from the committed tree, so a recovered one has to
 			// be in the tree before the manifest is written.
 			harvestOutputs(ctx, e.gh, owner, name, j.ID, evidence)
-			_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), grade, providerEvents(evidence.Events), time.Now)
+			// The session's own account of the run, with what the job adds:
+			// the project it belongs to and the tier that was asked for.
+			record := publish.RunOf(evidence.Status)
+			record.Project, record.RequestedModel = j.ProjectID, string(j.Tier)
+			record.PromptDigest, record.Build = audit.PromptDigest(ctx), version
+			_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), grade, record, providerEvents(evidence.Events), time.Now)
 			return err
 		},
 	}
@@ -484,7 +489,9 @@ func (e *engineRunner) Publish(ctx context.Context, j *job.Job) error {
 		}
 	}
 
-	_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), verdict, events, time.Now)
+	// This path finalizes without the session in hand, so it knows nothing
+	// about the run and leaves whatever record an earlier finalize wrote.
+	_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), verdict, publish.Run{}, events, time.Now)
 	return err
 }
 

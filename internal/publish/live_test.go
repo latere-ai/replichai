@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/verdict"
@@ -94,7 +96,7 @@ func TestFinalizeLiveCleanTree(t *testing.T) {
 	events := []provider.Event{{Kind: "message", Content: "hello"}}
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, events, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -123,7 +125,7 @@ func TestFinalizeLiveLeakedTreeBarsPublic(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", "paper.pdf"})
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "leaky",
-		testID, "sha256:abcd", provider.GradeFailed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradeFailed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -150,7 +152,7 @@ func TestFinalizeLiveSecretInTranscriptBarsPublic(t *testing.T) {
 	}
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "leaky-transcript",
-		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, events, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -186,7 +188,7 @@ func TestFinalizeLiveIdempotentManifest(t *testing.T) {
 	forge := newFakeForge([]string{"README.md"})
 	args := func() (FinalizeReport, error) {
 		return FinalizeLive(context.Background(), forge, "open-hai", "r",
-			testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+			testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	}
 	if _, err := args(); err != nil {
 		t.Fatal(err)
@@ -259,7 +261,7 @@ func TestFinalizeLiveRecordsValidFindings(t *testing.T) {
 	forge.files[FindingsFile] = goodFindings(t)
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -295,7 +297,7 @@ func TestFinalizeLiveMissingFindingsStillPublishes(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", "REPRODUCIBILITY.md", "src/run.py"})
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("a missing verdict.json aborted the publish: %v", err)
 	}
@@ -330,7 +332,7 @@ func TestFinalizeLiveInvalidFindingsRecordsTheProblems(t *testing.T) {
 	forge.files[FindingsFile] = raw
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("invalid findings aborted the publish: %v", err)
 	}
@@ -353,7 +355,7 @@ func TestFinalizeLiveNonJSONFindings(t *testing.T) {
 	forge.files[FindingsFile] = []byte("# Reproducibility\n\nPartially reproducible.\n")
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -370,7 +372,7 @@ func TestFinalizeLiveDoesNotStackTheUnverifiedNote(t *testing.T) {
 
 	run := func() string {
 		if _, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-			testID, "sha256:abcd", provider.GradePassed, nil, fixedNow()); err != nil {
+			testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow()); err != nil {
 			t.Fatalf("FinalizeLive: %v", err)
 		}
 		return string(forge.files[UnverifiedFile])
@@ -404,7 +406,7 @@ func TestFinalizeLiveReportsARunThatCommittedNothing(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", IdentityFile})
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -433,7 +435,7 @@ func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", IdentityFile})
 	events := []provider.Event{{Kind: "message", Content: "hello"}}
 	first, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, events, fixedNow())
 	if err != nil || first.Reproduction {
 		t.Fatalf("first finalize = %+v, %v", first, err)
 	}
@@ -441,7 +443,7 @@ func TestFinalizeLiveStillReportsAnEmptyRepositoryOnRefinalize(t *testing.T) {
 	// The second pass sees everything the first one wrote. The fake tracks its
 	// tree, so this is the same state a real re-finalize meets.
 	second, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, events, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, events, fixedNow())
 	if err != nil {
 		t.Fatalf("re-finalize: %v", err)
 	}
@@ -489,7 +491,7 @@ func TestFinalizeRecordsARepositoryWithNoCommit(t *testing.T) {
 	id := paper.Identity{Key: "doi:10.1145/1", Title: "A paper", Scheme: paper.SchemeDOI}
 
 	rep, err := FinalizeLive(t.Context(), forge, "open-hai", "a-paper-a3f9", id,
-		"sha256:method", provider.GradePassed, nil, func() time.Time { return time.Unix(0, 0).UTC() })
+		"sha256:method", provider.GradePassed, Run{}, nil, func() time.Time { return time.Unix(0, 0).UTC() })
 	if err != nil {
 		t.Fatalf("an empty repository stopped the record being written: %v", err)
 	}
@@ -537,7 +539,7 @@ func TestFinalizeLiveNamesTheRowThatDidNotDecode(t *testing.T) {
 	forge.files[FindingsFile] = raw
 
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("FinalizeLive: %v", err)
 	}
@@ -556,7 +558,7 @@ func TestFinalizeLiveFindingsTheForgeCouldNotRead(t *testing.T) {
 	forge := newFakeForge([]string{"README.md", FindingsFile})
 	forge.readErr = map[string]error{FindingsFile: errors.New("forge unavailable")}
 	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow())
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
 	if err != nil {
 		t.Fatalf("a findings read failure aborted the publish: %v", err)
 	}
@@ -567,7 +569,253 @@ func TestFinalizeLiveFindingsTheForgeCouldNotRead(t *testing.T) {
 	forge = newFakeForge([]string{"README.md"})
 	forge.readErr = map[string]error{UnverifiedFile: errors.New("forge unavailable")}
 	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
-		testID, "sha256:abcd", provider.GradePassed, nil, fixedNow()); err == nil || !strings.Contains(err.Error(), UnverifiedFile) {
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow()); err == nil || !strings.Contains(err.Error(), UnverifiedFile) {
 		t.Fatalf("FinalizeLive = %v, want the UNVERIFIED.md read failure", err)
+	}
+}
+
+// The run record (046).
+
+// aRun is the record a local run hands finalize, with every field a caller can
+// know filled in.
+func aRun() Run {
+	return Run{
+		Project: "chi-2026-audit", Run: 2, Runs: 3,
+		Runtime: "local", Session: "s-1",
+		Harness: "claude-code", HarnessVersion: "2.1.269",
+		Model: &RunModel{Provider: "anthropic", ID: "claude-opus-5"}, RequestedModel: "best",
+		Sandbox: "host", Network: "allowlist", NetworkAllowed: 12, NetworkDigest: "sha256:beef",
+		PromptDigest: "sha256:cafe", Build: "327e052",
+		StartedAt:  time.Date(2026, 9, 11, 19, 53, 0, 0, time.UTC),
+		FinishedAt: time.Date(2026, 9, 11, 20, 12, 0, 0, time.UTC),
+		State:      "done", Reason: "succeeded",
+		Tokens: 123456, VendorCostMicroUSD: 25_700_000,
+	}
+}
+
+func manifestOf(t *testing.T, forge *fakeLiveForge) Manifest {
+	t.Helper()
+	var m Manifest
+	if err := json.Unmarshal(forge.files[ManifestFile], &m); err != nil {
+		t.Fatalf("manifest not committed as JSON: %v", err)
+	}
+	return m
+}
+
+// TestFinalizeLiveRecordsTheRun checks that what the caller knows about the run
+// reaches the manifest unchanged. Before this record the manifest carried the
+// method digest and the grade and nothing else, so two runs of one paper under
+// two agent systems could not be told apart from the file the registry reads.
+func TestFinalizeLiveRecordsTheRun(t *testing.T) {
+	forge := newFakeForge([]string{"README.md", "src/run.py"})
+	want := aRun()
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "a-paper-xyz",
+		testID, "sha256:abcd", provider.GradePassed, want, nil, fixedNow()); err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	got := manifestOf(t, forge).Run
+	if got == nil {
+		t.Fatal("the manifest carries no run record")
+	}
+	if !reflect.DeepEqual(*got, want) {
+		t.Errorf("run record = %+v\nwant         %+v", *got, want)
+	}
+}
+
+// TestFinalizeLiveCountsGradingRounds checks that the rounds are read from the
+// grades the tree carries when the caller did not count them, and that a count
+// the caller did make is kept.
+func TestFinalizeLiveCountsGradingRounds(t *testing.T) {
+	tree := []string{"src/run.py", "grade/verdict-0.json", "grade/verdict-1.json", "grade/notes.txt"}
+
+	forge := newFakeForge(tree)
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradePassed, aRun(), nil, fixedNow()); err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if got := manifestOf(t, forge).Run.Rounds; got != 2 {
+		t.Errorf("rounds = %d, want the 2 grades in the tree", got)
+	}
+
+	counted := aRun()
+	counted.Rounds = 5
+	forge = newFakeForge(tree)
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradePassed, counted, nil, fixedNow()); err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if got := manifestOf(t, forge).Run.Rounds; got != 5 {
+		t.Errorf("rounds = %d, want the 5 the caller counted", got)
+	}
+}
+
+// TestFinalizeLiveWithNoRunWritesNone checks that a finalize that knows nothing
+// about the run writes no run record, so the manifest keeps the shape a reader
+// of the earlier schema expects. Grades in the tree alone do not make one: a
+// record holding only a round count would say a run was described when it was
+// not.
+func TestFinalizeLiveWithNoRunWritesNone(t *testing.T) {
+	forge := newFakeForge([]string{"src/run.py", "grade/verdict-0.json"})
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow()); err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if manifestOf(t, forge).Run != nil {
+		t.Error("a finalize with no run record wrote one")
+	}
+	if strings.Contains(string(forge.files[ManifestFile]), `"run"`) {
+		t.Errorf("the manifest carries a run key it has nothing to put in:\n%s", forge.files[ManifestFile])
+	}
+}
+
+// TestFinalizeLiveIsIdempotentWithARun checks that re-finalizing a session
+// rewrites nothing. Everything in the record is terminal, so a second finalize
+// of the same session must find the manifest unchanged.
+func TestFinalizeLiveIsIdempotentWithARun(t *testing.T) {
+	forge := newFakeForge([]string{"src/run.py", "grade/verdict-0.json"})
+	finalize := func() FinalizeReport {
+		rep, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+			testID, "sha256:abcd", provider.GradePassed, aRun(), nil, fixedNow())
+		if err != nil {
+			t.Fatalf("FinalizeLive: %v", err)
+		}
+		return rep
+	}
+	finalize()
+	puts := forge.puts
+	if rep := finalize(); rep.ManifestCommitted || forge.puts != puts {
+		t.Errorf("a second finalize of the same run rewrote the manifest (puts %d -> %d)", puts, forge.puts)
+	}
+}
+
+// TestFinalizeLiveKeepsTheRunAnEarlierFinalizeRecorded checks that a later
+// finalize that knows nothing about the run does not erase the record. The
+// recovery paths re-finalize with no session in hand, and the run they are
+// finalizing still happened the way the first finalize said.
+func TestFinalizeLiveKeepsTheRunAnEarlierFinalizeRecorded(t *testing.T) {
+	forge := newFakeForge([]string{"src/run.py"})
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradePassed, aRun(), nil, fixedNow()); err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	puts := forge.puts
+
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradePassed, Run{}, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	if rep.ManifestCommitted || forge.puts != puts {
+		t.Error("a finalize that knew nothing about the run rewrote the manifest")
+	}
+	got := manifestOf(t, forge).Run
+	if got == nil || got.Harness != "claude-code" || got.Run != 2 {
+		t.Errorf("the earlier run record was lost: %+v", got)
+	}
+
+	// The same holds when something else did change: the record rides along.
+	if _, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradeFailed, Run{}, nil, fixedNow()); err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	m := manifestOf(t, forge)
+	if m.Reproduction.Verdict != provider.GradeFailed {
+		t.Errorf("the changed grade was not written: %q", m.Reproduction.Verdict)
+	}
+	if m.Run == nil || m.Run.Harness != "claude-code" {
+		t.Errorf("the run record did not survive a manifest that changed: %+v", m.Run)
+	}
+}
+
+// TestRunOfReadsASessionsStatus checks the part of the record that comes from
+// the session itself, which the CLI and the server both take from here.
+func TestRunOfReadsASessionsStatus(t *testing.T) {
+	started := time.Date(2026, 9, 11, 21, 53, 0, 0, time.FixedZone("CEST", 2*60*60))
+	status := managed.Status{
+		Ref:        managed.SessionRef{Runtime: "local", ID: "s-1"},
+		Model:      managed.ModelRef{Provider: "openai", ID: "gpt-6-astra"},
+		State:      managed.StateFailed,
+		StartedAt:  started,
+		FinishedAt: started.Add(19 * time.Minute),
+		Usage: managed.Usage{InputFresh: 100, Output: 23,
+			Details: map[string]int64{managed.DetailVendorCost: 1_580_000}},
+		TerminalReason: managed.ReasonTimedOut,
+		Error:          "the worker stage exited 1 at /Users/someone/private/path",
+	}
+	got := RunOf(status)
+	want := Run{
+		Runtime: "local", Session: "s-1",
+		Model:     &RunModel{Provider: "openai", ID: "gpt-6-astra"},
+		StartedAt: started.UTC(), FinishedAt: started.Add(19 * time.Minute).UTC(),
+		State: "failed", Reason: "timed_out",
+		Tokens: 123, VendorCostMicroUSD: 1_580_000,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("RunOf = %+v\nwant    %+v", got, want)
+	}
+	// The error text stays out: a manifest may be made public, and nothing has
+	// scanned a runtime's error message for what it carries.
+	if raw, err := json.Marshal(got); err != nil || strings.Contains(string(raw), "private") {
+		t.Errorf("the run record carries the session's error text: %s (%v)", raw, err)
+	}
+
+	// A status that was never filled in describes nothing.
+	if empty := RunOf(managed.Status{}); empty.known() {
+		t.Errorf("an empty status produced a run record: %+v", empty)
+	}
+}
+
+// TestRunWithOutputsReadsTheEnvironmentAndTheGrades checks what a local
+// session's own outputs add: the agent system and the reach of the sandbox,
+// which the pilot showed move a result more than the paper does, and how many
+// times the work was graded.
+func TestRunWithOutputsReadsTheEnvironmentAndTheGrades(t *testing.T) {
+	environment := `{
+	  "sandbox": {"driver": "host", "network_mode": "allowlist"},
+	  "harness": {"name": "codex", "version": "codex-cli 0.153.4", "auth": "harness"},
+	  "model": {"provider": "openai", "id": "gpt-6-astra"},
+	  "network": {"allowed": ["github.com", "arxiv.org", "doi.org"]}
+	}`
+	outputs := map[string][]byte{
+		EnvironmentFile:        []byte(environment),
+		"grade/verdict-0.json": []byte(`{}`),
+		"grade/verdict-1.json": []byte(`{}`),
+	}
+	got, err := Run{Session: "s-1"}.WithOutputs(outputs)
+	if err != nil {
+		t.Fatalf("WithOutputs: %v", err)
+	}
+	if got.Harness != "codex" || got.HarnessVersion != "codex-cli 0.153.4" || got.Sandbox != "host" || got.Network != "allowlist" {
+		t.Errorf("environment facets = %+v", got)
+	}
+	if got.NetworkAllowed != 3 || !strings.HasPrefix(got.NetworkDigest, "sha256:") {
+		t.Errorf("allowlist = %d hosts, digest %q", got.NetworkAllowed, got.NetworkDigest)
+	}
+	if got.Rounds != 2 || got.Session != "s-1" {
+		t.Errorf("rounds = %d, session = %q", got.Rounds, got.Session)
+	}
+
+	// The same hosts in another order are the same reach.
+	reordered := strings.Replace(environment, `["github.com", "arxiv.org", "doi.org"]`, `["doi.org", "github.com", "arxiv.org"]`, 1)
+	again, err := Run{}.WithOutputs(map[string][]byte{EnvironmentFile: []byte(reordered)})
+	if err != nil || again.NetworkDigest != got.NetworkDigest {
+		t.Errorf("a reordered allowlist changed the digest: %q vs %q (%v)", again.NetworkDigest, got.NetworkDigest, err)
+	}
+
+	// An open policy lists no hosts, and none are counted.
+	open, err := Run{}.WithOutputs(map[string][]byte{EnvironmentFile: []byte(`{"sandbox":{"driver":"container","network_mode":"open"}}`)})
+	if err != nil || open.Network != "open" || open.NetworkAllowed != 0 || open.NetworkDigest != "" {
+		t.Errorf("open policy = %+v (%v)", open, err)
+	}
+
+	// A hosted session has no outputs of this kind, and nothing is invented.
+	if bare, err := (Run{}).WithOutputs(nil); err != nil || bare.known() {
+		t.Errorf("no outputs produced %+v (%v)", bare, err)
+	}
+
+	// A record that cannot be read is reported, and the grades still count.
+	broken, err := Run{}.WithOutputs(map[string][]byte{EnvironmentFile: []byte(`{`), "grade/verdict-0.json": nil})
+	if err == nil || !strings.Contains(err.Error(), EnvironmentFile) || broken.Rounds != 1 {
+		t.Errorf("a broken environment record gave %+v, %v", broken, err)
 	}
 }

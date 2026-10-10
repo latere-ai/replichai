@@ -67,7 +67,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		owner: owner, invite: invite, publish: *doPublish,
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
-		publishers: make(map[int]*publisher),
+		publishers: make(map[int]*publisher), project: file.Project,
 	}
 	statePath := filepath.Join(batch.Root(positional[0]), "batch.json")
 	reportPath := filepath.Join(batch.Root(positional[0]), "report.md")
@@ -135,6 +135,8 @@ type projectRunner struct {
 	// GitHub, over the credential this machine holds. A test substitutes a
 	// source that makes no network calls.
 	repositories repositorySource
+	// project names the project the runs belong to, for each run's record.
+	project string
 
 	mu         sync.Mutex
 	publishers map[int]*publisher
@@ -203,6 +205,11 @@ func (r *projectRunner) Prepare(ctx context.Context, entry batch.Resolved, prior
 }
 
 // Execute audits one paper and publishes it.
+//
+// Every run that was given a repository leaves a manifest in it, whatever
+// became of the run. A run that fails before its session exists never reaches
+// the hook that finalizes a session, and its repository used to stay as
+// Prepare left it: created, empty, and with nothing to say why.
 func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batch.Outcome, error) {
 	options := r.options
 	if entry.Harness != "" {
@@ -211,18 +218,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 	if entry.Sandbox != "" {
 		options.sandbox = entry.Sandbox
 	}
-	controller, runtime, err := controllerFor(ctx, r.runtimeName, r.interval, options)
-	if err != nil {
-		return batch.Outcome{}, err
-	}
 	model := entry.Model
 	if model == "" {
 		model = audit.DefaultModelPreference
-	}
-	opts := []audit.SessionOption{
-		audit.WithSessionModel(model),
-		audit.WithSessionMaxRevisions(r.maxRevisions),
-		audit.WithSessionTimeout(r.timeout),
 	}
 
 	r.mu.Lock()
@@ -234,9 +232,27 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		outcome.PaperKey = key
 	}
 	if pub != nil {
+		outcome.Repo = pub.repoFullName()
+	}
+
+	controller, runtime, err := controllerFor(ctx, r.runtimeName, r.interval, options)
+	if err != nil {
+		return outcome, r.recordUnstarted(ctx, pub, entry, model, err)
+	}
+	opts := []audit.SessionOption{
+		audit.WithSessionModel(model),
+		audit.WithSessionMaxRevisions(r.maxRevisions),
+		audit.WithSessionTimeout(r.timeout),
+	}
+
+	// retained reports that the session reached the hook that finalizes it.
+	// Whatever that hook then did, the session's own account is the one to
+	// record, and no second one is written after it.
+	retained := false
+	if pub != nil {
 		capabilities, capErr := runtime.Capabilities(ctx)
 		if capErr != nil {
-			return outcome, capErr
+			return outcome, r.recordUnstarted(ctx, pub, entry, model, capErr)
 		}
 		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
 		if mounts {
@@ -249,9 +265,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		} else {
 			opts = append(opts, audit.WithLocalWorkspace())
 		}
-		outcome.Repo = pub.repoFullName()
 		opts = append(opts, audit.WithSessionHooks(managed.Hooks{
 			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+				retained = true
 				if !mounts {
 					workspace, err := workspaceOf(runtime, evidence.Status.Ref)
 					if err != nil {
@@ -268,8 +284,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 				if evidence.Status.Verdict != nil {
 					grade = provider.Grade(evidence.Status.Verdict.Grade)
 				}
+				record := r.placed(runRecord(runtime, evidence.Status, model, audit.PromptDigest(ctx), r.stderr), entry)
 				return finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, r.method.Digest(),
-					grade, providerEventsFromManaged(evidence.Events), r.invite, r.stdout)
+					grade, record, providerEventsFromManaged(evidence.Events), r.invite, r.stdout)
 			},
 		}))
 	}
@@ -286,6 +303,9 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		outcome.Grade = result.Status.Verdict.Grade.String()
 	}
 	if err != nil {
+		if !retained && result.Ref.ID == "" {
+			err = r.recordUnstarted(ctx, pub, entry, model, err)
+		}
 		return outcome, err
 	}
 	if result.Status.State == managed.StateFailed {
@@ -293,6 +313,38 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 	}
 	return outcome, nil
 }
+
+// placed adds where a run sits in its project to its record: the project, and
+// which run of the paper this was, of how many.
+func (r *projectRunner) placed(record publish.Run, entry batch.Resolved) publish.Run {
+	record.Project, record.Run, record.Runs = r.project, entry.Run, entry.Runs
+	return record
+}
+
+// recordUnstarted writes the manifest of a run that failed before a session
+// existed, and returns the failure that stopped it. A run with no repository
+// has nowhere to record anything, and its failure comes back as it was. A
+// manifest that could not be written is reported with the failure, since the
+// operator then has an empty repository to explain as well.
+func (r *projectRunner) recordUnstarted(ctx context.Context, pub *publisher, entry batch.Resolved, model string, cause error) error {
+	if pub == nil {
+		return cause
+	}
+	record := r.placed(notStarted(model), entry)
+	// The batch may be stopping because its context was cancelled. The record
+	// of that is still worth one short write.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), unstartedRecordTimeout)
+	defer cancel()
+	if err := finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, r.method.Digest(),
+		provider.GradeUnknown, record, nil, r.invite, r.stdout); err != nil {
+		return errors.Join(cause, fmt.Errorf("record that the run did not start: %w", err))
+	}
+	return cause
+}
+
+// unstartedRecordTimeout bounds the write of a manifest for a run that never
+// started.
+const unstartedRecordTimeout = 30 * time.Second
 
 // runDirectory names the local directory for one run's artifacts under --out.
 // A paper that runs once keeps the directory it always had; the runs of a

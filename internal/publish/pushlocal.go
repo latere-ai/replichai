@@ -221,12 +221,16 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
+// gradeDir is where a session keeps each round's grade, both on disk and in the
+// repository the grades are committed to.
+const gradeDir = "grade"
+
 // WorkspaceOutputs reads the files a finalize step commits beside the agent's
 // own history: the environment record and the judge's verdict, both authored
 // by the system rather than by the subject of the audit.
 func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 	outputs := make(map[string][]byte)
-	for _, name := range []string{"environment.json"} {
+	for _, name := range []string{EnvironmentFile} {
 		//nolint:gosec // the path is this program's own session directory
 		body, err := os.ReadFile(filepath.Join(sessionDir, "session", name))
 		if err != nil {
@@ -234,7 +238,7 @@ func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 		}
 		outputs[name] = body
 	}
-	entries, err := os.ReadDir(filepath.Join(sessionDir, "grade"))
+	entries, err := os.ReadDir(filepath.Join(sessionDir, gradeDir))
 	if err != nil {
 		// A session that was never graded has no verdict to commit, which is
 		// a fact about the run rather than a failure to read it.
@@ -246,11 +250,11 @@ func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 			continue
 		}
 		//nolint:gosec // the path is this program's own session directory
-		body, err := os.ReadFile(filepath.Join(sessionDir, "grade", entry.Name()))
+		body, err := os.ReadFile(filepath.Join(sessionDir, gradeDir, entry.Name()))
 		if err != nil {
 			continue
 		}
-		outputs["grade/"+entry.Name()] = body
+		outputs[gradeDir+"/"+entry.Name()] = body
 	}
 	return outputs, nil
 }
