@@ -17,6 +17,12 @@ committed. The commit log already holds that.
   own output directory (`<paper>-run-2`, and so on), and listing a paper twice
   means the same as `runs: 2`. The report counts runs and names the run beside
   a repeated paper.
+- `replication.json` says which run it was. A `run` block records the project
+  and the run's number among the runs of its paper, the runtime, the coding
+  agent and its version, the model that ran and the one that was asked for, the
+  sandbox and the network it could reach, a digest of the prompt it was given,
+  when it started and finished, how it ended, how many times it was graded, and
+  what it used. Manifests written before this still read.
 - The findings pane shows every disagreement a claim has with the paper, not
   one: each names the quantity it compares, the paper's value and the run's,
   and a note on the size or cause of the gap.
@@ -44,6 +50,9 @@ committed. The commit log already holds that.
   them and reported every run as done with the first run's repository.
 - Two runs of one paper started together no longer take each other's
   repository or write into the same output directory.
+- A run that fails before it starts leaves a manifest in the repository that
+  was created for it, saying it did not start. That repository used to stay
+  empty, with nothing in it to say why.
 - One field of the wrong type in `verdict.json` no longer costs the whole
   file. The findings are read row by row, the problem names the row, and the
   rest is kept. Before, such a file was reported as not valid JSON, which was

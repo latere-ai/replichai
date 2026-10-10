@@ -5,7 +5,7 @@ status: designed
 
 # 046 — One run is one draw
 
-**Status:** runs per paper and schema 2 of `verdict.json` built; the rest designed.
+**Status:** runs per paper, schema 2 of `verdict.json` and the run record built; the rest designed.
 
 **Scope:** making N runs of one paper a unit the platform can run, record and report on; treating the environment as something every run records and a study varies on purpose; and reporting what a set of runs shows rather than presenting one run's verdict as the paper's.
 
@@ -29,17 +29,28 @@ The environment moves the result as much as anything the pilot measured. A platf
 
 `runs: N` on the file or on one paper; a paper listed twice is two runs. Each run is its own session, repository and output directory, and resume matches a run by paper and run number. Before this, the batch keyed everything by the paper reference, so a resumed study silently dropped its failed and pending repeats and two concurrent runs could share a repository.
 
-Not yet carried through: `replichai push` files each run as its own session under the paper, which is right, but the record it files has no run number, so the app cannot say which run of a study a session was. That belongs with decision 3.
+Not yet carried through: `replichai push` files each run as its own session under the paper, which is right, but the record it files has no run number, so the app cannot say which run of a study a session was. The manifest does say (decision 3); the app's own record does not yet.
 
 ### 2. Schema 2 of `verdict.json` (built)
 
 A claim carries a list of mismatches, each with the paper's value and the run's value as text and, where they are single numbers, as numbers with a unit. Text fields accept whatever JSON the agent wrote and keep it. Each row is decoded on its own, so a malformed row is a problem at that row instead of an empty file, and `released` gains `not_fetched` for a fetch the run was not allowed or able to make. Schema 1 files still read. The method changed, so its digest moved: runs before and after are not comparable under one digest, which is what the digest is for.
 
-### 3. Every run records what it ran under, in the manifest (designed)
+### 3. Every run records what it ran under, in the manifest (built)
 
-`replication.json` gains a `run` block: agent system and harness version, model and tier, network policy and a digest of its allowlist, the hash of the paper copy and the artifact snapshot it was given, a prompt digest over the exact strings sent to the worker and the judge, the method digest, the replichai build revision, the study it belongs to and its run number, start and finish times, terminal state and reason, grading rounds, and cost. `environment.json` already holds part of this; the manifest is what the registry and any analysis read, so it carries it too.
+`replication.json` carries a `run` block. It says where the run sits (the project, and which run of the paper it was, of how many), what it ran on (the runtime and session, the harness and its version, the model the runtime resolved and the one that was asked for, the sandbox, the network policy with the size and a digest of its allowlist), what it was given (a prompt digest over the exact instructions, task and rubric, and the build of replichai that ran it), and how it went (start and finish, the terminal state and its reason, the grading rounds, the tokens and the cost the harness reported). `publish.RunOf` builds it from the session's status for the CLI and the server alike. A session on the operator's machine adds the harness, the sandbox and the rounds from its own session directory, so they are right even when the run committed nothing.
 
-A manifest is written for every outcome, including a run that failed before its session started, so the attempt count of a study is a fact on record rather than an inference from timestamps.
+A manifest is written for every run that was given a repository, including one that failed before its session existed, whose record says `failed` for `not_started`. The attempt count of a study is then a fact on record rather than an inference from timestamps.
+
+The manifest schema stayed at 1, as it did for the findings block: the record is optional and additive, and every manifest published before it still reads. A finalize that knows nothing about the run, which is what the recovery paths are, keeps the record an earlier finalize wrote.
+
+Four things the record does not carry, each for a reason:
+
+- **The paper copy and the artifact snapshot.** The system does not hand the run its paper yet (decision 5), and a hash of whatever the agent fetched would misstate who fixed the input.
+- **An error message.** The reason is one of a closed list. A manifest may be made public, and nothing has scanned a runtime's error text for a path or a credential.
+- **The prompt digest of a resumed session.** The specification was fixed by the process that started it. Computing one from the method as it is now would describe a session that may have been given something else, so it is left empty.
+- **A study identifier.** The project and the run number place a run well enough for one project file. A study that spans several needs an identifier of its own, which belongs with the study view (decision 9).
+
+Still short: a hosted runtime reports no harness version, sandbox or grading rounds, so its record has the model, the times and the ending and little else. A session that started and then never reached the step that finalizes it leaves no manifest, though its reference is kept and `replichai finish` writes one. And the record `replichai push` files with the app has no run number yet.
 
 ### 4. The first graded attempt is kept (designed)
 
@@ -73,9 +84,9 @@ The proposal: the primary measure is per-claim reproducibility given the release
 
 1. A project file with `runs: 3` for one paper produces three sessions, three repositories and three output directories, and a resume after one failure runs exactly the failed and pending runs. (Built.)
 2. Every pilot mismatch shape and `not_fetched` validate under schema 2; one malformed row is a problem at that row and the rest of the file survives; schema 1 files still validate. (Built. Of the 29 findings files the pilot runs published, 27 validate and all 214 mismatches are read; the other two record a search as found with no address, which is a rule the files break.)
-3. A manifest names system, model, network profile, paper copy hash, prompt digest, study, run number, terminal reason and grading rounds, and one exists for a run that never started.
+3. A manifest names system, model, network profile, prompt digest, project, run number, terminal reason and grading rounds, and one exists for a run that never started. (Built, for a session on the operator's machine; a hosted session's record is sparser. The paper copy hash waits for decision 5.)
 4. A study can run with grading and zero revisions, and round 0's findings are on record for every run.
-5. `tools/repeat-runs/analyze.py` reproduces its report from manifests alone, with no transcript reading.
+5. `tools/repeat-runs/analyze.py` reproduces its report from manifests alone, with no transcript reading. (Partly: it reads the agent system and how a run ended from the run record, and falls back to `environment.json` for runs finalized before the record.)
 6. A study screen shows per-claim reproduction counts per profile, and a session verdict says it is one run.
 
 ## Not in scope
