@@ -176,7 +176,7 @@ func (s State) Summarize() Totals {
 		}
 		totals.Usage.Add(entry.Usage)
 		totals.Wall += entry.Wall()
-		totals.VendorUS += entry.Usage.Details["vendor_cost_micro_usd"]
+		totals.VendorUS += entry.Usage.Details[managed.DetailVendorCost]
 	}
 	return totals
 }
