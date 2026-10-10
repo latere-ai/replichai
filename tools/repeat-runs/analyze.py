@@ -68,12 +68,30 @@ def load(path):
     return value if isinstance(value, dict) else None
 
 
-def system_of(env):
+def system_of(manifest, env):
+    """Names the agent system a run ran on.
+
+    The manifest says so since it gained a run record. A run finalized before
+    that says it only in its environment.json, and a run with neither is
+    unrecorded.
+    """
+    run = (manifest or {}).get("run") or {}
+    if run.get("harness") or run.get("model"):
+        harness = run.get("harness") or run.get("runtime") or "?"
+        return f"{harness} / {(run.get('model') or {}).get('id', '?')}"
     if not env:
         return "unrecorded"
     harness = (env.get("harness") or {}).get("name", "?")
     model = (env.get("model") or {}).get("id", "?")
     return f"{harness} / {model}"
+
+
+def ending_of(manifest):
+    """Says how a run ended, where its manifest records it."""
+    run = (manifest or {}).get("run") or {}
+    if not run.get("state"):
+        return "not recorded"
+    return f"{run['state']}: {run.get('reason') or 'no reason given'}"
 
 
 def numbers(text):
@@ -94,12 +112,14 @@ def runs_in(directory):
         if not os.path.isdir(base):
             continue
         verdict = load(os.path.join(base, "verdict.json"))
+        manifest = load(os.path.join(base, "replication.json"))
         papers[name.rsplit("-", 1)[0]].append({
             "repo": name,
             "verdict": verdict if verdict and "boundary" in verdict else None,
             "instrument": load(os.path.join(base, "instrument.json")),
-            "manifest": load(os.path.join(base, "replication.json")),
-            "system": system_of(load(os.path.join(base, "environment.json"))),
+            "manifest": manifest,
+            "system": system_of(manifest, load(os.path.join(base, "environment.json"))),
+            "ending": ending_of(manifest),
             "meta": load(os.path.join(base, "repo.json")) or {},
         })
     return papers
@@ -124,12 +144,12 @@ def report(directory):
         print(f"| {paper} | {len(runs)} | {sum(1 for r in runs if r['verdict'])} | {', '.join(sorted(digests)) or 'none'} |")
 
     print("\n## Runs with no verdict\n")
-    print("| paper | repo | created | commits |")
-    print("|---|---|---|---|")
+    print("| paper | repo | created | commits | how it ended |")
+    print("|---|---|---|---|---|")
     for paper, runs in papers.items():
         for r in runs:
             if not r["verdict"]:
-                print(f"| {paper} | {r['repo'][-4:]} | {r['meta'].get('created_at', '?')} | {r['meta'].get('commits', '?')} |")
+                print(f"| {paper} | {r['repo'][-4:]} | {r['meta'].get('created_at', '?')} | {r['meta'].get('commits', '?')} | {r['ending']} |")
 
     print("\n## Dispersion by agent system\n")
     print("| paper | system | n | inner components | verified rate mean | rate SD | rate SD, denominator fixed | decisions | outer rows | data found | schema accepted |")
