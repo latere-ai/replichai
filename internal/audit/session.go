@@ -5,6 +5,8 @@ package audit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -37,13 +39,17 @@ func (mount SessionMount) Set() bool { return strings.TrimSpace(mount.URL) != ""
 // SessionResult is everything one audit produced on the managed path, where the
 // run is a durable managed.Controller session rather than a provider run.
 type SessionResult struct {
-	Paper                string
-	Ref                  managed.SessionRef
-	Status               managed.Status
-	Events               []managed.Event
-	Artifacts            []managed.Artifact
-	ArtifactDir          string
-	MethodDigest         string
+	Paper        string
+	Ref          managed.SessionRef
+	Status       managed.Status
+	Events       []managed.Event
+	Artifacts    []managed.Artifact
+	ArtifactDir  string
+	MethodDigest string
+	// PromptDigest identifies the instructions, task and rubric the session
+	// was given. It is empty for a resumed session, whose specification was
+	// fixed by the process that created it.
+	PromptDigest         string
 	InstrumentPresent    bool
 	InstrumentViolations []instrument.Violation
 	Released             bool
@@ -167,7 +173,7 @@ func (a *SessionAuditor) Run(ctx context.Context, paper, destination string) (Se
 	}
 	runCtx, cancel := a.runContext(startCtx)
 	defer cancel()
-	result := SessionResult{Paper: paper, ArtifactDir: destination, MethodDigest: a.method.Digest()}
+	result := SessionResult{Paper: paper, ArtifactDir: destination, MethodDigest: a.method.Digest(), PromptDigest: promptDigest(spec)}
 	hooks := a.retentionHooks(&result, destination)
 	managedResult, err := a.controller.Execute(runCtx, spec, hooks)
 	a.apply(&result, managedResult)
@@ -283,11 +289,49 @@ func (a *SessionAuditor) retentionHooks(result *SessionResult, destination strin
 		}
 		result.InstrumentPresent, result.InstrumentViolations = present, violations
 		if externalRetain != nil {
-			return externalRetain(ctx, evidence)
+			return externalRetain(context.WithValue(ctx, promptDigestKey{}, result.PromptDigest), evidence)
 		}
 		return nil
 	}
 	return hooks
+}
+
+// promptDigestKey carries the session's prompt digest to the caller's Retain
+// hook. The hook is built before the session is specified and finalizes the
+// run before Run returns, so the context it is called with is the one place
+// both can reach.
+type promptDigestKey struct{}
+
+// PromptDigest returns the prompt digest of the session a Retain hook is
+// retaining, or the empty string when the session was resumed and its
+// specification is not known.
+func PromptDigest(ctx context.Context) string {
+	digest, _ := ctx.Value(promptDigestKey{}).(string)
+	return digest
+}
+
+// promptDigest identifies exactly what a session was given, as "sha256:<hex>":
+// its instructions, its task and its rubric. The method digest covers the
+// method's files, and the instructions here are those files with the
+// repository protocol the runtime added, so this digest moves when that
+// protocol does and the method digest does not. Each part is framed with its
+// name and length, as the method digest frames its documents.
+func promptDigest(spec managed.SessionSpec) string {
+	rubric := ""
+	if spec.Evaluation != nil {
+		rubric = spec.Evaluation.Rubric
+	}
+	h := sha256.New()
+	for _, part := range []struct{ name, text string }{
+		{"instructions", spec.Instructions},
+		{"task", spec.Task},
+		{"rubric", rubric},
+	} {
+		// hash.Hash.Write never returns an error, so neither can this.
+		_, _ = fmt.Fprintf(h, "%s:%d:", part.name, len(part.text))
+		h.Write([]byte(part.text))
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 func collectManagedArtifacts(ctx context.Context, evidence managed.EvidenceReader, destination string) ([]managed.Artifact, error) {

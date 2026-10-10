@@ -308,3 +308,76 @@ func TestTheNetworkPolicyFollowsWhatTheRuntimeCanEnforce(t *testing.T) {
 		}
 	}
 }
+
+// TestThePromptDigestCoversWhatTheMethodDigestMisses checks the digest of what
+// a session was actually given. The method digest covers the method's files.
+// The runtime adds a protocol around them that says where the work goes and
+// whether to push, and that text changes with the kind of repository the run
+// has, so two runs under one method digest can be handed different
+// instructions. The prompt digest tells them apart.
+func TestThePromptDigestCoversWhatTheMethodDigestMisses(t *testing.T) {
+	digestOf := func(options ...SessionOption) string {
+		t.Helper()
+		var seen string
+		options = append(options, WithSessionHooks(managed.Hooks{Retain: func(ctx context.Context, _ managed.EvidenceReader) error {
+			seen = PromptDigest(ctx)
+			return nil
+		}}))
+		result, err := NewSessionAuditor(sessionController(t, managedmemory.New()), testMethod, options...).Run(context.Background(), "paper", t.TempDir())
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !strings.HasPrefix(result.PromptDigest, "sha256:") {
+			t.Fatalf("the result's prompt digest is %q, want a sha256 digest", result.PromptDigest)
+		}
+		if seen != result.PromptDigest {
+			t.Fatalf("the retain hook saw digest %q and the result carries %q", seen, result.PromptDigest)
+		}
+		return result.PromptDigest
+	}
+
+	plain := digestOf()
+	if again := digestOf(); again != plain {
+		t.Errorf("the same session specification gave two digests: %s and %s", plain, again)
+	}
+	if workspace := digestOf(WithLocalWorkspace()); workspace == plain {
+		t.Error("a session told its workspace is a repository has the digest of one that was not")
+	}
+
+	// A different paper is a different task, so a different digest.
+	other, err := NewSessionAuditor(sessionController(t, managedmemory.New()), testMethod).Run(context.Background(), "another paper", t.TempDir())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if other.PromptDigest == plain {
+		t.Error("two papers were given the same prompt digest")
+	}
+}
+
+// TestAResumedSessionHasNoPromptDigest checks that resuming a session does not
+// invent the digest. The specification was fixed when the session was created
+// and is not available to the process that resumes it; computing one from the
+// method as it is now would describe a session that may have been given
+// something else.
+func TestAResumedSessionHasNoPromptDigest(t *testing.T) {
+	store := managedmemory.NewStore()
+	first := managedmemory.NewWithStore(store, managedmemory.Config{PollsBeforeDone: 2})
+	ref, err := NewSessionAuditor(sessionController(t, first), testMethod).Start(context.Background(), "paper")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	seen := "unset"
+	second := managedmemory.NewWithStore(store, managedmemory.Config{PollsBeforeDone: 2})
+	result, err := NewSessionAuditor(sessionController(t, second), testMethod, WithSessionHooks(managed.Hooks{
+		Retain: func(ctx context.Context, _ managed.EvidenceReader) error {
+			seen = PromptDigest(ctx)
+			return nil
+		},
+	})).Resume(context.Background(), ref, "paper", t.TempDir())
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if result.PromptDigest != "" || seen != "" {
+		t.Errorf("a resumed session carries prompt digest %q (hook saw %q), want none", result.PromptDigest, seen)
+	}
+}
