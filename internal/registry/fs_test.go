@@ -106,3 +106,48 @@ func TestFSSourceFile(t *testing.T) {
 		t.Errorf("absent file: ok=%v err=%v; want false, nil", ok, err)
 	}
 }
+
+// TestAManifestReadsWithOrWithoutARunRecord checks both shapes the registry
+// meets. Every manifest published before the run record has none, and those
+// have to keep reading; one written since carries it, and the registry hands
+// it on untouched.
+func TestAManifestReadsWithOrWithoutARunRecord(t *testing.T) {
+	root := t.TempDir()
+	// A manifest as it was written before the record existed, verbatim.
+	writeRepo(t, root, "before", []byte(`{
+	  "schema": 1,
+	  "paper": {"key": "10.1145/x", "scheme": "doi", "title": "A Paper", "slug": "a-paper"},
+	  "reproduction": {"repo": "open-hai/before", "created": "2026-09-11T20:12:43Z", "method_digest": "sha256:f9af", "verdict": "passed"},
+	  "redistribution": {"third_party_data": false, "review": "clear"},
+	  "findings": {"present": true, "reproduction": true}
+	}`))
+	with := manifestOf("after", "10.1145/x", "a-paper", t1)
+	with.Run = &publish.Run{Project: "chi-2026-audit", Run: 2, Runs: 3, Harness: "codex", State: "done", Rounds: 2}
+	body, err := json.Marshal(with)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	writeRepo(t, root, "after", body)
+
+	src := NewFSSource(root)
+	before, err := src.Manifest(context.Background(), "before")
+	if err != nil {
+		t.Fatalf("a manifest with no run record does not read: %v", err)
+	}
+	if before.Run != nil || before.Reproduction.MethodDigest != "sha256:f9af" {
+		t.Errorf("manifest without a run record = %+v", before)
+	}
+	after, err := src.Manifest(context.Background(), "after")
+	if err != nil {
+		t.Fatalf("a manifest with a run record does not read: %v", err)
+	}
+	if after.Run == nil || after.Run.Harness != "codex" || after.Run.Run != 2 || after.Run.Rounds != 2 {
+		t.Errorf("run record read back as %+v", after.Run)
+	}
+
+	// Both are still reproductions of the same paper to the registry.
+	priors, err := New(src, WithWarner(func(string) {})).Lookup(context.Background(), doiID("10.1145/x"))
+	if err != nil || len(priors) != 2 {
+		t.Errorf("Lookup found %d reproductions, err=%v, want both", len(priors), err)
+	}
+}
