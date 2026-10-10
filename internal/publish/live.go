@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -309,10 +310,10 @@ func commitManifestIfChanged(ctx context.Context, forge LiveForge, owner, name s
 	} else if ok {
 		var prev Manifest
 		if json.Unmarshal(existing, &prev) == nil {
-			if m.Run == nil {
-				// This finalize knew nothing about the run. The record an
-				// earlier one wrote still describes it.
-				m.Run = prev.Run
+			// What an earlier finalize recorded about the run is settled with
+			// what this one knows, so a finalize that knows less erases nothing.
+			if merged := mergeRun(prev.Run, m.Run); merged != m.Run {
+				m.Run = merged
 				if raw, err = json.MarshalIndent(m, "", "  "); err != nil {
 					return false, err
 				}
@@ -448,6 +449,42 @@ func systemAuthored(p string) bool {
 		return true
 	}
 	return strings.HasPrefix(p, transcriptDir+"/")
+}
+
+// mergeRun settles what the manifest says about the run when an earlier
+// finalize has already said something. A run is finalized more than once: when
+// it ends, again by `replichai finish`, again by a recovery path, and each of
+// those knows a different amount.
+//
+//   - A finalize that knows nothing keeps the earlier record.
+//   - A finalize of the same session fills what it does not know from the
+//     earlier record and replaces what it does. The model that was asked for
+//     and the prompt are fixed when a session starts, so only the process that
+//     started it knows them, and a later finish must not strip them.
+//   - A record with no session, which is an attempt that never started, leaves
+//     the record of a session that did run. The repository still holds that
+//     session's work, and its record is the account of it.
+//   - A different session replaces the record whole. Mixing two sessions'
+//     facts would describe a run that never happened.
+func mergeRun(prev, next *Run) *Run {
+	switch {
+	case next == nil:
+		return prev
+	case prev == nil:
+		return next
+	case next.Session == "" && prev.Session != "":
+		return prev
+	case next.Session != prev.Session:
+		return next
+	}
+	merged := *next
+	earlier, settled := reflect.ValueOf(prev).Elem(), reflect.ValueOf(&merged).Elem()
+	for i := range settled.NumField() {
+		if settled.Field(i).IsZero() {
+			settled.Field(i).Set(earlier.Field(i))
+		}
+	}
+	return &merged
 }
 
 // gradingRounds counts the grades the tree carries. A local run commits each
