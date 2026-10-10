@@ -279,7 +279,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041 | [The runtime is not the model vendor](041-the-runtime-is-not-the-model-vendor.md) | normalization built; adapters designed | 004, 005, 006b, 011, 014a, 031 |
 | 041d | [Models and meters name their source](041d-models-and-meters-name-their-source.md) | implemented; meter declaration diverged | 041a, 041c, 011, 031, 006s, 039 |
 | 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half done | 041a–041d |
-| 046 | [One run is one draw](046-one-run-is-one-draw.md) | runs per paper and findings schema 2 built; run record, fixed inputs, system-decided matches and the study view designed | 045h, 021a, 003, 045f, 044, 005 |
+| 046 | [One run is one draw](046-one-run-is-one-draw.md) | runs per paper, findings schema 2 and the run record built; fixed inputs, system-decided matches and the study view designed | 045h, 021a, 003, 045f, 044, 005 |
 
 ### Not built (16)
 
@@ -330,7 +330,7 @@ The engine halves of 007a/007b/007c are built and nothing user-facing reaches th
 
 Nothing on this list blocks the loop the product exists for: a paper goes in, a graded reproduction with its transcript comes out, and somebody pays for it. These are the next things worth building, and each one names why it is not built yet.
 
-**Measuring a paper with many runs ([046](046-one-run-is-one-draw.md)).** Forty-nine runs of three papers showed that one run is one draw, and that the agent system, the network and the agent's own labels moved the result more than the paper did ([`docs/repeat-runs-pilot.md`](../docs/repeat-runs-pilot.md)). Runs per paper and a findings schema the agents' real output fits are built. What is left is the record a study needs: every run's system, model, network profile and paper copy in the manifest, a manifest for every outcome, the first graded attempt kept, the same inputs for every run, and the system rather than the agent deciding whether a number matched. Which construct a study measures is the owner's call and is recorded as a proposal in the spec.
+**Measuring a paper with many runs ([046](046-one-run-is-one-draw.md)).** Forty-nine runs of three papers showed that one run is one draw, and that the agent system, the network and the agent's own labels moved the result more than the paper did ([`docs/repeat-runs-pilot.md`](../docs/repeat-runs-pilot.md)). Runs per paper, a findings schema the agents' real output fits, and the run record are built: every manifest now says which run it was, what it ran on and how it ended, and a run that never started leaves one too. What is left is the first graded attempt kept, the same inputs for every run, and the system rather than the agent deciding whether a number matched. Which construct a study measures is the owner's call and is recorded as a proposal in the spec.
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input: `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop. Its parent [007](007-from-reproduction-to-replication.md) stays a draft on purpose: it is the argument, and the 023 chain is what gets built from it.
 
