@@ -54,8 +54,7 @@ timeline
 
 Both meeting notes are machine-generated and flagged as needing review. Two
 transcription errors are corrected throughout: **KAI** is CHI; **M Col** is Mark
-Colley. One item is still open: a "Stephen" who owes replication results (3 Aug)
-is not identified anywhere in the notes.
+Colley.
 
 ## 2. What they agree on
 
@@ -246,8 +245,7 @@ This is why Mark's DGX offer is decisive, and why "smaller models often fail to
 complete tasks" is a blocking risk rather than a caveat.
 
 **Incomplete.** The cost-estimation artifact (3 Aug) and the outer-loop design
-would not open. The first is also Changkun's own *Analyze Replication Costs*
-action item.
+would not open.
 
 ## 6. Risks nobody raised
 
@@ -387,84 +385,45 @@ the agent system and the environment together.
   recorded and varied facet. A paper's framing depends on that decision, so none
   is drafted here.
 
-## 9. What to delegate
+## 9. What a study needs besides the platform
 
-The platform is the only part that must be built by one person. Everything else
-a study needs ([§8](#8-the-variance-idea-tested)) is corpus, protocol,
+The platform work is in [046](../specs/046-one-run-is-one-draw.md). Everything
+else a study needs ([§8](#8-the-variance-idea-tested)) is corpus, protocol,
 statistics, or writing. None of it is code, and none of it is blocked on the
 build.
 
 ```mermaid
 flowchart TB
-    A["the builder only:<br/>the record of what each run ran under,<br/>the same inputs for every run"] --> B["the builder only:<br/>matches the system decides"]
+    A["the platform:<br/>the record of what each run ran under,<br/>the same inputs for every run"] --> B["the platform:<br/>matches the system decides"]
     B --> C(["run the sessions"])
-    D["Kasper: the 76-paper<br/>corpus and its labels"] --> C
-    E["Francesco: the claim list<br/>and its codebook"] --> C
-    F["Robin: review of the dispersion<br/>model, and pre-registration"] --> C
-    G["Mark: model tiers<br/>and the DGX"] -.-> C
+    D["the 76-paper corpus<br/>and its labels"] --> C
+    E["the claim list<br/>and its codebook"] --> C
+    F["a statistical review of the<br/>dispersion model, and a registration"] --> C
+    G["a second environment<br/>to run against"] -.-> C
     H["blocks nothing, start anytime:<br/>expert interviews,<br/>right-of-reply policy,<br/>related work"]:::free
     classDef free fill:#fff,stroke-dasharray: 5 3
 ```
 
-### By person
-
-| Owner | Package | Done when | Blocks |
-|---|---|---|---|
-| **Kasper** | Corpus and labels: Olga's 76-paper set with per-paper reproduction outcomes in usable form, plus the arrangement with Iarygina and Mottelson | A file of papers, eligibility flags, and human outcomes exists | The whole study |
-| **Francesco** | The **claim list**: a codebook for listing a paper's reported quantitative results, each tagged by kind (a test, a descriptive figure, a ranking), coded by two people with their agreement reported | Codebook frozen; a pilot set coded twice | The measurement itself |
-| **Robin** | Statistical design: a review of [`dispersion-model.md`](dispersion-model.md), the match tolerance per kind of claim, and the run counts from the internal pilot | A pre-registration draft | Interpreting anything |
-| **Mark** | The model and environment axis: tier comparison protocol, DGX environment ready, and the "internet severed, not in training data" condition. The pilot makes this a facet of the study, not only a cost question | A protocol and a prepared machine | [§7 step 1](#7-ranked-next-steps) |
-| **Robin + Kasper** | Right-of-reply and correction policy, a question of standing and field norms rather than code ([§6](#6-risks-nobody-raised)) | A stated position | Publishing anything naming third parties |
-| **Francesco + Mark** | Expert and practitioner interviews (agreed 17 Aug) | Transcripts and a coded summary | Nothing; fully parallel |
-| **Anyone with time** | Related work: turn [`landscape.md`](landscape.md) into a related-work section, and look at how `doesitreproduce.com` authors its score and what it publishes per paper | A drafted section | The write-up |
-
-### What stays with the builder
-
-The platform work in [046](../specs/046-one-run-is-one-draw.md), the runs, and
-the money. That is the critical path, and it does not parallelize. Running one
-paper several times from a project file is already built.
+| Package | Done when | Blocks |
+|---|---|---|
+| **Corpus and labels**: the 76-paper set ([R2](#references)) with per-paper reproduction outcomes in usable form, and an arrangement with its authors | A file of papers, eligibility flags, and human outcomes exists | The whole study |
+| **The claim list**: a codebook for listing a paper's reported quantitative results, each tagged by kind (a test, a descriptive figure, a ranking), coded by two people with their agreement reported | Codebook frozen; a pilot set coded twice | The measurement itself |
+| **Statistical design**: a review of [`dispersion-model.md`](dispersion-model.md), the match tolerance per kind of claim, and the run counts from the internal pilot | A registration draft | Interpreting anything |
+| **A second environment**: another agent system or network condition, a tier comparison protocol, and the "internet severed, not in training data" condition | A protocol and a prepared machine | [§7 step 1](#7-ranked-next-steps), and the environment facet of the model |
+| **Right-of-reply and correction policy**, a question of standing and field norms rather than code ([§6](#6-risks-nobody-raised)) | A stated position | Publishing anything naming third parties |
+| **Expert and practitioner interviews** | Transcripts and a coded summary | Nothing; fully parallel |
+| **Related work**: turn [`landscape.md`](landscape.md) into a related-work section, and look at how `doesitreproduce.com` authors its score and what it publishes per paper | A drafted section | The write-up |
 
 ### Three cautions
 
-1. **Two packages are blocking; the rest are not.** The corpus (Kasper) and the
-   claim list (Francesco) gate the measurement. Follow up on those two; the
-   others can run late without consequence.
-2. **Do not start Kasper's original task yet.** "Choose 100 behavioral papers"
-   presumes a corpus decision nobody has taken ([§3](#3-what-they-disagree-on)),
-   and is the item most likely to be redone. Ask for the 76-paper set instead.
-3. **Settle authorship before the work goes out, not after.** Four institutions,
-   a commercial platform, and five private funders, with nothing on the record
-   ([§6](#6-risks-nobody-raised)). Each package above is a claimable
-   contribution; say so when handing it over, and academics will take it.
-
-## 10. Commitments outstanding, as of 17 August 2026
-
-Not updated since. Check with each person before relying on a row.
-
-| Person | Owed |
-|---|---|
-| Robin Welsch | Account details; a DOI to reproduce; budget; contact finance |
-| Kasper Hornbæk | Choose 100 behavioral papers with prior manual replications |
-| Mark Colley | Test open models on the DGX; run the code sent to them |
-| Changkun Ou | Outer-loop cost analysis; explain top-up; configure access; send code to Mark; add Mark to Slack; follow up with "Stephen" |
-| The group | Run on open-code papers; interview researchers; select papers; schedule the follow-up |
-
-```mermaid
-flowchart LR
-    R1["Robin: account details<br/>+ finance + funds"] --> C1["Changkun: configure<br/>access, explain top-up"]
-    C1 --> RUN["any run at all"]
-    K1["Kasper: choose the papers"] --> RUN
-    C2["Changkun: send code<br/>to Mark"] --> M1["Mark: open models<br/>on the DGX"]
-    M1 --> MODEL(["the model decision"])
-    RUN --> COST(["the cost decision"])
-    MODEL --> COST
-    COST --> SCOPE(["which single study<br/>we actually run"])
-    K1 -.->|"depends on which<br/>corpus wins"| SCOPE
-```
-
-**These commitments form a loop.** Choosing papers depends on which study we
-run, which depends on cost, which depends on the model. Kasper's paper selection
-is the earliest item on the list and the one most likely to be redone.
+1. **Two packages are blocking; the rest are not.** The corpus and the claim
+   list gate the measurement.
+2. **Do not select 100 behavioral papers yet.** That presumes a corpus decision
+   nobody has taken ([§3](#3-what-they-disagree-on)), and it is the item most
+   likely to be redone. The 76-paper set comes first.
+3. **Settle authorship before the work goes out, not after.** Several
+   institutions, a commercial platform, and private funders, with nothing on the
+   record ([§6](#6-risks-nobody-raised)).
 
 ## References
 
