@@ -819,3 +819,90 @@ func TestRunWithOutputsReadsTheEnvironmentAndTheGrades(t *testing.T) {
 		t.Errorf("a broken environment record gave %+v, %v", broken, err)
 	}
 }
+
+// finalizeWith finalizes one repository with a run record and reports whether
+// the manifest was rewritten.
+func finalizeWith(t *testing.T, forge *fakeLiveForge, run Run) bool {
+	t.Helper()
+	rep, err := FinalizeLive(context.Background(), forge, "open-hai", "r",
+		testID, "sha256:abcd", provider.GradePassed, run, nil, fixedNow())
+	if err != nil {
+		t.Fatalf("FinalizeLive: %v", err)
+	}
+	return rep.ManifestCommitted
+}
+
+// TestALaterFinalizeThatKnowsLessErasesNothing checks the finalize that knows
+// the session and little else. `replichai finish` is one: it has the session's
+// status in hand, and not the model that was asked for, the prompt the session
+// was given or the build that started it, which the starting process fixed.
+// Writing its record over the first would strip those, and would rewrite a
+// manifest on every finish for a run about which nothing had changed.
+func TestALaterFinalizeThatKnowsLessErasesNothing(t *testing.T) {
+	forge := newFakeForge([]string{"src/run.py"})
+	full := aRun()
+	if !finalizeWith(t, forge, full) {
+		t.Fatal("the first finalize wrote no manifest")
+	}
+
+	// What a later finish knows of the same session: where it ran and how it
+	// ended, and nothing that was fixed when it started.
+	later := Run{Runtime: full.Runtime, Session: full.Session, Model: full.Model,
+		StartedAt: full.StartedAt, FinishedAt: full.FinishedAt, State: full.State, Reason: full.Reason, Tokens: full.Tokens}
+	if finalizeWith(t, forge, later) {
+		t.Error("finishing a run again rewrote its manifest though nothing about the run had changed")
+	}
+	got := manifestOf(t, forge).Run
+	if got == nil || !reflect.DeepEqual(*got, full) {
+		t.Errorf("the later finalize changed the record:\n got %+v\nwant %+v", got, full)
+	}
+
+	// A fact the later finalize does know replaces the earlier one.
+	later.Reason = "evaluation_failed"
+	if !finalizeWith(t, forge, later) {
+		t.Error("a changed ending was not written")
+	}
+	got = manifestOf(t, forge).Run
+	if got.Reason != "evaluation_failed" || got.PromptDigest != full.PromptDigest || got.Harness != full.Harness {
+		t.Errorf("after a changed ending the record is %+v", got)
+	}
+}
+
+// TestARunRecordFollowsTheSessionTheRepositoryHolds checks what happens to the
+// record when a repository is used again, as a retry does. A new session's
+// record replaces the old one whole, because mixing two sessions' facts would
+// describe a run that never happened. A retry that never started leaves the
+// record of the session whose work the repository still holds.
+func TestARunRecordFollowsTheSessionTheRepositoryHolds(t *testing.T) {
+	forge := newFakeForge([]string{"src/run.py"})
+	first := aRun()
+	finalizeWith(t, forge, first)
+
+	// A retry that failed before it had a session.
+	unstarted := Run{Project: first.Project, Run: first.Run, Runs: first.Runs, State: "failed", Reason: ReasonNotStarted}
+	if finalizeWith(t, forge, unstarted) {
+		t.Error("a retry that never started rewrote the record of the session that ran")
+	}
+	if got := manifestOf(t, forge).Run; got.Session != first.Session || got.Reason != first.Reason {
+		t.Errorf("the record no longer describes the session that ran: %+v", got)
+	}
+
+	// A retry that did run, on another system. Nothing of the first session
+	// may leak into its record.
+	second := Run{Project: first.Project, Run: first.Run, Runs: first.Runs,
+		Runtime: "local", Session: "s-2", Harness: "codex", State: "done", Reason: "succeeded"}
+	if !finalizeWith(t, forge, second) {
+		t.Fatal("a new session's record was not written")
+	}
+	if got := manifestOf(t, forge).Run; !reflect.DeepEqual(*got, second) {
+		t.Errorf("the new session's record carries the old one's facts:\n got %+v\nwant %+v", *got, second)
+	}
+
+	// Two attempts that never started are one account, the later one's.
+	empty := newFakeForge(nil)
+	finalizeWith(t, empty, Run{Run: 1, Runs: 2, State: "failed", Reason: ReasonNotStarted, Build: "aaa"})
+	finalizeWith(t, empty, Run{Run: 1, Runs: 2, State: "failed", Reason: ReasonNotStarted, RequestedModel: "best"})
+	if got := manifestOf(t, empty).Run; got.Build != "aaa" || got.RequestedModel != "best" {
+		t.Errorf("two unstarted attempts merged as %+v", got)
+	}
+}
