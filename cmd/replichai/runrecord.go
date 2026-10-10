@@ -15,16 +15,23 @@ import (
 
 // runRecord is what this program knows about a run when it finalizes it (046):
 // the session's own status, the model that was asked for, the prompt it was
-// given, the build that ran it, and, for a session on this machine, what its
-// session directory says about the harness, the sandbox and the grading.
+// given, and, for a session on this machine, what its session directory says
+// about the harness, the sandbox and the grading.
+//
+// The prompt digest is known only to the process that specified the session,
+// and that process is also the one whose build ran it. A session picked up
+// later, by finish, has neither: the record leaves both empty, and the
+// manifest keeps what the starting process wrote.
 //
 // A hosted runtime keeps no directory here, so its record carries only what
 // the status reports. That is not a failure and is not reported as one.
 func runRecord(rt managed.Runtime, status managed.Status, requestedModel, promptDigest string, stderr io.Writer) publish.Run {
 	record := publish.RunOf(status)
 	record.RequestedModel = requestedModel
-	record.PromptDigest = promptDigest
-	record.Build = buildRevision()
+	if promptDigest != "" {
+		record.PromptDigest = promptDigest
+		record.Build = buildRevision()
+	}
 
 	located, ok := rt.(workspaceReader)
 	if !ok || status.Ref.ID == "" {

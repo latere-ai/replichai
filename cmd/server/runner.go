@@ -348,7 +348,13 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 			// the project it belongs to and the tier that was asked for.
 			record := publish.RunOf(evidence.Status)
 			record.Project, record.RequestedModel = j.ProjectID, string(j.Tier)
-			record.PromptDigest, record.Build = audit.PromptDigest(ctx), version
+			// Only the process that specified the session knows its prompt,
+			// and it is the one whose build ran it. A session adopted from
+			// another replica has neither here, and the manifest keeps what
+			// the starting process wrote.
+			if digest := audit.PromptDigest(ctx); digest != "" {
+				record.PromptDigest, record.Build = digest, version
+			}
 			_, err = publish.FinalizeLive(ctx, e.gh, owner, name, id, e.method.Digest(), grade, record, providerEvents(evidence.Events), time.Now)
 			return err
 		},
