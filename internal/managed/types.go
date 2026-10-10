@@ -215,6 +215,11 @@ type Usage struct {
 	Details      map[string]int64 `json:"details,omitempty"`
 }
 
+// DetailVendorCost is the Usage.Details key under which a harness reports what
+// the session cost at its vendor, in millionths of a dollar. It is a report,
+// not a charge: nothing here bills from it.
+const DetailVendorCost = "vendor_cost_micro_usd"
+
 // TotalTokens sums every token bucket. Because the buckets are mutually
 // exclusive it double-counts nothing, but it is a figure for display and sanity
 // checks rather than for billing: the buckets carry different rates.

@@ -263,7 +263,7 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 		base.Content = Truncate(parsed.Result)
 		usage := parsed.Usage.usage(model)
 		if parsed.Cost > 0 {
-			usage.Details = map[string]int64{"vendor_cost_micro_usd": int64(parsed.Cost * 1e6)}
+			usage.Details = map[string]int64{managed.DetailVendorCost: int64(parsed.Cost * 1e6)}
 		}
 		base.Usage = &usage
 		return []managed.Event{base}, nil
